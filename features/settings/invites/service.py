@@ -9,6 +9,60 @@ _INVITE_EMAIL_RE = __import__("re").compile(
 )
 
 
+# ── Invite-targeting policy (owned by this feature) ───────────────
+# Two authority paths, both resolved by :func:`invite_authorized`:
+#
+#   • MANAGER path — a MANAGER (``is_manager``) of a listed role may invite
+#     ONLY that role's sub-team, and this authority is RANK-INDEPENDENT.  A
+#     recruiting manager IS a ``recruiter`` (rank 2), so it can't out-rank
+#     another recruiter (rank 2); its authority to build a recruiter team
+#     comes from the manager tier, not from rank.  It can never invite
+#     fleet/hr/dispatcher/etc — only what's whitelisted here.
+#   • RANK path — everyone else (non-managers, or managers of un-listed
+#     roles) may invite anyone strictly below their rank, via the RBAC
+#     ``validate_invite_role`` (which also blocks owner-via-invite).
+#
+# This lives with the invites feature (not the RBAC layer) because "who a
+# role may invite" is invite policy.  Keyed on the BASE role + is_manager —
+# there is no ``recruiter_manager`` role anymore.  Pure data + predicate (no
+# FastAPI) so the bot can import it too.
+MANAGER_INVITE_ONLY: dict[str, set[str]] = {
+    # A team-lead manager invites ONLY their own role — never other
+    # departments.  Invited users always arrive as plain employees (invites
+    # carry a role, never the manager tier).  Whether a manager can invite AT
+    # ALL stays in the Owner's hands: can_invite is a per-tier matrix flag —
+    # revoke it on the tier and these whitelists never even get consulted.
+    "recruiter": {"recruiter"},
+    "fleet": {"fleet"},
+    "safety": {"safety"},
+    "dispatcher": {"dispatcher"},
+    # HR's BASE role already invites drivers (rank path); the manager
+    # whitelist REPLACES the rank path, so it must keep driver or promoting
+    # an HR user to manager would silently take driver-inviting away.
+    "hr": {"hr", "driver"},
+    "accounting": {"accounting"},
+}
+
+
+def invite_authorized(
+    actor_role: str, actor_is_manager: bool, target_role: str,
+) -> tuple[bool, str]:
+    """Full invite-target authorization.
+
+    Returns ``(True, "")`` when allowed, else ``(False, reason)`` where
+    *reason* is a stable key (``manager_invite_restricted:<csv>`` carries the
+    allowed set; otherwise a ``validate_invite_role`` reason key).
+    """
+    if actor_is_manager and actor_role in MANAGER_INVITE_ONLY:
+        allowed = MANAGER_INVITE_ONLY[actor_role]
+        if target_role in allowed:
+            return True, ""   # manager authority (rank-independent)
+        return False, "manager_invite_restricted:" + ",".join(sorted(allowed))
+    # Everyone else: standard rank gate (also blocks owner-via-invite).
+    from capabilities.permissions.roles import validate_invite_role
+    return validate_invite_role(actor_role, target_role)
+
+
 async def _invite_email_rate_check(
     account_id: int, actor_sub: str,
     recipient: Optional[str] = None,

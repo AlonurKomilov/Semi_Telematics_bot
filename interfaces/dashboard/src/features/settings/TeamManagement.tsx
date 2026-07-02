@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Users as UsersIcon, X, Truck, User as UserIcon, Shield, Settings as SettingsIcon,
-  Building2, Globe, Clock, Check, Mail, Send, Copy, Search,
+  Building2, Globe, Clock, Check, Mail, Send, Copy, Search, Crown,
 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toast } from 'sonner';
@@ -170,6 +170,36 @@ function IdentityBadges({ u }: { u: AdminUser }) {
   );
 }
 
+/** EFFECTIVE role label — the tier IS the display name, so the list reads
+ *  "Owner / Co-owner / Full admin / Admin / Recruiter Manager / Recruiter"
+ *  instead of a bare base role + side-tags.
+ *    · owner        → "Owner" (primary) / "Co-owner"
+ *    · senior tier  → the tier label, prefixed with the role when the label
+ *      alone doesn't mention it ("Full admin" stands alone; recruiter's
+ *      "Manager" becomes "Recruiter Manager")
+ *    · otherwise    → the base role label. */
+function effectiveRoleLabel(u: Pick<AdminUser, 'role' | 'is_manager' | 'is_primary_owner' | 'tier_senior_label'>): string {
+  const base = ROLE_LABEL[u.role] ?? u.role;
+  if (u.role === 'owner') return u.is_primary_owner ? 'Owner' : 'Co-owner';
+  if (u.is_manager && u.tier_senior_label) {
+    const t = u.tier_senior_label;
+    return t.toLowerCase().includes(u.role.toLowerCase()) ? t : `${base} ${t}`;
+  }
+  return base;
+}
+
+/** Crown marker for the PRIMARY owner — the one un-removable seat. */
+function PrimaryOwnerMark() {
+  return (
+    <span
+      title="Primary owner — can't be removed; alone manages co-owners + account deletion."
+      className="inline-flex text-primary"
+    >
+      <Crown size={12} aria-hidden="true" />
+    </span>
+  );
+}
+
 const userColumns: AnyColumn[] = [
   { key: 'display_name', label: 'Name', sortable: true, render: (_v, row) => {
     const u = row as unknown as AdminUser;
@@ -196,17 +226,22 @@ const userColumns: AnyColumn[] = [
   }},
   {
     key: 'role', label: 'Role', sortable: true,
-    // Role column renders a styled <RoleBadge>; filter matches on
-    // the plain role code and displays the friendly label from
-    // ROLE_LABEL so the dropdown shows "Fleet Manager" / "HR" /
-    // "Safety Officer" instead of "fleet" / "hr" / "safety".
+    // Role column shows the EFFECTIVE tier as the pill ("Full admin",
+    // "Co-owner", "Recruiter Manager").  The filter matches on the same
+    // effective label so each tier is its own dropdown option — an
+    // operator can filter to just Full admins or just Co-owners.
     filterable: true,
-    filterValue: (row) => String(row.role ?? ''),
-    filterLabel: (row) => {
-      const r = String(row.role ?? '');
-      return ROLE_LABEL[r] ?? r;
+    filterValue: (row) => effectiveRoleLabel(row as unknown as AdminUser),
+    filterLabel: (row) => effectiveRoleLabel(row as unknown as AdminUser),
+    render: (v, row) => {
+      const u = row as unknown as AdminUser;
+      return (
+        <span className="inline-flex items-center gap-1.5">
+          <RoleBadge role={String(v)} label={effectiveRoleLabel(u)} />
+          {String(v) === 'owner' && u.is_primary_owner && <PrimaryOwnerMark />}
+        </span>
+      );
     },
-    render: (v) => <RoleBadge role={String(v)} />,
   },
   {
     key: 'vehicles', label: 'Vehicles', sortable: false,
@@ -331,6 +366,13 @@ export default function TeamManagement() {
   // Role change
   const [pendingRole, setPendingRole] = useState<string | null>(null);
   const [confirmAction, setConfirmAction] = useState<'role' | 'deactivate' | 'activate' | null>(null);
+  // Co-owner promotion / demotion flow (primary-owner only).  ``promote-pw``
+  // → enter password → email a code → ``promote-code`` → enter code → done.
+  // ``demote-pw`` → password → remove co-owner.
+  const [ownerFlow, setOwnerFlow] = useState<null | 'promote-pw' | 'promote-code' | 'demote-pw'>(null);
+  const [ownerPassword, setOwnerPassword] = useState('');
+  const [ownerCode, setOwnerCode] = useState('');
+  const [ownerBusy, setOwnerBusy] = useState(false);
   // Per-user Working Hours assignment — admin picks one of the
   // named schedules from the catalog (or leaves the user on the
   // role-level fallback).  Replaces the older free-form hour pickers;
@@ -426,6 +468,69 @@ export default function TeamManagement() {
       }
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
   };
+
+  // Set/clear the per-user manager tier (orthogonal to role — the user's
+  // role is unchanged; they just gain/lose the team-lead grants).
+  const handleManagerToggle = async (userId: number, is_manager: boolean) => {
+    try {
+      await apiJSON('/admin/users/' + userId + '/manager', { method: 'PUT', body: { is_manager } });
+      setSuccess(is_manager
+        ? 'Promoted to manager — takes effect after they next sign in'
+        : 'Manager tier removed — takes effect after they next sign in');
+      await loadUsers();
+      if (selected) setSelected({ ...selected, is_manager });
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+  };
+
+  // ── Co-owner promotion / demotion (primary-owner only) ──
+  const resetOwnerFlow = () => { setOwnerFlow(null); setOwnerPassword(''); setOwnerCode(''); };
+
+  // Step 1 of promote — password → email a 6-digit code.
+  const handlePromoteOwnerRequest = async (userId: number) => {
+    setOwnerBusy(true);
+    try {
+      const res = await apiJSON<{ email: string }>(
+        '/admin/users/' + userId + '/promote-owner',
+        { method: 'POST', body: { password: ownerPassword } },
+      );
+      setSuccess('Confirmation code sent to ' + res.email);
+      setOwnerPassword('');
+      setOwnerFlow('promote-code');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+    finally { setOwnerBusy(false); }
+  };
+
+  // Step 2 of promote — code → apply (Admin becomes co-owner).
+  const handlePromoteOwnerConfirm = async (userId: number) => {
+    setOwnerBusy(true);
+    try {
+      await apiJSON('/admin/users/' + userId + '/promote-owner/confirm',
+        { method: 'POST', body: { code: ownerCode } });
+      setSuccess('Co-owner added');
+      resetOwnerFlow();
+      await loadUsers();
+      if (selected) setSelected({ ...selected, role: 'owner', is_primary_owner: false });
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+    finally { setOwnerBusy(false); }
+  };
+
+  // Remove a co-owner (→ Admin) — password only.
+  const handleDemoteOwner = async (userId: number) => {
+    setOwnerBusy(true);
+    try {
+      await apiJSON('/admin/users/' + userId + '/demote-owner',
+        { method: 'POST', body: { password: ownerPassword } });
+      setSuccess('Co-owner removed');
+      resetOwnerFlow();
+      await loadUsers();
+      if (selected) setSelected({ ...selected, role: 'admin' });
+    } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
+    finally { setOwnerBusy(false); }
+  };
+
+  // Reset the owner flow whenever the drawer switches users, so a half-
+  // finished promote/demote doesn't leak into the next user.
+  useEffect(() => { setOwnerFlow(null); setOwnerPassword(''); setOwnerCode(''); }, [selected?.id]);
 
   const handleToggleActive = async (userId: number, active: boolean) => {
     try {
@@ -742,7 +847,8 @@ export default function TeamManagement() {
                         {nameOrFallback(selected)}
                       </h2>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <RoleBadge role={selected.role} />
+                        <RoleBadge role={selected.role} label={effectiveRoleLabel(selected)} />
+                        {selected.role === 'owner' && selected.is_primary_owner && <PrimaryOwnerMark />}
                       </div>
                     </div>
                   </div>
@@ -1227,6 +1333,163 @@ export default function TeamManagement() {
                           </div>
                         )}
                       </div>
+
+                      {/* Manager tier — a per-user seniority ON the current
+                          role (NOT a role change).  Only shown for roles that
+                          have a manager tier (``manager_capable``); rank-gated
+                          server-side + mirrored here.  The user keeps their
+                          dashboard; they just gain the team-lead grants.
+                          Rendered as the app's canonical settings switch
+                          (matches the DND toggle in Profile). */}
+                      {selected.manager_capable && !isSelfEdit && (() => {
+                        const cannotModify = (ROLE_RANK[selected.role] ?? 0) >= myRank;
+                        const roleLabel = ROLE_LABEL[selected.role] ?? selected.role;
+                        const tierLabel = selected.tier_senior_label ?? 'Manager';
+                        return (
+                          <div>
+                            <h3 className="text-sm font-semibold text-foreground/80 mb-2">Seniority</h3>
+                            <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/30 p-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium inline-flex items-center gap-1.5">
+                                  <Shield size={14} className="text-primary shrink-0" aria-hidden="true" />
+                                  {tierLabel}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {selected.is_manager
+                                    ? `Keeps the ${roleLabel} dashboard, plus the extra ${tierLabel.toLowerCase()} permissions (shown with a shield in the Permissions matrix).`
+                                    : `Promote to ${tierLabel} — same ${roleLabel} dashboard, plus the extra permissions shown with a shield in the Permissions matrix.`}
+                                </p>
+                                {cannotModify && (
+                                  <p className="text-2xs text-muted-foreground/70 mt-1">
+                                    Your role doesn't outrank {roleLabel}.
+                                  </p>
+                                )}
+                                {!cannotModify && (
+                                  <p className="text-2xs text-muted-foreground/70 mt-1">
+                                    Takes effect after {roleLabel} next signs in — an active session keeps the current tier until then.
+                                  </p>
+                                )}
+                              </div>
+                              <button
+                                type="button"
+                                role="switch"
+                                aria-checked={selected.is_manager}
+                                aria-label={`${tierLabel} tier`}
+                                disabled={cannotModify}
+                                onClick={() => handleManagerToggle(selected.id, !selected.is_manager)}
+                                className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition ${
+                                  cannotModify
+                                    ? 'bg-muted-foreground/20 cursor-not-allowed opacity-60'
+                                    : selected.is_manager ? 'bg-primary' : 'bg-muted-foreground/30'
+                                }`}
+                              >
+                                <span
+                                  className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition ${
+                                    selected.is_manager ? 'translate-x-5' : 'translate-x-0.5'
+                                  }`}
+                                />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Ownership — co-owner promote/demote.  Visible ONLY to
+                          the PRIMARY owner, and never for self.  Promote is a
+                          two-factor flow (password → emailed code); demote is
+                          password-only. */}
+                      {me?.is_primary_owner && !isSelfEdit
+                        && (selected.role === 'admin'
+                            || (selected.role === 'owner' && !selected.is_primary_owner)) && (
+                        <div>
+                          <h3 className="text-sm font-semibold text-foreground/80 mb-2">Ownership</h3>
+                          {selected.role === 'admin' ? (
+                            <div className="rounded-lg border border-border bg-muted/30 p-3">
+                              <p className="text-xs text-muted-foreground mb-3">
+                                Make {nameOrFallback(selected)} a <span className="font-medium text-foreground/80">co-owner</span> —
+                                full owner access (billing, users, settings). They won't
+                                become the primary owner and can't remove you or delete the
+                                account. Confirmed with your password + an emailed code.
+                              </p>
+                              {ownerFlow === null && (
+                                <button
+                                  onClick={() => setOwnerFlow('promote-pw')}
+                                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border border-border bg-muted text-muted-foreground hover:border-primary/30 hover:text-foreground/80 transition"
+                                >
+                                  <Crown size={14} /> Make co-owner
+                                </button>
+                              )}
+                              {ownerFlow === 'promote-pw' && (
+                                <div className="space-y-2">
+                                  <input
+                                    type="password" autoComplete="current-password"
+                                    value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)}
+                                    placeholder="Your password"
+                                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+                                  />
+                                  <div className="flex gap-2">
+                                    <button
+                                      disabled={ownerBusy || !ownerPassword}
+                                      onClick={() => handlePromoteOwnerRequest(selected.id)}
+                                      className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium transition"
+                                    >Send code</button>
+                                    <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition">Cancel</button>
+                                  </div>
+                                </div>
+                              )}
+                              {ownerFlow === 'promote-code' && (
+                                <div className="space-y-2">
+                                  <p className="text-2xs text-muted-foreground">Enter the 6-digit code we emailed you.</p>
+                                  <input
+                                    inputMode="numeric" maxLength={6}
+                                    value={ownerCode} onChange={(e) => setOwnerCode(e.target.value.replace(/\D/g, ''))}
+                                    placeholder="6-digit code"
+                                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm tracking-widest"
+                                  />
+                                  <div className="flex gap-2">
+                                    <button
+                                      disabled={ownerBusy || ownerCode.length < 6}
+                                      onClick={() => handlePromoteOwnerConfirm(selected.id)}
+                                      className="px-4 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium transition"
+                                    >Confirm co-owner</button>
+                                    <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition">Cancel</button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="rounded-lg border border-border bg-muted/30 p-3">
+                              <p className="text-xs text-muted-foreground mb-3">
+                                Remove {nameOrFallback(selected)}'s owner access — they
+                                become an <span className="font-medium text-foreground/80">Admin</span>. Confirm with your password.
+                              </p>
+                              {ownerFlow !== 'demote-pw' ? (
+                                <button
+                                  onClick={() => setOwnerFlow('demote-pw')}
+                                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium border transition ${toneClasses('danger')} border-current`}
+                                >Remove owner</button>
+                              ) : (
+                                <div className="space-y-2">
+                                  <input
+                                    type="password" autoComplete="current-password"
+                                    value={ownerPassword} onChange={(e) => setOwnerPassword(e.target.value)}
+                                    placeholder="Your password"
+                                    className="w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+                                  />
+                                  <div className="flex gap-2">
+                                    <button
+                                      disabled={ownerBusy || !ownerPassword}
+                                      onClick={() => handleDemoteOwner(selected.id)}
+                                      className="px-4 py-1.5 bg-danger text-white hover:opacity-90 disabled:opacity-50 rounded text-xs font-medium transition"
+                                    >Confirm removal</button>
+                                    <button onClick={resetOwnerFlow} className="px-4 py-1.5 text-xs text-muted-foreground hover:text-foreground transition">Cancel</button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Working Hours — admin picks one of the named
                           schedules from the catalog (Team Management →

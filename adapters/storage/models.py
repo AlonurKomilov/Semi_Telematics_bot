@@ -29,7 +29,9 @@ class Role(str, Enum):
     # driver-equivalent baseline PLUS the recruiting rights
     # (can_manage_applications + can_convert_to_driver) so it works out of
     # the box; owners tailor any flag per account from the Permissions
-    # matrix.
+    # matrix.  The recruiting TEAM LEAD is not a separate role — it's a
+    # ``recruiter`` with the per-user ``is_manager`` tier (see
+    # capabilities/permissions/roles.MANAGER_GRANTS).
     HR          = "hr"
     ACCOUNTING  = "accounting"
     RECRUITER   = "recruiter"
@@ -41,6 +43,11 @@ class Role(str, Enum):
         if s == "fleet_manager":
             s = "fleet"
         if s == "driver_recruiter":
+            s = "recruiter"
+        # Back-compat: the retired ``recruiter_manager`` role is now a
+        # ``recruiter`` + ``is_manager`` tier.  Any stored/old value folds
+        # to the base role (the manager status lives on the membership).
+        if s == "recruiter_manager":
             s = "recruiter"
         for r in cls:
             if r.value == s:
@@ -131,6 +138,14 @@ class User:
     alerts_on: bool
     is_active: bool
     created_at: str
+    # Manager tier — a per-user seniority layered on the base role (see
+    # capabilities/permissions/roles.MANAGER_GRANTS).  Only meaningful for
+    # roles with a manager tier; a no-op otherwise.
+    is_manager: bool = False
+    # Primary (main) owner of the account — the un-demotable owner who alone
+    # can create/remove co-owners and do destructive account actions.
+    # Co-owners have role=owner but is_primary_owner=False.
+    is_primary_owner: bool = False
     # Per-type alert preferences (all default ON when alerts_on is True)
     display_name: str = ""
     alert_faults: bool = True

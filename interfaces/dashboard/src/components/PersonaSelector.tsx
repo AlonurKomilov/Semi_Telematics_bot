@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, ChevronDown, Eye } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Eye } from 'lucide-react';
 import { useRoleView } from '../context/RoleViewContext';
 
 /**
@@ -34,7 +34,10 @@ export function PersonaSelector() {
   const {
     activeView, viewLabel, canSwitch, availableViews, switchView,
     homeRoute, isPreviewing,
+    activeViewSupportsManager, activeViewTier, previewAsManager, setPreviewAsManager,
   } = useRoleView();
+  const tierSuffix = activeViewSupportsManager && activeViewTier
+    ? ` · ${previewAsManager ? activeViewTier.senior : activeViewTier.base}` : '';
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -82,6 +85,15 @@ export function PersonaSelector() {
     setOpen(false);
   };
 
+  // Pick a manager-capable role AT a specific tier: remember the tier (it
+  // persists), then enter that role — navigating only when actually switching
+  // roles (a same-role tier flip just re-skins the current pages in place).
+  const pickTier = (role: string, wantManager: boolean) => {
+    setPreviewAsManager(wantManager);
+    if (role !== activeView) handlePick(role);
+    else setOpen(false);
+  };
+
   return (
     <div ref={ref} className="relative">
       <button
@@ -101,20 +113,68 @@ export function PersonaSelector() {
         }
       >
         {isPreviewing && <Eye size={12} className="opacity-80" />}
-        <span>{viewLabel}</span>
+        <span>{viewLabel}{tierSuffix}</span>
         <ChevronDown size={12} className="opacity-60" />
       </button>
 
       {open && (
         <ul
           role="listbox"
-          className="absolute left-0 mt-1 w-60 bg-card border border-border rounded-lg shadow-xl text-sm z-50 overflow-hidden"
+          className="absolute left-0 mt-1 w-60 bg-card border border-border rounded-lg shadow-xl text-sm z-50"
         >
           <li className="px-3 py-1.5 text-3xs uppercase tracking-wider text-muted-foreground/60 border-b border-border">
             View dashboard as…
           </li>
           {availableViews.map(v => {
             const isActive = v.key === activeView;
+            // Manager-capable role (e.g. Recruiter): the role row enters at the
+            // SAVED tier; two nested rows let the operator pick Manager /
+            // Employee explicitly (and that choice persists).
+            if (v.supportsManager) {
+              // Manager-capable role: a "Recruiter ›" submenu row that opens a
+              // Manager / Employee flyout on hover (mirrors the column menu's
+              // "Sort › Ascending/Descending").  Clicking the role itself enters
+              // at the SAVED tier; the flyout picks + persists a tier.
+              return (
+                <li key={v.key} className="group/sub relative">
+                  <button
+                    type="button" role="option" aria-selected={isActive}
+                    aria-haspopup="menu"
+                    onClick={() => handlePick(v.key)}
+                    className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors ${
+                      isActive ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'
+                    }`}
+                  >
+                    <span className="flex-1">{v.label}</span>
+                    {isActive && <Check size={14} className="opacity-80" />}
+                    <ChevronRight size={13} className="opacity-50" />
+                  </button>
+                  {/* Flyout — flush to the right so hover bridges without a gap. */}
+                  <ul
+                    role="menu"
+                    className="invisible group-hover/sub:visible absolute left-full top-0 z-50 w-40 overflow-hidden rounded-lg border border-border bg-card shadow-xl"
+                  >
+                    {([[v.tier?.senior ?? 'Manager', true], [v.tier?.base ?? 'Employee', false]] as const).map(([label, wantManager]) => {
+                      const tierActive = isActive && previewAsManager === wantManager;
+                      return (
+                        <li key={label}>
+                          <button
+                            type="button" role="menuitemradio" aria-checked={tierActive}
+                            onClick={() => pickTier(v.key, wantManager)}
+                            className={`w-full flex items-center gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                              tierActive ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-foreground'
+                            }`}
+                          >
+                            <span className="flex-1">{label}</span>
+                            {tierActive && <Check size={14} className="opacity-80" />}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </li>
+              );
+            }
             return (
               <li key={v.key}>
                 <button
@@ -134,7 +194,7 @@ export function PersonaSelector() {
               </li>
             );
           })}
-          <li className="px-3 py-1.5 text-3xs text-muted-foreground/60 border-t border-border bg-muted/20 leading-snug">
+          <li className="rounded-b-lg px-3 py-1.5 text-3xs text-muted-foreground/60 border-t border-border bg-muted/20 leading-snug">
             Changes the dashboard UI only — data and permissions stay yours.
           </li>
         </ul>

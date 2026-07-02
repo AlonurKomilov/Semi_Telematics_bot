@@ -11,7 +11,7 @@ from jose import JWTError
 
 from interfaces.api.auth import AUTH_COOKIE_NAME, decode_jwt, is_jti_revoked
 from infra.platform import get_router as _get_router
-from capabilities.permissions.roles import get_account_permissions
+from capabilities.permissions.roles import get_account_permissions, get_user_permissions
 from adapters.storage import Role
 
 _log = logging.getLogger(__name__)
@@ -406,7 +406,11 @@ async def filter_by_assigned_trucks(
 def require_permission(feature: str):
     """Dependency factory: check the user's role has a specific permission."""
     async def _check(user: dict = Depends(get_current_user)):
-        perms = await get_account_permissions(Role(user["role"]), user["account_id"])
+        perms = await get_user_permissions(
+            Role(user["role"]), user["account_id"],
+            is_manager=bool(user.get("is_manager")),
+            is_primary_owner=bool(user.get("is_primary_owner")),
+        )
         if not getattr(perms, feature, False):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         return user
@@ -448,7 +452,11 @@ def require_permission_any(*features: str):
     which permission was matched (useful for ``_all`` vs ``_own`` logic).
     """
     async def _check(user: dict = Depends(get_current_user)):
-        perms = await get_account_permissions(Role(user["role"]), user["account_id"])
+        perms = await get_user_permissions(
+            Role(user["role"]), user["account_id"],
+            is_manager=bool(user.get("is_manager")),
+            is_primary_owner=bool(user.get("is_primary_owner")),
+        )
         for f in features:
             if getattr(perms, f, False):
                 user["_matched_perm"] = f

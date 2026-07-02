@@ -151,6 +151,13 @@ class FeatureSet:
     # power).  The public applicant form needs neither — it's unauthed.
     can_manage_applications: bool = False
     can_convert_to_driver: bool = False
+    # Carrier Knowledge Base — a recruiter-facing reference directory of the
+    # external carriers the account recruits for (pre-qual criteria, sales
+    # sheet, process notes).  ``can_carrier_directory`` reads it (recruiter +
+    # manager); ``can_manage_carrier_directory`` is the edit right (manager
+    # only).  Info-only — not wired to the apply flow or any other feature.
+    can_carrier_directory: bool = False
+    can_manage_carrier_directory: bool = False
 
 
 # ─── Role → Permission Map ───────────────────────────────────────
@@ -184,6 +191,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_inspections_all=True, can_inspections_vehicle=True,
         can_manage_applications=True, can_convert_to_driver=True,
+        can_carrier_directory=True, can_manage_carrier_directory=True,
     ),
     Role.ADMIN: FeatureSet(
         can_faults=True, can_fuel=True, can_cameras=True,
@@ -211,6 +219,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_inspections_all=True, can_inspections_vehicle=True,
         can_manage_applications=True, can_convert_to_driver=True,
+        can_carrier_directory=True, can_manage_carrier_directory=True,
     ),
     Role.FLEET: FeatureSet(
         can_faults=True, can_fuel=True, can_cameras=True,
@@ -381,8 +390,166 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # narrow to screening-only by revoking can_convert_to_driver in
         # the Permissions matrix.
         can_manage_applications=True, can_convert_to_driver=True,
+        can_carrier_directory=True,   # read the carrier directory (managers also edit)
     ),
 }
+
+
+# ─── Per-user role TIERS (seniority layered on the base role) ─────────
+# A "tier" is NOT a separate role — it's a per-user status (``is_manager`` on
+# the membership) layered on the base role.  The senior tier gets the base
+# role's FeatureSet PLUS the tier's extra flags.  This keeps the Role enum
+# from doubling and gives every feature a single ``is_manager`` signal.
+#
+# TIER_GRANTS is the ONLY definition of "what the senior tier of this role
+# adds" + its display labels.  A role absent here has no tier (no toggle).
+# The senior tier is DERIVED (base | grants), so it can never drift below base.
+#
+#   • recruiter → Manager / Employee: adds can_invite (build the recruiter
+#     team; the invites feature restricts the target) + can_manage_carrier_directory.
+#   • admin → Full admin / Standard admin: adds the account-administration
+#     flags a standard admin lacks (integrations, storage, the permissions
+#     matrix, general settings, billing) — the Owner↔Admin gap, grantable
+#     per-user without minting an owner.
+@dataclass(frozen=True)
+class RoleTier:
+    senior_label: str
+    base_label: str
+    grants: frozenset[str]
+
+
+TIER_GRANTS: dict[Role, RoleTier] = {
+    Role.RECRUITER: RoleTier(
+        senior_label="Manager", base_label="Employee",
+        grants=frozenset({"can_invite", "can_manage_carrier_directory"}),
+    ),
+    Role.ADMIN: RoleTier(
+        senior_label="Full admin", base_label="Standard admin",
+        # The account-administration flags a STANDARD admin lacks (a standard
+        # admin already has billing + fleet ops + user management).  Full admin
+        # closes most of the Owner↔Admin gap without minting an owner.
+        grants=frozenset({
+            "can_manage_integrations", "can_manage_storage",
+            "can_manage_permissions", "can_manage_account",
+            "can_manage_work_hours",
+        }),
+    ),
+    # Department team leads — each adds the lead-only rights its base role
+    # lacks.  These are SEED defaults: owners retune every tier per-account in
+    # the Permissions matrix (each tier is its own stored row).  Managers with
+    # can_invite may invite ONLY their own role (features/settings/invites:
+    # MANAGER_INVITE_ONLY), and invited users arrive as plain employees.
+    Role.FLEET: RoleTier(
+        senior_label="Manager", base_label="Employee",
+        grants=frozenset({
+            "can_invite", "can_manage_work_hours", "can_risk_report_all",
+        }),
+    ),
+    Role.SAFETY: RoleTier(
+        senior_label="Manager", base_label="Employee",
+        # The safety lead owns the scoring config (rules + pillar caps).
+        grants=frozenset({"can_manage_scorecard_rules", "can_invite"}),
+    ),
+    Role.DISPATCHER: RoleTier(
+        senior_label="Manager", base_label="Employee",
+        # The dispatch lead builds shift schedules + curates map layers.
+        grants=frozenset({
+            "can_manage_work_hours", "can_manage_poi_layers", "can_invite",
+        }),
+    ),
+    Role.HR: RoleTier(
+        senior_label="Manager", base_label="Employee",
+        # HR base already invites + manages users; the lead adds schedule
+        # ownership + recruiting-pipeline oversight.
+        grants=frozenset({
+            "can_manage_work_hours", "can_manage_applications",
+            "can_convert_to_driver",
+        }),
+    ),
+    Role.ACCOUNTING: RoleTier(
+        senior_label="Manager", base_label="Employee",
+        # The accounting lead can review the shop invoices / maintenance
+        # records behind the cost numbers.
+        grants=frozenset({"can_work_orders_all", "can_maintenance_all"}),
+    ),
+}
+
+# Back-compat alias: role → the senior tier's extra flags.  Some call sites +
+# the /admin/permissions/roles endpoint reference MANAGER_GRANTS.
+MANAGER_GRANTS: dict[Role, frozenset[str]] = {
+    r: t.grants for r, t in TIER_GRANTS.items()
+}
+
+
+def role_tier(role: Role | str) -> Optional[RoleTier]:
+    """The tier spec (labels + grants) for a role, or None if it has no tier."""
+    try:
+        r = role if isinstance(role, Role) else Role(role)
+    except (ValueError, KeyError):
+        return None
+    return TIER_GRANTS.get(r)
+
+
+def role_supports_manager(role: Role | str) -> bool:
+    """True if this role has a senior tier (a Team-Management toggle is offered)."""
+    return role_tier(role) is not None
+
+
+def apply_manager_grants(fs: FeatureSet, role: Role | str, is_manager: bool) -> FeatureSet:
+    """Overlay a role's senior-tier grants onto *fs* when *is_manager*.
+
+    Pure + idempotent.  A no-op for the base tier, roles with no tier, or when
+    *is_manager* is False.  Applied at the USER boundary (after the role-keyed
+    ``get_account_permissions``), never inside the role cache — the cache stays
+    the shared base-tier baseline; the per-user senior delta is layered per
+    request.
+    """
+    if not is_manager:
+        return fs
+    tier = role_tier(role)
+    if not tier or not tier.grants:
+        return fs
+    from dataclasses import replace
+    return replace(fs, **{flag: True for flag in tier.grants})
+
+
+async def get_user_permissions(
+    role: Role,
+    account_id: int,
+    is_manager: bool = False,
+    is_primary_owner: bool = False,
+    company_id: Optional[int] = None,
+) -> FeatureSet:
+    """Account-aware permission set for a specific USER (role + tier).
+
+    Each tier reads its OWN stored row, independently editable:
+      * **Owner** splits by ``is_primary_owner`` — the PRIMARY owner is the
+        full, owner-protected ``"owner"`` row; a CO-OWNER resolves the separate
+        ``"owner__co"`` row (seeded from full owner, but NOT owner-protected so
+        the primary can restrict it independently).
+      * **Senior tier** (Full admin / Manager) reads ``{role}__manager`` (seed
+        = base+grants).
+      * Otherwise the plain base-role perms.
+
+    Use this wherever a concrete user's effective permissions are needed
+    (request auth, /me); use ``get_account_permissions`` for account-agnostic,
+    role-level surfaces (which always yield the base/primary set).
+    """
+    r = role.value if hasattr(role, "value") else role
+    if r == "owner" and not is_primary_owner:
+        # Co-owner: own row, seeded from the full owner default, NOT
+        # owner-protected (protect_role "_" is never "owner") so the primary
+        # owner can restrict it independently of their own (primary) row.
+        return await _resolve_perms(
+            account_id, "owner__co", ROLE_PERMISSIONS.get(Role.OWNER, FeatureSet()),
+            company_id, "_",
+        )
+    if is_manager and role_supports_manager(role):
+        key = perm_tier_key(role, True)
+        return await _resolve_perms(
+            account_id, key, senior_default_featureset(role), company_id, role,
+        )
+    return await get_account_permissions(role, account_id, company_id)
 
 
 # ─── Owner lockout protection ─────────────────────────────────────
@@ -543,53 +710,84 @@ async def get_account_permissions(
     drops the entry immediately so the Owner-saving worker sees fresh
     state on the very next call.
     """
+    role_str = role.value if hasattr(role, "value") else role
+    return await _resolve_perms(
+        account_id, role_str, ROLE_PERMISSIONS.get(role, FeatureSet()),
+        company_id, role,
+    )
+
+
+async def _resolve_perms(
+    account_id: int,
+    role_key: str,
+    default_fs: FeatureSet,
+    company_id: Optional[int],
+    protect_role: Role | str,
+) -> FeatureSet:
+    """Resolve + cache the stored permission set for one ROLE KEY.
+
+    ``role_key`` is the storage key — a base role (``"admin"``) OR a tier key
+    (``"admin__manager"``).  ``default_fs`` seeds any missing field (base-role
+    defaults, or base+grants for a senior tier).  Cached per
+    ``(account_id, role_key, company_id)`` so base + senior tiers cache apart.
+    """
     import time as _time
-    cache_key = (account_id, role.value if hasattr(role, "value") else role, company_id)
+    from dataclasses import asdict as _asdict
+    cache_key = (account_id, role_key, company_id)
     cached = _permissions_cache.get(cache_key)
     now = _time.monotonic()
     if cached is not None:
         expires_at, fs = cached
         if expires_at > now:
             return fs
-        # Stale — drop and re-resolve.  No "stale-while-revalidate"
-        # because permission staleness is a security concern: if the
-        # Owner just removed can_manage_billing from Admin, we don't
-        # want any worker serving the old True for even one request
-        # past the TTL window.
+        # Stale — drop and re-resolve.  Permission staleness is a security
+        # concern, so no stale-while-revalidate.
 
     try:
         from infra.platform import get_platform_db
         pdb = get_platform_db()
-        role_str = role.value if hasattr(role, "value") else role
-        perm_dict = await pdb.get_role_permissions(account_id, role_str, company_id)
+        perm_dict = await pdb.get_role_permissions(account_id, role_key, company_id)
         if perm_dict is not None:
-            # Start from role defaults so newly-added permission fields get
-            # their correct default value even when the stored DB row predates
-            # the field being added (avoids silently locking users out of new
-            # features because the DB column didn't exist at the time).
-            from dataclasses import asdict as _asdict
+            # Start from the seed defaults so newly-added permission fields get
+            # their correct default even when the stored row predates the field.
             known_fields = {f.name for f in FeatureSet.__dataclass_fields__.values()}
-            role_defaults = _asdict(ROLE_PERMISSIONS.get(role, FeatureSet()))
+            seed = _asdict(default_fs)
             filtered = {k: v for k, v in perm_dict.items() if k in known_fields}
-            merged = {**role_defaults, **filtered}
-            fs = _protect_owner(role, FeatureSet(**merged))
+            merged = {**seed, **filtered}
+            fs = _protect_owner(protect_role, FeatureSet(**merged))
             fs = await _apply_module_mask(fs, account_id)
-            # Derive the always-on service surfaces LAST — after the module
-            # mask, so a disabled module that strips an alert feature also
-            # closes the Alerts inbox.  Any stored can_alerts_*/can_ai_chat
-            # override in the row is intentionally overwritten here: those
-            # surfaces are derived, not configured.
+            # Derive always-on service surfaces LAST (after module mask).
             fs = derive_service_perms(fs)
             _permissions_cache[cache_key] = (now + _PERMS_CACHE_TTL_S, fs)
             return fs
     except Exception as e:
         logger.debug("Could not load permissions from DB (using defaults): %s", e)
 
-    fs = _protect_owner(role, ROLE_PERMISSIONS.get(role, FeatureSet()))
+    fs = _protect_owner(protect_role, default_fs)
     fs = await _apply_module_mask(fs, account_id)
     fs = derive_service_perms(fs)
     _permissions_cache[cache_key] = (now + _PERMS_CACHE_TTL_S, fs)
     return fs
+
+
+# ─── Tier storage keys + seed defaults ────────────────────────────
+def perm_tier_key(role: Role | str, is_manager: bool) -> str:
+    """Storage key for a (role, tier): the base role, or ``{role}__manager``
+    for the senior tier of a tiered role."""
+    r = role.value if isinstance(role, Role) else role
+    return f"{r}__manager" if (is_manager and role_supports_manager(r)) else r
+
+
+def senior_default_featureset(role: Role | str) -> FeatureSet:
+    """Seed defaults for a role's SENIOR tier: base role defaults + the tier's
+    grants.  Owners then edit it independently (stored under its own key)."""
+    r = role if isinstance(role, Role) else Role(role)
+    base = ROLE_PERMISSIONS.get(r, FeatureSet())
+    tier = role_tier(r)
+    if not tier or not tier.grants:
+        return base
+    from dataclasses import replace
+    return replace(base, **{flag: True for flag in tier.grants})
 
 
 def invalidate_permissions_cache(
@@ -771,6 +969,73 @@ def role_emoji(role: Role) -> str:
     return ROLE_EMOJI.get(role, "👤")
 
 
+# ─── AI Briefing focus (dynamic, auto-synced with permissions) ────
+
+# Feature → briefing-topic map, keyed by PERMISSION FLAG — deliberately not by
+# role.  A role's briefing focus is derived from its effective (per-account,
+# module-masked) permissions, so:
+#   • every role — current or future — gets its own briefing for free;
+#   • adding a new feature = adding ONE line here (alongside its
+#     TOOL_PERMISSIONS / _FEATURE_LABELS entries) and every role holding the
+#     flag automatically starts seeing it in briefings;
+#   • an Owner disabling a feature for a role in the Permissions matrix also
+#     removes it from that role's briefing — one source of truth.
+# Order = priority order in the briefing prompt.  Both the *_all and
+# *_vehicle scope flags map to the same topic; duplicates collapse.
+BRIEFING_TOPICS: tuple[tuple[str, str], ...] = (
+    ("can_location_map",       "current vehicle movement and locations"),
+    ("can_location_vehicle",   "current vehicle movement and locations"),
+    ("can_vehicle_all",        "which vehicles are rolling, idling, or parked"),
+    ("can_route_all",          "routes and vehicle availability"),
+    ("can_route_vehicle",      "routes and vehicle availability"),
+    ("can_parking_all",        "unsafe parking events"),
+    ("can_parking_vehicle",    "unsafe parking events"),
+    ("can_faults",             "active fault codes"),
+    ("can_health",             "vehicle health (battery, coolant, oil, DEF)"),
+    ("can_fuel",               "fuel levels"),
+    ("can_maintenance_all",    "pending and overdue maintenance"),
+    ("can_maintenance_vehicle","pending and overdue maintenance"),
+    ("can_work_orders_all",    "recent work orders and shop costs"),
+    ("can_work_orders_vehicle","recent work orders and shop costs"),
+    ("can_inspections_all",    "PTI inspections"),
+    ("can_inspections_vehicle","PTI inspections"),
+    ("can_events_all",         "safety events"),
+    ("can_events_vehicle",     "safety events"),
+    ("can_scorecard_all",      "driver scorecards"),
+    ("can_scorecard_vehicle",  "driver scorecards"),
+    ("can_coaching_admin",     "the driver-coaching backlog"),
+    ("can_efficiency",         "driver efficiency (MPG, idle time)"),
+    ("can_fuel_cost",          "fuel spend"),
+    ("can_cost_per_mile",      "cost per mile"),
+    ("can_alerts_all",         "open alerts"),
+    ("can_alerts_vehicle",     "open alerts"),
+    ("can_manage_applications","the driver-application (hiring) pipeline"),
+)
+
+
+async def briefing_focus_for_account(role_str: str, account_id: int) -> list[str]:
+    """Resolve the briefing focus areas for *role_str* on *account_id*.
+
+    Reads the role's EFFECTIVE permissions (per-account matrix overrides +
+    department-module masking via :func:`get_account_permissions`) and maps
+    them through :data:`BRIEFING_TOPICS`.  Returns an ordered, de-duplicated
+    topic list; empty when the role is unknown (caller falls back to a
+    generic briefing).
+    """
+    try:
+        role = Role(role_str)
+    except (ValueError, TypeError):
+        return []
+    perms = await get_account_permissions(role, account_id)
+    seen: set[str] = set()
+    topics: list[str] = []
+    for flag, topic in BRIEFING_TOPICS:
+        if topic not in seen and getattr(perms, flag, False):
+            seen.add(topic)
+            topics.append(topic)
+    return topics
+
+
 # ─── AI Role Guidance (dynamic, auto-synced with permissions) ─────
 
 # Human-readable labels for permission flags → AI-friendly descriptions
@@ -824,14 +1089,17 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_payroll_view_own": "payroll: view own paystub history",
     "can_coaching_admin": "coaching: manage rules, assign coaching, view all",
     "can_coaching_view_own": "coaching: see + acknowledge own assignments",
+    "can_carrier_directory": "carrier directory (view)",
+    "can_manage_carrier_directory": "carrier directory (manage)",
 }
 
 
-def build_role_guidance(role_str: str) -> str:
+def build_role_guidance(role_str: str, is_manager: bool = False) -> str:
     """Build AI guidance text dynamically from the role's actual permissions.
 
     Returns a short paragraph the AI can use to understand what data
-    this user can and cannot access. Always reflects current ROLE_PERMISSIONS.
+    this user can and cannot access. Always reflects current ROLE_PERMISSIONS
+    plus any manager-tier grants (``is_manager``).
     """
     try:
         role = Role(role_str)
@@ -840,7 +1108,7 @@ def build_role_guidance(role_str: str) -> str:
         # assume fleet-manager scope for an unrecognised identity.
         return "Unknown role — answer only with publicly visible information and avoid disclosing any user, vehicle, or operational data."
 
-    perms = get_permissions(role)
+    perms = apply_manager_grants(get_permissions(role), role, is_manager)
     allowed: list[str] = []
     denied: list[str] = []
     for field_name, label in _FEATURE_LABELS.items():
@@ -899,16 +1167,24 @@ def build_role_guidance(role_str: str) -> str:
             "operational telematics, costs, and safety scoring unless it "
             "relates to a candidate's qualification."
         )
+        if is_manager:
+            lines.append(
+                "You lead the recruiting team: you can invite recruiters and "
+                "manage the recruiting configuration (e.g. the carrier directory)."
+            )
 
     return "\n".join(lines)
 
 
-async def build_role_guidance_for_account(db, account_id: int, role_str: str) -> str:
+async def build_role_guidance_for_account(
+    db, account_id: int, role_str: str, is_manager: bool = False,
+) -> str:
     """Like build_role_guidance() but checks for a per-account DB override first.
 
     If the account has set a custom guidance string for *role_str*, that string
     is returned instead of the auto-generated one.  Falls back to the default
-    sync implementation when no override exists or when db is None.
+    sync implementation (manager-tier aware via *is_manager*) when no override
+    exists or when db is None.
     """
     if db is not None and account_id:
         try:
@@ -917,7 +1193,7 @@ async def build_role_guidance_for_account(db, account_id: int, role_str: str) ->
                 return override
         except Exception:
             pass  # any DB error → fall back to defaults
-    return build_role_guidance(role_str)
+    return build_role_guidance(role_str, is_manager)
 
 
 # ─── Menu visibility — which buttons to show per role ─────────────

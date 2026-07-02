@@ -22,7 +22,7 @@ from adapters.storage.models import Role
 from capabilities.permissions.roles import (
     validate_role_change, role_rank, ASSIGNABLE_ROLES_PATTERN,
 )
-from .service import _INVITE_EMAIL_RE, _invite_email_rate_check
+from .service import _INVITE_EMAIL_RE, _invite_email_rate_check, invite_authorized
 
 logger = logging.getLogger(__name__)
 
@@ -112,10 +112,22 @@ async def create_invite(
     tenant_db=Depends(get_tenant_db),
 ):
     """Generate a new invite code; optionally send it via email."""
-    caller_rank = role_rank(user["role"])
-    target_rank = role_rank(body.role)
-    if target_rank >= caller_rank:
-        raise HTTPException(status_code=403, detail="Cannot create invite for role equal to or above your own")
+    # Invite-target authorization: a manager's sub-team whitelist (rank-
+    # independent) OR the standard rank gate — see invites.service.
+    ok, reason = invite_authorized(
+        user["role"], bool(user.get("is_manager")), body.role,
+    )
+    if not ok:
+        if reason.startswith("manager_invite_restricted:"):
+            allowed = reason.split(":", 1)[1].replace(",", ", ")
+            raise HTTPException(
+                status_code=403,
+                detail=f"Your manager role may only invite: {allowed}",
+            )
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot create invite for role equal to or above your own",
+        )
 
     # Resolve DB user.id from telegram_id (JWT sub) — FK requires users.id
     db_user = await get_current_db_user(user, platform_db)

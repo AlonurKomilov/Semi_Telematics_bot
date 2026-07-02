@@ -21,6 +21,7 @@ from interfaces.api.deps import (
 from adapters.storage.models import Role
 from capabilities.permissions.roles import (
     validate_role_change, role_rank, ASSIGNABLE_ROLES_PATTERN,
+    role_supports_manager, role_tier,
 )
 from .service import _archive_driver_folders
 
@@ -89,6 +90,17 @@ async def list_users(
                 "telegram_id": u.telegram_id,
                 "display_name": u.display_name,
                 "role": u.role.value if hasattr(u.role, "value") else u.role,
+                # Manager tier (per-user seniority on the base role).
+                # ``manager_capable`` tells the UI whether to OFFER the
+                # Manager toggle at all (only roles with a MANAGER_GRANTS
+                # entry have a tier).
+                "is_manager": u.is_manager,
+                "manager_capable": role_supports_manager(u.role),
+                # Senior-tier label for this role (drives the toggle copy):
+                # "Manager" for recruiter, "Full admin" for admin, else null.
+                "tier_senior_label": (lambda t: t.senior_label if t else None)(role_tier(u.role)),
+                # Owner tier: primary (main, un-demotable) vs co-owner.
+                "is_primary_owner": u.is_primary_owner,
                 "truck_num": u.truck_num,
                 "trucks": truck_map.get(u.id, [u.truck_num] if u.truck_num else []),
                 "allowed_companies": company_map.get(u.id, []),
@@ -235,6 +247,11 @@ async def update_user_role(
     if not target or target.account_id != user["account_id"]:
         raise HTTPException(status_code=404, detail="User not found")
 
+    # The primary owner is immutable here; co-owners are managed via the
+    # dedicated promote/demote-owner flow (owner is not an assignable role).
+    if target.is_primary_owner:
+        raise HTTPException(status_code=403, detail="The primary owner's role cannot be changed.")
+
     target_current_role = target.role.value if hasattr(target.role, "value") else target.role
     ok, reason = validate_role_change(user["role"], target_current_role, body.role)
     if not ok:
@@ -250,6 +267,192 @@ async def update_user_role(
             "role_change",
             target_type="user", target_id=str(user_id),
             details=f"Changed role to {body.role}",
+        )
+    return {"ok": ok}
+
+
+class ManagerUpdate(BaseModel):
+    is_manager: bool
+
+
+@router.put("/users/{user_id}/manager")
+async def update_user_manager(
+    user_id: int,
+    body: ManagerUpdate,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Set/clear a user's manager tier — a per-user seniority on the base
+    role (capabilities/permissions/roles.MANAGER_GRANTS), NOT a role change.
+
+    Rank-gated like role changes (can't modify a peer or higher).  Granting
+    requires the base role to HAVE a manager tier; clearing is always fine.
+    Enforcement picks up the change on the user's next token refresh (same
+    propagation model as a role change); their /me view updates immediately.
+    """
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target_role = target.role.value if hasattr(target.role, "value") else target.role
+    if role_rank(target_role) >= role_rank(user["role"]):
+        raise HTTPException(status_code=403, detail="Cannot modify a user with equal or higher role")
+    if body.is_manager and not role_supports_manager(target_role):
+        raise HTTPException(status_code=400, detail=f"The {target_role} role has no manager tier")
+
+    ok = await platform_db.update_user(user_id, is_manager=body.is_manager)
+    if ok:
+        await tenant_db.add_audit_log(
+            user["account_id"], int(user["sub"]),
+            "manager_tier_change",
+            target_type="user", target_id=str(user_id),
+            details=f"Set manager tier to {body.is_manager} ({target_role})",
+        )
+    return {"ok": ok}
+
+
+# ── Co-owner promotion (primary-owner only; 2FA: password + email code) ──
+# "Owner" is never assignable via the generic role endpoint (excluded from
+# ASSIGNABLE_ROLES_PATTERN + blocked by rank).  Creating a co-owner is a
+# deliberate, primary-owner-only action behind TWO factors: the primary
+# owner's password AND a 6-digit code emailed to them.  A co-owner gets
+# role='owner' but is_primary_owner=0 — full owner access, but they cannot
+# create/remove owners or do destructive account actions.
+
+async def _require_primary_owner(user: dict, platform_db):
+    """Resolve + assert the caller is the PRIMARY owner; return their row.
+    403 for everyone else (including co-owners)."""
+    caller = await get_current_db_user(user, platform_db)
+    if not caller or not caller.is_primary_owner:
+        raise HTTPException(status_code=403, detail="Only the primary owner can manage owners.")
+    return caller
+
+
+class PromoteOwnerRequest(BaseModel):
+    password: str = Field(..., min_length=1, max_length=256)
+
+
+@router.post("/users/{user_id}/promote-owner")
+async def promote_owner_request(
+    user_id: int,
+    body: PromoteOwnerRequest,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+):
+    """Step 1 — the primary owner authorizes making an Admin a co-owner:
+    verify their password, then email them a 6-digit confirmation code."""
+    caller = await _require_primary_owner(user, platform_db)
+    if not caller.password_hash:
+        raise HTTPException(status_code=422, detail="Set a dashboard password (Profile → Sign-in methods) before managing owners.")
+    if not caller.email:
+        raise HTTPException(status_code=422, detail="Your profile has no email to send the confirmation code to.")
+
+    from interfaces.api.auth import _verify_password
+    if not _verify_password(body.password, caller.password_hash):
+        raise HTTPException(status_code=403, detail="Password incorrect.")
+
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+    target_role = target.role.value if hasattr(target.role, "value") else target.role
+    if target_role != "admin":
+        raise HTTPException(status_code=400, detail="Only an Admin can be promoted to co-owner.")
+
+    code = await platform_db.create_owner_promotion_code(
+        user["account_id"], caller.id, target.id, ttl_minutes=15,
+    )
+    acct = await platform_db.get_account(user["account_id"])
+    from capabilities.email.lifecycle_emails import send_owner_promotion_code_email
+    sent = send_owner_promotion_code_email(
+        to=caller.email, code=code,
+        account_name=acct.name if acct else "",
+        recipient_name=caller.display_name or "",
+        target_name=target.display_name or (target.email or ""),
+    )
+    return {"status": "code_sent", "email": caller.email, "expires_minutes": 15, "email_sent": sent}
+
+
+class PromoteOwnerConfirm(BaseModel):
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+@router.post("/users/{user_id}/promote-owner/confirm")
+async def promote_owner_confirm(
+    user_id: int,
+    body: PromoteOwnerConfirm,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Step 2 — verify the emailed code and apply the promotion (Admin →
+    co-owner).  The code is bound to this initiator + target."""
+    caller = await _require_primary_owner(user, platform_db)
+    target_id = await platform_db.consume_owner_promotion_code(
+        user["account_id"], caller.id, body.code.strip(),
+    )
+    if target_id is None or int(target_id) != int(user_id):
+        raise HTTPException(status_code=400, detail="Invalid or expired code. Request a new one and try again.")
+
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+    target_role = target.role.value if hasattr(target.role, "value") else target.role
+    if target_role != "admin":
+        raise HTTPException(status_code=409, detail="That user is no longer an Admin.")
+
+    ok = await platform_db.update_user(user_id, role="owner", is_primary_owner=False)
+    if ok:
+        from capabilities.permissions.roles import invalidate_permissions_cache
+        invalidate_permissions_cache(user["account_id"])
+        await tenant_db.add_audit_log(
+            user["account_id"], int(user["sub"]),
+            "co_owner_added",
+            target_type="user", target_id=str(user_id),
+            details=f"Promoted {target.display_name or target.email or user_id} to co-owner",
+        )
+    return {"ok": ok}
+
+
+class DemoteOwnerRequest(BaseModel):
+    password: str = Field(..., min_length=1, max_length=256)
+
+
+@router.post("/users/{user_id}/demote-owner")
+async def demote_owner(
+    user_id: int,
+    body: DemoteOwnerRequest,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Remove a co-owner (→ Admin).  Primary-owner only, password-confirmed.
+    The primary owner can never be demoted here."""
+    caller = await _require_primary_owner(user, platform_db)
+    if not caller.password_hash:
+        raise HTTPException(status_code=422, detail="Set a dashboard password before managing owners.")
+    from interfaces.api.auth import _verify_password
+    if not _verify_password(body.password, caller.password_hash):
+        raise HTTPException(status_code=403, detail="Password incorrect.")
+
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+    target_role = target.role.value if hasattr(target.role, "value") else target.role
+    if target_role != "owner":
+        raise HTTPException(status_code=400, detail="That user is not an owner.")
+    if target.is_primary_owner:
+        raise HTTPException(status_code=403, detail="The primary owner cannot be removed.")
+
+    ok = await platform_db.update_user(user_id, role="admin")
+    if ok:
+        from capabilities.permissions.roles import invalidate_permissions_cache
+        invalidate_permissions_cache(user["account_id"])
+        await tenant_db.add_audit_log(
+            user["account_id"], int(user["sub"]),
+            "co_owner_removed",
+            target_type="user", target_id=str(user_id),
+            details=f"Removed co-owner {target.display_name or user_id} (→ admin)",
         )
     return {"ok": ok}
 
@@ -487,6 +690,11 @@ async def update_user_status(
     target = await platform_db.get_user(user_id)
     if not target or target.account_id != user["account_id"]:
         raise HTTPException(status_code=404, detail="User not found")
+
+    # The primary owner can never be deactivated (lockout / orphaned-account
+    # protection).
+    if target.is_primary_owner:
+        raise HTTPException(status_code=403, detail="The primary owner cannot be deactivated.")
 
     caller_rank = role_rank(user["role"])
     existing_rank = role_rank(

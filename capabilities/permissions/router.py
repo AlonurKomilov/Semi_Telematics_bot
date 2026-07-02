@@ -18,9 +18,15 @@ from capabilities.permissions.roles import (
     ROLE_PERMISSIONS,
     FeatureSet,
     get_account_permissions,
+    get_user_permissions,
     invalidate_permissions_cache,
     OWNER_PROTECTED_PERMS,
     DERIVED_SERVICE_FIELDS,
+    MANAGER_GRANTS,
+    TIER_GRANTS,
+    perm_tier_key,
+    senior_default_featureset,
+    role_supports_manager,
 )
 
 logger = logging.getLogger(__name__)
@@ -71,6 +77,10 @@ class UpdatePermissionsRequest(BaseModel):
     role: str
     permissions: dict[str, bool]
     company_id: Optional[int] = None
+    # Which TIER of the role to edit: None/"base" = the base role's own perms;
+    # "senior" = the role's senior tier (Full admin / Manager), stored + edited
+    # INDEPENDENTLY under the ``{role}__manager`` key.
+    tier: Optional[str] = None
 
 
 @router.get("/roles")
@@ -84,18 +94,51 @@ async def get_all_roles(
     """
     account_id = user["account_id"]
 
-    # Current permissions (DB or fallback)
+    # Current permissions (DB or fallback).  Each base role, plus — for tiered
+    # roles — the SENIOR tier's own resolved perms under ``{role}__manager`` so
+    # the two-level matrix shows + edits each tier independently.
     current = {}
     for role in Role:
         perms = await get_account_permissions(role, account_id)
         current[role.value] = asdict(perms)
+        if role_supports_manager(role):
+            senior = await get_user_permissions(role, account_id, is_manager=True)
+            current[perm_tier_key(role, True)] = asdict(senior)
+    # Co-owner tier — the restrictable owner (its own "owner__co" row).
+    co_owner = await get_user_permissions(Role.OWNER, account_id, is_primary_owner=False)
+    current["owner__co"] = asdict(co_owner)
 
     # Factory defaults
     defaults = {
         role.value: asdict(fs) for role, fs in ROLE_PERMISSIONS.items()
     }
 
-    return {"current": current, "defaults": defaults, "fields": sorted(VALID_FIELDS)}
+    # Manager-tier grants (role → the extra flags a MANAGER of that role gets).
+    # The matrix marks these cells as manager-only rather than adding columns —
+    # "manager" is a per-user tier (is_manager), not a role.  Code-defined
+    # (MANAGER_GRANTS), so shown read-only.
+    manager_grants = {
+        role.value: sorted(flags) for role, flags in MANAGER_GRANTS.items()
+    }
+
+    # Per-role TIERS — labels + grants for the two-level Role→Tier matrix.
+    # A role here has a senior tier (Manager / Full admin) grantable per-user
+    # via ``is_manager``; the senior column = base + these grants.
+    tiers = {
+        role.value: {
+            "senior_label": t.senior_label,
+            "base_label": t.base_label,
+            "grants": sorted(t.grants),
+        }
+        for role, t in TIER_GRANTS.items()
+    }
+
+    return {
+        "current": current, "defaults": defaults,
+        "fields": sorted(VALID_FIELDS),
+        "manager_grants": manager_grants,
+        "tiers": tiers,
+    }
 
 
 @router.get("/roles/overrides")
@@ -179,18 +222,27 @@ async def update_role_perms(
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Update permission set for a role in the account."""
+    """Update permission set for a role (or one of its tiers) in the account."""
     if body.role not in VALID_ROLES:
         raise HTTPException(400, f"Invalid role: {body.role}")
+
+    is_senior = body.tier == "senior"
+    is_co_owner = body.tier == "co"
+    if is_senior and not role_supports_manager(body.role):
+        raise HTTPException(400, f"Role '{body.role}' has no senior tier")
+    if is_co_owner and body.role != "owner":
+        raise HTTPException(400, "Only the owner role has a co-owner tier")
 
     # Validate permission fields
     invalid_keys = set(body.permissions.keys()) - VALID_FIELDS
     if invalid_keys:
         raise HTTPException(400, f"Invalid permission flags: {sorted(invalid_keys)}")
 
-    # Prevent removing own management access
+    # Prevent removing own management access — a caller editing the tier they
+    # themselves hold can't strip can_manage_permissions from under their feet.
     caller_role = user.get("role", "")
-    if body.role == caller_role:
+    caller_is_senior = bool(user.get("is_manager"))
+    if body.role == caller_role and is_senior == caller_is_senior:
         if not body.permissions.get("can_manage_permissions", True):
             raise HTTPException(400, "Cannot remove your own management access")
 
@@ -201,9 +253,23 @@ async def update_role_perms(
     # write unless the company belongs to the caller's account.
     await _assert_company_belongs_to_account(tenant_db, account_id, body.company_id)
 
-    # Merge with defaults for any fields not provided
+    # Merge with the CURRENT set of the tier being edited (so unprovided fields
+    # keep their value).  The senior tier reads/writes its OWN key
+    # ({role}__manager) — independent from the base row.
     role_enum = Role(body.role)
-    current = await get_account_permissions(role_enum, account_id, body.company_id)
+    if is_co_owner:
+        storage_key = "owner__co"
+        current = await get_user_permissions(
+            role_enum, account_id, is_primary_owner=False, company_id=body.company_id,
+        )
+    elif is_senior:
+        storage_key = perm_tier_key(role_enum, True)
+        current = await get_user_permissions(
+            role_enum, account_id, is_manager=True, company_id=body.company_id,
+        )
+    else:
+        storage_key = body.role
+        current = await get_account_permissions(role_enum, account_id, body.company_id)
     before = asdict(current)
     merged = dict(before)
     merged.update(body.permissions)
@@ -219,17 +285,17 @@ async def update_role_perms(
         merged.pop(_dk, None)
         before.pop(_dk, None)
 
-    # Owner lockout protection — the owner can never lose the account-
-    # control permissions that are the only way back from a
-    # misconfiguration.  Force them on in the stored row (also enforced
-    # at resolve time in get_account_permissions, so this is belt-and-
-    # suspenders that keeps the persisted data honest).
-    if body.role == "owner":
+    # Owner lockout protection — the owner can never lose the account-control
+    # permissions that are the only way back from a misconfiguration.  Base
+    # owner row only (senior tiers are admin/recruiter, never owner).
+    # Only the PRIMARY owner row (base "owner") is escape-hatch-locked.  The
+    # co-owner tier is intentionally restrictable, so it is NOT force-locked.
+    if body.role == "owner" and not is_senior and not is_co_owner:
         for _k in OWNER_PROTECTED_PERMS:
             merged[_k] = True
 
     await platform_db.set_role_permissions(
-        account_id, body.role, merged, updated_by, body.company_id,
+        account_id, storage_key, merged, updated_by, body.company_id,
     )
 
     # Clear cache so all layers pick up changes immediately
@@ -240,7 +306,8 @@ async def update_role_perms(
     # instead of a 40-row before/after dump.
     diff = _permissions_diff(before, merged)
     scope = f"company={body.company_id}" if body.company_id else "account-wide"
-    target_id = f"{body.role}:{body.company_id}" if body.company_id else body.role
+    audit_role = f"{body.role} ({body.tier})" if body.tier else body.role
+    target_id = f"{audit_role}:{body.company_id}" if body.company_id else audit_role
     try:
         await tenant_db.add_audit_log(
             account_id, updated_by,

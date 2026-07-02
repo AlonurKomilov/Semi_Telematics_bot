@@ -38,10 +38,14 @@ const SRC = join(ROOT, 'src');
 
 // ── Guard 1: role-literal drift ───────────────────────────────────
 
-// Persona keys that must not be hardcoded in `=== / !==` comparisons
-// outside the hook + context.  Mirrors VIEW_LABELS in RoleViewContext
-// AND the Persona union in features/_lib/types.ts — both lists must
-// stay in lockstep when adding a new persona.
+// PERSONA keys — the presentation identities.  Must not be hardcoded in
+// `=== / !==` comparisons outside the hook + context, AND every one must
+// appear in both host maps (Guard 3).  Mirrors the Persona union in
+// features/_lib/types.ts — both lists stay in lockstep per persona.
+//
+// NB: "manager" is NOT a persona (nor a role) — it's a per-user tier
+// (is_manager) layered on the base role.  A recruiter manager IS a
+// recruiter for presentation, so nothing manager-related belongs here.
 const ROLE_KEYS = [
   'owner', 'admin', 'fleet', 'safety', 'dispatcher', 'driver',
   'hr', 'accounting', 'recruiter',

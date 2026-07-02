@@ -321,6 +321,38 @@ async def public_link_banner(
                     headers={"Cache-Control": "public, max-age=300"})
 
 
+@router.post("/ocr-cdl")
+@limiter.limit("10/hour")
+async def ocr_cdl(
+    request: Request,
+    token: str = Form(...),
+    file: UploadFile = File(...),
+    platform_db=Depends(get_platform_db),
+):
+    """Read a CDL-front photo → prefill fields (the form's "fast-fill").
+
+    Public but guarded: a valid recruiting-link token is required, the rate
+    limit is tight (each call is a paid vision-model request), and the image
+    passes the same magic-byte validation as the apply upload.  Best-effort
+    by contract — the response is always 200 with ``{"fields": null}`` on
+    any extraction failure, so the form silently falls back to manual entry.
+    The image is processed in memory only; nothing is stored here.
+    """
+    link = await platform_db.resolve_application_link(token.strip())
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not available")
+    raw = await file.read()
+    ok, mime, reason = validate_upload(raw, max_bytes=_MAX_FILE_BYTES)
+    if not ok or not mime.startswith("image/"):
+        raise HTTPException(
+            status_code=422,
+            detail="Please upload a photo (JPG/PNG/WEBP) of your license.",
+        )
+    from features.applications.ocr import extract_cdl_fields
+    fields = await extract_cdl_fields(raw, account_id=link["account_id"])
+    return {"fields": fields}
+
+
 class StatusCheckRequest(BaseModel):
     reference: str = Field(..., max_length=40)
     email: str = Field(..., max_length=200)

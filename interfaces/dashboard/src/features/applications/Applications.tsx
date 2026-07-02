@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Search, ArrowUp, ArrowDown, ChevronsUpDown, Building2, Pencil, Trash2 } from 'lucide-react';
+import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Search, Building2, Pencil, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader } from '../../components/shell';
@@ -11,6 +11,8 @@ import { statusClasses, toneClasses } from '../../lib/status';
 import { APEX_DOMAIN } from '../../lib/safeReturnTo';
 import { formatDate } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
+import DataTable from '../../components/DataTable';
+import type { AnyColumn } from '../../types';
 
 // Public applicant link host — the form lives on apply.<apex> (its own
 // subdomain by product decision).  Recruiters copy /<token> onto it.
@@ -283,7 +285,6 @@ export default function Applications() {
   const [statusFilter, setStatusFilter] = useState('');
   const [view, setView] = useState<'table' | 'board'>('table');
   const [search, setSearch] = useState('');
-  const [sort, setSort] = useState<{ key: 'name' | 'status' | 'submitted'; dir: 'asc' | 'desc' }>({ key: 'submitted', dir: 'desc' });
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
@@ -323,26 +324,15 @@ export default function Applications() {
     }
   };
 
-  // Table rows: status filter → text search → sort (all client-side over
-  // the full set already loaded).
+  // Table rows: status filter → text search.  Sort is handled by
+  // DataTable's built-in ``sortable`` machinery on the columns — no
+  // need for an external sort state anymore.
   const tableRows = useMemo(() => {
     let rs = statusFilter ? rows.filter((r) => r.status === statusFilter) : rows;
     const q = search.trim().toLowerCase();
     if (q) rs = rs.filter((r) => `${r.first_name} ${r.last_name} ${r.email} ${r.reference}`.toLowerCase().includes(q));
-    const key = (r: AppRow) =>
-      sort.key === 'name' ? `${r.last_name} ${r.first_name}`.toLowerCase()
-        : sort.key === 'status' ? r.status
-        : (r.submitted_at || '');
-    rs = [...rs].sort((a, b) => {
-      const av = key(a), bv = key(b);
-      const c = av < bv ? -1 : av > bv ? 1 : 0;
-      return sort.dir === 'asc' ? c : -c;
-    });
     return rs;
-  }, [rows, statusFilter, search, sort]);
-
-  const toggleSort = (key: 'name' | 'status' | 'submitted') =>
-    setSort((s) => (s.key === key ? { key, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' }));
+  }, [rows, statusFilter, search]);
 
   const toggleRow = (id: number) =>
     setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -373,18 +363,6 @@ export default function Applications() {
       toast.error(e instanceof Error ? e.message : 'Bulk action failed');
     }
   };
-
-  // Sortable column header.
-  const sortTh = (k: 'name' | 'status' | 'submitted', labelNode: ReactNode) => (
-    <th className="px-3 py-2 text-left">
-      <button onClick={() => toggleSort(k)} className="inline-flex items-center gap-1 hover:text-foreground">
-        {labelNode}
-        {sort.key === k
-          ? (sort.dir === 'asc' ? <ArrowUp size={11} /> : <ArrowDown size={11} />)
-          : <ChevronsUpDown size={11} className="opacity-40" />}
-      </button>
-    </th>
-  );
 
   const loadLinks = useCallback(() => {
     apiJSON<{ items: ApplicationLink[] }>('/applications/links')
@@ -620,56 +598,127 @@ export default function Applications() {
         {err && <div className="p-3 text-sm text-destructive">{err}</div>}
         {view === 'board' ? (
           <ApplicationsBoard rows={rows} loading={loading} onMove={moveApp} onOpen={setOpenId} />
+        ) : loading ? (
+          <div className="text-center text-muted-foreground py-8">Loading…</div>
+        ) : tableRows.length === 0 ? (
+          <div className="text-center text-muted-foreground py-8">
+            No applications{search ? ' match your search' : statusFilter ? ` in '${statusFilter}'` : ' yet'}.
+          </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead className="border-b border-border text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="w-8 px-3 py-2">
-                  <input type="checkbox" aria-label="Select all" checked={allVisibleSelected}
-                    onChange={toggleAll} className="accent-primary" />
-                </th>
-                <th className="px-3 py-2 text-left">Ref</th>
-                {sortTh('name', 'Name')}
-                <th className="px-3 py-2 text-left">Contact</th>
-                <th className="px-3 py-2 text-left">Location</th>
-                <th className="px-3 py-2 text-left">CDL</th>
-                {sortTh('status', 'Status')}
-                {sortTh('submitted', 'Submitted')}
-              </tr>
-            </thead>
-            <tbody>
-              {loading && <tr><td colSpan={8} className="text-center text-muted-foreground py-8">Loading…</td></tr>}
-              {!loading && tableRows.length === 0 && (
-                <tr><td colSpan={8} className="text-center text-muted-foreground py-8">
-                  No applications{search ? ' match your search' : statusFilter ? ` in '${statusFilter}'` : ' yet'}.
-                </td></tr>
-              )}
-              {tableRows.map((r) => (
-                <tr key={r.id} onClick={() => setOpenId(r.id)}
-                  className={`border-b border-border/50 cursor-pointer hover:bg-muted/40 ${selected.has(r.id) ? 'bg-primary/5' : ''}`}>
-                  <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
-                    <input type="checkbox" aria-label={`Select ${r.reference}`} checked={selected.has(r.id)}
-                      onChange={() => toggleRow(r.id)} className="accent-primary" />
-                  </td>
-                  <td className="px-3 py-2 font-mono text-xs">{r.reference}</td>
-                  <td className="px-3 py-2">
-                    {r.first_name} {r.last_name}
-                    {r.duplicate && (
-                      <span className={`ml-1.5 rounded px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}
-                        title="Another application in this account shares an SSN, email, or phone">re-applicant</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground text-xs">{r.email}<br />{r.phone}</td>
-                  <td className="px-3 py-2 text-xs">{[r.city, r.state].filter(Boolean).join(', ') || '—'}</td>
-                  <td className="px-3 py-2 text-xs">{r.cdl_class ? `Class ${r.cdl_class} · ${r.cdl_state}` : '—'}</td>
-                  <td className="px-3 py-2">
-                    <span className={`px-2 py-0.5 rounded text-xs capitalize ${statusClasses(r.status)}`}>{r.status}</span>
-                  </td>
-                  <td className="px-3 py-2 text-muted-foreground text-xs tabular-nums">{r.submitted_at?.slice(0, 10) || '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            data={tableRows as unknown as Record<string, unknown>[]}
+            enableToolbar={false}
+            enablePagination={false}
+            onRowClick={(row) => setOpenId((row as unknown as AppRow).id)}
+            columns={[
+              {
+                key: 'reference', label: 'Ref', sortable: false,
+                render: (v) => <span className="font-mono text-xs">{String(v)}</span>,
+              },
+              {
+                // Sort key is a synthesised last+first name (matches
+                // the pre-migration external sort behaviour).
+                key: 'last_name', label: 'Name', sortable: true,
+                sortKey: (row) => {
+                  const r = row as unknown as AppRow;
+                  return `${r.last_name} ${r.first_name}`.toLowerCase();
+                },
+                render: (_v, row) => {
+                  const r = row as unknown as AppRow;
+                  return (
+                    <span>
+                      {r.first_name} {r.last_name}
+                      {r.duplicate && (
+                        <span className={`ml-1.5 rounded px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}
+                          title="Another application in this account shares an SSN, email, or phone">
+                          re-applicant
+                        </span>
+                      )}
+                    </span>
+                  );
+                },
+              },
+              {
+                key: 'email', label: 'Contact', sortable: false,
+                render: (_v, row) => {
+                  const r = row as unknown as AppRow;
+                  return (
+                    <span className="text-muted-foreground text-xs">
+                      {r.email}<br />{r.phone}
+                    </span>
+                  );
+                },
+              },
+              {
+                key: 'city', label: 'Location', sortable: false,
+                render: (_v, row) => {
+                  const r = row as unknown as AppRow;
+                  return (
+                    <span className="text-xs">
+                      {[r.city, r.state].filter(Boolean).join(', ') || '—'}
+                    </span>
+                  );
+                },
+              },
+              {
+                key: 'cdl_class', label: 'CDL', sortable: false,
+                render: (_v, row) => {
+                  const r = row as unknown as AppRow;
+                  return (
+                    <span className="text-xs">
+                      {r.cdl_class ? `Class ${r.cdl_class} · ${r.cdl_state}` : '—'}
+                    </span>
+                  );
+                },
+              },
+              {
+                key: 'status', label: 'Status', sortable: true,
+                render: (v) => (
+                  <span className={`px-2 py-0.5 rounded text-xs capitalize ${statusClasses(String(v))}`}>
+                    {String(v)}
+                  </span>
+                ),
+              },
+              {
+                key: 'submitted_at', label: 'Submitted', sortable: true,
+                render: (v) => (
+                  <span className="text-muted-foreground text-xs tabular-nums">
+                    {String(v ?? '').slice(0, 10) || '—'}
+                  </span>
+                ),
+              },
+            ]}
+            // Bulk-select checkbox follows whichever column is first
+            // visible (same pattern as Maintenance Tasks): header
+            // fires ``toggleAll``, per-row fires ``toggleRow``.  Both
+            // use ``stopPropagation`` so ticking doesn't trigger the
+            // row-click → detail-drawer.
+            firstColumnLeading={{
+              header: () => (
+                <input
+                  type="checkbox"
+                  aria-label="Select all"
+                  checked={allVisibleSelected}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={toggleAll}
+                  className="cursor-pointer accent-primary"
+                />
+              ),
+              cell: (row) => {
+                const r = row as unknown as AppRow;
+                return (
+                  <input
+                    type="checkbox"
+                    aria-label={`Select ${r.reference}`}
+                    checked={selected.has(r.id)}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={() => toggleRow(r.id)}
+                    className="cursor-pointer accent-primary"
+                  />
+                );
+              },
+            }}
+          />
         )}
       </section>
 

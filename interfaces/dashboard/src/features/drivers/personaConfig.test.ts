@@ -12,6 +12,7 @@ import type { Persona } from '../_lib/types';
 
 const ALL_PERSONAS: Persona[] = [
   'owner', 'admin', 'fleet', 'dispatcher', 'safety', 'driver', 'hr', 'accounting',
+  'recruiter',
 ];
 
 describe('TABS_FOR_PERSONA — per-persona drawer tab sets', () => {

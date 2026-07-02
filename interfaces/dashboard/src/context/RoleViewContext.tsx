@@ -42,8 +42,9 @@ const VIEW_HOME_ROUTE: Record<string, string> = {
   // Reports — same logic, the cost-rollup view is the day's start.
   hr: '/workforce/drivers',
   accounting: '/cost-reports',
-  // Recruiter lands on Drivers too — the roster + qualification files
-  // are the daily entry point for onboarding work.
+  // Recruiter (+ its manager, via the persona alias) lands on Drivers —
+  // the roster + qualification files are the daily entry point for
+  // onboarding work.
   recruiter: '/workforce/drivers',
   driver: '/',
 };
@@ -57,6 +58,9 @@ const SWITCHABLE_ROLES = ['owner', 'admin'];
 // dashboard the actual driver would never open).  If a Driver does
 // happen to log into the dashboard directly, they'll still see their
 // own role label correctly via the non-switchable static pill.
+// Managers are NOT here: "manager" is a per-user tier (is_manager) on the
+// base role, not a distinct dashboard view.  A recruiter manager IS a
+// recruiter for presentation; only its permission set differs.
 const PREVIEWABLE_ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'hr', 'accounting', 'recruiter'];
 
 // localStorage key — survives reloads so the dashboard reopens in the
@@ -64,6 +68,9 @@ const PREVIEWABLE_ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'h
 // logout: the next login resets activeView to the user's real role anyway
 // (see the useEffect below).
 const STORAGE_KEY = 'roleView.activeView';
+// Preview tier for manager-capable roles (Manager vs Employee) — persisted so
+// re-picking the role keeps the operator's last choice.
+const TIER_STORAGE_KEY = 'roleView.previewAsManager';
 
 // Branded subdomain → persona mapping.  When an Owner/Admin opens
 // fleet.4truck.us / dispatch.4truck.us / safety.4truck.us the dashboard
@@ -113,12 +120,31 @@ function getSubdomainRole(): string | null {
   }
 }
 
+// Mirror of capabilities/permissions/roles.TIER_GRANTS — the per-user senior
+// tier (labels + the flags it adds) each role supports.  Used ONLY to shape an
+// Owner/Admin's PREVIEW of a role's senior tier; a REAL senior's permissions
+// come from /user/me (backend-resolved), so drift here only affects preview
+// accuracy, never a live user's access.  Keep in sync.
+interface RoleTierMirror { senior: string; base: string; grants: string[] }
+const ROLE_TIERS: Record<string, RoleTierMirror> = {
+  recruiter:  { senior: 'Manager', base: 'Employee', grants: ['can_invite', 'can_manage_carrier_directory'] },
+  admin:      { senior: 'Full admin', base: 'Standard admin',
+                grants: ['can_manage_integrations', 'can_manage_storage', 'can_manage_permissions',
+                         'can_manage_account', 'can_manage_work_hours'] },
+  fleet:      { senior: 'Manager', base: 'Employee', grants: ['can_invite', 'can_manage_work_hours', 'can_risk_report_all'] },
+  safety:     { senior: 'Manager', base: 'Employee', grants: ['can_manage_scorecard_rules', 'can_invite'] },
+  dispatcher: { senior: 'Manager', base: 'Employee', grants: ['can_manage_work_hours', 'can_manage_poi_layers', 'can_invite'] },
+  hr:         { senior: 'Manager', base: 'Employee', grants: ['can_manage_work_hours', 'can_manage_applications', 'can_convert_to_driver'] },
+  accounting: { senior: 'Manager', base: 'Employee', grants: ['can_work_orders_all', 'can_maintenance_all'] },
+};
+const roleSupportsManager = (role: string) => role in ROLE_TIERS;
+
 interface RoleViewContextValue {
   activeView: string;
   viewLabel: string;
   homeRoute: string;
   canSwitch: boolean;
-  availableViews: { key: string; label: string }[];
+  availableViews: { key: string; label: string; supportsManager: boolean; tier?: { senior: string; base: string } }[];
   switchView: (role: string) => void;
   viewHas: (flag: string) => boolean;
   viewHasAny: (...flags: string[]) => boolean;
@@ -130,6 +156,16 @@ interface RoleViewContextValue {
   rolePermSets: Record<string, Partial<Permissions>>;
   /** Reload permission sets from server (e.g. after editing). */
   refreshPermissions: () => void;
+  /** True when the active preview role has a manager tier (e.g. Recruiter),
+   * so the switcher can offer a Manager/Employee toggle. */
+  activeViewSupportsManager: boolean;
+  /** Senior/base tier labels for the active view (null when it has no tier)
+   * — e.g. Manager/Employee, or Full admin/Standard admin for Admin. */
+  activeViewTier: { senior: string; base: string } | null;
+  /** While previewing a manager-capable role: view it as the MANAGER tier
+   * (default true — Owners should see everything) or the plain employee. */
+  previewAsManager: boolean;
+  setPreviewAsManager: (v: boolean) => void;
 }
 
 const RoleViewContext = createContext<RoleViewContextValue | null>(null);
@@ -148,6 +184,18 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   // the same render cycle as ``realRole`` — no flicker possible.
   const realRole = user?.role;
   const canSwitch = realRole ? SWITCHABLE_ROLES.includes(realRole) : false;
+
+  // Preview tier for a manager-capable role: MANAGER (default — an Owner should
+  // see the full experience) or plain employee.  Persisted, so re-picking the
+  // role keeps the operator's last choice.
+  const [previewAsManager, setPreviewAsManagerState] = useState<boolean>(() => {
+    try { const v = localStorage.getItem(TIER_STORAGE_KEY); return v === null ? true : v === '1'; }
+    catch { return true; }
+  });
+  const setPreviewAsManager = useCallback((v: boolean) => {
+    setPreviewAsManagerState(v);
+    try { localStorage.setItem(TIER_STORAGE_KEY, v ? '1' : '0'); } catch { /* localStorage disabled */ }
+  }, []);
 
   // The user's explicit "preview as X" choice — the ONLY thing that
   // needs imperative state, because it persists across renders until
@@ -264,10 +312,19 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
     }
   }, [canSwitch]);
 
-  // For the active view, use server-fetched permission sets if available
-  const viewPerms = canSwitch
+  // For the active view, use server-fetched permission sets if available.
+  const activeViewSupportsManager = canSwitch && roleSupportsManager(activeView);
+  const baseViewPerms: Partial<Permissions> = canSwitch
     ? (rolePermSets[activeView] ?? user?.permissions ?? {})
     : (user?.permissions ?? {});
+  // Previewing a manager-capable role AS its manager tier → overlay the
+  // manager-grant flags so the Owner sees the full manager experience.
+  const viewPerms: Partial<Permissions> = (activeViewSupportsManager && previewAsManager)
+    ? {
+        ...baseViewPerms,
+        ...(Object.fromEntries((ROLE_TIERS[activeView]?.grants ?? []).map((f) => [f, true])) as Partial<Permissions>),
+      }
+    : baseViewPerms;
 
   const viewHas = (flag: string) => !!viewPerms[flag as keyof Permissions];
   const viewHasAny = (...flags: string[]) => flags.some((f) => !!viewPerms[f as keyof Permissions]);
@@ -280,11 +337,15 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
     ? PREVIEWABLE_ROLES.map(key => ({
         key,
         label: VIEW_LABELS[key] ?? key,
+        supportsManager: roleSupportsManager(key),
+        tier: ROLE_TIERS[key] ? { senior: ROLE_TIERS[key].senior, base: ROLE_TIERS[key].base } : undefined,
       }))
     : realRole
     ? [{
         key: realRole,
         label: VIEW_LABELS[realRole] ?? realRole,
+        supportsManager: roleSupportsManager(realRole),
+        tier: ROLE_TIERS[realRole] ? { senior: ROLE_TIERS[realRole].senior, base: ROLE_TIERS[realRole].base } : undefined,
       }]
     : [];
 
@@ -297,6 +358,11 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
       activeView, viewLabel, homeRoute, canSwitch, availableViews,
       switchView, viewHas, viewHasAny, isPreviewing,
       rolePermSets, refreshPermissions: fetchRolePerms,
+      activeViewSupportsManager,
+      activeViewTier: ROLE_TIERS[activeView]
+        ? { senior: ROLE_TIERS[activeView].senior, base: ROLE_TIERS[activeView].base }
+        : null,
+      previewAsManager, setPreviewAsManager,
     }}>
       {children}
     </RoleViewContext.Provider>

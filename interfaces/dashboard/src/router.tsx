@@ -104,6 +104,8 @@ const Coaching         = lazyWithReload(() => import('./features/coaching/Coachi
 const Drivers          = lazyWithReload(() => import('./features/drivers/Drivers'));
 const Applications     = lazyWithReload(() => import('./features/applications/Applications'));
 const ApplyPreview     = lazyWithReload(() => import('./features/applications/ApplyPreview'));
+const CarrierDirectory = lazyWithReload(() => import('./features/carrier-directory/CarrierDirectory'));
+const CarrierProfile   = lazyWithReload(() => import('./features/carrier-directory/CarrierProfile'));
 const AIChat           = lazyWithReload(() => import('./features/ai/Chat'));
 const AISummary        = lazyWithReload(() => import('./features/ai/Summary'));
 const NotFound         = lazy(() => import('./pages/NotFound'));
@@ -269,6 +271,8 @@ export default function AppRouter() {
         <Route path="coaching" element={L(<P perm="can_coaching_admin"><Coaching /></P>)} />
         <Route path="workforce/drivers" element={L(<P perm="can_manage_driver_docs"><Drivers /></P>)} />
         <Route path="workforce/applications" element={L(<P perm="can_manage_applications"><Applications /></P>)} />
+        <Route path="workforce/carrier-directory" element={L(<P perm="can_carrier_directory"><CarrierDirectory /></P>)} />
+        <Route path="workforce/carrier-directory/:id" element={L(<P perm="can_carrier_directory"><CarrierProfile /></P>)} />
         <Route path="*" element={L(<NotFound />)} />
       </Route>
     </Routes>

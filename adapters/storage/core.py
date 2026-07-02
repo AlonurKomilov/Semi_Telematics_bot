@@ -341,6 +341,8 @@ class _DatabaseCore:
             alerts_on=bool(row["alerts_on"]),
             is_active=bool(row["is_active"]),
             created_at=row["created_at"],
+            is_manager=bool(row["is_manager"]) if "is_manager" in row.keys() else False,
+            is_primary_owner=bool(row["is_primary_owner"]) if "is_primary_owner" in row.keys() else False,
             display_name=row["display_name"] if "display_name" in row.keys() else "",
             alert_faults=bool(row["alert_faults"]) if "alert_faults" in row.keys() else True,
             alert_health=bool(row["alert_health"]) if "alert_health" in row.keys() else True,

@@ -8,6 +8,7 @@ import type { Persona } from '../_lib/types';
 
 const ALL_PERSONAS: Persona[] = [
   'owner', 'admin', 'fleet', 'dispatcher', 'safety', 'driver', 'hr', 'accounting',
+  'recruiter',
 ];
 
 describe('BLOCKS_FOR_PERSONA — per-persona page blocks', () => {

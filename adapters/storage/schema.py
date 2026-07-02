@@ -131,6 +131,21 @@ async def create_tables(conn) -> None:
             UNIQUE(account_id, code)
         );
 
+        CREATE TABLE IF NOT EXISTS carrier_profile (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id          INTEGER NOT NULL REFERENCES accounts(id),
+            name                TEXT    NOT NULL,
+            website             TEXT    NOT NULL DEFAULT '',
+            video_url           TEXT    NOT NULL DEFAULT '',
+            experience_summary  TEXT    NOT NULL DEFAULT '',
+            content             TEXT    NOT NULL DEFAULT '{}',
+            created_by          INTEGER NOT NULL DEFAULT 0,
+            created_at          TEXT    NOT NULL,
+            updated_at          TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_carrier_profile_account
+            ON carrier_profile(account_id);
+
         CREATE TABLE IF NOT EXISTS users (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             telegram_id BIGINT  NOT NULL UNIQUE,
@@ -139,6 +154,15 @@ async def create_tables(conn) -> None:
             truck_num   TEXT,
             alerts_on   INTEGER NOT NULL DEFAULT 0,
             is_active   INTEGER NOT NULL DEFAULT 1,
+            -- Manager tier: a per-user seniority layered on the base role
+            -- (see capabilities/permissions/roles.MANAGER_GRANTS).  0 =
+            -- employee, 1 = manager of their role.
+            is_manager  INTEGER NOT NULL DEFAULT 0,
+            -- Primary (main) owner of the account — the one un-demotable
+            -- owner who alone can create/remove co-owners and do destructive
+            -- account actions.  Set for the account creator; co-owners have
+            -- role='owner' but is_primary_owner=0.
+            is_primary_owner INTEGER NOT NULL DEFAULT 0,
             created_at  TEXT    NOT NULL
         );
 
@@ -300,6 +324,21 @@ async def create_tables(conn) -> None:
             PRIMARY KEY (account_id, key)
         );
 
+        -- user_preferences: per-user opaque KV for UI state (DataTable
+        -- layouts, last-used filters, etc.).  Lives here instead of
+        -- localStorage so an operator's column hides / order / pinning
+        -- follow them across devices.  Values are TEXT — the frontend
+        -- serialises JSON in/out.  Keys are opaque (e.g.
+        -- "table.maintenance-tasks.visibility") so the backend doesn't
+        -- need to learn every UI shape.
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key         TEXT    NOT NULL,
+            value       TEXT    NOT NULL DEFAULT '',
+            updated_at  TEXT    NOT NULL,
+            PRIMARY KEY (user_id, key)
+        );
+
         CREATE TABLE IF NOT EXISTS alert_acknowledgments (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL REFERENCES accounts(id),
@@ -332,6 +371,19 @@ async def create_tables(conn) -> None:
             code_hash    TEXT    NOT NULL,
             expires_at   TEXT    NOT NULL,
             created_at   TEXT    NOT NULL
+        );
+
+        -- Pending co-owner promotion (email-code half of the two-factor
+        -- confirm).  One pending promotion per account (UNIQUE); binds the
+        -- primary owner who initiated it to the target being promoted.
+        CREATE TABLE IF NOT EXISTS owner_promotion_codes (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id        INTEGER NOT NULL UNIQUE REFERENCES accounts(id),
+            initiator_user_id INTEGER NOT NULL,
+            target_user_id    INTEGER NOT NULL,
+            code_hash         TEXT    NOT NULL,
+            expires_at        TEXT    NOT NULL,
+            created_at        TEXT    NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS application_links (

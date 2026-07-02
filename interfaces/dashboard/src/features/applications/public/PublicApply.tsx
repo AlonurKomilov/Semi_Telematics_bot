@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Truck, Clock, ShieldCheck, CheckCircle2, ArrowLeft, ArrowRight, Lock } from 'lucide-react';
 import { STEPS } from './steps';
-import { deepSet, DISCLOSURE_VERSION, todayISO } from './lib';
+import { deepGet, deepSet, DISCLOSURE_VERSION, todayISO } from './lib';
 import type { Data } from './lib';
 import { brandTintStyle, onColorStyle, surfaceThemeStyle } from './theme';
 
@@ -69,6 +69,27 @@ function sanitizeForJson(data: Data): Data {
     delete clone.position.truck.dotInspection;
   }
   clone.disclosureVersion = DISCLOSURE_VERSION;
+  return clone;
+}
+
+// ── Auto-save (this device) ─────────────────────────────────────────
+// The in-progress application persists to localStorage (keyed per link
+// token) so an interrupted applicant can pick up where they left off on
+// THIS device.  File blobs can't be serialised — they're stripped, and the
+// resume banner says documents need re-attaching (validation re-asks).
+// Bump DRAFT_VERSION whenever the step list / data shape changes so stale
+// drafts are ignored rather than restored misaligned.
+const DRAFT_VERSION = 1;
+const draftKey = (t: string) => `apply.draft.${t}`;
+interface Draft { v: number; data: Data; step: number; maxReached: number; savedAt: string }
+
+function stripFilesForDraft(data: Data): Data {
+  const clone: Data = JSON.parse(JSON.stringify(data));
+  if (clone.cdl) delete clone.cdl.docs;
+  if (clone.position?.truck) {
+    delete clone.position.truck.picture;
+    delete clone.position.truck.dotInspection;
+  }
   return clone;
 }
 
@@ -151,7 +172,7 @@ interface DisplayUnit { label: string; sub: string; group?: string; steps: numbe
 // Sidebar sub-label for each grouped unit (a group spans several screens, so
 // it can't borrow one member's sub).
 const GROUP_SUB: Record<string, string> = {
-  'License & Experience': 'CDL, documents & experience',
+  'Driver Profile': 'Identity, license & experience',
   'Final Authorizations': 'PSP · Background check · Consents',
 };
 const UNITS: DisplayUnit[] = [];
@@ -282,7 +303,60 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
   const [honeypot, setHoneypot] = useState('');
   const cardRef = useRef<HTMLFormElement>(null);
 
+  // ── Auto-save & resume (see draftKey above) ───────────────────────
+  // A found draft is held here until the applicant chooses Resume / Start
+  // over; auto-save is paused while the banner is pending so a pristine
+  // mount can't overwrite the saved progress.
+  const [resumeDraft, setResumeDraft] = useState<Draft | null>(null);
+  const [savedTick, setSavedTick] = useState(false);
+  useEffect(() => {
+    if (preview || !token) return;
+    try {
+      const raw = localStorage.getItem(draftKey(token));
+      if (!raw) return;
+      const d = JSON.parse(raw) as Draft;
+      // Ignore stale/foreign drafts, and don't nag over trivial progress
+      // (they never made it past the first step).
+      if (d?.v !== DRAFT_VERSION || typeof d.step !== 'number') return;
+      if (d.step < 0 || d.step >= STEPS.length || (d.maxReached ?? 0) < 1) return;
+      setResumeDraft(d);
+    } catch { /* corrupted draft — start fresh */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (preview || !token || done || resumeDraft) return;
+    const id = setTimeout(() => {
+      try {
+        localStorage.setItem(draftKey(token), JSON.stringify({
+          v: DRAFT_VERSION, data: stripFilesForDraft(data), step, maxReached,
+          savedAt: new Date().toISOString(),
+        } satisfies Draft));
+        setSavedTick(true);
+      } catch { /* storage full / disabled — auto-save is best-effort */ }
+    }, 500);
+    return () => clearTimeout(id);
+  }, [data, step, maxReached, preview, token, done, resumeDraft]);
+  const clearDraft = () => { try { if (token) localStorage.removeItem(draftKey(token)); } catch { /* ignore */ } };
+  const resumeSaved = () => {
+    if (!resumeDraft) return;
+    setData({ consents: { sigDate: todayISO(), sigMode: 'type' }, ...resumeDraft.data });
+    const s = Math.min(resumeDraft.step, STEPS.length - 1);
+    setStep(s);
+    setMaxReached(Math.max(resumeDraft.maxReached ?? s, s));
+    setResumeDraft(null);
+  };
+  const discardSaved = () => { clearDraft(); setResumeDraft(null); };
+
   const set = (path: string, value: unknown) => setData((d) => deepSet(d, path, value));
+  // Prefill helper for the CDL fast-fill: writes only when the field is
+  // still blank, checked atomically against the LATEST state — so an OCR
+  // response can never overwrite something the applicant typed while the
+  // photo was being read.
+  const setIfEmpty = (path: string, value: unknown) => setData((d) => {
+    const cur_ = deepGet(d, path);
+    if (cur_ !== undefined && cur_ !== null && String(cur_).trim() !== '') return d;
+    return deepSet(d, path, value);
+  });
   const cur = STEPS[step];
   // The grouped consent screens collapse into ONE display unit, so the counter,
   // sidebar, and progress bar treat them as a single "Step 8 of 8".  Within it,
@@ -312,6 +386,7 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
       if (!res.ok || json.success === false) throw new Error(json.detail || json.message || `Server returned ${res.status}`);
       setReference(json.reference || 'SUBMITTED');
       setDone(true);
+      clearDraft();   // submitted — the saved draft has served its purpose
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : 'Submission failed. Please try again.');
@@ -352,6 +427,7 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
   const back = () => { if (step > 0 && !submitting) { setStep(step - 1); setTimeout(scrollUp, 30); } };
   const jump = (i: number) => { if (i <= maxReached && !submitting) { setStep(i); setTimeout(scrollUp, 30); } };
   const reset = () => {
+    clearDraft();
     setData({ consents: { sigDate: todayISO(), sigMode: 'type' } });
     setStep(0); setMaxReached(0); setAttempted({});
     setDone(false); setSubmitError(''); setReference('');
@@ -389,6 +465,24 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
       )}
       <Header brand={brand} token={token} logoUrl={preview?.logoUrl} bannerUrl={preview?.bannerUrl} />
       <main className={`mx-auto max-w-5xl px-4 py-6 sm:px-6${preview ? ' pb-32' : ''}`}>
+        {resumeDraft && (
+          <div className="mb-5 flex flex-col gap-3 rounded-md border border-info-bd bg-info-bg p-4 sm:flex-row sm:items-center">
+            <p className="flex-1 text-sm text-info">
+              <b>Welcome back.</b> Your progress was saved on this device — pick up where you
+              left off? Any uploaded documents will need to be re-attached.
+            </p>
+            <div className="flex shrink-0 gap-2">
+              <button type="button" onClick={resumeSaved}
+                className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+                Resume
+              </button>
+              <button type="button" onClick={discardSaved}
+                className="rounded-md border border-border bg-card px-3 py-1.5 text-sm text-foreground hover:bg-muted">
+                Start over
+              </button>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-[15rem_1fr]">
           <Stepper current={step} max={maxReached} onJump={jump} style={onColorStyle(brand?.bg_color)} />
           <form ref={cardRef} onSubmit={next} noValidate className="rounded-lg border border-border bg-card">
@@ -402,6 +496,11 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
               <div>
                 <p className="text-xs text-muted-foreground">
                   {cur.group ? `${cur.group} · ${groupPos} of ${groupSize}` : `Step ${curUnit + 1} of ${UNITS.length}`}
+                  {savedTick && (step > 0 || maxReached > 0) && (
+                    <span className="ml-2 inline-flex items-center gap-1 text-2xs text-muted-foreground/70">
+                      <CheckCircle2 size={12} /> Saved on this device
+                    </span>
+                  )}
                 </p>
                 <h2 className="text-lg font-semibold text-foreground">{cur.title}</h2>
               </div>
@@ -413,6 +512,7 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
             </div>
             <div className="px-5 py-5">
               <Render data={data} set={set} errors={visibleErrors}
+                token={token} setIfEmpty={setIfEmpty}
                 req={brand ? { years: brand.req_experience_years, age: brand.req_min_age, cls: brand.req_cdl_class } : undefined}
                 carrier={brand ? {
                   name: brand.name, dot: brand.usdot_number, mc: brand.mc_number, phone: brand.phone,

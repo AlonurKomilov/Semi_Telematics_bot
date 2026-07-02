@@ -17,11 +17,16 @@ class UsersMixin:
     ) -> User:
         """Register a Telegram user to an account."""
         now = self._now()
+        # A Telegram /register creates the account's FIRST owner — the
+        # PRIMARY owner.  Any other role is a normal member.
+        is_primary = 1 if role == Role.OWNER else 0
         cur = await self._db.execute(
             """INSERT INTO users
-               (telegram_id, account_id, role, truck_num, display_name, created_at)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (telegram_id, account_id, role.value, truck_num, display_name, now),
+               (telegram_id, account_id, role, truck_num, display_name,
+                is_primary_owner, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (telegram_id, account_id, role.value, truck_num, display_name,
+             is_primary, now),
         )
         await self._db.commit()
         return User(
@@ -30,6 +35,7 @@ class UsersMixin:
             truck_num=truck_num,
             display_name=display_name,
             alerts_on=False, is_active=True, created_at=now,
+            is_primary_owner=bool(is_primary),
         )
 
     async def get_user_by_telegram_id(self, telegram_id: int) -> Optional[User]:
@@ -121,13 +127,17 @@ class UsersMixin:
         ``User.label`` and ``users.py`` lookup paths already handle it.
         """
         now = self._now()
+        # The account's FIRST owner (every signup flow that mints an OWNER
+        # here) is the PRIMARY owner — the un-demotable seat.  Co-owners are
+        # created later via the promote-owner flow with is_primary_owner=0.
+        is_primary = 1 if role == Role.OWNER else 0
         cur = await self._db.execute(
             """INSERT INTO users
                (telegram_id, account_id, role, display_name,
-                email, password_hash, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                email, password_hash, is_primary_owner, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
             (None, account_id, role.value,
-             display_name, email.lower().strip(), password_hash, now),
+             display_name, email.lower().strip(), password_hash, is_primary, now),
         )
         await self._db.commit()
         return User(
@@ -137,6 +147,7 @@ class UsersMixin:
             display_name=display_name, email=email.lower().strip(),
             password_hash=password_hash,
             alerts_on=False, is_active=True, created_at=now,
+            is_primary_owner=bool(is_primary),
         )
 
     async def link_telegram_to_user(self, user_id: int, telegram_id: int) -> None:
@@ -509,16 +520,21 @@ class UsersMixin:
                    # FK to work_hours.id (migration 101) — admin-set
                    # named-schedule pointer.  Validated at the endpoint
                    # layer (must belong to caller's account).
-                   "assigned_work_hours_id"}
+                   "assigned_work_hours_id",
+                   # Manager tier (migration 136) — per-user seniority on the
+                   # base role.  Coerced to int below for SQLite.
+                   "is_manager",
+                   # Primary-owner flag (migration 137).  Coerced to int below.
+                   "is_primary_owner"}
         updates = {}
         for k, v in kwargs.items():
             if k not in allowed:
                 continue
             if k == "role" and isinstance(v, Role):
                 v = v.value
-            # SQLite has no native boolean — store ``dnd_enabled`` as
-            # INTEGER 0/1.  Coerce here so callers can pass real bools.
-            if k == "dnd_enabled" and isinstance(v, bool):
+            # SQLite has no native boolean — store these as INTEGER 0/1.
+            # Coerce here so callers can pass real bools.
+            if k in ("dnd_enabled", "is_manager", "is_primary_owner") and isinstance(v, bool):
                 v = 1 if v else 0
             updates[k] = v
         if not updates:

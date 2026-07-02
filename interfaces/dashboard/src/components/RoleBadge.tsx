@@ -73,14 +73,19 @@ export function roleTone(role: string | null | undefined): Tone {
   return ROLE_TONE[role.toLowerCase().trim()] ?? 'neutral';
 }
 
-/** The canonical role pill.  Always identical wherever it's rendered. */
-export default function RoleBadge({ role }: { role: string }) {
-  const label = ROLE_LABEL[role.toLowerCase()] ?? role;
+/** The canonical role pill.  Always identical wherever it's rendered.
+ *
+ *  ``label`` overrides the display text while keeping the role's tone —
+ *  used to show the EFFECTIVE tier ("Full admin", "Co-owner",
+ *  "Recruiter Manager") instead of the bare base role.  Omit it and the
+ *  pill falls back to the plain role label. */
+export default function RoleBadge({ role, label }: { role: string; label?: string }) {
+  const text = label ?? (ROLE_LABEL[role.toLowerCase()] ?? role);
   return (
     <span
       className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${toneClasses(roleTone(role))}`}
     >
-      {label}
+      {text}
     </span>
   );
 }

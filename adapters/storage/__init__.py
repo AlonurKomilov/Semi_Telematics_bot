@@ -68,6 +68,7 @@ from .driver_future import (
     DriverHosStatusMixin,
 )
 from .user_companies import UserCompaniesMixin
+from .user_preferences import UserPreferencesMixin
 
 from .billing import BillingMixin
 from .geofence import GeofenceMixin
@@ -81,6 +82,7 @@ from .ai_chat import AIChatHistoryMixin
 from .errors import ErrorLogMixin
 from .scan_log import ScanLogMixin
 from .applications import ApplicationsMixin
+from .carrier_directory import CarrierDirectoryMixin
 from .account_integrations import AccountIntegrationsMixin, AccountIntegration  # noqa: F401
 from .datatruck import DatatruckStorageMixin
 from .vehicles_registry import VehiclesRegistryMixin, Vehicle  # noqa: F401
@@ -115,6 +117,7 @@ class Database(
     DriverTrainingsMixin,
     DriverHosStatusMixin,
     UserCompaniesMixin,
+    UserPreferencesMixin,
     BillingMixin,
     GeofenceMixin,
     CustomPoiMixin,
@@ -127,6 +130,7 @@ class Database(
     ErrorLogMixin,
     ScanLogMixin,
     ApplicationsMixin,
+    CarrierDirectoryMixin,
     DatatruckStorageMixin,
     VehiclesRegistryMixin,
     _DatabaseCore,

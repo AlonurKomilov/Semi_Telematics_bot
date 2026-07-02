@@ -151,6 +151,8 @@ def create_jwt(
     remember_me: bool = False,
     jti: str | None = None,
     user_id: int | None = None,
+    is_manager: bool = False,
+    is_primary_owner: bool = False,
 ) -> str:
     """Create a JWT token for an authenticated user.
 
@@ -195,6 +197,15 @@ def create_jwt(
     }
     if user_id and user_id > 0:
         payload["uid"] = int(user_id)
+    # Manager tier — carried so the permission overlay is stateless (no
+    # per-request DB read).  Omitted when False to keep legacy tokens
+    # forward-compatible; deps default a missing claim to False.
+    if is_manager:
+        payload["is_manager"] = True
+    # Primary-owner flag — lets enforcement resolve the PRIMARY owner (full)
+    # vs a CO-OWNER (restrictable) permission row without a DB read.
+    if is_primary_owner:
+        payload["is_primary_owner"] = True
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
 
@@ -272,6 +283,8 @@ async def mint_session_token(
     account_id: int,
     role: str,
     remember_me: bool,
+    is_manager: bool = False,
+    is_primary_owner: bool = False,
 ) -> str:
     """Mint a JWT *and* record the session row in one shot.
 
@@ -325,6 +338,8 @@ async def mint_session_token(
         telegram_id, account_id, role,
         remember_me=remember_me, jti=jti,
         user_id=user_id if (user_id and user_id > 0) else None,
+        is_manager=is_manager,
+        is_primary_owner=is_primary_owner,
     )
     if user_id and user_id > 0:
         try:
@@ -543,6 +558,10 @@ async def refresh_token(request: Request, response: Response, authorization: str
         user.telegram_id, user.account_id, user.role.value,
         remember_me=remember, jti=new_jti,
         user_id=user.id,
+        # Re-read from DB so a manager-tier / owner-tier / role change
+        # propagates to enforcement on the next token refresh.
+        is_manager=user.is_manager,
+        is_primary_owner=user.is_primary_owner,
     )
     try:
         from datetime import datetime, timezone
@@ -639,6 +658,8 @@ async def auth_telegram(request: Request, response: Response, body: AuthRequest)
         db, request,
         user_id=user.id, telegram_id=user.telegram_id,
         account_id=user.account_id, role=user.role.value,
+        is_manager=user.is_manager,
+        is_primary_owner=user.is_primary_owner,
         remember_me=body.remember_me,
     )
     _set_auth_cookie(response, token, remember_me=body.remember_me)
@@ -749,6 +770,8 @@ async def auth_telegram_login(request: Request, response: Response, body: LoginW
         db, request,
         user_id=user.id, telegram_id=user.telegram_id,
         account_id=user.account_id, role=user.role.value,
+        is_manager=user.is_manager,
+        is_primary_owner=user.is_primary_owner,
         remember_me=body.remember_me,
     )
     _set_auth_cookie(response, token, remember_me=body.remember_me)
@@ -1013,6 +1036,8 @@ async def auth_system_telegram_login(
             db, request,
             user_id=user.id, telegram_id=user.telegram_id,
             account_id=user.account_id, role=user.role.value,
+            is_manager=user.is_manager,
+            is_primary_owner=user.is_primary_owner,
             remember_me=body.remember_me,
         )
         user_payload = {
@@ -1085,6 +1110,8 @@ async def auth_system_telegram_init(request: Request, body: AuthRequest):
             db, request,
             user_id=user.id, telegram_id=user.telegram_id,
             account_id=user.account_id, role=user.role.value,
+            is_manager=user.is_manager,
+            is_primary_owner=user.is_primary_owner,
             remember_me=True,
         )
         user_payload = {
@@ -1399,6 +1426,8 @@ async def auth_email_login(request: Request, response: Response, body: EmailLogi
         db, request,
         user_id=user.id, telegram_id=user.telegram_id,
         account_id=user.account_id, role=user.role.value,
+        is_manager=user.is_manager,
+        is_primary_owner=user.is_primary_owner,
         remember_me=body.remember_me,
     )
     _set_auth_cookie(response, token, remember_me=body.remember_me)

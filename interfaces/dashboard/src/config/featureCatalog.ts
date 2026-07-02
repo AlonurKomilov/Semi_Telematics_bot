@@ -130,6 +130,9 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // Recruiting intake — recruiter sends an apply.* link, prospects submit
   // FMCSA applications here; HR/recruiter triage + convert-to-driver.
   { id: 'applications', labelKey: 'nav.applications', path: '/workforce/applications', icon: UserPlus, modules: ['hr'], tier: 'role', permission: ['can_manage_applications'], navGroup: 'people' },
+  // Carrier Knowledge Base — recruiter reference directory of external
+  // carriers.  Read for recruiters; managers edit (page-level gate).
+  { id: 'carrier_directory', labelKey: 'nav.carrier_directory', path: '/workforce/carrier-directory', icon: Building2, modules: ['hr'], tier: 'role', permission: ['can_carrier_directory'], navGroup: 'people' },
   // Working Hours has been folded into Team Management → Working
   // Hours tab.  Sidebar entry removed so operators don't see two
   // doors to the same config (Team Management nav entry covers it).

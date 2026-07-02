@@ -156,3 +156,30 @@ export const blankAccident = (): Data => ({ date: '', location: '', type: '', in
 export const blankViolation = (): Data => ({ date: '', state: '', charge: '', penalty: '', status: '' });
 
 export const todayISO = (): string => new Date().toISOString().slice(0, 10);
+
+// ── CDL photo → prefill fields (fast-fill) ──────────────────────────
+// Posts the licence photo to the public OCR endpoint.  Best-effort by
+// contract: ANY failure (network, 4xx, junk body) resolves to null and the
+// applicant just types manually — the form never blocks on OCR.
+const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
+
+export interface CdlOcrFields {
+  first?: string; middle?: string; last?: string; dob?: string;
+  addr1?: string; city?: string; state?: string; zip?: string;
+  number?: string; issue_state?: string; cdl_class?: string; exp?: string;
+  endorsements?: string[]; restrictions?: string;
+}
+
+export async function ocrCdl(token: string, file: File): Promise<CdlOcrFields | null> {
+  try {
+    const fd = new FormData();
+    fd.append('token', token);
+    fd.append('file', file);
+    const res = await fetch(`${API_BASE}/applications/ocr-cdl`, { method: 'POST', body: fd });
+    if (!res.ok) return null;
+    const j = await res.json().catch(() => null);
+    return (j?.fields as CdlOcrFields) ?? null;
+  } catch {
+    return null;
+  }
+}

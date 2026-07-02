@@ -165,6 +165,8 @@ const PERM_GROUPS: PermGroup[] = [
     flags: [
       { key: 'can_manage_applications', label: 'Applications', description: 'Recruiting links + the driver-application dashboard' },
       { key: 'can_convert_to_driver',  label: 'Hire Applicant', indented: true, description: 'Convert an approved application into a driver / invite — without full Send-Invites power' },
+      { key: 'can_carrier_directory', label: 'Carrier Directory', description: 'Reference directory of the external carriers we recruit for (pre-qual, presentation, process notes)' },
+      { key: 'can_manage_carrier_directory', label: 'Edit Carrier Directory', indented: true, description: 'Add, edit & delete carriers — without this the directory is read-only' },
     ],
   },
   {
@@ -216,12 +218,18 @@ interface PermsData {
   current: Record<string, Record<string, boolean>>;
   defaults: Record<string, Record<string, boolean>>;
   fields: string[];
+  /** role → the extra flags a MANAGER of that role gets (per-user is_manager
+   *  tier, code-defined MANAGER_GRANTS).  Marks the senior-tier cells. */
+  manager_grants?: Record<string, string[]>;
+  /** role → its senior tier (labels + grants).  Drives the two-level
+   *  Role→Tier columns.  A role absent here has no tier (single column). */
+  tiers?: Record<string, { senior_label: string; base_label: string; grants: string[] }>;
 }
 
 // role -> flag -> pending boolean
 type Edits = Record<string, Record<string, boolean>>;
 
-interface Change { role: RoleId; label: string; from: string; to: string; granted: boolean }
+interface Change { key: string; roleLabel: string; label: string; from: string; to: string; granted: boolean }
 
 export default function Permissions() {
   const { t } = useTranslation();
@@ -290,7 +298,56 @@ export default function Permissions() {
   const ownerLocked = (role: string, f: PermFlag) =>
     role === 'owner' && !isHeader(f) && !isScoped(f) && OWNER_PROTECTED.has(f.key);
 
-  function toggle(role: RoleId, f: PermFlag) {
+  // Manager tier — "manager" is a per-user is_manager tier on the base role,
+  // not a separate role/column.  The matrix MARKS the flags a manager gains
+  // (from MANAGER_GRANTS) rather than adding columns.  Read-only annotation:
+  // the cell toggle still edits the EMPLOYEE (base-role) grant.
+
+  // ── Two-level Role → Tier columns ────────────────────────────────
+  // Each role expands to its tier sub-columns.  Base/single columns are
+  // EDITABLE (they hold the role's stored perms).  Senior columns are a
+  // READ-ONLY preview (base + tier grants).  Owner is special: Co-owner (base)
+  // vs Primary (senior), differing only on the Owner-powers rows below.
+  // Each column carries a ``key`` = the STORAGE key it edits: the base role
+  // ("admin"), the senior tier ("admin__manager"), or "owner" (both owner
+  // columns share one perm set — they differ only on the locked Owner-powers
+  // rows).  Every tier is independently editable + stored.
+  type TierKind = 'base' | 'senior' | null;
+  interface Col { role: RoleId; tier: TierKind; key: string; label: string }
+  const tiersMeta = data?.tiers ?? {};
+  const roleColumns = (role: RoleId): Col[] => {
+    if (role === 'owner') return [
+      // Co-owner is a SEPARATE, restrictable owner row (owner__co); Primary is
+      // the full, protected owner row (owner).  Independently editable.
+      { role, tier: 'base', key: 'owner__co', label: 'Co-owner' },
+      { role, tier: 'senior', key: 'owner', label: 'Primary' },
+    ];
+    const tm = tiersMeta[role];
+    if (tm) return [
+      { role, tier: 'base', key: role, label: tm.base_label },
+      { role, tier: 'senior', key: `${role}__manager`, label: tm.senior_label },
+    ];
+    return [{ role, tier: null, key: role, label: ROLE_LABELS[role] ?? role }];
+  };
+  const columns: Col[] = ROLES.flatMap(roleColumns);
+  // Distinct storage keys + a display label per key (for the confirm summary).
+  const colKeys = [...new Set(columns.map((c) => c.key))];
+  const keyLabel: Record<string, string> = {};
+  for (const c of columns) {
+    if (c.role === 'owner') keyLabel[c.key] = `Owner · ${c.label}`;                 // Primary / Co-owner
+    else if (c.tier === 'senior') keyLabel[c.key] = `${ROLE_LABELS[c.role] ?? c.role} · ${c.label}`;
+    else keyLabel[c.key] = ROLE_LABELS[c.role] ?? c.role;
+  }
+
+  // Owner-powers — primary-owner-only ACTIONS surfaced as read-only rows so
+  // the Owner Primary|Co-owner columns are truthful (they differ HERE only).
+  // Not can_* flags — they map to is_primary_owner gates.
+  const OWNER_POWERS = [
+    { key: '__manage_owners', label: 'Manage owners', description: 'Add / remove co-owners (password + emailed code)' },
+    { key: '__delete_account', label: 'Delete / restore account', description: 'Schedule deletion + cancel in the grace window' },
+  ];
+
+  function toggle(role: string, f: PermFlag) {
     if (isHeader(f) || ownerLocked(role, f)) return;
     const granted = isGranted(role, f);
     setEdits((prev) => {
@@ -319,13 +376,13 @@ export default function Permissions() {
   const changes = useMemo<Change[]>(() => {
     if (!data) return [];
     const out: Change[] = [];
-    for (const role of ROLES)
+    for (const key of colKeys)
       for (const g of PERM_GROUPS)
         for (const f of g.flags) {
           if (isHeader(f)) continue;
-          const before = cellState(role, f, curFlagVal);
-          const after = cellState(role, f, flagVal);
-          if (before !== after) out.push({ role, label: f.label, from: before, to: after, granted: after !== 'No access' });
+          const before = cellState(key, f, curFlagVal);
+          const after = cellState(key, f, flagVal);
+          if (before !== after) out.push({ key, roleLabel: keyLabel[key] ?? key, label: f.label, from: before, to: after, granted: after !== 'No access' });
         }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -346,8 +403,16 @@ export default function Permissions() {
   async function applyChanges() {
     setSaving(true); setError('');
     try {
-      for (const [role, perms] of Object.entries(changedByRole)) {
-        await apiJSON('/admin/permissions/roles', { method: 'PUT', body: { role, permissions: perms } });
+      for (const [key, perms] of Object.entries(changedByRole)) {
+        // Storage key → {role, tier}.  "admin__manager" = senior tier;
+        // "owner__co" = the restrictable co-owner tier; else the base role.
+        let role = key; let tier: string | undefined;
+        if (key === 'owner__co') { role = 'owner'; tier = 'co'; }
+        else if (key.endsWith('__manager')) { role = key.slice(0, -'__manager'.length); tier = 'senior'; }
+        await apiJSON('/admin/permissions/roles', {
+          method: 'PUT',
+          body: tier ? { role, permissions: perms, tier } : { role, permissions: perms },
+        });
       }
       if (moduleChanges.length && modData) {
         const enabled = modData.all.filter((id) => moduleOn(id));
@@ -368,7 +433,7 @@ export default function Permissions() {
     }
   }
 
-  const cellChanged = (role: RoleId, f: PermFlag) => cellState(role, f, flagVal) !== cellState(role, f, curFlagVal);
+  const cellChanged = (role: string, f: PermFlag) => cellState(role, f, flagVal) !== cellState(role, f, curFlagVal);
 
   // Render one matrix row.  `collapse` adds an expand/collapse chevron to
   // a parent feature that has sub-rows.
@@ -407,7 +472,7 @@ export default function Permissions() {
     if (isHeader(f)) {
       return (
         <tr className="border-t border-border hover:bg-muted/20">
-          <td colSpan={1 + ROLES.length} className="px-3 py-2 sticky left-0 bg-card z-10">
+          <td colSpan={1 + columns.length} className="px-3 py-2 sticky left-0 bg-card z-10">
             <div className={`flex items-center gap-1.5 ${collapse ? 'cursor-pointer select-none' : ''}`} {...clickableProps}>
               {chevronSlot}
               <span className="text-sm font-medium">{f.header}</span>
@@ -432,19 +497,23 @@ export default function Permissions() {
             {f.description && <div className="text-2xs text-muted-foreground/70 mt-0.5">{f.description}</div>}
           </div>
         </td>
-        {ROLES.map((role) => {
-          const on = isGranted(role, f);
-          const locked = ownerLocked(role, f);
-          const changed = !locked && cellChanged(role, f);
+        {columns.map((col, ci) => {
+          // Every tier column is EDITABLE and edits its OWN storage key
+          // (base role / {role}__manager / owner).  Owner escape-hatch flags
+          // stay locked-on so an owner can't self-lock-out.
+          const on = isGranted(col.key, f);
+          const locked = ownerLocked(col.key, f);
+          const changed = !locked && cellChanged(col.key, f);
+          const leftBorder = col.tier === 'senior' ? 'border-l border-border/40' : 'border-l border-border';
           return (
-            <td key={role} className={`text-center px-2 py-1.5 ${changed ? 'bg-primary/10' : ''}`}>
+            <td key={`${col.key}-${ci}`} className={`text-center px-2 py-1.5 ${leftBorder} ${changed ? 'bg-primary/10' : ''}`}>
               <button
-                onClick={() => toggle(role, f)}
+                onClick={() => toggle(col.key, f)}
                 disabled={locked}
                 aria-pressed={on}
                 title={locked
                   ? `Owner always keeps "${f.label}" — prevents lockout`
-                  : `${ROLE_LABELS[role]} · ${f.label}: ${on ? 'granted' : 'no access'}`}
+                  : `${keyLabel[col.key]} · ${f.label}: ${on ? 'granted' : 'no access'}`}
                 className={`inline-flex items-center justify-center w-5 h-5 rounded border transition ${
                   locked
                     ? 'bg-primary/40 border-primary/40 text-primary-foreground cursor-not-allowed'
@@ -491,11 +560,40 @@ export default function Permissions() {
           <div className="rounded-lg border border-border overflow-x-auto bg-card">
             <table className="w-full text-sm border-collapse">
               <thead>
+                {/* Row 1 — role group headers (tiered roles span their 2 sub-columns) */}
                 <tr className="bg-muted/40">
-                  <th className="text-left font-semibold px-3 py-2 sticky left-0 bg-muted/40 z-10 min-w-[200px]">Feature</th>
-                  {ROLES.map((r) => (
-                    <th key={r} className="px-2 py-2 text-center font-semibold text-xs whitespace-nowrap">{ROLE_LABELS[r]}</th>
-                  ))}
+                  <th rowSpan={2} className="text-left font-semibold px-3 py-2 sticky left-0 bg-muted/40 z-10 min-w-[200px] align-bottom">Feature</th>
+                  {ROLES.map((r) => {
+                    const cols = roleColumns(r);
+                    return cols.length === 2 ? (
+                      <th key={r} colSpan={2} className="px-2 pt-2 pb-1 text-center font-semibold text-xs whitespace-nowrap border-l border-border">
+                        <span className="inline-flex items-center gap-1 justify-center">
+                          {ROLE_LABELS[r] ?? r}
+                          {tiersMeta[r] && (
+                            <span title={`Has a senior tier — a ${tiersMeta[r].senior_label} gains ${tiersMeta[r].grants.length} extra permission(s).`} className="inline-flex">
+                              <Shield size={12} className="text-primary/70 shrink-0" aria-label="Has a senior tier" />
+                            </span>
+                          )}
+                        </span>
+                      </th>
+                    ) : (
+                      <th key={r} rowSpan={2} className="px-2 py-2 text-center font-semibold text-xs whitespace-nowrap border-l border-border align-middle">
+                        {ROLE_LABELS[r] ?? r}
+                      </th>
+                    );
+                  })}
+                </tr>
+                {/* Row 2 — tier sub-labels under each tiered role */}
+                <tr className="bg-muted/40">
+                  {ROLES.map((r) => {
+                    const cols = roleColumns(r);
+                    if (cols.length !== 2) return null;
+                    return cols.map((c, i) => (
+                      <th key={`${r}-${c.tier}`} className={`px-2 pb-2 pt-0 text-center text-2xs font-medium text-muted-foreground whitespace-nowrap ${i === 0 ? 'border-l border-border' : ''}`}>
+                        {c.label}
+                      </th>
+                    ));
+                  })}
                 </tr>
               </thead>
               <tbody>
@@ -526,7 +624,7 @@ export default function Permissions() {
                     </span>
                   ) : undefined;
                   return (
-                  <FragmentGroup key={group.title} title={group.title} control={control}>
+                  <FragmentGroup key={group.title} title={group.title} control={control} colSpan={1 + columns.length}>
                     {group.blocks.map((block, bi) => {
                       const pk = blockKey(block.parent);
                       const hasChildren = block.children.length > 0;
@@ -543,6 +641,41 @@ export default function Permissions() {
                   </FragmentGroup>
                   );
                 })}
+                {/* OWNER POWERS — read-only rows.  Only the Owner Primary vs
+                    Co-owner columns differ here (Primary yes, Co-owner no);
+                    every other role shows a dash.  This is what makes the
+                    Owner two-column split truthful. */}
+                <tr className="bg-muted/30 border-t border-border">
+                  <td colSpan={1 + columns.length} className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Owner powers <span className="normal-case font-normal text-2xs text-muted-foreground/70">— primary-owner only · not editable</span>
+                  </td>
+                </tr>
+                {OWNER_POWERS.map((p) => (
+                  <tr key={p.key} className="hover:bg-muted/20">
+                    <td className="sticky left-0 bg-card z-10 px-3 py-1.5">
+                      <span className="font-medium">{p.label}</span>
+                      <div className="text-2xs text-muted-foreground/70 mt-0.5">{p.description}</div>
+                    </td>
+                    {columns.map((col) => {
+                      const isOwner = col.role === 'owner';
+                      const primary = isOwner && col.tier === 'senior';
+                      return (
+                        <td key={`${col.role}-${col.tier}-${p.key}`} className={`text-center px-2 py-1.5 ${col.tier === 'senior' ? 'border-l border-border/40' : 'border-l border-border'}`}>
+                          {isOwner ? (
+                            <span
+                              title={`${col.label}: ${primary ? 'yes' : 'no'} — ${p.label}`}
+                              className={`inline-flex items-center justify-center w-5 h-5 rounded border ${primary ? 'bg-primary/60 border-primary/60 text-primary-foreground' : 'border-border/50 text-transparent'}`}
+                            >
+                              {primary ? <Check size={14} strokeWidth={3} /> : null}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/40 text-xs" title="Owners only">–</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -588,9 +721,17 @@ export default function Permissions() {
 
       {/* Footnote */}
       {!isLoading && data && (
-        <p className="text-2xs text-muted-foreground mt-2">
-          <span className="font-semibold">*</span> scoped feature — ticking grants the role access to the feature. <span className="font-medium text-foreground/80">Whose data</span> they see (All / Company / Vehicle) is set per-user in <span className="font-medium text-foreground/80">Team Management</span> (Company Access + Vehicle Assignments).
-        </p>
+        <>
+          <p className="text-2xs text-muted-foreground mt-2">
+            <span className="font-semibold">*</span> scoped feature — ticking grants the role access to the feature. <span className="font-medium text-foreground/80">Whose data</span> they see (All / Company / Vehicle) is set per-user in <span className="font-medium text-foreground/80">Team Management</span> (Company Access + Vehicle Assignments).
+          </p>
+          <p className="text-2xs text-muted-foreground mt-1 inline-flex items-center gap-1 flex-wrap">
+            <Shield size={12} className="text-primary/70 shrink-0" />
+            <span>
+              a <span className="font-medium text-foreground/80">shield</span> on a role header means it has tiers (e.g. Standard / Full admin). Each tier is edited <span className="font-medium text-foreground/80">independently</span> — changing one column never affects the other. A person's tier is set per-user in <span className="font-medium text-foreground/80">Team Management</span>. The <span className="font-medium text-foreground/80">Owner powers</span> rows are primary-owner-only and can't be edited.
+            </span>
+          </p>
+        </>
       )}
 
       {/* Sticky save bar — appears only when there are pending changes. */}
@@ -628,11 +769,11 @@ export default function Permissions() {
                   ))}
                 </div>
               )}
-              {ROLES.filter((r) => changes.some((c) => c.role === r)).map((role) => (
-                <div key={role}>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">{ROLE_LABELS[role]}</div>
+              {[...new Set(changes.map((c) => c.key))].map((key) => (
+                <div key={key}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">{changes.find((c) => c.key === key)?.roleLabel ?? key}</div>
                   <ul className="space-y-0.5">
-                    {changes.filter((c) => c.role === role).map((c) => (
+                    {changes.filter((c) => c.key === key).map((c) => (
                       <li key={c.label} className="flex items-center gap-2 text-sm">
                         {c.granted
                           ? <Check size={14} className="text-ok shrink-0" />
@@ -659,11 +800,11 @@ export default function Permissions() {
 }
 
 // A permission group: a header row spanning all columns + its feature rows.
-function FragmentGroup({ title, control, children }: { title: string; control?: ReactNode; children: ReactNode }) {
+function FragmentGroup({ title, control, children, colSpan }: { title: string; control?: ReactNode; children: ReactNode; colSpan: number }) {
   return (
     <>
       <tr className="bg-muted/50 border-t-2 border-border">
-        <td colSpan={1 + ROLES.length} className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <td colSpan={colSpan} className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           <div className="flex items-center gap-2">
             <span>{title}</span>
             {control}

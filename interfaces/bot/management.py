@@ -5,7 +5,8 @@ from telegram.ext import ContextTypes
 from capabilities.localization.i18n import t
 
 from adapters.storage import Role
-from capabilities.permissions.roles import can, role_display, validate_invite_role
+from capabilities.permissions.roles import can, role_display
+from features.settings.invites.service import invite_authorized
 from capabilities.formatting import (
     format_account_info,
     format_invite_created,
@@ -111,12 +112,20 @@ async def cmd_invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ], keyboard=back_kb())
         return
 
-    # Validate role rank — actor cannot invite to a role >= their own
-    ok, reason = validate_invite_role(user.role, invite_role)
+    # Invite-target authorization — a manager's sub-team whitelist (rank-
+    # independent) OR the standard rank gate.  Mirrors the dashboard invites
+    # feature (features/settings/invites.service.invite_authorized).
+    actor_role = user.role.value if hasattr(user.role, "value") else user.role
+    ok, reason = invite_authorized(actor_role, bool(user.is_manager), invite_role.value)
     if not ok:
         if reason == "owner_via_invite":
             await _show(update, context,
                         [t('access.owner_via_invite')],
+                        keyboard=back_kb())
+        elif reason.startswith("manager_invite_restricted:"):
+            allowed = reason.split(":", 1)[1].replace(",", ", ")
+            await _show(update, context,
+                        [f"Your manager role may only invite: {allowed}."],
                         keyboard=back_kb())
         else:
             await _show(update, context,

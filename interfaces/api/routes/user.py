@@ -14,7 +14,7 @@ from interfaces.api.deps import (
     get_tenant_db,
     require_permission,
 )
-from capabilities.permissions.roles import get_account_permissions
+from capabilities.permissions.roles import get_account_permissions, get_user_permissions
 from capabilities.permissions.modules import enabled_modules as _enabled_modules
 from capabilities.localization.tz import effective_tz_for_user, IANA_OPTIONS
 from adapters.storage import Role
@@ -37,7 +37,15 @@ async def user_me(
     role_enum = Role(user["role"])
     account_id = user["account_id"]
     acct = await platform_db.get_account(account_id)
-    perms = await get_account_permissions(role_enum, account_id)
+    # Resolve the USER's effective perms — the role baseline plus the
+    # per-user manager tier.  Sourced from the fresh DB row (not the JWT
+    # claim) so a just-promoted/demoted manager sees the change on the next
+    # /me refetch without waiting for a new token.
+    perms = await get_user_permissions(
+        role_enum, account_id,
+        is_manager=db_user.is_manager,
+        is_primary_owner=db_user.is_primary_owner,
+    )
     perm_dict = {
         field: getattr(perms, field)
         for field in perms.__dataclass_fields__
@@ -88,6 +96,12 @@ async def user_me(
         "telegram_id": db_user.telegram_id,
         "display_name": db_user.display_name,
         "role": user["role"],
+        # Per-user manager tier (orthogonal to role) — the SPA shows the
+        # "Manager" badge + gates manager-only affordances on this.
+        "is_manager": db_user.is_manager,
+        # Owner tier — primary (main) owner vs co-owner.  Gates the co-owner
+        # management actions + destructive account actions in the SPA.
+        "is_primary_owner": db_user.is_primary_owner,
         "account_id": user["account_id"],
         "truck_num": db_user.truck_num,
         "trucks": trucks,
@@ -573,6 +587,117 @@ async def telegram_unlink(
     return {"ok": True}
 
 
+# ── UI preferences (opaque per-user KV) ─────────────────────────────
+#
+# Distinct from the profile ``PUT /preferences`` endpoint just below —
+# this is a generic key-value store the dashboard uses for UI state
+# (DataTable layouts, last-used filters, etc.) so an operator's
+# customizations follow them across devices instead of being trapped
+# in one browser's localStorage.  Keys are opaque (frontend coins them
+# as ``table.maintenance-tasks.visibility``, etc.); values are
+# JSON-encoded strings.
+#
+# Key safety: bound to ``user_id`` from the JWT — no path is ever
+# constructible to read another user's preferences.  Keys are length-
+# capped to 200 chars and restricted to a safe charset to keep them
+# usable in URLs and log lines.
+
+import re as _re
+
+_UI_PREF_KEY_RE = _re.compile(r"^[A-Za-z0-9._-]{1,200}$")
+_UI_PREF_VALUE_MAX = 64 * 1024   # 64 KB ceiling per single preference
+
+
+def _validate_pref_key(key: str) -> None:
+    if not _UI_PREF_KEY_RE.match(key or ""):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid preference key (alphanumeric/./_/- only, max 200 chars)",
+        )
+
+
+class UiPrefBody(BaseModel):
+    value: str = Field("", max_length=_UI_PREF_VALUE_MAX)
+
+
+@router.get("/preferences/ui/{key}")
+async def get_ui_preference(
+    key: str,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Read a single UI preference scoped to the requesting user.
+
+    Returns ``{"value": "..."}`` (empty string when the key is unset)
+    rather than 404 so the frontend treats first-read-of-a-new-key the
+    same as fresh-default — no special error path needed in callers.
+    """
+    _validate_pref_key(key)
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    value = await platform_db.get_user_preference(db_user.id, key)
+    return {"key": key, "value": value}
+
+
+@router.put("/preferences/ui/{key}")
+async def set_ui_preference(
+    key: str,
+    body: UiPrefBody,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Upsert a single UI preference for the requesting user."""
+    _validate_pref_key(key)
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    await platform_db.set_user_preference(db_user.id, key, body.value)
+    return {"ok": True, "key": key}
+
+
+@router.delete("/preferences/ui/{key}")
+async def delete_ui_preference(
+    key: str,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Delete a single UI preference — used by the dashboard's
+    "Reset to defaults" so cleared state stops syncing back from the
+    last device that wrote it."""
+    _validate_pref_key(key)
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    await platform_db.delete_user_preference(db_user.id, key)
+    return {"ok": True, "key": key}
+
+
+@router.get("/preferences/ui")
+async def list_ui_preferences(
+    prefix: Optional[str] = None,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Bulk-load every UI preference for the requesting user.
+
+    ``prefix`` narrows to keys starting with that string (e.g.
+    ``table.``) so the dashboard can fetch every DataTable layout in
+    one round-trip on initial load instead of one request per table.
+    """
+    if prefix is not None:
+        # Validate the prefix shape too — same charset as keys, just
+        # no length floor (an empty prefix is allowed; falls back to
+        # "everything").
+        if prefix and not _re.match(r"^[A-Za-z0-9._-]{0,200}$", prefix):
+            raise HTTPException(status_code=422, detail="Invalid prefix")
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    items = await platform_db.list_user_preferences(db_user.id, prefix=prefix)
+    return {"items": items, "count": len(items)}
+
+
 @router.put("/preferences")
 async def update_preferences(
     body: PreferencesRequest,
@@ -656,6 +781,17 @@ def _require_owner(user: dict) -> None:
         )
 
 
+def _require_primary_owner(db_user) -> None:
+    """Destructive account actions (delete / cancel) are PRIMARY-owner only.
+    Co-owners (role=owner, is_primary_owner=False) are blocked — the nuclear
+    button stays with the one primary owner."""
+    if not db_user or not getattr(db_user, "is_primary_owner", False):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the primary owner can manage account deletion.",
+        )
+
+
 @router.get("/account/lifecycle")
 async def account_lifecycle(
     user: dict = Depends(get_current_user),
@@ -686,6 +822,7 @@ async def account_delete_request(
     """Step 1: mint + email the 6-digit confirmation code."""
     _require_owner(user)
     db_user = await get_current_db_user(user, platform_db)
+    _require_primary_owner(db_user)
     if not db_user or not db_user.email:
         raise HTTPException(
             status_code=422,
@@ -732,6 +869,7 @@ async def account_delete_confirm(
     db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
+    _require_primary_owner(db_user)
 
     ok = await platform_db.consume_deletion_code(
         user["account_id"], db_user.id, body.code.strip(),
@@ -799,6 +937,7 @@ async def account_delete_cancel(
     """Step 3 (optional): reactivate within the grace window."""
     _require_owner(user)
     db_user = await get_current_db_user(user, platform_db)
+    _require_primary_owner(db_user)
 
     ok = await platform_db.cancel_account_deletion(user["account_id"])
     if not ok:

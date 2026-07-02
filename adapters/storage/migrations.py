@@ -5192,6 +5192,32 @@ async def migrate_drop_derived_service_perms(conn) -> None:
     )
 
 
+@_register("130_user_preferences")
+async def migrate_user_preferences(conn) -> None:
+    """Create ``user_preferences`` for per-user opaque UI state.
+
+    Backs the DataTable's cross-device auto-save (column visibility /
+    order / pinning that follows the operator instead of being trapped
+    in one browser's localStorage).  Same shape as ``account_settings``
+    but keyed by ``user_id``.
+
+    Fresh DBs pick this up via schema.create_tables(); existing
+    deployments need this migration since the CREATE TABLE IF NOT
+    EXISTS in schema.py is a no-op on already-initialised databases.
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key         TEXT    NOT NULL,
+            value       TEXT    NOT NULL DEFAULT '',
+            updated_at  TEXT    NOT NULL,
+            PRIMARY KEY (user_id, key)
+        )
+    """)
+    await conn.commit()
+    logger.info("Migration 130: created user_preferences table")
+
+
 @_register("131_vehicle_telemetry_unified")
 async def migrate_vehicle_telemetry_unified(conn) -> None:
     """Merge ``vehicle_telemetry_hourly`` + ``vehicle_metrics_daily`` into
@@ -5444,6 +5470,181 @@ async def migrate_data_conflicts(conn) -> None:
         logger.info("Migration 134: tenant_isolation RLS applied to data_conflicts")
     except Exception as e:
         logger.error("Migration 134: RLS apply on data_conflicts failed — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("135_carrier_directory")
+async def migrate_carrier_directory(conn) -> None:
+    """Create ``carrier_profile`` — the recruiter Carrier Knowledge Base.
+
+    An account-scoped, info-only directory of the EXTERNAL carriers the
+    recruiting team works with: each row is a free-form profile (pre-qual
+    criteria, presentation/sales sheet, process notes) stored as JSON in
+    ``content``.  Maintained by ``recruiter_manager``, read by ``recruiter``.
+    Deliberately separate from ``companies`` (which brands the apply form).
+
+    Fresh DBs pick this up via schema.create_tables(); existing deployments
+    need this migration (the CREATE TABLE IF NOT EXISTS in schema.py is a
+    no-op on already-initialised databases).
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS carrier_profile (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id          INTEGER NOT NULL REFERENCES accounts(id),
+            name                TEXT    NOT NULL,
+            website             TEXT    NOT NULL DEFAULT '',
+            video_url           TEXT    NOT NULL DEFAULT '',
+            experience_summary  TEXT    NOT NULL DEFAULT '',
+            content             TEXT    NOT NULL DEFAULT '{}',
+            created_by          INTEGER NOT NULL DEFAULT 0,
+            created_at          TEXT    NOT NULL,
+            updated_at          TEXT    NOT NULL DEFAULT ''
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_carrier_profile_account "
+        "ON carrier_profile(account_id)"
+    )
+    await conn.commit()
+    logger.info("Migration 135: created carrier_profile table")
+
+    # RLS — tenant-scoped, same gated pattern as 131/134.
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 135: ENABLE_RLS not set; RLS policy skipped")
+        return
+    try:
+        await conn.execute("ALTER TABLE carrier_profile ENABLE ROW LEVEL SECURITY")
+        await conn.execute("ALTER TABLE carrier_profile FORCE ROW LEVEL SECURITY")
+        await conn.execute("DROP POLICY IF EXISTS tenant_isolation ON carrier_profile")
+        await conn.execute(
+            """
+            CREATE POLICY tenant_isolation ON carrier_profile
+            USING       (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+            """
+        )
+        await conn.commit()
+        logger.info("Migration 135: tenant_isolation RLS applied to carrier_profile")
+    except Exception as e:
+        logger.error("Migration 135: RLS apply on carrier_profile failed — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("136_user_is_manager")
+async def migrate_user_is_manager(conn) -> None:
+    """Add ``users.is_manager`` and retire the ``recruiter_manager`` role.
+
+    "Manager" is now a per-user seniority tier layered on the base role
+    (capabilities/permissions/roles.MANAGER_GRANTS), NOT its own role.  This:
+
+      1. adds the ``is_manager`` column (fresh DBs get it from schema.py;
+         existing ones need this ALTER — the CREATE TABLE IF NOT EXISTS is a
+         no-op once the table exists);
+      2. folds any existing ``recruiter_manager`` USER back to ``recruiter``
+         with ``is_manager = 1`` (the elevated access now rides the tier, not
+         the role);
+      3. drops the now-orphaned ``recruiter_manager`` ``role_permissions``
+         rows (the manager delta is code-defined, not a stored role row).
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE users ADD COLUMN is_manager INTEGER NOT NULL DEFAULT 0"
+        )
+        await conn.commit()
+        logger.info("Migration 136: added column users.is_manager")
+    except Exception:
+        pass  # column already exists
+
+    # Fold recruiter_manager USERS → recruiter + is_manager (data migration).
+    try:
+        await conn.execute(
+            "UPDATE users SET role = 'recruiter', is_manager = 1 "
+            "WHERE role = 'recruiter_manager'"
+        )
+        await conn.commit()
+        logger.info("Migration 136: folded recruiter_manager users → recruiter + is_manager")
+    except Exception as e:
+        logger.error("Migration 136: recruiter_manager user fold failed — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+    # Drop the orphaned per-account recruiter_manager permission rows — the
+    # manager delta is now code-defined (MANAGER_GRANTS), not a stored role.
+    try:
+        await conn.execute(
+            "DELETE FROM role_permissions WHERE role = 'recruiter_manager'"
+        )
+        await conn.commit()
+        logger.info("Migration 136: dropped recruiter_manager role_permissions rows")
+    except Exception as e:
+        logger.error("Migration 136: role_permissions cleanup failed — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("137_co_owners")
+async def migrate_co_owners(conn) -> None:
+    """Multiple owners with a protected PRIMARY owner.
+
+    Adds ``users.is_primary_owner`` and marks each account's existing sole
+    owner as primary (every account has exactly one owner today, so this is
+    an exact backfill).  Also creates ``owner_promotion_codes`` — the
+    email-code half of the two-factor co-owner promotion confirm.
+
+    Co-owners have ``role='owner'`` + ``is_primary_owner=0``; only the
+    primary owner may create/remove co-owners or do destructive account
+    actions.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE users ADD COLUMN is_primary_owner INTEGER NOT NULL DEFAULT 0"
+        )
+        await conn.commit()
+        logger.info("Migration 137: added column users.is_primary_owner")
+    except Exception:
+        pass  # column already exists
+
+    # Backfill: today's single owner-per-account IS the primary owner.
+    try:
+        await conn.execute(
+            "UPDATE users SET is_primary_owner = 1 WHERE role = 'owner'"
+        )
+        await conn.commit()
+        logger.info("Migration 137: marked existing owners as primary")
+    except Exception as e:
+        logger.error("Migration 137: primary-owner backfill failed — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS owner_promotion_codes (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id        INTEGER NOT NULL UNIQUE REFERENCES accounts(id),
+                initiator_user_id INTEGER NOT NULL,
+                target_user_id    INTEGER NOT NULL,
+                code_hash         TEXT    NOT NULL,
+                expires_at        TEXT    NOT NULL,
+                created_at        TEXT    NOT NULL
+            )
+        """)
+        await conn.commit()
+        logger.info("Migration 137: created owner_promotion_codes table")
+    except Exception as e:
+        logger.error("Migration 137: owner_promotion_codes create failed — %s", e)
         try:
             await conn.rollback()
         except Exception:

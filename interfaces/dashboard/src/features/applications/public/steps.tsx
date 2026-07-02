@@ -3,12 +3,12 @@
 // Each step is { title, sub, Render, validate }.  Render reads/writes the
 // shared `data` object by path; validate returns an error map (empty = ok).
 import { useState } from 'react';
-import { Plus, Trash2, ShieldCheck, ChevronDown, FileText } from 'lucide-react';
+import { Plus, Trash2, ShieldCheck, ChevronDown, FileText, Camera, CheckCircle2, Loader2 } from 'lucide-react';
 import {
   deepGet, V, run, US_STATES, YES_NO, YEARS_AT_ADDR, CDL_CLASSES, ENDORSEMENTS,
   YEARS_CDL, EQUIPMENT_TYPES, REGIONS, PREFERRED_ROLE,
   ACCIDENT_TYPES, INJURY_LEVELS, PREVENTABLE, CONVICTION_STATUS, CONTACT_OK,
-  HEARD_SOURCES, blankJob, blankAddress, blankAccident, blankViolation,
+  HEARD_SOURCES, blankJob, blankAddress, blankAccident, blankViolation, ocrCdl,
 } from './lib';
 import type { Data, Errors } from './lib';
 import {
@@ -36,6 +36,11 @@ interface RenderProps {
   req?: GateReq;
   // Carrier legal/contact details that fill the Step 8 consent disclosures.
   carrier?: CarrierLegal;
+  // For the CDL fast-fill: the recruiting-link token (empty in preview →
+  // OCR skipped) and the only-write-when-blank setter, so an OCR response
+  // can never overwrite something the applicant already typed.
+  token?: string;
+  setIfEmpty?: (path: string, value: unknown) => void;
 }
 
 const grid = 'grid grid-cols-1 gap-4 sm:grid-cols-2';
@@ -82,16 +87,127 @@ const Step1: StepDef = {
   },
 };
 
+// Apply an OCR result to the form — shared by the Step-2 fast-fill card and
+// the Step-3 CDL-Front upload, so both paths prefill identically.  Writes go
+// through setIfEmpty (never overwrite a typed value); identity fields are
+// included even from Step 3 (harmless — they're blank-only fills).
+// Fields cascade in top-to-bottom with a short stagger so the applicant SEES
+// the form being filled (an instant dump reads as a glitch, not assistance).
+const _tick = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+async function applyCdlPrefill(
+  fields: NonNullable<Awaited<ReturnType<typeof ocrCdl>>>,
+  setIfEmpty: (path: string, value: unknown) => void,
+) {
+  const map: [string, unknown][] = [
+    ['personal.first', fields.first], ['personal.middle', fields.middle],
+    ['personal.last', fields.last], ['personal.dob', fields.dob],
+    ['personal.addr1', fields.addr1], ['personal.city', fields.city],
+    ['personal.state', fields.state], ['personal.zip', fields.zip],
+    ['cdl.number', fields.number], ['cdl.state', fields.issue_state],
+    ['cdl.class', fields.cdl_class], ['cdl.exp', fields.exp],
+    ['cdl.restrictions', fields.restrictions],
+  ];
+  for (const [path, v] of map) {
+    if (!v) continue;
+    setIfEmpty(path, v);
+    await _tick(90);
+  }
+  for (const code of fields.endorsements ?? []) {
+    setIfEmpty(`cdl.endorsements.${code}`, true);
+    await _tick(60);
+  }
+}
+
+// ── CDL fast-fill (Step 2 header card) ──────────────────────────────
+// One optional photo of the licence FRONT does three jobs: prefills the
+// Step-2 identity/address fields, prefills the Step-3 CDL details, and
+// lands in the Step-3 "CDL — Front" required-document slot (so it's never
+// uploaded twice).  Strictly best-effort — any failure quietly falls back
+// to manual typing, and prefill NEVER overwrites a typed value.
+function CdlFastFill({ token, data, set, setIfEmpty }: {
+  token?: string; data: Data;
+  set: (path: string, value: unknown) => void;
+  setIfEmpty?: (path: string, value: unknown) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [state, setState] = useState<'idle' | 'ok' | 'fail'>('idle');
+  const hasDoc = !!deepGet(data, 'cdl.docs.cdlFront');
+
+  const onPick = async (f: File | undefined) => {
+    if (!f || busy || f.size > 8 * 1024 * 1024) return;
+    // The photo IS the CDL-Front document — store it (with preview) so
+    // Step 3's required upload is already satisfied.
+    const base = { file: f, name: f.name, size: f.size, type: f.type };
+    if (f.type.startsWith('image/')) {
+      const reader = new FileReader();
+      reader.onload = () => set('cdl.docs.cdlFront', { ...base, dataUrl: String(reader.result) });
+      reader.readAsDataURL(f);
+    } else {
+      set('cdl.docs.cdlFront', base);
+    }
+    if (!token || !setIfEmpty) return;    // recruiter preview — no network
+    setBusy(true);
+    const fields = await ocrCdl(token, f);
+    if (!fields) { setBusy(false); setState('fail'); return; }
+    await applyCdlPrefill(fields, setIfEmpty);   // busy until the cascade lands
+    setBusy(false);
+    setState('ok');
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3 rounded-md border border-border bg-muted/30 p-3 sm:flex-row sm:items-center">
+        <Camera size={20} className="hidden shrink-0 text-primary sm:block" />
+        <div className="flex-1">
+          <p className="text-sm font-medium text-foreground">Have your CDL handy?</p>
+          <p className="text-xs text-muted-foreground">
+            Snap a photo of the <b>front</b> and we'll fill in your details automatically —
+            it also counts as your license upload later.
+          </p>
+          {!token && (
+            <p className="mt-1.5 inline-flex rounded border border-info-bd bg-info-bg px-2 py-1 text-2xs font-medium text-info">
+              Preview — auto-fill is disabled here; it runs on the live apply link.
+            </p>
+          )}
+        </div>
+        <label className={busy ? 'pointer-events-none opacity-60' : 'cursor-pointer'}>
+          <input type="file" accept="image/*" className="hidden" disabled={busy}
+            onChange={(e) => { onPick(e.target.files?.[0]); e.currentTarget.value = ''; }} />
+          <span className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            {busy
+              ? <><Loader2 size={15} className="animate-spin" /> Reading…</>
+              : <><Camera size={15} /> {hasDoc ? 'Retake photo' : 'Add photo'}</>}
+          </span>
+        </label>
+      </div>
+      {state === 'ok' && (
+        <p className="flex items-start gap-1.5 rounded-md border border-info-bd bg-info-bg px-3 py-2 text-xs text-info">
+          <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+          We filled in details from your license — please double-check everything, especially your address.
+        </p>
+      )}
+      {state === 'fail' && (
+        <p className="text-xs text-muted-foreground">
+          Couldn't read that photo — no problem, just fill in the fields below.
+          (Your photo is kept as the license upload.)
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ── Step 2 · Personal & Contact ─────────────────────────────────────
 const Step2: StepDef = {
-  title: 'Personal & Contact', sub: 'Identity, address',
+  title: 'Personal & Contact', sub: 'Identity, address', group: 'Driver Profile',
   validate: (d) => {
     const e: Errors = {};
     const p = d.personal || {};
     if (V.required(p.first)) e['personal.first'] = 'Required';
     if (V.required(p.last)) e['personal.last'] = 'Required';
     const dob = run(p.dob, [V.required, V.date, V.minAge(18)]); if (dob) e['personal.dob'] = dob;
-    const ssn = run(p.ssn, [V.required, V.ssn]); if (ssn) e['personal.ssn'] = ssn;
+    // SSN is deliberately NOT asked here — it's collected on the Background
+    // Check Authorization step, where it's actually used and the applicant
+    // is already invested (asking this early is a trust barrier / drop-off).
     const ph = run(p.phone, [V.required, V.phone]); if (ph) e['personal.phone'] = ph;
     const em = run(p.email, [V.required, V.email]); if (em) e['personal.email'] = em;
     if (V.required(p.addr1)) e['personal.addr1'] = 'Required';
@@ -99,6 +215,11 @@ const Step2: StepDef = {
     if (V.required(p.state)) e['personal.state'] = 'Required';
     const zip = run(p.zip, [V.required, V.zip]); if (zip) e['personal.zip'] = zip;
     if (V.required(p.yearsAtAddr)) e['personal.yearsAtAddr'] = 'Required';
+    // Emergency contact is required — a carrier must know who to call.
+    const emc = (d.personal || {}).emergency || {};
+    if (V.required(emc.name)) e['personal.emergency.name'] = 'Required';
+    const emcPh = run(emc.phone, [V.required, V.phone]); if (emcPh) e['personal.emergency.phone'] = emcPh;
+    if (V.required(emc.relationship)) e['personal.emergency.relationship'] = 'Required';
     // FMCSA: 3-year residence history when current address < 3 years.  Each
     // previous address must carry a street + the dates it covers.
     if (needsAddressHistory(p.yearsAtAddr)) {
@@ -112,13 +233,14 @@ const Step2: StepDef = {
     }
     return e;
   },
-  Render: ({ data, set, errors }) => {
+  Render: ({ data, set, errors, token, setIfEmpty }) => {
     const p = data.personal || {};
     const hist: Data[] = data.addressHistory || [];
     const setHist = (next: Data[]) => set('addressHistory', next);
     const showHist = needsAddressHistory(p.yearsAtAddr);
     return (
       <div className="flex flex-col gap-6">
+        <CdlFastFill token={token} data={data} set={set} setIfEmpty={setIfEmpty} />
         <div>
           <p className={`${sectionTitle} mb-2`}>Legal name</p>
           <div className={grid}>
@@ -138,9 +260,6 @@ const Step2: StepDef = {
           <div className={grid}>
             <Field label="Date of birth" hint="MM/DD/YYYY" required error={errors['personal.dob']}>
               <TextInput type="date" value={p.dob} onChange={(v) => set('personal.dob', v)} mono error={!!errors['personal.dob']} />
-            </Field>
-            <Field label="Social Security #" hint="XXX-XX-XXXX" required error={errors['personal.ssn']}>
-              <TextInput value={p.ssn} onChange={(v) => set('personal.ssn', v)} format="ssn" mono error={!!errors['personal.ssn']} />
             </Field>
             <Field label="Mobile phone" required error={errors['personal.phone']}>
               <TextInput type="tel" value={p.phone} onChange={(v) => set('personal.phone', v)} format="phone" error={!!errors['personal.phone']} />
@@ -203,17 +322,19 @@ const Step2: StepDef = {
           </div>
         )}
         <div>
-          <p className={`${sectionTitle} mb-2`}>Emergency contact <span className="font-normal normal-case">· optional</span></p>
+          <p className={`${sectionTitle} mb-2`}>Emergency contact</p>
           <div className={grid}>
-            <Field label="Full name">
-              <TextInput value={(p.emergency || {}).name} onChange={(v) => set('personal.emergency.name', v)} />
+            <Field label="Full name" required error={errors['personal.emergency.name']}>
+              <TextInput value={(p.emergency || {}).name} onChange={(v) => set('personal.emergency.name', v)}
+                error={!!errors['personal.emergency.name']} />
             </Field>
-            <Field label="Phone">
-              <TextInput type="tel" value={(p.emergency || {}).phone} onChange={(v) => set('personal.emergency.phone', v)} format="phone" />
+            <Field label="Phone" required error={errors['personal.emergency.phone']}>
+              <TextInput type="tel" value={(p.emergency || {}).phone} onChange={(v) => set('personal.emergency.phone', v)}
+                format="phone" error={!!errors['personal.emergency.phone']} />
             </Field>
-            <Field label="Relationship" className={full}>
+            <Field label="Relationship" className={full} required error={errors['personal.emergency.relationship']}>
               <TextInput value={(p.emergency || {}).relationship} onChange={(v) => set('personal.emergency.relationship', v)}
-                placeholder="Spouse, parent, sibling…" />
+                placeholder="Spouse, parent, sibling…" error={!!errors['personal.emergency.relationship']} />
             </Field>
           </div>
         </div>
@@ -224,7 +345,7 @@ const Step2: StepDef = {
 
 // ── Step 3 · CDL & Documents ────────────────────────────────────────
 const Step3: StepDef = {
-  title: 'CDL & Documents', sub: 'License + uploads', group: 'License & Experience',
+  title: 'CDL & Documents', sub: 'License + uploads', group: 'Driver Profile',
   validate: (d) => {
     const e: Errors = {};
     const c = d.cdl || {};
@@ -238,9 +359,25 @@ const Step3: StepDef = {
     if (!docs.medical) e['cdl.docs.medical'] = 'Required';
     return e;
   },
-  Render: ({ data, set, errors }) => {
+  Render: ({ data, set, errors, token, setIfEmpty }) => {
     const c = data.cdl || {};
     const end = c.endorsements || {};
+    // Uploading the CDL front HERE also runs the fast-fill (same OCR the
+    // Step-2 card uses) so a driver who skipped the card still gets the
+    // licence fields above prefilled.  Fires only on a fresh pick — a photo
+    // carried over from Step 2 was already read there.
+    const [ocrBusy, setOcrBusy] = useState(false);
+    const [ocrOk, setOcrOk] = useState(false);
+    const onCdlFront = async (v: { file: File } | null) => {
+      set('cdl.docs.cdlFront', v);
+      if (!v?.file || !v.file.type.startsWith('image/') || !token || !setIfEmpty) return;
+      setOcrBusy(true);
+      const fields = await ocrCdl(token, v.file);
+      if (!fields) { setOcrBusy(false); return; }   // silent — manual entry as usual
+      await applyCdlPrefill(fields, setIfEmpty);    // busy until the cascade lands
+      setOcrBusy(false);
+      setOcrOk(true);
+    };
     return (
       <div className="flex flex-col gap-6">
         <div className={grid}>
@@ -273,12 +410,23 @@ const Step3: StepDef = {
           <p className={`${sectionTitle} mb-2`}>Required documents</p>
           <div className={grid}>
             <DocUpload label="CDL — Front" sub="Photo side" required value={(c.docs || {}).cdlFront}
-              onChange={(v) => set('cdl.docs.cdlFront', v)} error={errors['cdl.docs.cdlFront']} />
+              onChange={onCdlFront} error={errors['cdl.docs.cdlFront']} />
             <DocUpload label="CDL — Back" sub="Barcode side" required value={(c.docs || {}).cdlBack}
               onChange={(v) => set('cdl.docs.cdlBack', v)} error={errors['cdl.docs.cdlBack']} />
             <DocUpload label="DOT Medical Card" sub="Form MCSA-5876" required value={(c.docs || {}).medical}
               onChange={(v) => set('cdl.docs.medical', v)} error={errors['cdl.docs.medical']} />
           </div>
+          {ocrBusy && (
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 size={13} className="animate-spin" /> Reading your license…
+            </p>
+          )}
+          {ocrOk && !ocrBusy && (
+            <p className="mt-2 flex items-start gap-1.5 rounded-md border border-info-bd bg-info-bg px-3 py-2 text-xs text-info">
+              <CheckCircle2 size={14} className="mt-0.5 shrink-0" />
+              We filled in the license details above from your photo — please double-check them.
+            </p>
+          )}
         </div>
         <div className={grid}>
           <Field label="TWIC card" hint="Transportation Worker ID">
@@ -300,7 +448,7 @@ const Step3: StepDef = {
 
 // ── Step 4 · Driving Experience ─────────────────────────────────────
 const Step4: StepDef = {
-  title: 'Driving Experience', sub: 'Equipment & history', group: 'License & Experience',
+  title: 'Driving Experience', sub: 'Equipment & history', group: 'Driver Profile',
   validate: (d) => {
     const e: Errors = {};
     const x = d.experience || {};
@@ -703,7 +851,19 @@ function disclosureStep(id: 'psp' | 'fcra', title: string, sub: string): StepDef
   const build = id === 'psp' ? pspDisclosure : fcraDisclosure;
   return {
     title, sub, group: 'Final Authorizations',
-    validate: (d) => ((d.consents || {})[id] ? {} : { [`consents.${id}`]: 'Required' }),
+    validate: (d) => {
+      const e: Errors = {};
+      // SSN is collected HERE (not on Personal & Contact): it exists solely to
+      // run the consumer report being authorized, and asking for it that early
+      // is a trust barrier.  Same data path (personal.ssn) — server + DQ
+      // packet are unchanged.
+      if (id === 'fcra') {
+        const ssn = run((d.personal || {}).ssn, [V.required, V.ssn]);
+        if (ssn) e['personal.ssn'] = ssn;
+      }
+      if (!(d.consents || {})[id]) e[`consents.${id}`] = 'Required';
+      return e;
+    },
     Render: ({ data, set, errors, carrier }) => {
       const doc = build(carrier || EMPTY_LEGAL);
       const c = data.consents || {};
@@ -719,6 +879,17 @@ function disclosureStep(id: 'psp' | 'fcra', title: string, sub: string): StepDef
               <DisclosureBody blocks={doc.blocks} />
             </div>
           </div>
+          {id === 'fcra' && (
+            <div className="rounded-md border border-border bg-card px-4 py-3">
+              <div className="max-w-xs">
+                <Field label="Social Security #" required error={errors['personal.ssn']}
+                  hint="XXX-XX-XXXX — used only for the consumer report you authorize here; encrypted at rest">
+                  <TextInput value={(data.personal || {}).ssn} onChange={(v) => set('personal.ssn', v)}
+                    format="ssn" mono error={!!errors['personal.ssn']} />
+                </Field>
+              </div>
+            </div>
+          )}
           <div className={`rounded-md border ${errors[`consents.${id}`] ? 'border-destructive/50' : 'border-border'} bg-card px-4 py-3`}>
             <Check_ checked={!!c[id]} onChange={(b) => set(`consents.${id}`, b)}>
               <span className="text-sm">I have read and authorize the <span className="font-medium">{doc.title}</span>.</span>
