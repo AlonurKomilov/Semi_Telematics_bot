@@ -54,6 +54,7 @@ function SourceCell({ value }: { value: unknown }) {
 }
 
 const COLUMNS: AnyColumn[] = [
+  { key: 'seq', label: 'ID', sortable: true, render: (v) => (v ? <span className="font-mono text-xs text-muted-foreground">{`#${v}`}</span> : <span className="text-muted-foreground">—</span>) },
   { key: 'load_number', label: 'Load #', sortable: true, render: (v) => (v ? <span className="font-medium">{String(v)}</span> : <span className="text-muted-foreground">—</span>) },
   { key: 'customer', label: 'Customer', sortable: true, filterable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   { key: 'driver_name', label: 'Driver', sortable: true, filterable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },

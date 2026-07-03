@@ -213,8 +213,12 @@ def _norm_order(rec: dict[str, Any]) -> dict[str, Any]:
         # shipment_id ("DT-002489") is the human-facing number Datatruck's
         # own list leads with; load_id ("T-111…") is the broker/customer
         # reference.  The raw pk stays the very last resort.
+        # load_id ("958511703") is the broker/BOL reference the dispatcher
+        # works from — the operator's chosen Load # — with shipment_id
+        # ("DT-002489") as fallback and the raw pk as last resort.  The
+        # per-account sequential display ID lives on our side (loads.seq).
         "order_number":       _as_text(_first(
-            rec, "shipment_id", "load_id",
+            rec, "load_id", "shipment_id",
             "order_number", "orderNumber", "number", "load_number",
         )) or _as_id(rec.get("id")),
         "status":             _as_text(_first(rec, "status", "state"), "name"),
@@ -251,6 +255,12 @@ def _norm_order(rec: dict[str, Any]) -> dict[str, Any]:
             "trip_truck", "adt_truck",
         )),
         "trailer_external_id": _as_id(_first(rec, "trailer", "trailer_id")),
+        "trailer_unit":       _as_text(_first(
+            {**rec,
+             "trip_trailer": trip.get("trailer__unit_number"),
+             "adt_trailer": adt.get("trailer_unit_number")},
+            "trip_trailer", "adt_trailer",
+        )),
         # total_pay = linehaul + accessorials — the revenue figure the
         # owner's KPI expects; load_pay alone is the linehaul.
         "total_rate":         _money(_first(

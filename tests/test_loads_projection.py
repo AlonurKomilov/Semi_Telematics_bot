@@ -153,6 +153,7 @@ async def test_real_openapi_shape_end_to_end(db):
         "trip": {
             "driver__full_name": "Evariste M",
             "truck__unit_number": "513416",
+            "trailer__unit_number": "HYUZ033051",
             "mile": "1000.0",
             "empty_mile": "150.0",
             "total_load_pay": "950.00",
@@ -166,7 +167,8 @@ async def test_real_openapi_shape_end_to_end(db):
         ],
     }
     row = _norm_order(raw)
-    assert row["order_number"] == "DT-020576"   # the human shipment number
+    assert row["order_number"] == "958511703"   # broker load_id leads
+    assert row["trailer_unit"] == "HYUZ033051"
     assert row["customer"] == "JBC LOGISTICS INC"
     assert row["dispatcher_name"] == "Jasur"
     assert row["driver_name"] == "Evariste M"
@@ -180,9 +182,16 @@ async def test_real_openapi_shape_end_to_end(db):
     assert row["origin"] == "Erda, UT" and row["destination"] == "Coppell, TX"
 
     acct = await db.create_account("Real Shape Co")
+    await db.add_company(account_id=acct.id, code="PTG",
+                         samsara_api_key="test-key",
+                         display_name="Premier Trucking Group")
     n = await db.project_external_loads(acct.id, [row])
     assert n == 1
     l = (await db.list_loads(acct.id))[0]
+    assert l.seq == 1                           # per-account sequential ID
+    assert l.load_number == "958511703"
+    assert l.trailer_unit == "HYUZ033051"
+    assert l.company_code == "PTG"              # mc name -> company code
     assert l.status == "in_transit"             # "In Progress" mapped
     assert l.customer == "JBC LOGISTICS INC"
     assert l.vehicle_unit == "513416"           # direct unit, no roster needed
@@ -191,6 +200,30 @@ async def test_real_openapi_shape_end_to_end(db):
     assert l.loaded_miles == 1000.0 and l.empty_miles == 150.0
     assert l.pickup_location == "Erda, UT"
     assert l.delivery_date == "2026-07-03"
+
+
+@pytest.mark.asyncio
+async def test_resync_backfills_display_fields_on_existing_rows(db):
+    """Rows created by an early lean sync (only number+status) must pick up
+    driver/dispatcher names, the broker load number, and the trailer when a
+    later sync carries them — the exact gap the first live sync exposed."""
+    acct = await db.create_account("Backfill Co")
+    lean = _order("O9", order_number="20576")
+    lean.update({"driver_name": "", "dispatcher_name": "", "customer": "",
+                 "trailer_unit": "", "truck_unit": ""})
+    await db.project_external_loads(acct.id, [lean])
+    l0 = (await db.list_loads(acct.id))[0]
+    assert l0.driver_name == "" and l0.load_number == "20576"
+
+    full = _order("O9", order_number="958511703", dispatcher_name="Jasur")
+    full.update({"driver_name": "Eugene B", "trailer_unit": "TL645096",
+                 "truck_unit": "231"})
+    await db.project_external_loads(acct.id, [full])
+    l1 = (await db.list_loads(acct.id))[0]
+    assert l1.load_number == "958511703"        # broker ref replaces the pk
+    assert l1.driver_name == "Eugene B"         # name lands without a user link
+    assert l1.dispatcher_name == "Jasur"
+    assert l1.trailer_unit == "TL645096" and l1.vehicle_unit == "231"
 
 
 @pytest.mark.asyncio

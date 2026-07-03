@@ -24,6 +24,7 @@ def load_to_dict(l: Any) -> dict:
     costs = float(l.driver_pay or 0) + float(l.other_costs or 0)
     return {
         "id": l.id,
+        "seq": l.seq,
         "load_number": l.load_number,
         "status": l.status,
         "payment_status": l.payment_status,

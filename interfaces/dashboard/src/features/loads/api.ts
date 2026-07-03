@@ -14,6 +14,8 @@ export type LoadStatus = (typeof LOAD_STATUSES)[number];
 
 export interface LoadRow {
   id: number;
+  /** Per-account sequential Load ID (1, 2, 3…). */
+  seq: number | null;
   load_number: string;
   status: string;
   payment_status: string;

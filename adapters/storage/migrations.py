@@ -5805,3 +5805,44 @@ async def migrate_loads(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("140_loads_seq_and_driver_pay_fix")
+async def migrate_loads_seq_and_driver_pay_fix(conn) -> None:
+    """Two follow-ups from the first live Datatruck loads sync.
+
+    * ``loads.seq`` — a per-account sequential Load ID (1, 2, 3…), separate
+      from ``load_number`` (the broker/BOL reference the dispatcher enters
+      or the TMS carries).  Backfilled per account in insertion order.
+    * Clear the ``driver_pay`` values a brief bad mapping stamped from
+      ``trip.total_load_pay`` (which is the trip's REVENUE share, not
+      driver earnings) — only rows the integration owns are touched;
+      operator-pinned values (provenance 'manual') are preserved.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(loads)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "seq" not in cols:
+            await conn.execute("ALTER TABLE loads ADD COLUMN seq INTEGER")
+            await conn.commit()
+            logger.info("Migration 140: added loads.seq")
+        await conn.execute(
+            """UPDATE loads SET seq = sub.rn
+               FROM (SELECT id, ROW_NUMBER() OVER (
+                         PARTITION BY account_id ORDER BY id) AS rn
+                       FROM loads) sub
+               WHERE loads.id = sub.id AND loads.seq IS NULL"""
+        )
+        await conn.execute(
+            """UPDATE loads SET driver_pay = NULL
+               WHERE source = 'datatruck'
+                 AND field_provenance LIKE '%"driver_pay": "datatruck"%'"""
+        )
+        await conn.commit()
+        logger.info("Migration 140: loads.seq backfilled + bad driver_pay cleared")
+    except Exception as e:
+        logger.error("Migration 140 failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

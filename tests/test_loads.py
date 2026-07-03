@@ -26,6 +26,7 @@ async def test_add_list_get_round_trip(db):
     rows = await db.list_loads(42)
     assert len(rows) == 1
     l = rows[0]
+    assert l.seq == 1                            # per-account sequential ID
     assert l.load_number == "DT-1001"
     assert l.status == "dispatched"
     assert l.source == "manual"

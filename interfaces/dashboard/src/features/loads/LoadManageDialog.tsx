@@ -161,7 +161,7 @@ export default function LoadManageDialog({
 
         <div className="grid grid-cols-2 gap-3">
           <label className="text-sm">
-            <span className="text-muted-foreground">Load #</span>
+            <span className="text-muted-foreground">Load # (broker / BOL reference)</span>
             <input className={inputCls} value={draft.load_number} onChange={set('load_number')} />
           </label>
           <label className="text-sm">

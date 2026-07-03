@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -83,6 +84,9 @@ class Load:
     is_active: bool
     created_at: str
     updated_at: str
+    # Per-account sequential Load ID (1, 2, 3…) — display identity, distinct
+    # from load_number (the broker/BOL reference).
+    seq: int | None = None
     field_provenance: dict = field(default_factory=dict)
 
 
@@ -92,7 +96,7 @@ _SELECT = (
     "delivery_date, driver_user_id, driver_name, dispatcher_user_id, "
     "dispatcher_name, vehicle_unit, trailer_unit, total_rate, loaded_miles, "
     "empty_miles, driver_pay, other_costs, source, external_ref, notes, "
-    "is_active, created_at, updated_at, field_provenance FROM loads"
+    "is_active, created_at, updated_at, field_provenance, seq FROM loads"
 )
 
 
@@ -121,6 +125,7 @@ def _row_to_load(r) -> Load:
         notes=r[24] or "", is_active=bool(r[25]),
         created_at=r[26] or "", updated_at=r[27] or "",
         field_provenance=_parse_load_provenance(r[28] if len(r) > 28 else None),
+        seq=r[29] if len(r) > 29 else None,
     )
 
 
@@ -174,6 +179,15 @@ def _map_load_status(raw: Any) -> tuple[str, str]:
     return _DT_STATUS_MAP.get(s, "upcoming"), ""
 
 
+def _norm_company(v: str) -> str:
+    """Normalize a company name for matching: lowercase, alnum+space only,
+    common suffixes dropped ("Premier Trucking Group Inc" == "premier
+    trucking group")."""
+    n = re.sub(r"[^a-z0-9 ]+", " ", str(v or "").lower())
+    n = re.sub(r"\b(inc|llc|corp|co|ltd)\b", " ", n)
+    return re.sub(r"\s+", " ", n).strip()
+
+
 async def _apply_load_field(
     db: Any, account_id: int, entity_id: int, field: str, value: Any,
 ) -> None:
@@ -212,17 +226,22 @@ class LoadsMixin(_MixinBase):
             raise ValueError(f"payment_status must be one of {PAYMENT_STATUSES}")
         now = self._now()
         cur = await self._db.execute(
+            "SELECT COALESCE(MAX(seq), 0) + 1 FROM loads WHERE account_id = ?",
+            (account_id,),
+        )
+        next_seq = int((await cur.fetchone())[0])
+        cur = await self._db.execute(
             """INSERT INTO loads
-               (account_id, load_number, status, payment_status, customer,
+               (seq, account_id, load_number, status, payment_status, customer,
                 company_code, pickup_location, pickup_date, delivery_location,
                 delivery_date, driver_user_id, driver_name, dispatcher_user_id,
                 dispatcher_name, vehicle_unit, trailer_unit, total_rate,
                 loaded_miles, empty_miles, driver_pay, other_costs, source,
                 external_ref, notes, is_active, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                RETURNING id""",
             (
-                account_id,
+                next_seq, account_id,
                 str(f.get("load_number") or ""), status, pay,
                 str(f.get("customer") or ""),
                 str(f.get("company_code") or ""),
@@ -427,6 +446,23 @@ class LoadsMixin(_MixinBase):
                 return {}
         truck_units = await _unit_map("datatruck_trucks")
         trailer_units = await _unit_map("datatruck_trailers")
+        # Company NAME → code (the order carries mc_number__company_name).
+        cur = await self._db.execute(
+            "SELECT code, display_name FROM companies "
+            "WHERE account_id = ? AND is_active = 1",
+            (account_id,),
+        )
+        companies = [(str(r[0] or ""), _norm_company(r[1])) for r in await cur.fetchall()]
+
+        def _company_code(name: str) -> str:
+            n = _norm_company(name)
+            if not n:
+                return ""
+            for code, disp in companies:
+                if disp and (n == disp or n.startswith(disp) or disp.startswith(n)):
+                    return code
+            return ""
+
         # Datatruck driver id → (user_id, display_name)  (Increment A link).
         cur = await self._db.execute(
             "SELECT id, datatruck_driver_id, display_name FROM users "
@@ -447,6 +483,11 @@ class LoadsMixin(_MixinBase):
 
         precedence = await recon.get_precedence(self, account_id, "load")
         now = self._now()
+        cur = await self._db.execute(
+            "SELECT COALESCE(MAX(seq), 0) FROM loads WHERE account_id = ?",
+            (account_id,),
+        )
+        next_seq = int((await cur.fetchone())[0])
         written = 0
         conflict_ops: list = []
         async with self.transaction():
@@ -465,7 +506,9 @@ class LoadsMixin(_MixinBase):
                 # id stays as the fallback for older/other shapes.
                 vunit = str(r.get("truck_unit") or "") or \
                     truck_units.get(str(r.get("truck_external_id") or ""), "")
-                tunit = trailer_units.get(str(r.get("trailer_external_id") or ""), "")
+                tunit = str(r.get("trailer_unit") or "") or \
+                    trailer_units.get(str(r.get("trailer_external_id") or ""), "")
+                ccode = _company_code(str(r.get("company_name") or ""))
                 incoming = {
                     "customer":          r.get("customer"),
                     "pickup_location":   r.get("origin"),
@@ -484,9 +527,10 @@ class LoadsMixin(_MixinBase):
                         f: source for f, v in incoming.items()
                         if not recon.is_unset(v)
                     }
+                    next_seq += 1
                     await self._db.execute(
                         """INSERT INTO loads
-                           (account_id, load_number, status, payment_status,
+                           (seq, account_id, load_number, status, payment_status,
                             customer, company_code, pickup_location, pickup_date,
                             delivery_location, delivery_date, driver_user_id,
                             driver_name, dispatcher_user_id, dispatcher_name,
@@ -494,13 +538,13 @@ class LoadsMixin(_MixinBase):
                             empty_miles, driver_pay, other_costs, source,
                             external_ref, field_provenance, notes, is_active,
                             created_at, updated_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                            ON CONFLICT(account_id, source, external_ref)
                            WHERE external_ref <> '' DO NOTHING""",
                         (
-                            account_id,
+                            next_seq, account_id,
                             str(r.get("order_number") or ""), status, payment,
-                            str(r.get("customer") or ""), "",
+                            str(r.get("customer") or ""), ccode,
                             str(r.get("origin") or ""),
                             str(r.get("pickup_date") or ""),
                             str(r.get("destination") or ""),
@@ -549,6 +593,20 @@ class LoadsMixin(_MixinBase):
                 if tunit and existing.trailer_unit != tunit:
                     sets.append("trailer_unit = ?")
                     params.append(tunit)
+                onum = str(r.get("order_number") or "")
+                if onum and existing.load_number != onum:
+                    sets.append("load_number = ?")
+                    params.append(onum)
+                if dname and existing.driver_name != dname:
+                    sets.append("driver_name = ?")
+                    params.append(dname)
+                dpname = str(r.get("dispatcher_name") or "")
+                if dpname and existing.dispatcher_name != dpname:
+                    sets.append("dispatcher_name = ?")
+                    params.append(dpname)
+                if ccode and existing.company_code != ccode:
+                    sets.append("company_code = ?")
+                    params.append(ccode)
                 if not sets and not mr.cleared:
                     continue
                 sets.append("field_provenance = ?")
