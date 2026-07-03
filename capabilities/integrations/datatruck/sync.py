@@ -162,54 +162,112 @@ def _norm_trailer(rec: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _stop_place(stops: Any, stop_type: str, *, last: bool = False) -> str:
+    """"City, ST" for the first pickup / last delivery stop.  The openapi
+    order carries a ``stops`` array with nested ``location`` objects."""
+    if not isinstance(stops, list):
+        return ""
+    cands = [
+        s for s in stops
+        if isinstance(s, dict)
+        and str(s.get("stop_type") or "").strip().lower() == stop_type
+    ]
+    if not cands:
+        return ""
+    s = cands[-1] if last else cands[0]
+    loc = s.get("location")
+    if not isinstance(loc, dict):
+        return _as_text(loc)
+    city = str(loc.get("city") or "").strip()
+    state = str(loc.get("state") or "").strip()
+    if city or state:
+        return ", ".join(p for p in (city, state) if p)
+    return _as_text(loc, "place_name", "company", "address1")
+
+
 def _norm_order(rec: dict[str, Any]) -> dict[str, Any]:
+    # Field names verified against the openapi docs (get_loads_list /
+    # get_load, 2026-07-03): the API uses Django-style compound keys
+    # (``customer__company_name``) plus a nested ``trip`` object; there are
+    # NO numeric driver/truck ids — only names / unit numbers.  The older
+    # generic probes stay as fallbacks for shape drift.
+    trip = rec.get("trip") if isinstance(rec.get("trip"), dict) else {}
+    adt = rec.get("assigned_driver_n_truck") \
+        if isinstance(rec.get("assigned_driver_n_truck"), dict) else {}
+    stops = rec.get("stops")
+    total_miles = _as_float(rec.get("total_miles"))
+    loaded = _as_float(_first(
+        {**rec, "trip_mile": trip.get("mile")},
+        "trip_mile", "loaded_miles", "loadedMiles", "miles_loaded",
+    ))
+    empty = _as_float(_first(
+        {**rec, "trip_empty": trip.get("empty_mile")},
+        "trip_empty", "empty_miles", "emptyMiles", "deadhead_miles",
+    ))
+    if loaded is None and total_miles is not None:
+        # Only the order-level total is known — derive loaded from it so
+        # RPM / totals stay right (empty defaults to 0 in that case).
+        loaded = round(total_miles - (empty or 0.0), 1)
     return {
         "external_id":        _as_id(rec.get("id")),
         "order_number":       _as_text(_first(
             rec, "order_number", "orderNumber", "number", "load_number",
         )) or _as_id(rec.get("id")),
         "status":             _as_text(_first(rec, "status", "state"), "name"),
+        # Dates trimmed to YYYY-MM-DD — the API sends full datetimes; our
+        # loads model + date inputs use day precision.
         "pickup_date":        _as_text(_first(
-            rec, "pickup_date", "pickupDate", "pickup_at", "start_date",
-        )),
+            rec, "pickup_time", "pickup_appointment_time",
+            "pickup_date", "pickupDate", "pickup_at", "start_date",
+        ))[:10],
         "delivery_date":      _as_text(_first(
-            rec, "delivery_date", "deliveryDate", "delivered_at", "end_date",
-        )),
-        "origin":             _as_text(
+            rec, "delivery_time", "delivery_appointment_time",
+            "delivery_date", "deliveryDate", "delivered_at", "end_date",
+        ))[:10],
+        "origin":             _stop_place(stops, "pickup") or _as_text(
             _first(rec, "origin", "pickup_location", "from_location"),
             "name", "city", "address",
         ),
-        "destination":        _as_text(
+        "destination":        _stop_place(stops, "delivery", last=True) or _as_text(
             _first(rec, "destination", "delivery_location", "to_location"),
             "name", "city", "address",
         ),
         "driver_external_id": _as_id(_first(rec, "driver", "driver_id")),
+        "driver_name":        _as_text(_first(
+            {**rec,
+             "trip_driver": trip.get("driver__full_name"),
+             "adt_driver": adt.get("driver_full_name")},
+            "trip_driver", "adt_driver", "driver_name",
+        )),
         "truck_external_id":  _as_id(_first(rec, "truck", "truck_id")),
+        "truck_unit":         _as_text(_first(
+            {**rec,
+             "trip_truck": trip.get("truck__unit_number"),
+             "adt_truck": adt.get("truck_unit_number")},
+            "trip_truck", "adt_truck",
+        )),
         "trailer_external_id": _as_id(_first(rec, "trailer", "trailer_id")),
-        "total_rate":         _as_float(_first(
-            rec, "total_rate", "totalRate", "rate", "total",
+        # total_pay = linehaul + accessorials — the revenue figure the
+        # owner's KPI expects; load_pay alone is the linehaul.
+        "total_rate":         _money(_first(
+            rec, "total_pay", "load_pay",
+            "total_rate", "totalRate", "rate", "total",
         )),
-        # Loads-feature projection inputs — tolerant multi-key probing so
-        # whatever vendor spelling the API uses gets promoted, and absent
-        # fields stay None (manual entry still carries them).
-        "customer":           _as_text(
-            _first(rec, "customer", "broker", "client", "customer_name",
-                   "customerName"),
-            "name", "company_name", "companyName",
-        ),
+        "customer":           _as_text(_first(
+            rec, "customer__company_name",
+            "customer", "broker", "client", "customer_name",
+        ), "name", "company_name"),
+        "company_name":       _as_text(rec.get("mc_number__company_name")),
         "dispatcher_external_id": _as_id(_first(rec, "dispatcher", "dispatcher_id")),
-        "dispatcher_name":    _as_text(
-            _first(rec, "dispatcher", "dispatcher_name", "dispatcherName"),
-            "name", "full_name", "fullName", "username",
-        ),
-        "loaded_miles":       _as_float(_first(
-            rec, "loaded_miles", "loadedMiles", "miles_loaded", "loaded",
-        )),
-        "empty_miles":        _as_float(_first(
-            rec, "empty_miles", "emptyMiles", "deadhead_miles", "deadhead",
-        )),
-        "driver_pay":         _as_float(_first(
-            rec, "driver_pay", "driverPay", "driver_rate", "driverRate",
+        "dispatcher_name":    _as_text(_first(
+            rec, "dispatcher__full_name",
+            "dispatcher", "dispatcher_name",
+        ), "name", "full_name", "username"),
+        "loaded_miles":       loaded,
+        "empty_miles":        empty,
+        "driver_pay":         _money(_first(
+            {**rec, "trip_pay": trip.get("total_load_pay")},
+            "trip_pay", "driver_pay", "driverPay", "driver_rate",
         )),
         "payload":            rec,
     }

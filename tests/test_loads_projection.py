@@ -130,6 +130,66 @@ async def test_manual_loads_are_never_touched(db):
 
 
 @pytest.mark.asyncio
+async def test_real_openapi_shape_end_to_end(db):
+    """The shape the Datatruck openapi actually returns (verified against
+    the docs 2026-07-03): Django-style compound keys + a nested trip +
+    stops with location objects.  Normalizer → projector → full load."""
+    from capabilities.integrations.datatruck.sync import _norm_order
+
+    raw = {
+        "id": 20576,
+        "order_number": "20576",
+        "status": "In Progress",
+        "total_pay": "3400.00",
+        "load_pay": "3200.00",
+        "total_other_pay": "200.00",
+        "total_miles": "1150.0",
+        "customer__company_name": "JBC LOGISTICS INC",
+        "dispatcher__full_name": "Jasur",
+        "mc_number__company_name": "Premier Trucking Group",
+        "pickup_time": "2026-07-01T08:30:00Z",
+        "delivery_time": "2026-07-03T14:00:00Z",
+        "trip": {
+            "driver__full_name": "Evariste M",
+            "truck__unit_number": "513416",
+            "mile": "1000.0",
+            "empty_mile": "150.0",
+            "total_load_pay": "950.00",
+            "status": "In Progress",
+        },
+        "stops": [
+            {"stop_type": "pickup",
+             "location": {"city": "Erda", "state": "UT", "zip_code": "84074"}},
+            {"stop_type": "delivery",
+             "location": {"city": "Coppell", "state": "TX", "zip_code": "75019"}},
+        ],
+    }
+    row = _norm_order(raw)
+    assert row["customer"] == "JBC LOGISTICS INC"
+    assert row["dispatcher_name"] == "Jasur"
+    assert row["driver_name"] == "Evariste M"
+    assert row["truck_unit"] == "513416"
+    assert row["total_rate"] == 3400.0          # total_pay = revenue
+    assert row["loaded_miles"] == 1000.0 and row["empty_miles"] == 150.0
+    assert row["driver_pay"] == 950.0
+    assert row["pickup_date"] == "2026-07-01"   # datetime trimmed to day
+    assert row["origin"] == "Erda, UT" and row["destination"] == "Coppell, TX"
+
+    acct = await db.create_account("Real Shape Co")
+    n = await db.project_external_loads(acct.id, [row])
+    assert n == 1
+    l = (await db.list_loads(acct.id))[0]
+    assert l.status == "in_transit"             # "In Progress" mapped
+    assert l.customer == "JBC LOGISTICS INC"
+    assert l.vehicle_unit == "513416"           # direct unit, no roster needed
+    assert l.driver_name == "Evariste M"
+    assert l.total_rate == 3400.0
+    assert l.loaded_miles == 1000.0 and l.empty_miles == 150.0
+    assert l.pickup_location == "Erda, UT"
+    assert l.delivery_date == "2026-07-03"
+
+
+@pytest.mark.asyncio
 async def test_unknown_status_and_unmatched_driver_degrade_gracefully(db):
     acct = await db.create_account("L2 Fleet 5")
     n = await db.project_external_loads(acct.id, [

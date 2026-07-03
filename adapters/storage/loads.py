@@ -155,7 +155,8 @@ _DT_STATUS_MAP = {
     "upcoming": "upcoming", "pending": "upcoming", "planned": "upcoming",
     "booked": "upcoming", "new": "upcoming",
     "dispatched": "dispatched", "assigned": "dispatched",
-    "in_transit": "in_transit", "enroute": "in_transit",
+    "in_transit": "in_transit", "in_progress": "in_transit",
+    "enroute": "in_transit",
     "en_route": "in_transit", "picked_up": "in_transit",
     "delivered": "delivered", "completed": "delivered", "done": "delivered",
     "canceled": "canceled", "cancelled": "canceled", "void": "canceled",
@@ -459,7 +460,11 @@ class LoadsMixin(_MixinBase):
                 )
                 if not dname:
                     dname = str(r.get("driver_name") or "")
-                vunit = truck_units.get(str(r.get("truck_external_id") or ""), "")
+                # The openapi order carries the truck UNIT directly
+                # (trip.truck__unit_number); the roster lookup by external
+                # id stays as the fallback for older/other shapes.
+                vunit = str(r.get("truck_unit") or "") or \
+                    truck_units.get(str(r.get("truck_external_id") or ""), "")
                 tunit = trailer_units.get(str(r.get("trailer_external_id") or ""), "")
                 incoming = {
                     "customer":          r.get("customer"),
