@@ -23,7 +23,7 @@ from capabilities.permissions.roles import (
     validate_role_change, role_rank, ASSIGNABLE_ROLES_PATTERN,
     role_supports_manager, role_tier,
 )
-from .service import _archive_driver_folders
+from .service import _archive_driver_folders, member_lifecycle
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +105,7 @@ async def list_users(
                 "trucks": truck_map.get(u.id, [u.truck_num] if u.truck_num else []),
                 "allowed_companies": company_map.get(u.id, []),
                 "is_active": u.is_active,
+                "lifecycle": member_lifecycle(u),
                 "email": u.email,
                 "language": u.language,
                 "timezone": u.timezone,

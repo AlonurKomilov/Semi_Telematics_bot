@@ -281,8 +281,15 @@ const userColumns: AnyColumn[] = [
     },
   },
   { key: 'email', label: 'Email', filterable: true },
-  { key: 'is_active', label: 'Status', render: (v) => <StatusBadge status={v ? 'active' : 'inactive'} /> },
+  { key: 'lifecycle', label: 'Status', filterable: true, render: (v) => <StatusBadge status={String(v || 'active')} /> },
 ];
+
+// Derived sign-in lifecycle from the members API ("pending" = provisioned
+// but can't sign in yet — imported from an integration or added by a
+// manager; flips to "active" when Telegram is linked or a password is set).
+// Local extension: fold into types/index.ts AdminUser once it's free to edit.
+type MemberLifecycle = 'active' | 'pending' | 'inactive';
+type MemberRow = AdminUser & { lifecycle?: MemberLifecycle };
 
 type DetailTab = 'profile' | 'access' | 'settings';
 
@@ -713,6 +720,7 @@ export default function TeamManagement() {
   };
 
   const activeCount = users.filter(u => u.is_active).length;
+  const pendingCount = users.filter(u => (u as MemberRow).lifecycle === 'pending').length;
 
   // Clear success messages after 3s
   useEffect(() => {
@@ -811,6 +819,14 @@ export default function TeamManagement() {
               </button>
             );
           })}
+          {pendingCount > 0 && (
+            <span
+              className={`px-2.5 py-1 rounded-full text-xs font-medium border ${toneClasses('info')}`}
+              title="Provisioned members who haven't signed in yet (no Telegram link or password)"
+            >
+              Pending sign-in <span className="opacity-60">{pendingCount}</span>
+            </span>
+          )}
         </div>
       </div>
 
@@ -920,7 +936,7 @@ export default function TeamManagement() {
                         <Row label="Language" value={(selected.language || '—').toUpperCase()} />
                         <Row
                           label="Status"
-                          value={selected.is_active ? 'Active' : 'Inactive'}
+                          value={(selected as MemberRow).lifecycle === 'pending' ? 'Pending sign-in' : selected.is_active ? 'Active' : 'Inactive'}
                           status={selected.is_active ? 'ok' : 'danger'}
                         />
                       </dl>

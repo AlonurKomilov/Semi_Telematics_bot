@@ -46,3 +46,20 @@ async def _archive_driver_folders(
                 user_id, company_code, e,
             )
     return archived
+
+
+def member_lifecycle(u) -> str:
+    """Derived sign-in lifecycle for a member row.
+
+    ``pending``  — provisioned (imported from an integration or added by a
+                   manager) but CANNOT sign in yet: no linked Telegram and
+                   no password.  Flips to ``active`` automatically the
+                   moment either login identity exists.
+    ``active``   — has a login identity.
+    ``inactive`` — deactivated (wins over everything).
+    """
+    if not u.is_active:
+        return "inactive"
+    if u.telegram_id is not None or getattr(u, "password_hash", None):
+        return "active"
+    return "pending"
