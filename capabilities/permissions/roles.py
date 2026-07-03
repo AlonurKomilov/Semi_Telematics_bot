@@ -93,6 +93,11 @@ class FeatureSet:
     can_manage_users: bool = False   # /users, /setrole, /remove
     can_manage_companies: bool = False    # /addcompany, /removecompany
     can_manage_vehicles: bool = False     # add/edit/remove vehicles in the registry
+    # Loads (the load/shipment feature) — view-all vs own-scope vs manage,
+    # the same split work orders / payroll use.
+    can_loads_all: bool = False       # view every load
+    can_loads_own: bool = False       # view own loads (driver scope)
+    can_manage_loads: bool = False    # add/edit/remove loads
     can_manage_account: bool = False # /account settings (general config)
     # Settings components — granular delegation flags so account
     # administration can be split across roles (each Settings component
@@ -169,6 +174,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_vehicle_all=True, can_vehicle_vehicle=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=True, can_manage_vehicles=True, can_manage_account=True,
+        can_loads_all=True, can_loads_own=True, can_manage_loads=True,
         can_manage_permissions=True, can_manage_integrations=True,
         can_manage_storage=True, can_manage_work_hours=True,
         can_manage_scorecard_rules=True,   # Scorecards' admin component (owners delegate via the matrix)
@@ -199,6 +205,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_vehicle_all=True, can_vehicle_vehicle=True,
         can_invite=True, can_manage_users=True,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
+        can_loads_all=True, can_loads_own=True, can_manage_loads=True,
         can_manage_permissions=False, can_manage_integrations=False,
         can_manage_storage=False, can_manage_work_hours=False,
         can_geofence_all=True, can_geofence_vehicle=True,
@@ -227,6 +234,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_vehicle_all=True, can_vehicle_vehicle=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
+        can_loads_all=True, can_loads_own=True,
         can_geofence_all=True, can_geofence_vehicle=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
@@ -275,6 +283,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_faults=False, can_fuel=True,
         can_efficiency=False, can_health=False,
         can_vehicle_all=True, can_vehicle_vehicle=True,
+        can_loads_all=True, can_loads_own=True, can_manage_loads=True,
         # Dispatchers need the geofence and safety-event features (granted
         # below) to react to deviations mid-shift.  Those alerts surface in the
         # always-on Alerts inbox every role has — the features decide WHICH
@@ -335,6 +344,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_faults=False, can_fuel=False,
         can_efficiency=False, can_health=False,
         can_vehicle_all=False, can_vehicle_vehicle=True,
+        can_loads_own=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
         can_geofence_all=False, can_geofence_vehicle=True,
@@ -1052,6 +1062,9 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_manage_users": "manage users",
     "can_manage_companies": "manage companies",
     "can_manage_vehicles": "manage vehicles",
+    "can_loads_all": "loads (all)",
+    "can_loads_own": "own loads",
+    "can_manage_loads": "manage loads",
     "can_manage_account": "account settings",
     "can_manage_permissions": "role permissions matrix",
     "can_manage_integrations": "telematics integrations",

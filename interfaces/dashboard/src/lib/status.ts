@@ -79,6 +79,11 @@ const STATUS_TONE: Record<string, Tone> = {
   overdue: 'danger', failed: 'danger', error: 'danger',
   completed: 'ok', done: 'ok', resolved: 'ok', paid: 'ok',
   cancelled: 'neutral', canceled: 'neutral', draft: 'neutral',
+  // Load lifecycle (the Loads feature): upcoming/dispatched are planned
+  // states (info), in_transit is actively earning (ok), delivered lands
+  // as done (ok), unpaid flags follow-up (warn).
+  upcoming: 'info', dispatched: 'info', in_transit: 'ok',
+  delivered: 'ok', unpaid: 'warn',
   // Priority / severity
   low: 'neutral', medium: 'info', high: 'warn', critical: 'danger',
   // Generic health

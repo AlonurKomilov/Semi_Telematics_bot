@@ -87,6 +87,7 @@ from .carrier_directory import CarrierDirectoryMixin
 from .account_integrations import AccountIntegrationsMixin, AccountIntegration  # noqa: F401
 from .datatruck import DatatruckStorageMixin
 from .vehicles_registry import VehiclesRegistryMixin, Vehicle  # noqa: F401
+from .loads import LoadsMixin, Load  # noqa: F401
 from .platform import PlatformDB
 
 
@@ -135,6 +136,7 @@ class Database(
     CarrierDirectoryMixin,
     DatatruckStorageMixin,
     VehiclesRegistryMixin,
+    LoadsMixin,
     _DatabaseCore,
 ):
     """Async Postgres wrapper with typed helpers.

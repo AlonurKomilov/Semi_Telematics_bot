@@ -32,7 +32,7 @@
 import {
   LayoutDashboard, Bot, Bell, FileText, BookOpen,
   Map as MapIcon, Truck, MapPin, Wrench, Receipt, ClipboardCheck, ParkingSquare,
-  Route, Trophy, AlertTriangle, Camera,
+  Route, Trophy, AlertTriangle, Camera, Package,
   IdCard, GraduationCap, Link, UserPlus,
   Fuel, DollarSign, CreditCard,
   Users, Building2, Shield, Cloud, ClipboardList, Settings as SettingsIcon,
@@ -110,6 +110,10 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
 
   // ── DISPATCH (routing) ────────────────────────────────────────────
   { id: 'routes',  labelKey: 'nav.routes',  path: '/routes',  icon: Route,         modules: ['dispatch'], tier: 'role', permission: ['can_route_all', 'can_route_vehicle'], navGroup: 'operations' },
+  // Loads — the canonical load/shipment list.  Dispatch owns entry; owners,
+  // fleet and drivers read it (drivers see their own — scoped server-side),
+  // so it's shared-tier like Vehicles.
+  { id: 'loads',   labelKey: 'nav.loads',   path: '/loads',   icon: Package,       modules: ['dispatch'], tier: 'shared', permission: ['can_loads_all', 'can_loads_own'], navGroup: 'operations' },
   // Parking is a single-purpose feature (UNSAFE-parking events only — no
   // zones or general parking management), so it's role-tier like Safety
   // Events; the module list still lets dispatch + fleet surface it.

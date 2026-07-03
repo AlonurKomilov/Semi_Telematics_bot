@@ -5716,3 +5716,92 @@ async def migrate_application_drafts(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("139_loads")
+async def migrate_loads(conn) -> None:
+    """Create ``loads`` — the canonical load/shipment model (the Loads
+    feature).  OUR Postgres is the SSOT: dispatchers/operators enter loads
+    by hand (source='manual'), and a connected TMS (Datatruck) projects its
+    orders in (source='datatruck', keyed by external_ref) — same inversion
+    as the vehicles registry and work-orders module.
+
+    ``field_provenance`` + ``source``/``external_ref`` ship NOW so the
+    Datatruck projection phase is code-only (no second migration).  Driver /
+    dispatcher link to ``users`` ids with a free-text name fallback for
+    people who aren't 4truck users yet.
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS loads (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id         INTEGER NOT NULL,
+            load_number        TEXT    NOT NULL DEFAULT '',
+            status             TEXT    NOT NULL DEFAULT 'upcoming',
+            payment_status     TEXT    NOT NULL DEFAULT '',
+            customer           TEXT    NOT NULL DEFAULT '',
+            company_code       TEXT    NOT NULL DEFAULT '',
+            pickup_location    TEXT    NOT NULL DEFAULT '',
+            pickup_date        TEXT    NOT NULL DEFAULT '',
+            delivery_location  TEXT    NOT NULL DEFAULT '',
+            delivery_date      TEXT    NOT NULL DEFAULT '',
+            driver_user_id     INTEGER,
+            driver_name        TEXT    NOT NULL DEFAULT '',
+            dispatcher_user_id INTEGER,
+            dispatcher_name    TEXT    NOT NULL DEFAULT '',
+            vehicle_unit       TEXT    NOT NULL DEFAULT '',
+            trailer_unit       TEXT    NOT NULL DEFAULT '',
+            total_rate         REAL,
+            loaded_miles       REAL,
+            empty_miles        REAL,
+            driver_pay         REAL,
+            other_costs        REAL,
+            source             TEXT    NOT NULL DEFAULT 'manual',
+            external_ref       TEXT    NOT NULL DEFAULT '',
+            field_provenance   TEXT    NOT NULL DEFAULT '{}',
+            notes              TEXT    NOT NULL DEFAULT '',
+            is_active          INTEGER NOT NULL DEFAULT 1,
+            created_at         TEXT    NOT NULL DEFAULT '',
+            updated_at         TEXT    NOT NULL DEFAULT ''
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_loads_account_status "
+        "ON loads(account_id, status)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_loads_account_pickup "
+        "ON loads(account_id, pickup_date DESC)"
+    )
+    # One row per synced TMS order; manual rows have external_ref='' and
+    # stay outside the constraint (partial index).
+    await conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_loads_external_ref "
+        "ON loads(account_id, source, external_ref) WHERE external_ref <> ''"
+    )
+    await conn.commit()
+    logger.info("Migration 139: loads table created")
+
+    # RLS — tenant-scoped, same gated pattern as 131/134/138.
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 139: ENABLE_RLS not set; RLS policy skipped")
+        return
+    try:
+        await conn.execute("ALTER TABLE loads ENABLE ROW LEVEL SECURITY")
+        await conn.execute("ALTER TABLE loads FORCE ROW LEVEL SECURITY")
+        await conn.execute("DROP POLICY IF EXISTS tenant_isolation ON loads")
+        await conn.execute(
+            """
+            CREATE POLICY tenant_isolation ON loads
+            USING       (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+            """
+        )
+        await conn.commit()
+        logger.info("Migration 139: tenant_isolation RLS applied to loads")
+    except Exception as e:
+        logger.error("Migration 139: RLS apply on loads failed — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

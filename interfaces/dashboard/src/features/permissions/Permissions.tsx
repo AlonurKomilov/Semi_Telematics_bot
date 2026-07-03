@@ -139,6 +139,9 @@ const PERM_GROUPS: PermGroup[] = [
     title: 'Dispatch',
     flags: [
       { allKey: 'can_route_all', vehicleKey: 'can_route_vehicle', label: 'Routes', scoped: true },
+      { key: 'can_loads_all', label: 'Loads (all)', description: 'See every load in the account' },
+      { key: 'can_loads_own', label: 'Loads (own)', indented: true, description: 'See loads assigned to the user (driver scope)' },
+      { key: 'can_manage_loads', label: 'Manage Loads', indented: true, description: 'Add / edit / remove loads' },
     ],
   },
   {
