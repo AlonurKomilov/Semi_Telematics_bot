@@ -19,6 +19,7 @@ from interfaces.api.deps import (
     get_platform_db, paginate, resolve_user_id,
 )
 from adapters.storage.models import Role
+from infra.platform import get_tenant_db
 from capabilities.permissions.roles import (
     validate_role_change, role_rank, ASSIGNABLE_ROLES_PATTERN,
     role_supports_manager, role_tier,
@@ -106,6 +107,8 @@ async def list_users(
                 "allowed_companies": company_map.get(u.id, []),
                 "is_active": u.is_active,
                 "lifecycle": member_lifecycle(u),
+                "samsara_driver_id": getattr(u, "samsara_driver_id", None),
+                "datatruck_driver_id": getattr(u, "datatruck_driver_id", None),
                 "email": u.email,
                 "language": u.language,
                 "timezone": u.timezone,
@@ -320,6 +323,139 @@ async def update_user_manager(
 # owner's password AND a 6-digit code emailed to them.  A co-owner gets
 # role='owner' but is_primary_owner=0 — full owner access, but they cannot
 # create/remove owners or do destructive account actions.
+
+# ── Integration links (assign synced people to members) ─────────
+#
+# The manual counterpart to the automatic matcher: whoever holds
+# can_manage_users can LINK a synced Datatruck driver / a dispatcher name
+# from loads onto an existing member (continuing that person's data), or
+# provision them as a PENDING member (no login until they sign in).
+
+
+@router.get("/users/integration-links")
+async def integration_links(
+    user: dict = Depends(require_permission("can_manage_users")),
+):
+    """What's synced but not linked to a member yet: the Datatruck driver
+    import plan (link/create/review buckets) + unlinked dispatcher/driver
+    names from loads."""
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    return {
+        "datatruck_drivers": await tenant.plan_datatruck_driver_import(account_id),
+        "load_names": await tenant.list_unlinked_load_people(account_id),
+    }
+
+
+class LinkDatatruckDriverBody(BaseModel):
+    external_id: str = ""       # '' unlinks
+
+
+@router.post("/users/{user_id}/link-datatruck-driver")
+async def link_datatruck_driver(
+    user_id: int,
+    body: LinkDatatruckDriverBody,
+    user: dict = Depends(require_permission("can_manage_users")),
+):
+    """Bind a synced Datatruck driver to this member + backfill their loads
+    (matched by the staged driver's display name)."""
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    try:
+        await tenant.link_datatruck_driver(account_id, user_id, body.external_id)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    backfilled = 0
+    if body.external_id:
+        staged_name = await tenant.get_datatruck_driver_name(
+            account_id, body.external_id,
+        )
+        if staged_name:
+            backfilled = await tenant.assign_load_person_by_name(
+                account_id, user_id, staged_name, field="driver",
+            )
+    return {"linked": bool(body.external_id), "loads_backfilled": backfilled}
+
+
+class LinkNameBody(BaseModel):
+    name: str
+    field: str = "dispatcher"   # 'dispatcher' | 'driver'
+
+
+@router.post("/users/{user_id}/link-load-name")
+async def link_load_name(
+    user_id: int,
+    body: LinkNameBody,
+    user: dict = Depends(require_permission("can_manage_users")),
+):
+    """Associate every unlinked load carrying this dispatcher/driver name
+    with the member (name association — the manager's explicit decision)."""
+    if body.field not in ("dispatcher", "driver"):
+        raise HTTPException(400, "field must be dispatcher or driver")
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    n = await tenant.assign_load_person_by_name(
+        account_id, user_id, body.name, field=body.field,
+    )
+    return {"loads_backfilled": n}
+
+
+class ProvisionBody(BaseModel):
+    kind: str                    # 'driver' | 'dispatcher'
+    name: str = Field(..., min_length=1, max_length=120)
+    email: str = Field("", max_length=200)
+    phone: str = Field("", max_length=40)
+    datatruck_driver_id: str = Field("", max_length=64)
+    load_name: str = Field("", max_length=120)
+
+
+@router.post("/users/provision")
+async def provision_member(
+    body: ProvisionBody,
+    user: dict = Depends(require_permission("can_manage_users")),
+):
+    """Create a PENDING member from a synced identity — stored in Team
+    Management now, activates when the person signs in (Telegram link or
+    email password).  Links + loads backfill happen in the same step."""
+    if body.kind not in ("driver", "dispatcher"):
+        raise HTTPException(400, "kind must be driver or dispatcher")
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    role = Role.DRIVER if body.kind == "driver" else Role.DISPATCHER
+    uid = await tenant.create_pending_user(
+        account_id, role, body.name.strip(), email=body.email or None,
+    )
+    if body.kind == "driver" and body.phone:
+        await tenant.update_driver_profile(uid, phone=body.phone)
+    backfilled = 0
+    if body.kind == "driver" and body.datatruck_driver_id:
+        try:
+            await tenant.link_datatruck_driver(
+                account_id, uid, body.datatruck_driver_id,
+            )
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+        staged_name = await tenant.get_datatruck_driver_name(
+            account_id, body.datatruck_driver_id,
+        )
+        if staged_name:
+            backfilled = await tenant.assign_load_person_by_name(
+                account_id, uid, staged_name, field="driver",
+            )
+    if body.load_name:
+        backfilled += await tenant.assign_load_person_by_name(
+            account_id, uid, body.load_name, field=body.kind,
+        )
+    return {"id": uid, "lifecycle": "pending", "loads_backfilled": backfilled}
+
 
 async def _require_primary_owner(user: dict, platform_db):
     """Resolve + assert the caller is the PRIMARY owner; return their row.

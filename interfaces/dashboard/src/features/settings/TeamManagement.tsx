@@ -289,7 +289,11 @@ const userColumns: AnyColumn[] = [
 // manager; flips to "active" when Telegram is linked or a password is set).
 // Local extension: fold into types/index.ts AdminUser once it's free to edit.
 type MemberLifecycle = 'active' | 'pending' | 'inactive';
-type MemberRow = AdminUser & { lifecycle?: MemberLifecycle };
+type MemberRow = AdminUser & {
+  lifecycle?: MemberLifecycle;
+  samsara_driver_id?: string | null;
+  datatruck_driver_id?: string | null;
+};
 
 type DetailTab = 'profile' | 'access' | 'settings';
 
@@ -830,6 +834,8 @@ export default function TeamManagement() {
         </div>
       </div>
 
+      <IntegrationLinksPanel members={users} onChanged={() => { void loadUsers(); }} />
+
       {loading && users.length === 0 ? <TableSkeleton rows={6} cols={5} /> : filteredUsers.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
@@ -933,6 +939,12 @@ export default function TeamManagement() {
                             </button>
                           )}
                         />
+                        {String(selected.role) === 'driver' && (
+                          <>
+                            <Row label="Samsara driver" value={(selected as MemberRow).samsara_driver_id || 'Not linked'} />
+                            <Row label="Datatruck driver" value={(selected as MemberRow).datatruck_driver_id || 'Not linked'} />
+                          </>
+                        )}
                         <Row label="Language" value={(selected.language || '—').toUpperCase()} />
                         <Row
                           label="Status"
@@ -1697,6 +1709,200 @@ function UserDrawerShell({
       >
         {children}
       </div>
+    </div>
+  );
+}
+
+
+// ── Integration links panel ─────────────────────────────────────
+//
+// Synced people not linked to a member yet: Datatruck drivers (from the
+// import plan) + dispatcher/driver names on loads.  Each row offers
+// "link to an existing member" (continues that person's data) or "add as
+// pending user" (no login until they sign in).  Lazy-fetched on expand.
+
+interface LinkPlanEntry {
+  external_id: string; name: string; phone: string; email: string;
+  matched_user_id?: number; matched_name?: string; reason?: string;
+}
+interface LinksResponse {
+  datatruck_drivers: {
+    create: LinkPlanEntry[]; link: LinkPlanEntry[]; review: LinkPlanEntry[];
+    counts: Record<string, number>;
+  };
+  load_names: {
+    dispatchers: { name: string; loads: number }[];
+    drivers: { name: string; loads: number }[];
+  };
+}
+
+const selectCls =
+  'bg-muted border border-border rounded px-2 py-1 text-xs text-foreground ' +
+  'focus:outline-none focus:border-ring';
+
+function IntegrationLinksPanel({ members, onChanged }: {
+  members: AdminUser[];
+  onChanged: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState<LinksResponse | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [picks, setPicks] = useState<Record<string, string>>({});
+
+  const load = useCallback(async () => {
+    try {
+      setData(await apiJSON<LinksResponse>('/admin/users/integration-links'));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not load links');
+    }
+  }, []);
+
+  useEffect(() => { if (open && !data) void load(); }, [open, data, load]);
+
+  const act = async (fn: () => Promise<unknown>, okMsg: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+      toast.success(okMsg);
+      setData(null);          // refetch on next render
+      void load();
+      onChanged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Action failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const linkDriver = (externalId: string, userId: number) =>
+    act(() => apiJSON(`/admin/users/${userId}/link-datatruck-driver`, {
+      method: 'POST', body: { external_id: externalId },
+    }), 'Driver linked');
+
+  const linkName = (name: string, field: 'driver' | 'dispatcher', userId: number) =>
+    act(() => apiJSON(`/admin/users/${userId}/link-load-name`, {
+      method: 'POST', body: { name, field },
+    }), 'Linked to member');
+
+  const provision = (body: Record<string, string>) =>
+    act(() => apiJSON('/admin/users/provision', { method: 'POST', body }),
+      'Added as pending member');
+
+  const drivers = members.filter((m) => String(m.role) === 'driver');
+  const total = data
+    ? data.datatruck_drivers.counts.create + data.datatruck_drivers.counts.link
+      + data.datatruck_drivers.counts.review
+      + data.load_names.dispatchers.length + data.load_names.drivers.length
+    : null;
+
+  const MemberPick = ({ id, pool }: { id: string; pool: AdminUser[] }) => (
+    <select
+      className={selectCls}
+      value={picks[id] ?? ''}
+      onChange={(e) => setPicks((p) => ({ ...p, [id]: e.target.value }))}
+      aria-label="Link to member"
+    >
+      <option value="">Link to member…</option>
+      {pool.map((m) => (
+        <option key={m.id} value={String(m.id)}>{m.display_name || `#${m.id}`}</option>
+      ))}
+    </select>
+  );
+
+  return (
+    <div className="mb-3 rounded-lg border border-border bg-card">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex w-full items-center justify-between px-3 py-2 text-sm text-foreground"
+      >
+        <span className="font-medium">
+          Not linked from integrations
+          {total != null && <span className="ml-1.5 text-muted-foreground">{total}</span>}
+        </span>
+        <span className="text-muted-foreground">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && !data && <p className="px-3 pb-3 text-xs text-muted-foreground">Loading…</p>}
+      {open && data && (
+        <div className="space-y-3 px-3 pb-3">
+          {(['link', 'create', 'review'] as const).map((bucket) =>
+            data.datatruck_drivers[bucket].map((d) => (
+              <div key={`dt-${d.external_id}`} className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-foreground">{d.name}</span>
+                <span className="text-muted-foreground">
+                  Datatruck driver{d.email ? ` · ${d.email}` : ''}
+                  {bucket === 'review' && d.reason ? ` · ⚠ ${d.reason}` : ''}
+                </span>
+                {bucket === 'link' && d.matched_user_id != null && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => linkDriver(d.external_id, d.matched_user_id!)}
+                    className="px-2 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50"
+                  >
+                    Link to {d.matched_name}
+                  </button>
+                )}
+                <MemberPick id={`dt-${d.external_id}`} pool={drivers} />
+                <button
+                  type="button"
+                  disabled={busy || !picks[`dt-${d.external_id}`]}
+                  onClick={() => linkDriver(d.external_id, Number(picks[`dt-${d.external_id}`]))}
+                  className="px-2 py-1 rounded border border-border text-foreground disabled:opacity-40"
+                >
+                  Link
+                </button>
+                {bucket !== 'link' && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => provision({
+                      kind: 'driver', name: d.name, email: d.email || '',
+                      phone: d.phone || '', datatruck_driver_id: d.external_id,
+                    })}
+                    className="px-2 py-1 rounded border border-border text-foreground disabled:opacity-40"
+                  >
+                    Add as pending
+                  </button>
+                )}
+              </div>
+            )),
+          )}
+          {([['dispatchers', 'dispatcher'], ['drivers', 'driver']] as const).map(([group, field]) =>
+            data.load_names[group].map((n) => (
+              <div key={`${field}-${n.name}`} className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-foreground">{n.name}</span>
+                <span className="text-muted-foreground">
+                  {field} on {n.loads} load{n.loads === 1 ? '' : 's'}
+                </span>
+                <MemberPick id={`${field}-${n.name}`} pool={field === 'driver' ? drivers : members} />
+                <button
+                  type="button"
+                  disabled={busy || !picks[`${field}-${n.name}`]}
+                  onClick={() => linkName(n.name, field, Number(picks[`${field}-${n.name}`]))}
+                  className="px-2 py-1 rounded border border-border text-foreground disabled:opacity-40"
+                >
+                  Link
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => provision({ kind: field, name: n.name, load_name: n.name })}
+                  className="px-2 py-1 rounded border border-border text-foreground disabled:opacity-40"
+                >
+                  Add as pending
+                </button>
+              </div>
+            )),
+          )}
+          {total === 0 && (
+            <p className="text-xs text-muted-foreground">
+              Everything synced is linked to a member. ✓
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

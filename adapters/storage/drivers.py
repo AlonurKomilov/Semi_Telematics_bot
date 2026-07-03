@@ -407,6 +407,43 @@ class DriverProfileMixin(_MixinBase):
                 (value, json.dumps(prov), user_id, account_id),
             )
 
+    async def link_datatruck_driver(
+        self, account_id: int, user_id: int, external_id: str,
+    ) -> None:
+        """Manually bind (or unbind, external_id='') a Datatruck driver to a
+        member — the Team Management escape hatch for links the automatic
+        CDL→email matcher correctly refused to guess.  A ref already bound
+        to ANOTHER member raises (one person, one link)."""
+        ref = (external_id or "").strip()
+        if ref:
+            cur = await self._db.execute(
+                "SELECT id FROM users WHERE account_id = ? "
+                "AND datatruck_driver_id = ? AND id <> ?",
+                (account_id, ref, user_id),
+            )
+            if await cur.fetchone():
+                raise ValueError(
+                    "that Datatruck driver is already linked to another member",
+                )
+        async with self.transaction():
+            await self._db.execute(
+                "UPDATE users SET datatruck_driver_id = ? "
+                "WHERE id = ? AND account_id = ?",
+                (ref or None, user_id, account_id),
+            )
+
+    async def get_datatruck_driver_name(
+        self, account_id: int, external_id: str,
+    ) -> str:
+        """Display name of a staged Datatruck driver (for loads backfill)."""
+        cur = await self._db.execute(
+            "SELECT display_name FROM datatruck_drivers "
+            "WHERE account_id = ? AND external_id = ?",
+            (account_id, external_id),
+        )
+        row = await cur.fetchone()
+        return str(row[0] or "") if row else ""
+
     async def _driver_match_state(self, account_id: int):
         """The in-memory match indexes shared by the ongoing projection and
         the one-time import: the decrypted roster plus lookups by existing

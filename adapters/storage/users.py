@@ -105,6 +105,32 @@ class UsersMixin:
             )
         await self._db.commit()
 
+    async def create_pending_user(
+        self, account_id: int, role: Role, display_name: str,
+        email: str | None = None,
+    ) -> int:
+        """Provision a member with NO login identity — telegram NULL, no
+        password — so Team Management shows them as "pending" until they
+        sign in (link Telegram via invite, or set an email password).
+        Used by the integration-linking helper ("add as pending user") so
+        synced drivers/dispatchers continue THEIR data instead of a fresh
+        account being created later.  Returns the new user id."""
+        now = self._now()
+        cur = await self._db.execute(
+            """INSERT INTO users
+               (telegram_id, account_id, role, display_name, email, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                None, account_id,
+                role.value if hasattr(role, "value") else str(role),
+                display_name,
+                (email or "").lower().strip() or None,
+                now,
+            ),
+        )
+        await self._db.commit()
+        return int(cur.lastrowid)
+
     async def create_user_with_email(
         self, email: str, password_hash: str, account_id: int,
         role: Role = Role.FLEET,

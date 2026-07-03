@@ -179,6 +179,13 @@ def _map_load_status(raw: Any) -> tuple[str, str]:
     return _DT_STATUS_MAP.get(s, "upcoming"), ""
 
 
+def _norm_person(v: str) -> str:
+    """Normalize a person name for ASSOCIATION matching (lower, collapse
+    spaces).  Used only to attach user ids to loads when the name is
+    unique in the account — never to create or merge identities."""
+    return re.sub(r"\s+", " ", str(v or "").lower()).strip()
+
+
 def _norm_company(v: str) -> str:
     """Normalize a company name for matching: lowercase, alnum+space only,
     common suffixes dropped ("Premier Trucking Group Inc" == "premier
@@ -408,6 +415,40 @@ class LoadsMixin(_MixinBase):
                 (value, json.dumps(prov), self._now(), load_id, account_id),
             )
 
+    async def assign_load_person_by_name(
+        self, account_id: int, user_id: int, name: str, *, field: str,
+    ) -> int:
+        """Backfill ``driver_user_id`` / ``dispatcher_user_id`` on every load
+        carrying ``name`` that isn't linked yet — the Team Management manual
+        link action.  Returns rows updated."""
+        assert field in ("driver", "dispatcher")
+        cur = await self._db.execute(
+            f"UPDATE loads SET {field}_user_id = ?, updated_at = ? "
+            f"WHERE account_id = ? AND {field}_user_id IS NULL "
+            f"AND LOWER({field}_name) = LOWER(?)",
+            (user_id, self._now(), account_id, (name or "").strip()),
+        )
+        await self._db.commit()
+        return getattr(cur, "rowcount", 0) or 0
+
+    async def list_unlinked_load_people(self, account_id: int) -> dict:
+        """Distinct dispatcher / driver NAMES on loads with no user link —
+        feeds the Team Management "not linked yet" panel."""
+        out: dict = {}
+        for field in ("dispatcher", "driver"):
+            cur = await self._db.execute(
+                f"SELECT {field}_name, COUNT(*) FROM loads "
+                f"WHERE account_id = ? AND is_active = 1 "
+                f"AND {field}_user_id IS NULL AND {field}_name <> '' "
+                f"GROUP BY {field}_name ORDER BY COUNT(*) DESC",
+                (account_id,),
+            )
+            out[field + "s"] = [
+                {"name": str(r[0]), "loads": int(r[1])}
+                for r in await cur.fetchall()
+            ]
+        return out
+
     # ── Integration projection (TMS orders → loads) ────────────────
 
     async def project_external_loads(
@@ -473,6 +514,35 @@ class LoadsMixin(_MixinBase):
         driver_by_ref = {
             str(r[1]): (int(r[0]), str(r[2] or "")) for r in await cur.fetchall()
         }
+        # Name → user ASSOCIATION maps (unique names only — a duplicated
+        # display name is ambiguous and never guessed).  Drivers match
+        # against driver-role users; dispatchers against any active member.
+        cur = await self._db.execute(
+            "SELECT id, display_name, role FROM users "
+            "WHERE account_id = ? AND is_active = 1",
+            (account_id,),
+        )
+        driver_by_name: dict[str, int] = {}
+        anyone_by_name: dict[str, int] = {}
+        _ddupes: set[str] = set()
+        _adupes: set[str] = set()
+        for r in await cur.fetchall():
+            n = _norm_person(r[1])
+            if not n:
+                continue
+            if n in anyone_by_name:
+                _adupes.add(n)
+            else:
+                anyone_by_name[n] = int(r[0])
+            if str(r[2]) == "driver":
+                if n in driver_by_name:
+                    _ddupes.add(n)
+                else:
+                    driver_by_name[n] = int(r[0])
+        for n in _ddupes:
+            driver_by_name.pop(n, None)
+        for n in _adupes:
+            anyone_by_name.pop(n, None)
         # Existing synced loads by external_ref.
         cur = await self._db.execute(
             f"{_SELECT} WHERE account_id = ? AND source = ? AND external_ref <> ''",
@@ -501,6 +571,10 @@ class LoadsMixin(_MixinBase):
                 )
                 if not dname:
                     dname = str(r.get("driver_name") or "")
+                if duid is None and dname:
+                    duid = driver_by_name.get(_norm_person(dname))
+                dpname = str(r.get("dispatcher_name") or "")
+                dpuid = anyone_by_name.get(_norm_person(dpname)) if dpname else None
                 # The openapi order carries the truck UNIT directly
                 # (trip.truck__unit_number); the roster lookup by external
                 # id stays as the fallback for older/other shapes.
@@ -550,7 +624,7 @@ class LoadsMixin(_MixinBase):
                             str(r.get("destination") or ""),
                             str(r.get("delivery_date") or ""),
                             duid, dname,
-                            None, str(r.get("dispatcher_name") or ""),
+                            dpuid, str(r.get("dispatcher_name") or ""),
                             vunit, tunit,
                             r.get("total_rate"), r.get("loaded_miles"),
                             r.get("empty_miles"), r.get("driver_pay"),
@@ -600,10 +674,12 @@ class LoadsMixin(_MixinBase):
                 if dname and existing.driver_name != dname:
                     sets.append("driver_name = ?")
                     params.append(dname)
-                dpname = str(r.get("dispatcher_name") or "")
                 if dpname and existing.dispatcher_name != dpname:
                     sets.append("dispatcher_name = ?")
                     params.append(dpname)
+                if dpuid is not None and existing.dispatcher_user_id != dpuid:
+                    sets.append("dispatcher_user_id = ?")
+                    params.append(dpuid)
                 if ccode and existing.company_code != ccode:
                     sets.append("company_code = ?")
                     params.append(ccode)
