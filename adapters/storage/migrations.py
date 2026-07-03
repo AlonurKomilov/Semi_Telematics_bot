@@ -5872,3 +5872,30 @@ async def migrate_loads_seq_and_driver_pay_fix(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("141_vehicles_datatruck_ref")
+async def migrate_vehicles_datatruck_ref(conn) -> None:
+    """Add ``vehicles.datatruck_ref`` — the Datatruck-side asset binding,
+    completing the uniform identity pattern (our stable id + one link column
+    per integration, like ``telematics_ref`` / ``users.datatruck_driver_id``).
+
+    Match ladder becomes ref-first: an existing ref decides identity
+    outright on every re-sync; the VIN → plate → unique-unit natural keys
+    remain the DISCOVERY fallback that makes the first link.  No backfill —
+    refs stamp organically as the next syncs match rows."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(vehicles)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "datatruck_ref" not in cols:
+            await conn.execute(
+                "ALTER TABLE vehicles ADD COLUMN datatruck_ref TEXT NOT NULL DEFAULT ''"
+            )
+            await conn.commit()
+            logger.info("Migration 141: added vehicles.datatruck_ref")
+    except Exception as e:
+        logger.error("Migration 141 failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

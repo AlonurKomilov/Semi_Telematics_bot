@@ -167,6 +167,8 @@ class Vehicle:
     updated_at: str
     # {spec_field: source} — who last authoritatively set each spec field.
     field_provenance: dict = field(default_factory=dict)
+    # Datatruck-side asset binding (like telematics_ref for Samsara).
+    datatruck_ref: str = ""
 
 
 def _parse_provenance(raw: Any) -> dict:
@@ -188,13 +190,15 @@ def _row_to_vehicle(r) -> Vehicle:
         notes=r[13] or "", is_active=bool(r[14]),
         created_at=r[15] or "", updated_at=r[16] or "",
         field_provenance=_parse_provenance(r[17] if len(r) > 17 else None),
+        datatruck_ref=(r[18] or "") if len(r) > 18 else "",
     )
 
 
 _SELECT = (
     "SELECT id, account_id, company_code, unit_number, vehicle_type, vin, "
     "plate_number, make, model, year, status, source, telematics_ref, "
-    "notes, is_active, created_at, updated_at, field_provenance FROM vehicles"
+    "notes, is_active, created_at, updated_at, field_provenance, "
+    "datatruck_ref FROM vehicles"
 )
 
 
@@ -402,6 +406,10 @@ class VehiclesRegistryMixin(_MixinBase):
         precedence = await recon.get_precedence(self, account_id, "vehicle")
         existing = await self.list_vehicles(account_id)
         by_vin, by_plate, by_unit = _index_existing(existing)
+        # Ref-first: a stamped datatruck_ref decides identity outright on
+        # every re-sync; the natural keys below are DISCOVERY for the first
+        # link (after which the ref takes over).
+        by_dt_ref = {v.datatruck_ref: v for v in existing if v.datatruck_ref}
 
         now = self._now()
         written = 0
@@ -412,7 +420,10 @@ class VehiclesRegistryMixin(_MixinBase):
                 if not unit:
                     continue
                 vin = str(r.get("vin") or "").strip()
-                match, _how = _match_existing(r, by_vin, by_plate, by_unit)
+                ref = str(r.get("external_id") or "").strip()
+                match = by_dt_ref.get(ref) if ref else None
+                if match is None:
+                    match, _how = _match_existing(r, by_vin, by_plate, by_unit)
 
                 if match is not None:
                     mr = recon.merge_fields(
@@ -425,9 +436,13 @@ class VehiclesRegistryMixin(_MixinBase):
                     updates, prov, conflicts, cleared = (
                         mr.updates, mr.provenance, mr.conflicts, mr.cleared,
                     )
-                    if updates:
+                    stamp_ref = ref and match.datatruck_ref != ref
+                    if updates or stamp_ref:
                         sets = [f"{f} = ?" for f in _SPEC_FILL if f in updates]
                         params = [updates[f] for f in _SPEC_FILL if f in updates]
+                        if stamp_ref:
+                            sets.append("datatruck_ref = ?")
+                            params.append(ref)
                         sets.append("field_provenance = ?")
                         params.append(json.dumps(prov))
                         sets.append("updated_at = ?")
@@ -449,8 +464,8 @@ class VehiclesRegistryMixin(_MixinBase):
                        (account_id, company_code, unit_number, vehicle_type,
                         vin, plate_number, make, model, year, status, source,
                         telematics_ref, notes, is_active, field_provenance,
-                        created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                        datatruck_ref, created_at, updated_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)
                        ON CONFLICT(account_id, company_code, unit_number)
                        DO NOTHING""",
                     (
@@ -459,7 +474,7 @@ class VehiclesRegistryMixin(_MixinBase):
                         str(r.get("plate_number") or ""),
                         str(r.get("make") or ""), str(r.get("model") or ""),
                         r.get("year"), str(r.get("status") or "active"),
-                        source, "", "", json.dumps(prov), now, now,
+                        source, "", "", json.dumps(prov), ref, now, now,
                     ),
                 )
                 written += 1
@@ -506,6 +521,7 @@ class VehiclesRegistryMixin(_MixinBase):
         """
         existing = await self.list_vehicles(account_id)
         by_vin, by_plate, by_unit = _index_existing(existing)
+        by_dt_ref = {v.datatruck_ref: v for v in existing if v.datatruck_ref}
         new: list[dict] = []
         enrich: list[dict] = []
         review: list[dict] = []
@@ -514,7 +530,9 @@ class VehiclesRegistryMixin(_MixinBase):
             unit = str(r.get("unit_number") or "").strip()
             if not unit:
                 continue
-            match, how = _match_existing(r, by_vin, by_plate, by_unit)
+            ref = str(r.get("external_id") or "").strip()
+            match, how = (by_dt_ref[ref], "ref") if ref and ref in by_dt_ref \
+                else _match_existing(r, by_vin, by_plate, by_unit)
             if match is not None:
                 fills = [
                     f for f in _SPEC_FILL

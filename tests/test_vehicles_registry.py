@@ -594,6 +594,53 @@ async def test_projection_ambiguous_unit_inserts_rather_than_guess(db):
     assert any(v.source == "datatruck" and v.vin == "NEWVIN" for v in rows)
 
 
+# ── Datatruck ref binding (ref-first identity ladder) ─────────
+
+
+@pytest.mark.asyncio
+async def test_projection_stamps_ref_then_matches_ref_first(db):
+    """First sync DISCOVERS the row by VIN and stamps datatruck_ref; from
+    then on the ref decides identity outright — even if the natural keys
+    drift upstream, the same asset updates in place (no duplicate, no
+    re-guessing)."""
+    await db.upsert_from_integration(
+        42, [{"company_code": "PTG", "unit_number": "247",
+              "vin": "VREF1", "telematics_ref": "sam_1"}], source="samsara",
+    )
+    # Discovery pass: VIN match → ref stamped.
+    n = await db.project_external_vehicles(
+        42, [{"external_id": "T9", "unit_number": "247", "vin": "VREF1",
+              "make": "Volvo"}],
+        vehicle_type="truck", source="datatruck",
+    )
+    assert n == 1
+    v = (await db.list_vehicles(42))[0]
+    assert v.datatruck_ref == "T9"
+    assert v.make == "Volvo"
+
+    # Upstream corrects the VIN — the ref still wins (identity kept),
+    # and the VIN flows as ordinary datatruck-owned enrichment.
+    await db.project_external_vehicles(
+        42, [{"external_id": "T9", "unit_number": "247", "vin": "VREF1-FIXED"}],
+        vehicle_type="truck", source="datatruck",
+    )
+    rows = await db.list_vehicles(42)
+    assert len(rows) == 1                    # no duplicate row
+    assert rows[0].vin == "VREF1-FIXED"
+    assert rows[0].datatruck_ref == "T9"
+
+
+@pytest.mark.asyncio
+async def test_projection_insert_stamps_ref(db):
+    """A net-new Datatruck asset lands with its ref bound from birth."""
+    await db.project_external_vehicles(
+        42, [{"external_id": "TR7", "unit_number": "SS006109", "vin": "3H3X"}],
+        vehicle_type="trailer", source="datatruck",
+    )
+    v = (await db.list_vehicles(42, vehicle_type="trailer"))[0]
+    assert v.datatruck_ref == "TR7"
+
+
 # ── Preview / plan (dry-run reconciliation) ───────────────────
 
 
