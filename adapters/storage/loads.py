@@ -18,8 +18,14 @@ RLS when ``ENABLE_RLS=1``).
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional
+
+from capabilities.integrations import reconciliation as recon
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     class _MixinBase:
@@ -86,8 +92,17 @@ _SELECT = (
     "delivery_date, driver_user_id, driver_name, dispatcher_user_id, "
     "dispatcher_name, vehicle_unit, trailer_unit, total_rate, loaded_miles, "
     "empty_miles, driver_pay, other_costs, source, external_ref, notes, "
-    "is_active, created_at, updated_at FROM loads"
+    "is_active, created_at, updated_at, field_provenance FROM loads"
 )
+
+
+def _parse_load_provenance(raw: Any) -> dict:
+    if isinstance(raw, dict):
+        return raw
+    try:
+        return json.loads(raw) if raw else {}
+    except (TypeError, ValueError):
+        return {}
 
 
 def _row_to_load(r) -> Load:
@@ -105,7 +120,80 @@ def _row_to_load(r) -> Load:
         source=r[22] or "manual", external_ref=r[23] or "",
         notes=r[24] or "", is_active=bool(r[25]),
         created_at=r[26] or "", updated_at=r[27] or "",
+        field_provenance=_parse_load_provenance(r[28] if len(r) > 28 else None),
     )
+
+
+# ── Integration reconciliation (Datatruck projection) ──────────────────
+#
+# A synced load merges through the shared hub: the TMS owns its load data
+# (owner_fallback='datatruck' on rows it created), an operator's hand-edit
+# PINS the field ('manual' beats every integration), and a genuine
+# disagreement is recorded for the review panel.  ``status`` is deliberately
+# NOT reconciled — the TMS is authoritative on a synced load's lifecycle
+# (that's the point of syncing), so it refreshes on every pass.
+LOAD_RECON_FIELDS = (
+    "customer", "pickup_location", "pickup_date",
+    "delivery_location", "delivery_date",
+    "total_rate", "loaded_miles", "empty_miles", "driver_pay",
+)
+DEFAULT_LOAD_PRECEDENCE = {f: ("datatruck",) for f in LOAD_RECON_FIELDS}
+_LOAD_FIELD_LABELS = {
+    "customer": "Customer", "pickup_location": "Pickup",
+    "pickup_date": "Pickup date", "delivery_location": "Delivery",
+    "delivery_date": "Delivery date", "total_rate": "Rate",
+    "loaded_miles": "Loaded miles", "empty_miles": "Empty miles",
+    "driver_pay": "Driver pay",
+}
+_LOAD_NUMERIC_FIELDS = frozenset({
+    "total_rate", "loaded_miles", "empty_miles", "driver_pay",
+})
+
+# TMS status vocabulary → our lifecycle (+ payment).  Tolerant of vendor
+# spellings; unknown values land as 'upcoming' so nothing is dropped.
+_DT_STATUS_MAP = {
+    "upcoming": "upcoming", "pending": "upcoming", "planned": "upcoming",
+    "booked": "upcoming", "new": "upcoming",
+    "dispatched": "dispatched", "assigned": "dispatched",
+    "in_transit": "in_transit", "enroute": "in_transit",
+    "en_route": "in_transit", "picked_up": "in_transit",
+    "delivered": "delivered", "completed": "delivered", "done": "delivered",
+    "canceled": "canceled", "cancelled": "canceled", "void": "canceled",
+}
+
+
+def _map_load_status(raw: Any) -> tuple[str, str]:
+    """(lifecycle status, payment_status) from a TMS status string.  The
+    'unpaid'/'paid' tabs are billing states of a DELIVERED load."""
+    s = str(raw or "").strip().lower().replace("-", "_").replace(" ", "_")
+    if s in ("unpaid", "invoiced"):
+        return "delivered", "unpaid"
+    if s == "paid":
+        return "delivered", "paid"
+    return _DT_STATUS_MAP.get(s, "upcoming"), ""
+
+
+async def _apply_load_field(
+    db: Any, account_id: int, entity_id: int, field: str, value: Any,
+) -> None:
+    """Resolution applier for the 'load' entity: write the chosen value and
+    PIN it so no later sync undoes the operator's decision."""
+    if field in _LOAD_NUMERIC_FIELDS:
+        try:
+            value = float(value) if str(value).strip() else None
+        except (TypeError, ValueError):
+            value = None
+    await db.write_load_field_pinned(account_id, entity_id, field, value)
+
+
+recon.register_reconciled_entity(
+    "load",
+    fields=LOAD_RECON_FIELDS,
+    default_precedence=DEFAULT_LOAD_PRECEDENCE,
+    field_labels=_LOAD_FIELD_LABELS,
+    sources=("datatruck",),
+    apply_resolution=_apply_load_field,
+)
 
 
 class LoadsMixin(_MixinBase):
@@ -250,6 +338,25 @@ class LoadsMixin(_MixinBase):
                 params.append(fields[key])
         if not sets:
             return False
+        # Operator edits PIN the reconcilable fields they touch (stamp
+        # 'manual' in field_provenance) so a later TMS sync can't revert
+        # the human's correction — same Layer-2 semantic as vehicles.
+        pin = [k for k in fields if k in LOAD_RECON_FIELDS and fields[k] is not None]
+        if pin:
+            try:
+                cur = await self._db.execute(
+                    "SELECT field_provenance FROM loads "
+                    "WHERE id = ? AND account_id = ?",
+                    (load_id, account_id),
+                )
+                row = await cur.fetchone()
+                prov = _parse_load_provenance(row[0]) if row else {}
+                for f in pin:
+                    prov[f] = recon.MANUAL_SOURCE
+                sets.append("field_provenance = ?")
+                params.append(json.dumps(prov))
+            except Exception as e:
+                logger.debug("load provenance pin skipped: %s", e)
         sets.append("updated_at = ?")
         params.extend([self._now(), load_id, account_id])
         cur = await self._db.execute(
@@ -259,6 +366,200 @@ class LoadsMixin(_MixinBase):
         )
         await self._db.commit()
         return cur.rowcount > 0
+
+    async def write_load_field_pinned(
+        self, account_id: int, load_id: int, field: str, value: Any,
+    ) -> None:
+        """Write one reconcilable field onto a load and PIN it
+        (provenance='manual').  Used by conflict resolution."""
+        cur = await self._db.execute(
+            "SELECT field_provenance FROM loads WHERE id = ? AND account_id = ?",
+            (load_id, account_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return
+        prov = _parse_load_provenance(row[0])
+        prov[field] = recon.MANUAL_SOURCE
+        async with self.transaction():
+            await self._db.execute(
+                f"UPDATE loads SET {field} = ?, field_provenance = ?, "
+                "updated_at = ? WHERE id = ? AND account_id = ?",
+                (value, json.dumps(prov), self._now(), load_id, account_id),
+            )
+
+    # ── Integration projection (TMS orders → loads) ────────────────
+
+    async def project_external_loads(
+        self, account_id: int, rows: list[dict], *, source: str = "datatruck",
+    ) -> int:
+        """Project a synced TMS order list onto the canonical ``loads``
+        table — keyed on ``(account, source, external_ref)``.
+
+          * NEW ref → INSERT a load: status mapped from the TMS vocabulary
+            (unpaid/paid land as delivered + payment_status), driver resolved
+            via ``users.datatruck_driver_id`` (the Increment-A link), truck /
+            trailer units resolved from the synced rosters, financials
+            promoted where present.
+          * KNOWN ref → lifecycle/payment REFRESH (the TMS is authoritative
+            on a synced load's status) + data fields merged through the
+            reconciliation hub: operator pins win, genuine disagreements are
+            recorded for the review panel.
+
+        Never touches manual loads (no external_ref).  Returns rows
+        inserted-or-updated.
+        """
+        if not rows:
+            return 0
+        # externalid → unit lookups from the synced rosters.
+        async def _unit_map(table: str) -> dict[str, str]:
+            try:
+                cur = await self._db.execute(
+                    f"SELECT external_id, unit_number FROM {table} "
+                    "WHERE account_id = ?",
+                    (account_id,),
+                )
+                return {
+                    str(r[0]): str(r[1] or "") for r in await cur.fetchall()
+                }
+            except Exception:
+                return {}
+        truck_units = await _unit_map("datatruck_trucks")
+        trailer_units = await _unit_map("datatruck_trailers")
+        # Datatruck driver id → (user_id, display_name)  (Increment A link).
+        cur = await self._db.execute(
+            "SELECT id, datatruck_driver_id, display_name FROM users "
+            "WHERE account_id = ? AND role = 'driver' "
+            "AND datatruck_driver_id IS NOT NULL AND datatruck_driver_id <> ''",
+            (account_id,),
+        )
+        driver_by_ref = {
+            str(r[1]): (int(r[0]), str(r[2] or "")) for r in await cur.fetchall()
+        }
+        # Existing synced loads by external_ref.
+        cur = await self._db.execute(
+            f"{_SELECT} WHERE account_id = ? AND source = ? AND external_ref <> ''",
+            (account_id, source),
+        )
+        by_ref = {l.external_ref: l for l in
+                  (_row_to_load(r) for r in await cur.fetchall())}
+
+        precedence = await recon.get_precedence(self, account_id, "load")
+        now = self._now()
+        written = 0
+        conflict_ops: list = []
+        async with self.transaction():
+            for r in rows:
+                ref = str(r.get("external_id") or "").strip()
+                if not ref:
+                    continue
+                status, payment = _map_load_status(r.get("status"))
+                duid, dname = driver_by_ref.get(
+                    str(r.get("driver_external_id") or ""), (None, ""),
+                )
+                if not dname:
+                    dname = str(r.get("driver_name") or "")
+                vunit = truck_units.get(str(r.get("truck_external_id") or ""), "")
+                tunit = trailer_units.get(str(r.get("trailer_external_id") or ""), "")
+                incoming = {
+                    "customer":          r.get("customer"),
+                    "pickup_location":   r.get("origin"),
+                    "pickup_date":       r.get("pickup_date"),
+                    "delivery_location": r.get("destination"),
+                    "delivery_date":     r.get("delivery_date"),
+                    "total_rate":        r.get("total_rate"),
+                    "loaded_miles":      r.get("loaded_miles"),
+                    "empty_miles":       r.get("empty_miles"),
+                    "driver_pay":        r.get("driver_pay"),
+                }
+                existing = by_ref.get(ref)
+
+                if existing is None:
+                    prov = {
+                        f: source for f, v in incoming.items()
+                        if not recon.is_unset(v)
+                    }
+                    await self._db.execute(
+                        """INSERT INTO loads
+                           (account_id, load_number, status, payment_status,
+                            customer, company_code, pickup_location, pickup_date,
+                            delivery_location, delivery_date, driver_user_id,
+                            driver_name, dispatcher_user_id, dispatcher_name,
+                            vehicle_unit, trailer_unit, total_rate, loaded_miles,
+                            empty_miles, driver_pay, other_costs, source,
+                            external_ref, field_provenance, notes, is_active,
+                            created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                           ON CONFLICT(account_id, source, external_ref)
+                           WHERE external_ref <> '' DO NOTHING""",
+                        (
+                            account_id,
+                            str(r.get("order_number") or ""), status, payment,
+                            str(r.get("customer") or ""), "",
+                            str(r.get("origin") or ""),
+                            str(r.get("pickup_date") or ""),
+                            str(r.get("destination") or ""),
+                            str(r.get("delivery_date") or ""),
+                            duid, dname,
+                            None, str(r.get("dispatcher_name") or ""),
+                            vunit, tunit,
+                            r.get("total_rate"), r.get("loaded_miles"),
+                            r.get("empty_miles"), r.get("driver_pay"),
+                            None, source, ref, json.dumps(prov), "",
+                            now, now,
+                        ),
+                    )
+                    written += 1
+                    continue
+
+                # Known ref — the TMS refreshes lifecycle + linkage; the
+                # data fields merge through the hub (pins + conflicts).
+                mr = recon.merge_fields(
+                    current={f: getattr(existing, f) for f in LOAD_RECON_FIELDS},
+                    provenance=existing.field_provenance,
+                    owner_fallback=source,
+                    incoming=incoming, source=source,
+                    fields=LOAD_RECON_FIELDS, precedence=precedence,
+                )
+                sets: list[str] = []
+                params: list[Any] = []
+                for f in LOAD_RECON_FIELDS:
+                    if f in mr.updates:
+                        sets.append(f"{f} = ?")
+                        params.append(mr.updates[f])
+                if existing.status != status:
+                    sets.append("status = ?")
+                    params.append(status)
+                if payment and existing.payment_status != payment:
+                    sets.append("payment_status = ?")
+                    params.append(payment)
+                if duid is not None and existing.driver_user_id != duid:
+                    sets.append("driver_user_id = ?")
+                    params.append(duid)
+                    sets.append("driver_name = ?")
+                    params.append(dname)
+                if vunit and existing.vehicle_unit != vunit:
+                    sets.append("vehicle_unit = ?")
+                    params.append(vunit)
+                if tunit and existing.trailer_unit != tunit:
+                    sets.append("trailer_unit = ?")
+                    params.append(tunit)
+                if not sets and not mr.cleared:
+                    continue
+                sets.append("field_provenance = ?")
+                params.append(json.dumps(mr.provenance))
+                sets.append("updated_at = ?")
+                params.extend([now, existing.id, account_id])
+                await self._db.execute(
+                    f"UPDATE loads SET {', '.join(sets)} "
+                    "WHERE id = ? AND account_id = ?",
+                    tuple(params),
+                )
+                written += 1
+                if mr.conflicts or mr.cleared:
+                    conflict_ops.append((existing.id, mr.conflicts, mr.cleared))
+        await recon.sync_batch(self, account_id, "load", conflict_ops)
+        return written
 
     async def deactivate_load(self, account_id: int, load_id: int) -> bool:
         """Soft delete — history (KPI, reports) keeps counting delivered

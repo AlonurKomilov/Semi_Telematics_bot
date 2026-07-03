@@ -185,8 +185,31 @@ def _norm_order(rec: dict[str, Any]) -> dict[str, Any]:
         ),
         "driver_external_id": _as_id(_first(rec, "driver", "driver_id")),
         "truck_external_id":  _as_id(_first(rec, "truck", "truck_id")),
+        "trailer_external_id": _as_id(_first(rec, "trailer", "trailer_id")),
         "total_rate":         _as_float(_first(
             rec, "total_rate", "totalRate", "rate", "total",
+        )),
+        # Loads-feature projection inputs — tolerant multi-key probing so
+        # whatever vendor spelling the API uses gets promoted, and absent
+        # fields stay None (manual entry still carries them).
+        "customer":           _as_text(
+            _first(rec, "customer", "broker", "client", "customer_name",
+                   "customerName"),
+            "name", "company_name", "companyName",
+        ),
+        "dispatcher_external_id": _as_id(_first(rec, "dispatcher", "dispatcher_id")),
+        "dispatcher_name":    _as_text(
+            _first(rec, "dispatcher", "dispatcher_name", "dispatcherName"),
+            "name", "full_name", "fullName", "username",
+        ),
+        "loaded_miles":       _as_float(_first(
+            rec, "loaded_miles", "loadedMiles", "miles_loaded", "loaded",
+        )),
+        "empty_miles":        _as_float(_first(
+            rec, "empty_miles", "emptyMiles", "deadhead_miles", "deadhead",
+        )),
+        "driver_pay":         _as_float(_first(
+            rec, "driver_pay", "driverPay", "driver_rate", "driverRate",
         )),
         "payload":            rec,
     }
@@ -364,6 +387,10 @@ class ResourceSpec:
     # existing driver-users (match by CDL → email; enrich-only, never
     # creates users — the one-time onboarding import does creation).
     project_drivers: bool = False
+    # When True, each synced page is ALSO projected into the canonical
+    # ``loads`` table (the Loads feature SSOT) — status mapped, driver
+    # resolved via datatruck_driver_id, units via the synced rosters.
+    project_loads: bool = False
     # When set, each list record is RE-FETCHED from this per-id endpoint
     # before normalizing, because the openapi list shape is leaner than
     # the detail view (work orders: the list omits invoice id, payment
@@ -422,6 +449,7 @@ RESOURCES: dict[str, ResourceSpec] = {
             # the pull to recent loads so the cap goes further.
             max_pages=50,
             params_factory=_order_params,
+            project_loads=True,
             feature="Loads / Orders",
         ),
         ResourceSpec(
@@ -630,6 +658,16 @@ async def _persist_rows(
         except Exception as e:
             logger.debug(
                 "datatruck driver projection skipped acct=%d: %s",
+                account_id, e,
+            )
+    if spec.project_loads:
+        try:
+            await tenant.project_external_loads(
+                account_id, normalized, source="datatruck",
+            )
+        except Exception as e:
+            logger.debug(
+                "datatruck loads projection skipped acct=%d: %s",
                 account_id, e,
             )
     return written
