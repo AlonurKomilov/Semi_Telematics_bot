@@ -28,7 +28,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from infra.platform import get_platform_db
+from infra.platform import get_platform_db, get_tenant_db
 from infra.services import get_telematics_client
 from interfaces.api.deps import require_permission
 
@@ -204,6 +204,45 @@ async def trigger_sync(
         "provider_id": _PROVIDER_ID,
         "resource": resource,
     }
+
+
+# ── One-time driver import (onboarding) ─────────────────────────
+#
+# The deliberate-creation counterpart to the ongoing driver LINKING that
+# runs on every sync: an operator moving their fleet onto 4truck imports
+# the Datatruck driver roster once — previewed first, idempotent apply.
+
+
+@router.get("/datatruck/drivers/import-plan")
+async def driver_import_plan(user: dict = Depends(_owner_only)):
+    """Read-only plan over the synced datatruck_drivers staging: who would
+    be linked / created / needs review / is skipped (inactive upstream).
+    Nothing is written."""
+    validate_provider(_PROVIDER_ID)
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    return await tenant.plan_datatruck_driver_import(account_id)
+
+
+@router.post("/datatruck/drivers/import")
+async def driver_import_apply(user: dict = Depends(_owner_only)):
+    """Apply the import: create a driver-user (roster entry — no login
+    until invited) for every unmatched active Datatruck driver, then link
+    everything.  Idempotent — a re-run creates nothing new."""
+    validate_provider(_PROVIDER_ID)
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    result = await tenant.apply_datatruck_driver_import(account_id)
+    await audit(
+        account_id, int(user.get("id") or 0),
+        "integration.datatruck_driver_import", _PROVIDER_ID,
+        details=f"created={result['created']} linked={result['linked']}",
+    )
+    return result
 
 
 async def _require_enabled(account_id: int, resource: str):

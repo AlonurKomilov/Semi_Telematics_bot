@@ -223,6 +223,15 @@ _DRIVER_FIELD_LABELS = {"display_name": "Name", "phone": "Phone"}
 # only non-secret fields may surface in the review panel.
 _DRIVER_CONFLICT_SAFE_FIELDS = frozenset({"display_name"})
 
+# Upstream statuses that mark a Datatruck driver as no longer working —
+# the onboarding import skips them (resurrecting ex-drivers pollutes HR);
+# unknown/empty statuses import normally (permissive, and the plan shows
+# every name before anything happens).
+_INACTIVE_DRIVER_STATUSES = frozenset({
+    "inactive", "terminated", "fired", "disabled", "archived",
+    "deleted", "suspended",
+})
+
 
 def _parse_driver_provenance(raw: Any) -> dict:
     if isinstance(raw, dict):
@@ -398,30 +407,15 @@ class DriverProfileMixin(_MixinBase):
                 (value, json.dumps(prov), user_id, account_id),
             )
 
-    async def project_datatruck_drivers(
-        self, account_id: int, rows: list[dict],
-    ) -> int:
-        """Link a synced Datatruck driver list onto the account's EXISTING
-        driver-users — enrich, never create (the one-time "Import from
-        Datatruck" onboarding action creates; a sync tick must not).
-
-        Match priority per incoming row:
-          1. already-linked ``datatruck_driver_id`` (idempotent re-sync)
-          2. CDL / license number — decrypted in memory, normalized exact
-          3. email — ``users.email`` lowercased exact
-        A key shared by >1 driver is ambiguous → skipped (never guess).
-
-        Matched drivers merge display_name/phone through the reconciliation
-        hub (existing values are operator-owned → fill-empty only), fill an
-        empty ``cdl_number`` from the payload (encrypted, no conflict
-        record — conflicts store plaintext and CDL/phone are PII), and get
-        ``datatruck_driver_id`` stamped.  Returns rows linked-or-updated.
-        """
-        if not rows:
-            return 0
+    async def _driver_match_state(self, account_id: int):
+        """The in-memory match indexes shared by the ongoing projection and
+        the one-time import: the decrypted roster plus lookups by existing
+        Datatruck ref / normalized CDL / lowercased email (keys shared by
+        more than one driver are ambiguous → tracked in the dupe sets).
+        Returns None when the account has no drivers at all."""
         profiles = await self.list_drivers(account_id)  # decrypted CDL/phone
         if not profiles:
-            return 0
+            return None
         # email / link / provenance aren't on DriverProfile — one extra read.
         cur = await self._db.execute(
             "SELECT id, email, datatruck_driver_id, driver_field_provenance "
@@ -432,7 +426,6 @@ class DriverProfileMixin(_MixinBase):
             r[0]: (str(r[1] or ""), str(r[2] or ""), _parse_driver_provenance(r[3]))
             for r in await cur.fetchall()
         }
-
         by_ref: dict[str, Any] = {}
         by_cdl: dict[str, Any] = {}
         by_email: dict[str, Any] = {}
@@ -454,6 +447,160 @@ class DriverProfileMixin(_MixinBase):
                     email_dupes.add(em)
                 else:
                     by_email[em] = p
+        return profiles, extra, by_ref, by_cdl, by_email, cdl_dupes, email_dupes
+
+    async def plan_datatruck_driver_import(self, account_id: int) -> dict:
+        """Read-only plan for the one-time "Import drivers from Datatruck"
+        onboarding action, over the synced ``datatruck_drivers`` staging.
+
+        Classifies every staged driver:
+          * ``already`` — linked on a previous pass (has the ref) → no action.
+          * ``link``    — matches an existing driver-user by CDL/email →
+            apply would LINK it (no creation).
+          * ``create``  — no match → apply would create a 4truck user with
+            the Driver role (roster entry: no login until invited).
+          * ``review``  — the match key is shared by >1 existing driver →
+            ambiguous, never guessed; a human resolves it.
+          * ``skipped`` — inactive/terminated upstream → not imported.
+        """
+        staged = await self.list_datatruck_drivers(account_id)
+        state = await self._driver_match_state(account_id)
+        if state is None:
+            by_ref, by_cdl, by_email = {}, {}, {}
+            cdl_dupes, email_dupes = set(), set()
+        else:
+            _p, _e, by_ref, by_cdl, by_email, cdl_dupes, email_dupes = state
+
+        already = 0
+        link: list[dict] = []
+        create: list[dict] = []
+        review: list[dict] = []
+        skipped: list[dict] = []
+        for d in staged:
+            ref = (d.external_id or "").strip()
+            if not ref:
+                continue
+            entry = {
+                "external_id": ref,
+                "name": d.display_name or f"{d.first_name} {d.last_name}".strip(),
+                "phone": d.phone, "email": d.email, "status": d.status,
+            }
+            if str(d.status or "").strip().lower() in _INACTIVE_DRIVER_STATUSES:
+                skipped.append({**entry, "reason": "inactive in Datatruck"})
+                continue
+            if ref in by_ref:
+                already += 1
+                continue
+            cdl = _norm_cdl(_extract_datatruck_cdl(
+                {"payload": d.payload},
+            ))
+            em = (d.email or "").strip().lower()
+            if (cdl and cdl in cdl_dupes) or (em and em in email_dupes):
+                review.append({
+                    **entry,
+                    "reason": "match key shared by multiple existing drivers",
+                })
+                continue
+            match = (by_cdl.get(cdl) if cdl else None) or \
+                    (by_email.get(em) if em else None)
+            if match is not None:
+                link.append({
+                    **entry,
+                    "matched_user_id": match.user_id,
+                    "matched_name": match.display_name,
+                    "by": "cdl" if (cdl and by_cdl.get(cdl) is match) else "email",
+                })
+            else:
+                create.append(entry)
+        return {
+            "kind": "drivers",
+            "already_linked": already,
+            "link": link, "create": create,
+            "review": review, "skipped": skipped,
+            "counts": {
+                "already_linked": already, "link": len(link),
+                "create": len(create), "review": len(review),
+                "skipped": len(skipped),
+            },
+        }
+
+    async def apply_datatruck_driver_import(self, account_id: int) -> dict:
+        """Apply the import plan: CREATE a driver-user for every unmatched
+        active Datatruck driver (telegram NULL, no password — a roster
+        entry until invited; phone/CDL encrypted, provenance=datatruck,
+        ``datatruck_driver_id`` stamped), then run the ongoing projection
+        once so the link-bucket gets linked/enriched.  Idempotent — a
+        second apply finds everyone already linked and creates nothing."""
+        plan = await self.plan_datatruck_driver_import(account_id)
+        now = self._now()
+        created = 0
+        for c in plan["create"]:
+            prov = {"display_name": "datatruck"}
+            phone_enc = None
+            if c.get("phone"):
+                phone_enc = _maybe_encrypt(c["phone"])
+                prov["phone"] = "datatruck"
+            await self._db.execute(
+                """INSERT INTO users
+                   (telegram_id, account_id, role, display_name, email,
+                    phone, datatruck_driver_id, driver_field_provenance,
+                    created_at)
+                   VALUES (?, ?, 'driver', ?, ?, ?, ?, ?, ?)""",
+                (
+                    None, account_id,
+                    c["name"] or f"Driver {c['external_id']}",
+                    (c.get("email") or "").strip().lower() or None,
+                    phone_enc, c["external_id"], json.dumps(prov), now,
+                ),
+            )
+            created += 1
+        await self._db.commit()
+        # One projection pass links the link-bucket + enriches the newly
+        # created rows (fills CDL from the payload via the normal path).
+        staged = await self.list_datatruck_drivers(account_id)
+        rows = [
+            {
+                "external_id": d.external_id,
+                "display_name": d.display_name,
+                "phone": d.phone, "email": d.email, "status": d.status,
+                "payload": d.payload,
+            }
+            for d in staged
+            if str(d.status or "").strip().lower() not in _INACTIVE_DRIVER_STATUSES
+        ]
+        linked = await self.project_datatruck_drivers(account_id, rows)
+        return {
+            "created": created,
+            "linked": linked,
+            "review": plan["counts"]["review"],
+            "skipped": plan["counts"]["skipped"],
+        }
+
+    async def project_datatruck_drivers(
+        self, account_id: int, rows: list[dict],
+    ) -> int:
+        """Link a synced Datatruck driver list onto the account's EXISTING
+        driver-users — enrich, never create (the one-time "Import from
+        Datatruck" onboarding action creates; a sync tick must not).
+
+        Match priority per incoming row:
+          1. already-linked ``datatruck_driver_id`` (idempotent re-sync)
+          2. CDL / license number — decrypted in memory, normalized exact
+          3. email — ``users.email`` lowercased exact
+        A key shared by >1 driver is ambiguous → skipped (never guess).
+
+        Matched drivers merge display_name/phone through the reconciliation
+        hub (existing values are operator-owned → fill-empty only), fill an
+        empty ``cdl_number`` from the payload (encrypted, no conflict
+        record — conflicts store plaintext and CDL/phone are PII), and get
+        ``datatruck_driver_id`` stamped.  Returns rows linked-or-updated.
+        """
+        if not rows:
+            return 0
+        state = await self._driver_match_state(account_id)
+        if state is None:
+            return 0
+        profiles, extra, by_ref, by_cdl, by_email, cdl_dupes, email_dupes = state
 
         precedence = await recon.get_precedence(self, account_id, "driver")
         written = 0

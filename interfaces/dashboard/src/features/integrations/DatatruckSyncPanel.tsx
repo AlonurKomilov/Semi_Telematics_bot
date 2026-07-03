@@ -27,6 +27,7 @@ import type {
 import { DATATRUCK_RESOURCE_LABELS, formatSyncTimestamp } from './labels';
 import FeedsTable, { type FeedRow } from './FeedsTable';
 import SyncPreviewModal from './SyncPreviewModal';
+import DriverImportPanel from './DriverImportPanel';
 
 type Feedback = { kind: 'success' | 'error' | 'info'; message: string } | null;
 
@@ -250,6 +251,7 @@ export default function DatatruckSyncPanel({
           </p>
         )}
       />
+      <DriverImportPanel />
       {preview && (
         <SyncPreviewModal
           resource={preview.resource}

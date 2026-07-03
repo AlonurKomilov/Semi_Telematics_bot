@@ -54,6 +54,46 @@ export async function putSourcePrecedence(
   });
 }
 
+// ── One-time Datatruck driver import (onboarding) ────────────────
+
+export interface DriverImportEntry {
+  external_id: string;
+  name: string;
+  phone: string;
+  email: string;
+  status: string;
+  reason?: string;
+  matched_name?: string;
+  by?: string;
+}
+
+export interface DriverImportPlan {
+  kind: string;
+  already_linked: number;
+  link: DriverImportEntry[];
+  create: DriverImportEntry[];
+  review: DriverImportEntry[];
+  skipped: DriverImportEntry[];
+  counts: Record<string, number>;
+}
+
+export interface DriverImportResult {
+  created: number;
+  linked: number;
+  review: number;
+  skipped: number;
+}
+
+export async function getDriverImportPlan(): Promise<DriverImportPlan> {
+  return apiJSON<DriverImportPlan>(`${BASE}/datatruck/drivers/import-plan`);
+}
+
+export async function applyDriverImport(): Promise<DriverImportResult> {
+  return apiJSON<DriverImportResult>(`${BASE}/datatruck/drivers/import`, {
+    method: 'POST',
+  });
+}
+
 // ── Cross-source data conflicts ──────────────────────────────────
 
 export interface DataConflict {
