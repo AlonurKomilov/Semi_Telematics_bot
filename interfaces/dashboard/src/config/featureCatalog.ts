@@ -95,9 +95,11 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'alerts',         labelKey: 'nav.alerts',         path: '/alerts',    icon: Bell,            modules: ['core'], tier: 'system', permission: P_ALERTS, navGroup: 'monitoring' },
   { id: 'reports',        labelKey: 'nav.reports',        path: '/reports',   icon: FileText,        modules: ['core'], tier: 'system', permission: P_REPORTS, navGroup: 'reports' },
   // KPI — the account-wide performance analytics surface (dispatcher grades
-  // first; fleet/safety/driver sections later).  Shared-tier: one page,
-  // delegatable to any role via can_kpi.
-  { id: 'kpi',            labelKey: 'nav.kpi',            path: '/kpi',       icon: Gauge,           modules: ['dispatch', 'accounting'], tier: 'shared', permission: ['can_kpi'], navGroup: 'reports' },
+  // first; fleet/safety/driver sections later).  Shared-tier, delegatable via
+  // can_kpi.  Tagged `account` (like Billing) so it lives in the Owner/Admin
+  // persona's own sidebar — it's management oversight, not a department tool;
+  // dispatch/accounting surface it for department leads granted the flag.
+  { id: 'kpi',            labelKey: 'nav.kpi',            path: '/kpi',       icon: Gauge,           modules: ['account', 'dispatch', 'accounting'], tier: 'shared', permission: ['can_kpi'], navGroup: 'reports' },
   { id: 'knowledge_base', labelKey: 'nav.knowledge_base', path: '/knowledge', icon: BookOpen,        modules: ['core'], tier: 'system', permission: null, navGroup: 'tail' },
   // Universal operational views — every working persona needs to find a
   // truck, so these live in core (always available) rather than a module.
