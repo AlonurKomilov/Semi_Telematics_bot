@@ -178,6 +178,110 @@ class TestRecruiterDraftsView:
             assert r.status_code == 429
 
 
+class TestAutoReminder:
+    """Per-link auto-remind policy: opt-in cadence + hard lifetime cap."""
+
+    @staticmethod
+    async def _age(db, *, updated_hours: float | None = None, reminded_hours: float | None = None):
+        from datetime import datetime, timedelta, timezone
+        if updated_hours is not None:
+            ts = (datetime.now(timezone.utc) - timedelta(hours=updated_hours)).isoformat()
+            await db._db.execute("UPDATE application_drafts SET updated_at = ?", (ts,))
+        if reminded_hours is not None:
+            ts = (datetime.now(timezone.utc) - timedelta(hours=reminded_hours)).isoformat()
+            await db._db.execute("UPDATE application_drafts SET reminder_sent_at = ?", (ts,))
+        await db._db.commit()
+
+    async def test_off_by_default_never_due(self, api):
+        _app, db = api
+        _acct, link = await _link(db)
+        await db.upsert_application_draft(
+            link["account_id"], link_token=link["token"], email="a@x.com",
+            draft_secret=None, data_encrypted="x")
+        await self._age(db, updated_hours=100)
+        assert await db.list_drafts_needing_reminder() == []
+
+    async def test_cadence_spacing_and_lifetime_cap(self, api):
+        _app, db = api
+        acct, link = await _link(db)
+        await db.update_application_link(acct.id, link["id"],
+                                         remind_every_hours=24, remind_max=2)
+        await db.upsert_application_draft(
+            link["account_id"], link_token=link["token"], email="a@x.com",
+            draft_secret=None, data_encrypted="x")
+        # Fresh draft → not idle long enough.
+        assert await db.list_drafts_needing_reminder() == []
+        # Idle 25h → due; stamping (auto) bumps the counter.
+        await self._age(db, updated_hours=25)
+        due = await db.list_drafts_needing_reminder()
+        assert len(due) == 1
+        await db.mark_draft_emailed(due[0]["id"], reminder=True, auto=True)
+        # Immediately after: spaced off the previous nudge → not due.
+        assert await db.list_drafts_needing_reminder() == []
+        # Another cadence passes → due again (reminder #2 = the cap).
+        await self._age(db, updated_hours=50, reminded_hours=25)
+        due = await db.list_drafts_needing_reminder()
+        assert len(due) == 1
+        await db.mark_draft_emailed(due[0]["id"], reminder=True, auto=True)
+        # Cap reached → NEVER due again, no matter how long it idles.
+        await self._age(db, updated_hours=500, reminded_hours=400)
+        assert await db.list_drafts_needing_reminder() == []
+
+    async def test_activity_resets_the_idle_clock(self, api):
+        _app, db = api
+        acct, link = await _link(db)
+        await db.update_application_link(acct.id, link["id"], remind_every_hours=24)
+        r = await db.upsert_application_draft(
+            link["account_id"], link_token=link["token"], email="a@x.com",
+            draft_secret=None, data_encrypted="x")
+        await self._age(db, updated_hours=30)
+        assert len(await db.list_drafts_needing_reminder()) == 1
+        # The applicant comes back (a save touches updated_at) → clock resets.
+        await db.upsert_application_draft(
+            link["account_id"], link_token=link["token"], email="a@x.com",
+            draft_secret=r["draft_secret"], data_encrypted="y")
+        assert await db.list_drafts_needing_reminder() == []
+
+    async def test_revoked_link_is_silent(self, api):
+        _app, db = api
+        acct, link = await _link(db)
+        await db.update_application_link(acct.id, link["id"], remind_every_hours=24)
+        await db.upsert_application_draft(
+            link["account_id"], link_token=link["token"], email="a@x.com",
+            draft_secret=None, data_encrypted="x")
+        await self._age(db, updated_hours=48)
+        await db.set_application_link_active(acct.id, link["id"], False)
+        assert await db.list_drafts_needing_reminder() == []
+
+    async def test_job_sends_and_stamps(self, api, monkeypatch):
+        _app, db = api
+        acct, link = await _link(db)
+        await db.update_application_link(acct.id, link["id"], remind_every_hours=24)
+        await db.upsert_application_draft(
+            link["account_id"], link_token=link["token"], email="a@x.com",
+            draft_secret=None, data_encrypted="x")
+        await self._age(db, updated_hours=25)
+
+        sent: list[dict] = []
+        def fake_send(**kw):
+            sent.append(kw)
+            return True
+        monkeypatch.setattr(
+            "capabilities.email.application_emails.send_resume_link_email", fake_send)
+
+        from features.applications.drafts_reminder import job_send_draft_reminders
+        await job_send_draft_reminders()
+        assert len(sent) == 1
+        assert sent[0]["reminder"] is True and "/resume/" in sent[0]["resume_url"]
+        cur = await db._db.execute(
+            "SELECT reminders_sent, reminder_sent_at FROM application_drafts")
+        row = await cur.fetchone()
+        assert row["reminders_sent"] == 1 and row["reminder_sent_at"]
+        # Second run straight away: spaced → nothing sent.
+        await job_send_draft_reminders()
+        assert len(sent) == 1
+
+
 class TestDraftLifecycle:
     async def test_prune_removes_idle_drafts(self, api):
         _app, db = api

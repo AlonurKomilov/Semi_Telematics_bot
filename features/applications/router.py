@@ -839,6 +839,11 @@ class UpdateLinkRequest(BaseModel):
     source: str | None = Field(default=None, max_length=60)
     company_id: int | None = None
     expires_in_days: int | None = Field(default=None, ge=0, le=730)
+    # Auto-remind policy for abandoned drafts on this link: cadence in hours
+    # (0 = off) + the lifetime per-draft cap.  Cadence is restricted to the
+    # offered presets so a typo can't configure hourly spam.
+    remind_every_hours: int | None = None
+    remind_max: int | None = Field(default=None, ge=1, le=3)
 
 
 @router.patch("/links/{link_id:int}")
@@ -869,6 +874,12 @@ async def update_link(
             from datetime import datetime, timezone, timedelta
             expires_at = (datetime.now(timezone.utc) + timedelta(days=body.expires_in_days)).isoformat()
         kwargs["expires_at"] = expires_at
+    if "remind_every_hours" in provided and body.remind_every_hours is not None:
+        if body.remind_every_hours not in (0, 24, 48, 72, 168):
+            raise HTTPException(status_code=422, detail="Invalid reminder cadence")
+        kwargs["remind_every_hours"] = body.remind_every_hours
+    if "remind_max" in provided and body.remind_max is not None:
+        kwargs["remind_max"] = body.remind_max
     if not kwargs:
         return {"ok": True}
     ok = await platform_db.update_application_link(user["account_id"], link_id, **kwargs)

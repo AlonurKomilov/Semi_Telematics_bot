@@ -14,7 +14,6 @@ from datetime import datetime, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from telegram.ext import Application
 
-from interfaces.bot.config import ALERT_INTERVAL
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +78,8 @@ _JOB_META = {
     # ── Integrations ──
     "integration_health_checks":      ("Integrations", "Check each account's integration health"),
     "driver_samsara_sync":            ("Integrations", "Sync drivers from Samsara"),
+    # ── Recruiting ──
+    "application_draft_reminders":    ("Recruiting", "Nudge abandoned apply drafts (per-link opt-in policy)"),
     # ── Storage & data lifecycle ──
     "storage_sync":                   ("Storage & data", "Upload queued media to the customer's cloud (Drive)"),
     "data_retention":                 ("Storage & data", "Prune every retention target to its window"),
@@ -347,6 +348,15 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     scheduler.add_job(
         job_run_retention, "cron",
         hour=2, minute=0, timezone="UTC", args=[app], id="data_retention",
+        max_instances=1, coalesce=True,
+    )
+    # Abandoned apply-draft nudges — hourly so each reminder lands roughly
+    # the same time of day the applicant was last active (per-link opt-in;
+    # the job itself no-ops when no link has the policy on).
+    from features.applications.drafts_reminder import job_send_draft_reminders
+    scheduler.add_job(
+        job_send_draft_reminders, "interval",
+        hours=1, args=[app], id="application_draft_reminders",
         max_instances=1, coalesce=True,
     )
     scheduler.add_job(

@@ -144,10 +144,11 @@ class ApplicationsMixin(_MixinBase):
         self, account_id: int, link_id: int, *,
         label: Optional[str] = None, source: Optional[str] = None,
         company_id: Any = _UNSET, expires_at: Any = _UNSET,
+        remind_every_hours: Optional[int] = None, remind_max: Optional[int] = None,
     ) -> bool:
-        """Edit an existing link's label/source/carrier/expiry.  Only the
-        fields supplied are written (``company_id``/``expires_at`` use a
-        sentinel so they can be explicitly set to NULL).  Account-scoped."""
+        """Edit an existing link's label/source/carrier/expiry/auto-remind.
+        Only the fields supplied are written (``company_id``/``expires_at``
+        use a sentinel so they can be explicitly set to NULL).  Account-scoped."""
         sets: list[str] = []
         vals: list[Any] = []
         if label is not None:
@@ -162,6 +163,12 @@ class ApplicationsMixin(_MixinBase):
         if expires_at is not _UNSET:
             sets.append("expires_at = ?")
             vals.append(expires_at)
+        if remind_every_hours is not None:
+            sets.append("remind_every_hours = ?")
+            vals.append(int(remind_every_hours))
+        if remind_max is not None:
+            sets.append("remind_max = ?")
+            vals.append(int(remind_max))
         if not sets:
             return False
         vals += [link_id, account_id]

@@ -396,6 +396,8 @@ async def create_tables(conn) -> None:
             is_active   INTEGER NOT NULL DEFAULT 1,
             view_count  INTEGER NOT NULL DEFAULT 0,
             company_id  INTEGER REFERENCES companies(id),
+            remind_every_hours INTEGER NOT NULL DEFAULT 0,
+            remind_max         INTEGER NOT NULL DEFAULT 3,
             created_at  TEXT    NOT NULL
         );
 
@@ -413,6 +415,7 @@ async def create_tables(conn) -> None:
             data_encrypted   TEXT    NOT NULL DEFAULT '',
             link_emailed_at  TEXT,
             reminder_sent_at TEXT,
+            reminders_sent   INTEGER NOT NULL DEFAULT 0,
             created_at       TEXT    NOT NULL,
             updated_at       TEXT    NOT NULL,
             UNIQUE(account_id, link_token, email)

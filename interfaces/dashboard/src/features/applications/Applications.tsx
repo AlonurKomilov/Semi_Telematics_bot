@@ -31,6 +31,8 @@ interface ApplicationLink {
   view_count?: number; submissions?: number; hires?: number;
   /** Carrier this link brands for (null → generic). */
   company_id?: number | null; company_code?: string | null; company_name?: string | null;
+  /** Auto-remind policy for abandoned drafts (0 = off) + lifetime cap. */
+  remind_every_hours?: number; remind_max?: number;
 }
 
 interface PickerCompany {
@@ -236,12 +238,18 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
   const [source, setSource] = useState(link.source || '');
   const [companyId, setCompanyId] = useState(link.company_id ? String(link.company_id) : '');
   const [expiry, setExpiry] = useState('keep');
+  // Auto-remind policy for abandoned drafts on this link (0 = off).
+  const [remindHours, setRemindHours] = useState(link.remind_every_hours ?? 0);
+  const [remindMax, setRemindMax] = useState(link.remind_max ?? 3);
   const [busy, setBusy] = useState(false);
   const sel = companyId ? companies.find((c) => String(c.id) === companyId) : null;
   const save = async () => {
     setBusy(true);
     try {
-      const body: Record<string, unknown> = { label, source, company_id: companyId ? Number(companyId) : null };
+      const body: Record<string, unknown> = {
+        label, source, company_id: companyId ? Number(companyId) : null,
+        remind_every_hours: remindHours, remind_max: remindMax,
+      };
       if (expiry !== 'keep') body.expires_in_days = Number(expiry);
       await apiJSON(`/applications/links/${link.id}`, { method: 'PATCH', body });
       toast.success('Link updated');
@@ -272,6 +280,30 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
         </select>
         <Button size="sm" onClick={save} disabled={busy}>{busy ? '…' : 'Save'}</Button>
         <button type="button" onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+      </div>
+      {/* Auto-remind: nudge applicants who started but didn't submit.  Off by
+          default; the cadence + lifetime cap are this link's policy. */}
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <span className="text-xs text-muted-foreground">Auto-remind abandoned applications</span>
+        <select value={remindHours} onChange={(e) => setRemindHours(Number(e.target.value))}
+          className="bg-muted border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring">
+          <option value={0}>Off</option>
+          <option value={24}>Every 24 hours</option>
+          <option value={48}>Every 2 days</option>
+          <option value={72}>Every 3 days</option>
+          <option value={168}>Every 7 days</option>
+        </select>
+        {remindHours > 0 && (
+          <>
+            <select value={remindMax} onChange={(e) => setRemindMax(Number(e.target.value))}
+              className="bg-muted border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring">
+              {[1, 2, 3].map((n) => <option key={n} value={n}>up to {n} reminder{n > 1 ? 's' : ''}</option>)}
+            </select>
+            <span className="text-2xs text-muted-foreground">
+              per applicant, ever — emails their resume link; stops when they submit.
+            </span>
+          </>
+        )}
       </div>
       {/* Same carrier brand + requirements + preview the create flow shows. */}
       {sel && <CompanyBrandPanel company={sel} onChanged={onCompaniesChanged} />}

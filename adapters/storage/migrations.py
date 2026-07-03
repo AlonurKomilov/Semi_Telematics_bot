@@ -5807,6 +5807,32 @@ async def migrate_loads(conn) -> None:
             pass
 
 
+@_register("139_link_auto_remind")
+async def migrate_link_auto_remind(conn) -> None:
+    """Per-link auto-remind policy for abandoned apply drafts.
+
+    ``remind_every_hours`` (0 = off, the default — recruiters opt IN per
+    link) sets the nudge cadence; ``remind_max`` caps how many automatic
+    reminders one draft may ever receive (the no-infinite-sends guarantee).
+    ``reminders_sent`` on the draft is that lifetime counter.
+    """
+    for table, ddl in (
+        ("application_links", "ADD COLUMN remind_every_hours INTEGER NOT NULL DEFAULT 0"),
+        ("application_links", "ADD COLUMN remind_max INTEGER NOT NULL DEFAULT 3"),
+        ("application_drafts", "ADD COLUMN reminders_sent INTEGER NOT NULL DEFAULT 0"),
+    ):
+        try:
+            await conn.execute(f"ALTER TABLE {table} {ddl}")
+            await conn.commit()
+        except Exception as e:
+            logger.info("Migration 139: %s %s skipped (%s)", table, ddl.split()[2], e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+    logger.info("Migration 139: link auto-remind columns ensured")
+
+
 @_register("140_loads_seq_and_driver_pay_fix")
 async def migrate_loads_seq_and_driver_pay_fix(conn) -> None:
     """Two follow-ups from the first live Datatruck loads sync.

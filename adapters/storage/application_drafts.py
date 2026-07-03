@@ -130,14 +130,84 @@ class ApplicationDraftsMixin(_MixinBase):
         return [dict(r) for r in await cur.fetchall()]
 
     async def mark_draft_emailed(
-        self, draft_id: int, *, reminder: bool = False,
+        self, draft_id: int, *, reminder: bool = False, auto: bool = False,
     ) -> None:
-        col = "reminder_sent_at" if reminder else "link_emailed_at"
-        await self._db.execute(
-            f"UPDATE application_drafts SET {col} = ? WHERE id = ?",
-            (self._now(), draft_id),
-        )
+        """Stamp a sent email.  ``reminder`` writes the shared throttle
+        timestamp; ``auto`` additionally bumps the lifetime counter that the
+        per-link ``remind_max`` cap counts (manual recruiter nudges don't
+        consume the cap — they're a deliberate act)."""
+        if reminder and auto:
+            await self._db.execute(
+                "UPDATE application_drafts SET reminder_sent_at = ?, "
+                "reminders_sent = reminders_sent + 1 WHERE id = ?",
+                (self._now(), draft_id),
+            )
+        else:
+            col = "reminder_sent_at" if reminder else "link_emailed_at"
+            await self._db.execute(
+                f"UPDATE application_drafts SET {col} = ? WHERE id = ?",
+                (self._now(), draft_id),
+            )
         await self._db.commit()
+
+    async def list_drafts_needing_reminder(self, limit: int = 200) -> list[dict]:
+        """Drafts due an AUTOMATIC reminder under their link's policy.
+
+        A draft qualifies when ALL hold:
+          • its link opted in (``remind_every_hours > 0``), is active, and
+            hasn't expired;
+          • the draft has been idle for at least the link's cadence;
+          • the last reminder (if any) is at least one cadence ago — the
+            shared timestamp also spaces us off manual recruiter nudges;
+          • the lifetime auto-counter is under the link's ``remind_max``.
+
+        Timestamps are TEXT isoformat, so the cadence math happens in
+        Python: the SQL over-selects candidates cheaply (opted-in links,
+        counter under cap) and the caller-facing filter runs here.
+        """
+        from datetime import datetime, timedelta, timezone
+        cur = await self._db.execute(
+            """
+            SELECT d.*, l.remind_every_hours, l.remind_max,
+                   l.expires_at AS link_expires_at,
+                   co.display_name AS company_name, co.code AS company_code
+              FROM application_drafts d
+              JOIN application_links l ON l.token = d.link_token
+              LEFT JOIN companies co ON co.id = l.company_id
+             WHERE l.remind_every_hours > 0
+               AND l.is_active = 1
+               AND d.reminders_sent < l.remind_max
+             ORDER BY d.updated_at
+             LIMIT ?
+            """,
+            (int(limit) * 3,),   # headroom: the Python-side filter narrows
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+
+        def _ts(v: object):
+            try:
+                dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+                return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+            except (ValueError, TypeError):
+                return None
+
+        now = datetime.now(timezone.utc)
+        due: list[dict] = []
+        for r in rows:
+            cadence = timedelta(hours=int(r["remind_every_hours"]))
+            exp = _ts(r.get("link_expires_at")) if r.get("link_expires_at") else None
+            if exp is not None and now > exp:
+                continue                      # dead link — never nudge into it
+            updated = _ts(r.get("updated_at"))
+            if updated is None or now - updated < cadence:
+                continue                      # not idle long enough
+            last = _ts(r.get("reminder_sent_at")) if r.get("reminder_sent_at") else None
+            if last is not None and now - last < cadence:
+                continue                      # spaced off the previous nudge
+            due.append(r)
+            if len(due) >= limit:
+                break
+        return due
 
     async def delete_application_draft(
         self, account_id: int, *, link_token: str, email: str,
