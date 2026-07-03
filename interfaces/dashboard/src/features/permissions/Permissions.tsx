@@ -121,6 +121,7 @@ const PERM_GROUPS: PermGroup[] = [
       { key: 'can_fuel',       label: 'Fuel', indented: true, description: 'Fuel & DEF tank levels + low-fuel alerts' },
       { key: 'can_efficiency', label: 'Efficiency', indented: true, description: 'MPG, idle vs drive time, harsh-driving utilization' },
       { allKey: 'can_geofence_all', vehicleKey: 'can_geofence_vehicle', label: 'Geofences', scoped: true },
+      { key: 'can_kpi', label: 'KPI & Performance', description: 'Account-wide performance analytics — dispatcher grades first; fleet/safety/driver sections later' },
       { key: 'can_manage_driver_docs', label: 'Drivers', description: 'Driver list + document management' },
       { key: 'can_driver_docs_own',    label: 'View Own Documents', indented: true },
       { allKey: 'can_scorecard_all', vehicleKey: 'can_scorecard_vehicle', label: 'Scorecards', scoped: true },
@@ -142,7 +143,6 @@ const PERM_GROUPS: PermGroup[] = [
       { key: 'can_loads_all', label: 'Loads (all)', description: 'See every load in the account' },
       { key: 'can_loads_own', label: 'Loads (own)', indented: true, description: 'See loads assigned to the user (driver scope)' },
       { key: 'can_manage_loads', label: 'Manage Loads', indented: true, description: 'Add / edit / remove loads' },
-      { key: 'can_kpi', label: 'KPI & Performance', description: 'Account-wide performance analytics (dispatcher grades, rankings)' },
     ],
   },
   {
