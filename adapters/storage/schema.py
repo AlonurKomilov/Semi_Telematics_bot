@@ -467,6 +467,25 @@ async def create_tables(conn) -> None:
             created_at           TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS application_employer_verifications (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id     INTEGER NOT NULL REFERENCES accounts(id),
+            application_id INTEGER NOT NULL REFERENCES driver_applications(id) ON DELETE CASCADE,
+            employer_index INTEGER NOT NULL,
+            employer_name  TEXT    NOT NULL DEFAULT '',
+            employer_email TEXT    NOT NULL DEFAULT '',
+            status         TEXT    NOT NULL DEFAULT 'pending',
+            attempts       INTEGER NOT NULL DEFAULT 0,
+            sent_at        TEXT,
+            responded_at   TEXT,
+            notes          TEXT    NOT NULL DEFAULT '',
+            created_at     TEXT    NOT NULL,
+            updated_at     TEXT    NOT NULL,
+            UNIQUE(application_id, employer_index)
+        );
+        CREATE INDEX IF NOT EXISTS idx_emp_verif_account
+            ON application_employer_verifications(account_id, application_id);
+
         CREATE TABLE IF NOT EXISTS application_notifications (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL REFERENCES accounts(id),

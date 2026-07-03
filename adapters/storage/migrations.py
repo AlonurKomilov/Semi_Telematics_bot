@@ -5899,3 +5899,39 @@ async def migrate_vehicles_datatruck_ref(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("140_employer_verifications")
+async def migrate_employer_verifications(conn) -> None:
+    """Create ``application_employer_verifications`` — the §391.23 safety-
+    performance-history investigation trail.
+
+    One row per (application, prior employer) once a recruiter engages it:
+    request sent when/where, attempts, and the outcome.  The row trail IS the
+    good-faith documentation FMCSA requires when an old employer never
+    responds.  Rows cascade away with their application.
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS application_employer_verifications (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id     INTEGER NOT NULL REFERENCES accounts(id),
+            application_id INTEGER NOT NULL REFERENCES driver_applications(id) ON DELETE CASCADE,
+            employer_index INTEGER NOT NULL,
+            employer_name  TEXT    NOT NULL DEFAULT '',
+            employer_email TEXT    NOT NULL DEFAULT '',
+            status         TEXT    NOT NULL DEFAULT 'pending',
+            attempts       INTEGER NOT NULL DEFAULT 0,
+            sent_at        TEXT,
+            responded_at   TEXT,
+            notes          TEXT    NOT NULL DEFAULT '',
+            created_at     TEXT    NOT NULL,
+            updated_at     TEXT    NOT NULL,
+            UNIQUE(application_id, employer_index)
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_emp_verif_account "
+        "ON application_employer_verifications(account_id, application_id)"
+    )
+    await conn.commit()
+    logger.info("Migration 140: created application_employer_verifications")

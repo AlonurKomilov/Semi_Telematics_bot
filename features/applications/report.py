@@ -71,7 +71,7 @@ def _yn(v) -> str:
 def build_dq_packet_pdf(
     app: dict, *, account_name: str = "", signature_png: Optional[bytes] = None,
     generated_at: str = "", carrier_name: str = "", carrier_mc: str = "",
-    carrier_dot: str = "",
+    carrier_dot: str = "", verifications: Optional[list] = None,
 ) -> io.BytesIO:
     """Build the application packet PDF.  Returns a seek-0 BytesIO."""
     styles = _styles()
@@ -203,6 +203,22 @@ def build_dq_packet_pdf(
         f"Disclosure version {_esc(app.get('disclosure_version'))} · "
         f"signed by {_esc(cons.get('sigName') or '(drawn)')} on {_esc(cons.get('sigDate'))}",
         styles["DQSmall"]))
+
+    # §391.23 safety-history investigation — per-employer request trail.
+    # The attempts/dates ARE the good-faith documentation §391.23(c)(2)
+    # expects when a previous employer never responds.
+    if verifications:
+        _section(story, styles, "Safety-history investigation (§391.23)")
+        _status = {"pending": "Not sent", "sent": "Sent — awaiting response",
+                   "received": "Response received", "no_response": "No response (good-faith attempts documented)"}
+        story.append(_kv([
+            (v.get("employer_name") or f"Employer #{v.get('employer_index', '?')}",
+             f"{_status.get(str(v.get('status')), v.get('status'))} · "
+             f"{v.get('attempts', 0)} attempt(s)"
+             + (f" · last sent {str(v.get('sent_at'))[:10]} to {v.get('employer_email')}" if v.get("sent_at") else "")
+             + (f" · responded {str(v.get('responded_at'))[:10]}" if v.get("responded_at") else ""))
+            for v in verifications
+        ], styles))
 
     # Pre-hire vetting checklist
     vet = app.get("vetting") or {}

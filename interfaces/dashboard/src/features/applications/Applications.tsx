@@ -1133,6 +1133,11 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
             <Section title={`Employment (${app.employment?.length || 0})`}>
               <Employment jobs={app.employment as EmploymentRow[]} />
             </Section>
+            {['screening', 'interview', 'approved', 'hired'].includes(app.status) && (
+              <Section title="Employment verification (§391.23)">
+                <VerificationsPanel appId={app.id} />
+              </Section>
+            )}
             <Section title="Accidents & violations"><Json obj={app.incidents} /></Section>
             <Section title="Position"><Json obj={app.position} /></Section>
             <Section title="Consents & signature"><Consents c={app.consents} /></Section>
@@ -1203,6 +1208,128 @@ function AddressHistory({ rows }: { rows: AddressRow[] }) {
           <span className="ml-1.5 text-xs text-muted-foreground">({a.from || '?'} – {a.to || '?'})</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ── §391.23 employer verification panel ─────────────────────────────
+// One row per prior FMCSA employer from the last 3 years.  [Send] emails
+// the safety-history request PDF (with the driver's signed release) to the
+// address the recruiter enters.  The driver's "may we contact?" answer is
+// a timing courtesy — it soft-gates with a confirm, never blocks (the
+// investigation is federally required before hire).
+interface VerifRow {
+  employer_index: number; company: string; city: string; state: string;
+  phone: string; from: string; to: string; current: boolean;
+  position: string; contact_ok: string;
+  verification: {
+    id: number; status: string; attempts: number; employer_email: string;
+    sent_at: string | null; responded_at: string | null; notes: string;
+  } | null;
+}
+
+function VerificationsPanel({ appId }: { appId: number }) {
+  const [rows, setRows] = useState<VerifRow[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [emails, setEmails] = useState<Record<number, string>>({});
+  const [busyIdx, setBusyIdx] = useState<number | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const r = await apiJSON<{ items: VerifRow[] }>(`/applications/${appId}/verifications`);
+      setRows(r.items || []);
+      setEmails((prev) => {
+        const next = { ...prev };
+        for (const it of r.items || []) {
+          if (it.verification?.employer_email && !next[it.employer_index]) {
+            next[it.employer_index] = it.verification.employer_email;
+          }
+        }
+        return next;
+      });
+    } catch { /* section stays empty on failure */ }
+    finally { setLoaded(true); }
+  }, [appId]);
+  useEffect(() => { load(); }, [load]);
+
+  const send = async (row: VerifRow) => {
+    const email = (emails[row.employer_index] || '').trim();
+    if (!email) { toast.error('Enter the employer’s safety-department email first'); return; }
+    // Soft gate: the driver's timing preference gets an explicit confirm.
+    if (row.contact_ok === 'later' &&
+        !confirm(`${row.company}: the driver asked to wait until after the interview before contacting this employer. Send anyway?`)) return;
+    if (row.contact_ok === 'no' &&
+        !confirm(`${row.company}: the driver asked NOT to contact this employer. §391.23 still requires this investigation before hire — typically sent at the final stage. Send anyway?`)) return;
+    setBusyIdx(row.employer_index);
+    try {
+      await apiJSON(`/applications/${appId}/verifications/send`, {
+        method: 'POST', body: { employer_index: row.employer_index, email },
+      });
+      toast.success(`Request sent to ${row.company}`);
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Send failed');
+    } finally { setBusyIdx(null); }
+  };
+
+  const mark = async (row: VerifRow, status: 'received' | 'no_response') => {
+    if (!row.verification) return;
+    try {
+      await apiJSON(`/applications/${appId}/verifications/${row.verification.id}`, {
+        method: 'PATCH', body: { status },
+      });
+      load();
+    } catch (e) { toast.error(e instanceof Error ? e.message : 'Update failed'); }
+  };
+
+  if (!loaded) return <p className="text-xs text-muted-foreground">Loading…</p>;
+  if (rows.length === 0) {
+    return <p className="text-xs text-muted-foreground">No FMCSA-regulated employers in the last 3 years — nothing to investigate.</p>;
+  }
+  const doneCount = rows.filter((r) => r.verification?.status === 'received').length;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-2xs text-muted-foreground">
+        Safety-performance-history requests to prior DOT-regulated employers (last 3 years).
+        The request PDF carries the driver's signed release. {doneCount} of {rows.length} verified.
+      </p>
+      {rows.map((r) => {
+        const v = r.verification;
+        const tone = v?.status === 'received' ? 'ok' : v?.status === 'no_response' ? 'warn' : v?.status === 'sent' ? 'info' : 'neutral';
+        const statusLabel = !v ? 'Not sent'
+          : v.status === 'sent' ? `Sent ${String(v.sent_at || '').slice(0, 10)} · ${v.attempts} attempt${v.attempts > 1 ? 's' : ''}`
+          : v.status === 'received' ? `Response received ${String(v.responded_at || '').slice(0, 10)}`
+          : v.status === 'no_response' ? `No response · ${v.attempts} attempt${v.attempts > 1 ? 's' : ''} documented`
+          : v.status;
+        return (
+          <div key={r.employer_index} className="rounded-md border border-border p-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-foreground">{r.company || `Employer #${r.employer_index + 1}`}</span>
+              <span className="text-xs text-muted-foreground">
+                {r.from} → {r.current ? 'present' : r.to}
+              </span>
+              {r.contact_ok === 'later' && <span className={`rounded px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>driver: after interview</span>}
+              {r.contact_ok === 'no' && <span className={`rounded px-1.5 py-0.5 text-2xs ${toneClasses('danger')}`}>driver: do not contact</span>}
+              <span className={`ml-auto rounded px-1.5 py-0.5 text-2xs ${toneClasses(tone)}`}>{statusLabel}</span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Input placeholder="safety@employer.com" value={emails[r.employer_index] ?? ''}
+                onChange={(e) => setEmails((m) => ({ ...m, [r.employer_index]: e.target.value }))}
+                className="h-8 max-w-60 text-xs" />
+              <Button size="xs" variant="outline" disabled={busyIdx === r.employer_index}
+                onClick={() => send(r)}>
+                {busyIdx === r.employer_index ? '…' : v ? 'Re-send' : 'Send request'}
+              </Button>
+              {v && v.status === 'sent' && (
+                <>
+                  <Button size="xs" variant="ghost" onClick={() => mark(r, 'received')}>Mark received</Button>
+                  <Button size="xs" variant="ghost" onClick={() => mark(r, 'no_response')}>No response</Button>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

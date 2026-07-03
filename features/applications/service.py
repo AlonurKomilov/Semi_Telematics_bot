@@ -146,6 +146,42 @@ def review_base_url() -> str:
     ).rstrip("/")
 
 
+def verification_targets(app: dict) -> list[dict]:
+    """Prior employers §391.23 requires investigating.
+
+    FMCSA-regulated employers whose employment overlaps the 3 years before
+    now.  ``employer_index`` (the position in the stored employment list) is
+    the stable key verification rows attach to.  Unparseable end dates are
+    kept — over-including is the safe failure for a compliance list.
+    """
+    from datetime import datetime, timedelta
+    cutoff = datetime.utcnow() - timedelta(days=3 * 365 + 1)
+    out: list[dict] = []
+    for i, j in enumerate(app.get("employment") or []):
+        if not isinstance(j, dict):
+            continue
+        if str(j.get("fmcsa") or "").lower() != "yes":
+            continue
+        if not j.get("current"):
+            try:
+                to_dt = datetime.strptime(str(j.get("to") or "")[:7], "%Y-%m")
+                if to_dt < cutoff:
+                    continue
+            except ValueError:
+                pass
+        out.append({
+            "employer_index": i,
+            "company": j.get("company") or "",
+            "city": j.get("city") or "", "state": j.get("state") or "",
+            "phone": j.get("phone") or "",
+            "from": j.get("from") or "", "to": j.get("to") or "",
+            "current": bool(j.get("current")),
+            "position": j.get("position") or "",
+            "contact_ok": j.get("contactOk") or "",
+        })
+    return out
+
+
 def apply_base_url() -> str:
     """Base origin of the PUBLIC apply form (the resume-link email target)."""
     base = os.getenv("APPLY_BASE_URL")

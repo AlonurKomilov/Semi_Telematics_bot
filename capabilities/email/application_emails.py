@@ -102,3 +102,49 @@ def send_resume_link_email(
     except Exception as e:  # best-effort
         logger.debug("send_resume_link_email to %s failed: %s", to, e)
         return False
+
+
+def send_verification_request_email(
+    *, to: str, carrier_name: str, driver_name: str, reply_to: str,
+    pdf_bytes: bytes,
+) -> bool:
+    """Email a §391.23 safety-performance-history request to a driver's
+    previous employer, with the fill-in request PDF (which carries the
+    driver's signed release) attached.  Replies go to the requesting
+    carrier's compliance address, not to us."""
+    if not is_email_configured() or not to:
+        return False
+    safe_carrier = html.escape(carrier_name or _company_name())
+    safe_driver = html.escape(driver_name or "a driver applicant")
+    inner = (
+        f'<h2 style="margin:0 0 12px;font-size:18px">Safety performance history '
+        f"request — {safe_driver}</h2>"
+        f'<p style="margin:0 0 8px">{safe_carrier} is considering '
+        f"<b>{safe_driver}</b> for a driving position and is required to "
+        f"investigate the driver's safety performance history with previous "
+        f"DOT-regulated employers (49 CFR §391.23).</p>"
+        f'<p style="margin:0 0 16px">The attached request includes the '
+        f"driver's signed release. Please complete and return it within "
+        f"30 days by replying to this email.</p>"
+        f'<p style="margin:0;color:#6b7280;font-size:13px">Confidential — '
+        f"contains personal data. If you received this in error, please "
+        f"delete it and notify the sender.</p>"
+    )
+    try:
+        return send_email(
+            to=to,
+            subject=f"Safety performance history request (49 CFR §391.23) — {driver_name}",
+            body=(
+                f"{carrier_name or _company_name()} is required to investigate the safety "
+                f"performance history of {driver_name} (49 CFR §391.23).\n\n"
+                "The attached request includes the driver's signed release. "
+                "Please complete and return it within 30 days by replying to "
+                "this email.\n"
+            ),
+            html_body=_shell(inner),
+            reply_to=reply_to or None,
+            attachments=[("safety_history_request.pdf", pdf_bytes, "application/pdf")],
+        )
+    except Exception as e:  # best-effort
+        logger.debug("send_verification_request_email to %s failed: %s", to, e)
+        return False

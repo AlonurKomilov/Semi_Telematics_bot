@@ -1145,10 +1145,13 @@ async def download_application_packet(
     import datetime as _dt
     from features.applications.report import build_dq_packet_pdf
     try:
+        verifications = await platform_db.list_employer_verifications(
+            user["account_id"], app_id)
         buf = build_dq_packet_pdf(
             app, account_name=acct_name, signature_png=sig_png,
             generated_at=_dt.datetime.now(_dt.timezone.utc).isoformat(),
             carrier_name=carrier_name, carrier_mc=carrier_mc, carrier_dot=carrier_dot,
+            verifications=verifications,
         )
     except Exception:
         logger.exception("DQ packet build failed app=%s", app_id)
@@ -1163,6 +1166,157 @@ async def download_application_packet(
             "Cache-Control": "private, no-store",
         },
     )
+
+
+# ── §391.23 employer verification ───────────────────────────────────
+# The safety-performance-history investigation: derived from the
+# application's employment history (FMCSA-regulated, last 3 years), one
+# request PDF per employer, emailed with the driver's signed release.
+# The driver's per-employer "may we contact?" answer is a TIMING courtesy
+# surfaced to the recruiter (the UI soft-gates on it) — it can't veto the
+# federal requirement; the signed Employee Verification Consent on the
+# application is the legal authorization.
+
+async def _carrier_identity(platform_db, account_id: int, app: dict) -> dict:
+    """The requesting-carrier block for the request PDF/email."""
+    out = {"name": "", "mc": "", "dot": "", "address": "", "phone": "", "email": ""}
+    if app.get("company_id"):
+        try:
+            co = await platform_db.get_company_in_account(account_id, app["company_id"])
+            if co:
+                out.update({
+                    "name": co.display_name or co.code, "mc": co.mc_number,
+                    "dot": co.usdot_number, "address": co.legal_address,
+                    "phone": co.phone, "email": co.compliance_email,
+                })
+        except Exception:
+            pass
+    if not out["name"]:
+        try:
+            acct = await platform_db.get_account(account_id)
+            out["name"] = getattr(acct, "name", "") or ""
+        except Exception:
+            pass
+    return out
+
+
+@router.get("/{app_id:int}/verifications")
+async def list_verifications(
+    app_id: int,
+    user: dict = Depends(require_permission("can_manage_applications")),
+    platform_db=Depends(get_platform_db),
+):
+    """The §391.23 target list: derived employers merged with their
+    verification rows (if the recruiter has engaged them)."""
+    app = await platform_db.get_driver_application(user["account_id"], app_id)
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    targets = service.verification_targets(app)
+    rows = await platform_db.list_employer_verifications(user["account_id"], app_id)
+    by_index = {r["employer_index"]: r for r in rows}
+    for t in targets:
+        r = by_index.get(t["employer_index"])
+        t["verification"] = {
+            "id": r["id"], "status": r["status"], "attempts": r["attempts"],
+            "employer_email": r["employer_email"], "sent_at": r["sent_at"],
+            "responded_at": r["responded_at"], "notes": r["notes"],
+        } if r else None
+    return {"items": targets, "application_status": app.get("status")}
+
+
+class VerificationSend(BaseModel):
+    employer_index: int = Field(..., ge=0, le=100)
+    email: str = Field(..., max_length=200)
+
+
+@router.post("/{app_id:int}/verifications/send")
+async def send_verification(
+    app_id: int,
+    body: VerificationSend,
+    user: dict = Depends(require_permission("can_manage_applications")),
+    platform_db=Depends(get_platform_db),
+):
+    """Generate the request PDF for one employer + email it, recording the
+    attempt (the good-faith trail §391.23 wants)."""
+    account_id = user["account_id"]
+    app = await platform_db.get_driver_application(account_id, app_id)
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    email = body.email.strip().lower()
+    if not service.EMAIL_RE.match(email):
+        raise HTTPException(status_code=422, detail="Valid employer email required")
+    target = next((t for t in service.verification_targets(app)
+                   if t["employer_index"] == body.employer_index), None)
+    if not target:
+        raise HTTPException(status_code=422, detail="Not a §391.23 target employer")
+
+    carrier = await _carrier_identity(platform_db, account_id, app)
+    sig_png = None
+    sig_id = (app.get("docs") or {}).get("signature")
+    if sig_id:
+        try:
+            from adapters.storage.object_store import get_object_store_for_account
+            store = await get_object_store_for_account(account_id, platform_db)
+            sig_png = store.get_by_id(sig_id)
+        except Exception:
+            sig_png = None
+
+    employment = app.get("employment") or []
+    employer = employment[body.employer_index] if body.employer_index < len(employment) else {}
+    from features.applications.verification_pdf import build_verification_request_pdf
+    try:
+        pdf = build_verification_request_pdf(
+            app, employer,
+            carrier_name=carrier["name"], carrier_mc=carrier["mc"],
+            carrier_dot=carrier["dot"], carrier_address=carrier["address"],
+            carrier_phone=carrier["phone"], carrier_email=carrier["email"],
+            signature_png=sig_png,
+        )
+    except Exception:
+        logger.exception("verification PDF build failed app=%s idx=%s", app_id, body.employer_index)
+        raise HTTPException(status_code=500, detail="Could not build the request PDF.")
+
+    p = app.get("personal") or {}
+    driver_name = f"{p.get('first', '')} {p.get('last', '')}".strip()
+    from capabilities.email.application_emails import send_verification_request_email
+    sent = send_verification_request_email(
+        to=email, carrier_name=carrier["name"], driver_name=driver_name,
+        reply_to=carrier["email"], pdf_bytes=pdf.getvalue(),
+    )
+    if not sent:
+        raise HTTPException(status_code=503, detail="Email is not configured on this server.")
+    row = await platform_db.record_verification_sent(
+        account_id, app_id, body.employer_index,
+        employer_name=target["company"], employer_email=email,
+    )
+    return {"sent": True, "verification": {
+        "id": row["id"], "status": row["status"], "attempts": row["attempts"],
+        "employer_email": row["employer_email"], "sent_at": row["sent_at"],
+        "responded_at": row["responded_at"], "notes": row["notes"],
+    }}
+
+
+class VerificationUpdate(BaseModel):
+    status: str | None = Field(default=None, pattern=r"^(sent|received|no_response)$")
+    notes: str | None = Field(default=None, max_length=2000)
+
+
+@router.patch("/{app_id:int}/verifications/{verification_id:int}")
+async def update_verification(
+    app_id: int,
+    verification_id: int,
+    body: VerificationUpdate,
+    user: dict = Depends(require_permission("can_manage_applications")),
+    platform_db=Depends(get_platform_db),
+):
+    """Record the outcome (response received / no response) and notes."""
+    ok = await platform_db.update_verification_status(
+        user["account_id"], verification_id,
+        status=body.status, notes=body.notes,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Verification not found")
+    return {"ok": True}
 
 
 @router.post("/{app_id:int}/convert")
