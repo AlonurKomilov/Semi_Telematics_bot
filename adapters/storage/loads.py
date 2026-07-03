@@ -153,7 +153,7 @@ _LOAD_NUMERIC_FIELDS = frozenset({
 # spellings; unknown values land as 'upcoming' so nothing is dropped.
 _DT_STATUS_MAP = {
     "upcoming": "upcoming", "pending": "upcoming", "planned": "upcoming",
-    "booked": "upcoming", "new": "upcoming",
+    "booked": "upcoming", "new": "upcoming", "offer": "upcoming",
     "dispatched": "dispatched", "assigned": "dispatched",
     "in_transit": "in_transit", "in_progress": "in_transit",
     "enroute": "in_transit",

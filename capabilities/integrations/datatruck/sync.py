@@ -210,8 +210,12 @@ def _norm_order(rec: dict[str, Any]) -> dict[str, Any]:
         loaded = round(total_miles - (empty or 0.0), 1)
     return {
         "external_id":        _as_id(rec.get("id")),
+        # shipment_id ("DT-002489") is the human-facing number Datatruck's
+        # own list leads with; load_id ("T-111…") is the broker/customer
+        # reference.  The raw pk stays the very last resort.
         "order_number":       _as_text(_first(
-            rec, "order_number", "orderNumber", "number", "load_number",
+            rec, "shipment_id", "load_id",
+            "order_number", "orderNumber", "number", "load_number",
         )) or _as_id(rec.get("id")),
         "status":             _as_text(_first(rec, "status", "state"), "name"),
         # Dates trimmed to YYYY-MM-DD — the API sends full datetimes; our
@@ -265,9 +269,13 @@ def _norm_order(rec: dict[str, Any]) -> dict[str, Any]:
         ), "name", "full_name", "username"),
         "loaded_miles":       loaded,
         "empty_miles":        empty,
+        # DELIBERATELY NOT mapped from trip.total_load_pay: per the docs +
+        # a live load, that field is the trip's share of the LOAD PAY
+        # (revenue) — Datatruck's "Driver gross" display — not the driver's
+        # earnings.  Actual driver earnings live in settlements, which this
+        # endpoint doesn't expose; the generic keys stay for shape drift.
         "driver_pay":         _money(_first(
-            {**rec, "trip_pay": trip.get("total_load_pay")},
-            "trip_pay", "driver_pay", "driverPay", "driver_rate",
+            rec, "driver_earnings", "driver_pay", "driverPay",
         )),
         "payload":            rec,
     }

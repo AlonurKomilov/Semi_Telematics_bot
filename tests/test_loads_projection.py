@@ -138,7 +138,8 @@ async def test_real_openapi_shape_end_to_end(db):
 
     raw = {
         "id": 20576,
-        "order_number": "20576",
+        "shipment_id": "DT-020576",
+        "load_id": "958511703",
         "status": "In Progress",
         "total_pay": "3400.00",
         "load_pay": "3200.00",
@@ -165,13 +166,16 @@ async def test_real_openapi_shape_end_to_end(db):
         ],
     }
     row = _norm_order(raw)
+    assert row["order_number"] == "DT-020576"   # the human shipment number
     assert row["customer"] == "JBC LOGISTICS INC"
     assert row["dispatcher_name"] == "Jasur"
     assert row["driver_name"] == "Evariste M"
     assert row["truck_unit"] == "513416"
     assert row["total_rate"] == 3400.0          # total_pay = revenue
     assert row["loaded_miles"] == 1000.0 and row["empty_miles"] == 150.0
-    assert row["driver_pay"] == 950.0
+    # trip.total_load_pay is the trip's REVENUE share ("Driver gross"
+    # display) — NOT driver earnings, which this endpoint doesn't expose.
+    assert row["driver_pay"] is None
     assert row["pickup_date"] == "2026-07-01"   # datetime trimmed to day
     assert row["origin"] == "Erda, UT" and row["destination"] == "Coppell, TX"
 
