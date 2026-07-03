@@ -98,6 +98,10 @@ class FeatureSet:
     can_loads_all: bool = False       # view every load
     can_loads_own: bool = False       # view own loads (driver scope)
     can_manage_loads: bool = False    # add/edit/remove loads
+    # KPI — the account-wide performance analytics surface (dispatcher
+    # grades first; fleet/safety/driver sections later).  One shared page,
+    # delegatable to any role via the matrix.
+    can_kpi: bool = False
     can_manage_account: bool = False # /account settings (general config)
     # Settings components — granular delegation flags so account
     # administration can be split across roles (each Settings component
@@ -175,6 +179,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_invite=True, can_manage_users=True,
         can_manage_companies=True, can_manage_vehicles=True, can_manage_account=True,
         can_loads_all=True, can_loads_own=True, can_manage_loads=True,
+        can_kpi=True,
         can_manage_permissions=True, can_manage_integrations=True,
         can_manage_storage=True, can_manage_work_hours=True,
         can_manage_scorecard_rules=True,   # Scorecards' admin component (owners delegate via the matrix)
@@ -206,6 +211,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_invite=True, can_manage_users=True,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
         can_loads_all=True, can_loads_own=True, can_manage_loads=True,
+        can_kpi=True,
         can_manage_permissions=False, can_manage_integrations=False,
         can_manage_storage=False, can_manage_work_hours=False,
         can_geofence_all=True, can_geofence_vehicle=True,
@@ -1065,6 +1071,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_loads_all": "loads (all)",
     "can_loads_own": "own loads",
     "can_manage_loads": "manage loads",
+    "can_kpi": "KPI & performance",
     "can_manage_account": "account settings",
     "can_manage_permissions": "role permissions matrix",
     "can_manage_integrations": "telematics integrations",

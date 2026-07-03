@@ -32,7 +32,7 @@
 import {
   LayoutDashboard, Bot, Bell, FileText, BookOpen,
   Map as MapIcon, Truck, MapPin, Wrench, Receipt, ClipboardCheck, ParkingSquare,
-  Route, Trophy, AlertTriangle, Camera, Package,
+  Route, Trophy, AlertTriangle, Camera, Package, Gauge,
   IdCard, GraduationCap, Link, UserPlus,
   Fuel, DollarSign, CreditCard,
   Users, Building2, Shield, Cloud, ClipboardList, Settings as SettingsIcon,
@@ -94,6 +94,10 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'ai_assistant',   labelKey: 'nav.ai_assistant',   path: '/ai/chat',   icon: Bot,             modules: ['core'], tier: 'system', permission: ['can_ai_chat'], navGroup: 'main' },
   { id: 'alerts',         labelKey: 'nav.alerts',         path: '/alerts',    icon: Bell,            modules: ['core'], tier: 'system', permission: P_ALERTS, navGroup: 'monitoring' },
   { id: 'reports',        labelKey: 'nav.reports',        path: '/reports',   icon: FileText,        modules: ['core'], tier: 'system', permission: P_REPORTS, navGroup: 'reports' },
+  // KPI — the account-wide performance analytics surface (dispatcher grades
+  // first; fleet/safety/driver sections later).  Shared-tier: one page,
+  // delegatable to any role via can_kpi.
+  { id: 'kpi',            labelKey: 'nav.kpi',            path: '/kpi',       icon: Gauge,           modules: ['dispatch', 'accounting'], tier: 'shared', permission: ['can_kpi'], navGroup: 'reports' },
   { id: 'knowledge_base', labelKey: 'nav.knowledge_base', path: '/knowledge', icon: BookOpen,        modules: ['core'], tier: 'system', permission: null, navGroup: 'tail' },
   // Universal operational views — every working persona needs to find a
   // truck, so these live in core (always available) rather than a module.

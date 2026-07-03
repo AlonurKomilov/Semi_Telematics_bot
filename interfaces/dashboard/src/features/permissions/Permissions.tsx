@@ -142,6 +142,7 @@ const PERM_GROUPS: PermGroup[] = [
       { key: 'can_loads_all', label: 'Loads (all)', description: 'See every load in the account' },
       { key: 'can_loads_own', label: 'Loads (own)', indented: true, description: 'See loads assigned to the user (driver scope)' },
       { key: 'can_manage_loads', label: 'Manage Loads', indented: true, description: 'Add / edit / remove loads' },
+      { key: 'can_kpi', label: 'KPI & Performance', description: 'Account-wide performance analytics (dispatcher grades, rankings)' },
     ],
   },
   {
