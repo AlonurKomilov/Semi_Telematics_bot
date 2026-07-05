@@ -92,3 +92,55 @@ async def test_projector_associates_unique_names(db):
     assert loads["O1"].driver_user_id == drv            # unique name → linked
     assert loads["O1"].dispatcher_user_id == dsp        # case-insensitive
     assert loads["O2"].driver_user_id is None           # ambiguous → never guess
+
+
+@pytest.mark.asyncio
+async def test_samsara_link_and_conflict(db):
+    acct = await db.create_account("Links Co 5")
+    a = await db.create_user(8201, acct.id, role=Role.DRIVER, display_name="A")
+    b = await db.create_user(8202, acct.id, role=Role.DRIVER, display_name="B")
+    await db.link_samsara_driver(acct.id, a.id, "S9")
+    with pytest.raises(ValueError):
+        await db.link_samsara_driver(acct.id, b.id, "S9")
+    await db.link_samsara_driver(acct.id, a.id, "")     # unlink frees it
+    await db.link_samsara_driver(acct.id, b.id, "S9")
+
+
+@pytest.mark.asyncio
+async def test_datatruck_driver_options(db):
+    acct = await db.create_account("Links Co 6")
+    u = await db.create_user(8301, acct.id, role=Role.DRIVER, display_name="Taken")
+    await db.upsert_datatruck_drivers(acct.id, [
+        {"external_id": "D1", "first_name": "", "last_name": "",
+         "display_name": "Free Driver", "phone": "", "email": "",
+         "status": "active", "payload": {}},
+        {"external_id": "D2", "first_name": "", "last_name": "",
+         "display_name": "Taken Driver", "phone": "", "email": "",
+         "status": "active", "payload": {}},
+    ])
+    await db.link_datatruck_driver(acct.id, u.id, "D2")
+    opts = {o["external_id"]: o
+            for o in await db.list_datatruck_driver_options(acct.id)}
+    assert opts["D1"]["linked_user_id"] is None
+    assert opts["D1"]["name"] == "Free Driver"
+    assert opts["D2"]["linked_user_id"] == u.id
+
+
+def test_router_get_tenant_db_not_shadowed():
+    """``from infra.platform import get_tenant_db`` once shadowed the FastAPI
+    dependency of the same name — every ``Depends(get_tenant_db)`` endpoint
+    then demanded a spurious ``account_id`` query parameter (422s from the
+    dashboard).  Guard the whole router's OpenAPI surface against it."""
+    import os
+    os.environ.setdefault("JWT_SECRET", "x" * 40)
+    from fastapi import FastAPI
+    from features.settings.team_management.router import router as team_router
+    app = FastAPI()
+    app.include_router(team_router)
+    for path, ops in app.openapi()["paths"].items():
+        for op in ops.values():
+            names = [p["name"] for p in op.get("parameters", [])]
+            assert "account_id" not in names, (
+                f"{path} leaks account_id as a query param — "
+                "get_tenant_db dependency is shadowed again"
+            )

@@ -444,6 +444,54 @@ class DriverProfileMixin(_MixinBase):
         row = await cur.fetchone()
         return str(row[0] or "") if row else ""
 
+    async def link_samsara_driver(
+        self, account_id: int, user_id: int, samsara_driver_id: str,
+    ) -> None:
+        """Bind (or unbind, '') a Samsara driver to a member.  Same
+        one-person-one-link rule as ``link_datatruck_driver``: a ref
+        already bound to ANOTHER member raises."""
+        ref = (samsara_driver_id or "").strip()
+        if ref:
+            cur = await self._db.execute(
+                "SELECT id FROM users WHERE account_id = ? "
+                "AND samsara_driver_id = ? AND id <> ?",
+                (account_id, ref, user_id),
+            )
+            if await cur.fetchone():
+                raise ValueError(
+                    "that Samsara driver is already linked to another member",
+                )
+        async with self.transaction():
+            await self._db.execute(
+                "UPDATE users SET samsara_driver_id = ? "
+                "WHERE id = ? AND account_id = ?",
+                (ref or None, user_id, account_id),
+            )
+
+    async def list_datatruck_driver_options(
+        self, account_id: int,
+    ) -> list[dict]:
+        """Staged Datatruck roster with the member each ref is linked to
+        (``linked_user_id`` NULL = available) — feeds the drawer picker."""
+        cur = await self._db.execute(
+            "SELECT d.external_id, d.display_name, d.status, u.id "
+            "FROM datatruck_drivers d "
+            "LEFT JOIN users u ON u.account_id = d.account_id "
+            "AND u.datatruck_driver_id = d.external_id "
+            "WHERE d.account_id = ? "
+            "ORDER BY LOWER(d.display_name)",
+            (account_id,),
+        )
+        return [
+            {
+                "external_id": str(r[0]),
+                "name": str(r[1] or ""),
+                "status": str(r[2] or ""),
+                "linked_user_id": r[3],
+            }
+            for r in await cur.fetchall()
+        ]
+
     async def _driver_match_state(self, account_id: int):
         """The in-memory match indexes shared by the ongoing projection and
         the one-time import: the decrypted roster plus lookups by existing

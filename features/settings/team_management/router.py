@@ -19,7 +19,9 @@ from interfaces.api.deps import (
     get_platform_db, paginate, resolve_user_id,
 )
 from adapters.storage.models import Role
-from infra.platform import get_tenant_db
+# Aliased: the bare name would shadow the FastAPI dependency
+# ``get_tenant_db`` imported from interfaces.api.deps above.
+from infra.platform import get_tenant_db as tenant_db_for_account
 from capabilities.permissions.roles import (
     validate_role_change, role_rank, ASSIGNABLE_ROLES_PATTERN,
     role_supports_manager, role_tier,
@@ -340,7 +342,7 @@ async def integration_links(
     import plan (link/create/review buckets) + unlinked dispatcher/driver
     names from loads."""
     account_id = int(user["account_id"])
-    tenant = await get_tenant_db(account_id)
+    tenant = await tenant_db_for_account(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
     return {
@@ -362,7 +364,7 @@ async def link_datatruck_driver(
     """Bind a synced Datatruck driver to this member + backfill their loads
     (matched by the staged driver's display name)."""
     account_id = int(user["account_id"])
-    tenant = await get_tenant_db(account_id)
+    tenant = await tenant_db_for_account(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
     try:
@@ -397,7 +399,7 @@ async def link_load_name(
     if body.field not in ("dispatcher", "driver"):
         raise HTTPException(400, "field must be dispatcher or driver")
     account_id = int(user["account_id"])
-    tenant = await get_tenant_db(account_id)
+    tenant = await tenant_db_for_account(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
     n = await tenant.assign_load_person_by_name(
@@ -426,7 +428,7 @@ async def provision_member(
     if body.kind not in ("driver", "dispatcher"):
         raise HTTPException(400, "kind must be driver or dispatcher")
     account_id = int(user["account_id"])
-    tenant = await get_tenant_db(account_id)
+    tenant = await tenant_db_for_account(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
     role = Role.DRIVER if body.kind == "driver" else Role.DISPATCHER
@@ -455,6 +457,126 @@ async def provision_member(
             account_id, uid, body.load_name, field=body.kind,
         )
     return {"id": uid, "lifecycle": "pending", "loads_backfilled": backfilled}
+
+
+@router.get("/users/integration-sources")
+async def integration_sources(
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+):
+    """Rosters for the member-drawer link pickers: the staged Datatruck
+    drivers and the live Samsara drivers, each entry carrying which member
+    (if any) already holds that ref so the UI can grey it out.  Samsara
+    soft-fails (empty list + error marker) when the account has no working
+    Samsara connection — the Datatruck half still returns."""
+    account_id = int(user["account_id"])
+    tenant = await tenant_db_for_account(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    datatruck = await tenant.list_datatruck_driver_options(account_id)
+
+    samsara: list[dict] = []
+    samsara_error: Optional[str] = None
+    try:
+        from infra.services import get_client as _get_samsara
+        client = await _get_samsara(account_id)
+        drivers = await client.get_drivers()
+        linked = {
+            (getattr(u, "samsara_driver_id", None) or "").strip(): u.id
+            for u in await platform_db.list_account_users(account_id)
+            if getattr(u, "samsara_driver_id", None)
+        }
+        for d in drivers:
+            sid = str(d.get("id", "") or "")
+            samsara.append({
+                "samsara_driver_id": sid,
+                "name": d.get("name") or "",
+                "company_code": d.get("_org") or "",
+                "deactivated": bool(d.get("deactivatedAtMs")),
+                "linked_user_id": linked.get(sid),
+            })
+    except Exception as e:
+        logger.warning(
+            "Samsara roster unavailable for account %s: %s", account_id, e,
+        )
+        samsara_error = "samsara_unavailable"
+    return {
+        "datatruck": datatruck,
+        "samsara": samsara,
+        "samsara_error": samsara_error,
+    }
+
+
+# Admin-issued sign-in links outlive the self-service 5-minute flow —
+# the member may open Telegram hours after the manager hands the link over.
+TELEGRAM_CLAIM_TTL = 72 * 3600
+
+
+@router.post("/users/{user_id}/telegram-invite")
+async def create_telegram_invite(
+    user_id: int,
+    user: dict = Depends(require_permission("can_manage_users")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Mint a Telegram sign-in link for a member who hasn't signed in yet.
+    Rides the existing dashboard→bot link rails (``/start link_TOKEN``):
+    when the person opens the link, their Telegram ID attaches to THIS
+    member row — continuing their data, never creating a second user —
+    and the derived lifecycle flips pending → active."""
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.telegram_id:
+        raise HTTPException(
+            status_code=409, detail="This member is already linked to Telegram.",
+        )
+    caller_rank = role_rank(user["role"])
+    target_rank = role_rank(
+        target.role.value if hasattr(target.role, "value") else target.role
+    )
+    if target_rank >= caller_rank:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot issue a sign-in link for a user with equal or higher role",
+        )
+
+    import secrets
+    from infra.cache import cache_set as redis_set
+    from interfaces.bot.config import TELEGRAM_LINK_PREFIX
+    from interfaces.bot.config import bot_username as global_bot_username
+
+    bot_un = ""
+    try:
+        acct = await platform_db.get_account(user["account_id"])
+        if acct and acct.bot_username:
+            bot_un = acct.bot_username
+    except Exception:
+        pass
+    if not bot_un:
+        bot_un = global_bot_username or ""
+    if not bot_un:
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram bot is not configured for this account.",
+        )
+
+    token = secrets.token_urlsafe(32)
+    await redis_set(
+        f"{TELEGRAM_LINK_PREFIX}{token}",
+        {"status": "pending", "user_id": target.id},
+        ttl=TELEGRAM_CLAIM_TTL,
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "user_telegram_invite_issued",
+        target_type="user", target_id=str(user_id),
+        details=f"Sign-in link issued for {target.display_name or user_id}",
+    )
+    return {
+        "deep_link": f"https://t.me/{bot_un}?start=link_{token}",
+        "expires_hours": TELEGRAM_CLAIM_TTL // 3600,
+    }
 
 
 async def _require_primary_owner(user: dict, platform_db):
@@ -627,7 +749,14 @@ async def update_user_samsara_driver_id(
         raise HTTPException(status_code=403, detail="Cannot modify a user with equal or higher role")
 
     new_did = (body.samsara_driver_id or "").strip() or None
-    ok = await platform_db.update_user(user_id, samsara_driver_id=new_did)
+    try:
+        # One person, one link — a ref already bound to another member 409s.
+        await tenant_db.link_samsara_driver(
+            user["account_id"], user_id, new_did or "",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    ok = True
     if ok:
         await tenant_db.add_audit_log(
             user["account_id"], int(user["sub"]),

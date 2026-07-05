@@ -920,31 +920,14 @@ export default function TeamManagement() {
                     >
                       <dl className="space-y-3 text-sm">
                         <Row label="Email" value={selected.email || '—'} />
-                        <Row
-                          label="Telegram ID"
-                          value={selected.telegram_id ? String(selected.telegram_id) : 'Not linked'}
-                          action={selected.telegram_id && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(String(selected.telegram_id))
-                                  .then(() => toast.success('Telegram ID copied'))
-                                  .catch(() => toast.error('Copy failed'));
-                              }}
-                              className="text-muted-foreground hover:text-primary p-0.5"
-                              aria-label="Copy Telegram ID"
-                              title="Copy Telegram ID"
-                            >
-                              <Copy size={12} />
-                            </button>
-                          )}
+                        <IdentityLinks
+                          key={selected.id}
+                          member={selected as MemberRow}
+                          onPatched={(patch) => {
+                            setSelected({ ...(selected as MemberRow), ...patch } as AdminUser);
+                            void loadUsers();
+                          }}
                         />
-                        {String(selected.role) === 'driver' && (
-                          <>
-                            <Row label="Samsara driver" value={(selected as MemberRow).samsara_driver_id || 'Not linked'} />
-                            <Row label="Datatruck driver" value={(selected as MemberRow).datatruck_driver_id || 'Not linked'} />
-                          </>
-                        )}
                         <Row label="Language" value={(selected.language || '—').toUpperCase()} />
                         <Row
                           label="Status"
@@ -1621,6 +1604,247 @@ export default function TeamManagement() {
         </>
       )}
     </div>
+  );
+}
+
+// ── Drawer identity links ───────────────────────────────────────
+//
+// The sign-in / integration identities of ONE member, managed in place:
+// Telegram (mint a sign-in deep link the manager hands to the person),
+// Samsara driver (live roster picker) and Datatruck driver (staged
+// roster picker).  Rosters load once per drawer open; refs already held
+// by another member are disabled so nothing gets double-linked.
+
+interface DatatruckSourceEntry {
+  external_id: string; name: string; status: string;
+  linked_user_id: number | null;
+}
+interface SamsaraSourceEntry {
+  samsara_driver_id: string; name: string; company_code: string;
+  deactivated: boolean; linked_user_id: number | null;
+}
+interface SourcesResponse {
+  datatruck: DatatruckSourceEntry[];
+  samsara: SamsaraSourceEntry[];
+  samsara_error: string | null;
+}
+
+const linkBtnCls =
+  'px-1.5 py-0.5 rounded border border-border text-2xs text-foreground disabled:opacity-40';
+
+function IdentityLinks({ member, onPatched }: {
+  member: MemberRow;
+  onPatched: (patch: Partial<MemberRow>) => void;
+}) {
+  const isDriver = String(member.role) === 'driver';
+  const [sources, setSources] = useState<SourcesResponse | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [samsaraPick, setSamsaraPick] = useState('');
+  const [dtPick, setDtPick] = useState('');
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isDriver) return;          // pickers only render for drivers
+    let alive = true;
+    apiJSON<SourcesResponse>('/admin/users/integration-sources')
+      .then((d) => { if (alive) setSources(d); })
+      .catch(() => { /* rows fall back to read-only */ });
+    return () => { alive = false; };
+  }, [isDriver]);
+
+  const act = async (fn: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Action failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const setSamsara = (id: string) => act(async () => {
+    await apiJSON(`/admin/users/${member.id}/samsara-driver-id`, {
+      method: 'PUT', body: { samsara_driver_id: id },
+    });
+    toast.success(id ? 'Samsara driver linked' : 'Samsara driver unlinked');
+    setSamsaraPick('');
+    onPatched({ samsara_driver_id: id || null });
+  });
+
+  const setDatatruck = (id: string) => act(async () => {
+    const r = await apiJSON<{ loads_backfilled: number }>(
+      `/admin/users/${member.id}/link-datatruck-driver`,
+      { method: 'POST', body: { external_id: id } },
+    );
+    toast.success(id
+      ? `Datatruck driver linked${r.loads_backfilled ? ` · ${r.loads_backfilled} load${r.loads_backfilled === 1 ? '' : 's'} attached` : ''}`
+      : 'Datatruck driver unlinked');
+    setDtPick('');
+    onPatched({ datatruck_driver_id: id || null });
+  });
+
+  const mintTelegramLink = () => act(async () => {
+    const r = await apiJSON<{ deep_link: string; expires_hours: number }>(
+      `/admin/users/${member.id}/telegram-invite`, { method: 'POST' },
+    );
+    setInviteLink(r.deep_link);
+  });
+
+  const copyText = (text: string, okMsg: string) => {
+    navigator.clipboard.writeText(text)
+      .then(() => toast.success(okMsg))
+      .catch(() => toast.error('Copy failed'));
+  };
+
+  const samsaraName = member.samsara_driver_id
+    ? sources?.samsara.find((s) => s.samsara_driver_id === member.samsara_driver_id)?.name
+      || member.samsara_driver_id
+    : null;
+  const dtName = member.datatruck_driver_id
+    ? sources?.datatruck.find((d) => d.external_id === member.datatruck_driver_id)?.name
+      || member.datatruck_driver_id
+    : null;
+
+  return (
+    <>
+      <Row
+        label="Telegram ID"
+        value={member.telegram_id ? String(member.telegram_id) : 'Not linked'}
+        action={member.telegram_id ? (
+          <button
+            type="button"
+            onClick={() => copyText(String(member.telegram_id), 'Telegram ID copied')}
+            className="text-muted-foreground hover:text-primary p-0.5"
+            aria-label="Copy Telegram ID"
+            title="Copy Telegram ID"
+          >
+            <Copy size={12} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={mintTelegramLink}
+            className={linkBtnCls}
+          >
+            Sign-in link
+          </button>
+        )}
+      />
+      {!member.telegram_id && inviteLink && (
+        <div className="rounded bg-muted/50 px-2 py-1.5">
+          <div className="flex items-center gap-1.5">
+            <span className="flex-1 truncate font-mono text-2xs text-foreground">{inviteLink}</span>
+            <button
+              type="button"
+              onClick={() => copyText(inviteLink, 'Sign-in link copied')}
+              className="text-muted-foreground hover:text-primary p-0.5"
+              aria-label="Copy sign-in link"
+              title="Copy sign-in link"
+            >
+              <Copy size={12} />
+            </button>
+          </div>
+          <p className="mt-1 text-2xs text-muted-foreground">
+            Valid 72 h. Share it with this member — opening it in Telegram links
+            their account and activates sign-in.
+          </p>
+        </div>
+      )}
+      {isDriver && (
+        <>
+          <Row
+            label="Samsara driver"
+            value={samsaraName || 'Not linked'}
+            action={member.samsara_driver_id ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setSamsara('')}
+                className={linkBtnCls}
+              >
+                Unlink
+              </button>
+            ) : undefined}
+          />
+          {!member.samsara_driver_id && sources && sources.samsara.length > 0 && (
+            <div className="flex items-center justify-end gap-2">
+              <select
+                className={selectCls}
+                value={samsaraPick}
+                onChange={(e) => setSamsaraPick(e.target.value)}
+                aria-label="Select Samsara driver"
+              >
+                <option value="">Select Samsara driver…</option>
+                {sources.samsara.map((s) => (
+                  <option
+                    key={s.samsara_driver_id}
+                    value={s.samsara_driver_id}
+                    disabled={s.linked_user_id != null || s.deactivated}
+                  >
+                    {s.name}{s.company_code ? ` · ${s.company_code}` : ''}
+                    {s.linked_user_id != null ? ' (linked)' : s.deactivated ? ' (inactive)' : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={busy || !samsaraPick}
+                onClick={() => setSamsara(samsaraPick)}
+                className={linkBtnCls}
+              >
+                Link
+              </button>
+            </div>
+          )}
+          <Row
+            label="Datatruck driver"
+            value={dtName || 'Not linked'}
+            action={member.datatruck_driver_id ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setDatatruck('')}
+                className={linkBtnCls}
+              >
+                Unlink
+              </button>
+            ) : undefined}
+          />
+          {!member.datatruck_driver_id && sources && sources.datatruck.length > 0 && (
+            <div className="flex items-center justify-end gap-2">
+              <select
+                className={selectCls}
+                value={dtPick}
+                onChange={(e) => setDtPick(e.target.value)}
+                aria-label="Select Datatruck driver"
+              >
+                <option value="">Select Datatruck driver…</option>
+                {sources.datatruck.map((d) => (
+                  <option
+                    key={d.external_id}
+                    value={d.external_id}
+                    disabled={d.linked_user_id != null}
+                  >
+                    {d.name}{d.linked_user_id != null ? ' (linked)' : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={busy || !dtPick}
+                onClick={() => setDatatruck(dtPick)}
+                className={linkBtnCls}
+              >
+                Link
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </>
   );
 }
 
