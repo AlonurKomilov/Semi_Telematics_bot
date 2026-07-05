@@ -98,6 +98,30 @@ export function surfaceContrastWeak(surface?: string): boolean {
   return lum > 0.42 && lum < 0.62;   // mid-tone — neither black nor white is crisp
 }
 
+function hexToRgba(hex: string, alpha: number): string {
+  const h = (hex || '').replace('#', '');
+  if (h.length < 6) return `rgba(10,10,10,${alpha})`;
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Hero photo as the HEADER's background (not a separate strip above it):
+// the image covers the band under a scrim so the title/headline/perks stay
+// readable.  With a custom Header colour the scrim IS that colour (brand
+// tint with the photo showing through); without one it's a neutral dark.
+// Scoped text vars follow the scrim so contrast is guaranteed either way.
+export function heroHeaderStyle(imageUrl: string, headerColor?: string): import('react').CSSProperties {
+  const scrim = headerColor ? hexToRgba(headerColor, 0.78) : 'rgba(10,10,10,0.55)';
+  const fg = headerColor ? readableTextOn(headerColor) : '#ffffff';
+  return {
+    backgroundImage: `linear-gradient(${scrim}, ${scrim}), url("${imageUrl}")`,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    ['--foreground']: fg,
+    ['--muted-foreground']: fg === '#ffffff' ? 'rgba(255,255,255,0.78)' : 'rgba(0,0,0,0.62)',
+  } as import('react').CSSProperties;
+}
+
 // Style for an element whose BACKGROUND is a custom carrier colour (the
 // header band, the page bg).  Sets the bg + readable text vars SCOPED to
 // that element, so its own text/links stay legible while the rest of the

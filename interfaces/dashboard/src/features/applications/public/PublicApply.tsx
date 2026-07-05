@@ -11,7 +11,7 @@ import {
   saveDraftRemote, sendDraftLink, resumeDraftRemote,
 } from './lib';
 import type { Data } from './lib';
-import { brandTintStyle, onColorStyle, surfaceThemeStyle } from './theme';
+import { brandTintStyle, heroHeaderStyle, onColorStyle, surfaceThemeStyle } from './theme';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
 
@@ -127,14 +127,14 @@ function Header({ compact, brand, token, logoUrl, bannerUrl }: {
   const bannerSrc = bannerUrl ?? (brand?.has_banner && token
     ? `${API_BASE}/applications/brand-banner?token=${encodeURIComponent(token)}`
     : '');
+  // The hero photo is the header's BACKGROUND, not a strip above it — so a
+  // photo replaces the flat Header colour (which becomes the scrim tint)
+  // instead of stacking on top of everything.  No photo → colour as before.
+  const heroBg = !compact && bannerSrc ? heroHeaderStyle(bannerSrc, brand?.header_color) : undefined;
   return (
-    <header className="border-b border-border bg-card" style={hdrStyle}>
-      {!compact && bannerSrc && (
-        <img src={bannerSrc} alt=""
-          className="h-44 w-full object-cover object-center sm:h-56 lg:h-72" />
-      )}
+    <header className="border-b border-border bg-card" style={heroBg ?? hdrStyle}>
       {accent && <div className="h-1 w-full" style={{ backgroundColor: accent }} />}
-      <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6">
+      <div className={`mx-auto max-w-5xl px-4 sm:px-6 ${heroBg ? 'py-9 sm:py-12' : 'py-5'}`}>
         <div className="flex items-center gap-2 text-primary">
           {logoSrc
             ? <img src={logoSrc} alt={brand?.name || 'Carrier'} className="h-7 w-auto max-w-40 object-contain" />
