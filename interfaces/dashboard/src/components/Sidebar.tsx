@@ -88,13 +88,14 @@ export default function Sidebar() {
     >
       {/* Logo row + collapse toggle.  When expanded the row carries
           the brand mark, brand text, persona selector, and a collapse
-          button.  When collapsed it shrinks to just the brand glyph
-          and the expand button so the chrome stays usable at minimum
-          width.  PersonaSelector is hidden in collapsed mode — it
-          isn't valuable without its label, and the avatar menu in the
-          top bar still surfaces persona controls via the dropdown. */}
-      <div className={`h-12 flex items-center ${collapsed ? 'px-2 justify-center' : 'px-3 gap-2'} shrink-0`}>
+          button.  When collapsed it keeps a compact icon-only persona
+          selector next to the expand button — the collapsed preference
+          persists in localStorage, so hiding the selector entirely
+          would lock switchable users (Owner/Admin) out of "View
+          dashboard as…" across every session. */}
+      <div className={`h-12 flex items-center ${collapsed ? 'px-1 justify-center gap-0.5' : 'px-3 gap-2'} shrink-0`}>
         {!collapsed && <span className="text-lg font-bold text-foreground">4truck</span>}
+        {collapsed && <PersonaSelector compact />}
         {!collapsed && (
           <div className="ml-auto">
             <PersonaSelector />

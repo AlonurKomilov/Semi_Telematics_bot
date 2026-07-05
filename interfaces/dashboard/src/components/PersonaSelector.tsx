@@ -30,7 +30,7 @@ import { useRoleView } from '../context/RoleViewContext';
  *      that role's day starts (Fleet → /fleet/map, Safety →
  *      /safety/scorecards, etc).
  */
-export function PersonaSelector() {
+export function PersonaSelector({ compact = false }: { compact?: boolean }) {
   const {
     activeView, viewLabel, canSwitch, availableViews, switchView,
     homeRoute, isPreviewing,
@@ -61,8 +61,10 @@ export function PersonaSelector() {
 
   // Non-switchable user (Fleet / Safety / Dispatcher / Driver): static
   // pill with no interactivity.  Shows the user what role they're in
-  // without implying they can change it.
+  // without implying they can change it.  In compact (collapsed-rail)
+  // mode there's no room for a label-only pill — render nothing.
   if (!canSwitch) {
+    if (compact) return null;
     return (
       <div
         className="inline-flex items-center px-2 py-0.5 text-2xs text-muted-foreground/80 bg-muted/30 border border-border/60 rounded-md"
@@ -94,28 +96,49 @@ export function PersonaSelector() {
     else setOpen(false);
   };
 
+  const triggerTitle = isPreviewing
+    ? `Previewing dashboard as ${viewLabel} — click to switch back. Changes what you see, not what's stored.`
+    : `Dashboard view: ${viewLabel}. Picking a different role re-skins the UI; data and permissions remain yours.`;
+
   return (
     <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen(o => !o)}
-        className={`inline-flex items-center gap-1 px-2 py-0.5 text-2xs rounded-md border transition ${
-          isPreviewing
-            ? 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/15'
-            : 'bg-muted/30 text-muted-foreground/90 border-border/60 hover:bg-muted hover:text-foreground'
-        }`}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        title={
-          isPreviewing
-            ? `Previewing dashboard as ${viewLabel} — click to switch back. Changes what you see, not what's stored.`
-            : `Dashboard view: ${viewLabel}. Picking a different role re-skins the UI; data and permissions remain yours.`
-        }
-      >
-        {isPreviewing && <Eye size={12} className="opacity-80" />}
-        <span>{viewLabel}{tierSuffix}</span>
-        <ChevronDown size={12} className="opacity-60" />
-      </button>
+      {compact ? (
+        // Collapsed-rail trigger: icon only.  Same dropdown; the panel
+        // overhangs the rail into the content area (no overflow clip on
+        // the sidebar).
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className={`p-1 rounded-md border transition ${
+            isPreviewing
+              ? 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/15'
+              : 'text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground'
+          }`}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label="View dashboard as…"
+          title={triggerTitle}
+        >
+          <Eye size={16} />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen(o => !o)}
+          className={`inline-flex items-center gap-1 px-2 py-0.5 text-2xs rounded-md border transition ${
+            isPreviewing
+              ? 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/15'
+              : 'bg-muted/30 text-muted-foreground/90 border-border/60 hover:bg-muted hover:text-foreground'
+          }`}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          title={triggerTitle}
+        >
+          {isPreviewing && <Eye size={12} className="opacity-80" />}
+          <span>{viewLabel}{tierSuffix}</span>
+          <ChevronDown size={12} className="opacity-60" />
+        </button>
+      )}
 
       {open && (
         <ul
