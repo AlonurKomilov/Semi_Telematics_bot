@@ -284,13 +284,19 @@ class LoadsMixin(_MixinBase):
         status: str | None = None,
         driver_user_id: int | None = None,
         dispatcher_user_id: int | None = None,
+        company_codes: list[str] | None = None,
         since: str | None = None,
         until: str | None = None,
         include_inactive: bool = False,
-        limit: int = 500,
+        limit: int | None = 500,
     ) -> list[Load]:
         """Loads for the account, newest pickup first.  ``since``/``until``
-        bound the pickup_date window (ISO prefixes compare correctly)."""
+        bound the pickup_date window (ISO prefixes compare correctly).
+
+        ``company_codes`` restricts to those companies, fail-open on rows
+        with no company (same rule as the Drivers/Vehicles lists).
+        ``limit=None`` returns everything — required on aggregation paths
+        (KPI) where a row cap would silently understate the totals."""
         where = ["account_id = ?"]
         args: list[Any] = [account_id]
         if not include_inactive:
@@ -304,18 +310,24 @@ class LoadsMixin(_MixinBase):
         if dispatcher_user_id is not None:
             where.append("dispatcher_user_id = ?")
             args.append(dispatcher_user_id)
+        if company_codes is not None:
+            ph = ", ".join("?" for _ in company_codes) or "''"
+            where.append(f"(company_code = '' OR company_code IN ({ph}))")
+            args.extend(company_codes)
         if since:
             where.append("pickup_date >= ?")
             args.append(since)
         if until:
             where.append("pickup_date <= ?")
             args.append(until)
-        args.append(int(limit))
-        cur = await self._db.execute(
+        sql = (
             f"{_SELECT} WHERE {' AND '.join(where)} "
-            "ORDER BY pickup_date DESC, id DESC LIMIT ?",
-            tuple(args),
+            "ORDER BY pickup_date DESC, id DESC"
         )
+        if limit is not None:
+            sql += " LIMIT ?"
+            args.append(int(limit))
+        cur = await self._db.execute(sql, tuple(args))
         return [_row_to_load(r) for r in await cur.fetchall()]
 
     async def get_load(self, account_id: int, load_id: int) -> Optional[Load]:
@@ -328,13 +340,19 @@ class LoadsMixin(_MixinBase):
 
     async def count_loads_by_status(
         self, account_id: int, *, driver_user_id: int | None = None,
+        company_codes: list[str] | None = None,
     ) -> dict[str, int]:
-        """Active-load counts per status — powers the tab badges."""
+        """Active-load counts per status — powers the tab badges.  Same
+        company fail-open rule as ``list_loads`` so tabs match the list."""
         where = ["account_id = ?", "is_active = 1"]
         args: list[Any] = [account_id]
         if driver_user_id is not None:
             where.append("driver_user_id = ?")
             args.append(driver_user_id)
+        if company_codes is not None:
+            ph = ", ".join("?" for _ in company_codes) or "''"
+            where.append(f"(company_code = '' OR company_code IN ({ph}))")
+            args.extend(company_codes)
         cur = await self._db.execute(
             f"SELECT status, COUNT(*) FROM loads WHERE {' AND '.join(where)} "
             "GROUP BY status",

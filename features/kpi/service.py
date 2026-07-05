@@ -179,13 +179,20 @@ async def set_kpi_thresholds(
 # ── IO wrapper (what the router serves) ────────────────────────────────
 
 
-async def get_dispatcher_kpis(account_id: int, *, days: int = 30) -> dict:
+async def get_dispatcher_kpis(
+    account_id: int, *, days: int = 30,
+    company_codes: list[str] | None = None,
+) -> dict:
     """The Dispatcher KPI section: metrics + grades over the last ``days``
-    of loads (manual + synced alike — the canonical model is the point)."""
+    of loads (manual + synced alike — the canonical model is the point).
+    ``limit=None`` is load-bearing: the list default caps at 500 rows,
+    which would silently understate every total on a busy account."""
     since = (
         datetime.now(timezone.utc) - timedelta(days=days)
     ).date().isoformat()
-    loads = await loads_service.get_loads(account_id, since=since)
+    loads = await loads_service.get_loads(
+        account_id, since=since, company_codes=company_codes, limit=None,
+    )
     tenant = await get_tenant_db(account_id)
     thresholds = (
         await get_kpi_thresholds(tenant, account_id)

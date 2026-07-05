@@ -17,12 +17,18 @@ from capabilities.permissions.roles import Role, get_user_permissions
 from features.loads import service
 from features.loads.service import load_to_dict
 from infra.platform import get_tenant_db as _get_tenant_db
-from interfaces.api.deps import require_permission, require_permission_any
+from interfaces.api.deps import (
+    get_user_company_codes, require_permission, require_permission_any,
+)
 
 router = APIRouter(prefix="/loads", tags=["loads"])
 
 _view_loads = require_permission_any("can_loads_all", "can_loads_own")
 _manage_loads = require_permission("can_manage_loads")
+
+# Rows returned to the list screen per request.  The response carries a
+# ``truncated`` flag when the account has more — never a silent cap.
+LIST_CAP = 500
 
 
 async def _scope_driver_id(user: dict) -> int | None:
@@ -95,14 +101,21 @@ async def list_loads(
     """Loads visible to the caller + the status tab counts."""
     account_id = int(user["account_id"])
     scope = await _scope_driver_id(user)
+    allowed = await get_user_company_codes(user)
     loads = await service.get_loads(
         account_id, scope_driver_user_id=scope,
         status=status, since=since, until=until,
+        company_codes=allowed or None,
+        limit=LIST_CAP + 1,
     )
+    truncated = len(loads) > LIST_CAP
+    if truncated:
+        loads = loads[:LIST_CAP]
     counts = await service.get_load_counts(
         account_id, scope_driver_user_id=scope,
+        company_codes=allowed or None,
     )
-    return {"loads": loads, "counts": counts}
+    return {"loads": loads, "counts": counts, "truncated": truncated}
 
 
 @router.post("/")
@@ -148,8 +161,10 @@ async def delete_load(
     load_id: int,
     user: dict = Depends(_manage_loads),
 ):
-    """Soft delete — the row leaves the operational tabs; history (KPI,
-    reports) keeps counting delivered work."""
+    """Soft delete — the load leaves every read surface (tabs, KPI,
+    reports); the row is kept only for audit/undelete.  Deleting a
+    delivered load therefore also removes it from past KPI windows —
+    deletion is for mistakes and duplicates, not archiving."""
     account_id = int(user["account_id"])
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
@@ -174,4 +189,7 @@ async def get_load(
     scope = await _scope_driver_id(user)
     if scope is not None and l.driver_user_id != scope:
         raise HTTPException(404, "load not found")   # own-scope: don't leak
+    allowed = await get_user_company_codes(user)
+    if allowed and l.company_code and l.company_code not in allowed:
+        raise HTTPException(404, "load not found")   # company-scope: don't leak
     return load_to_dict(l)

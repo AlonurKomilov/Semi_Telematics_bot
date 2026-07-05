@@ -106,3 +106,34 @@ async def test_prune_loads_by_pickup_date(db):
     assert n == 1
     left = {l.load_number for l in await db.list_loads(42)}
     assert left == {"NEW", "NODATE"}
+
+
+@pytest.mark.asyncio
+async def test_list_loads_limit_none_returns_everything(db):
+    """``limit=None`` is the aggregation contract (KPI) — a row cap here
+    silently understates every total."""
+    acct = await db.create_account("Loads Cap Co")
+    for i in range(5):
+        await db.add_load(acct.id, load_number=f"L{i}", total_rate=100.0)
+    capped = await db.list_loads(acct.id, limit=2)
+    assert len(capped) == 2
+    everything = await db.list_loads(acct.id, limit=None)
+    assert len(everything) == 5
+
+
+@pytest.mark.asyncio
+async def test_list_loads_company_scope_fail_open(db):
+    """``company_codes`` keeps only those companies PLUS rows with no
+    company (fail-open, same rule as the Drivers/Vehicles lists)."""
+    acct = await db.create_account("Loads Scope Co")
+    await db.add_load(acct.id, load_number="A1", company_code="OSY")
+    await db.add_load(acct.id, load_number="B1", company_code="PTG")
+    await db.add_load(acct.id, load_number="N1")            # no company
+    rows = await db.list_loads(acct.id, company_codes=["OSY"])
+    assert {l.load_number for l in rows} == {"A1", "N1"}
+    counts = await db.count_loads_by_status(acct.id, company_codes=["OSY"])
+    assert sum(counts.values()) == 2
+    # Empty allowed-list (restricted user with no companies) → only
+    # company-less rows remain visible.
+    rows = await db.list_loads(acct.id, company_codes=[])
+    assert {l.load_number for l in rows} == {"N1"}

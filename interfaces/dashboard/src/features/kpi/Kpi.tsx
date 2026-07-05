@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRoleView } from '../../context/RoleViewContext';
 import { Gauge, SlidersHorizontal } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import {
@@ -76,6 +77,10 @@ const SECTIONS = [
 export default function Kpi() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const { viewHas } = useRoleView();
+  // Threshold editing is account configuration (can_manage_account) —
+  // KPI view access alone must not move the grading goalposts.
+  const canEditThresholds = viewHas('can_manage_account');
   const [days, setDays] = useState(30);
   const [section, setSection] = useState('dispatchers');
   const [thresholdsOpen, setThresholdsOpen] = useState(false);
@@ -97,12 +102,12 @@ export default function Kpi() {
           'kpi_page.description',
           'Performance across the account — graded against your thresholds.',
         )}
-        actions={(
+        actions={canEditThresholds ? (
           <Button variant="outline" onClick={() => setThresholdsOpen(true)}>
             <SlidersHorizontal size={16} className="mr-1.5" />
             {t('kpi_page.thresholds', 'Thresholds')}
           </Button>
-        )}
+        ) : undefined}
       />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -160,6 +165,10 @@ export default function Kpi() {
       )}
       {!isLoading && error == null && rows.length > 0 && (
         <DataTable
+          // Enables the 3-dot column menu — which is also the only
+          // entry point to the filter popover, so the ``filterable``
+          // column config below was unreachable without this.
+          tableId="kpi-dispatchers"
           columns={COLUMNS}
           data={rows as unknown as Record<string, unknown>[]}
           searchKey="dispatcher_name"

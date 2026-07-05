@@ -47,6 +47,9 @@ export interface LoadRow {
 export interface LoadsResponse {
   loads: LoadRow[];
   counts: Record<string, number>;
+  // True when the account has more rows than the server returns per
+  // request — the UI must say so rather than silently cutting off.
+  truncated?: boolean;
 }
 
 export type LoadDraft = Partial<

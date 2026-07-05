@@ -60,9 +60,14 @@ async def get_loads(
     status: str | None = None,
     since: str | None = None,
     until: str | None = None,
+    company_codes: list[str] | None = None,
+    limit: int | None = 500,
 ) -> list[dict]:
     """Loads for the account, serialized.  ``scope_driver_user_id`` (set for
-    own-scope callers) restricts to that driver's loads."""
+    own-scope callers) restricts to that driver's loads; ``company_codes``
+    applies the caller's company restriction.  Aggregation consumers (KPI,
+    reports, AI tools) must pass ``limit=None`` — a row cap silently
+    understates their totals."""
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return []
@@ -70,18 +75,22 @@ async def get_loads(
         account_id,
         status=status,
         driver_user_id=scope_driver_user_id,
+        company_codes=company_codes,
         since=since, until=until,
+        limit=limit,
     )
     return [load_to_dict(l) for l in rows]
 
 
 async def get_load_counts(
     account_id: int, *, scope_driver_user_id: int | None = None,
+    company_codes: list[str] | None = None,
 ) -> dict[str, int]:
-    """Active-load counts per status (the tab badges), same scoping rule."""
+    """Active-load counts per status (the tab badges), same scoping rules."""
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return {}
     return await tenant.count_loads_by_status(
         account_id, driver_user_id=scope_driver_user_id,
+        company_codes=company_codes,
     )

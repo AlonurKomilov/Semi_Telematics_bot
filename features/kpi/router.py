@@ -13,11 +13,15 @@ from pydantic import BaseModel, Field
 
 from features.kpi import service
 from infra.platform import get_tenant_db as _get_tenant_db
-from interfaces.api.deps import require_permission
+from interfaces.api.deps import get_user_company_codes, require_permission
 
 router = APIRouter(prefix="/kpi", tags=["kpi"])
 
 _view_kpi = require_permission("can_kpi")
+# Editing what counts as good/bad is account configuration, not analytics —
+# view access (can_kpi is delegatable to any role) must not be enough to
+# move the grading goalposts.
+_manage_thresholds = require_permission("can_manage_account")
 
 
 @router.get("/dispatchers")
@@ -25,9 +29,12 @@ async def dispatcher_kpis(
     days: int = Query(30, ge=1, le=365),
     user: dict = Depends(_view_kpi),
 ):
-    """Per-dispatcher metrics + A–D grades over the window."""
+    """Per-dispatcher metrics + A–D grades over the window, respecting
+    the caller's company restriction."""
+    allowed = await get_user_company_codes(user)
     return await service.get_dispatcher_kpis(
         int(user["account_id"]), days=days,
+        company_codes=allowed or None,
     )
 
 
@@ -50,7 +57,7 @@ async def get_thresholds(user: dict = Depends(_view_kpi)):
 @router.put("/thresholds")
 async def put_thresholds(
     body: ThresholdsUpdate,
-    user: dict = Depends(_view_kpi),
+    user: dict = Depends(_manage_thresholds),
 ):
     """Set what counts as good/bad.  Grades everywhere recompute from the
     new values on the next read (metrics are computed live)."""

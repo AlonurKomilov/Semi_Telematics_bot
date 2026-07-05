@@ -157,8 +157,21 @@ export default function Loads() {
           }
         />
       )}
+      {!isLoading && error == null && data?.truncated && (
+        <p className="mb-2 text-xs text-muted-foreground">
+          {t(
+            'loads_page.truncated',
+            'Showing the latest 500 loads — use the status tabs or search to narrow further.',
+          )}
+        </p>
+      )}
       {!isLoading && error == null && loads.length > 0 && (
         <DataTable
+          // ``tableId`` opts into the column-controls layer (3-dot
+          // menu / pin / hide / reorder / Export / per-user layout).
+          // Also what makes the ``filterable`` columns below actually
+          // reachable — the filter popover opens from the 3-dot menu.
+          tableId="loads"
           columns={COLUMNS}
           data={loads as unknown as Record<string, unknown>[]}
           searchKey="customer"
