@@ -1221,7 +1221,8 @@ function AddressHistory({ rows }: { rows: AddressRow[] }) {
 interface VerifRow {
   employer_index: number; company: string; city: string; state: string;
   phone: string; from: string; to: string; current: boolean;
-  position: string; contact_ok: string; usdot?: string;
+  position: string; contact_ok: string; usdot?: string; mc?: string;
+  employer_email?: string;
   verification: {
     id: number; status: string; attempts: number; employer_email: string;
     sent_at: string | null; responded_at: string | null; notes: string;
@@ -1241,9 +1242,10 @@ function VerificationsPanel({ appId }: { appId: number }) {
       setEmails((prev) => {
         const next = { ...prev };
         for (const it of r.items || []) {
-          if (it.verification?.employer_email && !next[it.employer_index]) {
-            next[it.employer_index] = it.verification.employer_email;
-          }
+          // Priority: an address already used for a send > the FMCSA-registry
+          // email captured when the driver picked the carrier > blank.
+          const known = it.verification?.employer_email || it.employer_email;
+          if (known && !next[it.employer_index]) next[it.employer_index] = known;
         }
         return next;
       });
@@ -1308,6 +1310,7 @@ function VerificationsPanel({ appId }: { appId: number }) {
               <span className="text-xs text-muted-foreground">
                 {r.from} → {r.current ? 'present' : r.to}
                 {r.usdot ? <span className="ml-1.5 font-mono">USDOT {r.usdot}</span> : null}
+                {r.mc ? <span className="ml-1.5 font-mono">MC {r.mc}</span> : null}
                 {r.phone ? <span className="ml-1.5">· {r.phone}</span> : null}
               </span>
               {r.contact_ok === 'later' && <span className={`rounded px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>driver: after interview</span>}

@@ -179,6 +179,10 @@ def verification_targets(app: dict) -> list[dict]:
             "position": j.get("position") or "",
             "contact_ok": j.get("contactOk") or "",
             "usdot": j.get("usdot") or "",
+            "mc": j.get("mc") or "",
+            # Registry contact email captured at pick time — prefills (never
+            # locks) the recruiter's request address.
+            "employer_email": j.get("employerEmail") or "",
         })
     return out
 

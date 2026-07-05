@@ -47,7 +47,8 @@ async def _census_search(q: str, limit: int) -> list[dict]:
     # string literals — double them, the SoQL escape.
     sq = q.replace("'", "''")
     params = {
-        "$select": "dot_number,legal_name,dba_name,phy_city,phy_state,phone,status_code",
+        "$select": ("dot_number,legal_name,dba_name,phy_city,phy_state,phone,"
+                    "status_code,email_address,docket1prefix,docket1"),
         "$where": f"starts_with(upper(legal_name), '{sq}') OR starts_with(upper(dba_name), '{sq}')",
         "$order": "status_code, legal_name",   # 'A'ctive sorts before 'I'nactive
         "$limit": str(limit),
@@ -70,6 +71,10 @@ async def _census_search(q: str, limit: int) -> list[dict]:
         "state": r.get("phy_state") or "",
         "phone": r.get("phone") or "",
         "dot_number": r.get("dot_number") or "",
+        "mc_number": (r.get("docket1") or "") if (r.get("docket1prefix") or "MC") == "MC" else "",
+        # The registry's contact email — often the safety department.  It
+        # prefills the recruiter's §391.23 request address (editable there).
+        "email": (r.get("email_address") or "").lower(),
         "active": (r.get("status_code") or "") == "A",
     } for r in rows if isinstance(r, dict)]
 
@@ -98,6 +103,8 @@ async def _qcmobile_search(q: str, limit: int, webkey: str) -> list[dict]:
             "state": c.get("phyState") or "",
             "phone": c.get("telephone") or c.get("phone") or "",
             "dot_number": str(c.get("dotNumber") or ""),
+            "mc_number": str(c.get("docketNumber") or ""),
+            "email": str(c.get("emailAddress") or "").lower(),
             "active": str(c.get("allowedToOperate") or c.get("statusCode") or "").upper() in ("Y", "A"),
         })
     return out

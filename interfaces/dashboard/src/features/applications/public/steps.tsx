@@ -618,14 +618,25 @@ const Step5: StepDef = {
                   ? 'start typing — we’ll suggest from the FMCSA registry'
                   : 'FMCSA suggestions run on the live apply link (disabled in preview)'}>
                 <CarrierNameInput token={token} value={j.company}
-                  onChange={(v) => upd(i, 'company', v)}
+                  // Manual edits invalidate a previous registry pick — the
+                  // captured USDOT/MC/email belong to the OLD name.
+                  onChange={(v) => updMany(i, { company: v, usdot: '', mc: '', employerEmail: '' })}
                   onPick={(c) => updMany(i, {
-                    company: c.name, usdot: c.dot_number,
+                    company: c.name,
+                    // Registry identifiers — captured silently; the driver
+                    // never has to know them.
+                    usdot: c.dot_number, mc: c.mc_number, employerEmail: c.email,
                     // Blank-only fills — never clobber what they typed.
                     city: j.city || c.city, state: j.state || c.state,
                     phone: j.phone || c.phone,
                   })}
                   error={!!errors[`employment.${i}.company`]} />
+                {j.usdot && (
+                  <p className="mt-1 flex items-center gap-1 text-2xs text-muted-foreground">
+                    <ShieldCheck size={12} className="shrink-0" />
+                    FMCSA-verified · USDOT {j.usdot}{j.mc ? ` · MC ${j.mc}` : ''}
+                  </p>
+                )}
               </Field>
               <Field label="Position / title"><TextInput value={j.position} onChange={(v) => upd(i, 'position', v)} /></Field>
               <Field label="City"><TextInput value={j.city} onChange={(v) => upd(i, 'city', v)} /></Field>
