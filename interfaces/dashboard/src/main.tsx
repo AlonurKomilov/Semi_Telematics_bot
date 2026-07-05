@@ -10,6 +10,7 @@ import { RoleViewProvider } from './context/RoleViewContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { TooltipProvider } from './components/ui/tooltip';
 import { applyPublicFormTheme } from './features/applications/public/theme';
+import MaintenanceOverlay from './components/MaintenanceOverlay';
 import './i18n';  // initialise i18next before any component renders
 import './index.css';
 
@@ -85,6 +86,10 @@ if (_isApply) {
                 </RoleViewProvider>
               </AuthProvider>
             </BrowserRouter>
+            {/* Above the auth decision on purpose: a restart 502s /user/me,
+                which lands users on the Login branch — the "updating…"
+                overlay must cover that state too, not just signed-in. */}
+            <MaintenanceOverlay />
           </TooltipProvider>
           <Toaster richColors position="top-right" closeButton />
           {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
