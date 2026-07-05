@@ -67,20 +67,22 @@ async def list_users(
     paged = paginate(users, page, page_size)
     page_users = paged["items"]
 
-    # Per-user lookups only for the visible page — fan out concurrently.
-    # Sequential per-user awaits turned a 50-user account into ~100 DB
-    # roundtrips; gather() collapses that into one round-trip per user
-    # (and the asyncpg pool serves them concurrently).
+    # Truck / company assignments come from two account-wide batch
+    # queries (user_id → values maps).  The previous per-user gather
+    # acquired a pool connection PER lookup — 2×page_size concurrent
+    # acquires — which under refetch bursts exhausted Postgres client
+    # slots ("too many clients already").
     if page_users:
-        truck_results, company_results = await asyncio.gather(
-            asyncio.gather(*(platform_db.get_user_vehicle_nums(u.id) for u in page_users)),
-            asyncio.gather(*(platform_db.get_user_company_codes(u.id) for u in page_users)),
+        truck_map_all, company_map_all = await asyncio.gather(
+            platform_db.get_account_vehicle_nums_map(user["account_id"]),
+            platform_db.get_all_user_company_codes(user["account_id"]),
         )
+        page_ids = {u.id for u in page_users}
         truck_map: dict[int, list[str]] = {
-            u.id: t for u, t in zip(page_users, truck_results) if t
+            uid: t for uid, t in truck_map_all.items() if uid in page_ids and t
         }
         company_map: dict[int, list[str]] = {
-            u.id: c for u, c in zip(page_users, company_results) if c
+            uid: c for uid, c in company_map_all.items() if uid in page_ids and c
         }
     else:
         truck_map = {}

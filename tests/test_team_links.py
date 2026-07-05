@@ -181,3 +181,18 @@ def test_router_get_tenant_db_not_shadowed():
                 f"{path} leaks account_id as a query param — "
                 "get_tenant_db dependency is shadowed again"
             )
+
+
+@pytest.mark.asyncio
+async def test_account_vehicle_nums_map(db):
+    """Batch map matches the per-user lookups it replaced in list_users."""
+    acct = await db.create_account("Links Co 8")
+    a = await db.create_user(8401, acct.id, role=Role.DRIVER, display_name="A")
+    b = await db.create_user(8402, acct.id, role=Role.DRIVER, display_name="B")
+    await db.assign_vehicle(a.id, acct.id, "T1")
+    await db.assign_vehicle(a.id, acct.id, "T2", is_primary=True)
+    await db.assign_vehicle(b.id, acct.id, "T9")
+    m = await db.get_account_vehicle_nums_map(acct.id)
+    assert m[a.id] == ["T2", "T1"]          # primary first, then by number
+    assert m[b.id] == ["T9"]
+    assert m[a.id] == await db.get_user_vehicle_nums(a.id)

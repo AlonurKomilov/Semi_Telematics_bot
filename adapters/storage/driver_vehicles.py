@@ -59,6 +59,26 @@ class DriverVehiclesMixin(_MixinBase):
             rows = await cur.fetchall()
         return [r[0] for r in rows]
 
+    async def get_account_vehicle_nums_map(
+        self, account_id: int,
+    ) -> dict[int, list[str]]:
+        """``user_id → [truck_nums]`` for a whole account (batch, list
+        views).  One query instead of a per-user N+1 — per-user lookups
+        fired concurrently acquire a pool connection each and can exhaust
+        Postgres client slots."""
+        async with self.acquire() as conn:
+            cur = await conn.execute(
+                "SELECT user_id, truck_num FROM driver_trucks "
+                "WHERE account_id = ? "
+                "ORDER BY user_id, is_primary DESC, truck_num",
+                (account_id,),
+            )
+            rows = await cur.fetchall()
+        out: dict[int, list[str]] = {}
+        for r in rows:
+            out.setdefault(r[0], []).append(r[1])
+        return out
+
     async def assign_vehicle(
         self,
         user_id: int,
