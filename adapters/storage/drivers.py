@@ -267,6 +267,42 @@ def _extract_datatruck_cdl(r: dict) -> str:
     return ""
 
 
+def _payload_account(payload: Any) -> dict:
+    """The nested ``account`` object of a staged Datatruck driver payload
+    (the drivers-list endpoint keeps the person's name/email there).
+    Empty dict when absent or unparsable."""
+    if isinstance(payload, str):
+        try:
+            payload = json.loads(payload)
+        except (TypeError, ValueError):
+            return {}
+    acct = (payload or {}).get("account")
+    return acct if isinstance(acct, dict) else {}
+
+
+def _staged_driver_name(
+    display: Any, first: Any, last: Any, payload: Any,
+) -> str:
+    """Best display name for a staged Datatruck driver.  Promoted columns
+    first; rows staged before the account-nesting fix carry names only
+    inside the payload, so fall through to ``account.full_name`` /
+    first+last there."""
+    name = str(display or "").strip() \
+        or f"{first or ''} {last or ''}".strip()
+    if name:
+        return name
+    acct = _payload_account(payload)
+    return str(acct.get("full_name") or "").strip() \
+        or f"{acct.get('first_name') or ''} {acct.get('last_name') or ''}".strip()
+
+
+def _staged_driver_email(email: Any, payload: Any) -> str:
+    """Promoted email, else the payload's ``account.email`` (same
+    pre-fix-staging reason as ``_staged_driver_name``)."""
+    return str(email or "").strip() \
+        or str(_payload_account(payload).get("email") or "").strip()
+
+
 async def _apply_driver_field(
     db: Any, account_id: int, entity_id: int, field: str, value: Any,
 ) -> None:
@@ -437,12 +473,15 @@ class DriverProfileMixin(_MixinBase):
     ) -> str:
         """Display name of a staged Datatruck driver (for loads backfill)."""
         cur = await self._db.execute(
-            "SELECT display_name FROM datatruck_drivers "
+            "SELECT display_name, first_name, last_name, payload "
+            "FROM datatruck_drivers "
             "WHERE account_id = ? AND external_id = ?",
             (account_id, external_id),
         )
         row = await cur.fetchone()
-        return str(row[0] or "") if row else ""
+        if not row:
+            return ""
+        return _staged_driver_name(row[0], row[1], row[2], row[3])
 
     async def link_samsara_driver(
         self, account_id: int, user_id: int, samsara_driver_id: str,
@@ -485,11 +524,9 @@ class DriverProfileMixin(_MixinBase):
         )
         out = []
         for r in await cur.fetchall():
-            # Staged rows may carry only first/last with an empty
-            # display_name — same fallback as the import plan.
-            name = str(r[1] or "").strip() \
-                or f"{r[2] or ''} {r[3] or ''}".strip() \
-                or f"#{r[0]}"
+            # Promoted columns → payload account object (rows staged
+            # before the account-nesting fix) → bare #id as last resort.
+            name = _staged_driver_name(r[1], r[2], r[3], r[5]) or f"#{r[0]}"
             # Datatruck drivers carry no company; the assigned truck is
             # the picker's disambiguating tag instead.
             truck_unit = ""
@@ -582,10 +619,13 @@ class DriverProfileMixin(_MixinBase):
             ref = (d.external_id or "").strip()
             if not ref:
                 continue
+            staged_email = _staged_driver_email(d.email, d.payload)
             entry = {
                 "external_id": ref,
-                "name": d.display_name or f"{d.first_name} {d.last_name}".strip(),
-                "phone": d.phone, "email": d.email, "status": d.status,
+                "name": _staged_driver_name(
+                    d.display_name, d.first_name, d.last_name, d.payload,
+                ) or f"#{ref}",
+                "phone": d.phone, "email": staged_email, "status": d.status,
             }
             if str(d.status or "").strip().lower() in _INACTIVE_DRIVER_STATUSES:
                 skipped.append({**entry, "reason": "inactive in Datatruck"})
@@ -596,7 +636,7 @@ class DriverProfileMixin(_MixinBase):
             cdl = _norm_cdl(_extract_datatruck_cdl(
                 {"payload": d.payload},
             ))
-            em = (d.email or "").strip().lower()
+            em = staged_email.lower()
             if (cdl and cdl in cdl_dupes) or (em and em in email_dupes):
                 review.append({
                     **entry,
@@ -663,8 +703,12 @@ class DriverProfileMixin(_MixinBase):
         rows = [
             {
                 "external_id": d.external_id,
-                "display_name": d.display_name,
-                "phone": d.phone, "email": d.email, "status": d.status,
+                "display_name": _staged_driver_name(
+                    d.display_name, d.first_name, d.last_name, d.payload,
+                ),
+                "phone": d.phone,
+                "email": _staged_driver_email(d.email, d.payload),
+                "status": d.status,
                 "payload": d.payload,
             }
             for d in staged

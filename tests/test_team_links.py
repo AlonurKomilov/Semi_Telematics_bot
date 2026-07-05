@@ -135,6 +135,34 @@ async def test_datatruck_driver_options(db):
     assert opts["D3"]["truck_unit"] == "T-12"
 
 
+@pytest.mark.asyncio
+async def test_datatruck_options_name_from_payload_account(db):
+    """Rows staged BEFORE the account-nesting mapper fix have empty
+    promoted name columns — the name must still surface from the stored
+    payload's ``account`` object, without waiting for a re-sync."""
+    acct = await db.create_account("Links Co 7")
+    await db.upsert_datatruck_drivers(acct.id, [
+        {"external_id": "D9", "first_name": "", "last_name": "",
+         "display_name": "", "phone": "", "email": "",
+         "status": "active",
+         "payload": {
+             "id": 9,
+             "account": {"first_name": "Eric", "last_name": "Gasabato",
+                         "full_name": "Eric Gasabato", "email": "eg@x.com"},
+             "contact_number": "+1 555",
+         }},
+    ])
+    opts = {o["external_id"]: o
+            for o in await db.list_datatruck_driver_options(acct.id)}
+    assert opts["D9"]["name"] == "Eric Gasabato"
+    # The loads-backfill name lookup uses the same fallback.
+    assert await db.get_datatruck_driver_name(acct.id, "D9") == "Eric Gasabato"
+    # And the import plan buckets show the name + match by payload email.
+    plan = await db.plan_datatruck_driver_import(acct.id)
+    names = [e["name"] for b in ("link", "create", "review") for e in plan[b]]
+    assert "Eric Gasabato" in names
+
+
 def test_router_get_tenant_db_not_shadowed():
     """``from infra.platform import get_tenant_db`` once shadowed the FastAPI
     dependency of the same name — every ``Depends(get_tenant_db)`` endpoint
