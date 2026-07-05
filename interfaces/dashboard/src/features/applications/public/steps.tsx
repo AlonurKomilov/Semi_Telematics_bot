@@ -655,7 +655,7 @@ const Step5: StepDef = {
               <Field label="City"><TextInput value={j.city} onChange={(v) => upd(i, 'city', v)} /></Field>
               <Field label="State"><SelectInput value={j.state} onChange={(v) => upd(i, 'state', v)} options={US_STATES} mono /></Field>
               <Field label="Phone"><TextInput type="tel" value={j.phone} onChange={(v) => upd(i, 'phone', v)} format="phone" mono /></Field>
-              <Field label="Email" hint="HR / safety dept, if you know it" error={errors[`employment.${i}.employerEmail`]}>
+              <Field label="Email" error={errors[`employment.${i}.employerEmail`]}>
                 <TextInput type="email" value={j.employerEmail} onChange={(v) => upd(i, 'employerEmail', v)}
                   error={!!errors[`employment.${i}.employerEmail`]} />
               </Field>
