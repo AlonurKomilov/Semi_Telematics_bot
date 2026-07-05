@@ -117,6 +117,11 @@ async def test_datatruck_driver_options(db):
         {"external_id": "D2", "first_name": "", "last_name": "",
          "display_name": "Taken Driver", "phone": "", "email": "",
          "status": "active", "payload": {}},
+        # Real Datatruck rows can arrive with only first/last set —
+        # the picker must never render a blank option.
+        {"external_id": "D3", "first_name": "Jean", "last_name": "Bosco",
+         "display_name": "", "phone": "", "email": "",
+         "status": "active", "payload": {}},
     ])
     await db.link_datatruck_driver(acct.id, u.id, "D2")
     opts = {o["external_id"]: o
@@ -124,6 +129,7 @@ async def test_datatruck_driver_options(db):
     assert opts["D1"]["linked_user_id"] is None
     assert opts["D1"]["name"] == "Free Driver"
     assert opts["D2"]["linked_user_id"] == u.id
+    assert opts["D3"]["name"] == "Jean Bosco"
 
 
 def test_router_get_tenant_db_not_shadowed():

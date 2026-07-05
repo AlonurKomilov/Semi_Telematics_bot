@@ -1977,8 +1977,11 @@ interface LinksResponse {
   };
 }
 
+// Native-select twin of the Input primitive: rounded-lg tracks the theme's
+// Corners preset exactly (bare `rounded` is radius−3px and reads as stuck),
+// border-input matches form-field outlines.
 const selectCls =
-  'bg-muted border border-border rounded px-2 py-1 text-xs text-foreground ' +
+  'bg-muted border border-input rounded-lg px-2 py-1 text-xs text-foreground ' +
   'focus:outline-none focus:border-ring';
 
 function IntegrationLinksPanel({ members, onChanged }: {

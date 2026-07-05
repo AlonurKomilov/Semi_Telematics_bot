@@ -474,23 +474,29 @@ class DriverProfileMixin(_MixinBase):
         """Staged Datatruck roster with the member each ref is linked to
         (``linked_user_id`` NULL = available) — feeds the drawer picker."""
         cur = await self._db.execute(
-            "SELECT d.external_id, d.display_name, d.status, u.id "
+            "SELECT d.external_id, d.display_name, d.first_name, "
+            "d.last_name, d.status, u.id "
             "FROM datatruck_drivers d "
             "LEFT JOIN users u ON u.account_id = d.account_id "
             "AND u.datatruck_driver_id = d.external_id "
             "WHERE d.account_id = ? "
-            "ORDER BY LOWER(d.display_name)",
+            "ORDER BY LOWER(d.display_name), LOWER(d.last_name)",
             (account_id,),
         )
-        return [
-            {
+        out = []
+        for r in await cur.fetchall():
+            # Staged rows may carry only first/last with an empty
+            # display_name — same fallback as the import plan.
+            name = str(r[1] or "").strip() \
+                or f"{r[2] or ''} {r[3] or ''}".strip() \
+                or f"#{r[0]}"
+            out.append({
                 "external_id": str(r[0]),
-                "name": str(r[1] or ""),
-                "status": str(r[2] or ""),
-                "linked_user_id": r[3],
-            }
-            for r in await cur.fetchall()
-        ]
+                "name": name,
+                "status": str(r[4] or ""),
+                "linked_user_id": r[5],
+            })
+        return out
 
     async def _driver_match_state(self, account_id: int):
         """The in-memory match indexes shared by the ongoing projection and
