@@ -163,11 +163,19 @@ async def get_user_avatar(
     Management page load fired N Telegram API calls (where N = users
     without a photo) and the dashboard console showed N red 404 lines.
     """
-    target = await platform_db.get_user(user_id)
+    from fastapi.responses import Response as _Response
+
+    # Avatars are cosmetic — a transient DB failure (pool pressure,
+    # restart) degrades to 204 "no photo", never a red 500 in the
+    # console.  The page fires one of these per visible member, so a
+    # blip would otherwise spam N errors at once.
+    try:
+        target = await platform_db.get_user(user_id)
+    except Exception as exc:
+        logger.warning("avatar: user lookup failed for %s: %s", user_id, exc)
+        return _Response(status_code=204)
     if not target or target.account_id != user["account_id"]:
         raise HTTPException(status_code=404, detail="User not found")
-
-    from fastapi.responses import Response as _Response
 
     # Email-only users (no Telegram link) have no profile photo by
     # definition.  Returning 204 short-circuits before we try to
