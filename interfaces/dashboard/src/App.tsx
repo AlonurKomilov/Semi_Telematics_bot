@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext';
 import { isSafeReturnTo, APEX_DOMAIN } from './lib/safeReturnTo';
 import AppRouter from './router';
 import PendingInviteBanner from './components/PendingInviteBanner';
+import MaintenanceOverlay from './components/MaintenanceOverlay';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
@@ -248,6 +249,7 @@ export default function App() {
   return (
     <>
       <PendingInviteBanner />
+      <MaintenanceOverlay />
       <AppRouter />
     </>
   );

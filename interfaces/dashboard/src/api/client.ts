@@ -116,6 +116,12 @@ export async function apiFetch(path: string, opts: ApiFetchOpts = {}, timeoutMs 
       clearToken();
       throw new Error('Unauthorized');
     }
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      // Gateway-level failure — the API is restarting (make restart) or
+      // briefly unreachable.  Announce it so the MaintenanceOverlay can
+      // show "updating…" instead of each page surfacing a raw error.
+      window.dispatchEvent(new Event('4truck:maintenance'));
+    }
     return res;
   } catch (e) {
     // Re-throw timeout errors with the explicit reason we set above

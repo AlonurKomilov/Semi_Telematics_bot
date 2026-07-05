@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="20">
+<title>Updating — 4truck</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { margin: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #0b0d10; color: #e7e9ec; padding: 24px;
+  }
+  @media (prefers-color-scheme: light) { body { background: #f6f7f8; color: #1a1d21; } }
+  .card { max-width: 26rem; text-align: center; }
+  .spin {
+    width: 42px; height: 42px; margin: 0 auto 20px; border-radius: 50%;
+    border: 3px solid rgba(128,128,128,.25); border-top-color: #2563eb;
+    animation: r 0.9s linear infinite;
+  }
+  @keyframes r { to { transform: rotate(360deg); } }
+  h1 { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
+  p { color: #9aa1a9; margin-bottom: 8px; }
+  @media (prefers-color-scheme: light) { p { color: #5b6470; } }
+  .small { font-size: 13px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="spin" aria-hidden="true"></div>
+    <h1>We&rsquo;re updating the platform</h1>
+    <p>A quick update is being rolled out &mdash; this usually takes under a minute.</p>
+    <p class="small">This page retries automatically. If it takes longer, please try again in a couple of minutes.</p>
+  </div>
+  <script>
+    // Poll the API; the moment it's back, reload the original page.
+    (function retry() {
+      fetch('/api/health', { cache: 'no-store' })
+        .then(function (r) { if (r.ok) { location.reload(); } else { setTimeout(retry, 4000); } })
+        .catch(function () { setTimeout(retry, 4000); });
+    })();
+  </script>
+</body>
+</html>
