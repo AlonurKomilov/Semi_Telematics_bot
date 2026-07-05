@@ -666,6 +666,43 @@ class BrandUpdate(BaseModel):
     cra_site: str | None = Field(None, max_length=200)
 
 
+class AiThemeRequest(BaseModel):
+    prompt: str = Field("", max_length=300)
+
+
+@router.post("/companies/{company_id:int}/brand/ai-theme")
+@limiter.limit("10/hour")
+async def ai_theme(
+    request: Request,
+    company_id: int,
+    body: AiThemeRequest,
+    user: dict = Depends(require_permission("can_manage_applications")),
+    platform_db=Depends(get_platform_db),
+):
+    """AI theme maker: the carrier's logo (+ optional style wishes) → up to
+    3 palette candidates for the apply form's five colour slots.  Proposals
+    only — nothing is saved here; the recruiter applies one live in the
+    preview and persists with the normal Save.  Rate-limited (paid model
+    call); server-side sanitizer guarantees readable output."""
+    co = await platform_db.get_company_in_account(user["account_id"], company_id)
+    if not co:
+        raise HTTPException(status_code=404, detail="Company not found")
+    logo_bytes = None
+    if co.logo_object_id:
+        try:
+            from adapters.storage.object_store import get_object_store_for_account
+            store = await get_object_store_for_account(user["account_id"], platform_db)
+            logo_bytes = store.get_by_id(co.logo_object_id)
+        except Exception:
+            logo_bytes = None
+    from features.applications.theme_ai import generate_theme_palettes
+    palettes = await generate_theme_palettes(
+        account_id=user["account_id"], logo_bytes=logo_bytes,
+        wishes=body.prompt, seed_color=co.brand_color or "",
+    )
+    return {"palettes": palettes}
+
+
 @router.patch("/companies/{company_id:int}/brand")
 async def update_company_brand(
     company_id: int,

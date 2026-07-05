@@ -6,7 +6,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Monitor, Smartphone, ImagePlus } from 'lucide-react';
+import { Monitor, Smartphone, ImagePlus, Sparkles, Loader2 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { Button } from '../../components/ui/button';
 import { toneClasses } from '../../lib/status';
@@ -53,7 +53,13 @@ function AssetControl({ label, url, present, busy, onPick, onClear }: {
   );
 }
 
-function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresent, bannerPresent, onColor, onDevice, onAsset, onClearAsset, onSave }: {
+// One AI-proposed palette: the five theme slots + a mood name.
+export interface AiPalette {
+  name: string; surface: string; accent: string; header: string;
+  bg: string; heading: string;
+}
+
+function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresent, bannerPresent, onColor, onDevice, onAsset, onClearAsset, onSave, onAiTheme, aiOpen }: {
   brand: Brand; saving: boolean; device: 'desktop' | 'mobile';
   logoUrl?: string; bannerUrl?: string; logoPresent: boolean; bannerPresent: boolean;
   onColor: (key: 'brand_color' | 'surface_color' | 'header_color' | 'bg_color' | 'heading_color', c: string) => void;
@@ -61,6 +67,7 @@ function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresen
   onAsset: (kind: 'logo' | 'banner', f: File) => void;
   onClearAsset: (kind: 'logo' | 'banner') => void;
   onSave: () => void;
+  onAiTheme: () => void; aiOpen: boolean;
 }) {
   return (
     <div className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border bg-card px-4 py-2.5 text-foreground shadow-lg">
@@ -88,6 +95,12 @@ function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresen
       <Swatch label="Header" value={brand.header_color} onChange={(c) => onColor('header_color', c)} />
       <Swatch label="Background" value={brand.bg_color} onChange={(c) => onColor('bg_color', c)} />
       <Swatch label="Heading" value={brand.heading_color} onChange={(c) => onColor('heading_color', c)} />
+      <button type="button" onClick={onAiTheme} title="Generate palettes from the logo"
+        className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
+          aiOpen ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border bg-muted text-foreground hover:bg-muted/70'
+        }`}>
+        <Sparkles size={13} /> AI theme
+      </button>
       {surfaceContrastWeak(brand.surface_color) && (
         <span className={`rounded px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>Surface is mid-tone — text may be low-contrast</span>
       )}
@@ -134,6 +147,34 @@ export default function ApplyPreview() {
   // (no toolbar) — and the narrow iframe gives the form a real phone
   // viewport, so its mobile breakpoints actually fire.
   const [device, setDevice] = useState<'desktop' | 'mobile'>('desktop');
+  // ── AI theme maker ────────────────────────────────────────────────
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiPalettes, setAiPalettes] = useState<AiPalette[]>([]);
+  const generateAiThemes = async () => {
+    if (aiBusy) return;
+    setAiBusy(true);
+    try {
+      const r = await apiJSON<{ palettes: AiPalette[] }>(
+        `/applications/companies/${companyId}/brand/ai-theme`,
+        { method: 'POST', body: { prompt: aiPrompt } },
+      );
+      setAiPalettes(r.palettes || []);
+      if (!r.palettes?.length) toast.error("Couldn't generate a palette — try different style wishes.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Generation failed');
+    } finally {
+      setAiBusy(false);
+    }
+  };
+  // Applying a candidate is a LIVE preview change like the manual swatches —
+  // nothing persists until the normal Save.
+  const applyPalette = (p: AiPalette) =>
+    setBrand((b) => (b ? {
+      ...b, surface_color: p.surface, brand_color: p.accent,
+      header_color: p.header, bg_color: p.bg, heading_color: p.heading,
+    } : b));
   const inFrame = useMemo(() => { try { return window.self !== window.top; } catch { return true; } }, []);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const brandRef = useRef<Brand | null>(brand);
@@ -329,7 +370,50 @@ export default function ApplyPreview() {
       <PreviewThemeBar brand={brand} saving={saving} device={device}
         logoUrl={logoDisp} bannerUrl={bannerDisp} logoPresent={logoPresent} bannerPresent={bannerPresent}
         onColor={onColor} onDevice={setDevice}
-        onAsset={pickAsset} onClearAsset={clearAsset} onSave={saveTheme} />
+        onAsset={pickAsset} onClearAsset={clearAsset} onSave={saveTheme}
+        onAiTheme={() => setAiOpen((o) => !o)} aiOpen={aiOpen} />
+      {aiOpen && (
+        <div className="fixed bottom-20 left-1/2 z-50 w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border border-border bg-card p-4 text-foreground shadow-xl">
+          <div className="flex items-center justify-between">
+            <p className="flex items-center gap-1.5 text-sm font-medium">
+              <Sparkles size={15} className="text-primary" /> AI theme
+            </p>
+            <button type="button" onClick={() => setAiOpen(false)}
+              className="text-xs text-muted-foreground hover:text-foreground">Close</button>
+          </div>
+          <p className="mt-1 text-2xs text-muted-foreground">
+            Palettes built from the carrier's logo with colour-theory rules.
+            Click one to try it live — nothing is kept until you Save.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <input value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') generateAiThemes(); }}
+              placeholder="Style wishes (optional) — e.g. bold & modern, warm, dark…"
+              className="h-8 flex-1 rounded-md border border-border bg-muted px-2.5 text-xs text-foreground outline-none placeholder:text-muted-foreground/60 focus:border-ring" />
+            <Button size="sm" onClick={generateAiThemes} disabled={aiBusy}>
+              {aiBusy ? <><Loader2 size={14} className="animate-spin" /> Designing…</> : 'Generate'}
+            </Button>
+          </div>
+          {aiPalettes.length > 0 && (
+            <ul className="mt-3 flex flex-col gap-1.5">
+              {aiPalettes.map((p) => (
+                <li key={p.name + p.accent}>
+                  <button type="button" onClick={() => applyPalette(p)}
+                    title="Apply to the preview"
+                    className="flex w-full items-center gap-2 rounded-md border border-border px-2.5 py-2 text-left hover:border-primary/50 hover:bg-muted/50">
+                    <span className="flex shrink-0 gap-1">
+                      {[p.surface, p.accent, p.header, p.bg, p.heading].map((c, i) => (
+                        <span key={i} className="size-5 rounded border border-border" style={{ backgroundColor: c }} />
+                      ))}
+                    </span>
+                    <span className="truncate text-xs text-foreground">{p.name}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </>
   );
 }
