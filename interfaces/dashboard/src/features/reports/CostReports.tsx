@@ -14,6 +14,7 @@ import {
 } from '../../components/shell';
 import type { WorkOrderCostRow } from '../../types';
 import type { ReportsLayoutOutletContext } from './ReportsLayout';
+import { chartColor } from '../../lib/status';
 
 // Backend response envelopes for each /reports/* endpoint.
 interface ReportResponse {
@@ -73,7 +74,7 @@ const PERIOD_OPTIONS = [
 // Bar colour palette — picked to read well in both light and dark
 // modes (saturated mid-tones rather than pastels).  Index modulo the
 // length so a chart with 20 vehicles still cycles cleanly.
-const BAR_PALETTE = ['#0f3460', '#22c55e', '#f59e0b', '#e94560', '#8b5cf6', '#06b6d4'];
+const BAR_PALETTE = [chartColor(1), chartColor(2), chartColor(3), chartColor(4), chartColor(5)];
 
 function money(n: number): string {
   return `$${n.toLocaleString(undefined, {
@@ -357,13 +358,14 @@ export default function Reports() {
                       navigate(`/work-orders?vehicle=${encodeURIComponent(name)}`);
                     }) as React.ComponentProps<typeof BarChart>['onClick']}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" horizontal={false} />
-                    <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => money(v)} />
-                    <YAxis type="category" dataKey="vehicle_name" width={80} tick={{ fontSize: 11 }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickFormatter={(v) => money(v)} />
+                    <YAxis type="category" dataKey="vehicle_name" width={80} tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} />
                     <Tooltip
                       formatter={(value) => [moneyDetail(Number(value)), 'Total']}
-                      labelStyle={{ color: 'hsl(var(--foreground))' }}
-                      contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)' }}
+                      labelStyle={{ color: 'var(--foreground)' }}
+                      itemStyle={{ color: 'var(--foreground)' }}
+                      contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
                     />
                     <Bar dataKey="total_spent" style={{ cursor: 'pointer' }}>
                       {vehicleChart.map((_, i) => (
@@ -406,7 +408,8 @@ export default function Reports() {
                     </Pie>
                     <Tooltip
                       formatter={(value) => [moneyDetail(Number(value)), 'Total']}
-                      contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)' }}
+                      itemStyle={{ color: 'var(--foreground)' }}
+                      contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
                     />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                   </PieChart>
@@ -469,18 +472,19 @@ export default function Reports() {
               ) : (
                 <ResponsiveContainer width="100%" height={260}>
                   <LineChart data={monthly.data!.rows} margin={{ top: 10, right: 20, left: 8, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => money(v)} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} />
+                    <YAxis tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }} tickFormatter={(v) => money(v)} />
                     <Tooltip
                       formatter={(value) => [moneyDetail(Number(value)), 'Spend']}
-                      labelStyle={{ color: 'hsl(var(--foreground))' }}
-                      contentStyle={{ background: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: 'var(--radius)' }}
+                      labelStyle={{ color: 'var(--foreground)' }}
+                      itemStyle={{ color: 'var(--foreground)' }}
+                      contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
                     />
                     <Line
                       type="monotone" dataKey="total_spent"
-                      stroke="#0f3460" strokeWidth={2.5}
-                      dot={{ fill: '#0f3460', r: 4 }}
+                      stroke={chartColor(1)} strokeWidth={2.5}
+                      dot={{ fill: chartColor(1), r: 4 }}
                       activeDot={{ r: 6 }}
                     />
                   </LineChart>
