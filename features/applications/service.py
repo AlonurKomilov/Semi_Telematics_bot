@@ -178,6 +178,7 @@ def verification_targets(app: dict) -> list[dict]:
             "current": bool(j.get("current")),
             "position": j.get("position") or "",
             "contact_ok": j.get("contactOk") or "",
+            "usdot": j.get("usdot") or "",
         })
     return out
 

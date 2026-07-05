@@ -70,6 +70,7 @@ def build_verification_request_pdf(
     _section(story, styles, "Previous employer (addressee)")
     story.append(_kv([
         ("Company", employer.get("company")),
+        ("USDOT", employer.get("usdot")),
         ("Location", ", ".join(x for x in [employer.get("city"), employer.get("state")] if x)),
         ("Phone (as reported)", employer.get("phone")),
     ], styles))

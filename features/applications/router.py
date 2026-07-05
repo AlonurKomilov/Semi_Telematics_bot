@@ -363,6 +363,25 @@ async def ocr_cdl(
     return {"fields": fields}
 
 
+@router.get("/carrier-lookup")
+@limiter.limit("240/hour")
+async def carrier_lookup(
+    request: Request, token: str, q: str = "",
+    platform_db=Depends(get_platform_db),
+):
+    """Employer autocomplete for the apply form's employment history —
+    FMCSA registry names/contacts (see features.applications.carrier_lookup
+    for the provider chain).  Public but link-token-gated; best-effort:
+    always 200, empty items on any upstream trouble."""
+    link = await platform_db.resolve_application_link(token.strip())
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not available")
+    if len((q or "").strip()) < 3:
+        return {"items": []}
+    from features.applications.carrier_lookup import search_carriers
+    return {"items": await search_carriers(q)}
+
+
 # ── Save & resume (drafts) ──────────────────────────────────────────
 # The in-progress form syncs server-side once the applicant's email is
 # known, so they can continue on ANY device via an emailed resume link.

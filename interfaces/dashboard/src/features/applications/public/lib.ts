@@ -219,6 +219,25 @@ export async function resumeDraftRemote(resume_token: string, email: string): Pr
   } catch { return null; }
 }
 
+// ── FMCSA employer autocomplete ─────────────────────────────────────
+// Best-effort: failures resolve to [] and the field is just a plain input.
+export interface CarrierHit {
+  name: string; dba: string; city: string; state: string;
+  phone: string; dot_number: string; active: boolean;
+}
+
+export async function lookupCarriers(token: string, q: string): Promise<CarrierHit[]> {
+  try {
+    const res = await fetch(
+      `${API_BASE}/applications/carrier-lookup?token=${encodeURIComponent(token)}&q=${encodeURIComponent(q)}`);
+    if (!res.ok) return [];
+    const j = await res.json().catch(() => null);
+    return (j?.items as CarrierHit[]) ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export async function ocrCdl(token: string, file: File): Promise<CdlOcrFields | null> {
   try {
     const fd = new FormData();

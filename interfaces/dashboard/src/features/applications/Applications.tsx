@@ -1221,7 +1221,7 @@ function AddressHistory({ rows }: { rows: AddressRow[] }) {
 interface VerifRow {
   employer_index: number; company: string; city: string; state: string;
   phone: string; from: string; to: string; current: boolean;
-  position: string; contact_ok: string;
+  position: string; contact_ok: string; usdot?: string;
   verification: {
     id: number; status: string; attempts: number; employer_email: string;
     sent_at: string | null; responded_at: string | null; notes: string;
@@ -1307,6 +1307,8 @@ function VerificationsPanel({ appId }: { appId: number }) {
               <span className="text-sm font-medium text-foreground">{r.company || `Employer #${r.employer_index + 1}`}</span>
               <span className="text-xs text-muted-foreground">
                 {r.from} → {r.current ? 'present' : r.to}
+                {r.usdot ? <span className="ml-1.5 font-mono">USDOT {r.usdot}</span> : null}
+                {r.phone ? <span className="ml-1.5">· {r.phone}</span> : null}
               </span>
               {r.contact_ok === 'later' && <span className={`rounded px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>driver: after interview</span>}
               {r.contact_ok === 'no' && <span className={`rounded px-1.5 py-0.5 text-2xs ${toneClasses('danger')}`}>driver: do not contact</span>}
@@ -1338,6 +1340,7 @@ interface EmploymentRow {
   company?: string; position?: string; city?: string; state?: string;
   from?: string; to?: string; current?: boolean; reason?: string;
   gapExplanation?: string; fmcsa?: string; contactOk?: string;
+  phone?: string; usdot?: string;
 }
 function Employment({ jobs }: { jobs: EmploymentRow[] }) {
   if (!jobs?.length) return <p className="text-xs text-muted-foreground">No employment history.</p>;
@@ -1356,6 +1359,8 @@ function Employment({ jobs }: { jobs: EmploymentRow[] }) {
           {j.gapExplanation && <p className="mt-0.5 text-xs text-warn">Gap: {j.gapExplanation}</p>}
           <p className="mt-1 text-2xs text-muted-foreground">
             FMCSA-regulated: <b>{j.fmcsa || '—'}</b> · may contact: <b>{j.contactOk || '—'}</b>
+            {j.usdot ? <> · <span className="font-mono">USDOT {j.usdot}</span></> : null}
+            {j.phone ? <> · {j.phone}</> : null}
           </p>
         </div>
       ))}

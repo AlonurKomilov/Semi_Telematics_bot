@@ -2,14 +2,16 @@
 //
 // Each step is { title, sub, Render, validate }.  Render reads/writes the
 // shared `data` object by path; validate returns an error map (empty = ok).
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Plus, Trash2, ShieldCheck, ChevronDown, FileText, Camera, CheckCircle2, Loader2 } from 'lucide-react';
 import {
   deepGet, V, run, US_STATES, YES_NO, YEARS_AT_ADDR, CDL_CLASSES, ENDORSEMENTS,
   YEARS_CDL, EQUIPMENT_TYPES, REGIONS, PREFERRED_ROLE,
   ACCIDENT_TYPES, INJURY_LEVELS, PREVENTABLE, CONVICTION_STATUS, CONTACT_OK,
   HEARD_SOURCES, blankJob, blankAddress, blankAccident, blankViolation, ocrCdl,
+  lookupCarriers,
 } from './lib';
+import type { CarrierHit } from './lib';
 import type { Data, Errors } from './lib';
 import {
   Field, TextInput, TextArea, SelectInput, Choices, Check_, Chip, DocUpload, SignatureBlock,
@@ -492,6 +494,65 @@ const Step4: StepDef = {
   },
 };
 
+// ── FMCSA employer autocomplete ─────────────────────────────────────
+// The Company field suggests carriers from the FMCSA registry as the
+// applicant types (≥3 chars, debounced).  Picking one fills the company's
+// registered legal name + city/state/phone (blank-only) and records the
+// USDOT number — which is what lets the recruiter's §391.23 request reach
+// the right employer.  Free typing always works; no token (preview) or an
+// upstream hiccup just means no suggestions.
+function CarrierNameInput({ token, value, onChange, onPick, error }: {
+  token?: string; value?: string; onChange: (v: string) => void;
+  onPick: (c: CarrierHit) => void; error?: boolean;
+}) {
+  const [hits, setHits] = useState<CarrierHit[]>([]);
+  const [open, setOpen] = useState(false);
+  const seq = useRef(0);
+
+  const onInput = (v: string) => {
+    onChange(v);
+    const q = v.trim();
+    if (!token || q.length < 3) { setHits([]); setOpen(false); return; }
+    const id = ++seq.current;
+    setTimeout(async () => {
+      if (id !== seq.current) return;          // superseded keystroke
+      const res = await lookupCarriers(token, q);
+      if (id !== seq.current) return;
+      setHits(res);
+      setOpen(res.length > 0);
+    }, 350);
+  };
+
+  return (
+    <div className="relative" onBlurCapture={() => setTimeout(() => setOpen(false), 120)}>
+      <TextInput value={value} onChange={onInput} error={error} />
+      {open && (
+        <ul className="absolute left-0 right-0 top-full z-30 mt-1 max-h-56 overflow-y-auto rounded-md border border-border bg-card shadow-lg">
+          <li className="px-3 pt-1.5 pb-0.5 text-2xs uppercase tracking-wide text-muted-foreground/70">
+            From the FMCSA registry
+          </li>
+          {hits.map((h) => (
+            <li key={`${h.dot_number}-${h.name}`}>
+              <button type="button"
+                onMouseDown={(e) => { e.preventDefault(); onPick(h); setHits([]); setOpen(false); }}
+                className="w-full px-3 py-2 text-left hover:bg-muted">
+                <span className="block text-sm text-foreground">
+                  {h.name}{h.dba ? ` (${h.dba})` : ''}
+                </span>
+                <span className="block text-xs text-muted-foreground">
+                  {[h.city, h.state].filter(Boolean).join(', ')}
+                  {h.dot_number ? ` · USDOT ${h.dot_number}` : ''}
+                  {h.active ? '' : ' · inactive'}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 // ── Step 5 · Employment History ─────────────────────────────────────
 const Step5: StepDef = {
   title: 'Employment History', sub: 'Last 10 years · FMCSA',
@@ -516,10 +577,12 @@ const Step5: StepDef = {
     });
     return e;
   },
-  Render: ({ data, set, errors }) => {
+  Render: ({ data, set, errors, token }) => {
     const jobs: Data[] = data.employment || [];
     const setJobs = (next: Data[]) => set('employment', next);
     const upd = (i: number, key: string, val: unknown) => setJobs(jobs.map((j, idx) => idx === i ? { ...j, [key]: val } : j));
+    const updMany = (i: number, patch: Record<string, unknown>) =>
+      setJobs(jobs.map((j, idx) => idx === i ? { ...j, ...patch } : j));
     const work = data.work || {};
     const employed = work.employed;
     // Selecting "no" clears any stray employer rows so the stored record can't
@@ -550,8 +613,19 @@ const Step5: StepDef = {
                 className="text-muted-foreground hover:text-destructive"><Trash2 size={14} /></button>
             </div>
             <div className={grid}>
-              <Field label="Company / motor carrier" required error={errors[`employment.${i}.company`]}>
-                <TextInput value={j.company} onChange={(v) => upd(i, 'company', v)} error={!!errors[`employment.${i}.company`]} />
+              <Field label="Company / motor carrier" required error={errors[`employment.${i}.company`]}
+                hint={token
+                  ? 'start typing — we’ll suggest from the FMCSA registry'
+                  : 'FMCSA suggestions run on the live apply link (disabled in preview)'}>
+                <CarrierNameInput token={token} value={j.company}
+                  onChange={(v) => upd(i, 'company', v)}
+                  onPick={(c) => updMany(i, {
+                    company: c.name, usdot: c.dot_number,
+                    // Blank-only fills — never clobber what they typed.
+                    city: j.city || c.city, state: j.state || c.state,
+                    phone: j.phone || c.phone,
+                  })}
+                  error={!!errors[`employment.${i}.company`]} />
               </Field>
               <Field label="Position / title"><TextInput value={j.position} onChange={(v) => upd(i, 'position', v)} /></Field>
               <Field label="City"><TextInput value={j.city} onChange={(v) => upd(i, 'city', v)} /></Field>
