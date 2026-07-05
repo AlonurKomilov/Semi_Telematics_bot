@@ -4,7 +4,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Users as UsersIcon, X, Truck, User as UserIcon, Shield, Settings as SettingsIcon,
   Building2, Globe, Clock, Check, Mail, Send, Copy, Search, Crown,
+  ChevronDown, ChevronRight,
 } from 'lucide-react';
+import { Button } from '../../components/ui/button';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toast } from 'sonner';
 import DataTable from '../../components/DataTable';
@@ -17,7 +19,7 @@ import {
   ErrorState,
   TableSkeleton,
 } from '../../components/shell';
-import { toneClasses } from '../../lib/status';
+import { toneClasses, toneText } from '../../lib/status';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { InvitesPanel } from './Invites';
 import { WorkHoursPanel } from './WorkHours';
@@ -1629,9 +1631,6 @@ interface SourcesResponse {
   samsara_error: string | null;
 }
 
-const linkBtnCls =
-  'px-1.5 py-0.5 rounded border border-border text-2xs text-foreground disabled:opacity-40';
-
 function IdentityLinks({ member, onPatched }: {
   member: MemberRow;
   onPatched: (patch: Partial<MemberRow>) => void;
@@ -1707,6 +1706,13 @@ function IdentityLinks({ member, onPatched }: {
       || member.datatruck_driver_id
     : null;
 
+  // Every identity row keeps its control in the SAME place — the value
+  // slot on the right.  Unlinked = a fixed-width picker whose placeholder
+  // reads "Not linked" + a Link button; linked = the resolved name + an
+  // Unlink button.  Fixed w-44 keeps the two pickers identical regardless
+  // of option text length.
+  const pickerCls = `${selectCls} w-44`;
+
   return (
     <>
       <Row
@@ -1723,14 +1729,15 @@ function IdentityLinks({ member, onPatched }: {
             <Copy size={12} />
           </button>
         ) : (
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="xs"
             disabled={busy}
             onClick={mintTelegramLink}
-            className={linkBtnCls}
           >
             Sign-in link
-          </button>
+          </Button>
         )}
       />
       {!member.telegram_id && inviteLink && (
@@ -1755,93 +1762,103 @@ function IdentityLinks({ member, onPatched }: {
       )}
       {isDriver && (
         <>
-          <Row
-            label="Samsara driver"
-            value={samsaraName || 'Not linked'}
-            action={member.samsara_driver_id ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setSamsara('')}
-                className={linkBtnCls}
-              >
-                Unlink
-              </button>
-            ) : undefined}
-          />
-          {!member.samsara_driver_id && sources && sources.samsara.length > 0 && (
-            <div className="flex items-center justify-end gap-2">
-              <select
-                className={selectCls}
-                value={samsaraPick}
-                onChange={(e) => setSamsaraPick(e.target.value)}
-                aria-label="Select Samsara driver"
-              >
-                <option value="">Select Samsara driver…</option>
-                {sources.samsara.map((s) => (
-                  <option
-                    key={s.samsara_driver_id}
-                    value={s.samsara_driver_id}
-                    disabled={s.linked_user_id != null || s.deactivated}
+          <div className="flex justify-between items-center gap-2">
+            <dt className="text-muted-foreground">Samsara driver</dt>
+            <dd className="inline-flex min-w-0 items-center gap-1.5">
+              {member.samsara_driver_id ? (
+                <>
+                  <span className="truncate text-foreground">{samsaraName}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    disabled={busy}
+                    onClick={() => setSamsara('')}
                   >
-                    {s.name}{s.company_code ? ` · ${s.company_code}` : ''}
-                    {s.linked_user_id != null ? ' (linked)' : s.deactivated ? ' (inactive)' : ''}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                disabled={busy || !samsaraPick}
-                onClick={() => setSamsara(samsaraPick)}
-                className={linkBtnCls}
-              >
-                Link
-              </button>
-            </div>
-          )}
-          <Row
-            label="Datatruck driver"
-            value={dtName || 'Not linked'}
-            action={member.datatruck_driver_id ? (
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => setDatatruck('')}
-                className={linkBtnCls}
-              >
-                Unlink
-              </button>
-            ) : undefined}
-          />
-          {!member.datatruck_driver_id && sources && sources.datatruck.length > 0 && (
-            <div className="flex items-center justify-end gap-2">
-              <select
-                className={selectCls}
-                value={dtPick}
-                onChange={(e) => setDtPick(e.target.value)}
-                aria-label="Select Datatruck driver"
-              >
-                <option value="">Select Datatruck driver…</option>
-                {sources.datatruck.map((d) => (
-                  <option
-                    key={d.external_id}
-                    value={d.external_id}
-                    disabled={d.linked_user_id != null}
+                    Unlink
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <select
+                    className={pickerCls}
+                    value={samsaraPick}
+                    onChange={(e) => setSamsaraPick(e.target.value)}
+                    aria-label="Link Samsara driver"
                   >
-                    {d.name}{d.linked_user_id != null ? ' (linked)' : ''}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                disabled={busy || !dtPick}
-                onClick={() => setDatatruck(dtPick)}
-                className={linkBtnCls}
-              >
-                Link
-              </button>
-            </div>
-          )}
+                    <option value="">Not linked</option>
+                    {(sources?.samsara ?? []).map((s) => (
+                      <option
+                        key={s.samsara_driver_id}
+                        value={s.samsara_driver_id}
+                        disabled={s.linked_user_id != null || s.deactivated}
+                      >
+                        {s.name}{s.company_code ? ` · ${s.company_code}` : ''}
+                        {s.linked_user_id != null ? ' (linked)' : s.deactivated ? ' (inactive)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    disabled={busy || !samsaraPick}
+                    onClick={() => setSamsara(samsaraPick)}
+                  >
+                    Link
+                  </Button>
+                </>
+              )}
+            </dd>
+          </div>
+          <div className="flex justify-between items-center gap-2">
+            <dt className="text-muted-foreground">Datatruck driver</dt>
+            <dd className="inline-flex min-w-0 items-center gap-1.5">
+              {member.datatruck_driver_id ? (
+                <>
+                  <span className="truncate text-foreground">{dtName}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    disabled={busy}
+                    onClick={() => setDatatruck('')}
+                  >
+                    Unlink
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <select
+                    className={pickerCls}
+                    value={dtPick}
+                    onChange={(e) => setDtPick(e.target.value)}
+                    aria-label="Link Datatruck driver"
+                  >
+                    <option value="">Not linked</option>
+                    {(sources?.datatruck ?? []).map((d) => (
+                      <option
+                        key={d.external_id}
+                        value={d.external_id}
+                        disabled={d.linked_user_id != null}
+                      >
+                        {d.name}{d.linked_user_id != null ? ' (linked)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    disabled={busy || !dtPick}
+                    onClick={() => setDatatruck(dtPick)}
+                  >
+                    Link
+                  </Button>
+                </>
+              )}
+            </dd>
+          </div>
         </>
       )}
     </>
@@ -2045,7 +2062,9 @@ function IntegrationLinksPanel({ members, onChanged }: {
           Not linked from integrations
           {total != null && <span className="ml-1.5 text-muted-foreground">{total}</span>}
         </span>
-        <span className="text-muted-foreground">{open ? '▾' : '▸'}</span>
+        {open
+          ? <ChevronDown size={14} className="text-muted-foreground" />
+          : <ChevronRight size={14} className="text-muted-foreground" />}
       </button>
       {open && !data && <p className="px-3 pb-3 text-xs text-muted-foreground">Loading…</p>}
       {open && data && (
@@ -2056,39 +2075,43 @@ function IntegrationLinksPanel({ members, onChanged }: {
                 <span className="text-foreground">{d.name}</span>
                 <span className="text-muted-foreground">
                   Datatruck driver{d.email ? ` · ${d.email}` : ''}
-                  {bucket === 'review' && d.reason ? ` · ⚠ ${d.reason}` : ''}
+                  {bucket === 'review' && d.reason
+                    ? <> · <span className={toneText('warn')}>{d.reason}</span></>
+                    : ''}
                 </span>
                 {bucket === 'link' && d.matched_user_id != null && (
-                  <button
+                  <Button
                     type="button"
+                    size="xs"
                     disabled={busy}
                     onClick={() => linkDriver(d.external_id, d.matched_user_id!)}
-                    className="px-2 py-1 rounded bg-primary text-primary-foreground disabled:opacity-50"
                   >
                     Link to {d.matched_name}
-                  </button>
+                  </Button>
                 )}
                 <MemberPick id={`dt-${d.external_id}`} pool={drivers} />
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="xs"
                   disabled={busy || !picks[`dt-${d.external_id}`]}
                   onClick={() => linkDriver(d.external_id, Number(picks[`dt-${d.external_id}`]))}
-                  className="px-2 py-1 rounded border border-border text-foreground disabled:opacity-40"
                 >
                   Link
-                </button>
+                </Button>
                 {bucket !== 'link' && (
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="xs"
                     disabled={busy}
                     onClick={() => provision({
                       kind: 'driver', name: d.name, email: d.email || '',
                       phone: d.phone || '', datatruck_driver_id: d.external_id,
                     })}
-                    className="px-2 py-1 rounded border border-border text-foreground disabled:opacity-40"
                   >
                     Add as pending
-                  </button>
+                  </Button>
                 )}
               </div>
             )),
@@ -2101,22 +2124,24 @@ function IntegrationLinksPanel({ members, onChanged }: {
                   {field} on {n.loads} load{n.loads === 1 ? '' : 's'}
                 </span>
                 <MemberPick id={`${field}-${n.name}`} pool={field === 'driver' ? drivers : members} />
-                <button
+                <Button
                   type="button"
+                  variant="outline"
+                  size="xs"
                   disabled={busy || !picks[`${field}-${n.name}`]}
                   onClick={() => linkName(n.name, field, Number(picks[`${field}-${n.name}`]))}
-                  className="px-2 py-1 rounded border border-border text-foreground disabled:opacity-40"
                 >
                   Link
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="outline"
+                  size="xs"
                   disabled={busy}
                   onClick={() => provision({ kind: field, name: n.name, load_name: n.name })}
-                  className="px-2 py-1 rounded border border-border text-foreground disabled:opacity-40"
                 >
                   Add as pending
-                </button>
+                </Button>
               </div>
             )),
           )}
