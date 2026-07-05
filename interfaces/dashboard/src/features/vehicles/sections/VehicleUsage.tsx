@@ -169,13 +169,13 @@ export default function VehicleUsage({ vehicleName, company }: VehicleSectionPro
             <div className="mt-5" style={{ width: '100%', height: 220 }}>
               <ResponsiveContainer>
                 <BarChart data={series} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="label" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{
-                      background: 'hsl(var(--card))',
-                      border: '1px solid hsl(var(--border))',
+                      background: 'var(--card)',
+                      border: '1px solid var(--border)',
                       borderRadius: 'var(--radius)',
                       fontSize: 12,
                     }}
