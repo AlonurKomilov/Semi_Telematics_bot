@@ -1343,7 +1343,7 @@ interface EmploymentRow {
   company?: string; position?: string; city?: string; state?: string;
   from?: string; to?: string; current?: boolean; reason?: string;
   gapExplanation?: string; fmcsa?: string; contactOk?: string;
-  phone?: string; usdot?: string;
+  phone?: string; usdot?: string; employerEmail?: string;
 }
 function Employment({ jobs }: { jobs: EmploymentRow[] }) {
   if (!jobs?.length) return <p className="text-xs text-muted-foreground">No employment history.</p>;
@@ -1364,6 +1364,7 @@ function Employment({ jobs }: { jobs: EmploymentRow[] }) {
             FMCSA-regulated: <b>{j.fmcsa || '—'}</b> · may contact: <b>{j.contactOk || '—'}</b>
             {j.usdot ? <> · <span className="font-mono">USDOT {j.usdot}</span></> : null}
             {j.phone ? <> · {j.phone}</> : null}
+            {j.employerEmail ? <> · {j.employerEmail}</> : null}
           </p>
         </div>
       ))}

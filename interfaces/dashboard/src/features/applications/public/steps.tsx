@@ -574,6 +574,9 @@ const Step5: StepDef = {
       if (V.required(j.from)) e[`employment.${i}.from`] = 'Required';
       if (!j.current && V.required(j.to)) e[`employment.${i}.to`] = 'Required';
       if (!j.fmcsa) e[`employment.${i}.fmcsa`] = 'Required';
+      // Employer email is optional — but when given, it must be an email
+      // (it prefills the recruiter's §391.23 request address).
+      if (j.employerEmail && V.email(j.employerEmail)) e[`employment.${i}.employerEmail`] = 'Invalid email';
     });
     return e;
   },
@@ -627,13 +630,14 @@ const Step5: StepDef = {
                     // the CDL fast-fill — visible assistance, not a glitch.
                     updMany(i, {
                       company: c.name,
-                      usdot: c.dot_number, mc: c.mc_number, employerEmail: c.email,
+                      usdot: c.dot_number, mc: c.mc_number,
                     });
                     if (!setIfEmpty) return;
                     // setIfEmpty is atomic against LATEST state (safe across
                     // the awaits, unlike jobs-closure updates) and blank-only
                     // — never clobbers what the driver typed.
-                    for (const [field, v] of [['city', c.city], ['state', c.state], ['phone', c.phone]] as const) {
+                    for (const [field, v] of [['city', c.city], ['state', c.state],
+                                              ['phone', c.phone], ['employerEmail', c.email]] as const) {
                       if (!v) continue;
                       await _tick(90);
                       setIfEmpty(`employment.${i}.${field}`, v);
@@ -644,7 +648,6 @@ const Step5: StepDef = {
                   <p className="mt-1 flex items-center gap-1 text-2xs text-muted-foreground">
                     <ShieldCheck size={12} className="shrink-0" />
                     FMCSA-verified · USDOT {j.usdot}{j.mc ? ` · MC ${j.mc}` : ''}
-                    {j.employerEmail ? ` · ${j.employerEmail}` : ''}
                   </p>
                 )}
               </Field>
@@ -652,6 +655,10 @@ const Step5: StepDef = {
               <Field label="City"><TextInput value={j.city} onChange={(v) => upd(i, 'city', v)} /></Field>
               <Field label="State"><SelectInput value={j.state} onChange={(v) => upd(i, 'state', v)} options={US_STATES} mono /></Field>
               <Field label="Phone"><TextInput type="tel" value={j.phone} onChange={(v) => upd(i, 'phone', v)} format="phone" mono /></Field>
+              <Field label="Email" hint="HR / safety dept, if you know it" error={errors[`employment.${i}.employerEmail`]}>
+                <TextInput type="email" value={j.employerEmail} onChange={(v) => upd(i, 'employerEmail', v)}
+                  error={!!errors[`employment.${i}.employerEmail`]} />
+              </Field>
               <Field label="Equipment operated"><TextInput value={j.equipment} onChange={(v) => upd(i, 'equipment', v)} /></Field>
               <Field label="From" required error={errors[`employment.${i}.from`]}>
                 <TextInput type="month" value={j.from} onChange={(v) => upd(i, 'from', v)} mono error={!!errors[`employment.${i}.from`]} />
