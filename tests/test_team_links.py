@@ -50,6 +50,13 @@ async def test_manual_datatruck_link_and_conflict(db):
     # Unlink frees it.
     await db.link_datatruck_driver(acct.id, a.id, "")
     await db.link_datatruck_driver(acct.id, b.id, "D5")
+    # The hydrated User model must expose the link — the members-list
+    # serializer reads it via getattr, which silently returned None
+    # while the field was missing from the model (drawer showed
+    # "Not linked" for members the picker knew were linked).
+    users = {u.id: u for u in await db.list_account_users(acct.id)}
+    assert users[b.id].datatruck_driver_id == "D5"
+    assert users[a.id].datatruck_driver_id is None
 
 
 @pytest.mark.asyncio

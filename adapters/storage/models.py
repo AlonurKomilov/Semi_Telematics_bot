@@ -207,6 +207,10 @@ class User:
     # and /payroll/me have a trustworthy identity binding instead of a
     # most-recent-event-by-truck heuristic. NULL ⇒ user has no fleet identity yet.
     samsara_driver_id: Optional[str] = None
+    # Datatruck driver ref — the TMS sibling of samsara_driver_id.  Stamped
+    # by the CDL→email matcher, the one-time import, or a manual link in
+    # Team Management.  NULL ⇒ not linked to a Datatruck driver.
+    datatruck_driver_id: Optional[str] = None
 
     @property
     def is_owner(self) -> bool:

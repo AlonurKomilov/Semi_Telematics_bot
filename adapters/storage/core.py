@@ -379,6 +379,7 @@ class _DatabaseCore:
             email=row["email"] if "email" in row.keys() else None,
             password_hash=row["password_hash"] if "password_hash" in row.keys() else None,
             samsara_driver_id=row["samsara_driver_id"] if "samsara_driver_id" in row.keys() else None,
+            datatruck_driver_id=row["datatruck_driver_id"] if "datatruck_driver_id" in row.keys() else None,
         )
 
     def _row_to_invite(self, row) -> Invite:
