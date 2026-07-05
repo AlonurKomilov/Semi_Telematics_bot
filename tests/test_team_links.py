@@ -118,10 +118,12 @@ async def test_datatruck_driver_options(db):
          "display_name": "Taken Driver", "phone": "", "email": "",
          "status": "active", "payload": {}},
         # Real Datatruck rows can arrive with only first/last set —
-        # the picker must never render a blank option.
+        # the picker must never render a blank option.  The assigned
+        # truck in the payload becomes the picker's secondary tag.
         {"external_id": "D3", "first_name": "Jean", "last_name": "Bosco",
          "display_name": "", "phone": "", "email": "",
-         "status": "active", "payload": {}},
+         "status": "active",
+         "payload": {"assigned_truck": {"id": 7, "unit_number": "T-12"}}},
     ])
     await db.link_datatruck_driver(acct.id, u.id, "D2")
     opts = {o["external_id"]: o
@@ -130,6 +132,7 @@ async def test_datatruck_driver_options(db):
     assert opts["D1"]["name"] == "Free Driver"
     assert opts["D2"]["linked_user_id"] == u.id
     assert opts["D3"]["name"] == "Jean Bosco"
+    assert opts["D3"]["truck_unit"] == "T-12"
 
 
 def test_router_get_tenant_db_not_shadowed():

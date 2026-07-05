@@ -1619,6 +1619,7 @@ export default function TeamManagement() {
 
 interface DatatruckSourceEntry {
   external_id: string; name: string; status: string;
+  truck_unit: string;
   linked_user_id: number | null;
 }
 interface SamsaraSourceEntry {
@@ -1842,7 +1843,8 @@ function IdentityLinks({ member, onPatched }: {
                         value={d.external_id}
                         disabled={d.linked_user_id != null}
                       >
-                        {d.name}{d.linked_user_id != null ? ' (linked)' : ''}
+                        {d.name}{d.truck_unit ? ` · ${d.truck_unit}` : ''}
+                        {d.linked_user_id != null ? ' (linked)' : ''}
                       </option>
                     ))}
                   </select>

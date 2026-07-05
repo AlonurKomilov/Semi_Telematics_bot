@@ -114,9 +114,18 @@ def _first(rec: dict, *keys: str) -> Any:
 
 
 def _norm_driver(rec: dict[str, Any]) -> dict[str, Any]:
-    first = _as_text(_first(rec, "first_name", "firstName"))
-    last = _as_text(_first(rec, "last_name", "lastName"))
-    display = _as_text(_first(rec, "name", "full_name", "fullName"))
+    # The drivers-list endpoint nests the person under ``account``
+    # (account.first_name / last_name / full_name / email); top-level
+    # keys stay as fallback probes for other response shapes.
+    acct = rec.get("account")
+    if not isinstance(acct, dict):
+        acct = {}
+    first = _as_text(_first(acct, "first_name", "firstName")
+                     or _first(rec, "first_name", "firstName"))
+    last = _as_text(_first(acct, "last_name", "lastName")
+                    or _first(rec, "last_name", "lastName"))
+    display = _as_text(_first(acct, "full_name", "fullName")
+                       or _first(rec, "name", "full_name", "fullName"))
     if not display:
         display = f"{first} {last}".strip()
     return {
@@ -124,8 +133,10 @@ def _norm_driver(rec: dict[str, Any]) -> dict[str, Any]:
         "first_name":   first,
         "last_name":    last,
         "display_name": display,
-        "phone":        _as_text(_first(rec, "phone", "phone_number", "phoneNumber")),
-        "email":        _as_text(_first(rec, "email", "email_address")),
+        "phone":        _as_text(_first(
+            rec, "contact_number", "phone", "phone_number", "phoneNumber")),
+        "email":        _as_text(_first(acct, "email")
+                                 or _first(rec, "email", "email_address")),
         "status":       _as_text(_first(rec, "status", "state"), "name"),
         "payload":      rec,
     }

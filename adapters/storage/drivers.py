@@ -475,7 +475,7 @@ class DriverProfileMixin(_MixinBase):
         (``linked_user_id`` NULL = available) — feeds the drawer picker."""
         cur = await self._db.execute(
             "SELECT d.external_id, d.display_name, d.first_name, "
-            "d.last_name, d.status, u.id "
+            "d.last_name, d.status, d.payload, u.id "
             "FROM datatruck_drivers d "
             "LEFT JOIN users u ON u.account_id = d.account_id "
             "AND u.datatruck_driver_id = d.external_id "
@@ -490,11 +490,22 @@ class DriverProfileMixin(_MixinBase):
             name = str(r[1] or "").strip() \
                 or f"{r[2] or ''} {r[3] or ''}".strip() \
                 or f"#{r[0]}"
+            # Datatruck drivers carry no company; the assigned truck is
+            # the picker's disambiguating tag instead.
+            truck_unit = ""
+            try:
+                payload = json.loads(r[5] or "{}")
+                assigned = payload.get("assigned_truck")
+                if isinstance(assigned, dict):
+                    truck_unit = str(assigned.get("unit_number") or "")
+            except (ValueError, TypeError):
+                pass
             out.append({
                 "external_id": str(r[0]),
                 "name": name,
                 "status": str(r[4] or ""),
-                "linked_user_id": r[5],
+                "truck_unit": truck_unit,
+                "linked_user_id": r[6],
             })
         return out
 

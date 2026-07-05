@@ -50,6 +50,25 @@ def test_norm_driver_camel_case_fallbacks():
     assert out["display_name"] == "Ana Gomez"
 
 
+def test_norm_driver_account_nested_shape():
+    # The real drivers-list endpoint (apidocs get_driver_list) nests the
+    # person under ``account`` and puts the phone in ``contact_number`` —
+    # top-level name keys are absent entirely.
+    out = _norm_driver({
+        "id": 194,
+        "account": {"first_name": "Jean", "last_name": "Bosco",
+                    "full_name": "Jean Bosco", "email": "jb@x.com"},
+        "contact_number": "+1 555 0102",
+        "status": "active",
+        "assigned_truck": {"id": 7, "unit_number": "T-12"},
+    })
+    assert out["display_name"] == "Jean Bosco"
+    assert out["first_name"] == "Jean" and out["last_name"] == "Bosco"
+    assert out["email"] == "jb@x.com"
+    assert out["phone"] == "+1 555 0102"
+    assert out["payload"]["assigned_truck"]["unit_number"] == "T-12"
+
+
 def test_norm_truck_matches_live_probe_shape():
     # Field names confirmed against a live tenant probe (2026-06-10).
     rec = {
