@@ -577,7 +577,7 @@ const Step5: StepDef = {
     });
     return e;
   },
-  Render: ({ data, set, errors, token }) => {
+  Render: ({ data, set, errors, token, setIfEmpty }) => {
     const jobs: Data[] = data.employment || [];
     const setJobs = (next: Data[]) => set('employment', next);
     const upd = (i: number, key: string, val: unknown) => setJobs(jobs.map((j, idx) => idx === i ? { ...j, [key]: val } : j));
@@ -621,20 +621,30 @@ const Step5: StepDef = {
                   // Manual edits invalidate a previous registry pick — the
                   // captured USDOT/MC/email belong to the OLD name.
                   onChange={(v) => updMany(i, { company: v, usdot: '', mc: '', employerEmail: '' })}
-                  onPick={(c) => updMany(i, {
-                    company: c.name,
-                    // Registry identifiers — captured silently; the driver
-                    // never has to know them.
-                    usdot: c.dot_number, mc: c.mc_number, employerEmail: c.email,
-                    // Blank-only fills — never clobber what they typed.
-                    city: j.city || c.city, state: j.state || c.state,
-                    phone: j.phone || c.phone,
-                  })}
+                  onPick={async (c) => {
+                    // Name + registry identifiers land at once (the chip
+                    // appears); the location/phone fills then CASCADE in like
+                    // the CDL fast-fill — visible assistance, not a glitch.
+                    updMany(i, {
+                      company: c.name,
+                      usdot: c.dot_number, mc: c.mc_number, employerEmail: c.email,
+                    });
+                    if (!setIfEmpty) return;
+                    // setIfEmpty is atomic against LATEST state (safe across
+                    // the awaits, unlike jobs-closure updates) and blank-only
+                    // — never clobbers what the driver typed.
+                    for (const [field, v] of [['city', c.city], ['state', c.state], ['phone', c.phone]] as const) {
+                      if (!v) continue;
+                      await _tick(90);
+                      setIfEmpty(`employment.${i}.${field}`, v);
+                    }
+                  }}
                   error={!!errors[`employment.${i}.company`]} />
                 {j.usdot && (
                   <p className="mt-1 flex items-center gap-1 text-2xs text-muted-foreground">
                     <ShieldCheck size={12} className="shrink-0" />
                     FMCSA-verified · USDOT {j.usdot}{j.mc ? ` · MC ${j.mc}` : ''}
+                    {j.employerEmail ? ` · ${j.employerEmail}` : ''}
                   </p>
                 )}
               </Field>
