@@ -1,6 +1,6 @@
 ---
 name: ux-psychology-audit
-description: Audit any user-facing feature, flow, screen, or service against 6 core UX psychology principles (Smart Defaults, Goal Gradient, Reciprocity, IKEA Effect, Loss Aversion, Contrast Effect) plus an ethics check. Use this skill when the user asks for a "UX audit", "psychology review", "UX check", "behavioral review", or to "check the UX of" an onboarding/pricing/form/dashboard flow — or when wrapping up work on a user-facing feature and the project instructions call for a UX pass. Works on ANY feature type — forms, onboarding, pricing pages, dashboards, notifications, empty states, settings, reports, CTAs — regardless of product domain. Produces a standardized report so audits from parallel sessions can be merged and compared.
+description: Audit any user-facing feature, flow, screen, or service against 6 core UX psychology principles (Smart Defaults, Goal Gradient, Reciprocity, IKEA Effect, Loss Aversion, Contrast Effect) plus an ethics check. Use this skill when the user asks for a "UX audit", "psychology review", "UX check", "behavioral review", to "check the UX of" an onboarding/pricing/form/dashboard flow, or to audit the whole project/codebase UX — or when wrapping up work on a user-facing feature and the project instructions call for a UX pass. Works on ANY feature type — forms, onboarding, pricing pages, dashboards, notifications, empty states, settings, reports, CTAs — regardless of product domain. Produces a standardized report so audits from parallel sessions can be merged and compared.
 ---
 
 # UX Psychology Audit
@@ -14,13 +14,25 @@ A universal, domain-agnostic framework for auditing user-facing work against six
 > Don't report design-token violations here, and don't report psychology
 > findings there.
 
-## Scope rule (read first)
+## Scope modes (read first — pick exactly one)
 
-**Audit only what is in your context.** You do not need to know the whole platform. Your scope is:
-- Features/screens/flows you created or modified in this session, OR
-- Files/components the user explicitly points you at.
+Determine the audit scope before doing anything else.
 
-Never guess about parts of the product you haven't seen. If a principle can't be evaluated without seeing another part of the system, mark it `NEEDS-CONTEXT` and name exactly what file/screen you'd need.
+**Git usage:** git is an optional helper, not the audit target. The primary source of truth is always the actual files in the working tree as they exist right now. You may use git to *locate* scope (e.g., `git diff`/`git status` to find files changed this session in Mode A, or recently touched surfaces in Mode B) — but every finding must come from reading the current file contents, never from commit history, old diffs, or commit messages. Do not spend time walking git history; if git output and the working tree disagree, the working tree wins.
+
+**Mode A — Session scope (default when you built something this turn/session).**
+Audit only the features/screens/flows you created or modified in this session (`git status`/`git diff` is a fine way to list them). Ignore the rest of the repo.
+
+**Mode B — Project scope (default when the user says "audit the project/codebase/platform" or runs the skill in a fresh session with no prior work).**
+Audit the user-facing surfaces of the entire project by reading the source files directly:
+1. Discover surfaces by walking the project tree (respect .gitignore; skip node_modules, build output, tests): routes/pages (`pages/`, `app/`, `src/routes`, router configs), UI components (forms, modals, tables, dashboards, empty states), templates (email, notification, Telegram/bot messages), pricing/plan/billing screens, onboarding/setup flows, settings screens, user-facing error messages and copy.
+2. Read the actual component/template code and its copy — do not infer behavior from file names alone.
+3. If the project is large, audit the highest-traffic surfaces first (entry/onboarding, main dashboard, pricing, core workflow screens) and list unaudited surfaces at the end of the report under "Not yet audited" so a later session can continue.
+
+**Mode C — Targeted scope.**
+The user names specific files, folders, or features — audit exactly those, nothing more.
+
+In every mode: never guess about parts of the product you haven't read. If a principle can't be evaluated without seeing another part of the system, mark it `NEEDS-CONTEXT` and name exactly what file/screen you'd need.
 
 ## Step 1 — Inventory
 
@@ -87,9 +99,9 @@ Produce the report exactly in this structure so parallel-session reports can be 
 ```markdown
 # UX Psychology Audit Report
 - Framework version: 1
-- Session scope: <one line: what was built/reviewed>
+- Scope mode: <A session / B project / C targeted> — <one line: what was reviewed>
 - Date: <date> | Auditor session: <short id or task name>
-- Surfaces audited: <n>
+- Surfaces audited: <n> | Not yet audited: <list or "none">
 
 ## Summary table
 | Surface | User moment | P1 Defaults | P2 Goal | P3 Recip. | P4 IKEA | P5 Loss | P6 Contrast |
@@ -118,8 +130,8 @@ Rules for the report:
 
 ## Step 5 — Save the report
 
-Write the report to `docs/ux-audits/<YYYY-MM-DD>-<short-scope-slug>.md` (e.g. `docs/ux-audits/2026-07-06-carrier-intake.md`) in addition to summarizing it in chat. This directory is git-tracked (a `.gitignore` exception exists for it) — saved reports are the input that makes Aggregation mode possible across sessions. If a report for the same date+scope exists, add a `-2` suffix rather than overwriting.
+Write the report to `docs/ux-audits/<YYYY-MM-DD>-<short-scope-slug>.md` (e.g. `docs/ux-audits/2026-07-06-carrier-intake.md`) in addition to summarizing it in chat. This directory is git-tracked (a `.gitignore` exception exists for it) — saved reports are the input that makes Aggregation mode possible across sessions, and the "Not yet audited" list is what lets a later Mode B session continue where this one stopped. If a report for the same date+scope exists, add a `-2` suffix rather than overwriting.
 
 ## Aggregation mode
 
-If the user asks for a rollup, read all reports in `docs/ux-audits/` (or the ones they point at): merge summary tables, deduplicate findings that touch the same surface, re-rank all `OPPORTUNITY` and `DARK-PATTERN-RISK` items into one platform-wide priority list using their Impact/Effort tags, and list conflicting findings explicitly rather than silently picking one.
+If the user asks for a rollup, read all reports in `docs/ux-audits/` (or the ones they point at): merge summary tables, deduplicate findings that touch the same surface, re-rank all `OPPORTUNITY` and `DARK-PATTERN-RISK` items into one platform-wide priority list using their Impact/Effort tags, and list conflicting findings explicitly rather than silently picking one. Union the "Not yet audited" lists (minus anything since covered) so the next Mode B session knows where to resume.
