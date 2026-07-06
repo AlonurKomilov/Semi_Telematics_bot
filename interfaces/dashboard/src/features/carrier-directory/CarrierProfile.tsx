@@ -168,8 +168,10 @@ function InvitePanel({ profile, reload }: { profile: Profile; reload: () => Prom
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Expires in</span>
+            {/* Metrics mirror ui/input.tsx so the row sits level with the
+                email Input (h-8 / rounded-lg / border-input / ring focus). */}
             <select value={days} onChange={(e) => setDays(Number(e.target.value))}
-              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground">
+              className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30">
               <option value={7}>7 days</option>
               <option value={30}>30 days</option>
               <option value={90}>90 days</option>

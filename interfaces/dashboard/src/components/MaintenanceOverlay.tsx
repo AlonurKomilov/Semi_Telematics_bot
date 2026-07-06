@@ -43,7 +43,7 @@ export default function MaintenanceOverlay() {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-background/80 backdrop-blur-sm">
       <div className="mx-4 max-w-sm rounded-lg border border-border bg-card p-6 text-center shadow-xl">
-        <Loader2 size={28} className="mx-auto animate-spin text-primary" />
+        <Loader2 size={24} className="mx-auto animate-spin text-primary" />
         <h2 className="mt-4 text-base font-semibold text-foreground">
           {state === 'reloading' ? 'Back online' : 'Updating the platform'}
         </h2>

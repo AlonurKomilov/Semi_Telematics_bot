@@ -155,7 +155,7 @@ export default function PublicCarrierIntake() {
   if (state === 'loading') {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loader2 size={28} className="animate-spin text-primary" />
+        <Loader2 size={24} className="animate-spin text-primary" />
       </div>
     );
   }
@@ -164,7 +164,7 @@ export default function PublicCarrierIntake() {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md rounded-lg border border-border bg-card p-8 text-center shadow-sm">
-          <Building2 size={28} className="mx-auto text-muted-foreground" />
+          <Building2 size={24} className="mx-auto text-muted-foreground" />
           <h1 className="mt-4 text-lg font-semibold text-foreground">This link isn't available</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             The invite link may have expired or been replaced. Please ask your
@@ -179,7 +179,7 @@ export default function PublicCarrierIntake() {
     return (
       <div className="flex min-h-screen items-center justify-center p-6">
         <div className="max-w-md rounded-lg border border-border bg-card p-8 text-center shadow-sm">
-          <CheckCircle2 size={32} className="mx-auto text-ok" />
+          <CheckCircle2 size={24} className="mx-auto text-ok" />
           <h1 className="mt-4 text-lg font-semibold text-foreground">Thank you!</h1>
           <p className="mt-2 text-sm text-muted-foreground">
             Your carrier profile was sent to {agency || 'the recruiting team'}.
