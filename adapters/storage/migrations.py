@@ -5935,3 +5935,45 @@ async def migrate_employer_verifications(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 140: created application_employer_verifications")
+
+
+@_register("142_carrier_intake")
+async def migrate_carrier_intake(conn) -> None:
+    """Add the carrier self-fill invite columns to ``carrier_profile``.
+
+    A recruiting manager can mint a tokenized public link (like the driver
+    apply links) and send it to the external carrier, who fills in their own
+    requirements/presentation sheet on apply.<apex>/carrier/<token>.  One
+    active link per carrier: the token + expiry live on the profile row; a
+    carrier submission stamps ``intake_submitted_at`` and raises the
+    review-pending flag, which a manager's next save clears.
+
+    Fresh DBs get the columns from schema.py; existing deployments need
+    these ALTERs.  No index on ``intake_token`` — the table is small
+    (dozens of carriers per account) and schema.py must not carry an index
+    on a post-creation column (boot-order crash on upgraded DBs).
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(carrier_profile)")
+        cols = {r[1] for r in await cur.fetchall()}
+        adds = [
+            ("intake_token", "TEXT NOT NULL DEFAULT ''"),
+            ("intake_expires_at", "TEXT"),
+            ("intake_email", "TEXT NOT NULL DEFAULT ''"),
+            ("intake_invited_by", "INTEGER NOT NULL DEFAULT 0"),
+            ("intake_submitted_at", "TEXT NOT NULL DEFAULT ''"),
+            ("intake_review_pending", "INTEGER NOT NULL DEFAULT 0"),
+        ]
+        for name, decl in adds:
+            if name not in cols:
+                await conn.execute(
+                    f"ALTER TABLE carrier_profile ADD COLUMN {name} {decl}"
+                )
+        await conn.commit()
+        logger.info("Migration 142: added carrier_profile intake columns")
+    except Exception as e:
+        logger.error("Migration 142 failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

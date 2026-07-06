@@ -5,7 +5,7 @@
 // carrier.  Info-only (v1).
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Pencil, Trash2, Plus, X, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Pencil, Trash2, Plus, X, ExternalLink, Link2, Copy, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
@@ -14,12 +14,32 @@ import { Textarea } from '../../components/ui/textarea';
 import DataTable from '../../components/DataTable';
 import type { AnyColumn } from '../../types';
 import { useRoleView } from '../../context/RoleViewContext';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay } from '../../utils/datetime';
+import { toneClasses } from '../../lib/status';
+import { APEX_DOMAIN } from '../../lib/safeReturnTo';
 import { SECTIONS, mergeRows } from './fields';
 import type { CarrierContent, FieldRow } from './fields';
 
 interface Profile {
   id: number; name: string; website: string; video_url: string;
   experience_summary: string; content: CarrierContent;
+  // Carrier self-fill invite state.  intake_token is present for managers
+  // only (it's the edit credential the public form writes with).
+  intake_token?: string;
+  intake_expires_at?: string | null;
+  intake_email?: string;
+  intake_submitted_at?: string;
+  intake_review_pending?: number | boolean;
+}
+
+const intakeUrlOf = (token: string) => `https://apply.${APEX_DOMAIN}/carrier/${token}`;
+
+function intakeActive(p: Profile): boolean {
+  return Boolean(
+    p.intake_token && p.intake_expires_at &&
+    new Date(p.intake_expires_at).getTime() > Date.now(),
+  );
 }
 
 interface Draft {
@@ -50,11 +70,134 @@ const VALUE_COLS: AnyColumn[] = [
   { key: 'value', label: 'Value', render: (v) => <span className="whitespace-pre-wrap text-muted-foreground">{String(v)}</span> },
 ];
 
+/** Manager-only "invite the carrier to fill this in" panel.  One active
+ *  tokenized link per carrier; minting again rotates the token (the old
+ *  emailed link dies), revoke kills it outright. */
+function InvitePanel({ profile, reload }: { profile: Profile; reload: () => Promise<void> }) {
+  const tz = useTimezone();
+  const active = intakeActive(profile);
+  const [open, setOpen] = useState(false);
+  const [email, setEmail] = useState('');
+  const [days, setDays] = useState(30);
+  const [busy, setBusy] = useState(false);
+
+  const create = async () => {
+    setBusy(true);
+    try {
+      const r = await apiJSON<{ url: string; emailed: boolean }>(
+        `/carrier-directory/carriers/${profile.id}/intake-link`,
+        { method: 'POST', body: { expires_in_days: days, email: email.trim() } },
+      );
+      try { await navigator.clipboard.writeText(r.url); } catch { /* clipboard blocked */ }
+      toast.success(r.emailed
+        ? `Invite emailed to ${email.trim()} — link also copied`
+        : 'Invite link created and copied');
+      setOpen(false); setEmail('');
+      await reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not create invite link');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const revoke = async () => {
+    if (!confirm('Revoke the carrier fill link? The carrier will no longer be able to open it.')) return;
+    setBusy(true);
+    try {
+      await apiJSON(`/carrier-directory/carriers/${profile.id}/intake-link`, { method: 'DELETE' });
+      toast.success('Invite link revoked');
+      await reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not revoke the link');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async () => {
+    if (!profile.intake_token) return;
+    try {
+      await navigator.clipboard.writeText(intakeUrlOf(profile.intake_token));
+      toast.success('Invite link copied');
+    } catch {
+      toast.error('Could not copy — clipboard is blocked');
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-sm">
+          <Link2 size={16} className="text-muted-foreground" />
+          {active ? (
+            <span className="text-foreground">
+              Carrier fill link active — expires {formatDay(profile.intake_expires_at, { timeZone: tz })}
+              {profile.intake_email ? (
+                <span className="text-muted-foreground"> · sent to {profile.intake_email}</span>
+              ) : null}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">
+              Let this carrier fill in their own sheet — send them a private link.
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {active && (
+            <>
+              <Button size="sm" variant="ghost" onClick={copy}><Copy size={14} /> Copy link</Button>
+              <Button size="sm" variant="ghost" onClick={revoke} disabled={busy}>Revoke</Button>
+            </>
+          )}
+          {!open && (
+            <Button size="sm" variant={active ? 'ghost' : 'default'} onClick={() => setOpen(true)}>
+              <Mail size={14} /> {active ? 'New link' : 'Invite carrier'}
+            </Button>
+          )}
+        </div>
+      </div>
+      {open && (
+        <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-border pt-3">
+          <label className="flex min-w-56 flex-1 flex-col gap-1">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Carrier contact email (optional)
+            </span>
+            <Input value={email} onChange={(e) => setEmail(e.target.value)}
+              placeholder="recruiting@carrier.com — leave blank to just copy the link" />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Expires in</span>
+            <select value={days} onChange={(e) => setDays(Number(e.target.value))}
+              className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground">
+              <option value={7}>7 days</option>
+              <option value={30}>30 days</option>
+              <option value={90}>90 days</option>
+            </select>
+          </label>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={create} disabled={busy}>
+              {busy ? 'Creating…' : active ? 'Replace link' : 'Create link'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={busy}>Cancel</Button>
+          </div>
+          {active && (
+            <p className="w-full text-xs text-muted-foreground">
+              Creating a new link replaces the current one — the previously sent link stops working.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CarrierProfile() {
   const { id } = useParams<{ id: string }>();
   const nav = useNavigate();
   const { viewHasAny } = useRoleView();
   const canEdit = viewHasAny('can_manage_carrier_directory');
+  const tz = useTimezone();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [err, setErr] = useState('');
@@ -203,6 +346,15 @@ export default function CarrierProfile() {
               </a>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Carrier self-fill: invite link management + review-pending flag */}
+      {canEdit && !editing && <InvitePanel profile={profile} reload={load} />}
+      {Boolean(profile.intake_review_pending) && (
+        <div className={`rounded-md border px-3 py-2 text-sm ${toneClasses('info')}`}>
+          Filled in by the carrier on {formatDay(profile.intake_submitted_at, { timeZone: tz })} —
+          review the sections below{canEdit ? '; saving the profile clears this flag' : ''}.
         </div>
       )}
 

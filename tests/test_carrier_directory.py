@@ -108,6 +108,108 @@ class TestCarrierDirectory:
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             assert (await c.get(BASE, headers=hd)).status_code == 403
 
+    async def test_intake_link_flow(self, api):
+        """Manager mints a fill-link → the carrier reads a sheet WITHOUT the
+        recruiter-only section, submits their answers → content updates,
+        recruiter-only survives untouched, the review flag raises — and a
+        manager save clears it."""
+        app, db = api
+        acct = await db.create_account("Recruit Co")
+        mgr = await db.create_user(810040, acct.id, role=Role.RECRUITER)
+        h = _headers(mgr, acct, "recruiter", is_manager=True)
+        sample = dict(_SAMPLE)
+        sample["content"] = {
+            **_SAMPLE["content"],
+            "recruiter_only": [{"label": "Application Ownership", "value": "Exclusive 30 days"}],
+        }
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            cid = (await c.post(BASE, headers=h, json=sample)).json()["id"]
+
+            r = await c.post(f"{BASE}/{cid}/intake-link", headers=h,
+                             json={"expires_in_days": 30})
+            assert r.status_code == 200, r.text
+            token = r.json()["token"]
+            assert f"/carrier/{token}" in r.json()["url"]
+
+            # Public prefill — NO auth header.  Internal section stripped.
+            pub = await c.get(f"/api/carrier-directory/intake?token={token}")
+            assert pub.status_code == 200, pub.text
+            carrier = pub.json()["carrier"]
+            assert carrier["name"] == sample["name"]
+            assert "recruiter_only" not in carrier["content"]
+            assert carrier["content"]["prequal"][0]["value"] == "At least 23 years of age"
+
+            # Carrier submits — recruiter_only in the payload is IGNORED.
+            sub = await c.post("/api/carrier-directory/intake", json={
+                "token": token,
+                "website": "https://apt.example.com",
+                "experience_summary": "1 year OTR",
+                "content": {
+                    "application_process": "Email packets to recruiting@apt.example.com",
+                    "prequal": [{"label": "Minimum Age", "value": "21"}],
+                    "presentation": [{"label": "Sign-On Bonus", "value": "$1,000"}],
+                    "recruiter_only": [{"label": "Application Ownership", "value": "HACKED"}],
+                },
+            })
+            assert sub.status_code == 200, sub.text
+
+            got = (await c.get(f"{BASE}/{cid}", headers=h)).json()
+            assert got["website"] == "https://apt.example.com"
+            assert got["content"]["prequal"][0]["value"] == "21"
+            assert got["content"]["presentation"][0]["value"] == "$1,000"
+            # The stored internal section survived; the injected one didn't land.
+            assert got["content"]["recruiter_only"][0]["value"] == "Exclusive 30 days"
+            assert bool(got["intake_review_pending"])
+            assert got["intake_token"] == token  # managers see the credential
+
+            # Manager save (even a no-op field patch) clears the review flag.
+            up = await c.patch(f"{BASE}/{cid}", headers=h, json={"name": sample["name"]})
+            assert up.status_code == 200
+            assert not bool(up.json()["intake_review_pending"])
+
+    async def test_intake_token_hidden_from_plain_recruiters(self, api):
+        app, db = api
+        acct = await db.create_account("Recruit Co")
+        mgr = await db.create_user(810050, acct.id, role=Role.RECRUITER)
+        rec = await db.create_user(810051, acct.id, role=Role.RECRUITER)
+        hm = _headers(mgr, acct, "recruiter", is_manager=True)
+        hr = _headers(rec, acct, "recruiter")
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            cid = (await c.post(BASE, headers=hm, json=_SAMPLE)).json()["id"]
+            await c.post(f"{BASE}/{cid}/intake-link", headers=hm, json={})
+            # Plain recruiter: can read the profile but never the token,
+            # and cannot mint or revoke links.
+            got = (await c.get(f"{BASE}/{cid}", headers=hr)).json()
+            assert "intake_token" not in got
+            assert (await c.post(f"{BASE}/{cid}/intake-link", headers=hr, json={})).status_code == 403
+            assert (await c.delete(f"{BASE}/{cid}/intake-link", headers=hr)).status_code == 403
+
+    async def test_intake_revoked_expired_unknown_all_404(self, api):
+        app, db = api
+        acct = await db.create_account("Recruit Co")
+        mgr = await db.create_user(810060, acct.id, role=Role.RECRUITER)
+        h = _headers(mgr, acct, "recruiter", is_manager=True)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            cid = (await c.post(BASE, headers=h, json=_SAMPLE)).json()["id"]
+            token = (await c.post(f"{BASE}/{cid}/intake-link", headers=h, json={})).json()["token"]
+
+            # Revoke → the public form 404s (uniform, no oracle).
+            await c.delete(f"{BASE}/{cid}/intake-link", headers=h)
+            assert (await c.get(f"/api/carrier-directory/intake?token={token}")).status_code == 404
+            assert (await c.post("/api/carrier-directory/intake",
+                                 json={"token": token, "content": {}})).status_code == 404
+
+            # Expired → 404 too.
+            await db.set_carrier_intake(
+                acct.id, cid, token="expired-tok",
+                expires_at="2020-01-01T00:00:00+00:00",
+            )
+            assert (await c.get("/api/carrier-directory/intake?token=expired-tok")).status_code == 404
+
+            # Unknown / blank tokens.
+            assert (await c.get("/api/carrier-directory/intake?token=nope")).status_code == 404
+            assert (await c.get("/api/carrier-directory/intake?token=")).status_code == 404
+
     async def test_tenant_isolation(self, api):
         app, db = api
         acct_a = await db.create_account("A Co")

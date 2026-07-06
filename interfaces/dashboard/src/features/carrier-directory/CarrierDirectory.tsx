@@ -14,9 +14,11 @@ import { Input } from '../../components/ui/input';
 import DataTable from '../../components/DataTable';
 import type { AnyColumn } from '../../types';
 import { useRoleView } from '../../context/RoleViewContext';
+import { toneClasses } from '../../lib/status';
 
 interface CarrierRow {
   id: number; name: string; website: string; experience_summary: string;
+  intake_review_pending?: number | boolean;
 }
 
 export default function CarrierDirectory() {
@@ -62,7 +64,16 @@ export default function CarrierDirectory() {
   const columns: AnyColumn[] = useMemo(() => [
     {
       key: 'name', label: 'Carrier', sortable: true, filterable: true,
-      render: (v: unknown) => <span className="font-medium text-foreground">{String(v || '')}</span>,
+      render: (v: unknown, row: Record<string, unknown>) => (
+        <span className="inline-flex items-center gap-2">
+          <span className="font-medium text-foreground">{String(v || '')}</span>
+          {Boolean(row.intake_review_pending) && (
+            <span className={`rounded-full border px-2 py-0.5 text-2xs font-medium ${toneClasses('info')}`}>
+              Carrier updated
+            </span>
+          )}
+        </span>
+      ),
     },
     {
       key: 'experience_summary', label: 'Accepted Experience Levels',

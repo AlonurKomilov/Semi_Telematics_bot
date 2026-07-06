@@ -148,3 +148,86 @@ def send_verification_request_email(
     except Exception as e:  # best-effort
         logger.debug("send_verification_request_email to %s failed: %s", to, e)
         return False
+
+
+def send_carrier_intake_email(
+    *, to: str, carrier_name: str, agency_name: str, intake_url: str,
+    expires_days: int,
+) -> bool:
+    """Invite an external carrier to fill in their own profile sheet
+    (requirements, pay, benefits) via the tokenized public link a
+    recruiting manager minted for them."""
+    if not is_email_configured() or not to:
+        return False
+    safe_carrier = html.escape(carrier_name or "your company")
+    safe_agency = html.escape(agency_name or _company_name())
+    inner = (
+        f'<h2 style="margin:0 0 12px;font-size:18px">Complete your carrier '
+        f"profile for {safe_agency}</h2>"
+        f'<p style="margin:0 0 8px">{safe_agency} recruits drivers for '
+        f"<b>{safe_carrier}</b> and would like your hiring requirements, pay "
+        f"and benefits straight from the source — so recruiters present your "
+        f"company accurately to driver candidates.</p>"
+        f'<p style="margin:0 0 16px">The form takes about 10&ndash;15 minutes. '
+        f"You can leave any field blank and come back to revise your answers "
+        f"any time while the link is active.</p>"
+        f'<p style="margin:0 0 24px">'
+        f'<a href="{html.escape(intake_url)}" style="background:#2563eb;color:#fff;'
+        f"text-decoration:none;padding:10px 18px;border-radius:8px;"
+        f'display:inline-block;font-size:14px">Fill in our carrier profile</a></p>'
+        f'<p style="margin:0;color:#6b7280;font-size:13px">This link is '
+        f"private to your company and expires in {int(expires_days)} days.</p>"
+    )
+    try:
+        return send_email(
+            to=to,
+            subject=f"Complete your carrier profile for {agency_name or _company_name()}",
+            body=(
+                f"{agency_name or _company_name()} recruits drivers for "
+                f"{carrier_name or 'your company'} and would like your hiring "
+                "requirements, pay and benefits straight from the source.\n\n"
+                f"Fill in your profile here: {intake_url}\n\n"
+                f"The link is private to your company and expires in "
+                f"{int(expires_days)} days. You can revise your answers any "
+                "time while it is active.\n"
+            ),
+            html_body=_shell(inner),
+            extra_headers={"Auto-Submitted": "auto-generated"},
+        )
+    except Exception as e:  # best-effort
+        logger.debug("send_carrier_intake_email to %s failed: %s", to, e)
+        return False
+
+
+def send_carrier_intake_submitted_email(
+    *, to: str, carrier_name: str, profile_url: str,
+) -> bool:
+    """Tell a recruiting manager that a carrier filled in their profile
+    sheet and it is waiting for review."""
+    if not is_email_configured() or not to:
+        return False
+    safe_carrier = html.escape(carrier_name or "A carrier")
+    inner = (
+        f'<h2 style="margin:0 0 12px;font-size:18px">Carrier profile filled in</h2>'
+        f'<p style="margin:0 0 16px"><b>{safe_carrier}</b> completed their '
+        f"profile sheet through the invite link. Review their answers — your "
+        f"save clears the review flag.</p>"
+        f'<p style="margin:0 0 24px">'
+        f'<a href="{html.escape(profile_url)}" style="background:#2563eb;color:#fff;'
+        f"text-decoration:none;padding:10px 18px;border-radius:8px;"
+        f'display:inline-block;font-size:14px">Review carrier profile</a></p>'
+    )
+    try:
+        return send_email(
+            to=to,
+            subject=f"Carrier profile filled in — {carrier_name or 'carrier'}",
+            body=(
+                f"{carrier_name or 'A carrier'} completed their profile sheet "
+                f"through the invite link.\n\nReview it: {profile_url}\n"
+            ),
+            html_body=_shell(inner),
+            extra_headers={"Auto-Submitted": "auto-generated"},
+        )
+    except Exception as e:  # best-effort
+        logger.debug("send_carrier_intake_submitted_email to %s failed: %s", to, e)
+        return False

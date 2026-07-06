@@ -140,6 +140,14 @@ async def create_tables(conn) -> None:
             experience_summary  TEXT    NOT NULL DEFAULT '',
             content             TEXT    NOT NULL DEFAULT '{}',
             created_by          INTEGER NOT NULL DEFAULT 0,
+            -- Carrier self-fill invite: one active tokenized public link per
+            -- carrier; a submission raises the review-pending flag.
+            intake_token        TEXT    NOT NULL DEFAULT '',
+            intake_expires_at   TEXT,
+            intake_email        TEXT    NOT NULL DEFAULT '',
+            intake_invited_by   INTEGER NOT NULL DEFAULT 0,
+            intake_submitted_at TEXT    NOT NULL DEFAULT '',
+            intake_review_pending INTEGER NOT NULL DEFAULT 0,
             created_at          TEXT    NOT NULL,
             updated_at          TEXT    NOT NULL DEFAULT ''
         );

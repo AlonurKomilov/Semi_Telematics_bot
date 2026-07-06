@@ -55,10 +55,15 @@ const _root = ReactDOM.createRoot(document.getElementById('root')!);
 
 // Lazy so the public form is its OWN chunk — dashboard users never pay
 // for it, and apply.* visitors never load the auth/router/shell graph.
-// /status[/<ref>] renders the self-service status checker instead.
+// /status[/<ref>] renders the self-service status checker instead;
+// /carrier/<token> is the carrier self-fill sheet (Carrier Directory
+// invite links — recruiting managers send these to external carriers).
 const PublicApply = React.lazy(() => import('./features/applications/public/PublicApply'));
 const ApplyStatus = React.lazy(() => import('./features/applications/public/ApplyStatus'));
-const _isStatus = window.location.pathname.split('/').filter(Boolean)[0]?.toLowerCase() === 'status';
+const PublicCarrierIntake = React.lazy(() => import('./features/carrier-directory/PublicCarrierIntake'));
+const _seg0 = window.location.pathname.split('/').filter(Boolean)[0]?.toLowerCase();
+const _isStatus = _seg0 === 'status';
+const _isCarrierIntake = _seg0 === 'carrier';
 
 if (_isApply) {
   // Public form theme — the SAME rule the recruiter preview reproduces
@@ -68,7 +73,7 @@ if (_isApply) {
   _root.render(
     <React.StrictMode>
       <React.Suspense fallback={null}>
-        {_isStatus ? <ApplyStatus /> : <PublicApply />}
+        {_isCarrierIntake ? <PublicCarrierIntake /> : _isStatus ? <ApplyStatus /> : <PublicApply />}
       </React.Suspense>
       <Toaster richColors position="top-right" closeButton />
     </React.StrictMode>,
