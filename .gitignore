@@ -54,12 +54,15 @@ bot/_*_old.py
 
 # Local docs scratch: reference material (Vertex AI Model Garden
 # catalog snapshots, architecture sketches, drafts) lives under
-# docs/ but mostly shouldn't pollute git status.  Files already
-# tracked under docs/runbooks/ stay tracked — gitignore only
-# affects NEW untracked files.  New runbooks worth committing
-# should be added explicitly with `git add -f docs/runbooks/<name>`.
-docs/
+# docs/ but mostly shouldn't pollute git status.  ``docs/*`` (not
+# ``docs/``) on purpose: git cannot re-include below an excluded
+# parent directory, so the whole-dir form silently broke every
+# ``!docs/...`` exception (new runbooks needed a manual
+# ``git add -f``).  With the children-only form the re-includes work.
+docs/*
 !docs/runbooks/
-!docs/runbooks/**/*.md
 !docs/grafana/
-!docs/grafana/*.json
+# UX psychology audit reports (written by the ux-psychology-audit skill
+# in .claude/skills/ — tracked so parallel-session reports can be
+# aggregated later).
+!docs/ux-audits/
