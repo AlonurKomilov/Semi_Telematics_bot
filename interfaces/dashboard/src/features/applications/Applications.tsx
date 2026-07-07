@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
 import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Building2, Pencil, Trash2, Clock3 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -1069,7 +1070,13 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
     } finally { setBusy(false); }
   };
 
-  return (
+  // Portaled to <body>: rendered inline the drawer sits inside the shell's
+  // rounded content card, and any ancestor that forms a CSS containing
+  // block (transform/filter/contain) re-anchors `fixed` to the card — the
+  // drawer then starts below the topbar, inherits the card's rounded
+  // corner, and the scrim never dims the chrome.  From <body> it always
+  // spans the real viewport, like CommandPalette / MaintenanceOverlay.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()}
         className="w-full max-w-xl h-full bg-card border-l border-border overflow-y-auto p-5 space-y-4">
@@ -1192,7 +1199,8 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
