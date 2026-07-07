@@ -1,6 +1,6 @@
 ---
 name: ux-psychology-audit
-description: Audit any user-facing feature, flow, screen, or service against 6 core UX psychology principles (Smart Defaults, Goal Gradient, Reciprocity, IKEA Effect, Loss Aversion, Contrast Effect) plus an ethics check. Use this skill when the user asks for a "UX audit", "psychology review", "UX check", "behavioral review", to "check the UX of" an onboarding/pricing/form/dashboard flow, or to audit the whole project/codebase UX — or when wrapping up work on a user-facing feature and the project instructions call for a UX pass. Works on ANY feature type — forms, onboarding, pricing pages, dashboards, notifications, empty states, settings, reports, CTAs — regardless of product domain. Produces a standardized report so audits from parallel sessions can be merged and compared.
+description: Audit any user-facing feature, flow, screen, or service against 6 core UX psychology principles (Smart Defaults, Goal Gradient, Reciprocity, IKEA Effect, Loss Aversion, Contrast Effect) plus an ethics check. Use this skill when the user asks for a "UX audit", "psychology review", "UX check", "behavioral review", to "check the UX of" an onboarding/pricing/form/dashboard flow, or to audit the whole project/codebase UX — or when wrapping up work on a user-facing feature and the project instructions call for a UX pass. Works on ANY feature type — forms, onboarding, pricing pages, dashboards, notifications, empty states, settings, reports, CTAs — regardless of product domain; can also audit the live rendered UI when browser/screenshot tools are available. Produces a standardized report so audits from parallel sessions can be merged and compared.
 ---
 
 # UX Psychology Audit
@@ -31,6 +31,14 @@ Audit the user-facing surfaces of the entire project by reading the source files
 
 **Mode C — Targeted scope.**
 The user names specific files, folders, or features — audit exactly those, nothing more.
+
+**Mode D — Live UI scope (use whenever browser access is available: Chrome extension via `claude --chrome` / `/chrome`, Playwright/chrome-devtools MCP, or any screenshot capability).**
+Audit the *rendered* product, not just its source. Code review alone misses what users actually experience — visual hierarchy, what's above the fold, how empty states really look, whether the "default" is actually visible. When browser tools exist:
+1. Open the running app (localhost or the live URL the user names) and walk the real flows: signup/onboarding start-to-finish, main dashboard first paint, one core workflow, pricing page, one exit point (cancel/logout/trial-end if reachable).
+2. Take a screenshot of each surface at its key moment and evaluate the six principles against **what is visually true on screen**, not what the code intends. (Example: code may define a progress bar, but if it renders below the fold at 0%, Goal Gradient is an `OPPORTUNITY`, not `APPLIED`.)
+3. Note purely visual findings the code can't show: first-visible content, blank/empty states, loading states, what the eye lands on first in a choice set (Contrast Effect is decided by layout, not markup).
+4. Do not perform destructive or irreversible actions (payments, deletions, sending messages) during the audit; use test data where input is needed.
+Mode D combines with A/B/C: best practice is code audit first, then verify the top findings against the live UI and mark each finding `[code]`, `[ui]`, or `[code+ui]` in the report.
 
 In every mode: never guess about parts of the product you haven't read. If a principle can't be evaluated without seeing another part of the system, mark it `NEEDS-CONTEXT` and name exactly what file/screen you'd need.
 
@@ -99,7 +107,7 @@ Produce the report exactly in this structure so parallel-session reports can be 
 ```markdown
 # UX Psychology Audit Report
 - Framework version: 1
-- Scope mode: <A session / B project / C targeted> — <one line: what was reviewed>
+- Scope mode: <A session / B project / C targeted / D live-UI (can combine, e.g. B+D)> — <one line: what was reviewed>
 - Date: <date> | Auditor session: <short id or task name>
 - Surfaces audited: <n> | Not yet audited: <list or "none">
 
