@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { ClipboardList } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import {
   PageHeader,
   EmptyState,
@@ -30,18 +30,28 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 const makeColumns = (tz: string): AnyColumn[] => [
-  { key: 'created_at', label: 'Time', sortable: true, render: (v) => v ? formatDate(String(v), { timeZone: tz }) : '—' },
+  { key: 'created_at', label: 'Time', sortable: true,
+    filterable: true, filterMode: 'date-range',
+    render: (v) => v ? formatDate(String(v), { timeZone: tz }) : '—' },
   {
     key: 'action',
     label: 'Action',
     sortable: true,
+    // Action codes are a bounded enum — filter matches the raw code,
+    // dropdown shows the same friendly label the cell renders.
+    filterable: true,
+    filterValue: (row) => String((row as { action?: string }).action ?? ''),
+    filterLabel: (row) => {
+      const s = String((row as { action?: string }).action ?? '');
+      return ACTION_LABEL[s] ?? s;
+    },
     render: (v) => {
       const s = String(v ?? '');
       return ACTION_LABEL[s] ?? s;
     },
   },
-  { key: 'user_id', label: 'User ID', sortable: true },
-  { key: 'target_type', label: 'Target', sortable: true },
+  { key: 'user_id', label: 'User ID', sortable: true, filterable: true },
+  { key: 'target_type', label: 'Target', sortable: true, filterable: true },
   { key: 'target_id', label: 'Target ID' },
   { key: 'details', label: 'Details', render: (v) => {
     const s = String(v || '');
@@ -98,7 +108,7 @@ export default function AuditLog() {
           description="Activity from invites, role changes, and admin edits will appear here as it happens."
         />
       ) : (
-        <DataTable columns={columns} data={entries as unknown as Record<string, unknown>[]} searchKey="action" />
+        <DataGrid tableId="audit-log" columns={columns} data={entries as unknown as Record<string, unknown>[]} searchKey={['action', 'details', 'target_id']} />
       )}
     </div>
   );

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toneClasses, toneText } from '../../lib/status';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import {
   PageHeader,
   EmptyState,
@@ -108,8 +108,12 @@ const driverColumns: AnyColumn[] = [
     },
   },
   { key: 'cdl_number', label: 'CDL #', render: (v) => v ? <span className="tabular-nums">{String(v)}</span> : <span className="text-muted-foreground text-xs">—</span> },
-  { key: 'cdl_expires', label: 'CDL Exp.', render: (v) => <ExpirationChip iso={(v as string) ?? null} /> },
-  { key: 'med_card_expires', label: 'Med. Card', render: (v) => <ExpirationChip iso={(v as string) ?? null} /> },
+  { key: 'cdl_expires', label: 'CDL Exp.', sortable: true,
+    filterable: true, filterMode: 'date-range',
+    render: (v) => <ExpirationChip iso={(v as string) ?? null} /> },
+  { key: 'med_card_expires', label: 'Med. Card', sortable: true,
+    filterable: true, filterMode: 'date-range',
+    render: (v) => <ExpirationChip iso={(v as string) ?? null} /> },
   {
     key: 'phone',
     label: 'Phone',
@@ -118,6 +122,12 @@ const driverColumns: AnyColumn[] = [
   {
     key: 'termination_date',
     label: 'Status',
+    sortable: true,
+    // Filter on the DERIVED Active/Terminated state, not the raw
+    // date — that's the distinction operators actually narrow by.
+    filterable: true,
+    filterValue: (row) => (row as unknown as DriverProfile).termination_date ? 'terminated' : 'active',
+    filterLabel: (row) => (row as unknown as DriverProfile).termination_date ? 'Terminated' : 'Active',
     render: (v) =>
       v
         ? <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground border border-border">Terminated</span>
@@ -236,10 +246,11 @@ export default function Drivers() {
           description='Invite drivers from the Invites page (role "Driver") to populate this list.'
         />
       ) : (
-        <DataTable
+        <DataGrid
+          tableId="drivers"
           columns={driverColumns}
           data={drivers as unknown as Record<string, unknown>[]}
-          searchKey="display_name"
+          searchKey={['display_name', 'cdl_number', 'phone']}
           onRowClick={(row) => setSelectedId((row as unknown as DriverProfile).user_id)}
         />
       )}

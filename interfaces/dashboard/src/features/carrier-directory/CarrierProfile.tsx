@@ -11,7 +11,7 @@ import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import type { AnyColumn } from '../../types';
 import { useRoleView } from '../../context/RoleViewContext';
 import { useTimezone } from '../../hooks/useTimezone';
@@ -407,7 +407,7 @@ export default function CarrierProfile() {
                 ))}
               </div>
             ) : filledView[s.key]?.length ? (
-              <DataTable columns={VALUE_COLS} data={filledView[s.key] as unknown as Record<string, unknown>[]}
+              <DataGrid columns={VALUE_COLS} data={filledView[s.key] as unknown as Record<string, unknown>[]}
                 enableToolbar={false} enablePagination={false} />
             ) : (
               <p className="text-sm text-muted-foreground/70">Not provided.</p>

@@ -7,7 +7,7 @@ import { apiJSON } from '../../api/client';
 import { formatDate } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
 import { toneClasses, type Tone } from '../../lib/status';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import EventVideoModal from '@/features/safety-events/EventVideoModal';
 import {
   PageHeader,
@@ -87,6 +87,13 @@ const baseColumns: AnyColumn[] = [
   {
     key: 'event_type',
     label: 'Event',
+    sortable: true,
+    // Event types are a small enum (harsh brake / crash / rolling
+    // stop / …) — filter matches the raw key, dropdown shows the same
+    // cleaned label the cell renders.
+    filterable: true,
+    filterValue: (row) => String((row as SafetyEvent).event_type ?? ''),
+    filterLabel: (row) => cleanEventLabel(String((row as SafetyEvent).event_type ?? '')),
     render: (v) => (
       <span className="flex items-center gap-1.5">
         <EventIcon type={v as string} />
@@ -97,13 +104,24 @@ const baseColumns: AnyColumn[] = [
   {
     key: 'severity',
     label: 'Severity',
+    sortable: true,
+    filterable: true,
+    filterValue: (row) => String((row as SafetyEvent).severity ?? ''),
+    filterLabel: (row) => {
+      const s = String((row as SafetyEvent).severity ?? '').toLowerCase();
+      return s ? s.charAt(0).toUpperCase() + s.slice(1) : '(none)';
+    },
     render: (v) => <SeverityBadge severity={v as string} />,
   },
-  { key: 'driver_name', label: 'Driver' },
-  { key: 'vehicle_name', label: 'Vehicle' },
+  { key: 'driver_name', label: 'Driver', sortable: true, filterable: true },
+  { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
   {
     key: 'g_force',
     label: 'G-Force',
+    sortable: true,
+    filterable: true,
+    filterMode: 'range',
+    filterRange: { min: 0, step: 0.1, unit: 'g' },
     render: (v) => {
       const g = v as number;
       return g > 0 ? `${g}g` : '—';
@@ -126,13 +144,16 @@ export default function Events() {
   const [viewingEvent, setViewingEvent] = useState<SafetyEvent | null>(null);
 
   // Compose the Video column inside the component so its render can
-  // reach `setViewingEvent`.  Memoised so DataTable doesn't see a new
+  // reach `setViewingEvent`.  Memoised so DataGrid doesn't see a new
   // columns array on every keystroke in the driver filter.
   const columns: AnyColumn[] = useMemo(() => [
     ...baseColumns,
     {
       key: 'time',
       label: 'Time',
+      sortable: true,
+      filterable: true,
+      filterMode: 'date-range',
       render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—',
     },
     {
@@ -311,10 +332,11 @@ export default function Events() {
           }
         />
       ) : (
-        <DataTable
+        <DataGrid
+          tableId="safety-events"
           columns={columns}
           data={events as unknown as Record<string, unknown>[]}
-          searchKey="driver_name"
+          searchKey={['driver_name', 'vehicle_name']}
         />
       )}
 

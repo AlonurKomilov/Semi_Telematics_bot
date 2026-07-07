@@ -9,7 +9,9 @@ import {
 import { Button } from '../../components/ui/button';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toast } from 'sonner';
-import DataTable from '../../components/DataTable';
+import DataGrid, { type DataGridSegment } from '../../components/DataGrid';
+import { Menu as MenuPrimitive } from '@base-ui/react/menu';
+import { useTeamMembersQuery } from './useTeamMembers';
 import StatusBadge from '../../components/StatusBadge';
 import RoleBadge, { ROLE_LABEL, ASSIGNABLE_ROLES, roleTone } from '../../components/RoleBadge';
 import { useAuth } from '../../context/AuthContext';
@@ -297,6 +299,20 @@ type MemberRow = AdminUser & {
   datatruck_driver_id?: string | null;
 };
 
+// Lifecycle split for the grid's segment tabs.  Same ``?? 'active'``
+// fallback the Status column render uses, so tab membership always
+// agrees with the row's badge.  Role slicing is NOT a tab — it's the
+// Role column filter (effective-tier labels).
+const memberLifecycle = (r: Record<string, unknown>): MemberLifecycle => {
+  const v = (r as unknown as MemberRow).lifecycle;
+  return v === 'pending' || v === 'inactive' ? v : 'active';
+};
+const TEAM_SEGMENTS: DataGridSegment[] = [
+  { key: 'active',   label: 'Active',   match: (r) => memberLifecycle(r) === 'active' },
+  { key: 'pending',  label: 'Pending',  match: (r) => memberLifecycle(r) === 'pending' },
+  { key: 'inactive', label: 'Inactive', match: (r) => memberLifecycle(r) === 'inactive' },
+];
+
 type DetailTab = 'profile' | 'access' | 'settings';
 
 export default function TeamManagement() {
@@ -307,7 +323,6 @@ export default function TeamManagement() {
   const [success, setSuccess] = useState('');
   const [selected, setSelected] = useState<AdminUser | null>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
-  const [roleFilter, setRoleFilter] = useState<string | null>(null);
   // Page-level tab: the member list vs the Invites panel (folded in from
   // the old standalone /admin/invites page).  The Invites tab only shows
   // for users who can actually invite.
@@ -316,7 +331,7 @@ export default function TeamManagement() {
   // page — same panel, just hosted here so all team-shift config
   // lives under one nav entry.  Gated on can_manage_work_hours —
   // the Settings component's own delegation flag.
-  const [pageTab, setPageTab] = useState<'members' | 'invites' | 'working-hours'>('members');
+  const [pageTab, setPageTab] = useState<'members' | 'invites' | 'working-hours' | 'integration-links'>('members');
   const { has } = useViewPermissions();
   const canInvite = has('can_invite');
   const canManageWorkHours = has('can_manage_work_hours');
@@ -400,11 +415,15 @@ export default function TeamManagement() {
   // confirmation pattern matches the rest of the drawer.
   const [pendingAccessSave, setPendingAccessSave] = useState<{ oldCodes: string } | null>(null);
 
-  // React Query: cached across navigations, deduped, no manual loading state.
-  const { data: usersData, isLoading: loading, error: usersError } = useQuery({
-    queryKey: ['admin-users'],
-    queryFn: () => apiJSON<{ users: AdminUser[] }>('/admin/users'),
-  });
+  // React Query: cached across navigations, deduped, no manual loading
+  // state.  Shared hook (useTeamMembers) — the topbar TeamHero reads
+  // the same cache entry, so its counts always equal this page's.
+  const { data: usersData, isLoading: loading, error: usersError } = useTeamMembersQuery();
+  // Count badge for the Integration-links surface tab — eager fetch of
+  // the same cache entry the panel reads, so the badge is live before
+  // the tab is opened and can't disagree with the panel's own header.
+  const { data: linksData } = useIntegrationLinksQuery();
+  const linksTotal = unlinkedTotal(linksData);
   const users = useMemo(() => usersData?.users ?? [], [usersData]);
   useEffect(() => {
     if (usersError) setError(usersError instanceof Error ? usersError.message : 'Failed');
@@ -457,17 +476,6 @@ export default function TeamManagement() {
   );
 
   // Filtered users by role
-  const filteredUsers = useMemo(() => {
-    if (!roleFilter) return users;
-    return users.filter(u => u.role === roleFilter);
-  }, [users, roleFilter]);
-
-  // Role counts for filter chips
-  const roleCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    users.forEach(u => { counts[u.role] = (counts[u.role] || 0) + 1; });
-    return counts;
-  }, [users]);
 
   const handleRoleChange = async (userId: number, role: string) => {
     try {
@@ -726,7 +734,6 @@ export default function TeamManagement() {
   };
 
   const activeCount = users.filter(u => u.is_active).length;
-  const pendingCount = users.filter(u => (u as MemberRow).lifecycle === 'pending').length;
 
   // Clear success messages after 3s
   useEffect(() => {
@@ -760,12 +767,21 @@ export default function TeamManagement() {
                              alerts pause outside these windows)
           Tabs render only when the caller has permission for them
           so HR/Fleet without can_invite see just Members. */}
-      {(canInvite || canManageWorkHours) && (
+      {/* Always shown — Members + Integration links exist for every
+          viewer of this page; Invites / Working Hours stay
+          permission-gated per entry. */}
+      {(
         <div role="tablist" aria-label="Team management sections" className="flex gap-1 mb-4 border-b border-border">
           {([
-            { key: 'members'        as const, label: 'Members',       show: true },
-            { key: 'invites'        as const, label: 'Invites',       show: canInvite },
-            { key: 'working-hours'  as const, label: 'Working Hours', show: canManageWorkHours },
+            { key: 'members'           as const, label: 'Members',           show: true },
+            { key: 'invites'           as const, label: 'Invites',           show: canInvite },
+            { key: 'working-hours'     as const, label: 'Working Hours',     show: canManageWorkHours },
+            // External identities (Datatruck drivers / load names) that
+            // aren't member rows yet — Invites' sibling: people on the
+            // way IN, deliberately NOT a members-grid segment tab (the
+            // grid tabs slice the members dataset; these 100+ rows
+            // aren't members and would break the tab arithmetic).
+            { key: 'integration-links' as const, label: 'Integration links', show: true },
           ]).filter(t => t.show).map(({ key, label }) => {
             const sel = pageTab === key;
             return (
@@ -781,6 +797,11 @@ export default function TeamManagement() {
                 }`}
               >
                 {label}
+                {key === 'integration-links' && linksTotal != null && linksTotal > 0 && (
+                  <span className="ml-1.5 tabular-nums text-2xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
+                    {linksTotal}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -791,6 +812,8 @@ export default function TeamManagement() {
         <InvitesPanel />
       ) : pageTab === 'working-hours' ? (
         <WorkHoursPanel />
+      ) : pageTab === 'integration-links' ? (
+        <IntegrationLinksPanel members={users} onChanged={() => { void loadUsers(); }} />
       ) : (
         <>
 
@@ -799,61 +822,30 @@ export default function TeamManagement() {
       )}
       {success && <p className="text-ok text-sm mb-3">{success}</p>}
 
-      <div className="flex items-center gap-3 mb-4">
-        {/* Role filter chips */}
-        <div className="flex gap-1.5">
-          <button
-            onClick={() => setRoleFilter(null)}
-            className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
-              !roleFilter ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground/80'
-            }`}
-          >
-            All <span className="opacity-60">{users.length}</span>
-          </button>
-          {Object.entries(ROLE_LABEL).map(([key, label]) => {
-            const count = roleCounts[key] || 0;
-            if (!count) return null;
-            return (
-              <button
-                key={key}
-                onClick={() => setRoleFilter(roleFilter === key ? null : key)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition border ${
-                  roleFilter === key ? toneClasses(roleTone(key)) : 'border-transparent text-muted-foreground hover:text-foreground/80'
-                }`}
-              >
-                {label} <span className="opacity-60">{count}</span>
-              </button>
-            );
-          })}
-          {pendingCount > 0 && (
-            <span
-              className={`px-2.5 py-1 rounded-full text-xs font-medium border ${toneClasses('info')}`}
-              title="Provisioned members who haven't signed in yet (no Telegram link or password)"
-            >
-              Pending sign-in <span className="opacity-60">{pendingCount}</span>
-            </span>
-          )}
-        </div>
-      </div>
+      {/* The role chip row + passive "Pending sign-in" pill that
+          lived here are gone: lifecycle = the grid's Active / Pending
+          / Inactive segment tabs (Pending's live count is now a
+          clickable tab), role slicing = the Role column filter
+          (effective-tier labels), and the composition counts live in
+          the topbar TeamHero. */}
 
-      <IntegrationLinksPanel members={users} onChanged={() => { void loadUsers(); }} />
+      {/* Integration links moved to its own surface tab — external
+          identities aren't members, so they don't belong above (or
+          inside) the members grid. */}
 
-      {loading && users.length === 0 ? <TableSkeleton rows={6} cols={5} /> : filteredUsers.length === 0 ? (
+      {loading && users.length === 0 ? <TableSkeleton rows={6} cols={5} /> : users.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
-          title={roleFilter ? `No ${ROLE_LABEL[roleFilter]} users` : 'No team members yet'}
-          description={
-            roleFilter
-              ? 'Try a different role filter.'
-              : 'Invite teammates from the Invites page to get started.'
-          }
+          title="No team members yet"
+          description="Invite teammates from the Invites page to get started."
         />
       ) : (
         <>
-          <DataTable
+          <DataGrid
             tableId="team-management"
+            segments={TEAM_SEGMENTS}
             columns={userColumns}
-            data={filteredUsers as unknown as Record<string, unknown>[]}
+            data={users as unknown as Record<string, unknown>[]}
             searchKey={['display_name', 'email', 'role', 'truck_num']}
             onRowClick={(row) => setSelected(row as unknown as AdminUser)}
           />
@@ -1962,7 +1954,8 @@ function UserDrawerShell({
 // Synced people not linked to a member yet: Datatruck drivers (from the
 // import plan) + dispatcher/driver names on loads.  Each row offers
 // "link to an existing member" (continues that person's data) or "add as
-// pending user" (no login until they sign in).  Lazy-fetched on expand.
+// pending user" (no login until they sign in).  Lives in its own
+// surface tab (Integration links) with a live count badge.
 
 interface LinkPlanEntry {
   external_id: string; name: string; phone: string; email: string;
@@ -1979,6 +1972,24 @@ interface LinksResponse {
   };
 }
 
+// Shared query for the integration-links plan — read by BOTH the
+// surface-tab count badge and the panel body, so the badge is live
+// before the tab is ever opened and the two can't disagree.
+function useIntegrationLinksQuery() {
+  return useQuery({
+    queryKey: ['integration-links'],
+    queryFn: () => apiJSON<LinksResponse>('/admin/users/integration-links'),
+  });
+}
+function unlinkedTotal(data: LinksResponse | undefined): number | null {
+  if (!data) return null;
+  return data.datatruck_drivers.counts.create
+    + data.datatruck_drivers.counts.link
+    + data.datatruck_drivers.counts.review
+    + data.load_names.dispatchers.length
+    + data.load_names.drivers.length;
+}
+
 // Native-select twin of the Input primitive: rounded-lg tracks the theme's
 // Corners preset exactly (bare `rounded` is radius−3px and reads as stuck),
 // border-input matches form-field outlines.
@@ -1990,20 +2001,9 @@ function IntegrationLinksPanel({ members, onChanged }: {
   members: AdminUser[];
   onChanged: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [data, setData] = useState<LinksResponse | null>(null);
+  const qc = useQueryClient();
+  const { data } = useIntegrationLinksQuery();
   const [busy, setBusy] = useState(false);
-  const [picks, setPicks] = useState<Record<string, string>>({});
-
-  const load = useCallback(async () => {
-    try {
-      setData(await apiJSON<LinksResponse>('/admin/users/integration-links'));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not load links');
-    }
-  }, []);
-
-  useEffect(() => { if (open && !data) void load(); }, [open, data, load]);
 
   const act = async (fn: () => Promise<unknown>, okMsg: string) => {
     if (busy) return;
@@ -2011,8 +2011,7 @@ function IntegrationLinksPanel({ members, onChanged }: {
     try {
       await fn();
       toast.success(okMsg);
-      setData(null);          // refetch on next render
-      void load();
+      void qc.invalidateQueries({ queryKey: ['integration-links'] });
       onChanged();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Action failed');
@@ -2036,127 +2035,219 @@ function IntegrationLinksPanel({ members, onChanged }: {
       'Added as pending member');
 
   const drivers = members.filter((m) => String(m.role) === 'driver');
-  const total = data
-    ? data.datatruck_drivers.counts.create + data.datatruck_drivers.counts.link
-      + data.datatruck_drivers.counts.review
-      + data.load_names.dispatchers.length + data.load_names.drivers.length
-    : null;
+  const total = unlinkedTotal(data);
 
-  const MemberPick = ({ id, pool }: { id: string; pool: AdminUser[] }) => (
-    <select
-      className={selectCls}
-      value={picks[id] ?? ''}
-      onChange={(e) => setPicks((p) => ({ ...p, [id]: e.target.value }))}
-      aria-label="Link to member"
-    >
-      <option value="">Link to member…</option>
-      {pool.map((m) => (
-        <option key={m.id} value={String(m.id)}>{m.display_name || `#${m.id}`}</option>
-      ))}
-    </select>
+  // Flattened row model for the grid — one row per unlinked identity,
+  // whatever its origin (Datatruck import plan bucket or a load-sheet
+  // name).  ``typeLabel`` doubles as the Source column's filter value.
+  interface LinkRow extends Record<string, unknown> {
+    id: string;
+    name: string;
+    /** Integration origin — which system surfaced this identity. */
+    source: string;
+    /** What the person is — same vocabulary as the members grid. */
+    role: 'driver' | 'dispatcher';
+    email?: string;
+    phone?: string;
+    loads?: number;
+    field?: 'driver' | 'dispatcher';
+    external_id?: string;
+    bucket?: 'link' | 'create' | 'review';
+    matched_user_id?: number;
+    matched_name?: string;
+    reason?: string;
+  }
+  const rows = useMemo<LinkRow[]>(() => {
+    if (!data) return [];
+    const out: LinkRow[] = [];
+    (['link', 'create', 'review'] as const).forEach((bucket) =>
+      data.datatruck_drivers[bucket].forEach((d) => out.push({
+        id: `dt-${d.external_id}`,
+        name: d.name,
+        source: 'Datatruck',
+        role: 'driver',
+        email: d.email || undefined,
+        phone: d.phone || undefined,
+        external_id: d.external_id,
+        bucket,
+        matched_user_id: d.matched_user_id,
+        matched_name: d.matched_name,
+        reason: d.reason,
+      })),
+    );
+    ([['dispatchers', 'dispatcher'], ['drivers', 'driver']] as const).forEach(([group, field]) =>
+      data.load_names[group].forEach((n) => out.push({
+        id: `${field}-${n.name}`,
+        name: n.name,
+        source: 'Loads',
+        role: field,
+        loads: n.loads,
+        field,
+      })),
+    );
+    return out;
+  }, [data]);
+
+
+  // One-press link: the button IS the picker — pressing it lists the
+  // eligible members and choosing one links immediately.  Replaces
+  // the old two-step ``[Link to member… ▾][Link]`` pair, whose
+  // separate dead-until-picked Link button read as confusing.
+  // The verb stays "Link" (NOT "Merge"): nothing merges here — the
+  // external identity is attached to the member and the association
+  // is reversible; "Merge" would imply combining two records into
+  // one, which this never does.
+  const LinkMemberMenu = ({ pool, onPick }: {
+    pool: AdminUser[];
+    onPick: (userId: number) => void;
+  }) => (
+    <MenuPrimitive.Root>
+      <MenuPrimitive.Trigger
+        render={(props) => (
+          <Button
+            {...props}
+            type="button"
+            variant="outline"
+            size="xs"
+            disabled={busy || pool.length === 0}
+            title={pool.length === 0 ? 'No eligible members to link' : undefined}
+          >
+            Link to member…
+          </Button>
+        )}
+      />
+      <MenuPrimitive.Portal>
+        <MenuPrimitive.Positioner align="start" sideOffset={4} className="z-50 outline-none">
+          <MenuPrimitive.Popup className="max-h-64 min-w-44 overflow-y-auto bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+            {pool.map((m) => (
+              <MenuPrimitive.Item
+                key={m.id}
+                onClick={() => onPick(m.id)}
+                className="w-full px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent"
+              >
+                {m.display_name || `#${m.id}`}
+              </MenuPrimitive.Item>
+            ))}
+          </MenuPrimitive.Popup>
+        </MenuPrimitive.Positioner>
+      </MenuPrimitive.Portal>
+    </MenuPrimitive.Root>
   );
 
+  const columns: AnyColumn[] = [
+    { key: 'name', label: 'Name', sortable: true },
+    {
+      // Origin system only ("Datatruck" import plan / names seen on
+      // "Loads") — what the person IS lives in the Role column, same
+      // split as everywhere else in the app.
+      key: 'source', label: 'Source', sortable: true, filterable: true,
+    },
+    {
+      key: 'role', label: 'Role', sortable: true,
+      filterable: true,
+      filterValue: (row) => String((row as LinkRow).role),
+      filterLabel: (row) => ROLE_LABEL[(row as LinkRow).role] ?? String((row as LinkRow).role),
+      render: (v) => <RoleBadge role={String(v)} />,
+    },
+    {
+      key: 'details', label: 'Details', sortable: false,
+      csvValue: (row) => {
+        const r = row as LinkRow;
+        return r.loads != null
+          ? `${r.loads} load${r.loads === 1 ? '' : 's'}`
+          : [r.email, r.phone].filter(Boolean).join(' · ');
+      },
+      render: (_v, row) => {
+        const r = row as LinkRow;
+        return (
+          <span className="text-xs text-muted-foreground">
+            {r.loads != null
+              ? `on ${r.loads} load${r.loads === 1 ? '' : 's'}`
+              : [r.email, r.phone].filter(Boolean).join(' · ') || '—'}
+            {r.bucket === 'review' && r.reason && (
+              <> · <span className={toneText('warn')}>{r.reason}</span></>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'suggested', label: 'Suggested match', sortable: false,
+      csvValue: (row) => (row as LinkRow).matched_name ?? '',
+      render: (_v, row) => {
+        const r = row as LinkRow;
+        if (r.bucket === 'link' && r.matched_user_id != null) {
+          return (
+            <Button
+              type="button"
+              size="xs"
+              disabled={busy}
+              onClick={(e) => { e.stopPropagation(); void linkDriver(r.external_id!, r.matched_user_id!); }}
+            >
+              Link to {r.matched_name}
+            </Button>
+          );
+        }
+        return <span className="text-muted-foreground text-xs">—</span>;
+      },
+    },
+    {
+      key: 'actions', label: 'Actions', sortable: false, locked: true,
+      csvValue: () => '',
+      render: (_v, row) => {
+        const r = row as LinkRow;
+        return (
+          <span className="inline-flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+            {r.field
+              ? (
+                <LinkMemberMenu
+                  pool={r.field === 'driver' ? drivers : members}
+                  onPick={(uid) => linkName(r.name, r.field!, uid)}
+                />
+              )
+              : (
+                <LinkMemberMenu
+                  pool={drivers}
+                  onPick={(uid) => linkDriver(r.external_id!, uid)}
+                />
+              )}
+            {(r.field || r.bucket !== 'link') && (
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                disabled={busy}
+                onClick={() => (r.field
+                  ? provision({ kind: r.field, name: r.name, load_name: r.name })
+                  : provision({
+                      kind: 'driver', name: r.name, email: r.email || '',
+                      phone: r.phone || '', datatruck_driver_id: r.external_id!,
+                    }))}
+              >
+                Add as pending member
+              </Button>
+            )}
+          </span>
+        );
+      },
+    },
+  ];
+
+  if (!data) return <TableSkeleton rows={6} cols={5} />;
+  if (total === 0) {
+    return (
+      <div className="rounded-lg border border-border bg-card px-4 py-6 text-center text-sm text-muted-foreground">
+        All integration identities are linked — nothing to do here. ✓
+      </div>
+    );
+  }
   return (
-    <div className="mb-3 rounded-lg border border-border bg-card">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between px-3 py-2 text-sm text-foreground"
-      >
-        <span className="font-medium">
-          Not linked from integrations
-          {total != null && <span className="ml-1.5 text-muted-foreground">{total}</span>}
-        </span>
-        {open
-          ? <ChevronDown size={14} className="text-muted-foreground" />
-          : <ChevronRight size={14} className="text-muted-foreground" />}
-      </button>
-      {open && !data && <p className="px-3 pb-3 text-xs text-muted-foreground">Loading…</p>}
-      {open && data && (
-        <div className="space-y-3 px-3 pb-3">
-          {(['link', 'create', 'review'] as const).map((bucket) =>
-            data.datatruck_drivers[bucket].map((d) => (
-              <div key={`dt-${d.external_id}`} className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-foreground">{d.name}</span>
-                <span className="text-muted-foreground">
-                  Datatruck driver{d.email ? ` · ${d.email}` : ''}
-                  {bucket === 'review' && d.reason
-                    ? <> · <span className={toneText('warn')}>{d.reason}</span></>
-                    : ''}
-                </span>
-                {bucket === 'link' && d.matched_user_id != null && (
-                  <Button
-                    type="button"
-                    size="xs"
-                    disabled={busy}
-                    onClick={() => linkDriver(d.external_id, d.matched_user_id!)}
-                  >
-                    Link to {d.matched_name}
-                  </Button>
-                )}
-                <MemberPick id={`dt-${d.external_id}`} pool={drivers} />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="xs"
-                  disabled={busy || !picks[`dt-${d.external_id}`]}
-                  onClick={() => linkDriver(d.external_id, Number(picks[`dt-${d.external_id}`]))}
-                >
-                  Link
-                </Button>
-                {bucket !== 'link' && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="xs"
-                    disabled={busy}
-                    onClick={() => provision({
-                      kind: 'driver', name: d.name, email: d.email || '',
-                      phone: d.phone || '', datatruck_driver_id: d.external_id,
-                    })}
-                  >
-                    Add as pending
-                  </Button>
-                )}
-              </div>
-            )),
-          )}
-          {([['dispatchers', 'dispatcher'], ['drivers', 'driver']] as const).map(([group, field]) =>
-            data.load_names[group].map((n) => (
-              <div key={`${field}-${n.name}`} className="flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-foreground">{n.name}</span>
-                <span className="text-muted-foreground">
-                  {field} on {n.loads} load{n.loads === 1 ? '' : 's'}
-                </span>
-                <MemberPick id={`${field}-${n.name}`} pool={field === 'driver' ? drivers : members} />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="xs"
-                  disabled={busy || !picks[`${field}-${n.name}`]}
-                  onClick={() => linkName(n.name, field, Number(picks[`${field}-${n.name}`]))}
-                >
-                  Link
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="xs"
-                  disabled={busy}
-                  onClick={() => provision({ kind: field, name: n.name, load_name: n.name })}
-                >
-                  Add as pending
-                </Button>
-              </div>
-            )),
-          )}
-          {total === 0 && (
-            <p className="text-xs text-muted-foreground">
-              Everything synced is linked to a member. ✓
-            </p>
-          )}
-        </div>
-      )}
-    </div>
+    <DataGrid
+      tableId="integration-links"
+      columns={columns}
+      data={rows}
+      searchKey={['name', 'email']}
+      searchPlaceholder="Search name or email…"
+    />
   );
 }

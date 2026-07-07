@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Settings as SettingsIcon } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import type { SettingsResponse, WorkSchedule, User, BotConfig } from '../../types';
+import type { SettingsResponse, WorkSchedule, User, BotConfig, AnyColumn } from '../../types';
+import DataGrid from '../../components/DataGrid';
 import { useAuth } from '../../context/AuthContext';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import {
@@ -476,23 +477,45 @@ export default function Settings() {
         )}
 
         {data?.schedules && data.schedules.length > 0 ? (
-          <table className="w-full text-sm">
-            <thead><tr className="text-left text-muted-foreground border-b border-border">
-              <th className="py-2 pr-4">Label</th><th className="py-2 pr-4">Hours</th><th className="py-2 pr-4">Role</th><th className="py-2">Actions</th>
-            </tr></thead>
-            <tbody>
-              {data.schedules.map((s: WorkSchedule) => (
-                <tr key={s.id} className="border-b border-border/50 hover:bg-muted/30">
-                  <td className="py-2 pr-4">{s.label}</td>
-                  <td className="py-2 pr-4">{String(s.start_hour).padStart(2, '0')}:00 – {String(s.end_hour).padStart(2, '0')}:00</td>
-                  <td className="py-2 pr-4 capitalize">{s.target_role.replace(/_/g, ' ')}</td>
-                  <td className="py-2">
-                    <button onClick={() => handleDeleteSchedule(s.id)} className="text-destructive hover:text-destructive/80 text-xs">Delete</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataGrid
+            columns={[
+              { key: 'label', label: 'Label', sortable: true },
+              {
+                key: 'start_hour', label: 'Hours', sortable: true,
+                render: (_v, row) => {
+                  const s = row as unknown as WorkSchedule;
+                  return (
+                    <span>
+                      {String(s.start_hour).padStart(2, '0')}:00 – {String(s.end_hour).padStart(2, '0')}:00
+                    </span>
+                  );
+                },
+              },
+              {
+                key: 'target_role', label: 'Role', sortable: true,
+                render: (v) => (
+                  <span className="capitalize">{String(v).replace(/_/g, ' ')}</span>
+                ),
+              },
+              {
+                key: '_actions', label: 'Actions', sortable: false,
+                render: (_v, row) => {
+                  const s = row as unknown as WorkSchedule;
+                  return (
+                    <button
+                      onClick={() => handleDeleteSchedule(s.id)}
+                      className="text-destructive hover:text-destructive/80 text-xs"
+                    >
+                      Delete
+                    </button>
+                  );
+                },
+              },
+            ] satisfies AnyColumn[]}
+            data={data.schedules as unknown as Record<string, unknown>[]}
+            enableToolbar={false}
+            enablePagination={false}
+          />
         ) : (
           <p className="text-muted-foreground text-sm">No schedules configured.</p>
         )}

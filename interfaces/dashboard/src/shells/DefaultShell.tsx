@@ -17,6 +17,7 @@
  */
 import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
+import ShellHero from './heroes/ShellHero';
 import { Search, Menu, X } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
 import { ThemeToggle } from '../components/ThemeToggle';
@@ -97,7 +98,13 @@ export default function DefaultShell() {
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          {/* Route-aware feature hero (Maintenance counts on
+              /maintenance, more features over time).  These shells
+              have no persona hero, so off-feature routes render the
+              plain spacer — topbar layout unchanged. */}
+          <ShellHero />
+
+          <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setPaletteOpen(true)}
               className="hidden md:inline-flex items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground bg-muted/40 border border-border rounded-md hover:bg-muted hover:text-foreground transition w-[220px] lg:w-[280px]"

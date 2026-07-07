@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus, X, KeyRound, Upload, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiJSON, apiFetch } from '../../api/client';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import {
   PageHeader,
   EmptyState,
@@ -248,7 +248,7 @@ export default function Companies() {
           }
         />
       ) : (
-        <DataTable columns={columns} data={companies as unknown as Record<string, unknown>[]} searchKey="display_name" onRowClick={(row) => {
+        <DataGrid tableId="companies" columns={columns} data={companies as unknown as Record<string, unknown>[]} searchKey="display_name" onRowClick={(row) => {
           const c = row as unknown as CompanyInfo;
           setSelected(c); setEditName(c.display_name); setEditDays(c.active_days);
           setEditMc(c.mc_number || ''); setEditDot(c.usdot_number || '');

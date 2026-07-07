@@ -19,7 +19,7 @@ import { cn } from '../lib/utils';
  *   └──────────────────────────────┘
  *
  * Renders nothing on its own — the parent provides a trigger node via
- * ``children``.  The DataTable invokes it from the 3-dot menu's
+ * ``children``.  The DataGrid invokes it from the 3-dot menu's
  * "Manage columns…" item.
  *
  * "Reset" clears the table's local visibility + order state so the
@@ -104,7 +104,7 @@ export default function ManageColumnsMenu({
                 onClick={onReset}
                 className="w-full px-3 py-2 text-2xs text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center justify-center gap-1.5"
               >
-                <RotateCcw size={11} aria-hidden="true" />
+                <RotateCcw size={12} aria-hidden="true" />
                 Reset to defaults
               </button>
             </div>

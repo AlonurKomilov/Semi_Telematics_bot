@@ -20,6 +20,7 @@ import { AvatarMenu } from '../components/AvatarMenu';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
 import FleetHero from './heroes/FleetHero';
+import ShellHero from './heroes/ShellHero';
 
 export default function FleetShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -76,7 +77,10 @@ export default function FleetShell() {
             </button>
           </div>
 
-          <FleetHero />
+          {/* Route-aware: a feature hero (e.g. Maintenance counts on
+              /maintenance) takes the slot; the persona hero is the
+              cross-cutting fallback everywhere else. */}
+          <ShellHero fallback={<FleetHero />} />
 
           <div className="flex items-center gap-2 shrink-0">
             <button

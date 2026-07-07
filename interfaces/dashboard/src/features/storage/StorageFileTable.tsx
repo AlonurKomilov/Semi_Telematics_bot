@@ -8,6 +8,8 @@ import {
 import { apiJSON } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
+import DataGrid from '../../components/DataGrid';
+import type { AnyColumn } from '../../types';
 
 /**
  * Storage file-manager — the "needs sync" queue.
@@ -177,25 +179,22 @@ export default function StorageFileTable() {
               : t('storage.files.empty')}
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="text-xs text-muted-foreground bg-muted/30">
-              <tr>
-                <th className="text-left px-3 py-2 font-medium">{t('storage.files.col_file')}</th>
-                <th className="text-left px-3 py-2 font-medium">{t('storage.files.col_source')}</th>
-                <th className="text-right px-3 py-2 font-medium">{t('storage.files.col_size')}</th>
-                <th className="text-left px-3 py-2 font-medium">{t('storage.files.col_status')}</th>
-                <th className="text-left px-3 py-2 font-medium">{t('storage.files.col_added')}</th>
-                <th className="text-right px-3 py-2 font-medium"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map(r => (
-                <tr key={r.queue_id} className="border-t border-border hover:bg-muted/30">
-                  <td className="px-3 py-2 font-mono text-xs truncate max-w-[220px]" title={r.filename}>
-                    {r.filename}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground">
+        <DataGrid
+          columns={[
+            {
+              key: 'filename', label: t('storage.files.col_file'), sortable: true,
+              render: (v) => (
+                <span className="font-mono text-xs truncate max-w-[220px] inline-block" title={String(v)}>
+                  {String(v)}
+                </span>
+              ),
+            },
+            {
+              key: '_source', label: t('storage.files.col_source'), sortable: false,
+              render: (_v, row) => {
+                const r = row as unknown as StorageFile;
+                return (
+                  <span className="text-xs text-muted-foreground">
                     {r.vehicle_name
                       ? (
                         <>
@@ -206,36 +205,54 @@ export default function StorageFileTable() {
                         </>
                       )
                       : (r.entity_type ?? '—')}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums text-xs">
-                    {formatBytes(r.file_size)}
-                  </td>
-                  <td className="px-3 py-2 text-xs">
-                    <StatusChip row={r} />
-                  </td>
-                  <td className="px-3 py-2 text-xs text-muted-foreground tabular-nums">
-                    {formatTs(r.enqueued_at, tz)}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {r.is_stuck ? (
-                      <button
-                        type="button"
-                        onClick={() => retryOne(r.queue_id)}
-                        disabled={retrying.has(r.queue_id)}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50"
-                      >
-                        {retrying.has(r.queue_id)
-                          ? <Loader2 size={12} className="animate-spin" />
-                          : <RefreshCw size={12} />}
-                        {t('storage.files.retry')}
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                  </span>
+                );
+              },
+            },
+            {
+              key: 'file_size', label: t('storage.files.col_size'), sortable: true,
+              render: (v) => (
+                <span className="tabular-nums text-xs">{formatBytes(Number(v))}</span>
+              ),
+            },
+            {
+              key: 'is_stuck', label: t('storage.files.col_status'), sortable: true,
+              render: (_v, row) => <StatusChip row={row as unknown as StorageFile} />,
+            },
+            {
+              key: 'enqueued_at', label: t('storage.files.col_added'), sortable: true,
+              render: (v) => (
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {formatTs(String(v), tz)}
+                </span>
+              ),
+            },
+            {
+              key: '_actions', label: '', sortable: false,
+              render: (_v, row) => {
+                const r = row as unknown as StorageFile;
+                return r.is_stuck ? (
+                  <span className="inline-flex justify-end w-full">
+                    <button
+                      type="button"
+                      onClick={() => retryOne(r.queue_id)}
+                      disabled={retrying.has(r.queue_id)}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-md border border-border hover:bg-muted disabled:opacity-50"
+                    >
+                      {retrying.has(r.queue_id)
+                        ? <Loader2 size={12} className="animate-spin" />
+                        : <RefreshCw size={12} />}
+                      {t('storage.files.retry')}
+                    </button>
+                  </span>
+                ) : null;
+              },
+            },
+          ] satisfies AnyColumn[]}
+          data={items as unknown as Record<string, unknown>[]}
+          enableToolbar={false}
+          enablePagination={false}
+        />
       )}
     </div>
   );

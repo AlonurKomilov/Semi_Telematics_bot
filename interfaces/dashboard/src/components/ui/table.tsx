@@ -65,9 +65,20 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   )
 }
 
-function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+// ``forwardRef`` so callers (e.g. DataGrid's dnd-kit column drag) can
+// attach a ref to the underlying ``<th>``.  Without this, ``<TableHead
+// ref={...}>`` would silently drop the ref on the floor (function
+// component, ref isn't a regular prop on React 18), and dnd-kit's
+// ``setNodeRef`` would never see the DOM node — collision detection
+// would always return ``over: null`` and drag-reorder would visually
+// pick up but never resolve into a move.
+const TableHead = React.forwardRef<
+  HTMLTableCellElement,
+  React.ComponentProps<"th">
+>(function TableHead({ className, ...props }, ref) {
   return (
     <th
+      ref={ref}
       data-slot="table-head"
       className={cn(
         "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
@@ -76,7 +87,7 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
       {...props}
     />
   )
-}
+})
 
 function TableCell({ className, ...props }: React.ComponentProps<"td">) {
   return (

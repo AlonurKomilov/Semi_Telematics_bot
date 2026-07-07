@@ -188,7 +188,7 @@ improvise (that's why some pages used to look heavier/lighter than others).
 
 - **`font-mono` is for machine identifiers only.** Human-readable data —
   company codes, vehicle names, statuses, labels — uses the normal sans
-  font (the default `DataTable` cell). Don't `font-mono` a Company column
+  font (the default `DataGrid` cell). Don't `font-mono` a Company column
   on one page and leave it plain on another.
 - **Same column, same render.** When the same logical column (Company,
   status, a count) appears on multiple pages, style it identically — lift
@@ -222,6 +222,21 @@ pill) reshapes the whole UI from it.
   not softness — leave them.
 - **Never** hardcode `rounded-[10px]` or use `rounded-4xl` (it ignores
   the user's Corners setting — see the StatusBadge fix for why).
+- **JS-drawn geometry** (SVG paths, canvas arcs) is bound by the same
+  rule: a radius baked into a path number is invisible to the Corners
+  preset. Read the live token —
+  `getComputedStyle(document.documentElement).getPropertyValue('--radius')`
+  — and recompute when `<html>`'s theme attributes change
+  (MutationObserver; a CSS-var change alone never re-renders React).
+  Reference implementation: `SegmentTab` in
+  [`components/DataGrid.tsx`](src/components/DataGrid.tsx).
+- **No radius caps on small variants.** Upstream shadcn ships `xs`/`sm`
+  button and select sizes with `rounded-[min(var(--radius-md),10px)]`
+  — a cap that silently ignores the Pill preset and makes a small
+  button rounder than its neighbouring select. We removed those caps
+  from `ui/button.tsx` / `ui/select.tsx` (all sizes now track
+  `--radius`); don't reintroduce them when refreshing primitives from
+  upstream.
 
 ---
 

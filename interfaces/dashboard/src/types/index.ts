@@ -62,6 +62,14 @@ export interface User {
   email_verified?: boolean;
   display_name: string;
   role: string;
+  /** Per-user manager tier (orthogonal to role).  A recruiter with
+   *  ``is_manager`` gets the recruiting team-lead grants (invite recruiters,
+   *  edit the carrier directory).  Drives the "Manager" badge + affordances. */
+  is_manager?: boolean;
+  /** True only for the PRIMARY (main) owner — the one who can create/remove
+   *  co-owners and do destructive account actions.  Co-owners have
+   *  role='owner' but this false. */
+  is_primary_owner?: boolean;
   account_id?: number;
   payroll_enabled?: boolean;
   coaching_enabled?: boolean;
@@ -397,7 +405,7 @@ export interface GeofencesResponse {
   features: GeofenceFeature[];
 }
 
-// ── DataTable ────────────────────────────────────────────────
+// ── DataGrid ────────────────────────────────────────────────
 
 export interface Column<T = Record<string, unknown>> {
   key: string;
@@ -409,6 +417,29 @@ export interface Column<T = Record<string, unknown>> {
    *  Off by default — opt in per column (skip for free-text fields
    *  like Description where the global search is the better tool). */
   filterable?: boolean;
+  /** Filter UI shape.
+   *   * ``'select'`` (default) — multi-select checkbox dropdown, for
+   *     enum-like columns (Type / Company / Status).
+   *   * ``'range'`` — Min / Max number-input pair, for continuous
+   *     numeric columns (Fuel % / Odometer miles).
+   *   * ``'date-range'`` — From / To native date-input pair, for
+   *     date/timestamp columns (Submitted / Due date / Updated).
+   *     Filter value shape ``[isoStart|null, isoEnd|null]`` with
+   *     YYYY-MM-DD strings; the "To" bound is inclusive to end-of-day
+   *     so a filter like "2025-11-15 → 2025-11-15" keeps rows from
+   *     that whole day. */
+  filterMode?: 'select' | 'range' | 'date-range';
+  /** For ``filterMode: 'range'`` — optional bounds and unit.  When
+   *  omitted, min/max are auto-computed from the data (whatever's
+   *  currently loaded).  ``step`` drives the browser's number-input
+   *  ↑↓ arrows; ``unit`` (``'%'`` / ``'mi'`` / ``'h'``) is appended
+   *  to labels in the filter popover. */
+  filterRange?: {
+    min?: number;
+    max?: number;
+    step?: number;
+    unit?: string;
+  };
   /** Optional accessor for the value the column filter MATCHES on.
    *  Defaults to the cell value at ``key`` stringified.  Use for
    *  columns whose ``render`` produces something different from the
@@ -430,6 +461,34 @@ export interface Column<T = Record<string, unknown>> {
    *  that already opted into filtering get sensible CSV output for
    *  free. */
   csvValue?: (row: T) => string;
+  /** Optional rich header — when set, the column header renders this
+   *  React node instead of the plain ``label`` text.  Used for the
+   *  Tasks bulk-select column to render a "select all visible" master
+   *  checkbox in its header. */
+  headerRender?: () => React.ReactNode;
+  /** When true, the column is treated as structural rather than data:
+   *  always visible, always at the left edge (auto-pinned), and the
+   *  3-dot menu / drag handle are suppressed.  Use for UI-affordance
+   *  columns like a bulk-select checkbox where the operator should
+   *  never be able to hide / move / unpin it. */
+  locked?: boolean;
+  /** When true, the column starts HIDDEN in the DataGrid's initial
+   *  render.  Operators can unhide it from the Columns popover (and
+   *  their choice persists per-user via useUserPreference).  Use for
+   *  secondary breakdown columns (City / State parsed out of a full
+   *  Location address, extra breakdowns of a compound field) that
+   *  should exist as filter surfaces without cluttering the default
+   *  view.  Reset-to-defaults returns to hidden. */
+  defaultHidden?: boolean;
+  /** Visual group label.  CONSECUTIVE visible columns sharing the
+   *  same ``group`` string get one spanning label cell in an extra
+   *  header row above the normal column headers (e.g. Street / City /
+   *  State bracketed under "Location").  Purely presentational — the
+   *  underlying columns keep their own sort / filter / pin / hide /
+   *  drag behaviour.  If the operator reorders or pins a member away
+   *  from its siblings, the label simply renders over each remaining
+   *  contiguous run. */
+  group?: string;
   render?: (value: unknown, row: T) => React.ReactNode;
   /** Custom comparable value for sorting.  When set, the table sorts
    *  by ``sortKey(row)`` instead of the raw cell value.  Use for
@@ -846,6 +905,19 @@ export interface AdminUser {
   telegram_id: number | null;
   display_name: string;
   role: string;
+  /** Per-user manager tier on the base role (recruiter → recruiting team
+   *  lead).  Set/cleared via PUT /admin/users/:id/manager. */
+  is_manager: boolean;
+  /** True when the role HAS a manager tier at all — drives whether the
+   *  Team Management seniority toggle is shown for this row. */
+  manager_capable: boolean;
+  /** Senior-tier label for this role ("Manager" for recruiter, "Full admin"
+   *  for admin), or null when the role has no tier.  Drives the toggle copy. */
+  tier_senior_label?: string | null;
+  /** True only for the primary (main) owner.  A role=owner row with this
+   *  false is a co-owner.  Drives the Primary/Co-owner badge + which
+   *  owner-management actions the primary owner sees. */
+  is_primary_owner: boolean;
   truck_num: string | null;
   trucks: string[];
   allowed_companies: string[];
@@ -1485,6 +1557,10 @@ export type {
   AITierResponse,
   AITierSwitchResponse,
   AIHistoryResponse,
+  AIConversation,
+  AIConversationsResponse,
+  AIConversationMessagesResponse,
+  AIProcessStep,
 } from '../features/ai/types';
 
 // ── Scheduled Reports ────────────────────────────────────────────

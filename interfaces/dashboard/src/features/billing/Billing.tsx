@@ -7,6 +7,8 @@ import { formatDay } from '../../utils/datetime';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 import { toneClasses } from '../../lib/status';
 import { rollupByDisplayLabel } from '../../features/ai/helpers';
+import DataGrid from '../../components/DataGrid';
+import type { AnyColumn } from '../../types';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -415,6 +417,50 @@ function PlanCard({ name, price, included, extraPer, features, current, onUpgrad
 
 // ── Usage history ─────────────────────────────────────────────────
 
+// Column config lives at module scope — stable identity keeps
+// DataGrid's ``columns`` memo cheap and prevents column-order state
+// churn.
+const USAGE_COLUMNS: AnyColumn[] = [
+  {
+    key: 'period_start', label: 'Period', sortable: true,
+    render: (v) => (
+      <span className="tabular-nums text-foreground/80">
+        {String(v).slice(0, 7)}
+      </span>
+    ),
+  },
+  {
+    key: 'active_vehicles', label: 'Active', sortable: true,
+    // ``active_vehicles`` is the post-Day-5 column.  Pre-migration
+    // rows have only ``vehicle_count`` (raw fleet); show that as a
+    // fallback rather than ``—`` so old months stay legible.
+    render: (_v, row) => {
+      const r = row as unknown as UsageSnapshot;
+      const billable = r.active_vehicles ?? r.vehicle_count;
+      return (
+        <span>
+          {billable}
+          {r.inactive_vehicles ? (
+            <span className="text-xs text-muted-foreground ml-1.5">(+{r.inactive_vehicles} idle)</span>
+          ) : null}
+        </span>
+      );
+    },
+  },
+  {
+    key: 'extra_vehicles', label: 'Extra', sortable: true,
+    render: (v) => Number(v) > 0
+      ? <span className="text-warn">+{String(v)}</span>
+      : <span className="text-muted-foreground">—</span>,
+  },
+  { key: 'user_count', label: 'Users', sortable: true,
+    render: (v) => <span className="text-muted-foreground">{v == null ? '—' : String(v)}</span> },
+  { key: 'ai_queries', label: 'AI Queries', sortable: true,
+    render: (v) => <span className="text-muted-foreground">{fmtNum(Number(v))}</span> },
+  { key: 'amount_due_cents', label: 'Amount', sortable: true,
+    render: (v) => <span className="font-semibold text-ok tabular-nums">{usd(Number(v))}</span> },
+];
+
 function UsageTable({ items }: { items: UsageSnapshot[] }) {
   if (items.length === 0) {
     return (
@@ -424,47 +470,12 @@ function UsageTable({ items }: { items: UsageSnapshot[] }) {
     );
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-muted-foreground border-b border-border text-xs uppercase tracking-wider">
-            <th className="pb-2 pr-4">Period</th>
-            <th className="pb-2 pr-4">Active</th>
-            <th className="pb-2 pr-4">Extra</th>
-            <th className="pb-2 pr-4">Users</th>
-            <th className="pb-2 pr-4">AI Queries</th>
-            <th className="pb-2 text-right">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((row) => {
-            // ``active_vehicles`` is the post-Day-5 column.  Pre-migration
-            // rows have only ``vehicle_count`` (raw fleet); show that
-            // as a fallback rather than ``—`` so old months stay legible.
-            const billable = row.active_vehicles ?? row.vehicle_count;
-            return (
-              <tr key={row.period_start} className="border-b border-border/50 hover:bg-muted/30">
-                <td className="py-2.5 pr-4 text-foreground/80 tabular-nums">{row.period_start.slice(0, 7)}</td>
-                <td className="py-2.5 pr-4 text-foreground">
-                  {billable}
-                  {row.inactive_vehicles ? (
-                    <span className="text-xs text-muted-foreground ml-1.5">(+{row.inactive_vehicles} idle)</span>
-                  ) : null}
-                </td>
-                <td className="py-2.5 pr-4">
-                  {row.extra_vehicles > 0
-                    ? <span className="text-warn">+{row.extra_vehicles}</span>
-                    : <span className="text-muted-foreground">—</span>}
-                </td>
-                <td className="py-2.5 pr-4 text-muted-foreground">{row.user_count ?? '—'}</td>
-                <td className="py-2.5 pr-4 text-muted-foreground">{fmtNum(row.ai_queries)}</td>
-                <td className="py-2.5 text-right font-semibold text-ok">{usd(row.amount_due_cents)}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <DataGrid
+      columns={USAGE_COLUMNS}
+      data={items as unknown as Record<string, unknown>[]}
+      enableToolbar={false}
+      enablePagination={false}
+    />
   );
 }
 
@@ -472,6 +483,68 @@ function UsageTable({ items }: { items: UsageSnapshot[] }) {
 
 function InvoicesTable({ items }: { items: Invoice[] }) {
   const tz = useTimezone();
+  // Column config depends on ``tz`` so it lives in the render — the
+  // formatters need the account's effective timezone from the hook.
+  const columns: AnyColumn[] = [
+    {
+      key: 'created_at', label: 'Date', sortable: true,
+      render: (v) => (
+        <span className="tabular-nums text-foreground/80">
+          {formatDay(String(v), { timeZone: tz })}
+        </span>
+      ),
+    },
+    {
+      key: 'status', label: 'Status', sortable: true,
+      render: (v) => {
+        const s = String(v || '');
+        const tone =
+          s === 'paid' ? toneClasses('ok') :
+          s === 'open' ? toneClasses('warn') :
+          s === 'uncollectible' || s === 'void' ? toneClasses('danger') :
+          toneClasses('neutral');
+        return (
+          <span className={`px-2 py-0.5 rounded text-xs font-medium border ${tone}`}>
+            {s || '—'}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'period_start', label: 'Period', sortable: true,
+      render: (_v, row) => {
+        const inv = row as unknown as Invoice;
+        return (
+          <span className="text-muted-foreground text-xs">
+            {inv.period_start ? formatDay(inv.period_start, { timeZone: tz }) : '—'}
+            {inv.period_end && (
+              <> → {formatDay(inv.period_end, { timeZone: tz })}</>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'amount_paid_cents', label: 'Amount', sortable: true,
+      render: (_v, row) => {
+        const inv = row as unknown as Invoice;
+        return (
+          <span className="font-semibold text-foreground tabular-nums">
+            {usd(inv.amount_paid_cents || inv.amount_due_cents)}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'hosted_invoice_url', label: 'Receipt', sortable: false,
+      render: (v) => v ? (
+        <a href={String(v)} target="_blank" rel="noopener noreferrer"
+           className="inline-flex items-center gap-1 text-primary text-xs hover:underline">
+          <FileText size={12} /> View
+        </a>
+      ) : <span className="text-muted-foreground text-xs">—</span>,
+    },
+  ];
   if (items.length === 0) {
     return (
       <p className="text-sm text-muted-foreground text-center py-8">
@@ -480,53 +553,12 @@ function InvoicesTable({ items }: { items: Invoice[] }) {
     );
   }
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="text-left text-muted-foreground border-b border-border text-xs uppercase tracking-wider">
-            <th className="pb-2 pr-4">Date</th>
-            <th className="pb-2 pr-4">Status</th>
-            <th className="pb-2 pr-4">Period</th>
-            <th className="pb-2 pr-4 text-right">Amount</th>
-            <th className="pb-2 text-right">Receipt</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((inv) => (
-            <tr key={inv.id} className="border-b border-border/50 hover:bg-muted/30">
-              <td className="py-2.5 pr-4 text-foreground/80 tabular-nums">
-                {formatDay(inv.created_at, { timeZone: tz })}
-              </td>
-              <td className="py-2.5 pr-4">
-                <span className={`px-2 py-0.5 rounded text-xs font-medium border ${
-                  inv.status === 'paid' ? toneClasses('ok') :
-                  inv.status === 'open' ? toneClasses('warn') :
-                  inv.status === 'uncollectible' || inv.status === 'void' ? toneClasses('danger') :
-                  toneClasses('neutral')
-                }`}>{inv.status || '—'}</span>
-              </td>
-              <td className="py-2.5 pr-4 text-muted-foreground text-xs">
-                {inv.period_start ? formatDay(inv.period_start, { timeZone: tz }) : '—'}
-                {inv.period_end && (
-                  <> → {formatDay(inv.period_end, { timeZone: tz })}</>
-                )}
-              </td>
-              <td className="py-2.5 pr-4 text-right font-semibold text-foreground tabular-nums">
-                {usd(inv.amount_paid_cents || inv.amount_due_cents)}
-              </td>
-              <td className="py-2.5 text-right">
-                {inv.hosted_invoice_url ? (
-                  <a href={inv.hosted_invoice_url} target="_blank" rel="noopener noreferrer"
-                     className="inline-flex items-center gap-1 text-primary text-xs hover:underline">
-                    <FileText size={12} /> View
-                  </a>
-                ) : <span className="text-muted-foreground text-xs">—</span>}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataGrid
+      columns={columns}
+      data={items as unknown as Record<string, unknown>[]}
+      enableToolbar={false}
+      enablePagination={false}
+    />
   );
 }
 

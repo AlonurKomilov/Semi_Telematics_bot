@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import { Download, Sparkles, FileText } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import StatusBadge from '../../components/StatusBadge';
 import {
   EmptyState,
@@ -296,7 +296,11 @@ export default function Reports() {
           description="Try a different tab or widen the date range — reports populate as soon as the underlying telematics data arrives."
         />
       ) : (
-        <DataTable
+        <DataGrid
+          // Per-tab tableId — each report tab (faults / fuel / health /
+          // efficiency) has a different column set, so sharing one id
+          // would make the persisted layout blobs fight each other.
+          tableId={`reports-${tab}`}
           columns={columnsMap(tz)[tab]}
           data={data}
           searchKey="vehicle_name"

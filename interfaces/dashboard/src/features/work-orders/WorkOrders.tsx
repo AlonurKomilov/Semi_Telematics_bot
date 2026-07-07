@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { FileText, Plus, Paperclip, Receipt, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import StatusBadge from '../../components/StatusBadge';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
@@ -68,25 +68,45 @@ function SourceCell({ value }: { value: unknown }) {
   );
 }
 
+// Title-case a snake_case code for the filter dropdown ("in_progress"
+// → "In Progress") — statuses render as tone pills in the cells but
+// the dropdown wants plain text.
+const titleCase = (s: string) =>
+  s ? s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '(none)';
+
 function makeColumns(tz: string): AnyColumn[] {
   return [
   { key: 'id', label: '#', sortable: true, render: (v) => <span className="font-mono text-xs text-muted-foreground">{`#${v}`}</span> },
-  { key: 'vehicle_name', label: 'Vehicle', sortable: true },
+  { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
   // Compact company CODE on the list (the full name lives on the WO
   // detail page).  Set from the MC/DOT match during sync; '—' if none.
-  { key: 'company_code', label: 'Company', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
-  { key: 'vendor_name', label: 'Vendor', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
+  { key: 'company_code', label: 'Company', sortable: true, filterable: true,
+    render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
+  { key: 'vendor_name', label: 'Vendor', sortable: true, filterable: true,
+    render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   {
     key: 'service_date', label: 'Service Date', sortable: true,
+    filterable: true, filterMode: 'date-range',
     render: (v) => v ? formatDay(String(v), { timeZone: tz }) : <span className="text-muted-foreground">—</span>,
   },
-  { key: 'total_cost', label: 'Total', sortable: true, render: (v) => <MoneyCell value={v} /> },
-  { key: 'status', label: 'Status', sortable: true, render: (v) => <Pill value={v} palette={STATUS_TONE} /> },
-  { key: 'payment_status', label: 'Payment', sortable: true, render: (v) => <Pill value={v} palette={PAYMENT_TONE} /> },
+  { key: 'total_cost', label: 'Total', sortable: true,
+    filterable: true, filterMode: 'range', filterRange: { min: 0, step: 100, unit: '$' },
+    render: (v) => <MoneyCell value={v} /> },
+  { key: 'status', label: 'Status', sortable: true, filterable: true,
+    filterValue: (row) => String((row as { status?: string }).status ?? ''),
+    filterLabel: (row) => titleCase(String((row as { status?: string }).status ?? '')),
+    render: (v) => <Pill value={v} palette={STATUS_TONE} /> },
+  { key: 'payment_status', label: 'Payment', sortable: true, filterable: true,
+    filterValue: (row) => String((row as { payment_status?: string }).payment_status ?? ''),
+    filterLabel: (row) => titleCase(String((row as { payment_status?: string }).payment_status ?? '')),
+    render: (v) => <Pill value={v} palette={PAYMENT_TONE} /> },
   // Provenance — synced rows (Datatruck) read alongside hand-entered
   // ones, so the operator needs an at-a-glance "where did this come
   // from".  Manual rows show a muted dash to keep the column quiet.
-  { key: 'source', label: 'Source', sortable: true, render: (v) => <SourceCell value={v} /> },
+  { key: 'source', label: 'Source', sortable: true, filterable: true,
+    filterValue: (row) => String((row as { source?: string }).source || 'manual'),
+    filterLabel: (row) => titleCase(String((row as { source?: string }).source || 'manual')),
+    render: (v) => <SourceCell value={v} /> },
   // Invoice number is the operator's primary cross-reference to their
   // own bookkeeping system — surface it as a distinct column.
   { key: 'invoice_number', label: 'Invoice #', render: (v) => (v ? <span className="font-mono text-xs">{String(v)}</span> : <span className="text-muted-foreground">—</span>) },
@@ -256,10 +276,11 @@ export default function WorkOrders() {
           }
         />
       ) : (
-        <DataTable
+        <DataGrid
+          tableId="work-orders"
           columns={makeColumns(tz)}
           data={workOrders as unknown as Record<string, unknown>[]}
-          searchKey="vendor_name"
+          searchKey={['vendor_name', 'vehicle_name', 'invoice_number', 'company_code']}
           searchPlaceholder={t('work_orders_page.search_placeholder')}
           onRowClick={(row) => {
             const w = row as unknown as WorkOrder;

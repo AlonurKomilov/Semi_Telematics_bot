@@ -50,6 +50,7 @@
     background-color: var(--muted-foreground);
   }
 
+
   .theme {
 
     --font-heading: var(--font-sans);
@@ -93,6 +94,14 @@
     --input: oklch(0.922 0 0);
 
     --ring: oklch(0.708 0 0);
+
+    /* Pin-boundary shadow — paints a soft drop-shadow off the freeze
+       edge of the pinned column cluster (DataGrid).  Tight offset +
+       blur so it stays close to the boundary; 20% opacity reads on
+       white without looking heavy.  Same shape mirrored for left /
+       right pin clusters. */
+    --pin-shadow-right:  4px 0 6px 0 rgb(0 0 0 / 0.20);
+    --pin-shadow-left:  -4px 0 6px 0 rgb(0 0 0 / 0.20);
 
     /* ── Semantic status hues ───────────────────────────────────
        The single source of truth for "what does this state mean"
@@ -218,6 +227,14 @@
     --border: oklch(1 0 0 / 12%);
 
     --input: oklch(1 0 0 / 18%);
+
+    /* Dark theme variant of the pin-boundary shadow — bumped to 35%
+       opacity so it still reads against the dark card background.
+       Without the bump the dark-on-dark gradient is barely visible
+       (the existing 20% looked fine at 12% in earlier testing, but
+       18-20% on dark needs a touch more to keep parity with light). */
+    --pin-shadow-right:  4px 0 6px 0 rgb(0 0 0 / 0.35);
+    --pin-shadow-left:  -4px 0 6px 0 rgb(0 0 0 / 0.35);
 
     /* Focus ring uses primary at 50% alpha so it layers as a glow
        around the focused element rather than replacing its colour.

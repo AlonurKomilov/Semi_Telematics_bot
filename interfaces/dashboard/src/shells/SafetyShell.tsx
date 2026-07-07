@@ -21,6 +21,7 @@ import { AvatarMenu } from '../components/AvatarMenu';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
 import SafetyHero from './heroes/SafetyHero';
+import ShellHero from './heroes/ShellHero';
 
 export default function SafetyShell() {
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -70,7 +71,10 @@ export default function SafetyShell() {
             </button>
           </div>
 
-          <SafetyHero />
+          {/* Route-aware: a feature hero (e.g. Maintenance counts on
+              /maintenance) takes the slot; the persona hero is the
+              cross-cutting fallback everywhere else. */}
+          <ShellHero fallback={<SafetyHero />} />
 
           <div className="flex items-center gap-2 shrink-0">
             <button

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import type { ReactNode } from 'react';
-import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Search, Building2, Pencil, Trash2, Clock3 } from 'lucide-react';
+import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Building2, Pencil, Trash2, Clock3 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader } from '../../components/shell';
@@ -11,8 +11,36 @@ import { statusClasses, toneClasses } from '../../lib/status';
 import { APEX_DOMAIN } from '../../lib/safeReturnTo';
 import { formatDate } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
-import DataTable from '../../components/DataTable';
+import DataGrid, { type DataGridSegment } from '../../components/DataGrid';
+import {
+  Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
+} from '../../components/ui/select';
 import type { AnyColumn } from '../../types';
+import { useQueryClient } from '@tanstack/react-query';
+import { useApplicationsQuery, type AppRow } from './useApplications';
+
+// Lifecycle split for the grid's segment tabs: the working pipeline
+// vs the two terminal outcomes.  Finer stage slicing (Submitted /
+// Screening / …) lives in the Status column filter, and the live
+// stage counts sit in the topbar ApplicationsHero.
+const OPEN_APP_STATUSES = new Set(['submitted', 'screening', 'interview', 'approved']);
+const APP_SEGMENTS: DataGridSegment[] = [
+  {
+    key: 'active',
+    label: 'Active',
+    match: (r) => OPEN_APP_STATUSES.has(String(r.status ?? '')),
+  },
+  {
+    key: 'hired',
+    label: 'Hired',
+    match: (r) => String(r.status ?? '') === 'hired',
+  },
+  {
+    key: 'closed',
+    label: 'Closed',
+    match: (r) => r.status === 'rejected' || r.status === 'withdrawn',
+  },
+];
 
 // Public applicant link host — the form lives on apply.<apex> (its own
 // subdomain by product decision).  Recruiters copy /<token> onto it.
@@ -178,10 +206,12 @@ function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onC
           </label>
           <label className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground">
             CDL class
-            <select value={reqClass} onChange={(e) => setReqClass(e.target.value)}
-              className="rounded border border-border bg-muted px-1.5 py-1 text-foreground">
-              {['A', 'B', 'C'].map((x) => <option key={x} value={x}>{x}</option>)}
-            </select>
+            <Select value={reqClass} onValueChange={(v) => setReqClass(String(v))}>
+              <SelectTrigger size="sm" aria-label="CDL class"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {['A', 'B', 'C'].map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </label>
         </div>
       </div>
@@ -214,13 +244,18 @@ const EXPIRY_OPTIONS: { label: string; days: number }[] = [
   { label: 'Expires in 1 year', days: 365 },
   { label: 'Never expires', days: 0 },
 ];
-interface AppRow {
-  id: number; reference: string; status: string; first_name: string; last_name: string;
-  email: string; phone: string; city: string; state: string; cdl_state: string;
-  cdl_class: string; position_type: string; years_cdl: string; submitted_at: string;
-  /** Another application in this account shares SSN/email/phone. */
-  duplicate?: boolean;
-}
+// Auto-remind cadence / cap options (LinkEditPanel Selects).
+const REMIND_CADENCE_ITEMS = [
+  { value: '0', label: 'Off' },
+  { value: '24', label: 'Every 24 hours' },
+  { value: '48', label: 'Every 2 days' },
+  { value: '72', label: 'Every 3 days' },
+  { value: '168', label: 'Every 7 days' },
+];
+const REMIND_MAX_ITEMS = [1, 2, 3].map((n) => (
+  { value: String(n), label: `up to ${n} reminder${n > 1 ? 's' : ''}` }
+));
+// AppRow moved to ./useApplications (shared with ApplicationsHero).
 
 interface RelatedApp {
   id: number; reference: string; status: string;
@@ -243,6 +278,16 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
   const [remindMax, setRemindMax] = useState(link.remind_max ?? 3);
   const [busy, setBusy] = useState(false);
   const sel = companyId ? companies.find((c) => String(c.id) === companyId) : null;
+  // Item lists for the themed Selects — ``items`` lets SelectValue
+  // render the label (carrier name) instead of the raw value (id).
+  const editCompanyItems = [
+    { value: '', label: 'No company (generic)' },
+    ...companies.map((co) => ({ value: String(co.id), label: co.display_name || co.code })),
+  ];
+  const editExpiryItems = [
+    { value: 'keep', label: 'Keep expiry' },
+    ...EXPIRY_OPTIONS.map((o) => ({ value: String(o.days), label: `Reset · ${o.label}` })),
+  ];
   const save = async () => {
     setBusy(true);
     try {
@@ -266,18 +311,21 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
         <Input placeholder="Label" value={label} onChange={(e) => setLabel(e.target.value)} className="max-w-xs" />
         <Input placeholder="Source" value={source} onChange={(e) => setSource(e.target.value)} className="max-w-[10rem]" />
         {companies.length > 0 && (
-          <select value={companyId} onChange={(e) => setCompanyId(e.target.value)}
-            title="Carrier this link brands for"
-            className="bg-muted border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring">
-            <option value="">No company (generic)</option>
-            {companies.map((co) => <option key={co.id} value={co.id}>{co.display_name || co.code}</option>)}
-          </select>
+          <Select value={companyId} onValueChange={(v) => setCompanyId(String(v))} items={editCompanyItems}>
+            <SelectTrigger title="Carrier this link brands for" aria-label="Carrier brand">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {editCompanyItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         )}
-        <select value={expiry} onChange={(e) => setExpiry(e.target.value)}
-          className="bg-muted border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring">
-          <option value="keep">Keep expiry</option>
-          {EXPIRY_OPTIONS.map((o) => <option key={o.days} value={o.days}>Reset · {o.label}</option>)}
-        </select>
+        <Select value={expiry} onValueChange={(v) => setExpiry(String(v))} items={editExpiryItems}>
+          <SelectTrigger aria-label="Link expiry"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {editExpiryItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <Button size="sm" onClick={save} disabled={busy}>{busy ? '…' : 'Save'}</Button>
         <button type="button" onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
       </div>
@@ -285,20 +333,20 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
           default; the cadence + lifetime cap are this link's policy. */}
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <span className="text-xs text-muted-foreground">Auto-remind abandoned applications</span>
-        <select value={remindHours} onChange={(e) => setRemindHours(Number(e.target.value))}
-          className="bg-muted border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring">
-          <option value={0}>Off</option>
-          <option value={24}>Every 24 hours</option>
-          <option value={48}>Every 2 days</option>
-          <option value={72}>Every 3 days</option>
-          <option value={168}>Every 7 days</option>
-        </select>
+        <Select value={String(remindHours)} onValueChange={(v) => setRemindHours(Number(v))} items={REMIND_CADENCE_ITEMS}>
+          <SelectTrigger aria-label="Reminder cadence"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {REMIND_CADENCE_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
         {remindHours > 0 && (
           <>
-            <select value={remindMax} onChange={(e) => setRemindMax(Number(e.target.value))}
-              className="bg-muted border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring">
-              {[1, 2, 3].map((n) => <option key={n} value={n}>up to {n} reminder{n > 1 ? 's' : ''}</option>)}
-            </select>
+            <Select value={String(remindMax)} onValueChange={(v) => setRemindMax(Number(v))} items={REMIND_MAX_ITEMS}>
+              <SelectTrigger aria-label="Reminder cap"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {REMIND_MAX_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
             <span className="text-2xs text-muted-foreground">
               per applicant, ever — emails their resume link; stops when they submit.
             </span>
@@ -312,15 +360,16 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
 }
 
 export default function Applications() {
+  const qc = useQueryClient();
   const [links, setLinks] = useState<ApplicationLink[]>([]);
-  const [rows, setRows] = useState<AppRow[]>([]);
-  const [statusFilter, setStatusFilter] = useState('');
   const [view, setView] = useState<'table' | 'board'>('table');
-  const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
+  // Shared react-query entry (also feeds the topbar ApplicationsHero,
+  // so any mutation here re-renders the hero counts in the same tick).
+  const { data: appsData, isLoading: loading, error: appsError } = useApplicationsQuery();
+  const rows = useMemo(() => appsData?.items ?? [], [appsData]);
+  const err = appsError instanceof Error ? appsError.message : '';
   const tz = useTimezone();
   // Link create form
   const [label, setLabel] = useState('');
@@ -332,48 +381,38 @@ export default function Applications() {
   // Carriers the recruiter can brand a link with (read-only picker).
   const [companies, setCompanies] = useState<PickerCompany[]>([]);
 
-  // Load ALL applications once; the table filters client-side and the
-  // board groups by status — both need the full set.
+  // Refetch trigger for mutations elsewhere on the page (bulk moves,
+  // the detail drawer's onChanged) — invalidates the shared cache so
+  // the table, board, and topbar hero all refresh together.
   const loadApps = useCallback(() => {
-    apiJSON<{ items: AppRow[] }>('/applications?limit=500')
-      .then((r) => setRows(r.items))
-      .catch((e) => setErr(e instanceof Error ? e.message : 'Failed to load'))
-      .finally(() => setLoading(false));
-  }, []);
+    qc.invalidateQueries({ queryKey: ['applications'] });
+  }, [qc]);
 
   // Drag-to-stage on the board (and any status move): optimistic, with a
   // revert + message if the server rejects it (illegal jump, or the
-  // vetting gate blocking 'approved').
+  // vetting gate blocking 'approved').  Writes go through the shared
+  // query cache so the hero counts move with the drag.
   const moveApp = async (id: number, status: string) => {
-    const prev = rows;
-    if (prev.find((r) => r.id === id)?.status === status) return;
-    setRows(prev.map((r) => (r.id === id ? { ...r, status } : r)));
+    const prev = qc.getQueryData<{ items: AppRow[] }>(['applications']);
+    if (prev?.items.find((r) => r.id === id)?.status === status) return;
+    qc.setQueryData<{ items: AppRow[] }>(['applications'], (d) =>
+      d ? { items: d.items.map((r) => (r.id === id ? { ...r, status } : r)) } : d);
     try {
       await apiJSON(`/applications/${id}/status`, { method: 'PATCH', body: { status } });
     } catch (e) {
-      setRows(prev);
+      qc.setQueryData(['applications'], prev);
       alert(e instanceof Error ? e.message : 'Could not move application');
     }
   };
 
-  // Table rows: status filter → text search.  Sort is handled by
-  // DataTable's built-in ``sortable`` machinery on the columns — no
-  // need for an external sort state anymore.
-  const tableRows = useMemo(() => {
-    let rs = statusFilter ? rows.filter((r) => r.status === statusFilter) : rows;
-    const q = search.trim().toLowerCase();
-    if (q) rs = rs.filter((r) => `${r.first_name} ${r.last_name} ${r.email} ${r.reference}`.toLowerCase().includes(q));
-    return rs;
-  }, [rows, statusFilter, search]);
-
   const toggleRow = (id: number) =>
     setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const allVisibleSelected = tableRows.length > 0 && tableRows.every((r) => selected.has(r.id));
+  const allVisibleSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
   const toggleAll = () =>
     setSelected((s) => {
       const n = new Set(s);
-      if (allVisibleSelected) tableRows.forEach((r) => n.delete(r.id));
-      else tableRows.forEach((r) => n.add(r.id));
+      if (allVisibleSelected) rows.forEach((r) => n.delete(r.id));
+      else rows.forEach((r) => n.add(r.id));
       return n;
     });
 
@@ -402,7 +441,6 @@ export default function Applications() {
       .catch(() => { /* non-fatal */ });
   }, []);
 
-  useEffect(() => { loadApps(); }, [loadApps]);
   useEffect(() => { loadLinks(); }, [loadLinks]);
   // Carriers for the link company-picker + brand preview (no Samsara key).
   const loadCompanies = useCallback(() => {
@@ -447,6 +485,16 @@ export default function Applications() {
     loadLinks();
   };
 
+  // Item lists for the create-link Selects (label ≠ value).
+  const createCompanyItems = useMemo(() => [
+    { value: '', label: 'No company (generic)' },
+    ...companies.map((co) => ({ value: String(co.id), label: co.display_name || co.code })),
+  ], [companies]);
+  const createExpiryItems = useMemo(
+    () => EXPIRY_OPTIONS.map((o) => ({ value: String(o.days), label: o.label })),
+    [],
+  );
+
   const copyLink = (l: ApplicationLink) => {
     navigator.clipboard?.writeText(`${APPLY_BASE}/${l.token}`);
     setCopied(l.id);
@@ -470,27 +518,21 @@ export default function Applications() {
           <Input placeholder="Source (optional)" value={source}
             onChange={(e) => setSource(e.target.value)} className="max-w-[10rem]" />
           {companies.length > 0 && (
-            <select
-              value={companyId}
-              onChange={(e) => setCompanyId(e.target.value)}
-              title="Brand the application form for this carrier"
-              className="bg-muted border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
-            >
-              <option value="">No company (generic)</option>
-              {companies.map((co) => (
-                <option key={co.id} value={co.id}>{co.display_name || co.code}</option>
-              ))}
-            </select>
+            <Select value={companyId} onValueChange={(v) => setCompanyId(String(v))} items={createCompanyItems}>
+              <SelectTrigger title="Brand the application form for this carrier" aria-label="Carrier brand">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {createCompanyItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           )}
-          <select
-            value={expiryDays}
-            onChange={(e) => setExpiryDays(Number(e.target.value))}
-            className="bg-muted border border-border rounded-md px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
-          >
-            {EXPIRY_OPTIONS.map((o) => (
-              <option key={o.days} value={o.days}>{o.label}</option>
-            ))}
-          </select>
+          <Select value={String(expiryDays)} onValueChange={(v) => setExpiryDays(Number(v))} items={createExpiryItems}>
+            <SelectTrigger aria-label="Link expiry"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {createExpiryItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <Button onClick={createLink} disabled={creating} size="sm">
             {creating ? '…' : 'Create link'}
           </Button>
@@ -587,9 +629,15 @@ export default function Applications() {
       {/* ── In-progress drafts (save & resume funnel stage) ─────── */}
       <InProgressDrafts />
 
-      {/* ── Applications (table or board) ──────────────────────── */}
-      <section className="bg-card border border-border rounded-lg overflow-hidden">
-        <div className="flex flex-wrap items-center gap-1.5 p-3 border-b border-border">
+      {/* ── Applications (table or board) ──────────────────────────
+          The grid is full-toolkit DataGrid (own card, segment tabs,
+          toolbar search, column filters, export, pagination) — so
+          this section is NOT a card anymore; the old per-status chip
+          row + standalone search moved into the grid: lifecycle =
+          Active / Hired / Closed tabs, stage slicing = the Status
+          column filter, live stage counts = topbar ApplicationsHero. */}
+      <section>
+        <div className="flex flex-wrap items-center gap-1.5 pb-3">
           <div className="inline-flex rounded-md border border-border p-0.5">
             <button onClick={() => setView('table')}
               className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === 'table' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>
@@ -600,29 +648,9 @@ export default function Applications() {
               <LayoutGrid size={13} /> Board
             </button>
           </div>
-          {view === 'table' && (
-            <>
-              <span className="mx-1 h-4 w-px bg-border" />
-              <button onClick={() => setStatusFilter('')}
-                className={`px-2.5 py-1 rounded text-xs ${statusFilter === '' ? statusClasses('active') : 'text-muted-foreground hover:bg-muted'}`}>
-                All
-              </button>
-              {STATUSES.map((s) => (
-                <button key={s} onClick={() => setStatusFilter(s)}
-                  className={`px-2.5 py-1 rounded text-xs capitalize ${statusFilter === s ? statusClasses(s) : 'text-muted-foreground hover:bg-muted'}`}>
-                  {s}
-                </button>
-              ))}
-              <div className="relative ml-auto">
-                <Search size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name, email, ref…"
-                  className="w-48 rounded-md border border-border bg-card py-1 pl-7 pr-2 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none focus:border-ring" />
-              </div>
-            </>
-          )}
         </div>
         {view === 'table' && selected.size > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-3 py-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 border border-border rounded-md bg-muted/40 px-3 py-2 text-xs mb-3">
             <span className="font-medium text-foreground">{selected.size} selected</span>
             <button onClick={() => bulkAction('screening', 'Move to screening')} className="rounded-md border border-border px-2 py-1 hover:bg-muted">Move to screening</button>
             <button onClick={() => bulkAction('rejected', 'Reject')} className={`rounded-md px-2 py-1 ${toneClasses('danger')}`}>Reject</button>
@@ -632,18 +660,22 @@ export default function Applications() {
         )}
         {err && <div className="p-3 text-sm text-destructive">{err}</div>}
         {view === 'board' ? (
-          <ApplicationsBoard rows={rows} loading={loading} onMove={moveApp} onOpen={setOpenId} />
+          <div className="bg-card border border-border rounded-lg overflow-hidden">
+            <ApplicationsBoard rows={rows} loading={loading} onMove={moveApp} onOpen={setOpenId} />
+          </div>
         ) : loading ? (
-          <div className="text-center text-muted-foreground py-8">Loading…</div>
-        ) : tableRows.length === 0 ? (
-          <div className="text-center text-muted-foreground py-8">
-            No applications{search ? ' match your search' : statusFilter ? ` in '${statusFilter}'` : ' yet'}.
+          <div className="bg-card border border-border rounded-lg text-center text-muted-foreground py-8">Loading…</div>
+        ) : rows.length === 0 ? (
+          <div className="bg-card border border-border rounded-lg text-center text-muted-foreground py-8">
+            No applications yet.
           </div>
         ) : (
-          <DataTable
-            data={tableRows as unknown as Record<string, unknown>[]}
-            enableToolbar={false}
-            enablePagination={false}
+          <DataGrid
+            tableId="applications"
+            segments={APP_SEGMENTS}
+            data={rows as unknown as Record<string, unknown>[]}
+            searchKey={['first_name', 'last_name', 'email', 'reference']}
+            searchPlaceholder="Search name, email, ref…"
             onRowClick={(row) => setOpenId((row as unknown as AppRow).id)}
             columns={[
               {
@@ -708,6 +740,15 @@ export default function Applications() {
               },
               {
                 key: 'status', label: 'Status', sortable: true,
+                // Stage-level slicing (Submitted / Screening / …)
+                // lives here now that the chip row is gone — the
+                // segment tabs only split the lifecycle.
+                filterable: true,
+                filterValue: (row) => String((row as unknown as AppRow).status ?? ''),
+                filterLabel: (row) => {
+                  const s = String((row as unknown as AppRow).status ?? '');
+                  return s ? s.charAt(0).toUpperCase() + s.slice(1) : '(none)';
+                },
                 render: (v) => (
                   <span className={`px-2 py-0.5 rounded text-xs capitalize ${statusClasses(String(v))}`}>
                     {String(v)}
@@ -716,6 +757,7 @@ export default function Applications() {
               },
               {
                 key: 'submitted_at', label: 'Submitted', sortable: true,
+                filterMode: 'date-range', filterable: true,
                 render: (v) => (
                   <span className="text-muted-foreground text-xs tabular-nums">
                     {String(v ?? '').slice(0, 10) || '—'}
@@ -865,7 +907,7 @@ function InProgressDrafts() {
         Started but not submitted. Drafts stay private until submission — you see
         progress only. Reminders re-send the applicant their resume link.
       </p>
-      <DataTable columns={columns} data={rows as unknown as Record<string, unknown>[]}
+      <DataGrid columns={columns} data={rows as unknown as Record<string, unknown>[]}
         enableToolbar={false} enablePagination={rows.length > 25} />
     </section>
   );

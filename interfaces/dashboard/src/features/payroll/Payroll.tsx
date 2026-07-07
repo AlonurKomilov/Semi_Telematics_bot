@@ -5,6 +5,8 @@ import { apiJSON, apiFetch } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
+import DataGrid from '../../components/DataGrid';
+import type { AnyColumn } from '../../types';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -204,50 +206,66 @@ function RunsTab() {
       {error && <div className="text-danger text-sm">{error}</div>}
       {loading && <div className="text-sm text-muted-foreground">Loading…</div>}
 
-      <table className="w-full text-sm">
-        <thead className="text-muted-foreground border-b">
-          <tr>
-            <th className="text-left p-2">Period</th>
-            <th className="text-left p-2">Status</th>
-            <th className="text-right p-2">Total</th>
-            <th className="text-left p-2">Created</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((r) => (
-            <tr key={r.id} className="border-b border-border/30 hover:bg-muted/30">
-              <td className="p-2">{r.period_start} → {r.period_end}</td>
-              <td className="p-2">
+      <DataGrid
+        columns={[
+          {
+            key: 'period_start', label: 'Period', sortable: true,
+            render: (_v, row) => {
+              const r = row as unknown as PayrollRun;
+              return <span>{r.period_start} → {r.period_end}</span>;
+            },
+          },
+          {
+            key: 'status', label: 'Status', sortable: true,
+            render: (v) => {
+              const s = String(v);
+              return (
                 <span className={`px-2 py-0.5 rounded text-xs border ${
-                  toneClasses(
-                    r.status === 'finalized' ? 'ok'
-                    : r.status === 'cancelled' ? 'neutral'
-                    : 'warn',
-                  )
-                }`}>{r.status}</span>
-              </td>
-              <td className="p-2 text-right">{fmtCents(r.total_cents)}</td>
-              <td className="p-2 text-xs text-muted-foreground">{r.created_at?.slice(0, 16)}</td>
-              <td className="p-2 text-right">
-                <button onClick={() => openRun(r.id)} className="text-primary text-xs hover:underline mr-2">
-                  Detail
-                </button>
-                {r.status === 'draft' && (
-                  <>
-                    <button onClick={() => finalize(r.id)} className="text-ok text-xs hover:underline mr-2">
-                      Finalize
-                    </button>
-                    <button onClick={() => cancel(r.id)} className="text-danger text-xs hover:underline">
-                      Cancel
-                    </button>
-                  </>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                  toneClasses(s === 'finalized' ? 'ok' : s === 'cancelled' ? 'neutral' : 'warn')
+                }`}>{s}</span>
+              );
+            },
+          },
+          {
+            key: 'total_cents', label: 'Total', sortable: true,
+            render: (v) => <span className="tabular-nums">{fmtCents(Number(v))}</span>,
+          },
+          {
+            key: 'created_at', label: 'Created', sortable: true,
+            render: (v) => (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {String(v ?? '').slice(0, 16)}
+              </span>
+            ),
+          },
+          {
+            key: '_actions', label: '', sortable: false,
+            render: (_v, row) => {
+              const r = row as unknown as PayrollRun;
+              return (
+                <span className="inline-flex justify-end gap-2 w-full">
+                  <button onClick={() => openRun(r.id)} className="text-primary text-xs hover:underline">
+                    Detail
+                  </button>
+                  {r.status === 'draft' && (
+                    <>
+                      <button onClick={() => finalize(r.id)} className="text-ok text-xs hover:underline">
+                        Finalize
+                      </button>
+                      <button onClick={() => cancel(r.id)} className="text-danger text-xs hover:underline">
+                        Cancel
+                      </button>
+                    </>
+                  )}
+                </span>
+              );
+            },
+          },
+        ]}
+        data={runs as unknown as Record<string, unknown>[]}
+        enableToolbar={false}
+        enablePagination={false}
+      />
 
       {selected && (
         <div className="border rounded p-3 space-y-2">
@@ -259,30 +277,34 @@ function RunsTab() {
               Close
             </button>
           </div>
-          <table className="w-full text-sm">
-            <thead className="text-muted-foreground border-b">
-              <tr>
-                <th className="text-left p-1">Driver</th>
-                <th className="text-right p-1">Base</th>
-                <th className="text-right p-1">Bonus</th>
-                <th className="text-right p-1">Total</th>
-                <th className="text-left p-1">Breakdown</th>
-              </tr>
-            </thead>
-            <tbody>
-              {selected.items.map((it) => (
-                <tr key={it.id} className="border-b border-border/30">
-                  <td className="p-1">{it.driver_name || it.driver_id}</td>
-                  <td className="p-1 text-right">{fmtCents(it.base_pay_cents)}</td>
-                  <td className="p-1 text-right">{fmtCents(it.bonus_total_cents)}</td>
-                  <td className="p-1 text-right font-semibold">{fmtCents(it.total_cents)}</td>
-                  <td className="p-1 text-xs text-muted-foreground">
-                    {(it.breakdown || []).map((b) => `${b.name} (${fmtCents(b.amount_cents)})`).join(', ') || '—'}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataGrid
+            columns={[
+              {
+                key: 'driver_name', label: 'Driver', sortable: true,
+                render: (_v, row) => {
+                  const it = row as unknown as RunItem;
+                  return <span>{it.driver_name || it.driver_id}</span>;
+                },
+              },
+              { key: 'base_pay_cents', label: 'Base', sortable: true,
+                render: (v) => <span className="tabular-nums">{fmtCents(Number(v))}</span> },
+              { key: 'bonus_total_cents', label: 'Bonus', sortable: true,
+                render: (v) => <span className="tabular-nums">{fmtCents(Number(v))}</span> },
+              { key: 'total_cents', label: 'Total', sortable: true,
+                render: (v) => <span className="font-semibold tabular-nums">{fmtCents(Number(v))}</span> },
+              {
+                key: 'breakdown', label: 'Breakdown', sortable: false,
+                render: (_v, row) => {
+                  const it = row as unknown as RunItem;
+                  const s = (it.breakdown || []).map(b => `${b.name} (${fmtCents(b.amount_cents)})`).join(', ');
+                  return <span className="text-xs text-muted-foreground">{s || '—'}</span>;
+                },
+              },
+            ]}
+            data={selected.items as unknown as Record<string, unknown>[]}
+            enableToolbar={false}
+            enablePagination={false}
+          />
         </div>
       )}
     </div>
@@ -394,40 +416,59 @@ function RulesTab() {
       </div>
 
       {loading && <div className="text-sm text-muted-foreground">Loading…</div>}
-      <table className="w-full text-sm">
-        <thead className="text-muted-foreground border-b">
-          <tr>
-            <th className="text-left p-2">Name</th>
-            <th className="text-left p-2">Kind</th>
-            <th className="text-left p-2">Threshold</th>
-            <th className="text-right p-2">Amount</th>
-            <th className="text-center p-2">Active</th>
-            <th />
-          </tr>
-        </thead>
-        <tbody>
-          {rules.map((r) => (
-            <tr key={r.id} className="border-b border-border/30">
-              <td className="p-2">{r.name}</td>
-              <td className="p-2 text-xs">{r.kind}</td>
-              <td className="p-2 text-xs">
-                {r.kind === 'score_threshold'
-                  ? `score ≥ ${r.score_min}`
-                  : `${r.event_type || 'any'} ≤ ${r.max_count}`}
-              </td>
-              <td className="p-2 text-right">{fmtCents(r.amount_cents)}</td>
-              <td className="p-2 text-center">
-                <input type="checkbox" checked={!!r.active} onChange={() => toggle(r)} />
-              </td>
-              <td className="p-2 text-right">
-                <button onClick={() => remove(r.id)} className="text-destructive text-xs hover:underline">
-                  Delete
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <DataGrid
+        columns={[
+          { key: 'name', label: 'Name', sortable: true },
+          {
+            key: 'kind', label: 'Kind', sortable: true,
+            render: (v) => <span className="text-xs">{String(v)}</span>,
+          },
+          {
+            key: '_threshold', label: 'Threshold', sortable: false,
+            render: (_v, row) => {
+              const r = row as unknown as BonusRule;
+              return (
+                <span className="text-xs">
+                  {r.kind === 'score_threshold'
+                    ? `score ≥ ${r.score_min}`
+                    : `${r.event_type || 'any'} ≤ ${r.max_count}`}
+                </span>
+              );
+            },
+          },
+          {
+            key: 'amount_cents', label: 'Amount', sortable: true,
+            render: (v) => <span className="tabular-nums">{fmtCents(Number(v))}</span>,
+          },
+          {
+            key: 'active', label: 'Active', sortable: true,
+            render: (_v, row) => {
+              const r = row as unknown as BonusRule;
+              return (
+                <span className="inline-flex justify-center w-full">
+                  <input type="checkbox" checked={!!r.active} onChange={() => toggle(r)} />
+                </span>
+              );
+            },
+          },
+          {
+            key: '_actions', label: '', sortable: false,
+            render: (_v, row) => {
+              const r = row as unknown as BonusRule;
+              return (
+                <span className="inline-flex justify-end w-full">
+                  <button onClick={() => remove(r.id)} className="text-destructive text-xs hover:underline">
+                    Delete
+                  </button>
+                </span>
+              );
+            },
+          },
+        ]}
+        data={rules as unknown as Record<string, unknown>[]}
+        enableToolbar={false}
+        enablePagination={false}
+      />
     </div>
   );
 }
@@ -496,26 +537,32 @@ function SettingsTab() {
 
       {loading && <div className="text-sm text-muted-foreground">Loading…</div>}
 
-      <table className="w-full text-sm">
-        <thead className="text-muted-foreground border-b">
-          <tr>
-            <th className="text-left p-2">Driver ID</th>
-            <th className="text-right p-2">Base Pay</th>
-            <th className="text-center p-2">Opted In</th>
-            <th className="text-left p-2">Updated</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r.driver_id} className="border-b border-border/30">
-              <td className="p-2">{r.driver_id}</td>
-              <td className="p-2 text-right">{fmtCents(r.base_pay_cents)}</td>
-              <td className="p-2 text-center">{r.opt_in ? '✓' : '—'}</td>
-              <td className="p-2 text-xs text-muted-foreground">{r.updated_at?.slice(0, 16)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <DataGrid
+        columns={[
+          { key: 'driver_id', label: 'Driver ID', sortable: true },
+          {
+            key: 'base_pay_cents', label: 'Base Pay', sortable: true,
+            render: (v) => <span className="tabular-nums">{fmtCents(Number(v))}</span>,
+          },
+          {
+            key: 'opt_in', label: 'Opted In', sortable: true,
+            render: (v) => (
+              <span className="inline-flex justify-center w-full">{v ? '✓' : '—'}</span>
+            ),
+          },
+          {
+            key: 'updated_at', label: 'Updated', sortable: true,
+            render: (v) => (
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {String(v ?? '').slice(0, 16)}
+              </span>
+            ),
+          },
+        ]}
+        data={rows as unknown as Record<string, unknown>[]}
+        enableToolbar={false}
+        enablePagination={false}
+      />
     </div>
   );
 }

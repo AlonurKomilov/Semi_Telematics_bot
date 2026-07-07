@@ -9,7 +9,7 @@ import {
 } from 'recharts';
 import { apiJSON, apiJSONSlow } from '../../api/client';
 import { toneClasses, toneText, chartColor, type Tone } from '../../lib/status';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import DriverInsights from '@/features/scorecards/DriverInsights';
 import {
   PageHeader,
@@ -470,9 +470,11 @@ function makeColumns(
       );
     },
   },
-  { key: 'company',     label: 'Company', sortable: true },
+  { key: 'company',     label: 'Company', sortable: true, filterable: true },
   {
     key: 'score', label: 'Score', sortable: true,
+    filterable: true, filterMode: 'range',
+    filterRange: { min: 0, max: 100, step: 1 },
     // Insufficient-data drivers ride the same gauge as everyone else;
     // surface the provisional state inline so a "100 Platinum" cell
  // with thin telemetry doesn't read as authoritative.
@@ -936,7 +938,7 @@ export default function Scorecards() {
               )}
             </div>
           )}
-          <DataTable
+          <DataGrid
             columns={makeColumns(
               cards.some((c) => !!(c.paired_driver_name || c.assigned_driver_name)),
               t,
@@ -945,6 +947,7 @@ export default function Scorecards() {
             searchKey="driver_name"
             searchPlaceholder={t('scorecards.search_truck_placeholder')}
             stickyHeader="65vh"
+            tableId="scorecards"
             onRowClick={(row) => setDetail(row as unknown as CompositeScorecard)}
           />
         </>

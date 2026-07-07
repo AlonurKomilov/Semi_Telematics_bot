@@ -11,7 +11,7 @@ import { apiJSON } from '../../api/client';
 import PageHeader from '../../components/shell/PageHeader';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import type { AnyColumn } from '../../types';
 import { useRoleView } from '../../context/RoleViewContext';
 import { toneClasses } from '../../lib/status';
@@ -111,7 +111,7 @@ export default function CarrierDirectory() {
       {loading ? (
         <p className="text-sm text-muted-foreground">Loading carriers…</p>
       ) : (
-        <DataTable
+        <DataGrid
           columns={columns}
           data={rows as unknown as Record<string, unknown>[]}
           searchKey={['name', 'experience_summary']}

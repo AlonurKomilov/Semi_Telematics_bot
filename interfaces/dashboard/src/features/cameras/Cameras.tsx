@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Camera, Filter } from 'lucide-react';
 import { apiFetch, apiJSON } from '../../api/client';
 import { toneClasses, toneText, type Tone } from '../../lib/status';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import {
   PageHeader,
   EmptyState,
@@ -33,22 +33,39 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{status}</span>;
 }
 
+// Capitalise an enum code for the filter dropdown — matches the
+// ``capitalize`` styling the cells use.
+const capFirst = (s: string) =>
+  s ? s.charAt(0).toUpperCase() + s.slice(1) : '(none)';
+
 function makeColumns(tz: string): AnyColumn[] {
   return [
-  { key: 'vehicle_name', label: 'Vehicle' },
+  { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
   {
     key: 'camera_type',
     label: 'Camera',
+    sortable: true,
+    filterable: true,
+    filterValue: (row) => String((row as { camera_type?: string }).camera_type ?? ''),
+    filterLabel: (row) => capFirst(String((row as { camera_type?: string }).camera_type ?? '')),
     render: (v) => <span className="capitalize">{v as string}</span>,
   },
   {
     key: 'status',
     label: 'Status',
+    sortable: true,
+    filterable: true,
+    filterValue: (row) => String((row as { status?: string }).status ?? ''),
+    filterLabel: (row) => capFirst(String((row as { status?: string }).status ?? '')),
     render: (v) => <StatusBadge status={v as string} />,
   },
   {
     key: 'obstruction',
     label: 'Obstruction',
+    sortable: true,
+    filterable: true,
+    filterValue: (row) => String((row as { obstruction?: string }).obstruction ?? ''),
+    filterLabel: (row) => capFirst(String((row as { obstruction?: string }).obstruction ?? '')),
     render: (v) => {
       const s = v as string;
       const cls = toneText(OBSTRUCTION_TONE[s] ?? 'neutral');
@@ -58,16 +75,26 @@ function makeColumns(tz: string): AnyColumn[] {
   {
     key: 'alignment',
     label: 'Alignment',
+    sortable: true,
+    filterable: true,
+    filterValue: (row) => String((row as { alignment?: string }).alignment ?? ''),
+    filterLabel: (row) => capFirst(String((row as { alignment?: string }).alignment ?? '')),
     render: (v) => <span className="capitalize">{v as string}</span>,
   },
   {
     key: 'quality',
     label: 'Quality',
+    sortable: true,
+    filterable: true,
+    filterValue: (row) => String((row as { quality?: string }).quality ?? ''),
+    filterLabel: (row) => capFirst(String((row as { quality?: string }).quality ?? '')),
     render: (v) => <span className="capitalize">{v as string}</span>,
   },
   {
     key: 'checked_at',
     label: 'Checked',
+    sortable: true,
+    filterable: true, filterMode: 'date-range',
     render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—',
   },
   ];
@@ -198,7 +225,8 @@ export default function Cameras() {
           description="Camera checks accrue automatically once Samsara dashcams report status. Try widening the filter."
         />
       ) : (
-        <DataTable
+        <DataGrid
+          tableId="camera-checks"
           columns={makeColumns(tz)}
           data={checks as unknown as Record<string, unknown>[]}
           searchKey="vehicle_name"

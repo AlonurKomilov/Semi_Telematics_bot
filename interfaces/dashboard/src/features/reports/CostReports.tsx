@@ -12,9 +12,10 @@ import { apiJSON, apiFetch } from '../../api/client';
 import {
   EmptyState, ErrorState, CardSkeleton,
 } from '../../components/shell';
-import type { WorkOrderCostRow } from '../../types';
+import type { WorkOrderCostRow, AnyColumn } from '../../types';
 import type { ReportsLayoutOutletContext } from './ReportsLayout';
 import { chartColor } from '../../lib/status';
+import DataGrid from '../../components/DataGrid';
 
 // Backend response envelopes for each /reports/* endpoint.
 interface ReportResponse {
@@ -425,40 +426,46 @@ export default function Reports() {
               {vendorRows.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No data.</p>
               ) : (
-                // Wrap in overflow-x-auto so the 4-col table scrolls
-                // horizontally on phones rather than squishing the
-                // money columns to unreadable widths.
-                <div className="overflow-x-auto">
-                <table className="w-full text-sm min-w-[420px]">
-                  <thead>
-                    <tr className="text-xs text-muted-foreground border-b border-border">
-                      <th className="text-left py-1.5 px-2">Vendor</th>
-                      <th className="text-right py-1.5 px-2">WO Count</th>
-                      <th className="text-right py-1.5 px-2">Avg/WO</th>
-                      <th className="text-right py-1.5 px-2">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {vendorRows.map(r => {
-                      const avg = r.work_order_count
-                        ? r.total_spent / r.work_order_count
-                        : 0;
-                      return (
-                        <tr
-                          key={r.vendor_name}
-                          onClick={() => navigate(`/work-orders?vendor=${encodeURIComponent(r.vendor_name || '')}`)}
-                          className="border-b border-border/40 cursor-pointer hover:bg-muted/40"
-                        >
-                          <td className="py-1.5 px-2">{r.vendor_name || <span className="text-muted-foreground">—</span>}</td>
-                          <td className="py-1.5 px-2 text-right tabular-nums">{r.work_order_count}</td>
-                          <td className="py-1.5 px-2 text-right tabular-nums text-muted-foreground">{moneyDetail(avg)}</td>
-                          <td className="py-1.5 px-2 text-right tabular-nums font-medium">{moneyDetail(r.total_spent)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                </div>
+                <DataGrid
+                  columns={[
+                    {
+                      key: 'vendor_name', label: 'Vendor', sortable: true,
+                      render: (v) => v
+                        ? <span>{String(v)}</span>
+                        : <span className="text-muted-foreground">—</span>,
+                    },
+                    {
+                      key: 'work_order_count', label: 'WO Count', sortable: true,
+                      render: (v) => <span className="tabular-nums">{String(v)}</span>,
+                    },
+                    {
+                      // Avg = total / count — computed per row.  ``sortKey``
+                      // returns the numeric value so the column sorts as
+                      // money, not lexicographically.
+                      key: '_avg', label: 'Avg/WO', sortable: true,
+                      sortKey: (row) => {
+                        const r = row as unknown as WorkOrderCostRow;
+                        return r.work_order_count ? r.total_spent / r.work_order_count : 0;
+                      },
+                      render: (_v, row) => {
+                        const r = row as unknown as WorkOrderCostRow;
+                        const avg = r.work_order_count ? r.total_spent / r.work_order_count : 0;
+                        return <span className="tabular-nums text-muted-foreground">{moneyDetail(avg)}</span>;
+                      },
+                    },
+                    {
+                      key: 'total_spent', label: 'Total', sortable: true,
+                      render: (v) => <span className="tabular-nums font-medium">{moneyDetail(Number(v))}</span>,
+                    },
+                  ] satisfies AnyColumn[]}
+                  data={vendorRows as unknown as Record<string, unknown>[]}
+                  enableToolbar={false}
+                  enablePagination={false}
+                  onRowClick={(row) => {
+                    const r = row as unknown as WorkOrderCostRow;
+                    navigate(`/work-orders?vendor=${encodeURIComponent(r.vendor_name || '')}`);
+                  }}
+                />
               )}
             </ChartCard>
 

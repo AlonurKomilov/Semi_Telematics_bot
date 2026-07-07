@@ -12,7 +12,7 @@ import {
 } from '../../components/ui/dropdown-menu';
 import { apiJSON, ApiError } from '../../api/client';
 import type { InviteInfo, InvitesResponse } from '../../types';
-import DataTable from '../../components/DataTable';
+import DataGrid, { type DataGridSegment } from '../../components/DataGrid';
 import RoleBadge, { ROLE_LABEL, ASSIGNABLE_ROLES } from '../../components/RoleBadge';
 import {
   PageHeader,
@@ -62,6 +62,23 @@ function inviteStatus(i: { is_used: boolean; is_revoked?: boolean; is_expired: b
   return 'pending';
 }
 
+// Lifecycle split for the grid's segment tabs.  Pending is the
+// working set (default tab); Used is history-positive; Closed folds
+// revoked + expired together — both are dead links, and the Status
+// column filter separates them when it matters.
+const INVITE_SEGMENTS: DataGridSegment[] = [
+  { key: 'pending', label: 'Pending', match: (r) => inviteStatus(r as unknown as InviteInfo) === 'pending' },
+  { key: 'used',    label: 'Used',    match: (r) => inviteStatus(r as unknown as InviteInfo) === 'used' },
+  {
+    key: 'closed',
+    label: 'Closed',
+    match: (r) => {
+      const st = inviteStatus(r as unknown as InviteInfo);
+      return st === 'revoked' || st === 'expired';
+    },
+  },
+];
+
 /**
  * Pill that summarises an invite's lifecycle state.
  *
@@ -107,7 +124,6 @@ export function InvitesPanel() {
   const [invites, setInvites] = useState<InviteInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showAll, setShowAll] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
   const [botUsername, setBotUsername] = useState('4truckBot');
   // Origin where /signup/<code> works.  Comes from /auth/config so it
@@ -244,14 +260,6 @@ export function InvitesPanel() {
   // can always extend again or revoke.  Single-click → default 24h.
   const [extending, setExtending] = useState<number | null>(null);
 
-  // Filters (client-side, applied on top of the fetched data).  Search
-  // matches vehicle / code (the two free-text columns
-  // operators search for).  Role + status chips are exclusive
-  // single-select; null = no filter.
-  const [search, setSearch] = useState('');
-  const [roleFilter, setRoleFilter] = useState<string | null>(null);
-  type StatusKey = 'pending' | 'used' | 'revoked' | 'expired';
-  const [statusFilter, setStatusFilter] = useState<StatusKey | null>(null);
 
   // Stable focus anchor for the revoke flow.  base-ui restores focus to
   // the dialog's trigger when it closes, but the optimistic update in
@@ -275,15 +283,11 @@ export function InvitesPanel() {
     // not ``error``, so they layer).
     setError('');
     try {
-      // "Show all" drives BOTH the pending_only=false flag (surface used
-      // rows) AND include_revoked=true (surface revoked rows) — the two
-      // are orthogonal on the API but presented as one operator toggle
-      // because "show everything that's ever been an invite" is the
-      // mental model that actually maps to a single checkbox.
-      const params = showAll
-        ? 'pending_only=false&include_revoked=true'
-        : 'pending_only=true';
-      const d = await apiJSON<InvitesResponse>(`/admin/invites?${params}`);
+      // Always fetch the FULL set (used + revoked included) — the
+      // grid's Pending / Used / Closed segment tabs own the lifecycle
+      // split client-side, which replaced the old "Show all" toggle.
+      // Invite volumes are tiny, so there's no cost to loading all.
+      const d = await apiJSON<InvitesResponse>('/admin/invites?pending_only=false&include_revoked=true');
       setInvites(d.invites || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load');
@@ -292,7 +296,7 @@ export function InvitesPanel() {
     }
   }
 
-  useEffect(() => { load(); }, [showAll]);
+  useEffect(() => { load(); }, []);
 
   useEffect(() => {
     // /auth/bot-info doesn't exist — call /auth/config, which returns
@@ -528,14 +532,14 @@ export function InvitesPanel() {
     // and makes rollback trivially correct: just flip the same row
     // back to its pre-revoke shape.
     const nowIso = new Date().toISOString();
+    // Flip the row in place — the segment tabs move it from Pending
+    // to Closed automatically (full set is always loaded now).
     setInvites(prev =>
-      showAll
-        ? prev.map(i =>
-            i.id === invite.id
-              ? { ...i, is_revoked: true, revoked_at: nowIso }
-              : i,
-          )
-        : prev.filter(i => i.id !== invite.id),
+      prev.map(i =>
+        i.id === invite.id
+          ? { ...i, is_revoked: true, revoked_at: nowIso }
+          : i,
+      ),
     );
     try {
       await apiJSON(`/admin/invites/${invite.id}`, { method: 'DELETE' });
@@ -669,53 +673,13 @@ export function InvitesPanel() {
   // Apply client-side filters on top of the fetched data.  Server
   // already handles the coarse cut (pending_only / include_revoked
   // via the Show-all toggle); this narrows further for operator
-  // search.  Memoised so DataTable doesn't re-render unnecessarily.
+  // search.  Memoised so DataGrid doesn't re-render unnecessarily.
   // Search haystack includes role (both raw key and label) so the
   // operator's natural "find me the admin invite" mental model
   // works — role chips remain available for click-once filtering.
-  const filteredInvites = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return invites.filter(i => {
-      if (roleFilter && i.role !== roleFilter) return false;
-      if (statusFilter && inviteStatus(i) !== statusFilter) return false;
-      if (term) {
-        const haystack = [
-          i.code,
-          i.truck_num,
-          i.role,
-          ROLE_LABEL[i.role.toLowerCase()],
-        ].filter(Boolean).join(' ').toLowerCase();
-        if (!haystack.includes(term)) return false;
-      }
-      return true;
-    });
-  }, [invites, search, roleFilter, statusFilter]);
-
-  // Per-filter counts for the chip labels.  Derived from the FULL
-  // fetched set (not the filtered subset) so the chip totals stay
-  // stable while the operator narrows — clicking a chip should
-  // never make its OWN count change.  The "no rows match" feedback
-  // belongs to the empty-state copy, not to chip counts dropping
-  // to zero mid-interaction.
-  const roleCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const i of invites) counts[i.role] = (counts[i.role] || 0) + 1;
-    return counts;
-  }, [invites]);
-
-  const statusCounts = useMemo(() => {
-    const counts: Record<StatusKey, number> = {
-      pending: 0, used: 0, revoked: 0, expired: 0,
-    };
-    for (const i of invites) counts[inviteStatus(i)]++;
-    return counts;
-  }, [invites]);
-
-  // Any filter active?  Drives whether the filter strip stays
-  // visible when the fetch returns empty — without this, the strip
-  // unmounts and the operator's search/chip selections become
-  // invisible-but-still-applied ghost state.
-  const anyFilterActive = search !== '' || roleFilter !== null || statusFilter !== null;
+  // Search / role / status slicing all live in the grid now: toolbar
+  // search (searchKey), the Role + Status column filters, and the
+  // Pending / Used / Closed segment tabs.
 
   const columns: AnyColumn[] = [
     {
@@ -747,6 +711,14 @@ export function InvitesPanel() {
     {
       key: '_status',
       label: 'Status',
+      // Select filter separates Revoked from Expired inside the
+      // Closed segment tab (the tab folds them together).
+      filterable: true,
+      filterValue: (row) => inviteStatus(row as unknown as InviteInfo),
+      filterLabel: (row) => {
+        const st = inviteStatus(row as unknown as InviteInfo);
+        return st.charAt(0).toUpperCase() + st.slice(1);
+      },
       render: (_, row) => <StatusBadge invite={row as unknown as InviteInfo} />,
     },
     {
@@ -961,15 +933,8 @@ export function InvitesPanel() {
           now so it travels with both the Team Management tab and the
           standalone page. */}
       <div className="mb-4 flex items-center justify-end gap-2">
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <input
-            type="checkbox"
-            checked={showAll}
-            onChange={(e) => setShowAll(e.target.checked)}
-            className="rounded bg-muted border-border"
-          />
-          Show all
-        </label>
+        {/* The "Show all" toggle is gone — the fetch always loads the
+            full set and the grid's segment tabs slice it. */}
         <button
           ref={newInviteBtnRef}
           onClick={() => { setRecipientEmail(''); setShowForm(true); }}
@@ -984,100 +949,13 @@ export function InvitesPanel() {
         <div className="mb-3"><ErrorState message={error} /></div>
       )}
 
-      {/* Filter strip — visible when there's data to filter OR when
-          any filter is currently active (defends against the "fetch
-          returned empty, strip vanished, filter state became
-          invisible-but-still-applied ghost state" trap that the
-          earlier code had).  Search + role chips + status chips
-          together cover ~95% of "find one row in 50" cases. */}
-      {!loading && (invites.length > 0 || anyFilterActive) && (
-        <div className="mb-3 flex flex-col gap-2">
-          <div className="relative max-w-sm">
-            <Search
-              size={14}
-              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
-            />
-            <input
-              type="search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('forms.search_invites', { defaultValue: 'Search code, vehicle, or role…' })}
-              className="w-full bg-muted rounded pl-8 pr-3 py-1.5 text-xs text-foreground border border-border focus:outline-none focus:border-ring"
-            />
-          </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Role chips — same pattern as TeamManagement Members tab.
-                Hides any role with zero matching invites so the chip
-                strip doesn't carry dead weight on small accounts. */}
-            <div className="flex gap-1.5 flex-wrap">
-              <button
-                onClick={() => setRoleFilter(null)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium transition ${
-                  !roleFilter ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground/80'
-                }`}
-              >
-                {t('common.all', { defaultValue: 'All roles' })}
-              </button>
-              {Object.entries(ROLE_LABEL).map(([key, label]) => {
-                const count = roleCounts[key] || 0;
-                if (!count) return null;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setRoleFilter(roleFilter === key ? null : key)}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition border ${
-                      roleFilter === key ? 'bg-primary/15 text-primary border-primary/30' : 'border-transparent text-muted-foreground hover:text-foreground/80'
-                    }`}
-                  >
-                    {label} <span className="opacity-60">{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {/* Status chips — separate row group, separated from role
-                chips by a small gap so the operator reads them as two
-                axes (role × status) rather than one mixed bag. */}
-            <div className="flex gap-1.5 flex-wrap">
-              {(['pending', 'used', 'revoked', 'expired'] as const).map((key) => {
-                const count = statusCounts[key] || 0;
-                if (!count) return null;
-                const label =
-                  key === 'pending' ? t('invites.status.pending', { defaultValue: 'Pending' })
-                  : key === 'used' ? t('invites.status.used', { defaultValue: 'Used' })
-                  : key === 'revoked' ? t('invites.status.revoked', { defaultValue: 'Revoked' })
-                  : t('invites.status.expired', { defaultValue: 'Expired' });
-                // All four chips go through the design-system token
-                // helpers — 'pending' maps to 'info' via the
-                // STATUS_TONE map in lib/status.ts, keeping the chip
-                // and the StatusBadge pill identical and theme-safe.
-                const toneCls =
-                  key === 'pending' ? statusClasses('pending')
-                  : key === 'used' ? toneClasses('ok')
-                  : key === 'revoked' ? toneClasses('danger')
-                  : toneClasses('neutral');
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setStatusFilter(statusFilter === key ? null : key)}
-                    className={`px-2.5 py-1 rounded-full text-xs font-medium transition border ${
-                      statusFilter === key ? toneCls : 'border-transparent text-muted-foreground hover:text-foreground/80'
-                    }`}
-                  >
-                    {label} <span className="opacity-60">{count}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
 
       {loading ? (
         <TableSkeleton rows={6} cols={6} />
       ) : invites.length === 0 ? (
         <EmptyState
           icon={LinkIcon}
-          title={showAll ? 'No invites have been issued' : 'No active invites'}
+          title="No invites have been issued"
           description="Create an invite to add a new teammate — pick the role and how long the link should be valid."
           action={
             <button
@@ -1089,37 +967,15 @@ export function InvitesPanel() {
             </button>
           }
         />
-      ) : filteredInvites.length === 0 ? (
-        // Empty-state copy diverges from the "no invites at all" case
-        // — the operator HAS invites, the filter just didn't match.
-        // Surface the filter as the thing to undo, not the create
-        // CTA (which would be misleading).
-        <EmptyState
-          icon={Search}
-          title={t('invites.empty_filtered_title', { defaultValue: 'No invites match your filters' })}
-          description={t('invites.empty_filtered_desc', { defaultValue: 'Adjust the role / status chips or clear the search box above.' })}
-          action={
-            <button
-              onClick={() => {
-                setSearch('');
-                setRoleFilter(null);
-                setStatusFilter(null);
-                // Show-all toggle is a SERVER-SIDE filter
-                // (pending_only / include_revoked), not client-
-                // side narrowing — it's intentionally NOT reset
-                // here because the operator turned it on for a
-                // reason (audit-trail view).  The toggle sits
-                // right above the filter strip so re-toggling
-                // is one click away if they wanted a full reset.
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium transition"
-            >
-              {t('common.clear_filters', { defaultValue: 'Clear filters' })}
-            </button>
-          }
-        />
       ) : (
-        <DataTable tableId="invites" columns={columns} data={filteredInvites as unknown as Record<string, unknown>[]} />
+        <DataGrid
+          tableId="invites"
+          segments={INVITE_SEGMENTS}
+          columns={columns}
+          data={invites as unknown as Record<string, unknown>[]}
+          searchKey={['code', 'truck_num', 'role']}
+          searchPlaceholder="Search code, vehicle, or role…"
+        />
       )}
 
       {/* Create modal — uses ui/dialog primitive (base-ui).

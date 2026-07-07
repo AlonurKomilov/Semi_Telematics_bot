@@ -8,7 +8,10 @@ import {
   Paperclip, Image as ImageIcon, Upload, ClipboardList,
 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
-import DataTable from '../../components/DataTable';
+import DataGrid, { type DataGridSegment } from '../../components/DataGrid';
+import {
+  useMaintenanceTasksQuery, makeUrgencyClassifier, classifyTaskBuckets,
+} from './useMaintenanceTasks';
 import StatusBadge from '../../components/StatusBadge';
 import {
   PageHeader,
@@ -43,6 +46,25 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: 'Cancelled',
   overdue: 'Overdue',
 };
+
+// Lifecycle split for the grid's segment tabs.  Tabs answer "is this
+// still work, or history?" — the urgency chips above the grid keep
+// answering "how urgent is the work?" within Active.  Completed AND
+// cancelled both live in Archive: they're closed tickets either way,
+// and Cancelled stays reachable via the Status column filter there.
+const CLOSED_STATUSES = new Set(['completed', 'cancelled']);
+const TASK_SEGMENTS: DataGridSegment[] = [
+  {
+    key: 'active',
+    label: 'Active',
+    match: (r) => !CLOSED_STATUSES.has(String(r.status ?? '')),
+  },
+  {
+    key: 'archive',
+    label: 'Archive',
+    match: (r) => CLOSED_STATUSES.has(String(r.status ?? '')),
+  },
+];
 
 // Convert a period in days (e.g. "30") to a YYYY-MM-DD due date by
 // adding to today's calendar day. Returns empty when the period is
@@ -180,10 +202,16 @@ const baseColumns: AnyColumn[] = [
     const s = String(v || '');
     return s.length > 60 ? <span title={s}>{s.slice(0, 60)}…</span> : s;
   }},
-  { key: 'due_date', label: 'Due Date', sortable: true, render: (v, row) => {
-    const r = row as MaintenanceTask;
-    return <DueDateChip value={v} status={r.status} recurDays={r.recur_interval_days} />;
-  } },
+  { key: 'due_date', label: 'Due Date', sortable: true,
+    // Date-range filter — From / To date pickers.  Bounds auto-
+    // compute from the loaded task set; "To" is inclusive to end-of-
+    // day so a single-day filter keeps the whole day.
+    filterable: true,
+    filterMode: 'date-range',
+    render: (v, row) => {
+      const r = row as MaintenanceTask;
+      return <DueDateChip value={v} status={r.status} recurDays={r.recur_interval_days} />;
+    } },
   // Combined "Mileage Progress" replaces the bare "Due Miles" cell so the
   // operator can see how close each truck is to the next service without
   // doing the arithmetic in their head.
@@ -229,11 +257,14 @@ const baseColumns: AnyColumn[] = [
   // Updated column shows date + time so multiple same-day edits are
   // distinguishable.  Short locale format keeps it readable without
   // dominating the row width.
-  { key: 'updated_at', label: 'Updated', sortable: true, render: (v) => v
-    ? new Date(String(v)).toLocaleString(undefined, {
-        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-      })
-    : '—' },
+  { key: 'updated_at', label: 'Updated', sortable: true,
+    filterable: true,
+    filterMode: 'date-range',
+    render: (v) => v
+      ? new Date(String(v)).toLocaleString(undefined, {
+          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+        })
+      : '—' },
 ];
 
 // ── Main component ─────────────────────────────────────────────
@@ -243,7 +274,6 @@ export default function Tasks() {
   const qc = useQueryClient();
   const tz = useTimezone();
   const [error, setError] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState<MaintenanceTask | null>(null);
   // Service-history modal — null when closed; vehicle_name when open.
@@ -589,139 +619,41 @@ export default function Tasks() {
   // A typical account has <500 tasks; round-tripping per chip click added
   // latency for no benefit.  The chip the user clicks just narrows what's
   // rendered client-side.
-  const { data: tasksData, isLoading: loading, error: queryError } = useQuery({
-    queryKey: ['maintenance-tasks'],
-    queryFn: () => apiJSON<{ tasks: MaintenanceTask[] }>('/maintenance/tasks?page_size=200'),
-    placeholderData: (prev) => prev,
-  });
+  const { data: tasksData, isLoading: loading, error: queryError } = useMaintenanceTasksQuery();
   const allTasks = tasksData?.tasks ?? [];
   const fetchError = queryError instanceof Error ? queryError.message : '';
   const load = () => qc.invalidateQueries({ queryKey: ['maintenance-tasks'] });
 
-  // Bucket each task once per data change so we can both filter and
-  // count without re-walking the list on every render of a chip.  Same
-  // boundary as ``DueDateChip`` (calendar-day basis) so a "due today"
-  // task lands in the due-soon bucket and not overdue.
-  //
-  // "Due soon" thresholds:
-  //   • date     — within 7 days
-  //   • miles    — within 5,000 mi
-  //   • hours    — within 100 engine hours
-  // These mirror the typical service-interval warning windows in the
-  // industry (oil-change comes "due soon" ~5k miles out, DOT
-  // inspections ~1 week out, PTO hours ~100h out).  A task lands in
-  // dueSoon if ANY axis is within its window; pending otherwise.
-  // Without this the Due Soon chip stayed at 0 for fleets that schedule
-  // by mileage — every "1,922 mi to go" task got bucketed as pending.
-  // Same helper drives the Status column's "due_soon" override so the
-  // chip count and the per-row badge can't drift.
-  const dueSoonClassify = useMemo(() => {
-    const DUE_SOON_DAYS = 7;
-    const DUE_SOON_MILES = 5_000;
-    const DUE_SOON_HOURS = 100;
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    return (t: MaintenanceTask): 'overdue' | 'due_soon' | null => {
-      if (t.due_date) {
-        const due = new Date(t.due_date);
-        if (!Number.isNaN(due.getTime())) {
-          const startOfDue = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
-          const days = Math.round((startOfDue - startOfToday) / 86_400_000);
-          if (days < 0) return 'overdue';
-          if (days <= DUE_SOON_DAYS) return 'due_soon';
-        }
-      }
-      if (t.due_miles != null && t.last_odometer != null) {
-        const remaining = t.due_miles - t.last_odometer;
-        if (remaining < 0) return 'overdue';
-        if (remaining <= DUE_SOON_MILES) return 'due_soon';
-      }
-      if (t.due_engine_hours != null && t.last_engine_hours != null) {
-        const remaining = t.due_engine_hours - t.last_engine_hours;
-        if (remaining < 0) return 'overdue';
-        if (remaining <= DUE_SOON_HOURS) return 'due_soon';
-      }
-      return null;
-    };
-  }, []);
-  const DUE_SOON_DAYS = 7;
-  const DUE_SOON_MILES = 5_000;
-  const DUE_SOON_HOURS = 100;
-  const buckets = useMemo(() => {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const overdue: MaintenanceTask[] = [];
-    const dueSoon: MaintenanceTask[] = [];
-    const pending: MaintenanceTask[] = [];
-    const completed: MaintenanceTask[] = [];
-    const cancelled: MaintenanceTask[] = [];
-    for (const t of allTasks) {
-      if (t.status === 'completed') { completed.push(t); continue; }
-      if (t.status === 'cancelled') { cancelled.push(t); continue; }
-      // Classify by overdue → due_soon → pending in priority order.
-      // Each task lands in EXACTLY ONE bucket so the chip counts sum to
-      // ``all``.  Previously every non-completed task was also pushed
-      // into ``pending`` and a flagged-overdue task showed up in both
-      // the Overdue and Pending chips, making the counts overlap.
-      const isOverdueStatus = t.status === 'overdue';
-      let placed = false;
-      // 1. Date axis — overdue first (lets the backend's status='overdue'
-      //    flag also force this), then "due in next 7 days".
-      if (t.due_date) {
-        const due = new Date(t.due_date);
-        if (!Number.isNaN(due.getTime())) {
-          const startOfDue = new Date(due.getFullYear(), due.getMonth(), due.getDate()).getTime();
-          const days = Math.round((startOfDue - startOfToday) / 86_400_000);
-          if (days < 0 || isOverdueStatus) { overdue.push(t); placed = true; }
-          else if (days <= DUE_SOON_DAYS) { dueSoon.push(t); placed = true; }
-        }
-      }
-      if (!placed && isOverdueStatus) { overdue.push(t); placed = true; }
-      // 2. Mileage axis — only check when no date pinned the task to
-      //    another bucket already.  Past due (negative remaining) goes
-      //    to overdue; within threshold goes to dueSoon.
-      if (!placed && t.due_miles != null && t.last_odometer != null) {
-        const remaining = t.due_miles - t.last_odometer;
-        if (remaining < 0) { overdue.push(t); placed = true; }
-        else if (remaining <= DUE_SOON_MILES) { dueSoon.push(t); placed = true; }
-      }
-      // 3. Engine hours axis — same shape as mileage.
-      if (!placed && t.due_engine_hours != null && t.last_engine_hours != null) {
-        const remaining = t.due_engine_hours - t.last_engine_hours;
-        if (remaining < 0) { overdue.push(t); placed = true; }
-        else if (remaining <= DUE_SOON_HOURS) { dueSoon.push(t); placed = true; }
-      }
-      if (!placed) { pending.push(t); }
-    }
-    return { overdue, dueSoon, pending, completed, cancelled };
-  }, [allTasks]);
+  // Urgency classification + buckets live in useMaintenanceTasks.ts,
+  // SHARED with the topbar MaintenanceHero so the hero chips, the
+  // filter chips, and the per-row status badges all derive from the
+  // same computation and can't drift.  Calendar-day basis (a "due
+  // today" task is due-soon, not overdue) — same boundary as
+  // ``DueDateChip``.
+  const dueSoonClassify = useMemo(() => makeUrgencyClassifier(), []);
+  const buckets = useMemo(() => classifyTaskBuckets(allTasks), [allTasks]);
 
-  // statusFilter values: '' (all), 'overdue', 'due_soon', 'pending',
-  // 'completed', 'cancelled' — client-side bucket keys, not API query
-  // params.  Per-vehicle narrowing is handled by the DataTable search
-  // box (it indexes vehicle_name, description, task_type) so we don't
-  // need a separate vehicle dropdown.
-  const tasks = useMemo(() => {
-    if (statusFilter === 'overdue')   return buckets.overdue;
-    if (statusFilter === 'due_soon')  return buckets.dueSoon;
-    if (statusFilter === 'pending')   return buckets.pending;
-    if (statusFilter === 'completed') return buckets.completed;
-    if (statusFilter === 'cancelled') return buckets.cancelled;
-    // Default "All" view = OPEN work only.  Completed and cancelled
-    // tasks are closed tickets; surfacing them in the main list
-    // clutters the "what do I need to do next?" read.  They stay
-    // reachable via the Completed chip, and per-vehicle they're
-    // available in the History button on the drawer.  The recurring-
-    // task auto-spawn (see capabilities/maintenance/service.py:
-    // spawn_recurring_if_completed) already creates the NEXT task
-    // when a recurring one closes, so the list stays populated with
-    // the freshly-spawned children.
-    return [
-      ...buckets.overdue,
-      ...buckets.dueSoon,
-      ...buckets.pending,
-    ];
-  }, [statusFilter, buckets]);
+  // OPEN work only (overdue → due-soon → pending), used by the
+  // calendar view, the select-all checkbox, and the footer count.
+  // Completed and cancelled tasks are closed tickets; they live in
+  // the grid's Archive segment tab, and per-vehicle they're
+  // available in the History button on the drawer.  The recurring-
+  // task auto-spawn (see capabilities/maintenance/service.py:
+  // spawn_recurring_if_completed) already creates the NEXT task
+  // when a recurring one closes, so the list stays populated with
+  // the freshly-spawned children.  Urgency SLICING is no longer a
+  // page concern — the grid's Status column filter offers the same
+  // derived Overdue / Due Soon options, and the topbar hero shows
+  // the live counts.
+  const tasks = useMemo(() => [
+    ...buckets.overdue,
+    ...buckets.dueSoon,
+    ...buckets.pending,
+  ], [buckets]);
+
+  // The GRID gets the FULL set including closed tickets — its
+  // Active / Archive segment tabs own the lifecycle split.
+  const gridTasks = allTasks;
 
   // Clear selection whenever the visible list changes (filter switch
   // or refetch).  Stale ids would otherwise sit in state and could
@@ -730,73 +662,121 @@ export default function Tasks() {
   useEffect(() => {
     setSelectedIds(prev => {
       if (prev.size === 0) return prev;
-      const visible = new Set(tasks.map(t => t.id));
+      const visible = new Set(gridTasks.map(t => t.id));
       const next = new Set<number>();
       for (const id of prev) if (visible.has(id)) next.add(id);
       return next.size === prev.size ? prev : next;
     });
-  }, [tasks]);
+  }, [gridTasks]);
 
-  // Final columns array — prepended checkbox column when in list mode,
-  // omitted in calendar mode (which has its own click target per chip).
+  // Final columns array — the bulk-select master + per-row checkboxes
+  // are NOT part of the columns array.  DataGrid's
+  // ``firstColumnLeading`` prop (below in the JSX) attaches them to
+  // whichever column is currently leftmost, so they follow the
+  // operator's pin / reorder choices instead of being stuck on a
+  // specific column.
   const columns: AnyColumn[] = useMemo(() => {
-    const allVisibleIds = tasks.map(t => t.id);
-    const allSelected = allVisibleIds.length > 0
-      && allVisibleIds.every(id => selectedIds.has(id));
-    const checkboxCol: AnyColumn = {
-      key: '_select',
-      label: '',
-      sortable: false,
-      render: (_v, row) => {
-        const t = row as MaintenanceTask;
-        const checked = selectedIds.has(t.id);
-        return (
-          <input
-            type="checkbox"
-            checked={checked}
-            // Stop click propagation so the row-click → edit-sidebar
-            // doesn't fire when the user is just toggling selection.
-            onClick={e => e.stopPropagation()}
-            onChange={e => {
-              setSelectedIds(prev => {
-                const next = new Set(prev);
-                if (e.target.checked) next.add(t.id);
-                else next.delete(t.id);
-                return next;
-              });
-            }}
-            className="cursor-pointer accent-primary"
-            aria-label={`Select task ${t.id}`}
-          />
-        );
-      },
-    };
-    // The label cell needs the "select all visible" header but
-    // AnyColumn.label is just a string.  Render a special header by
-    // tucking the toggle in the cell key — we approximate "select all"
-    // via the parent's header bar instead, defined below in the JSX.
-    // (Keeps the checkboxCol shape compatible with DataTable's
-    // ColumnDef header generation.)
-    void allSelected;
-    // Override the Status column's render so a pending row whose
+    // Override the Status column's render so an open row whose
     // due_date / due_miles / due_engine_hours puts it in the dueSoon
-    // bucket displays "due soon" in the badge instead of "pending".
-    // Keeps the per-row badge consistent with the Due Soon chip count;
-    // otherwise the row shows "pending" while the chip says the same
-    // task is "due soon" — two reads of the same task, confusing.
-    // Backend ``status`` column is untouched; only the display label
-    // flips based on the same urgency check the bucket uses.
+    // or overdue bucket displays that urgency in the badge instead of
+    // the stale stored label.  Keeps the per-row badge consistent with
+    // the chip counts — previously a task 25 mi past its due odometer
+    // still showed "pending" while the Overdue chip counted it.
+    // Backend ``status`` column is untouched; only the display flips
+    // based on the same urgency check the buckets use.
+    //
+    // Priority escalates the same way, and to the SAME target the
+    // backend uses: the scheduled overdue-marker jobs
+    // (mark_overdue_tasks_by_mileage / …_engine_hours / date) persist
+    // ``priority='critical'`` whenever they flip a task to overdue
+    // (see adapters/storage/maintenance.py update_maintenance_status_bulk).
+    // We derive the SAME Critical here so the instant display and the
+    // DB (which catches up on the next 6h tick) never disagree — an
+    // earlier version raised to High, which made one unchanged task
+    // read Medium → High → Critical as the scheduler caught up.  The
+    // tooltip preserves the stored value so nothing is hidden.
+    const effectivePriority = (t: MaintenanceTask): string => {
+      const stored = String(t.priority || 'medium').toLowerCase();
+      const status = String(t.status || '').toLowerCase();
+      if (status === 'completed' || status === 'cancelled') return stored;
+      if (dueSoonClassify(t) === 'overdue' && stored !== 'critical') {
+        return 'critical';
+      }
+      return stored;
+    };
+    const PRIORITY_RANK: Record<string, number> = {
+      critical: 0, high: 1, medium: 2, low: 3,
+    };
+    // Same derivation the badge render uses — exported to the Status
+    // column's filterValue/filterLabel so the 3-dot filter offers
+    // "Overdue" / "Due Soon" options that match what the rows SHOW.
+    // Without this the filter matched the raw stored status, and with
+    // the urgency chips gone (hero strip took over the counts) there
+    // would be no way left to slice by urgency.
+    const effectiveStatus = (t: MaintenanceTask): string => {
+      const stored = String(t.status ?? '').toLowerCase();
+      const derived = (stored === 'pending' || stored === 'due_soon')
+        ? dueSoonClassify(t)
+        : null;
+      if (derived === 'overdue') return 'overdue';
+      if (derived === 'due_soon' && stored === 'pending') return 'due_soon';
+      return stored;
+    };
     const enrichedBase = baseColumns.map(col => {
       if (col.key === 'status') {
         return {
           ...col,
+          filterValue: (row: Record<string, unknown>) =>
+            effectiveStatus(row as unknown as MaintenanceTask),
+          filterLabel: (row: Record<string, unknown>) => {
+            const s = effectiveStatus(row as unknown as MaintenanceTask);
+            return s
+              ? s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+              : '(none)';
+          },
           render: (v: unknown, row: Record<string, unknown>) => {
             const t = row as unknown as MaintenanceTask;
             const stored = String(v);
-            if (stored === 'pending' && dueSoonClassify(t) === 'due_soon') {
+            const derived = (stored === 'pending' || stored === 'due_soon')
+              ? dueSoonClassify(t)
+              : null;
+            if (derived === 'overdue') {
+              return (
+                <span title={`Stored as "${stored}" — overdue by its due date / mileage / engine hours`}>
+                  <StatusBadge status="overdue" />
+                </span>
+              );
+            }
+            if (derived === 'due_soon' && stored === 'pending') {
               return <StatusBadge status="due_soon" />;
             }
             return <StatusBadge status={stored} />;
+          },
+        };
+      }
+      if (col.key === 'priority') {
+        return {
+          ...col,
+          filterValue: (row: Record<string, unknown>) =>
+            effectivePriority(row as unknown as MaintenanceTask),
+          filterLabel: (row: Record<string, unknown>) => {
+            const p = effectivePriority(row as unknown as MaintenanceTask);
+            return p ? p.charAt(0).toUpperCase() + p.slice(1) : '(none)';
+          },
+          sortKey: (row: Record<string, unknown>) =>
+            PRIORITY_RANK[effectivePriority(row as unknown as MaintenanceTask)] ?? 99,
+          render: (v: unknown, row: Record<string, unknown>) => {
+            const t = row as unknown as MaintenanceTask;
+            const eff = effectivePriority(t);
+            const stored = String(t.priority || 'medium').toLowerCase();
+            if (eff !== stored) {
+              return (
+                <span title={`Priority "${stored}" auto-raised to Critical — task is overdue`}>
+                  <PriorityBadge value={eff} />
+                </span>
+              );
+            }
+            return <PriorityBadge value={v} />;
           },
         };
       }
@@ -833,8 +813,8 @@ export default function Tasks() {
       }
       return col;
     });
-    return [checkboxCol, ...enrichedBase];
-  }, [tasks, selectedIds, dueSoonClassify, customTypeLabelByValue, tz]);
+    return enrichedBase;
+  }, [dueSoonClassify, customTypeLabelByValue, tz]);
 
   // Bulk action handlers — POST to the new /tasks/bulk/* routes.
   const handleBulkComplete = async () => {
@@ -1274,31 +1254,12 @@ export default function Tasks() {
   // cycle of backward compatibility) but the dashboard now calls the
   // canonical /api/reports/dot-binder URL.
 
-  // CSV download.  The browser's native download UI doesn't carry our
-  // Bearer token, so a plain <a href="/api/…csv"> would 401.  Pull the
-  // bytes via the auth-aware client, blob them, and trigger a synthetic
-  // download.  Same pattern used by the reports export elsewhere in the
-  // app.
-  const exportTasksCsv = async () => {
-    try {
-      const res = await apiFetch('/maintenance/tasks.csv');
-      if (!res.ok) {
-        toast.error(`Export failed: ${res.statusText}`);
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `maintenance-tasks-${new Date().toISOString().slice(0, 10)}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Export failed');
-    }
-  };
+  // The server-side CSV download (/maintenance/tasks.csv) was removed
+  // from this page along with its header button — DataGrid's toolbar
+  // Export (Current page / All rows) is the single export path and
+  // honours the operator's live filters + column layout, which the
+  // server dump never did.  The API endpoint itself is still served
+  // for bot/automation callers.
 
   return (
     <div>
@@ -1336,24 +1297,10 @@ export default function Tasks() {
                 <CalendarDays size={14} />
               </button>
             </div>
-            {/* CSV export — hits /api/maintenance/tasks.csv with the
-                current Bearer token via apiFetch, then forces a download
-                by injecting a temporary <a> with object-URL.  Native
-                browser download doesn't carry our JWT, so we can't just
-                <a href="…">. */}
-            <button
-              type="button"
-              onClick={() => exportTasksCsv()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
-              title="Download maintenance tasks as CSV"
-            >
-              <Download size={14} />
-              Export CSV
-            </button>
-            {/* DOT binder — opens a dialog so the user can pick a
-                window + optional single vehicle before the heavy PDF
-                gen runs.  Sits next to Export CSV since both are
-                compliance-flavoured exports. */}
+            {/* The page-level "Export CSV" button was removed — the
+                grid's own toolbar Export (Current page / All rows,
+                honouring live filters + column layout) covers it and
+                the two side by side read as duplication. */}
             <button
               type="button"
               onClick={() => setTemplatesOpen(true)}
@@ -1680,74 +1627,29 @@ export default function Tasks() {
         </form>
       )}
 
-      {/* Filter chips live HERE, above the conditional, so they stay
-          visible in every state — table view, empty state, calendar
-          view, loading skeleton.  Putting them inside DataTable's
-          ``headerToolbar`` slot worked when there were rows but
-          disappeared the moment a chip resolved to 0 results (the
-          EmptyState branch replaced the whole DataTable, taking the
-          chips with it — leaving the user stranded with no way to
-          click back to "All"). */}
-      <div className="flex flex-wrap items-center gap-1.5 mb-3">
-        {([
-          // "All" counts OPEN work only — same as what the default
-          // view renders.  Completed/cancelled rows live behind their
-          // own chip + the per-vehicle History button on the drawer.
-          { key: '',          label: 'All',       count: buckets.overdue.length + buckets.dueSoon.length + buckets.pending.length, dot: 'bg-muted-foreground/40' },
-          { key: 'overdue',   label: 'Overdue',   count: buckets.overdue.length,   dot: 'bg-danger' },
-          { key: 'due_soon',  label: 'Due Soon',  count: buckets.dueSoon.length,   dot: 'bg-warn'   },
-          { key: 'pending',   label: 'Pending',   count: buckets.pending.length,   dot: 'bg-info'   },
-          { key: 'completed', label: 'Completed', count: buckets.completed.length, dot: 'bg-ok'     },
-        ] as const).map(chip => {
-          const active = statusFilter === chip.key;
-          return (
-            <button
-              key={chip.key || 'all'}
-              type="button"
-              onClick={() => setStatusFilter(active ? '' : chip.key)}
-              aria-pressed={active}
-              aria-label={`${chip.label}, ${chip.count} ${chip.count === 1 ? 'task' : 'tasks'}${active ? ', selected' : ''}`}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition border ${
-                active
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-card hover:bg-muted text-foreground border-border'
-              }`}
-            >
-              <span aria-hidden className={`w-2 h-2 rounded-full ${chip.dot}`} />
-              {chip.label}
-              <span className={`tabular-nums ${active ? 'opacity-80' : 'text-muted-foreground'}`}>
-                {chip.count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
+      {/* The urgency chip row that used to live here (All / Overdue /
+          Due Soon / Pending) is gone: the topbar MaintenanceHero now
+          owns those live counts, and urgency FILTERING moved into the
+          grid's Status column filter (whose options are the same
+          derived statuses the badges show).  Lifecycle stays on the
+          grid's Active / Archive segment tabs. */}
       {loading && tasks.length === 0 ? (
         <TableSkeleton rows={6} cols={7} />
-      ) : tasks.length === 0 ? (
+      // Only a truly empty account gets the onboarding state — if the
+      // only tasks left are closed ones, the grid still renders so
+      // the Archive tab stays reachable (an empty Active view shows
+      // the in-grid "No data" row with the tabs visible).
+      ) : allTasks.length === 0 ? (
         <EmptyState
           icon={Wrench}
-          title={statusFilter ? `No ${statusFilter.replace(/_/g, ' ')} tasks` : 'No maintenance tasks yet'}
-          description={statusFilter
-            ? "Pick another chip above to see other states, or clear the filter to come back to the default list."
-            : "Create your first task — set a due date, due miles, or both, and we'll alert you as it approaches."}
-          action={statusFilter
-            ? (
-                <button
-                  type="button"
-                  onClick={() => setStatusFilter('')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 text-foreground rounded-md text-xs font-medium border border-border transition"
-                >
-                  Clear filter
-                </button>
-              )
-            : (
-                <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition">
-                  <Plus size={14} />
-                  New task
-                </button>
-              )}
+          title="No maintenance tasks yet"
+          description="Create your first task — set a due date, due miles, or both, and we'll alert you as it approaches."
+          action={(
+            <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition">
+              <Plus size={14} />
+              New task
+            </button>
+          )}
         />
       ) : viewMode === 'calendar' ? (
         // Calendar view — same dataset, different visualisation.  Click
@@ -1759,44 +1661,66 @@ export default function Tasks() {
         />
       ) : (
         <>
-          <DataTable
+          <DataGrid
             tableId="maintenance-tasks"
             columns={columns}
-            data={tasks as unknown as Record<string, unknown>[]}
+            segments={TASK_SEGMENTS}
+            data={gridTasks as unknown as Record<string, unknown>[]}
             searchKey={['vehicle_name', 'company_code', 'description', 'task_type']}
             searchPlaceholder="Search…"
             onRowClick={(row) => openTaskForEdit(row as unknown as MaintenanceTask)}
+            // Bulk-select checkboxes follow whichever column is
+            // currently leftmost — DataGrid injects ``header`` into
+            // the first header cell, and ``cell`` into the first body
+            // cell of each row.  Tasks owns the selection state
+            // (selectedIds) and renders the checkbox React nodes;
+            // DataGrid just places them.
+            firstColumnLeading={{
+              header: () => {
+                const allVisibleIds = tasks.map(t => t.id);
+                const allSelected = allVisibleIds.length > 0
+                  && allVisibleIds.every(id => selectedIds.has(id));
+                return (
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    ref={el => { if (el) el.indeterminate = !allSelected && selectedIds.size > 0; }}
+                    onClick={e => e.stopPropagation()}
+                    onChange={e => {
+                      if (e.target.checked) setSelectedIds(new Set(allVisibleIds));
+                      else setSelectedIds(new Set());
+                    }}
+                    className="cursor-pointer accent-primary"
+                    aria-label="Select all visible tasks"
+                  />
+                );
+              },
+              cell: (row) => {
+                const t = row as unknown as MaintenanceTask;
+                const checked = selectedIds.has(t.id);
+                return (
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onClick={e => e.stopPropagation()}
+                    onChange={e => {
+                      setSelectedIds(prev => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(t.id);
+                        else next.delete(t.id);
+                        return next;
+                      });
+                    }}
+                    className="cursor-pointer accent-primary"
+                    aria-label={`Select task ${t.id}`}
+                  />
+                );
+              },
+            }}
           />
-          {/* Result count footer.  Always shows the filtered count
-              followed by what's hidden, so the user understands they're
-              not seeing the whole list when a chip is active. */}
-          <p className="text-xs text-muted-foreground mt-2">
-            {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
-            {statusFilter && allTasks.length !== tasks.length
-              ? ` · ${allTasks.length - tasks.length} hidden by filter`
-              : ''}
-            {/* On the default (no-filter) view we explicitly tell the
-                user that closed tickets aren't included.  Otherwise
-                the count looks lower than what the "Completed" chip
-                shows and people wonder where their finished tasks
-                went.  Clickable hint takes them to the Completed
-                chip in one step. */}
-            {!statusFilter && (buckets.completed.length + buckets.cancelled.length) > 0 && (
-              <>
-                {' · '}
-                <button
-                  type="button"
-                  onClick={() => setStatusFilter('completed')}
-                  className="text-muted-foreground underline decoration-dotted hover:text-foreground"
-                >
-                  {buckets.completed.length + buckets.cancelled.length} completed/cancelled hidden
-                </button>
-              </>
-            )}
-            {!statusFilter && buckets.overdue.length > 0
-              ? ` · ${buckets.overdue.length} overdue`
-              : ''}
-          </p>
+          {/* No count footer — the topbar hero carries the live
+              Overdue / Due Soon / Pending / Completed counts and the
+              grid's pagination footer shows the row totals. */}
         </>
       )}
 

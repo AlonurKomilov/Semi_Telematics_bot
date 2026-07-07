@@ -21,8 +21,13 @@ import { apiJSON } from '../../../api/client';
 import type { AlertsResponse, VehiclesAlertsResponse } from '../../../types';
 import { useAlertsFilters } from './useAlertsFilters';
 
-const PAGE_SIZE_LIST = 100;
-const PAGE_SIZE_VEHICLES = 100;
+// Full-window fetch: the results section is a DataGrid that filters /
+// sorts / groups / paginates CLIENT-side, so it needs the whole filter
+// window loaded — page-scoped slices would make those operations lie
+// (a "Severity: critical" filter that silently misses criticals on
+// page 2).  2000 matches the server cap; beyond it AlertsResults shows
+// a truncation notice and the server pager steps through overflow.
+const PAGE_SIZE = 2000;
 
 export interface UseAlertsQueryResult {
   data: AlertsResponse | VehiclesAlertsResponse | undefined;
@@ -47,12 +52,15 @@ export function useAlertsQuery(): UseAlertsQueryResult {
     days,
   } = useAlertsFilters();
 
-  const useVehicleEndpoint = viewMode === 'by-vehicle';
-  const pageSize = useVehicleEndpoint ? PAGE_SIZE_VEHICLES : PAGE_SIZE_LIST;
+  // Both view modes read the same FLAT endpoint now — the per-vehicle
+  // presentation is DataGrid row-grouping over the same rows, done
+  // client-side in AlertsResults.  One endpoint, one cache entry, and
+  // toggling the view doesn't refetch (viewMode is out of the key).
+  void viewMode;
+  const pageSize = PAGE_SIZE;
 
   const queryKey = [
     'alerts',
-    viewMode,
     typeFilter,
     severityFilter,
     vehicleSearch,
@@ -72,12 +80,9 @@ export function useAlertsQuery(): UseAlertsQueryResult {
       params.set('days', String(days));
       params.set('page_size', String(pageSize));
       params.set('page', String(page));
-      const path = useVehicleEndpoint
-        ? '/alerts/pending/by-vehicle'
-        : '/alerts/pending';
       const qs = params.toString();
       return apiJSON<AlertsResponse | VehiclesAlertsResponse>(
-        `${path}${qs ? `?${qs}` : ''}`,
+        `/alerts/pending${qs ? `?${qs}` : ''}`,
       );
     },
     placeholderData: (prev) => prev,
@@ -90,7 +95,7 @@ export function useAlertsQuery(): UseAlertsQueryResult {
     error: q.error,
     refetch: q.refetch,
     dataUpdatedAt: q.dataUpdatedAt,
-    useVehicleEndpoint,
+    useVehicleEndpoint: false,
     pageSize,
   };
 }

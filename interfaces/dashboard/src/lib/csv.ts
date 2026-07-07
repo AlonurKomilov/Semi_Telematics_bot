@@ -1,5 +1,5 @@
 /**
- * CSV export helper for DataTable.
+ * CSV export helper for DataGrid.
  *
  * Builds an RFC 4180-ish CSV: comma separator, CRLF line ending,
  * double-quote escape for fields containing comma / quote / newline.
@@ -44,7 +44,7 @@ function cellValue(col: AnyColumn, row: Record<string, unknown>): string {
 
 /** Build the CSV body — header row + one data row per ``rows`` entry.
  *  ``columns`` should already be filtered to the visible/ordered
- *  subset (DataTable does this before calling). */
+ *  subset (DataGrid does this before calling). */
 export function buildCsv(
   columns: AnyColumn[],
   rows: Record<string, unknown>[],
@@ -76,7 +76,7 @@ export function downloadCsv(filename: string, csv: string): void {
   setTimeout(() => URL.revokeObjectURL(url), 100);
 }
 
-/** Convenience: build + download in one call.  Used by DataTable's
+/** Convenience: build + download in one call.  Used by DataGrid's
  *  "Export CSV" toolbar button. */
 export function exportRowsAsCsv(
   filename: string,
@@ -84,4 +84,65 @@ export function exportRowsAsCsv(
   rows: Record<string, unknown>[],
 ): void {
   downloadCsv(filename, buildCsv(columns, rows));
+}
+
+/** Tab-separated text — what Excel / Sheets / Google Docs expect when
+ *  you paste into a spreadsheet cell.  Used by the row-selection
+ *  Copy action so operators can copy a few rows from the dashboard
+ *  and drop them straight into a spreadsheet column-by-column.
+ *  Header row included so the paste preserves column meaning. */
+export function buildTsv(
+  columns: AnyColumn[],
+  rows: Record<string, unknown>[],
+): string {
+  // TSV escape: a field containing tab / newline / quote gets wrapped
+  // in quotes and inner quotes doubled (same rule as CSV).  No BOM —
+  // clipboard text is just a string, no encoding hints needed.
+  const esc = (v: unknown): string => {
+    if (v == null) return '';
+    const s = String(v);
+    if (/[\t"\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+    return s;
+  };
+  const cellValue = (col: AnyColumn, row: Record<string, unknown>): string => {
+    if (col.csvValue) return col.csvValue(row);
+    if (col.filterLabel) return col.filterLabel(row);
+    if (col.filterValue) return col.filterValue(row);
+    const v = row[col.key];
+    if (v == null) return '';
+    if (v instanceof Date) return v.toISOString();
+    return String(v);
+  };
+  const header = columns.map(c => esc(c.label)).join('\t');
+  const body = rows
+    .map(row => columns.map(c => esc(cellValue(c, row))).join('\t'))
+    .join('\n');
+  return header + '\n' + body;
+}
+
+/** Write text to the clipboard.  Uses the modern Clipboard API when
+ *  available; falls back to a hidden textarea + execCommand('copy')
+ *  for older browsers / non-secure contexts (the secure-origin check
+ *  on navigator.clipboard rejects on plain http://).  Returns true
+ *  on success so callers can show a toast. */
+export async function writeToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* fall through to legacy path */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
 }

@@ -4,7 +4,7 @@ import { Fuel, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { todayInTimeZone } from '../../utils/datetime';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import {
   PageHeader,
   EmptyState,
@@ -18,15 +18,18 @@ import type {
 } from '../../types';
 
 const entryCols: AnyColumn[] = [
-  { key: 'vehicle_name', label: 'Vehicle', sortable: true },
-  { key: 'date', label: 'Date', sortable: true },
-  { key: 'gallons', label: 'Gallons', sortable: true },
+  { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
+  { key: 'date', label: 'Date', sortable: true,
+    filterable: true, filterMode: 'date-range' },
+  { key: 'gallons', label: 'Gallons', sortable: true,
+    filterable: true, filterMode: 'range', filterRange: { min: 0, step: 10 } },
   {
     key: 'price_per_gallon', label: '$/Gal', sortable: true,
     render: (v) => `$${(v as number).toFixed(3)}`,
   },
   {
     key: 'total_cost', label: 'Total', sortable: true,
+    filterable: true, filterMode: 'range', filterRange: { min: 0, step: 50, unit: '$' },
     render: (v) => `$${(v as number).toFixed(2)}`,
   },
   {
@@ -244,7 +247,11 @@ export default function FuelCosts() {
           }
         />
       ) : (
-        <DataTable
+        <DataGrid
+          // Separate tableId per tab — the two tabs have different
+          // column sets, so sharing one id would make the persisted
+          // visibility/order blobs fight each other.
+          tableId={tab === 'entries' ? 'fuel-entries' : 'fuel-summary'}
           columns={tab === 'entries' ? entryCols : summaryCols}
           data={(tab === 'entries' ? entries : summaryData) as unknown as Record<string, unknown>[]}
           searchKey="vehicle_name"

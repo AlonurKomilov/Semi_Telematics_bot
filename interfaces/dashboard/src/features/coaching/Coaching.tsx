@@ -6,6 +6,8 @@ import { apiJSON, apiFetch } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
+import DataGrid from '../../components/DataGrid';
+import type { AnyColumn } from '../../types';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -272,41 +274,44 @@ function AssignmentsTab() {
       ) : items.length === 0 ? (
         <p className="text-sm text-muted-foreground">No assignments.</p>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted-foreground">
-            <tr>
-              <th className="py-1 pr-2">Severity</th>
-              <th className="py-1 pr-2">Driver</th>
-              <th className="py-1 pr-2">Topic</th>
-              <th className="py-1 pr-2">Reason</th>
-              <th className="py-1 pr-2">Status</th>
-              <th className="py-1 pr-2">Assigned</th>
-              <th className="py-1 pr-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((a) => (
-              <tr key={a.id} className="border-t border-border/30">
-                <td className="py-1 pr-2">{SEVERITY_ICON[a.severity] || '🟡'}</td>
-                <td className="py-1 pr-2 font-mono">{a.driver_id}</td>
-                <td className="py-1 pr-2">{a.topic_key}</td>
-                <td className="py-1 pr-2">{a.reason}</td>
-                <td className="py-1 pr-2">{a.status}</td>
-                <td className="py-1 pr-2 text-xs text-muted-foreground">{a.assigned_at}</td>
-                <td className="py-1 pr-2">
-                  {a.status !== 'cancelled' && (
+        <DataGrid
+          columns={[
+            {
+              key: 'severity', label: 'Severity', sortable: true,
+              render: (v) => <span>{SEVERITY_ICON[String(v)] || '🟡'}</span>,
+            },
+            {
+              key: 'driver_id', label: 'Driver', sortable: true,
+              render: (v) => <span className="font-mono">{String(v)}</span>,
+            },
+            { key: 'topic_key', label: 'Topic', sortable: true },
+            { key: 'reason', label: 'Reason', sortable: false },
+            { key: 'status', label: 'Status', sortable: true },
+            {
+              key: 'assigned_at', label: 'Assigned', sortable: true,
+              render: (v) => <span className="text-xs text-muted-foreground">{String(v ?? '')}</span>,
+            },
+            {
+              key: '_actions', label: '', sortable: false,
+              render: (_v, row) => {
+                const a = row as unknown as CoachingAssignment;
+                return a.status !== 'cancelled' ? (
+                  <span className="inline-flex justify-end w-full">
                     <button
                       onClick={() => onCancel(a.id)}
                       className="text-xs text-destructive underline"
                     >
                       Cancel
                     </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  </span>
+                ) : null;
+              },
+            },
+          ]}
+          data={items as unknown as Record<string, unknown>[]}
+          enableToolbar={false}
+          enablePagination={false}
+        />
       )}
     </div>
   );
@@ -502,47 +507,60 @@ function RulesTab() {
       ) : rules.length === 0 ? (
         <p className="text-sm text-muted-foreground">No rules configured.</p>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs text-muted-foreground">
-            <tr>
-              <th className="py-1 pr-2">Name</th>
-              <th className="py-1 pr-2">Kind</th>
-              <th className="py-1 pr-2">Topic</th>
-              <th className="py-1 pr-2">Trigger</th>
-              <th className="py-1 pr-2">Severity</th>
-              <th className="py-1 pr-2">Active</th>
-              <th className="py-1 pr-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {rules.map((r) => (
-              <tr key={r.id} className="border-t border-border/30">
-                <td className="py-1 pr-2">{r.name}</td>
-                <td className="py-1 pr-2">{r.kind}</td>
-                <td className="py-1 pr-2">{r.topic_key}</td>
-                <td className="py-1 pr-2 text-xs text-muted-foreground">
-                  {r.kind === 'score_threshold'
-                    ? `score ≤ ${r.score_max}`
-                    : `${r.event_type || 'any'} ≥ ${r.min_count}/${r.period_days}d`}
-                </td>
-                <td className="py-1 pr-2">{SEVERITY_ICON[r.severity] || '🟡'}</td>
-                <td className="py-1 pr-2">
+        <DataGrid
+          columns={[
+            { key: 'name', label: 'Name', sortable: true },
+            { key: 'kind', label: 'Kind', sortable: true },
+            { key: 'topic_key', label: 'Topic', sortable: true },
+            {
+              key: '_trigger', label: 'Trigger', sortable: false,
+              render: (_v, row) => {
+                const r = row as unknown as CoachingRule;
+                return (
+                  <span className="text-xs text-muted-foreground">
+                    {r.kind === 'score_threshold'
+                      ? `score ≤ ${r.score_max}`
+                      : `${r.event_type || 'any'} ≥ ${r.min_count}/${r.period_days}d`}
+                  </span>
+                );
+              },
+            },
+            {
+              key: 'severity', label: 'Severity', sortable: true,
+              render: (v) => <span>{SEVERITY_ICON[String(v)] || '🟡'}</span>,
+            },
+            {
+              key: 'active', label: 'Active', sortable: true,
+              render: (_v, row) => {
+                const r = row as unknown as CoachingRule;
+                return (
                   <button onClick={() => onToggle(r)} className="text-xs underline">
                     {r.active ? 'Disable' : 'Enable'}
                   </button>
-                </td>
-                <td className="py-1 pr-2">
-                  <button
-                    onClick={() => onDelete(r.id)}
-                    className="text-xs text-destructive underline"
-                  >
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                );
+              },
+            },
+            {
+              key: '_actions', label: '', sortable: false,
+              render: (_v, row) => {
+                const r = row as unknown as CoachingRule;
+                return (
+                  <span className="inline-flex justify-end w-full">
+                    <button
+                      onClick={() => onDelete(r.id)}
+                      className="text-xs text-destructive underline"
+                    >
+                      Delete
+                    </button>
+                  </span>
+                );
+              },
+            },
+          ]}
+          data={rules as unknown as Record<string, unknown>[]}
+          enableToolbar={false}
+          enablePagination={false}
+        />
       )}
     </div>
   );
@@ -560,25 +578,25 @@ function TopicsTab() {
   if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
 
   return (
-    <table className="w-full text-sm">
-      <thead className="text-left text-xs text-muted-foreground">
-        <tr>
-          <th className="py-1 pr-2">Key</th>
-          <th className="py-1 pr-2">Label</th>
-          <th className="py-1 pr-2">Default message</th>
-          <th className="py-1 pr-2">Active</th>
-        </tr>
-      </thead>
-      <tbody>
-        {topics.map((t) => (
-          <tr key={t.key} className="border-t border-border/30">
-            <td className="py-1 pr-2 font-mono">{t.key}</td>
-            <td className="py-1 pr-2">{t.label}</td>
-            <td className="py-1 pr-2 text-xs text-muted-foreground">{t.default_message}</td>
-            <td className="py-1 pr-2">{t.active ? '✓' : '—'}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <DataGrid
+      columns={[
+        {
+          key: 'key', label: 'Key', sortable: true,
+          render: (v) => <span className="font-mono">{String(v)}</span>,
+        },
+        { key: 'label', label: 'Label', sortable: true },
+        {
+          key: 'default_message', label: 'Default message', sortable: false,
+          render: (v) => <span className="text-xs text-muted-foreground">{String(v ?? '')}</span>,
+        },
+        {
+          key: 'active', label: 'Active', sortable: true,
+          render: (v) => <span>{v ? '✓' : '—'}</span>,
+        },
+      ]}
+      data={topics as unknown as Record<string, unknown>[]}
+      enableToolbar={false}
+      enablePagination={false}
+    />
   );
 }

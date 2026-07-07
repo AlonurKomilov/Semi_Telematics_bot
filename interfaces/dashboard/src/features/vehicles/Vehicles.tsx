@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Pencil, Plus, Truck } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import StatusBadge from '../../components/StatusBadge';
 import { Button } from '../../components/ui/button';
 import {
@@ -35,38 +35,135 @@ const UTILIZATION_PERSONAS = new Set(['owner', 'admin', 'fleet', 'accounting']);
 type StatusFilter = 'all' | 'moving' | 'idle' | 'stopped';
 const STATUS_OPTIONS: readonly StatusFilter[] = ['all', 'moving', 'idle', 'stopped'] as const;
 
+// Parse a full address into street / city / state parts.  The three
+// Location-group columns share this heuristic so they always agree on
+// how to interpret a given address.  Heuristic: split on ", "; treat
+// a trailing all-digit token as ZIP and drop it; the LAST remaining
+// part is the state, the previous is the city, everything before is
+// the street.  Falls back gracefully for lines that don't fit.
+const parseAddress = (addr: string): { street: string; city: string; state: string } => {
+  const a = addr.trim();
+  if (!a) return { street: '', city: '', state: '' };
+  const parts = a.split(',').map(s => s.trim()).filter(Boolean);
+  if (parts.length < 2) return { street: a, city: '', state: '' };
+  const last = parts[parts.length - 1];
+  const stateIdx = /^\d[\d-]*$/.test(last) ? parts.length - 2 : parts.length - 1;
+  const cityIdx = stateIdx - 1;
+  const state = parts[stateIdx] ?? '';
+  const city = cityIdx >= 0 ? (parts[cityIdx] ?? '') : '';
+  const street = cityIdx > 0 ? parts.slice(0, cityIdx).join(', ') : '';
+  return { street, city, state };
+};
+
 const ALL_COLUMNS: AnyColumn[] = [
-  { key: 'name', label: 'Vehicle' },
+  { key: 'name', label: 'Vehicle', sortable: true },
   {
     key: 'vehicle_type',
     label: 'Type',
+    sortable: true,
+    // Type is enum (truck / trailer / other) — few unique values,
+    // ideal filter target.  ``filterValue`` matches on the raw key so
+    // "truck" narrows correctly; ``filterLabel`` shows "Truck" in the
+    // dropdown instead of the code.
+    filterable: true,
+    filterValue: (row) => String((row as Vehicle).vehicle_type ?? 'truck'),
+    filterLabel: (row) => TYPE_LABEL[String((row as Vehicle).vehicle_type ?? 'truck')] ?? 'Truck',
     render: (v) => TYPE_LABEL[(v as string) || 'truck'] ?? 'Truck',
   },
-  { key: 'company', label: 'Company' },
+  {
+    key: 'company', label: 'Company', sortable: true,
+    // Company codes are enumerated per account (G1, PTG, OSY, CFT,
+    // RMR, …) — filter lets operators narrow to a subfleet in one
+    // click without typing.
+    filterable: true,
+  },
   {
     key: 'status',
     label: 'Status',
+    sortable: true,
+    // Status is moving / idle / stopped — same 3-value pattern as the
+    // top-of-page chip row, but reachable per-column too.  Filter
+    // matches the raw string; display capitalises it.
+    filterable: true,
+    filterValue: (row) => String((row as Vehicle).status ?? ''),
+    filterLabel: (row) => {
+      const s = String((row as Vehicle).status ?? '').toLowerCase();
+      return s ? s.charAt(0).toUpperCase() + s.slice(1) : '(none)';
+    },
     render: (v) => <StatusBadge status={v as string} />,
   },
-  { key: 'address', label: 'Location' },
+  // ── Location group: Street | City | State ─────────────────
+  // The full address is split into three columns bracketed under one
+  // "Location" group header (the ``group`` field).  Each piece owns
+  // its own sort + filter, and no text is duplicated across columns.
+  // City / State get select-mode filters (few distinct values);
+  // Street stays filter-less (unique per row — the global search
+  // covers it since ``searchKey`` includes ``address``).
+  {
+    key: 'address', label: 'Street', sortable: true,
+    group: 'Location',
+    // Street portion only; the full raw address stays available as a
+    // hover tooltip so nothing is lost.
+    render: (v) => {
+      const full = String(v ?? '');
+      const { street } = parseAddress(full);
+      return full
+        ? <span title={full}>{street || full}</span>
+        : <span className="text-muted-foreground">—</span>;
+    },
+  },
+  {
+    key: '_city', label: 'City', sortable: true,
+    group: 'Location',
+    filterable: true,
+    filterValue: (row) => parseAddress(String((row as Vehicle).address ?? '')).city || '—',
+    render: (_v, row) => parseAddress(String((row as Vehicle).address ?? '')).city || <span className="text-muted-foreground">—</span>,
+  },
+  {
+    key: '_state', label: 'State', sortable: true,
+    group: 'Location',
+    filterable: true,
+    filterValue: (row) => parseAddress(String((row as Vehicle).address ?? '')).state || '—',
+    render: (_v, row) => parseAddress(String((row as Vehicle).address ?? '')).state || <span className="text-muted-foreground">—</span>,
+  },
+  // Numeric columns get range-mode filter (Min/Max number inputs).
+  // Bounds auto-compute from live data; ``filterRange.unit`` is what
+  // shows next to the inputs in the popover.  ``step`` matches the
+  // display precision (whole %/h/mi — no half-percents).
   {
     key: 'fuel_percent',
     label: 'Fuel',
+    sortable: true,
+    filterable: true,
+    filterMode: 'range',
+    filterRange: { min: 0, max: 100, step: 1, unit: '%' },
     render: (v) => v != null ? `${Math.round(v as number)}%` : '—',
   },
   {
     key: 'def_percent',
     label: 'DEF',
+    sortable: true,
+    filterable: true,
+    filterMode: 'range',
+    filterRange: { min: 0, max: 100, step: 1, unit: '%' },
     render: (v) => v != null ? `${Math.round(v as number)}%` : '—',
   },
   {
     key: 'fault_count',
     label: 'Faults',
+    sortable: true,
+    filterable: true,
+    filterMode: 'range',
+    filterRange: { min: 0, step: 1 },
     render: (v) => (v as number) > 0 ? <span className="text-warn font-medium">{v as number}</span> : '0',
   },
   {
     key: 'odometer_miles',
     label: 'Odometer',
+    sortable: true,
+    filterable: true,
+    filterMode: 'range',
+    filterRange: { min: 0, step: 1000, unit: 'mi' },
     render: (v) => v != null
       ? `${Math.round(v as number).toLocaleString()} mi`
       : <span className="text-muted-foreground">—</span>,
@@ -74,6 +171,10 @@ const ALL_COLUMNS: AnyColumn[] = [
   {
     key: 'engine_hours',
     label: 'Engine Hrs',
+    sortable: true,
+    filterable: true,
+    filterMode: 'range',
+    filterRange: { min: 0, step: 100, unit: 'h' },
     render: (v) => v != null
       ? `${Math.round(v as number).toLocaleString()} h`
       : <span className="text-muted-foreground">—</span>,
@@ -82,9 +183,11 @@ const ALL_COLUMNS: AnyColumn[] = [
 
 // Universal columns rendered for every persona — the identity + status
 // fields a fleet manager, dispatcher, safety, HR, or accounting user
-// all need to recognize a truck.
+// all need to recognize a truck.  ``_city`` + ``_state`` are included
+// so every persona has the option to unhide + filter by them, but
+// they start ``defaultHidden`` so they don't crowd the default view.
 const UNIVERSAL_COLUMN_KEYS = new Set([
-  'name', 'vehicle_type', 'company', 'status', 'address',
+  'name', 'vehicle_type', 'company', 'status', 'address', '_city', '_state',
 ]);
 
 // Per-persona column visibility.  Mirrors the strict-binding rule from
@@ -261,10 +364,21 @@ export default function Vehicles() {
           }
         />
       ) : (
-        <DataTable
+        <DataGrid
+          // Opts into the full column-controls layer: 3-dot menu on
+          // every column header (Sort / Filter / Pin / Hide), Manage
+          // Columns popover, drag-to-reorder, Export CSV button, and
+          // per-user layout persistence via useUserPreference.  Match
+          // the toolkit Maintenance Tasks has — this table is bigger
+          // (typically 50-100+ trucks) and benefits even more from
+          // sort/pin/hide.
+          tableId="vehicles"
           columns={columns}
           data={vehicles as unknown as Record<string, unknown>[]}
-          searchKey="name"
+          // Multi-field search — an operator typing "PTG" or "moving"
+          // or a street name should all narrow the list, not just the
+          // vehicle number.
+          searchKey={['name', 'company', 'status', 'address']}
           onRowClick={(row) => {
             // Route is mounted at root (`vehicles/:name`), not under
             // `/fleet/`; the persona context (fleet./dispatch./safety.)

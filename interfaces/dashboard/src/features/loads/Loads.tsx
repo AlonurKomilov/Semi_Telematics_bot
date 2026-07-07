@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Package, Plus } from 'lucide-react';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
 } from '../../components/shell';
@@ -166,7 +166,7 @@ export default function Loads() {
         </p>
       )}
       {!isLoading && error == null && loads.length > 0 && (
-        <DataTable
+        <DataGrid
           // ``tableId`` opts into the column-controls layer (3-dot
           // menu / pin / hide / reorder / Export / per-user layout).
           // Also what makes the ``filterable`` columns below actually

@@ -6,7 +6,7 @@ import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import {
   PageHeader,
   EmptyState,
@@ -26,7 +26,7 @@ const TemplateEditorInline = lazy(() => import('./TemplateEditor'));
 
 /**
  * Fleet-side PTI list.  Mirrors the layout of the maintenance Tasks
- * page so the visual grammar (filter chips, DataTable, right-side
+ * page so the visual grammar (filter chips, DataGrid, right-side
  * drawer) feels identical across the two compliance modules.
  *
  * Filters: All · Pending Review · Approved · Needs Service · Rejected ·
@@ -103,17 +103,30 @@ function _formatDate(iso: string | null, tz?: string): string {
 const buildColumns = (tz?: string): AnyColumn[] => [
   { key: 'user_id',       label: 'Driver', sortable: true,
     render: (v) => <span className="font-mono text-xs">user {String(v ?? '—')}</span> },
-  { key: 'vehicle_name',  label: 'Vehicle', sortable: true,
+  { key: 'vehicle_name',  label: 'Vehicle', sortable: true, filterable: true,
     render: (v) => <span className="font-mono">{String(v ?? '—')}</span> },
-  { key: 'inspection_type', label: 'Type', sortable: true,
+  { key: 'inspection_type', label: 'Type', sortable: true, filterable: true,
+    filterValue: (row) => String((row as PTIInspectionRow).inspection_type ?? ''),
+    filterLabel: (row) => {
+      const s = String((row as PTIInspectionRow).inspection_type ?? '');
+      return s ? s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '(none)';
+    },
     render: (v) => <span className="capitalize">{String(v ?? '—')}</span> },
   { key: 'submitted_at',  label: 'Submitted', sortable: true,
+    filterable: true, filterMode: 'date-range',
     render: (v) => _formatDate(typeof v === 'string' ? v : null, tz) },
   { key: 'due_by',        label: 'Due', sortable: true,
+    filterable: true, filterMode: 'date-range',
     render: (v) => _formatDate(typeof v === 'string' ? v : null, tz) },
-  { key: 'defects_count', label: 'Defects',
+  { key: 'defects_count', label: 'Defects', sortable: true,
+    filterable: true, filterMode: 'range', filterRange: { min: 0, step: 1 },
     render: (_v, row) => <DefectsCell row={row as PTIInspectionRow} /> },
-  { key: 'status',        label: 'Status', sortable: true,
+  { key: 'status',        label: 'Status', sortable: true, filterable: true,
+    filterValue: (row) => String((row as PTIInspectionRow).status ?? ''),
+    filterLabel: (row) => {
+      const s = String((row as PTIInspectionRow).status ?? '');
+      return s ? s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '(none)';
+    },
     render: (_v, row) => <StatusChip row={row as PTIInspectionRow} /> },
   { key: 'reviewed_at',   label: 'Reviewed',
     render: (v) => _formatDate(typeof v === 'string' ? v : null, tz) },
@@ -394,7 +407,8 @@ export default function Inspections() {
         />
       ) : (
         <>
-          <DataTable
+          <DataGrid
+            tableId="inspections"
             columns={columns}
             data={rows as unknown as Record<string, unknown>[]}
             searchKey="vehicle_name"

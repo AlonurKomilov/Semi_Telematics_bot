@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRoleView } from '../../context/RoleViewContext';
 import { Gauge, SlidersHorizontal } from 'lucide-react';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
 } from '../../components/shell';
@@ -164,7 +164,7 @@ export default function Kpi() {
         />
       )}
       {!isLoading && error == null && rows.length > 0 && (
-        <DataTable
+        <DataGrid
           // Enables the 3-dot column menu — which is also the only
           // entry point to the filter popover, so the ``filterable``
           // column config below was unreachable without this.

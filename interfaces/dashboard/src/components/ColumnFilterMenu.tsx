@@ -20,7 +20,7 @@ import { cn } from '../lib/utils';
  *
  * Selection semantics:
  *   - OR within column (any selected value matches)
- *   - AND across columns (DataTable composes via @tanstack columnFilters)
+ *   - AND across columns (DataGrid composes via @tanstack columnFilters)
  *   - Empty selection = no filter on this column (same as before opening)
  *   - Live-updates as boxes tick (no Apply button — matches Notion / Linear UX)
  *
@@ -38,9 +38,24 @@ export interface ColumnFilterOption {
   label: string;
 }
 
-interface ColumnFilterMenuProps {
+interface CommonProps {
   /** Display name shown above the option list. */
   label: string;
+  /** Controlled open state — the column's 3-dot menu's "Filter…"
+   *  item flips this true to open the popover.  The header has no
+   *  inline trigger anymore (per UX: column label is just text +
+   *  sort, filter lives behind the 3-dot menu). */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** Anchor element the popover positions against.  Usually the
+   *  column header <th> so the popup appears just below the header
+   *  the operator clicked through to.  Pass ``null`` and the
+   *  positioner falls back to the document body. */
+  anchor: HTMLElement | null;
+}
+
+type SelectProps = CommonProps & {
+  mode?: 'select';
   /** All available options from the column (uniques computed by caller).
    *  Each option carries both the match-value and the display label. */
   options: ColumnFilterOption[];
@@ -50,15 +65,46 @@ interface ColumnFilterMenuProps {
   value: string[];
   /** Called on every tick / clear — caller updates table state. */
   onChange: (next: string[]) => void;
-  /** Trigger element — usually the column header label.  Receives the
-   *  same hover / focus treatment as a regular header. */
-  children: React.ReactNode;
+};
+
+type RangeProps = CommonProps & {
+  mode: 'range';
+  /** ``[min, max]`` inclusive; ``null`` on either side = one-sided
+   *  range ("≥ 50" / "≤ 200").  ``[null, null]`` = no filter. */
+  value: [number | null, number | null];
+  onChange: (next: [number | null, number | null]) => void;
+  /** Data-driven bounds + optional unit / step.  Placeholder text on
+   *  the Min/Max inputs shows the actual min/max in the data so the
+   *  operator knows what range they're bounding. */
+  bounds: { min: number; max: number; step: number; unit: string };
+};
+
+type DateRangeProps = CommonProps & {
+  mode: 'date-range';
+  /** ``[isoFrom, isoTo]`` (YYYY-MM-DD); ``null`` on either side = one-
+   *  sided range.  ``[null, null]`` = no filter.  Upper bound is
+   *  applied inclusive-to-end-of-day by the DataGrid filterFn. */
+  value: [string | null, string | null];
+  onChange: (next: [string | null, string | null]) => void;
+  /** Earliest + latest date in the data (ISO YYYY-MM-DD).  Shown as
+   *  placeholder + "Data range" hint so the operator knows the span
+   *  they're bounding. */
+  bounds: { min: string; max: string };
+};
+
+type ColumnFilterMenuProps = SelectProps | RangeProps | DateRangeProps;
+
+export default function ColumnFilterMenu(props: ColumnFilterMenuProps) {
+  if (props.mode === 'range') return <RangeFilter {...props} />;
+  if (props.mode === 'date-range') return <DateRangeFilter {...props} />;
+  return <SelectFilter {...props} />;
 }
 
-export default function ColumnFilterMenu({
-  label, options, counts, value, onChange, children,
-}: ColumnFilterMenuProps) {
-  const [open, setOpen] = useState(false);
+function SelectFilter({
+  label, options, counts, value, onChange,
+  open, onOpenChange, anchor,
+}: SelectProps) {
+  const setOpen = onOpenChange;
   const [search, setSearch] = useState('');
   const selectedSet = useMemo(() => new Set(value), [value]);
 
@@ -102,29 +148,9 @@ export default function ColumnFilterMenu({
 
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
-      <PopoverPrimitive.Trigger
-        // Forward as a button so keyboard users land on the trigger
-        // via Tab + can open with Enter / Space (the underlying
-        // base-ui Popover handles aria-haspopup + expanded for us).
-        render={(props) => (
-          <button
-            type="button"
-            {...props}
-            // stopPropagation so clicking the label doesn't bubble to
-            // a wrapping TableHead onClick (which the legacy non-
-            // filterable header used for sort).  Sort is its own
-            // button next to the label, not a parent gesture.
-            onClick={(e) => {
-              e.stopPropagation();
-              props.onClick?.(e);
-            }}
-          >
-            {children}
-          </button>
-        )}
-      />
       <PopoverPrimitive.Portal>
         <PopoverPrimitive.Positioner
+          anchor={anchor ?? undefined}
           align="start"
           sideOffset={6}
           className="z-50 outline-none"
@@ -209,7 +235,214 @@ export default function ColumnFilterMenu({
                   onClick={() => onChange([])}
                   className="w-full px-3 py-2 text-2xs text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center justify-center gap-1"
                 >
-                  <X size={11} aria-hidden="true" />
+                  <X size={12} aria-hidden="true" />
+                  Clear {label} filter
+                </button>
+              </div>
+            )}
+          </PopoverPrimitive.Popup>
+        </PopoverPrimitive.Positioner>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
+  );
+}
+
+/**
+ * Range-filter variant — two numeric inputs (Min / Max) for
+ * continuous columns like Fuel %, Odometer, Engine Hours.
+ *
+ *   ┌──────────────────────────┐
+ *   │ Filter Odometer          │
+ *   ├──────────────────────────┤
+ *   │ Min  [  50000  ]  mi     │
+ *   │ Max  [ 300000  ]  mi     │
+ *   │      Range: 0 – 1,051,797 │
+ *   ├──────────────────────────┤
+ *   │ Clear Odometer filter    │
+ *   └──────────────────────────┘
+ *
+ * Semantics: inclusive bounds ([min ≤ n ≤ max]); either side can be
+ * blank for a one-sided filter ("≤ 100" or "≥ 50000"); blank/blank
+ * clears.  Placeholder text carries the data-driven bounds so the
+ * operator knows what range they're bounding.
+ */
+function RangeFilter({
+  label, value, onChange, bounds,
+  open, onOpenChange, anchor,
+}: RangeProps) {
+  const setOpen = onOpenChange;
+  const [minStr, maxStr] = [
+    value[0] == null ? '' : String(value[0]),
+    value[1] == null ? '' : String(value[1]),
+  ];
+  const parse = (s: string): number | null => {
+    if (s.trim() === '') return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  };
+  const active = value[0] != null || value[1] != null;
+  // Format big numbers with locale commas so "1,051,797" reads
+  // instantly.  Small values (percentages) skip commas naturally.
+  const fmt = (n: number) => n.toLocaleString();
+  return (
+    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Positioner
+          anchor={anchor ?? undefined}
+          align="start"
+          sideOffset={6}
+          className="z-50 outline-none"
+        >
+          <PopoverPrimitive.Popup className="w-56 bg-popover text-popover-foreground border border-border rounded-md shadow-lg overflow-hidden">
+            <div className="px-3 py-2 border-b border-border flex items-baseline justify-between">
+              <span className="text-xs font-medium text-foreground">
+                Filter {label}
+              </span>
+              {active && (
+                <span className="text-2xs text-muted-foreground">active</span>
+              )}
+            </div>
+            <div className="p-3 space-y-2">
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <span className="w-8 text-muted-foreground">Min</span>
+                <input
+                  type="number"
+                  value={minStr}
+                  step={bounds.step}
+                  placeholder={fmt(bounds.min)}
+                  onChange={(e) => onChange([parse(e.target.value), value[1]])}
+                  className="flex-1 min-w-0 bg-muted text-foreground placeholder:text-muted-foreground rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                {bounds.unit && (
+                  <span className="w-6 text-muted-foreground text-2xs">
+                    {bounds.unit}
+                  </span>
+                )}
+              </label>
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <span className="w-8 text-muted-foreground">Max</span>
+                <input
+                  type="number"
+                  value={maxStr}
+                  step={bounds.step}
+                  placeholder={fmt(bounds.max)}
+                  onChange={(e) => onChange([value[0], parse(e.target.value)])}
+                  className="flex-1 min-w-0 bg-muted text-foreground placeholder:text-muted-foreground rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                {bounds.unit && (
+                  <span className="w-6 text-muted-foreground text-2xs">
+                    {bounds.unit}
+                  </span>
+                )}
+              </label>
+              <p className="text-2xs text-muted-foreground pt-1">
+                Data range: {fmt(bounds.min)}{bounds.unit && ` ${bounds.unit}`}
+                {' – '}
+                {fmt(bounds.max)}{bounds.unit && ` ${bounds.unit}`}
+              </p>
+            </div>
+            {active && (
+              <div className="border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => onChange([null, null])}
+                  className="w-full px-3 py-2 text-2xs text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center justify-center gap-1"
+                >
+                  <X size={12} aria-hidden="true" />
+                  Clear {label} filter
+                </button>
+              </div>
+            )}
+          </PopoverPrimitive.Popup>
+        </PopoverPrimitive.Positioner>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
+  );
+}
+
+/**
+ * Date-range filter — two native ``<input type="date">`` pickers
+ * (From / To) for date/timestamp columns.  Same shape as RangeFilter
+ * but with browser-native date pickers instead of numeric inputs, so
+ * we don't need a date-picker library and the OS-native calendar UI
+ * comes for free.
+ *
+ *   ┌──────────────────────────┐
+ *   │ Filter Submitted  active │
+ *   ├──────────────────────────┤
+ *   │ From  [ 2025-01-01 ]     │
+ *   │ To    [ 2025-12-31 ]     │
+ *   │      Data range: 2024-05-01 – 2026-06-30 │
+ *   ├──────────────────────────┤
+ *   │ Clear Submitted filter   │
+ *   └──────────────────────────┘
+ *
+ * Semantics: inclusive [from ≤ date ≤ to]; either side may be blank
+ * for a one-sided filter ("after 2025-01-01" / "before 2025-12-31");
+ * blank/blank clears.  The DataGrid filterFn extends the "To" bound
+ * to end-of-day so a single-day filter keeps the whole day of data.
+ */
+function DateRangeFilter({
+  label, value, onChange, bounds,
+  open, onOpenChange, anchor,
+}: DateRangeProps) {
+  const setOpen = onOpenChange;
+  const active = value[0] != null || value[1] != null;
+  return (
+    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Positioner
+          anchor={anchor ?? undefined}
+          align="start"
+          sideOffset={6}
+          className="z-50 outline-none"
+        >
+          <PopoverPrimitive.Popup className="w-64 bg-popover text-popover-foreground border border-border rounded-md shadow-lg overflow-hidden">
+            <div className="px-3 py-2 border-b border-border flex items-baseline justify-between">
+              <span className="text-xs font-medium text-foreground">
+                Filter {label}
+              </span>
+              {active && (
+                <span className="text-2xs text-muted-foreground">active</span>
+              )}
+            </div>
+            <div className="p-3 space-y-2">
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <span className="w-10 text-muted-foreground">From</span>
+                <input
+                  type="date"
+                  value={value[0] ?? ''}
+                  min={bounds.min || undefined}
+                  max={bounds.max || undefined}
+                  onChange={(e) => onChange([e.target.value || null, value[1]])}
+                  className="flex-1 min-w-0 bg-muted text-foreground rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </label>
+              <label className="flex items-center gap-2 text-xs text-foreground">
+                <span className="w-10 text-muted-foreground">To</span>
+                <input
+                  type="date"
+                  value={value[1] ?? ''}
+                  min={bounds.min || undefined}
+                  max={bounds.max || undefined}
+                  onChange={(e) => onChange([value[0], e.target.value || null])}
+                  className="flex-1 min-w-0 bg-muted text-foreground rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+              </label>
+              {(bounds.min || bounds.max) && (
+                <p className="text-2xs text-muted-foreground pt-1">
+                  Data range: {bounds.min || '—'} – {bounds.max || '—'}
+                </p>
+              )}
+            </div>
+            {active && (
+              <div className="border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => onChange([null, null])}
+                  className="w-full px-3 py-2 text-2xs text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center justify-center gap-1"
+                >
+                  <X size={12} aria-hidden="true" />
                   Clear {label} filter
                 </button>
               </div>

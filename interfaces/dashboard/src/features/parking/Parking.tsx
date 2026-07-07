@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ParkingSquare } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import {
   PageHeader,
   EmptyState,
@@ -60,29 +60,44 @@ function mapsUrl(lat: number, lng: number): string {
 
 /* ── History table columns ─────────────────────────────────── */
 
+const titleCaseCls = (s: string) =>
+  s ? s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '(none)';
+
 function makeHistoryColumns(tz: string): AnyColumn[] {
   return [
-  { key: 'vehicle_name', label: 'Vehicle' },
-  { key: 'company_code', label: 'Company' },
+  { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
+  { key: 'company_code', label: 'Company', sortable: true, filterable: true },
   {
     key: 'location_class',
     label: 'Classification',
+    sortable: true,
+    filterable: true,
+    filterValue: (row) => String((row as { location_class?: string }).location_class ?? ''),
+    filterLabel: (row) => titleCaseCls(String((row as { location_class?: string }).location_class ?? '')),
     render: (v) => <ClassBadge cls={v as string} />,
   },
   {
     key: 'alert_level',
     label: 'Alert Level',
+    sortable: true,
+    filterable: true,
+    filterValue: (row) => String((row as { alert_level?: string }).alert_level ?? ''),
+    filterLabel: (row) => titleCaseCls(String((row as { alert_level?: string }).alert_level ?? '')),
     render: (v) => <AlertBadge level={v as string} />,
   },
   { key: 'address', label: 'Address' },
   {
     key: 'duration_hours',
     label: 'Duration',
+    sortable: true,
+    filterable: true, filterMode: 'range', filterRange: { min: 0, step: 1, unit: 'h' },
     render: (v) => formatDuration(v as number),
   },
   {
     key: 'first_stopped',
     label: 'Stopped At',
+    sortable: true,
+    filterable: true, filterMode: 'date-range',
     render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—',
   },
   {
@@ -349,10 +364,11 @@ export default function Parking() {
           </div>
         )
       ) : (
-        <DataTable
+        <DataGrid
+          tableId="parking-history"
           columns={makeHistoryColumns(tz)}
           data={events as unknown as Record<string, unknown>[]}
-          searchKey="vehicle_name"
+          searchKey={['vehicle_name', 'address']}
         />
       )}
 

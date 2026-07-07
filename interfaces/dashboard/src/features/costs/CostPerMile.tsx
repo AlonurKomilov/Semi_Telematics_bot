@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { DollarSign } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { toneText, type Tone } from '../../lib/status';
-import DataTable from '../../components/DataTable';
+import DataGrid from '../../components/DataGrid';
 import {
   PageHeader,
   EmptyState,
@@ -16,9 +16,10 @@ import type { CPMVehicle, CPMResponse, AnyColumn } from '../../types';
 const CpmChart = lazy(() => import('@/features/costs/CpmChart'));
 
 const cols: AnyColumn[] = [
-  { key: 'vehicle_name', label: 'Vehicle', sortable: true },
+  { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
   {
     key: 'total_miles', label: 'Miles', sortable: true,
+    filterable: true, filterMode: 'range', filterRange: { min: 0, step: 500, unit: 'mi' },
     render: (v) => `${(v as number).toLocaleString()}`,
   },
   {
@@ -27,10 +28,13 @@ const cols: AnyColumn[] = [
   },
   {
     key: 'total_cost', label: 'Total Cost', sortable: true,
+    filterable: true, filterMode: 'range', filterRange: { min: 0, step: 100, unit: '$' },
     render: (v) => `$${(v as number).toLocaleString()}`,
   },
   {
     key: 'cpm', label: 'Cost per Mile', sortable: true,
+    // The triage filter: "which trucks cost more than $0.60/mi?"
+    filterable: true, filterMode: 'range', filterRange: { min: 0, step: 0.05, unit: '$' },
     render: (v) => {
       const n = v as number;
       // Higher cost-per-mile is worse: danger above $0.60, warn above $0.40.
@@ -40,6 +44,7 @@ const cols: AnyColumn[] = [
   },
   {
     key: 'mpg', label: 'MPG', sortable: true,
+    filterable: true, filterMode: 'range', filterRange: { min: 0, step: 0.5 },
     render: (v) => {
       const n = v as number;
       // Lower fuel economy is worse: danger below 5 MPG, warn below 7.
@@ -123,7 +128,8 @@ export default function CostPerMile() {
             </Suspense>
           </div>
 
-          <DataTable
+          <DataGrid
+            tableId="cost-per-mile"
             columns={cols}
             data={vehicles as unknown as Record<string, unknown>[]}
             searchKey="vehicle_name"
