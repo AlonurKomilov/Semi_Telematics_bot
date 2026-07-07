@@ -174,11 +174,15 @@ async def pending_alerts(
     # it so "last 30 days" actually bounds the historical set.
     days: int | None = Query(None, ge=1, le=90),
     page: int = Query(1, ge=1, description="Page number"),
-    # Cap raised 200 → 500 so a fleet with 300+ active logical alerts
-    # can render in one round-trip on the dashboard / mini-app.  The
+    # Cap raised 500 → 2000: the dashboard's DataTable loads the whole
+    # filter window in one request so client-side filter / sort /
+    # group / paginate stay honest (page-scoped filtering on a 50-row
+    # slice silently hid matches on later pages).  A 2000-row JSON
+    # payload is < ~1 MB; beyond that the dashboard shows a truncation
+    # notice and the server pager remains the escape hatch.  The
     # default stays 50 for backwards compat with any client that
     # doesn't pass page_size.
-    page_size: int = Query(50, ge=1, le=500, description="Items per page (max 500)"),
+    page_size: int = Query(50, ge=1, le=2000, description="Items per page (max 2000)"),
     user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -433,11 +437,15 @@ async def alert_history(
     status: str | None = Query(None, description="Filter: acknowledged, expired, active"),
     severity: str | None = Query(None, description="Filter: critical, warning, info"),
     page: int = Query(1, ge=1, description="Page number"),
-    # Cap raised 200 → 500 so a fleet with 300+ active logical alerts
-    # can render in one round-trip on the dashboard / mini-app.  The
+    # Cap raised 500 → 2000: the dashboard's DataTable loads the whole
+    # filter window in one request so client-side filter / sort /
+    # group / paginate stay honest (page-scoped filtering on a 50-row
+    # slice silently hid matches on later pages).  A 2000-row JSON
+    # payload is < ~1 MB; beyond that the dashboard shows a truncation
+    # notice and the server pager remains the escape hatch.  The
     # default stays 50 for backwards compat with any client that
     # doesn't pass page_size.
-    page_size: int = Query(50, ge=1, le=500, description="Items per page (max 500)"),
+    page_size: int = Query(50, ge=1, le=2000, description="Items per page (max 2000)"),
     user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
     tenant_db=Depends(get_tenant_db),
 ):
