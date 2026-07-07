@@ -65,3 +65,10 @@
 
 ## Ethics gate
 All APPLIED patterns and proposed OPPORTUNITY fixes passed the explain-to-the-user's-face test: expiry dates are real, effort claims are honest (keep "10–15 minutes" truthful if the template grows), and no fake scarcity/progress is proposed. Zero DARK-PATTERN-RISK findings.
+
+## Outcome (same-day)
+Top-3 actions implemented 2026-07-06: fill-progress bar + counter and the
+expiry date line on the public form (`PublicCarrierIntake.tsx`), and the
+conditional "already filled from our records" line in the invite email
+(`prefilled` flag computed from the carrier-visible sheet only). The
+maintenance-overlay copy item (low impact) remains open.

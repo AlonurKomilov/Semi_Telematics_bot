@@ -152,15 +152,30 @@ def send_verification_request_email(
 
 def send_carrier_intake_email(
     *, to: str, carrier_name: str, agency_name: str, intake_url: str,
-    expires_days: int,
+    expires_days: int, prefilled: bool = False,
 ) -> bool:
     """Invite an external carrier to fill in their own profile sheet
     (requirements, pay, benefits) via the tokenized public link a
-    recruiting manager minted for them."""
+    recruiting manager minted for them.
+
+    ``prefilled=True`` (the profile already holds real content) adds an
+    honest "review and complete the rest" line that lowers the perceived
+    effort — it MUST stay conditional so an empty sheet never claims to
+    be partly done."""
     if not is_email_configured() or not to:
         return False
     safe_carrier = html.escape(carrier_name or "your company")
     safe_agency = html.escape(agency_name or _company_name())
+    prefilled_html = (
+        " Some fields are already filled from our records &mdash; you only "
+        "need to review and complete the rest."
+        if prefilled else ""
+    )
+    prefilled_text = (
+        " Some fields are already filled from our records — you only need "
+        "to review and complete the rest."
+        if prefilled else ""
+    )
     inner = (
         f'<h2 style="margin:0 0 12px;font-size:18px">Complete your carrier '
         f"profile for {safe_agency}</h2>"
@@ -168,7 +183,8 @@ def send_carrier_intake_email(
         f"<b>{safe_carrier}</b> and would like your hiring requirements, pay "
         f"and benefits straight from the source — so recruiters present your "
         f"company accurately to driver candidates.</p>"
-        f'<p style="margin:0 0 16px">The form takes about 10&ndash;15 minutes. '
+        f'<p style="margin:0 0 16px">The form takes about 10&ndash;15 minutes.'
+        f"{prefilled_html} "
         f"You can leave any field blank and come back to revise your answers "
         f"any time while the link is active.</p>"
         f'<p style="margin:0 0 24px">'
@@ -185,7 +201,8 @@ def send_carrier_intake_email(
             body=(
                 f"{agency_name or _company_name()} recruits drivers for "
                 f"{carrier_name or 'your company'} and would like your hiring "
-                "requirements, pay and benefits straight from the source.\n\n"
+                "requirements, pay and benefits straight from the source."
+                f"{prefilled_text}\n\n"
                 f"Fill in your profile here: {intake_url}\n\n"
                 f"The link is private to your company and expires in "
                 f"{int(expires_days)} days. You can revise your answers any "

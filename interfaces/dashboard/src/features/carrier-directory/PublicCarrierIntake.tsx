@@ -11,11 +11,12 @@
 // apply links).  Answers autosave to localStorage per token so an
 // accidental tab-close loses nothing; the link stays live until expiry so
 // the carrier can come back and revise (each submit overwrites).
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, CheckCircle2, Plus, X, Loader2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
+import { formatDay } from '../../utils/datetime';
 import { SECTIONS, mergeRows } from './fields';
 import type { CarrierContent, FieldRow } from './fields';
 
@@ -64,10 +65,31 @@ export default function PublicCarrierIntake() {
   const [state, setState] = useState<'loading' | 'invalid' | 'ready' | 'done'>('loading');
   const [carrierName, setCarrierName] = useState('');
   const [agency, setAgency] = useState('');
+  const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState('');
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Goal-gradient counter: filled vs total fields, live.  Thanks to the
+  // server prefill this usually starts above zero — the form reads as
+  // "already under way", not a blank mountain.  Purely informational:
+  // every field stays optional and submit is never blocked by it.
+  const progress = useMemo(() => {
+    if (!draft) return { filled: 0, total: 0 };
+    let filled = 0;
+    let total = 4; // website, video, experience summary, submission process
+    for (const v of [draft.website, draft.video_url, draft.experience_summary, draft.application_process]) {
+      if (v.trim()) filled++;
+    }
+    for (const s of PUBLIC_ROW_SECTIONS) {
+      for (const r of draft.rows[s.key]) {
+        total++;
+        if (r.value.trim() && r.label.trim()) filled++;
+      }
+    }
+    return { filled, total };
+  }, [draft]);
 
   useEffect(() => {
     (async () => {
@@ -78,6 +100,7 @@ export default function PublicCarrierIntake() {
         const data = (await r.json()) as IntakePayload;
         setCarrierName(data.carrier.name);
         setAgency(data.agency);
+        setExpiresAt(data.expires_at);
         // A locally saved draft (tab closed mid-fill) wins over the server
         // copy — it is strictly newer.
         let d = buildDraft(data.carrier);
@@ -267,14 +290,30 @@ export default function PublicCarrierIntake() {
       })}
 
       {/* Submit */}
-      <div className="flex flex-col items-end gap-2 border-t border-border pt-6">
-        {submitErr && <p className="text-sm text-danger">{submitErr}</p>}
-        <Button onClick={submit} disabled={submitting}>
-          {submitting ? 'Sending…' : `Send to ${agency || 'the recruiting team'}`}
-        </Button>
-        <p className="text-xs text-muted-foreground">
-          You can reopen this link to revise your answers while it stays active.
-        </p>
+      <div className="flex flex-col gap-3 border-t border-border pt-6">
+        {/* Live fill progress — starts above zero when the sheet came prefilled. */}
+        <div className="flex items-center gap-3">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${progress.total ? Math.round((progress.filled / progress.total) * 100) : 0}%` }}
+            />
+          </div>
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {progress.filled} of {progress.total} fields filled
+          </span>
+        </div>
+        <div className="flex flex-col items-end gap-2">
+          {submitErr && <p className="text-sm text-danger">{submitErr}</p>}
+          <Button onClick={submit} disabled={submitting}>
+            {submitting ? 'Sending…' : `Send to ${agency || 'the recruiting team'}`}
+          </Button>
+          <p className="text-xs text-muted-foreground">
+            {expiresAt
+              ? `This link stays active until ${formatDay(expiresAt)} — you can revise your answers until then.`
+              : 'You can reopen this link to revise your answers while it stays active.'}
+          </p>
+        </div>
       </div>
     </div>
   );

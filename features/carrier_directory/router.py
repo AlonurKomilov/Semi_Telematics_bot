@@ -244,11 +244,21 @@ async def create_intake_link(
             acct_name = getattr(acct, "name", "") or ""
         except Exception:
             pass
+        # Honest effort-lowering line: only claim "partly filled" when the
+        # carrier-visible sheet really holds content.
+        pub = _public_content(row.get("content"))
+        prefilled = bool(
+            (row.get("website") or "").strip()
+            or (row.get("video_url") or "").strip()
+            or (row.get("experience_summary") or "").strip()
+            or any(v.strip() if isinstance(v, str) else v for v in pub.values())
+        )
         from capabilities.email.application_emails import send_carrier_intake_email
         emailed = await asyncio.to_thread(
             send_carrier_intake_email,
             to=email, carrier_name=row["name"], agency_name=acct_name,
             intake_url=url, expires_days=body.expires_in_days,
+            prefilled=prefilled,
         )
     return {"url": url, "token": token, "expires_at": expires_at, "emailed": emailed}
 
