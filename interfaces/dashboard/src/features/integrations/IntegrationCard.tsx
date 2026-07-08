@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import StatusBadge from '../../components/StatusBadge';
 import { Button } from '../../components/ui/button';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { toneClasses } from '../../lib/status';
 import {
   getBackfillStatus,
@@ -77,6 +78,12 @@ type ActionFeedback = {
   kind: 'success' | 'error' | 'info';
   message: string;
 } | null;
+
+const HISTORY_WINDOW_ITEMS = [
+  { value: '7',  label: 'Last 7 days' },
+  { value: '30', label: 'Last 30 days' },
+  { value: '90', label: 'Last 90 days' },
+];
 
 export default function IntegrationCard({
   entry,
@@ -426,18 +433,20 @@ export default function IntegrationCard({
           {(entry.capabilities.includes('history_backfill') || entry.kind === 'tms') && (
             <div className="mb-3 flex items-center gap-2">
               <span className="text-2xs text-muted-foreground">History window</span>
-              <select
-                value={historyWindow}
-                onChange={(e) => setHistoryWindow(Number(e.target.value))}
+              <Select
+                value={String(historyWindow)}
+                onValueChange={(v) => setHistoryWindow(Number(v))}
                 disabled={triggering || backfillRunning}
-                className="bg-muted border border-border rounded text-2xs text-foreground px-1.5 py-1 focus:outline-none focus:border-ring disabled:opacity-50"
-                title="How many days of history each sync on this card pulls."
-                aria-label="History window"
+                items={HISTORY_WINDOW_ITEMS}
               >
-                <option value={7}>Last 7 days</option>
-                <option value={30}>Last 30 days</option>
-                <option value={90}>Last 90 days</option>
-              </select>
+                <SelectTrigger
+                  aria-label="History window"
+                  title="How many days of history each sync on this card pulls."
+                ><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {HISTORY_WINDOW_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           )}
 

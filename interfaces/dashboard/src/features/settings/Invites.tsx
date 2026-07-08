@@ -29,6 +29,7 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import type { AnyColumn } from '../../types';
 import { toneClasses, toneText, statusClasses } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
@@ -39,6 +40,15 @@ import { formatDate } from '../../utils/datetime';
 // superiors anyway).  Sourced from RoleBadge so new personas appear here
 // automatically.  Labels come from the canonical ROLE_LABEL map.
 const INVITABLE_ROLES = ASSIGNABLE_ROLES;
+const INVITE_ROLE_ITEMS = INVITABLE_ROLES.map((val) => ({ value: val, label: ROLE_LABEL[val] }));
+const INVITE_HOURS_ITEMS = [
+  { value: '1', label: '1 hour' },
+  { value: '6', label: '6 hours' },
+  { value: '24', label: '24 hours' },
+  { value: '72', label: '3 days' },
+  { value: '168', label: '7 days' },
+  { value: '720', label: '30 days' },
+];
 
 // Default extension delta.  Surfaced as a single constant so the
 // request body, optimistic timestamp, toast text, and button tooltip
@@ -1102,13 +1112,12 @@ export function InvitesPanel() {
 
               <div>
                 <label className="block text-sm text-muted-foreground mb-1">Role</label>
-                <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
-                  className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border"
-                >
-                  {INVITABLE_ROLES.map((val) => <option key={val} value={val}>{ROLE_LABEL[val]}</option>)}
-                </select>
+                <Select value={role} onValueChange={(v) => setRole(v ?? '')} items={INVITE_ROLE_ITEMS}>
+                  <SelectTrigger className="w-full" aria-label="Role"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {INVITE_ROLE_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
 
               {role === 'driver' && (
@@ -1143,18 +1152,12 @@ export function InvitesPanel() {
 
               <div>
                 <label className="block text-sm text-muted-foreground mb-1">Expires in (hours)</label>
-                <select
-                  value={hours}
-                  onChange={(e) => setHours(+e.target.value)}
-                  className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border"
-                >
-                  <option value={1}>1 hour</option>
-                  <option value={6}>6 hours</option>
-                  <option value={24}>24 hours</option>
-                  <option value={72}>3 days</option>
-                  <option value={168}>7 days</option>
-                  <option value={720}>30 days</option>
-                </select>
+                <Select value={String(hours)} onValueChange={(v) => setHours(Number(v))} items={INVITE_HOURS_ITEMS}>
+                  <SelectTrigger className="w-full" aria-label="Expires in (hours)"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {INVITE_HOURS_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

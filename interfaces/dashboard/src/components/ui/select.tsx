@@ -4,7 +4,24 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
-const Select = SelectPrimitive.Root
+// Thin wrapper over base-ui's Select.Root that narrows ``onValueChange``
+// to a plain ``(value: string) => void``.  base-ui types the emitted value
+// as ``string | null`` (null only fires on a clear, which our single,
+// non-clearable selects never do), which otherwise forces every call site
+// to hand-coerce ``v ?? ''``.  Every Select in this app uses string values,
+// so we coerce the theoretical null to '' here, once.
+type SelectProps = Omit<SelectPrimitive.Root.Props<string>, "onValueChange"> & {
+  onValueChange?: (value: string) => void
+}
+
+function Select({ onValueChange, ...props }: SelectProps) {
+  return (
+    <SelectPrimitive.Root
+      {...props}
+      onValueChange={onValueChange ? (v) => onValueChange(v ?? "") : undefined}
+    />
+  )
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (

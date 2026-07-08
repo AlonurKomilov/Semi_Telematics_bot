@@ -14,6 +14,7 @@ import {
 } from '../../components/shell';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import type { PTITemplate, PTITemplateItem } from '../../types';
 
 /**
@@ -70,6 +71,12 @@ function AddItemDialog({
   const [required, setRequired] = useState(true);
   const [itemType, setItemType] = useState<'check' | 'photo' | 'document'>('check');
   const [saving, setSaving] = useState(false);
+
+  const itemTypeItems = [
+    { value: 'check', label: t('inspections.item_type_check') },
+    { value: 'photo', label: t('inspections.item_type_photo') },
+    { value: 'document', label: t('inspections.item_type_document') },
+  ];
 
   // Auto-generate a key from the label so the fleet doesn't have to
   // think about identifier syntax.  Editable if the auto-key clashes
@@ -165,15 +172,18 @@ function AddItemDialog({
 
         <label className="block text-xs">
           <span className="block text-muted-foreground mb-1">{t('inspections.item_type_field')}</span>
-          <select
+          <Select
             value={itemType}
-            onChange={e => setItemType(e.target.value as 'check' | 'photo' | 'document')}
-            className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm"
+            onValueChange={(v) => setItemType(v as 'check' | 'photo' | 'document')}
+            items={itemTypeItems}
           >
-            <option value="check">{t('inspections.item_type_check')}</option>
-            <option value="photo">{t('inspections.item_type_photo')}</option>
-            <option value="document">{t('inspections.item_type_document')}</option>
-          </select>
+            <SelectTrigger className="w-full" aria-label={t('inspections.item_type_field')}><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {itemTypeItems.map(it => (
+                <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
 
         {/* Required applies to all types; Photo-required only matters

@@ -14,6 +14,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { GitMerge } from 'lucide-react';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { getSourcePrecedence, putSourcePrecedence } from './api';
 import type { SourcePrecedence } from './api';
 
@@ -39,6 +40,9 @@ export default function SourcePrecedencePanel() {
 
   // Best-effort panel — stay invisible until the policy loads.
   if (!data) return null;
+
+  // Every field picks from the same source list; build the item set once.
+  const sourceItems = data.sources.map((s) => ({ value: s, label: SOURCE_LABEL[s] ?? s }));
 
   const setPrimary = (field: string, source: string) => {
     const primary: Record<string, string> = {};
@@ -68,19 +72,17 @@ export default function SourcePrecedencePanel() {
             className="flex items-center justify-between gap-3 py-1.5 text-sm"
           >
             <span className="text-foreground">{f.label}</span>
-            <select
+            <Select
               value={f.primary}
               disabled={mutation.isPending}
-              onChange={(e) => setPrimary(f.key, e.target.value)}
-              className="bg-muted border border-border rounded text-sm text-foreground px-2 py-1 focus:outline-none focus:border-ring disabled:opacity-50"
-              aria-label={`Primary source for ${f.label}`}
+              onValueChange={(v) => setPrimary(f.key, v)}
+              items={sourceItems}
             >
-              {data.sources.map((s) => (
-                <option key={s} value={s}>
-                  {SOURCE_LABEL[s] ?? s}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger aria-label={`Primary source for ${f.label}`}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {sourceItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </li>
         ))}
       </ul>

@@ -18,9 +18,12 @@ import { rollupByDisplayLabel } from '../../features/ai/helpers';
 import ForumRoutingSection from './ForumRoutingSection';
 import DangerZoneSection from './DangerZoneSection';
 import { toneClasses } from '../../lib/status';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 
 const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'hr', 'accounting', 'recruiter', 'driver'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const ROLE_ITEMS = ROLES.map((r) => ({ value: r, label: r.replace(/_/g, ' ') }));
+const HOUR_ITEMS = HOURS.map((h) => ({ value: String(h), label: `${String(h).padStart(2, '0')}:00` }));
 
 export default function Settings() {
   const { t } = useTranslation();
@@ -31,6 +34,7 @@ export default function Settings() {
   // Re-renders once a minute so the "current time" suffix on each
   // timezone option stays accurate while the page is open.
   const now = useNow();
+  const tzItems = TIMEZONE_OPTIONS.map((o) => ({ value: o.value, label: timezoneLabelWithTime(o.value, now) }));
 
   // Account-wide timezone (admin / owner only).
   // ``accountTz`` is what gets stored on accounts.timezone — every cron
@@ -214,17 +218,12 @@ export default function Settings() {
           <div className="flex items-end gap-3">
             <div className="flex-1 max-w-sm">
               <label className="block text-xs text-muted-foreground mb-1">Timezone</label>
-              <select
-                value={accountTz}
-                onChange={(e) => setAccountTz(e.target.value)}
-                className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring"
-              >
-                {TIMEZONE_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {timezoneLabelWithTime(o.value, now)}
-                  </option>
-                ))}
-              </select>
+              <Select value={accountTz} onValueChange={(v) => setAccountTz(v ?? '')} items={tzItems}>
+                <SelectTrigger className="w-full" aria-label="Timezone"><SelectValue placeholder="Select timezone" /></SelectTrigger>
+                <SelectContent>
+                  {tzItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <button
               onClick={handleSaveAccountTz}
@@ -452,21 +451,30 @@ export default function Settings() {
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Start Hour</label>
-              <select value={sStart} onChange={e => setSStart(Number(e.target.value))} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring">
-                {HOURS.map(h => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
-              </select>
+              <Select value={String(sStart)} onValueChange={(v) => setSStart(Number(v))} items={HOUR_ITEMS}>
+                <SelectTrigger className="w-full" aria-label="Start Hour"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {HOUR_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">End Hour</label>
-              <select value={sEnd} onChange={e => setSEnd(Number(e.target.value))} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring">
-                {HOURS.map(h => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
-              </select>
+              <Select value={String(sEnd)} onValueChange={(v) => setSEnd(Number(v))} items={HOUR_ITEMS}>
+                <SelectTrigger className="w-full" aria-label="End Hour"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {HOUR_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Role</label>
-              <select value={sRole} onChange={e => setSRole(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring">
-                {ROLES.map(r => <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>)}
-              </select>
+              <Select value={sRole} onValueChange={(v) => setSRole(v ?? '')} items={ROLE_ITEMS}>
+                <SelectTrigger className="w-full" aria-label="Role"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ROLE_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex items-end">
               <button type="submit" disabled={saving} className="px-4 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium text-primary-foreground transition">

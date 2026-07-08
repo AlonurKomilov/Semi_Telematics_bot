@@ -26,6 +26,7 @@ import {
   type Priority,
 } from './badges';
 import TypePicker from './TypePicker';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { VehiclePicker, MilesPicker, HoursPicker, DaysPicker, type VehicleSummary } from './pickers';
 import { CalendarMonth } from './CalendarMonth';
 import { toneClasses } from '@/lib/status';
@@ -46,6 +47,18 @@ const STATUS_LABELS: Record<string, string> = {
   cancelled: 'Cancelled',
   overdue: 'Overdue',
 };
+
+// Item lists for the shared Select. Priority carries lowercase wire
+// values; title-case the label so the picker reads "Low / Medium / …"
+// (matches the old CSS-``capitalize`` presentation).
+const PRIORITY_ITEMS = PRIORITY_OPTIONS.map((p) => ({
+  value: p,
+  label: p.charAt(0).toUpperCase() + p.slice(1),
+}));
+const STATUS_ITEMS = STATUS_OPTIONS.map((s) => ({
+  value: s,
+  label: STATUS_LABELS[s] || s,
+}));
 
 // Lifecycle split for the grid's segment tabs.  Tabs answer "is this
 // still work, or history?" — the urgency chips above the grid keep
@@ -474,6 +487,12 @@ export default function Tasks() {
     enabled: showAdd,
   });
   const templates = templatesData?.templates ?? [];
+  // Items for the apply-template Select — id coerced to a string value
+  // (base-ui Select requires string values); the handler coerces back.
+  const templateItems = useMemo(
+    () => templates.map((t) => ({ value: String(t.id), label: t.name })),
+    [templates],
+  );
 
   // Account's custom task types — drives the "Type" column's display
   // label for rows that use a custom type, plus the TypePicker
@@ -1345,22 +1364,27 @@ export default function Tasks() {
                 <ClipboardList size={12} />
                 Apply template (optional)
               </span>
-              <select
-                onChange={e => {
-                  const id = Number(e.target.value);
+              {/* Value stays pinned to '' so the picker always shows the
+                  placeholder and re-picking the same template re-applies
+                  it. */}
+              <Select
+                value=""
+                onValueChange={(v) => {
+                  const id = Number(v);
                   const t = templates.find(x => x.id === id);
                   if (t) applyTemplate(t);
-                  // Reset the select so re-picking the same one
-                  // re-applies it.
-                  e.target.value = '';
                 }}
-                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+                items={templateItems}
               >
-                <option value="">— pick a template —</option>
-                {templates.map(t => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
+                <SelectTrigger className="w-full" aria-label="Apply template">
+                  <SelectValue placeholder="— pick a template —" />
+                </SelectTrigger>
+                <SelectContent>
+                  {templateItems.map(it => (
+                    <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
           )}
           {/* Multi-vehicle toggle — checkbox at the top so the user
@@ -1468,15 +1492,14 @@ export default function Tasks() {
           </label>
           <label className="block">
             <span className="block text-xs text-muted-foreground mb-1">Priority</span>
-            <select
-              value={fPriority}
-              onChange={e => setFPriority(e.target.value as Priority)}
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring capitalize"
-            >
-              {PRIORITY_OPTIONS.map(p => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
+            <Select value={fPriority} onValueChange={(v) => setFPriority(v as Priority)} items={PRIORITY_ITEMS}>
+              <SelectTrigger className="w-full" aria-label="Priority"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {PRIORITY_ITEMS.map(it => (
+                  <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </label>
           {/* Single-trigger picker — segmented control + the
               corresponding period input.  Plain text labels (no
@@ -1902,9 +1925,12 @@ export default function Tasks() {
             <div className="space-y-3">
               <label className="block">
                 <span className="block text-xs text-muted-foreground mb-1">Status</span>
-                <select value={eStatus} onChange={e => setEStatus(e.target.value)} className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring">
-                  {STATUS_OPTIONS.map(s => <option key={s} value={s}>{STATUS_LABELS[s] || s}</option>)}
-                </select>
+                <Select value={eStatus} onValueChange={setEStatus} items={STATUS_ITEMS}>
+                  <SelectTrigger className="w-full" aria-label="Status"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {STATUS_ITEMS.map(it => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </label>
               {/* Type selector — lets the operator FIX a mistyped task
                   type after creation.  Without this they had to delete
@@ -1918,13 +1944,12 @@ export default function Tasks() {
               </label>
               <label className="block">
                 <span className="block text-xs text-muted-foreground mb-1">Priority</span>
-                <select
-                  value={ePriority}
-                  onChange={e => setEPriority(e.target.value as Priority)}
-                  className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring capitalize"
-                >
-                  {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
-                </select>
+                <Select value={ePriority} onValueChange={(v) => setEPriority(v as Priority)} items={PRIORITY_ITEMS}>
+                  <SelectTrigger className="w-full" aria-label="Priority"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PRIORITY_ITEMS.map(it => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </label>
               <label className="block">
                 <span className="block text-xs text-muted-foreground mb-1">Description</span>

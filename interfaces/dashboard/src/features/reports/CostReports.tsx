@@ -15,6 +15,7 @@ import {
 import type { WorkOrderCostRow, AnyColumn } from '../../types';
 import type { ReportsLayoutOutletContext } from './ReportsLayout';
 import { chartColor } from '../../lib/status';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import DataGrid from '../../components/DataGrid';
 
 // Backend response envelopes for each /reports/* endpoint.
@@ -233,6 +234,10 @@ export default function Reports() {
   // (e.g. PDF export of the same data).
   void apiFetch;
 
+  // Period picker items — labels resolved through i18n so they follow the
+  // user's language.  Rebuilt each render (cheap) so ``t`` stays current.
+  const periodItems = PERIOD_OPTIONS.map((opt) => ({ value: String(opt.days), label: t(opt.i18nKey) }));
+
   // Push the period selector + CSV export into the layout header.
   // Rerun whenever ``days`` or the load/export state changes so the
   // header reflects the current values; clear on unmount to keep the
@@ -241,15 +246,12 @@ export default function Reports() {
     if (!outletCtx) return;
     outletCtx.setActions(
       <div className="flex items-center gap-2">
-        <select
-          value={days}
-          onChange={(e) => setDays(Number(e.target.value))}
-          className="bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
-        >
-          {PERIOD_OPTIONS.map((opt) => (
-            <option key={opt.days} value={opt.days}>{t(opt.i18nKey)}</option>
-          ))}
-        </select>
+        <Select value={String(days)} onValueChange={(v) => setDays(Number(v))} items={periodItems}>
+          <SelectTrigger aria-label="Report period"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {periodItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <button
           type="button"
           onClick={exportCsv}

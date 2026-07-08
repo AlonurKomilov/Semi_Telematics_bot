@@ -335,6 +335,7 @@ import {
 } from '../../components/shell';
 import { formatDate, formatRelative } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 
 interface KBArticle {
   id: number;
@@ -466,6 +467,28 @@ export default function KnowledgeBase() {
   const categories = catsData?.categories ?? [];
   const loading = articlesLoading;
   const fetchError = articlesErr instanceof Error ? articlesErr.message : '';
+
+  // Category options for the filter (leads with an "all" entry) and the
+  // form picker (categories only) — both derived from the same backend list.
+  const catFormItems = useMemo(
+    () => categories.map((c) => ({ value: c.key, label: c.label })),
+    [categories],
+  );
+  const catFilterItems = useMemo(
+    () => [{ value: '', label: t('knowledge.filter_all_categories') }, ...catFormItems],
+    [catFormItems, t],
+  );
+  const mediaTypeItems = [
+    { value: 'video', label: t('knowledge.media_video') },
+    { value: 'pdf', label: t('knowledge.media_pdf') },
+    { value: 'image', label: t('knowledge.media_image') },
+    { value: 'link', label: t('knowledge.media_link') },
+    { value: 'none', label: t('knowledge.media_none') },
+  ];
+  const visibilityItems = [
+    { value: 'private', label: t('knowledge.visibility_private', 'Private — my team in this company') },
+    { value: 'public', label: t('knowledge.visibility_public', 'Public — every user on the platform') },
+  ];
 
   // Bug B6 fix: every mutation invalidates BOTH articles AND categories
   // so the sidebar counts stay in sync with the list.
@@ -707,16 +730,16 @@ export default function KnowledgeBase() {
 
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
-        <select
+        <Select
           value={catFilter}
-          onChange={(e) => { setCatFilter(e.target.value); setPage(0); }}
-          className="px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
+          onValueChange={(v) => { setCatFilter(v); setPage(0); }}
+          items={catFilterItems}
         >
-          <option value="">{t('knowledge.filter_all_categories')}</option>
-          {categories.map((c) => (
-            <option key={c.key} value={c.key}>{c.label}</option>
-          ))}
-        </select>
+          <SelectTrigger aria-label={t('knowledge.field_category')}><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {catFilterItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
 
         <form onSubmit={handleSearch} className="flex gap-2">
           <input
@@ -779,15 +802,14 @@ export default function KnowledgeBase() {
                 <label className="block text-xs text-muted-foreground mb-1">
                   {t('knowledge.field_category')}
                 </label>
-                <select
-                  value={fCategory}
-                  onChange={(e) => setFCategory(e.target.value)}
-                  className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
-                >
-                  {categories.map((c) => (
-                    <option key={c.key} value={c.key}>{c.label}</option>
-                  ))}
-                </select>
+                <Select value={fCategory} onValueChange={(v) => setFCategory(v)} items={catFormItems}>
+                  <SelectTrigger className="w-full" aria-label={t('knowledge.field_category')}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {catFormItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -810,27 +832,28 @@ export default function KnowledgeBase() {
                 <label className="block text-xs text-muted-foreground mb-1">
                   {t('knowledge.field_media_type')}
                 </label>
-                <select
+                <Select
                   value={fMediaType}
-                  onChange={(e) => {
+                  onValueChange={(v) => {
                     // Switching media type invalidates whatever the user
                     // already entered.  A YouTube URL doesn't make sense
                     // as "Image", and a PDF upload from a previous pick
                     // shouldn't carry over to "Link".  Clearing here
                     // beats showing a stale value next to the new type.
-                    setFMediaType(e.target.value);
+                    setFMediaType(v);
                     setFMediaUrl('');
                     setFUploadName('');
                     setFUploadSize(0);
                   }}
-                  className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
+                  items={mediaTypeItems}
                 >
-                  <option value="video">{t('knowledge.media_video')}</option>
-                  <option value="pdf">{t('knowledge.media_pdf')}</option>
-                  <option value="image">{t('knowledge.media_image')}</option>
-                  <option value="link">{t('knowledge.media_link')}</option>
-                  <option value="none">{t('knowledge.media_none')}</option>
-                </select>
+                  <SelectTrigger className="w-full" aria-label={t('knowledge.field_media_type')}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mediaTypeItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="md:col-span-2">
                 <MediaInput
@@ -868,18 +891,14 @@ export default function KnowledgeBase() {
                 <label className="block text-xs text-muted-foreground mb-1">
                   {t('knowledge.field_visibility')}
                 </label>
-                <select
-                  value={fVisibility}
-                  onChange={(e) => setFVisibility(e.target.value)}
-                  className="w-full px-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground"
-                >
-                  <option value="private">
-                    {t('knowledge.visibility_private', 'Private — my team in this company')}
-                  </option>
-                  <option value="public">
-                    {t('knowledge.visibility_public', 'Public — every user on the platform')}
-                  </option>
-                </select>
+                <Select value={fVisibility} onValueChange={(v) => setFVisibility(v)} items={visibilityItems}>
+                  <SelectTrigger className="w-full" aria-label={t('knowledge.field_visibility')}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {visibilityItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
                 <p className="text-2xs text-muted-foreground mt-1">
                   {fVisibility === 'private'
                     ? t(

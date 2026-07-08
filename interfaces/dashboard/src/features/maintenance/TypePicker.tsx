@@ -26,6 +26,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check, X, Loader2 } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { TASK_TYPE_OPTIONS } from './badges';
+import {
+  Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
+  SelectGroup, SelectLabel,
+} from '../../components/ui/select';
 
 // Sentinel value that triggers the inline-add UI.  Chosen so it
 // can never collide with a real type value (server-side custom
@@ -202,36 +206,50 @@ export default function TypePicker({
     !builtInOptions.find((o) => o.value === value) &&
     !customTypes.find((t) => t.value === value);
 
+  // Flat item list across all groups so <SelectValue /> can resolve the
+  // current selection's label (base-ui needs every selectable value in
+  // ``items``, groups included).
+  const items: { value: string; label: string }[] = [
+    ...builtInOptions.map((o) => ({ value: o.value, label: o.label })),
+    ...customTypes.map((t) => ({ value: t.value, label: t.label })),
+    ...(isUnknownValue && value ? [{ value, label: value }] : []),
+    ...(canCreate
+      ? [{ value: ADD_NEW_SENTINEL, label: isLoading ? 'Loading…' : '+ Add custom type…' }]
+      : []),
+  ];
+
   return (
-    <select
-      value={value}
-      onChange={(e) => handleSelectChange(e.target.value)}
-      className={`w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring ${className ?? ''}`}
-    >
-      {builtInOptions.map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
-        </option>
-      ))}
-      {customTypes.length > 0 && (
-        <optgroup label="Your custom types">
-          {customTypes.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </optgroup>
-      )}
-      {/* Fall back so an unknown stored value still renders a label
-          rather than silently switching to the first option. */}
-      {isUnknownValue && value && (
-        <option value={value}>{value}</option>
-      )}
-      {canCreate && (
-        <option value={ADD_NEW_SENTINEL}>
-          {isLoading ? 'Loading…' : '+ Add custom type…'}
-        </option>
-      )}
-    </select>
+    <Select value={value} onValueChange={handleSelectChange} items={items}>
+      <SelectTrigger className={`w-full ${className ?? ''}`} aria-label="Task type">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {builtInOptions.map((opt) => (
+          <SelectItem key={opt.value} value={opt.value}>
+            {opt.label}
+          </SelectItem>
+        ))}
+        {customTypes.length > 0 && (
+          <SelectGroup>
+            <SelectLabel>Your custom types</SelectLabel>
+            {customTypes.map((t) => (
+              <SelectItem key={t.value} value={t.value}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectGroup>
+        )}
+        {/* Fall back so an unknown stored value still renders a label
+            rather than silently switching to the first option. */}
+        {isUnknownValue && value && (
+          <SelectItem value={value}>{value}</SelectItem>
+        )}
+        {canCreate && (
+          <SelectItem value={ADD_NEW_SENTINEL}>
+            {isLoading ? 'Loading…' : '+ Add custom type…'}
+          </SelectItem>
+        )}
+      </SelectContent>
+    </Select>
   );
 }

@@ -9,6 +9,7 @@ import {
 import { apiJSON, apiFetch } from '../../api/client';
 import { toneClasses, toneText } from '../../lib/status';
 import DataGrid from '../../components/DataGrid';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import {
   PageHeader,
   EmptyState,
@@ -42,6 +43,15 @@ const DOC_TYPES: Array<{ key: string; label: string }> = [
 const DOC_LABEL: Record<string, string> = Object.fromEntries(
   DOC_TYPES.map((d) => [d.key, d.label]),
 );
+
+const DOC_TYPE_ITEMS = DOC_TYPES.map((d) => ({ value: d.key, label: d.label }));
+
+const CDL_CLASS_ITEMS = [
+  { value: '', label: '—' },
+  { value: 'A', label: 'A' },
+  { value: 'B', label: 'B' },
+  { value: 'C', label: 'C' },
+];
 
 // Drawer tabs are persona-composed (Shared-tier feature): the available
 // set per role lives in features/drivers/personaConfig.ts.
@@ -444,12 +454,12 @@ function ProfileTab({
             <input className={inputCls} value={String(v('cdl_number'))} onChange={(e) => set('cdl_number', e.target.value)} />
           </Field>
           <Field label="Class">
-            <select className={inputCls} value={String(v('cdl_class'))} onChange={(e) => set('cdl_class', e.target.value)}>
-              <option value="">—</option>
-              <option value="A">A</option>
-              <option value="B">B</option>
-              <option value="C">C</option>
-            </select>
+            <Select value={String(v('cdl_class'))} onValueChange={(val) => set('cdl_class', val)} items={CDL_CLASS_ITEMS}>
+              <SelectTrigger className="w-full" aria-label="CDL class"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {CDL_CLASS_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="State">
             <input className={inputCls} maxLength={4} value={String(v('cdl_state'))} onChange={(e) => set('cdl_state', e.target.value.toUpperCase())} />
@@ -711,9 +721,12 @@ function DocumentsTab({
         <div className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             <Field label="Type">
-              <select className={inputCls} value={docType} onChange={(e) => setDocType(e.target.value)}>
-                {DOC_TYPES.map((d) => <option key={d.key} value={d.key}>{d.label}</option>)}
-              </select>
+              <Select value={docType} onValueChange={(v) => setDocType(v)} items={DOC_TYPE_ITEMS}>
+                <SelectTrigger className="w-full" aria-label="Type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {DOC_TYPE_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </Field>
             <Field label="Expires (optional)">
               <input type="date" className={inputCls} value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />

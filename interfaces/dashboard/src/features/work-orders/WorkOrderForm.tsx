@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader, ErrorState } from '../../components/shell';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { toneClasses } from '../../lib/status';
 import type {
   WorkOrder, WorkOrderDetail, WorkOrderPart, WorkOrderAttachment,
@@ -459,6 +460,20 @@ export default function WorkOrderForm() {
     );
   }
 
+  // Select item lists — ``items`` lets SelectValue render the label and
+  // keeps the dropdown options in sync with the same source arrays.
+  const vehicleTypeItems = [
+    { value: '', label: t('work_orders_page.vehicle_type_unset') },
+    { value: 'truck', label: t('work_orders_page.vehicle_type_truck') },
+    { value: 'trailer', label: t('work_orders_page.vehicle_type_trailer') },
+  ];
+  const statusItems = ['draft', 'submitted', 'paid', 'void'].map((s) => ({ value: s, label: s }));
+  const paymentStatusItems = ['unpaid', 'paid', 'partial', 'void'].map((s) => ({ value: s, label: s }));
+  const companyItems = [
+    { value: '', label: '— none —' },
+    ...companies.map((c) => ({ value: c.code, label: c.display_name || c.code })),
+  ];
+
   return (
     <div>
       <PageHeader
@@ -514,15 +529,12 @@ export default function WorkOrderForm() {
             />
           </Field>
           <Field label={t('work_orders_page.field_vehicle_type')}>
-            <select
-              value={wo.vehicle_type || ''}
-              onChange={e => setField('vehicle_type', e.target.value)}
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
-            >
-              <option value="">{t('work_orders_page.vehicle_type_unset')}</option>
-              <option value="truck">{t('work_orders_page.vehicle_type_truck')}</option>
-              <option value="trailer">{t('work_orders_page.vehicle_type_trailer')}</option>
-            </select>
+            <Select value={wo.vehicle_type || ''} onValueChange={(v) => setField('vehicle_type', v)} items={vehicleTypeItems}>
+              <SelectTrigger className="w-full" aria-label={t('work_orders_page.field_vehicle_type')}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {vehicleTypeItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label={t('work_orders_page.field_service_date')}>
             <input
@@ -533,13 +545,12 @@ export default function WorkOrderForm() {
             />
           </Field>
           <Field label={t('work_orders_page.field_status')}>
-            <select
-              value={wo.status || 'draft'}
-              onChange={e => setField('status', e.target.value)}
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring capitalize"
-            >
-              {['draft', 'submitted', 'paid', 'void'].map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <Select value={wo.status || 'draft'} onValueChange={(v) => setField('status', v)} items={statusItems}>
+              <SelectTrigger className="w-full capitalize" aria-label={t('work_orders_page.field_status')}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {statusItems.map((it) => <SelectItem key={it.value} value={it.value} className="capitalize">{it.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label={t('work_orders_page.field_odometer')}>
             <input
@@ -569,18 +580,12 @@ export default function WorkOrderForm() {
               compact code (shown on the list).  Synced WOs are matched by
               MC number, but the operator can set/override it here. */}
           <Field label="Company">
-            <select
-              value={wo.company_code || ''}
-              onChange={e => setField('company_code', e.target.value)}
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
-            >
-              <option value="">— none —</option>
-              {companies.map(c => (
-                <option key={c.code} value={c.code}>
-                  {c.display_name || c.code}
-                </option>
-              ))}
-            </select>
+            <Select value={wo.company_code || ''} onValueChange={(v) => setField('company_code', v)} items={companyItems}>
+              <SelectTrigger className="w-full" aria-label="Company"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {companyItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </Field>
           <Field label="Assigned to">
             <input
@@ -787,13 +792,12 @@ export default function WorkOrderForm() {
             />
           </Field>
           <Field label={t('work_orders_page.field_payment_status')}>
-            <select
-              value={wo.payment_status || 'unpaid'}
-              onChange={e => setField('payment_status', e.target.value)}
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring capitalize"
-            >
-              {['unpaid', 'paid', 'partial', 'void'].map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
+            <Select value={wo.payment_status || 'unpaid'} onValueChange={(v) => setField('payment_status', v)} items={paymentStatusItems}>
+              <SelectTrigger className="w-full capitalize" aria-label={t('work_orders_page.field_payment_status')}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {paymentStatusItems.map((it) => <SelectItem key={it.value} value={it.value} className="capitalize">{it.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </Field>
         </div>
         <div className="mt-3">

@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { toneClasses } from '../../lib/status';
 import type { WorkSchedule } from '../../types';
 
@@ -50,6 +51,9 @@ function fmtHour(h: number) {
   if (h === 12) return '12 PM';
   return h < 12 ? `${h} AM` : `${h - 12} PM`;
 }
+
+const HOUR_ITEMS = HOURS.map((h) => ({ value: String(h), label: fmtHour(h) }));
+const ROLE_ITEMS = Object.entries(ROLE_LABELS).map(([val, lbl]) => ({ value: val, label: lbl }));
 
 interface WorkHoursResponse {
   schedules: WorkSchedule[];
@@ -304,23 +308,32 @@ export function WorkHoursPanel() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm text-muted-foreground mb-1">Start</label>
-                <select value={startHour} onChange={(e) => setStartHour(+e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border">
-                  {HOURS.map((h) => <option key={h} value={h}>{fmtHour(h)}</option>)}
-                </select>
+                <Select value={String(startHour)} onValueChange={(v) => setStartHour(Number(v))} items={HOUR_ITEMS}>
+                  <SelectTrigger className="w-full" aria-label="Start"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {HOUR_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
               <div>
                 <label className="block text-sm text-muted-foreground mb-1">End</label>
-                <select value={endHour} onChange={(e) => setEndHour(+e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border">
-                  {HOURS.map((h) => <option key={h} value={h}>{fmtHour(h)}</option>)}
-                </select>
+                <Select value={String(endHour)} onValueChange={(v) => setEndHour(Number(v))} items={HOUR_ITEMS}>
+                  <SelectTrigger className="w-full" aria-label="End"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {HOUR_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
             <div>
               <label className="block text-sm text-muted-foreground mb-1">Target Role</label>
-              <select value={targetRole} onChange={(e) => setTargetRole(e.target.value)} className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border">
-                {Object.entries(ROLE_LABELS).map(([val, lbl]) => <option key={val} value={val}>{lbl}</option>)}
-              </select>
+              <Select value={targetRole} onValueChange={(v) => setTargetRole(v ?? '')} items={ROLE_ITEMS}>
+                <SelectTrigger className="w-full" aria-label="Target Role"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ROLE_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 

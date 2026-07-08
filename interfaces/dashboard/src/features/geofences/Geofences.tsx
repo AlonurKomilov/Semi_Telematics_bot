@@ -8,6 +8,7 @@ import { useLeafletMap } from '../../hooks/useLeafletMap';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
 import PoiLayerPanel from '@/features/live-map/PoiLayerPanel';
 import { PageHeader, EmptyState } from '../../components/shell';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import type { GeofenceFeature, GeofencesResponse } from '../../types';
 import type L from 'leaflet';
 import { GEOFENCE } from '../../config/mapColors';
@@ -24,6 +25,10 @@ const ZONE_TYPE_PRESETS = [
   'maintenance_shop', 'dispatch_yard', 'fuel_station', 'customer_site',
   'driver_rest_stop', 'warehouse', 'weigh_station', 'border_crossing', 'custom',
 ];
+
+const ZONE_TYPE_ITEMS = ZONE_TYPE_PRESETS.map((z) => ({
+  value: z, label: z.replace(/_/g, ' '),
+}));
 
 const ZONE_ROLE_OPTIONS = [
   { value: 'all',        label: 'All teams' },
@@ -423,15 +428,18 @@ export default function Geofences() {
               {/* Zone Type */}
               <div>
                 <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Zone Type</label>
-                <select
+                <Select
                   value={form.geofence_type}
-                  onChange={e => setForm(f => ({ ...f, geofence_type: e.target.value }))}
-                  className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                  onValueChange={(v) => setForm(f => ({ ...f, geofence_type: v }))}
+                  items={ZONE_TYPE_ITEMS}
                 >
-                  {ZONE_TYPE_PRESETS.map(t => (
-                    <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>
-                  ))}
-                </select>
+                  <SelectTrigger className="w-full" aria-label="Zone Type"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {ZONE_TYPE_ITEMS.map((it) => (
+                      <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {form.geofence_type === 'custom' && (
                   <input
                     value={form.geofence_type_custom}
@@ -531,15 +539,18 @@ export default function Geofences() {
               <div>
                 <label className="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Team</label>
                 {isOwner ? (
-                  <select
+                  <Select
                     value={form.zone_role}
-                    onChange={e => setForm(f => ({ ...f, zone_role: e.target.value }))}
-                    className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    onValueChange={(v) => setForm(f => ({ ...f, zone_role: v }))}
+                    items={ZONE_ROLE_OPTIONS}
                   >
-                    {ZONE_ROLE_OPTIONS.map(o => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
+                    <SelectTrigger className="w-full" aria-label="Team"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {ZONE_ROLE_OPTIONS.map((o) => (
+                        <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 ) : (
                   <p className="text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2">
                     Auto-saved as <strong>{zoneRoleLabel(role)}</strong>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Mail, MessageSquare, Plus, Trash2, Pencil, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { CardSkeleton, ErrorState } from '../../components/shell';
 import type { ScheduledReport } from '../../types';
 import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../../utils/timezones';
@@ -15,6 +16,7 @@ const REPORT_LABEL: Record<string, string> = Object.fromEntries(
 const FREQUENCIES = ['daily', 'weekly', 'monthly'] as const;
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const HOUR_ITEMS = HOURS.map((h) => ({ value: String(h), label: fmtHour(h) }));
 
 type Channel = 'telegram' | 'email';
 
@@ -119,6 +121,13 @@ function ScheduleEditor({
   const [timezone, setTimezone] = useState(initial.timezone);
   const [channels, setChannels] = useState<Channel[]>(initial.channels);
 
+  // Timezone labels carry a live "current time in zone" suffix, so rebuild
+  // the item list whenever ``now`` ticks (keeps <SelectValue/> in sync).
+  const tzItems = useMemo(
+    () => TIMEZONE_OPTIONS.map((o) => ({ value: o.value, label: timezoneLabelWithTime(o.value, now) })),
+    [now],
+  );
+
   function toggleChannel(c: Channel) {
     setChannels((prev) => {
       if (prev.includes(c)) {
@@ -198,25 +207,21 @@ function ScheduleEditor({
       <div className="flex gap-4">
         <div className="flex-1">
           <label className="block text-sm text-muted-foreground mb-1">Delivery Hour</label>
-          <select
-            value={sendHour} onChange={(e) => setSendHour(+e.target.value)}
-            className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border"
-          >
-            {HOURS.map((h) => <option key={h} value={h}>{fmtHour(h)}</option>)}
-          </select>
+          <Select value={String(sendHour)} onValueChange={(v) => setSendHour(Number(v))} items={HOUR_ITEMS}>
+            <SelectTrigger className="w-full" aria-label="Delivery Hour"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {HOUR_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex-1">
           <label className="block text-sm text-muted-foreground mb-1">Timezone</label>
-          <select
-            value={timezone} onChange={(e) => setTimezone(e.target.value)}
-            className="w-full bg-muted rounded px-3 py-2 text-sm text-foreground border border-border"
-          >
-            {TIMEZONE_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {timezoneLabelWithTime(o.value, now)}
-              </option>
-            ))}
-          </select>
+          <Select value={timezone} onValueChange={(v) => setTimezone(v)} items={tzItems}>
+            <SelectTrigger className="w-full" aria-label="Timezone"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {tzItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 

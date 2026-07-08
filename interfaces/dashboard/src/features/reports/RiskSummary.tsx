@@ -2,6 +2,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { apiFetch, apiJSON } from '../../api/client';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 
 const AUDIENCES = [
   { value: 'insurance', label: 'Insurance Underwriter' },
@@ -9,6 +10,11 @@ const AUDIENCES = [
   { value: 'broker',    label: 'Broker of Record' },
   { value: 'auditor',   label: 'DOT / Compliance' },
   { value: 'payroll',   label: 'Safety-Pay Evidence' },
+];
+
+const SUBJECT_TYPE_ITEMS = [
+  { value: 'vehicle', label: 'Vehicle' },
+  { value: 'driver',  label: 'Driver' },
 ];
 
 // ── Simple autocomplete combobox ──────────────────────────────────
@@ -166,14 +172,16 @@ export default function RiskSummary() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium">Subject type</span>
-          <select
-            className="border rounded px-3 py-2 bg-background"
+          <Select
             value={subjectType}
-            onChange={(e) => handleTypeChange(e.target.value as 'driver' | 'vehicle')}
+            onValueChange={(v) => handleTypeChange(v as 'driver' | 'vehicle')}
+            items={SUBJECT_TYPE_ITEMS}
           >
-            <option value="vehicle">Vehicle</option>
-            <option value="driver">Driver</option>
-          </select>
+            <SelectTrigger className="w-full" aria-label="Subject type"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {SUBJECT_TYPE_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </label>
 
         <label className="flex flex-col gap-1">
@@ -211,15 +219,12 @@ export default function RiskSummary() {
 
         <label className="flex flex-col gap-1">
           <span className="text-sm font-medium">Audience</span>
-          <select
-            className="border rounded px-3 py-2 bg-background"
-            value={audience}
-            onChange={(e) => setAudience(e.target.value)}
-          >
-            {AUDIENCES.map((a) => (
-              <option key={a.value} value={a.value}>{a.label}</option>
-            ))}
-          </select>
+          <Select value={audience} onValueChange={(v) => setAudience(v)} items={AUDIENCES}>
+            <SelectTrigger className="w-full" aria-label="Audience"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {AUDIENCES.map((a) => <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </label>
 
         <label className="flex flex-col gap-1">

@@ -16,6 +16,7 @@ import { Loader2, Sparkles, Trash2 } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { toneClasses } from '../../lib/status';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
@@ -231,9 +232,12 @@ export default function VehicleManageDialog({
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Type</label>
-              <select value={draft.vehicle_type} onChange={set('vehicle_type')} className={inputCls}>
-                {TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
+              <Select value={draft.vehicle_type} onValueChange={(v) => setDraft((d) => ({ ...d, vehicle_type: v }))} items={TYPES}>
+                <SelectTrigger className="w-full" aria-label="Type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TYPES.map((tp) => <SelectItem key={tp.value} value={tp.value}>{tp.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className="block text-xs text-muted-foreground mb-1">Company code</label>

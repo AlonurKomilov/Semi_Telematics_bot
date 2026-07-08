@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { X, AlertTriangle } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { VehiclePicker, type VehicleSummary } from '../maintenance/pickers';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 
 /**
  * Fleet-driven ad-hoc inspection creation.
@@ -176,6 +177,23 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
     }
   };
 
+  // Item lists for the shared Select — base-ui needs every selectable
+  // value present so <SelectValue /> can resolve the current label.
+  const driverItems = (drivers?.drivers ?? []).map(d => ({
+    value: String(d.user_id),
+    label: `${d.display_name || `user ${d.user_id}`}${d.vehicle_name ? ` · ${d.vehicle_name}` : ''}`,
+  }));
+  const inspectionTypeItems = [
+    { value: 'weekly', label: t('inspections.new.type_weekly') },
+    { value: 'monthly', label: t('inspections.new.type_monthly') },
+    { value: 'daily_pre_trip', label: t('inspections.new.type_daily') },
+    { value: 'ad_hoc', label: t('inspections.new.type_adhoc') },
+  ];
+  const vehicleTypeItems = [
+    { value: 'truck', label: t('inspections.tab_truck') },
+    { value: 'trailer', label: t('inspections.tab_trailer') },
+  ];
+
   return (
     <div
       className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-16 sm:pt-24"
@@ -224,25 +242,27 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
               </span>
             )}
           </span>
-          <select
-            value={driverId ?? ''}
-            onChange={e => {
-              setDriverId(e.target.value ? Number(e.target.value) : null);
+          <Select
+            value={driverId == null ? '' : String(driverId)}
+            onValueChange={(v) => {
+              setDriverId(v ? Number(v) : null);
               setDriverOverridden(true);
             }}
             disabled={loadingDrivers || saving}
-            className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm"
+            items={driverItems}
           >
-            <option value="">
-              {loadingDrivers ? t('common.loading') : t('inspections.new.driver_picker_placeholder')}
-            </option>
-            {drivers?.drivers.map(d => (
-              <option key={d.user_id} value={d.user_id}>
-                {d.display_name || `user ${d.user_id}`}
-                {d.vehicle_name ? ` · ${d.vehicle_name}` : ''}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger className="w-full" aria-label={t('inspections.new.driver')}>
+              <SelectValue placeholder={loadingDrivers ? t('common.loading') : t('inspections.new.driver_picker_placeholder')} />
+            </SelectTrigger>
+            <SelectContent>
+              {drivers?.drivers.map(d => (
+                <SelectItem key={d.user_id} value={String(d.user_id)}>
+                  {d.display_name || `user ${d.user_id}`}
+                  {d.vehicle_name ? ` · ${d.vehicle_name}` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {vehicleName.trim() && driverId == null && !loadingDrivers && (
             <span className="mt-1 inline-flex items-center gap-1 text-2xs text-warn">
               <AlertTriangle size={12} />
@@ -254,17 +274,19 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
         {/* Inspection type */}
         <label className="block text-xs">
           <span className="block text-muted-foreground mb-1">{t('inspections.new.type')}</span>
-          <select
+          <Select
             value={inspectionType}
-            onChange={e => setInspectionType(e.target.value as InspectionType)}
+            onValueChange={(v) => setInspectionType(v as InspectionType)}
             disabled={saving}
-            className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm"
+            items={inspectionTypeItems}
           >
-            <option value="weekly">{t('inspections.new.type_weekly')}</option>
-            <option value="monthly">{t('inspections.new.type_monthly')}</option>
-            <option value="daily_pre_trip">{t('inspections.new.type_daily')}</option>
-            <option value="ad_hoc">{t('inspections.new.type_adhoc')}</option>
-          </select>
+            <SelectTrigger className="w-full" aria-label={t('inspections.new.type')}><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {inspectionTypeItems.map(it => (
+                <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </label>
 
         {/* Vehicle type — picks which template the items snapshot from.
@@ -274,15 +296,19 @@ export function NewInspectionDialog({ onCreated, onClose }: Props) {
           <span className="block text-muted-foreground mb-1">
             {t('inspections.new.template')}
           </span>
-          <select
+          <Select
             value={vehicleType}
-            onChange={e => { setVehicleType(e.target.value as VehicleType); setTypeOverridden(true); }}
+            onValueChange={(v) => { setVehicleType(v as VehicleType); setTypeOverridden(true); }}
             disabled={saving}
-            className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm"
+            items={vehicleTypeItems}
           >
-            <option value="truck">{t('inspections.tab_truck')}</option>
-            <option value="trailer">{t('inspections.tab_trailer')}</option>
-          </select>
+            <SelectTrigger className="w-full" aria-label={t('inspections.new.template')}><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {vehicleTypeItems.map(it => (
+                <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {autoResolvedType && (
             <span className="mt-1 block text-2xs text-muted-foreground">
               Set from the vehicle’s registry type — change it if needed.

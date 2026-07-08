@@ -7,6 +7,7 @@ import {
   ChevronDown, ChevronRight,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toast } from 'sonner';
 import DataGrid, { type DataGridSegment } from '../../components/DataGrid';
@@ -469,6 +470,16 @@ export default function TeamManagement() {
     }> }>('/admin/work-hours'),
   });
   const workHoursCatalog = workHoursData?.schedules ?? [];
+  // Schedule-picker items for the drawer.  The leading "" value is the
+  // real "Use role schedule (default)" choice (clears the assignment),
+  // NOT a disabled placeholder — so it stays selectable in the list.
+  const scheduleItems = useMemo(() => [
+    { value: '', label: 'Use role schedule (default)' },
+    ...workHoursCatalog.map((s) => ({
+      value: String(s.id),
+      label: `${s.label} · ${fmtHourLabel(s.start_hour)} – ${fmtHourLabel(s.end_hour)}${s.target_role !== 'all' ? ` · ${s.target_role}` : ''}`,
+    })),
+  ], [workHoursCatalog]);
 
   const loadUsers = useCallback(
     () => qc.invalidateQueries({ queryKey: ['admin-users'] }),
@@ -1513,23 +1524,21 @@ export default function TeamManagement() {
                           <label className="block text-2xs text-muted-foreground mb-1 uppercase tracking-wider">
                             Schedule
                           </label>
-                          <select
-                            value={selected.assigned_work_hours_id ?? ''}
+                          <Select
+                            value={String(selected.assigned_work_hours_id ?? '')}
                             disabled={savingQuiet}
-                            onChange={e => {
-                              const v = e.target.value;
-                              handleAssignSchedule(selected.id, v === '' ? null : Number(v));
-                            }}
-                            className="w-full bg-muted border border-border rounded px-2 py-1.5 text-sm focus:outline-none focus:border-ring disabled:opacity-50"
+                            onValueChange={(v) => handleAssignSchedule(selected.id, v ? Number(v) : null)}
+                            items={scheduleItems}
                           >
-                            <option value="">Use role schedule (default)</option>
-                            {workHoursCatalog.map(s => (
-                              <option key={s.id} value={s.id}>
-                                {s.label} · {fmtHourLabel(s.start_hour)} – {fmtHourLabel(s.end_hour)}
-                                {s.target_role !== 'all' ? ` · ${s.target_role}` : ''}
-                              </option>
-                            ))}
-                          </select>
+                            <SelectTrigger className="w-full" aria-label="Schedule">
+                              <SelectValue placeholder="Use role schedule (default)" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {scheduleItems.map((it) => (
+                                <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                           <p className="text-2xs text-muted-foreground mt-1.5">
                             {workHoursCatalog.length === 0
                               ? 'No schedules yet — create one in the Working Hours tab first.'
@@ -1703,8 +1712,18 @@ function IdentityLinks({ member, onPatched }: {
   // slot on the right.  Unlinked = a fixed-width picker whose placeholder
   // reads "Not linked" + a Link button; linked = the resolved name + an
   // Unlink button.  Fixed w-44 keeps the two pickers identical regardless
-  // of option text length.
-  const pickerCls = `${selectCls} w-44`;
+  // of option text length.  Already-linked / inactive rows stay disabled
+  // in the list so a manager can't double-assign one external identity.
+  const samsaraItems = (sources?.samsara ?? []).map((s) => ({
+    value: s.samsara_driver_id,
+    label: `${s.name}${s.company_code ? ` · ${s.company_code}` : ''}${s.linked_user_id != null ? ' (linked)' : s.deactivated ? ' (inactive)' : ''}`,
+    disabled: s.linked_user_id != null || s.deactivated,
+  }));
+  const datatruckItems = (sources?.datatruck ?? []).map((d) => ({
+    value: d.external_id,
+    label: `${d.name}${d.truck_unit ? ` · ${d.truck_unit}` : ''}${d.linked_user_id != null ? ' (linked)' : ''}`,
+    disabled: d.linked_user_id != null,
+  }));
 
   return (
     <>
@@ -1773,24 +1792,14 @@ function IdentityLinks({ member, onPatched }: {
                 </>
               ) : (
                 <>
-                  <select
-                    className={pickerCls}
-                    value={samsaraPick}
-                    onChange={(e) => setSamsaraPick(e.target.value)}
-                    aria-label="Link Samsara driver"
-                  >
-                    <option value="">Not linked</option>
-                    {(sources?.samsara ?? []).map((s) => (
-                      <option
-                        key={s.samsara_driver_id}
-                        value={s.samsara_driver_id}
-                        disabled={s.linked_user_id != null || s.deactivated}
-                      >
-                        {s.name}{s.company_code ? ` · ${s.company_code}` : ''}
-                        {s.linked_user_id != null ? ' (linked)' : s.deactivated ? ' (inactive)' : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={samsaraPick} onValueChange={(v) => setSamsaraPick(v ?? '')} items={samsaraItems}>
+                    <SelectTrigger className="w-44" aria-label="Link Samsara driver"><SelectValue placeholder="Not linked" /></SelectTrigger>
+                    <SelectContent>
+                      {samsaraItems.map((it) => (
+                        <SelectItem key={it.value} value={it.value} disabled={it.disabled}>{it.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Button
                     type="button"
                     variant="outline"
@@ -1822,24 +1831,14 @@ function IdentityLinks({ member, onPatched }: {
                 </>
               ) : (
                 <>
-                  <select
-                    className={pickerCls}
-                    value={dtPick}
-                    onChange={(e) => setDtPick(e.target.value)}
-                    aria-label="Link Datatruck driver"
-                  >
-                    <option value="">Not linked</option>
-                    {(sources?.datatruck ?? []).map((d) => (
-                      <option
-                        key={d.external_id}
-                        value={d.external_id}
-                        disabled={d.linked_user_id != null}
-                      >
-                        {d.name}{d.truck_unit ? ` · ${d.truck_unit}` : ''}
-                        {d.linked_user_id != null ? ' (linked)' : ''}
-                      </option>
-                    ))}
-                  </select>
+                  <Select value={dtPick} onValueChange={(v) => setDtPick(v ?? '')} items={datatruckItems}>
+                    <SelectTrigger className="w-44" aria-label="Link Datatruck driver"><SelectValue placeholder="Not linked" /></SelectTrigger>
+                    <SelectContent>
+                      {datatruckItems.map((it) => (
+                        <SelectItem key={it.value} value={it.value} disabled={it.disabled}>{it.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <Button
                     type="button"
                     variant="outline"
@@ -1989,13 +1988,6 @@ function unlinkedTotal(data: LinksResponse | undefined): number | null {
     + data.load_names.dispatchers.length
     + data.load_names.drivers.length;
 }
-
-// Native-select twin of the Input primitive: rounded-lg tracks the theme's
-// Corners preset exactly (bare `rounded` is radius−3px and reads as stuck),
-// border-input matches form-field outlines.
-const selectCls =
-  'bg-muted border border-input rounded-lg px-2 py-1 text-xs text-foreground ' +
-  'focus:outline-none focus:border-ring';
 
 function IntegrationLinksPanel({ members, onChanged }: {
   members: AdminUser[];

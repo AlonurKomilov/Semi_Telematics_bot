@@ -43,6 +43,7 @@ import type { User } from '../types';
 import { LANGUAGE_OPTIONS } from '../utils/languages';
 import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../utils/timezones';
 import { useNow } from '../hooks/useNow';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../components/ui/select';
 
 // HOURS array removed in the migration-100 cleanup — the user no
 // longer picks shift hours from Profile (admin-managed in Team
@@ -129,6 +130,17 @@ export default function Profile() {
     }
   };
 
+  // Timezone dropdown items — the leading "" value keeps the account
+  // default as a real, re-selectable choice (matches the native select
+  // that had an <option value=""> first row); the rest hide the option
+  // equal to the account default to avoid a duplicate row.
+  const tzItems = [
+    { value: '', label: `Use account default (${timezoneLabelWithTime(accountTz, now)})` },
+    ...TIMEZONE_OPTIONS
+      .filter((o) => o.value !== accountTz)
+      .map((o) => ({ value: o.value, label: timezoneLabelWithTime(o.value, now) })),
+  ];
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -167,15 +179,14 @@ export default function Profile() {
             <label className="block text-xs text-muted-foreground mb-1">
               {t('language.label', 'Language')}
             </label>
-            <select
-              value={lang}
-              onChange={(e) => setLang(e.target.value)}
-              className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring"
-            >
-              {LANGUAGE_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+            <Select value={lang} onValueChange={(v) => setLang(v ?? '')} items={LANGUAGE_OPTIONS}>
+              <SelectTrigger className="w-full" aria-label={t('language.label', 'Language')}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {LANGUAGE_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Timezone override */}
@@ -186,26 +197,16 @@ export default function Profile() {
                 (leave on "Use account default" to follow the company timezone)
               </span>
             </label>
-            <select
-              value={tz}
-              onChange={(e) => setTz(e.target.value)}
-              className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring"
-            >
-              <option value="">
-                Use account default ({timezoneLabelWithTime(accountTz, now)})
-              </option>
-              {TIMEZONE_OPTIONS
-                // Hide the option that matches the account default so the
-                // dropdown reads as a single canonical row per zone (no
-                // visual duplicate of "Eastern Time" when the account
-                // default is already Eastern).
-                .filter((o) => o.value !== accountTz)
-                .map((o) => (
-                  <option key={o.value} value={o.value}>
-                    {timezoneLabelWithTime(o.value, now)}
-                  </option>
+            <Select value={tz} onValueChange={(v) => setTz(v ?? '')} items={tzItems}>
+              <SelectTrigger className="w-full" aria-label="Timezone override">
+                <SelectValue placeholder={`Use account default (${timezoneLabelWithTime(accountTz, now)})`} />
+              </SelectTrigger>
+              <SelectContent>
+                {tzItems.map((it) => (
+                  <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>
                 ))}
-            </select>
+              </SelectContent>
+            </Select>
             <p className="text-3xs text-muted-foreground mt-1 opacity-75">
               Pick a specific timezone if you work in a different one from the
               company default.

@@ -5,6 +5,15 @@ import { X, Trash2, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import type { MaintenanceTemplate } from '../../types';
 import { TASK_TYPE_OPTIONS, PRIORITY_OPTIONS } from './badges';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
+
+// Priority options carry lowercase wire values; title-case the display
+// label so the picker reads "Low / Medium / …" (matches the old
+// CSS-``capitalize`` presentation).
+const PRIORITY_ITEMS = PRIORITY_OPTIONS.map((p) => ({
+  value: p,
+  label: p.charAt(0).toUpperCase() + p.slice(1),
+}));
 
 interface Props {
   onClose: () => void;
@@ -220,27 +229,25 @@ export function TemplatesModal({ onClose, onChange }: Props) {
             </label>
             <label className="block">
               <span className="block text-xs text-muted-foreground mb-1">Type</span>
-              <select
-                value={nType}
-                onChange={e => setNType(e.target.value)}
-                className="w-full bg-card border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
-              >
-                {TASK_TYPE_OPTIONS.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
+              <Select value={nType} onValueChange={setNType} items={TASK_TYPE_OPTIONS}>
+                <SelectTrigger className="w-full" aria-label="Type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {TASK_TYPE_OPTIONS.map(opt => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <label className="block">
               <span className="block text-xs text-muted-foreground mb-1">Priority</span>
-              <select
-                value={nPriority}
-                onChange={e => setNPriority(e.target.value)}
-                className="w-full bg-card border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring capitalize"
-              >
-                {PRIORITY_OPTIONS.map(p => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
+              <Select value={nPriority} onValueChange={setNPriority} items={PRIORITY_ITEMS}>
+                <SelectTrigger className="w-full" aria-label="Priority"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PRIORITY_ITEMS.map(it => (
+                    <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
             <label className="col-span-2 block">
               <span className="block text-xs text-muted-foreground mb-1">Description</span>

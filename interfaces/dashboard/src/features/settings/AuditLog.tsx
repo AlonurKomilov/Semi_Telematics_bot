@@ -13,6 +13,14 @@ import {
 import type { AuditLogEntry, AnyColumn } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
+
+const LIMIT_ITEMS = [
+  { value: '50', label: 'Last 50' },
+  { value: '100', label: 'Last 100' },
+  { value: '250', label: 'Last 250' },
+  { value: '500', label: 'Last 500' },
+];
 
 // Human-readable labels for the audit-log ``action`` enum.  Unknown
 // actions fall through to the raw snake_case string so a newly-added
@@ -80,16 +88,12 @@ export default function AuditLog() {
         title={t('pages.audit_log_title')}
         description={t('pages.audit_log_desc')}
         actions={
-          <select
-            value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
-            className="bg-background border border-border rounded-md px-2 py-1.5 text-sm focus:outline-none focus:border-ring"
-          >
-            <option value={50}>Last 50</option>
-            <option value={100}>Last 100</option>
-            <option value={250}>Last 250</option>
-            <option value={500}>Last 500</option>
-          </select>
+          <Select value={String(limit)} onValueChange={(v) => setLimit(Number(v))} items={LIMIT_ITEMS}>
+            <SelectTrigger aria-label="Number of entries to show"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {LIMIT_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         }
       />
 

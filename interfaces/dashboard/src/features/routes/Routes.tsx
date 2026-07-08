@@ -6,6 +6,7 @@ import { useLeafletMap } from '../../hooks/useLeafletMap';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
 import PoiLayerPanel from '@/features/live-map/PoiLayerPanel';
 import { PageHeader } from '../../components/shell';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import type { RouteReplayResponse, DispatchVehicle, DispatchVehiclesResponse, RoutePoint } from '../../types';
 import type L from 'leaflet';
 import { MAP_STATUS } from '../../config/mapColors';
@@ -114,6 +115,8 @@ export default function Routes() {
     }
   }
 
+  const vehicleItems = vehicles.map((v) => ({ value: v.name, label: v.name }));
+
   return (
     <div>
       <PageHeader
@@ -126,16 +129,14 @@ export default function Routes() {
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div>
           <label className="block text-xs text-muted-foreground mb-1">Vehicle</label>
-          <select
-            value={vehicleName}
-            onChange={(e) => setVehicleName(e.target.value)}
-            className="bg-muted border border-border rounded px-3 py-2 text-sm text-foreground/80 min-w-[200px]"
-          >
-            <option value="">Select vehicle...</option>
-            {vehicles.map((v) => (
-              <option key={v.name} value={v.name}>{v.name}</option>
-            ))}
-          </select>
+          <Select value={vehicleName} onValueChange={(v) => setVehicleName(v)} items={vehicleItems}>
+            <SelectTrigger className="min-w-[200px]" aria-label="Vehicle">
+              <SelectValue placeholder="Select vehicle..." />
+            </SelectTrigger>
+            <SelectContent>
+              {vehicleItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <label className="block text-xs text-muted-foreground mb-1">Date</label>

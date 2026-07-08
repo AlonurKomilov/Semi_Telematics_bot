@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GraduationCap } from 'lucide-react';
@@ -7,6 +7,7 @@ import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 import DataGrid from '../../components/DataGrid';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import type { AnyColumn } from '../../types';
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -55,6 +56,24 @@ const SEVERITY_ICON: Record<string, string> = {
   medium: '🟡',
   high: '🔴',
 };
+
+const SEVERITY_ITEMS = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
+
+const KIND_ITEMS = [
+  { value: 'score_threshold', label: 'Score ≤ threshold' },
+  { value: 'incident_count', label: 'Incident count ≥ N' },
+];
+
+const STATUS_ITEMS = [
+  { value: '', label: 'All statuses' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'acknowledged', label: 'Acknowledged' },
+  { value: 'cancelled', label: 'Cancelled' },
+];
 
 // ── Page ─────────────────────────────────────────────────────────
 
@@ -154,6 +173,10 @@ function AssignmentsTab() {
     queryFn: () => apiJSON<CoachingTopic[]>('/coaching/topics'),
   });
   const topics = Array.isArray(topicsData) ? topicsData : [];
+  const topicItems = useMemo(
+    () => topics.map((tp) => ({ value: tp.key, label: tp.label || tp.key })),
+    [topics],
+  );
   // Default the topic picker to the first topic once topics load.
   useEffect(() => {
     if (!topicKey && topics[0]) setTopicKey(topics[0].key);
@@ -200,29 +223,21 @@ function AssignmentsTab() {
         </div>
         <div>
           <label className="block text-xs text-muted-foreground">Topic</label>
-          <select
-            value={topicKey}
-            onChange={(e) => setTopicKey(e.target.value)}
-            className="rounded border border-border/50 bg-background px-2 py-1 text-sm"
-          >
-            {topics.map((t) => (
-              <option key={t.key} value={t.key}>
-                {t.label || t.key}
-              </option>
-            ))}
-          </select>
+          <Select value={topicKey} onValueChange={(v) => setTopicKey(v)} items={topicItems}>
+            <SelectTrigger aria-label="Topic"><SelectValue placeholder="Select topic" /></SelectTrigger>
+            <SelectContent>
+              {topicItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <label className="block text-xs text-muted-foreground">Severity</label>
-          <select
-            value={severity}
-            onChange={(e) => setSeverity(e.target.value as 'low' | 'medium' | 'high')}
-            className="rounded border border-border/50 bg-background px-2 py-1 text-sm"
-          >
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-          </select>
+          <Select value={severity} onValueChange={(v) => setSeverity(v as 'low' | 'medium' | 'high')} items={SEVERITY_ITEMS}>
+            <SelectTrigger aria-label="Severity"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {SEVERITY_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex-1">
           <label className="block text-xs text-muted-foreground">Reason</label>
@@ -248,16 +263,12 @@ function AssignmentsTab() {
       </div>
 
       <div className="flex flex-wrap gap-3">
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded border border-border/50 bg-background px-2 py-1 text-sm"
-        >
-          <option value="">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="acknowledged">Acknowledged</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v)} items={STATUS_ITEMS}>
+          <SelectTrigger aria-label="Status filter"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {STATUS_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <input
           value={driverFilter}
           onChange={(e) => setDriverFilter(e.target.value)}
@@ -344,6 +355,10 @@ function RulesTab() {
   });
   const rules = Array.isArray(rulesData) ? rulesData : [];
   const topics = Array.isArray(topicsData) ? topicsData : [];
+  const topicItems = useMemo(
+    () => topics.map((tp) => ({ value: tp.key, label: tp.label || tp.key })),
+    [topics],
+  );
   const loading = rulesLoading;
 
   useEffect(() => {
@@ -408,28 +423,21 @@ function RulesTab() {
         </div>
         <div>
           <label className="block text-xs text-muted-foreground">Kind</label>
-          <select
-            value={kind}
-            onChange={(e) => setKind(e.target.value as 'score_threshold' | 'incident_count')}
-            className="w-full rounded border border-border/50 bg-background px-2 py-1 text-sm"
-          >
-            <option value="score_threshold">Score ≤ threshold</option>
-            <option value="incident_count">Incident count ≥ N</option>
-          </select>
+          <Select value={kind} onValueChange={(v) => setKind(v as 'score_threshold' | 'incident_count')} items={KIND_ITEMS}>
+            <SelectTrigger className="w-full" aria-label="Kind"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {KIND_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <label className="block text-xs text-muted-foreground">Topic</label>
-          <select
-            value={topicKey}
-            onChange={(e) => setTopicKey(e.target.value)}
-            className="w-full rounded border border-border/50 bg-background px-2 py-1 text-sm"
-          >
-            {topics.map((t) => (
-              <option key={t.key} value={t.key}>
-                {t.label || t.key}
-              </option>
-            ))}
-          </select>
+          <Select value={topicKey} onValueChange={(v) => setTopicKey(v)} items={topicItems}>
+            <SelectTrigger className="w-full" aria-label="Topic"><SelectValue placeholder="Select topic" /></SelectTrigger>
+            <SelectContent>
+              {topicItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div>
           <label className="block text-xs text-muted-foreground">Period (days)</label>
@@ -474,15 +482,12 @@ function RulesTab() {
         )}
         <div>
           <label className="block text-xs text-muted-foreground">Severity</label>
-          <select
-            value={severity}
-            onChange={(e) => setSeverity(e.target.value as 'low' | 'medium' | 'high')}
-            className="w-full rounded border border-border/50 bg-background px-2 py-1 text-sm"
-          >
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-          </select>
+          <Select value={severity} onValueChange={(v) => setSeverity(v as 'low' | 'medium' | 'high')} items={SEVERITY_ITEMS}>
+            <SelectTrigger className="w-full" aria-label="Severity"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {SEVERITY_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </div>
         <div className="md:col-span-2">
           <label className="block text-xs text-muted-foreground">Message (shown to driver)</label>

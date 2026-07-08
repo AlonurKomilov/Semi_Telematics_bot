@@ -17,6 +17,7 @@ import { useOutletContext } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '../../api/client';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import type { ReportsLayoutOutletContext } from './ReportsLayout';
 
 
@@ -27,6 +28,8 @@ const WINDOW_OPTIONS = [
   { days: '365', label: 'Last 12 months (DOT default)' },
   { days: '730', label: 'Last 24 months' },
 ];
+
+const WINDOW_ITEMS = WINDOW_OPTIONS.map((o) => ({ value: o.days, label: o.label }));
 
 
 export default function DotBinder() {
@@ -106,16 +109,12 @@ export default function DotBinder() {
             <span className="block text-xs text-muted-foreground mb-1">
               Coverage window
             </span>
-            <select
-              value={days}
-              onChange={(e) => setDays(e.target.value)}
-              disabled={generating}
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
-            >
-              {WINDOW_OPTIONS.map((opt) => (
-                <option key={opt.days} value={opt.days}>{opt.label}</option>
-              ))}
-            </select>
+            <Select value={days} onValueChange={(v) => setDays(v)} disabled={generating} items={WINDOW_ITEMS}>
+              <SelectTrigger className="w-full" aria-label="Coverage window"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {WINDOW_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </label>
 
           <label className="block">

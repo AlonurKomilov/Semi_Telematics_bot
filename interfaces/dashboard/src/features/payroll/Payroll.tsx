@@ -6,6 +6,7 @@ import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 import DataGrid from '../../components/DataGrid';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import type { AnyColumn } from '../../types';
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -57,6 +58,11 @@ interface RunDetail extends PayrollRun {
 
 const fmtCents = (c: number | null | undefined) =>
   c == null ? '$0.00' : `$${(c / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+const RULE_KIND_ITEMS: { value: BonusRule['kind']; label: string }[] = [
+  { value: 'score_threshold', label: 'Score ≥ threshold' },
+  { value: 'incident_count', label: 'Incidents ≤ max' },
+];
 
 type Tab = 'rules' | 'runs' | 'settings';
 
@@ -378,12 +384,16 @@ function RulesTab() {
           <input placeholder="Name"
             value={draft.name ?? ''} onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             className="border rounded px-2 py-1 bg-background" />
-          <select value={draft.kind ?? 'score_threshold'}
-            onChange={(e) => setDraft({ ...draft, kind: e.target.value as BonusRule['kind'] })}
-            className="border rounded px-2 py-1 bg-background">
-            <option value="score_threshold">Score ≥ threshold</option>
-            <option value="incident_count">Incidents ≤ max</option>
-          </select>
+          <Select
+            value={draft.kind ?? 'score_threshold'}
+            onValueChange={(v) => setDraft({ ...draft, kind: v as BonusRule['kind'] })}
+            items={RULE_KIND_ITEMS}
+          >
+            <SelectTrigger className="w-full" aria-label="Rule kind"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {RULE_KIND_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <input type="number" placeholder="Amount (cents)"
             value={draft.amount_cents ?? 0}
             onChange={(e) => setDraft({ ...draft, amount_cents: Number(e.target.value) })}
