@@ -48,7 +48,10 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Kill-switch
     pdb = get_platform_db()
     acct = await pdb.get_account(user.account_id)
-    if acct is None or not getattr(acct, "payroll_enabled", False):
+    from capabilities.permissions.modules import module_enabled
+    if acct is None or not module_enabled(
+        getattr(acct, "disabled_modules", ""), "payroll",
+    ):
         await update.message.reply_text(t("payroll.disabled_for_account"))
         return
 

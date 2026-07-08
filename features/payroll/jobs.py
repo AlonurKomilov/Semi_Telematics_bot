@@ -1,7 +1,7 @@
 """Payroll scheduled jobs.
 
 The monthly job runs on the 1st of every month at 02:00 UTC.  For each
-account with ``payroll_enabled = 1`` it computes a *draft* run for the
+account with the payroll module enabled it computes a *draft* run for the
 prior calendar month, leaving the run for an admin to review and
 finalize via the dashboard.
 """
@@ -47,7 +47,8 @@ async def run_monthly_payroll_job(_app=None) -> None:
     skipped = 0
     failed = 0
     for acc in accounts:
-        if not getattr(acc, "payroll_enabled", False):
+        from capabilities.permissions.modules import module_enabled
+        if not module_enabled(getattr(acc, "disabled_modules", ""), "payroll"):
             skipped += 1
             continue
         try:

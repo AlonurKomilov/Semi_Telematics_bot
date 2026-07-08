@@ -33,11 +33,14 @@ class PayrollDisabledError(RuntimeError):
 
 
 async def _assert_enabled(account_id: int) -> None:
+    from capabilities.permissions.modules import module_enabled
     pdb = get_db()
     acct = await pdb.get_account(account_id)
-    if acct is None or not getattr(acct, "payroll_enabled", False):
+    if acct is None or not module_enabled(
+        getattr(acct, "disabled_modules", ""), "payroll",
+    ):
         raise PayrollDisabledError(
-            f"payroll feature is disabled for account {account_id}"
+            f"payroll module is disabled for account {account_id}"
         )
 
 

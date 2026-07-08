@@ -16,9 +16,12 @@ featureCatalog.ts (TOGGLEABLE_MODULES); keep the two in sync.
 """
 from __future__ import annotations
 
-# Order is display order in the Owner "Modules" settings page.
+# Order is display order on the Permissions page's department bands.
+# "payroll" is a single-feature module: it was historically gated by the
+# one-off accounts.payroll_enabled flag; folding it here gives it the same
+# on/off mechanism as every other department (one switch, one home).
 TOGGLEABLE_MODULES: tuple[str, ...] = (
-    "fleet", "dispatch", "safety", "hr", "accounting",
+    "fleet", "dispatch", "safety", "hr", "accounting", "payroll",
 )
 
 
@@ -95,9 +98,16 @@ FLAG_MODULES: dict[str, frozenset[str]] = {
     # Accounting (costs + payroll)
     "can_fuel_cost": frozenset({"accounting", "dispatch"}),
     "can_cost_per_mile": frozenset({"accounting", "fleet"}),
-    "can_payroll_admin": frozenset({"accounting"}),
-    "can_payroll_view_own": frozenset({"accounting"}),
+    # Payroll — its own module (see TOGGLEABLE_MODULES note).
+    "can_payroll_admin": frozenset({"payroll"}),
+    "can_payroll_view_own": frozenset({"payroll"}),
 }
+
+
+def module_enabled(disabled_csv: str | None, module: str) -> bool:
+    """Whether one module is on for the account — the check the payroll
+    service/bot/API gates use (replaces the legacy payroll_enabled flag)."""
+    return module not in parse_disabled(disabled_csv)
 
 
 def masked_off_flags(disabled_csv: str | None) -> set[str]:

@@ -68,7 +68,9 @@ def _patch_services(monkeypatch, tenant_db, *, payroll_enabled: bool = True,
     fake_account = SimpleNamespace(
         id=ACCOUNT_ID,
         name="Test",
-        payroll_enabled=payroll_enabled,
+        # The service now reads the MODULE mask, not the legacy flag —
+        # the harness keeps its boolean param and maps it.
+        disabled_modules="" if payroll_enabled else "payroll",
     )
 
     class _FakePlatformDB:
@@ -434,3 +436,33 @@ class TestServiceLifecycle:
         assert ok
         run = await tenant.get_payroll_run(ACCOUNT_ID, rid)
         assert run["status"] == "cancelled"
+
+
+# ── Payroll as a standard module (legacy flag folded) ─────────────
+
+def test_payroll_is_a_toggleable_module():
+    from capabilities.permissions.modules import (
+        TOGGLEABLE_MODULES, masked_off_flags, module_enabled, to_disabled_csv,
+    )
+    assert "payroll" in TOGGLEABLE_MODULES
+    # Disabling the module force-masks its permission flags…
+    off = masked_off_flags("payroll")
+    assert {"can_payroll_admin", "can_payroll_view_own"} <= off
+    # …without touching the accounting department's own flags.
+    assert "can_fuel_cost" not in off
+    assert module_enabled("", "payroll") is True
+    assert module_enabled("payroll", "payroll") is False
+    # Enabled-list round trip keeps payroll togglable like the rest.
+    csv = to_disabled_csv(["fleet", "dispatch", "safety", "hr", "accounting"])
+    assert csv == "payroll"
+
+
+def test_account_modules_routes_replace_payroll_enabled():
+    """The generic modules endpoints exist (the Permissions-page switches
+    finally have a backend); the bespoke payroll-enabled pair is gone."""
+    import os
+    os.environ.setdefault("JWT_SECRET", "x" * 40)
+    from features.settings.account.router import router
+    paths = {r.path for r in router.routes if hasattr(r, "path")}
+    assert "/admin/account/modules" in paths
+    assert not any("payroll-enabled" in p for p in paths)

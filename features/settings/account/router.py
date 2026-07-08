@@ -375,44 +375,61 @@ async def set_account_timezone(
     return {"timezone": tz_val}
 
 
-# ── Feature modules (account-level kill-switches) ─────────────────
+# ── Department modules (account-level on/off) ─────────────────────
+#
+# The backend half of the Permissions page's section-header switches.
+# ``accounts.disabled_modules`` (CSV of disabled ids) is the storage;
+# a disabled module force-masks its permission flags account-wide (see
+# capabilities/permissions/modules.py), so "module off" is a real API
+# switch, not just hidden nav.  Payroll folded in here 2026-07-08,
+# replacing the legacy one-off ``payroll_enabled`` flag + its bespoke
+# Settings card.
 
 
-class PayrollEnabledUpdate(BaseModel):
-    enabled: bool
+class ModulesUpdate(BaseModel):
+    enabled: list[str]
 
 
-@router.get("/payroll-enabled")
-async def get_payroll_enabled(
+@router.get("/account/modules")
+async def get_account_modules(
     user: dict = Depends(require_permission("can_manage_account")),
     platform_db=Depends(get_platform_db),
 ):
-    """The Payroll module's account kill-switch.  When off, the Payroll
-    page hides for EVERY role regardless of the permission matrix —
-    surfaced here because that interplay confused operators (a granted
-    permission with an invisible page)."""
+    from capabilities.permissions.modules import (
+        TOGGLEABLE_MODULES, enabled_modules,
+    )
     acct = await platform_db.get_account(user["account_id"])
-    return {"enabled": bool(getattr(acct, "payroll_enabled", False))}
+    return {
+        "enabled": enabled_modules(getattr(acct, "disabled_modules", "")),
+        "all": list(TOGGLEABLE_MODULES),
+    }
 
 
-@router.put("/payroll-enabled")
-async def set_payroll_enabled(
-    body: PayrollEnabledUpdate,
+@router.put("/account/modules")
+async def set_account_modules(
+    body: ModulesUpdate,
     user: dict = Depends(require_permission("can_manage_account")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Flip the Payroll module for the account.  Visibility per role is
-    still the permission matrix's job — this only lifts the master gate."""
+    """Persist the enabled-module list.  Unknown ids are ignored (the
+    CSV codec only stores registry ids), and the permissions cache is
+    invalidated so the mask applies on the next request."""
+    from capabilities.permissions.modules import (
+        enabled_modules, to_disabled_csv,
+    )
+    from capabilities.permissions.roles import invalidate_permissions_cache
+    csv = to_disabled_csv(body.enabled)
     ok = await platform_db.update_account(
-        user["account_id"], payroll_enabled=bool(body.enabled),
+        user["account_id"], disabled_modules=csv,
     )
     if not ok:
         raise HTTPException(status_code=404, detail="Account not found")
+    invalidate_permissions_cache(user["account_id"])
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),
-        "payroll_module_toggle",
+        "account_modules_update",
         target_type="account", target_id=str(user["account_id"]),
-        details=f"Payroll module {'enabled' if body.enabled else 'disabled'}",
+        details=f"Disabled modules: {csv or '(none)'}",
     )
-    return {"enabled": bool(body.enabled)}
+    return {"enabled": enabled_modules(csv)}

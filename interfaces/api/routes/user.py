@@ -16,6 +16,7 @@ from interfaces.api.deps import (
 )
 from capabilities.permissions.roles import get_account_permissions, get_user_permissions
 from capabilities.permissions.modules import enabled_modules as _enabled_modules
+from capabilities.permissions.modules import parse_disabled as _parse_disabled
 from capabilities.localization.tz import effective_tz_for_user, IANA_OPTIONS
 from adapters.storage import Role
 
@@ -145,7 +146,11 @@ async def user_me(
             if db_user.email else True
         ),
         "permissions": perm_dict,
-        "payroll_enabled": bool(getattr(acct, "payroll_enabled", False)),
+        # Derived from the payroll MODULE (disabled_modules) — the field
+        # name stays for frontend compat; the legacy column is retired.
+        "payroll_enabled": "payroll" not in _parse_disabled(
+            getattr(acct, "disabled_modules", ""),
+        ),
         "coaching_enabled": bool(getattr(acct, "coaching_enabled", False)),
         # Enabled department modules (Fleet/Dispatch/Safety/HR/Accounting).
         # Drives module-aware sidebar filtering; Core + Account admin are

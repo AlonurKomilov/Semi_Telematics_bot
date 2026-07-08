@@ -45,31 +45,6 @@ export default function Settings() {
   const [accountTzSuccess, setAccountTzSuccess] = useState('');
   const canManageAccount = !!authUser?.permissions?.can_manage_account;
 
-  // Payroll module kill-switch — account-level.  When off, the Payroll
-  // page hides for EVERY role regardless of the permission matrix (that
-  // interplay confused operators: a granted permission, no visible page).
-  const { data: payrollMod } = useQuery({
-    queryKey: ['admin-payroll-enabled'],
-    queryFn: () => apiJSON<{ enabled: boolean }>('/admin/payroll-enabled'),
-    enabled: canManageAccount,
-  });
-  const [payrollBusy, setPayrollBusy] = useState(false);
-  const payrollOn = payrollMod?.enabled ?? false;
-  const flipPayroll = async () => {
-    if (payrollBusy) return;
-    setPayrollBusy(true);
-    try {
-      await apiJSON('/admin/payroll-enabled', {
-        method: 'PUT', body: { enabled: !payrollOn },
-      });
-      await qc.invalidateQueries({ queryKey: ['admin-payroll-enabled'] });
-      // /me carries payroll_enabled — nav visibility updates on reload;
-      // tell the operator instead of silently doing nothing.
-      window.location.reload();
-    } catch {
-      setPayrollBusy(false);
-    }
-  };
 
   // Track editable settings
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -259,36 +234,6 @@ export default function Settings() {
               {accountTzSaving ? 'Saving…' : 'Save'}
             </button>
           </div>
-        </section>
-      )}
-
-      {canManageAccount && (
-        <section className="bg-card border border-border rounded-xl p-4 flex items-center justify-between gap-4">
-          <div className="text-sm">
-            <p className="font-medium">Payroll module</p>
-            <p className="text-xs text-muted-foreground">
-              Master switch for the Payroll page. When off, it's hidden for
-              every role — even ones granted payroll access in the
-              Permissions matrix.
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={payrollOn}
-            aria-label="Payroll module"
-            disabled={payrollBusy}
-            onClick={() => { void flipPayroll(); }}
-            className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition ${
-              payrollOn ? 'bg-primary' : 'bg-muted-foreground/30'
-            } ${payrollBusy ? 'opacity-60' : ''}`}
-          >
-            <span
-              className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition ${
-                payrollOn ? 'translate-x-5' : 'translate-x-0.5'
-              }`}
-            />
-          </button>
         </section>
       )}
 

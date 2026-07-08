@@ -30,6 +30,7 @@ async def run_all(conn) -> None:
     await migrate_add_users_samsara_driver_id(conn)
     await migrate_create_payroll_tables(conn)
     await migrate_payroll_pay_models(conn)
+    await migrate_payroll_module_fold(conn)
     # Driver Module migrations
     await migrate_add_driver_profile_columns(conn)
     await migrate_create_driver_vehicle_assignments(conn)
@@ -3030,6 +3031,45 @@ async def migrate_payroll_pay_models(conn) -> None:
             logger.info("Migration: driver_pay_settings gained %s", added)
     except Exception as e:
         logger.error("payroll pay-model migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_payroll_module_fold(conn) -> None:
+    """Fold the legacy ``accounts.payroll_enabled`` flag into the standard
+    module system: accounts where the flag is OFF get 'payroll' appended to
+    ``disabled_modules``.  One mechanism from here on — the Permissions
+    page's department switch governs Payroll like every other module; the
+    legacy column stays in place but is no longer read.  Idempotent (skips
+    rows already carrying the token)."""
+    try:
+        cur = await conn.execute(
+            "SELECT id, disabled_modules FROM accounts "
+            "WHERE COALESCE(payroll_enabled, 0) = 0"
+        )
+        rows = await cur.fetchall()
+        changed = 0
+        for r in rows:
+            aid, csv = int(r[0]), str(r[1] or "")
+            tokens = [t.strip() for t in csv.split(",") if t.strip()]
+            if "payroll" in tokens:
+                continue
+            tokens.append("payroll")
+            await conn.execute(
+                "UPDATE accounts SET disabled_modules = ? WHERE id = ?",
+                (",".join(tokens), aid),
+            )
+            changed += 1
+        if changed:
+            await conn.commit()
+            logger.info(
+                "Migration: payroll module disabled for %d accounts "
+                "(legacy payroll_enabled=0 fold)", changed,
+            )
+    except Exception as e:
+        logger.error("payroll module fold migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:
