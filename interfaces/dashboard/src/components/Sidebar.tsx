@@ -86,31 +86,48 @@ export default function Sidebar() {
       // the Samsara-style continuous-chrome look.
       className={`${collapsed ? 'w-14' : 'w-56'} bg-sidebar text-sidebar-foreground flex flex-col shrink-0 h-screen transition-[width] duration-150 ease-out`}
     >
-      {/* Logo row + collapse toggle.  When expanded the row carries
-          the brand mark, brand text, persona selector, and a collapse
-          button.  When collapsed it keeps a compact icon-only persona
-          selector next to the expand button — the collapsed preference
-          persists in localStorage, so hiding the selector entirely
-          would lock switchable users (Owner/Admin) out of "View
-          dashboard as…" across every session. */}
-      <div className={`h-12 flex items-center ${collapsed ? 'px-1 justify-center gap-0.5' : 'px-3 gap-2'} shrink-0`}>
-        {!collapsed && <span className="text-lg font-bold text-foreground">4truck</span>}
-        {collapsed && <PersonaSelector compact />}
-        {!collapsed && (
+      {/* Logo row + collapse toggle.  Expanded: one h-12 row carries the
+          brand text, persona selector, and collapse button — plenty of
+          width.  Collapsed: the rail is only 56px wide, and a size-7
+          (28px) persona badge sitting beside a 28px toggle button in a
+          single row doesn't fit (56px content − padding − gap leaves
+          ~48px for the two, ~10px short) — the pair would silently
+          overflow the rail's right edge into the content area.  Stacking
+          them in a column sidesteps the arithmetic entirely: each
+          control only has to fit the rail's width on its own, which it
+          does with room to spare. The persona indicator persists in
+          localStorage even when collapsed, so it's never a case of
+          hiding it — always render it, just at whatever density fits. */}
+      {collapsed ? (
+        <div className="flex flex-col items-center gap-1 px-1 py-2 shrink-0">
+          <PersonaSelector compact />
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
+            aria-label="Expand sidebar"
+            title="Expand sidebar"
+          >
+            <PanelLeftOpen size={16} />
+          </button>
+        </div>
+      ) : (
+        <div className="h-12 flex items-center px-3 gap-2 shrink-0">
+          <span className="text-lg font-bold text-foreground">4truck</span>
           <div className="ml-auto">
             <PersonaSelector />
           </div>
-        )}
-        <button
-          type="button"
-          onClick={() => setCollapsed((c) => !c)}
-          className="p-1.5 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
-          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
-        </button>
-      </div>
+          <button
+            type="button"
+            onClick={() => setCollapsed((c) => !c)}
+            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar"
+          >
+            <PanelLeftClose size={16} />
+          </button>
+        </div>
+      )}
 
       {/* Nav — scrolls independently.  Group title labels (FLEET /
           SAFETY / REPORTS / WORKFORCE / ADMIN) are deliberately

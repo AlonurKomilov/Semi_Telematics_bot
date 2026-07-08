@@ -62,9 +62,23 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
   // Non-switchable user (Fleet / Safety / Dispatcher / Driver): static
   // pill with no interactivity.  Shows the user what role they're in
   // without implying they can change it.  In compact (collapsed-rail)
-  // mode there's no room for a label-only pill — render nothing.
+  // mode the full label doesn't fit, but dropping it entirely made the
+  // collapsed rail's top row go from "role pill + brand" to nothing —
+  // the two sidebar states stopped agreeing on what they show.  A
+  // single-letter identity badge (same idiom as AvatarMenu's initials
+  // circle) keeps the persona visible at a glance in both states.
   if (!canSwitch) {
-    if (compact) return null;
+    if (compact) {
+      const initial = viewLabel.trim().charAt(0).toUpperCase() || '?';
+      return (
+        <div
+          className="flex size-7 items-center justify-center rounded-full border border-border/60 bg-muted/30 text-2xs font-semibold text-muted-foreground/80 select-none"
+          title={`Your role: ${viewLabel}`}
+        >
+          {initial}
+        </div>
+      );
+    }
     return (
       <div
         className="inline-flex items-center px-2 py-0.5 text-2xs text-muted-foreground/80 bg-muted/30 border border-border/60 rounded-md"
@@ -103,13 +117,19 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
   return (
     <div ref={ref} className="relative">
       {compact ? (
-        // Collapsed-rail trigger: icon only.  Same dropdown; the panel
-        // overhangs the rail into the content area (no overflow clip on
-        // the sidebar).
+        // Collapsed-rail trigger.  Same dropdown; the panel overhangs the
+        // rail into the content area (no overflow clip on the sidebar).
+        // Circular geometry matches the non-switchable badge above (and
+        // AvatarMenu's identity dot) so collapsed/expanded read as the
+        // same control at two densities, not two different UIs.  Idle,
+        // this is an Eye ("click to preview a role") — but mid-preview it
+        // swaps to the previewed role's initial, since an unchanging Eye
+        // glyph can't tell you WHICH role you're currently seeing, the
+        // one thing the expanded label always shows.
         <button
           type="button"
           onClick={() => setOpen(o => !o)}
-          className={`p-1 rounded-md border transition ${
+          className={`flex size-7 items-center justify-center rounded-full border text-2xs font-semibold transition ${
             isPreviewing
               ? 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/15'
               : 'text-muted-foreground border-transparent hover:bg-muted/50 hover:text-foreground'
@@ -119,7 +139,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
           aria-label="View dashboard as…"
           title={triggerTitle}
         >
-          <Eye size={16} />
+          {isPreviewing ? (viewLabel.trim().charAt(0).toUpperCase() || '?') : <Eye size={16} />}
         </button>
       ) : (
         <button
