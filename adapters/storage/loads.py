@@ -172,6 +172,30 @@ def _row_to_line_item(r) -> LoadLineItem:
     )
 
 
+def _estimate_driver_pay(
+    tariff: float, tariff_name: str, *,
+    basis: float | None, miles: float | None,
+) -> float | None:
+    """Tariff-estimated pay for one load — an ESTIMATE, never settlement
+    truth (deductions/bonuses aren't visible to the API).
+
+    Heuristics validated against the account's real settlements before the
+    feature is switched on: a tariff whose name mentions miles is per-mile
+    (× total miles); anything else is a percentage of the trip's driver
+    gross (``trip.total_load_pay``) — stored either as a fraction (0.28)
+    or as percent points (28).  Unresolvable → None (no estimate beats a
+    wrong one)."""
+    if not tariff or tariff <= 0:
+        return None
+    name = (tariff_name or "").lower()
+    if "mile" in name or "mi." in name:
+        return round(tariff * miles, 2) if miles else None
+    rate = tariff / 100.0 if tariff > 1 else tariff
+    if rate >= 1:
+        return None
+    return round(rate * basis, 2) if basis else None
+
+
 def _row_to_load(r) -> Load:
     return Load(
         id=r[0], account_id=r[1], load_number=r[2] or "",
@@ -634,8 +658,37 @@ class LoadsMixin(_MixinBase):
         )
         by_ref = {l.external_ref: l for l in
                   (_row_to_load(r) for r in await cur.fetchall())}
+        uid_to_ref = {uid: ref for ref, (uid, _n) in driver_by_ref.items()}
 
         precedence = await recon.get_precedence(self, account_id, "load")
+        # Tariff-estimated driver pay — opt-in per account (default OFF;
+        # the operator validates the math against real settlements first).
+        # Estimates ride the normal reconciliation path (source=datatruck),
+        # so a manual pin always wins and cleanup stays possible.
+        estimate_on = str(await self.get_account_setting(
+            account_id, "datatruck_pay_estimate", "",
+        ) or "").strip().lower() in ("1", "true", "on")
+        tariff_by_ref: dict[str, tuple[float, str]] = {}
+        if estimate_on:
+            cur = await self._db.execute(
+                "SELECT external_id, payload FROM datatruck_drivers "
+                "WHERE account_id = ?",
+                (account_id,),
+            )
+            for tr in await cur.fetchall():
+                try:
+                    pt = (json.loads(tr[1] or "{}") or {}).get("payment_tariff")
+                except (TypeError, ValueError):
+                    pt = None
+                if isinstance(pt, dict):
+                    try:
+                        tval = float(pt.get("tariff") or 0)
+                    except (TypeError, ValueError):
+                        tval = 0.0
+                    if tval > 0:
+                        tariff_by_ref[str(tr[0])] = (
+                            tval, str(pt.get("name") or ""),
+                        )
         now = self._now()
         cur = await self._db.execute(
             "SELECT COALESCE(MAX(seq), 0) FROM loads WHERE account_id = ?",
@@ -667,6 +720,20 @@ class LoadsMixin(_MixinBase):
                 tunit = str(r.get("trailer_unit") or "") or \
                     trailer_units.get(str(r.get("trailer_external_id") or ""), "")
                 ccode = _company_code(str(r.get("company_name") or ""))
+                inc_pay = r.get("driver_pay")
+                if estimate_on and recon.is_unset(inc_pay):
+                    dref = str(r.get("driver_external_id") or "") or (
+                        uid_to_ref.get(duid, "") if duid is not None else ""
+                    )
+                    t = tariff_by_ref.get(dref)
+                    if t:
+                        miles = float(r.get("loaded_miles") or 0) \
+                            + float(r.get("empty_miles") or 0)
+                        inc_pay = _estimate_driver_pay(
+                            t[0], t[1],
+                            basis=r.get("driver_gross_basis"),
+                            miles=miles or None,
+                        )
                 incoming = {
                     "customer":          r.get("customer"),
                     "pickup_location":   r.get("origin"),
@@ -676,7 +743,7 @@ class LoadsMixin(_MixinBase):
                     "total_rate":        r.get("total_rate"),
                     "loaded_miles":      r.get("loaded_miles"),
                     "empty_miles":       r.get("empty_miles"),
-                    "driver_pay":        r.get("driver_pay"),
+                    "driver_pay":        inc_pay,
                 }
                 existing = by_ref.get(ref)
 
@@ -712,7 +779,7 @@ class LoadsMixin(_MixinBase):
                             dpuid, str(r.get("dispatcher_name") or ""),
                             vunit, tunit,
                             r.get("total_rate"), r.get("loaded_miles"),
-                            r.get("empty_miles"), r.get("driver_pay"),
+                            r.get("empty_miles"), inc_pay,
                             None, source, ref, json.dumps(prov), "",
                             r.get("other_pay"),
                             str(r.get("settlement_ref") or ""),

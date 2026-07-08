@@ -16,6 +16,8 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTimezone } from '../../hooks/useTimezone';
+import { apiJSON } from '../../api/client';
+import { toast } from 'sonner';
 import {
   getDatatruckSyncStatus, triggerDatatruckSync,
   startDatatruckPreview, getDatatruckPreview, applyDatatruckSync,
@@ -252,6 +254,7 @@ export default function DatatruckSyncPanel({
         )}
       />
       <DriverImportPanel />
+      <PayEstimateToggle />
       {preview && (
         <SyncPreviewModal
           resource={preview.resource}
@@ -266,5 +269,74 @@ export default function DatatruckSyncPanel({
         />
       )}
     </>
+  );
+}
+
+
+// ── Tariff-estimated driver pay (opt-in) ────────────────────────
+//
+// Synced loads carry no driver pay (settlements have no API), so gross
+// reads as revenue.  This toggle estimates pay from each driver's
+// payment tariff — OFF until the operator validates the math against a
+// few real settlements in Datatruck's UI.
+
+function PayEstimateToggle() {
+  const qc = useQueryClient();
+  const { data } = useQuery<{ enabled: boolean }>({
+    queryKey: ['datatruck-pay-estimate'],
+    queryFn: () => apiJSON<{ enabled: boolean }>('/integrations/datatruck/pay-estimate'),
+  });
+  const [busy, setBusy] = useState(false);
+  const enabled = data?.enabled ?? false;
+
+  const flip = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await apiJSON('/integrations/datatruck/pay-estimate', {
+        method: 'PUT', body: { enabled: !enabled },
+      });
+      await qc.invalidateQueries({ queryKey: ['datatruck-pay-estimate'] });
+      toast.success(!enabled
+        ? 'Driver-pay estimates on — applies on the next orders sync'
+        : 'Driver-pay estimates off');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not save the setting');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 flex items-start justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2.5">
+      <div>
+        <div className="text-sm font-medium text-foreground">
+          Estimate driver pay from Datatruck tariffs
+        </div>
+        <p className="mt-0.5 text-2xs text-muted-foreground">
+          Synced loads get driver pay computed from each driver&apos;s payment
+          tariff (percentage of trip gross, or per-mile). An estimate, not the
+          settlement — hand-entered pay always wins. Verify a few drivers
+          against their real settlements before enabling.
+        </p>
+      </div>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={enabled}
+        aria-label="Estimate driver pay from Datatruck tariffs"
+        disabled={busy}
+        onClick={() => { void flip(); }}
+        className={`mt-0.5 shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition ${
+          enabled ? 'bg-primary' : 'bg-muted-foreground/30'
+        } ${busy ? 'opacity-60' : ''}`}
+      >
+        <span
+          className={`inline-block h-5 w-5 transform rounded-full bg-background shadow transition ${
+            enabled ? 'translate-x-5' : 'translate-x-0.5'
+          }`}
+        />
+      </button>
+    </div>
   );
 }

@@ -260,3 +260,55 @@ async def test_settlement_mark_and_other_pay_project_and_refresh(db):
     l = (await db.list_loads(acct.id))[0]
     assert l.settlement_ref == "STL-1044"
     assert l.settlement_status == "Sent"
+
+
+def test_estimate_driver_pay_heuristics():
+    from adapters.storage.loads import _estimate_driver_pay as est
+    assert est(0.28, "Percentage", basis=3000.0, miles=1100) == 840.0
+    assert est(28, "Percentage of gross", basis=3000.0, miles=None) == 840.0
+    assert est(0.65, "Per Mile", basis=None, miles=1100.0) == 715.0
+    assert est(0.28, "", basis=None, miles=1100) is None    # no basis
+    assert est(150, "Percentage", basis=3000.0, miles=None) is None  # ≥100%
+    assert est(0, "Percentage", basis=3000.0, miles=None) is None
+
+
+@pytest.mark.asyncio
+async def test_tariff_pay_estimate_gated_and_pinnable(db):
+    """OFF by default; ON → percentage tariff × trip driver-gross lands as
+    driver_pay (source=datatruck); a manual pin survives the next sync."""
+    acct = await db.create_account("Tariff Co")
+    u = await db.create_user(9101, acct.id, role=Role.DRIVER,
+                             display_name="Eugene B")
+    await db.link_datatruck_driver(acct.id, u.id, "D7")
+    await db.upsert_datatruck_drivers(acct.id, [{
+        "external_id": "D7", "first_name": "", "last_name": "",
+        "display_name": "Eugene B", "phone": "", "email": "",
+        "status": "active",
+        "payload": {"payment_tariff": {"id": 3, "tariff": "0.2800",
+                                       "name": "Percentage"}},
+    }])
+
+    # Default OFF → no estimate.
+    await db.project_external_loads(acct.id, [
+        _order("P1", driver_pay=None, other_pay=None),
+    ])
+    l = next(x for x in await db.list_loads(acct.id) if x.external_ref == "P1")
+    assert l.driver_pay is None
+
+    # ON → estimate = 0.28 × trip driver-gross (driver matched by name →
+    # linked ref → tariff).
+    await db.set_account_setting(acct.id, "datatruck_pay_estimate", "1")
+    row = _order("P2", driver_pay=None, other_pay=None)
+    row["driver_name"] = "Eugene B"
+    row["driver_gross_basis"] = 3000.0
+    await db.project_external_loads(acct.id, [row])
+    l = next(x for x in await db.list_loads(acct.id) if x.external_ref == "P2")
+    assert l.driver_pay == 840.0
+    assert l.field_provenance.get("driver_pay") == "datatruck"
+
+    # Operator pins a real figure — the next sync must not overwrite it.
+    await db.write_load_field_pinned(acct.id, l.id, "driver_pay", 900.0)
+    await db.project_external_loads(acct.id, [row])
+    l = next(x for x in await db.list_loads(acct.id) if x.external_ref == "P2")
+    assert l.driver_pay == 900.0
+    assert l.field_provenance.get("driver_pay") == "manual"

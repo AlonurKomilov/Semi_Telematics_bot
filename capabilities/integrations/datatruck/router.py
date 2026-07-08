@@ -390,3 +390,52 @@ async def sync_status(user: dict = Depends(_owner_only)):
         "provider_id": _PROVIDER_ID,
         "resources":   await collect_sync_overview(account_id),
     }
+
+
+# ── Tariff-estimated driver pay (opt-in) ──────────────────────────
+
+_PAY_ESTIMATE_KEY = "datatruck_pay_estimate"
+
+
+class PayEstimateBody(BaseModel):
+    enabled: bool
+
+
+@router.get("/datatruck/pay-estimate")
+async def get_pay_estimate(user: dict = Depends(_owner_only)):
+    """Whether synced loads get a tariff-estimated driver pay
+    (payment_tariff × trip driver-gross, or × miles for per-mile
+    tariffs).  Default OFF — the operator validates the math against a
+    few real settlements in Datatruck's UI before enabling."""
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    raw = str(await tenant.get_account_setting(
+        account_id, _PAY_ESTIMATE_KEY, "",
+    ) or "").strip().lower()
+    return {"enabled": raw in ("1", "true", "on")}
+
+
+@router.put("/datatruck/pay-estimate")
+async def set_pay_estimate(
+    body: PayEstimateBody,
+    user: dict = Depends(_owner_only),
+):
+    """Estimates apply on the NEXT orders sync; they ride the normal
+    reconciliation path (source=datatruck), so hand-entered pay stays
+    pinned and turning the toggle off stops NEW estimates (existing
+    values keep their provenance and can be cleaned like migration 140)."""
+    account_id = int(user["account_id"])
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    await tenant.set_account_setting(
+        account_id, _PAY_ESTIMATE_KEY, "1" if body.enabled else "",
+    )
+    await audit(
+        account_id, int(user["sub"]),
+        "integration.datatruck_pay_estimate", _PROVIDER_ID,
+        details=f"enabled={body.enabled}",
+    )
+    return {"enabled": body.enabled}

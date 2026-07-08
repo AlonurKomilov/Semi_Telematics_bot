@@ -298,6 +298,10 @@ def _norm_order(rec: dict[str, Any]) -> dict[str, Any]:
         "driver_pay":         _money(_first(
             rec, "driver_earnings", "driver_pay", "driverPay",
         )),
+        # The trip's revenue share ("Driver gross" in Datatruck's UI) —
+        # NOT driver earnings, but the BASIS a percentage tariff applies
+        # to.  Promoted only for the opt-in pay estimate.
+        "driver_gross_basis": _money(trip.get("total_load_pay")),
         # Accessorial lump: total_other_pay = every "additional payment"
         # on the order (layover/detention/TONU fees the customer was
         # billed) with no per-type breakdown — total_pay above already
