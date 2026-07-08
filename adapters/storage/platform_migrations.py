@@ -29,6 +29,7 @@ async def run_all(conn) -> None:
     await migrate_add_disabled_modules(conn)
     await migrate_add_users_samsara_driver_id(conn)
     await migrate_create_payroll_tables(conn)
+    await migrate_payroll_pay_models(conn)
     # Driver Module migrations
     await migrate_add_driver_profile_columns(conn)
     await migrate_create_driver_vehicle_assignments(conn)
@@ -2997,6 +2998,38 @@ async def migrate_add_users_datatruck_driver_columns(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.error("datatruck driver columns migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_payroll_pay_models(conn) -> None:
+    """Add driver_pay_settings.pay_model + pay_rate — how a driver's
+    per-load earnings are computed for loads with no stored pay:
+    'percentage' (of the load rate) or 'per_mile' (× total miles);
+    '' keeps the old behavior (fixed base / stored pay only).  Part of
+    folding load-based settlements into the payroll run engine."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(driver_pay_settings)")
+        cols = {r[1] for r in await cur.fetchall()}
+        added = []
+        if "pay_model" not in cols:
+            await conn.execute(
+                "ALTER TABLE driver_pay_settings "
+                "ADD COLUMN pay_model TEXT NOT NULL DEFAULT ''"
+            )
+            added.append("pay_model")
+        if "pay_rate" not in cols:
+            await conn.execute(
+                "ALTER TABLE driver_pay_settings ADD COLUMN pay_rate REAL"
+            )
+            added.append("pay_rate")
+        if added:
+            await conn.commit()
+            logger.info("Migration: driver_pay_settings gained %s", added)
+    except Exception as e:
+        logger.error("payroll pay-model migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

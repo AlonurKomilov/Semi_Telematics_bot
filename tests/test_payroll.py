@@ -22,7 +22,7 @@ import pytest_asyncio
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from adapters.storage import Database
+from adapters.storage import Database, Role
 from features.payroll import engine as payroll_engine
 from features.payroll import service as payroll_service
 from features.payroll.engine import (
@@ -57,7 +57,9 @@ async def tenant(pg_db):
 
 def _patch_services(monkeypatch, tenant_db, *, payroll_enabled: bool = True,
                     cards: list[dict] | None = None,
-                    safety_events: list[dict] | None = None) -> None:
+                    safety_events: list[dict] | None = None,
+                    loads: list[dict] | None = None,
+                    off_items: list[dict] | None = None) -> None:
     """Wire the payroll engine + service to use our test tenant DB."""
 
     async def _get_tenant(_aid):
@@ -106,10 +108,20 @@ def _patch_services(monkeypatch, tenant_db, *, payroll_enabled: bool = True,
             out[(did, et)] = out.get((did, et), 0) + 1
         return out
 
+    async def _get_loads(_aid, **_kw):
+        return loads or []
+
+    async def _get_off_items(_aid, **_kw):
+        return off_items or []
+
     monkeypatch.setattr(payroll_engine, "get_tenant_db", _get_tenant)
     monkeypatch.setattr(payroll_service, "get_tenant_db", _get_tenant)
     monkeypatch.setattr(payroll_service, "get_db", lambda: fake_pdb)
     monkeypatch.setattr(payroll_engine, "evaluate_subjects", _evaluate_subjects)
+    monkeypatch.setattr(payroll_engine.loads_service, "get_loads", _get_loads)
+    monkeypatch.setattr(
+        payroll_engine.loads_service, "get_off_load_line_items", _get_off_items,
+    )
     # Patch bound methods on this specific tenant instance.
     tenant_db.get_safety_events_warehouse = _events  # type: ignore[assignment]
     tenant_db.get_safety_event_counts_grouped = _counts_grouped  # type: ignore[assignment]
@@ -277,6 +289,48 @@ class TestComputeRun:
         assert by_driver["DRV2"].total_cents == 100000
         # DRV3 (score 88, 1 event): base + score + low-hb
         assert by_driver["DRV3"].total_cents == 100000 + 5000 + 2500
+
+    async def test_load_earnings_and_extras(self, tenant: Database, monkeypatch):
+        """Settlement components: a stored per-load pay wins, the
+        percentage model fills loads without one, extra items + off-load
+        layover charge onto the same statement, and a driver with no
+        samsara link still gets a user-keyed item."""
+        acct = await tenant.create_account("Payroll Loads Co")
+        u = await tenant.create_user(9301, acct.id, role=Role.DRIVER,
+                                     display_name="Eugene B")
+        await tenant.link_samsara_driver(acct.id, u.id, "S1")
+        loads = [
+            {"status": "delivered", "driver_user_id": u.id,
+             "driver_pay": 900.0, "total_rate": 3000.0,
+             "total_miles": 1000.0, "extra_driver_pay": 150.0},
+            {"status": "delivered", "driver_user_id": u.id,
+             "driver_pay": None, "total_rate": 2000.0,
+             "total_miles": 800.0, "extra_driver_pay": None},
+            {"status": "in_transit", "driver_user_id": u.id,   # not delivered
+             "driver_pay": 500.0, "total_rate": 1000.0},
+            {"status": "delivered", "driver_user_id": 777,     # no user row
+             "driver_pay": 400.0, "total_rate": 1200.0},
+        ]
+        off = [{"driver_user_id": u.id, "dispatcher_user_id": None,
+                "bucket": "driver_pay", "amount": 300.0}]
+        _patch_services(monkeypatch, tenant, cards=[],
+                        loads=loads, off_items=off)
+        await tenant.upsert_driver_pay_settings(
+            acct.id, "S1", base_pay_cents=0, opt_in=True,
+            pay_model="percentage", pay_rate=25,
+        )
+        items = await compute_run(acct.id, date(2026, 7, 1), date(2026, 7, 31))
+        by = {it.driver_id: it for it in items}
+        s1 = by["S1"]
+        # $900 stored + 25% × $2,000 model = $1,400 over 2 delivered loads.
+        assert s1.load_earnings_cents == 90000 + 50000
+        assert s1.loads_count == 2
+        # $150 on-load extra + $300 layover.
+        assert s1.extras_cents == 45000
+        assert s1.total_cents == 140000 + 45000
+        assert {b.kind for b in s1.breakdown} >= {"load_earnings", "extra_items"}
+        # Datatruck-only / unlinked driver: statement still exists.
+        assert by["user:777"].load_earnings_cents == 40000
 
     async def test_opt_out_skipped(self, tenant: Database, monkeypatch):
         cards = [{"driver_id": "DRV1", "driver_name": "Alice", "score": 99}]

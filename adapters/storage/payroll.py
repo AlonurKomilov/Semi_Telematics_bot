@@ -130,17 +130,26 @@ class PayrollMixin(_MixinBase):
     async def upsert_driver_pay_settings(
         self, account_id: int, driver_id: str, *,
         base_pay_cents: int = 0, opt_in: bool = True,
+        pay_model: str = "", pay_rate: float | None = None,
     ) -> None:
+        """``pay_model``/``pay_rate`` drive per-load earnings for loads
+        with no stored driver pay: 'percentage' (of the load rate) or
+        'per_mile' (× total miles); '' = no per-load math (fixed base
+        or stored-pay-only drivers)."""
         now = self._now()
         await self._db.execute(
             "INSERT INTO driver_pay_settings "
-            "(account_id, driver_id, base_pay_cents, opt_in, updated_at) "
-            "VALUES (?, ?, ?, ?, ?) "
+            "(account_id, driver_id, base_pay_cents, opt_in, "
+            " pay_model, pay_rate, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(account_id, driver_id) DO UPDATE SET "
             "  base_pay_cents = excluded.base_pay_cents, "
             "  opt_in = excluded.opt_in, "
+            "  pay_model = excluded.pay_model, "
+            "  pay_rate = excluded.pay_rate, "
             "  updated_at = excluded.updated_at",
-            (account_id, driver_id, base_pay_cents, 1 if opt_in else 0, now),
+            (account_id, driver_id, base_pay_cents, 1 if opt_in else 0,
+             (pay_model or "").strip().lower(), pay_rate, now),
         )
         await self._db.commit()
 

@@ -131,12 +131,17 @@ async def list_driver_settings(account_id: int) -> list[dict]:
 async def upsert_driver_settings(
     account_id: int, driver_id: str, *, user_id: int,
     base_pay_cents: int = 0, opt_in: bool = True,
+    pay_model: str = "", pay_rate: float | None = None,
 ) -> None:
+    from .engine import VALID_PAY_MODELS
+    if (pay_model or "").strip().lower() not in VALID_PAY_MODELS:
+        raise ValueError(f"pay_model must be one of {VALID_PAY_MODELS}")
     await _assert_enabled(account_id)
     tenant = await get_tenant_db(account_id)
     await tenant.upsert_driver_pay_settings(
         account_id, driver_id,
         base_pay_cents=base_pay_cents, opt_in=opt_in,
+        pay_model=pay_model, pay_rate=pay_rate,
     )
     await _audit(
         account_id, user_id, "payroll_driver_settings_updated", driver_id,

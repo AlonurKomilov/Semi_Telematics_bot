@@ -35,10 +35,12 @@ class BonusRule:
 
 @dataclass(frozen=True)
 class BreakdownEntry:
-    rule_id: int
     name: str
     kind: str
     amount_cents: int
+    # Bonus-rule entries carry the rule id; computed components
+    # (load_earnings / extra_items) have no rule.
+    rule_id: Optional[int] = None
     detail: str = ""
 
     def to_dict(self) -> dict:
@@ -59,3 +61,8 @@ class RunItem:
     bonus_total_cents: int
     total_cents: int
     breakdown: list[BreakdownEntry] = field(default_factory=list)
+    # Settlement components (computed from the canonical loads):
+    # earnings for delivered loads + extra pay items (layover/TONU/…).
+    load_earnings_cents: int = 0
+    extras_cents: int = 0
+    loads_count: int = 0

@@ -49,6 +49,10 @@ class BonusRulePatch(BaseModel):
 
 
 class DriverPaySettingsIn(BaseModel):
+    # Per-load earnings model for loads with no stored driver pay:
+    # 'percentage' (of load rate) | 'per_mile' | '' (no per-load math).
+    pay_model: str = Field(default="", max_length=16)
+    pay_rate: Optional[float] = Field(default=None, ge=0)
     base_pay_cents: int = Field(default=0, ge=0, le=100_000_000)
     opt_in: bool = True
 
@@ -166,7 +170,10 @@ async def upsert_settings(
         await svc.upsert_driver_settings(
             user["account_id"], driver_id, user_id=int(user["sub"]),
             base_pay_cents=body.base_pay_cents, opt_in=body.opt_in,
+            pay_model=body.pay_model, pay_rate=body.pay_rate,
         )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except PayrollDisabledError as e:
         raise _disabled_to_403(e)
     return {"ok": True}
