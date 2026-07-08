@@ -12,16 +12,19 @@
  */
 
 import { useEffect, useState } from 'react';
-import { Loader2, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
 import {
-  LOAD_STATUSES, createLoad, deleteLoad, updateLoad,
+  LINE_ITEM_KINDS, LOAD_STATUSES,
+  createLineItem, createLoad, deleteLineItem, deleteLoad,
+  listLineItems, updateLoad,
 } from './api';
-import type { LoadDraft, LoadRow } from './api';
+import type { LineItem, LoadDraft, LoadRow } from './api';
 
 const inputCls =
   'w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm ' +
@@ -103,6 +106,13 @@ export default function LoadManageDialog({
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [error, setError] = useState('');
+  // Extra pay & costs (line items) — edit mode only; a new load has no
+  // id to attach items to until it's saved.
+  const [items, setItems] = useState<LineItem[]>([]);
+  const [itemKind, setItemKind] = useState<string>('tonu');
+  const [itemAmount, setItemAmount] = useState('');
+  const [itemNote, setItemNote] = useState('');
+  const [itemBusy, setItemBusy] = useState(false);
 
   const isEdit = load != null;
 
@@ -110,7 +120,50 @@ export default function LoadManageDialog({
     if (!open) return;
     setError('');
     setDraft(load ? toDraft(load) : EMPTY);
+    setItems([]);
+    setItemKind('tonu');
+    setItemAmount('');
+    setItemNote('');
+    if (load) {
+      listLineItems(load.id)
+        .then(setItems)
+        .catch(() => { /* section shows empty; add still works */ });
+    }
   }, [open, load]);
+
+  const addItem = async () => {
+    if (!load || itemBusy) return;
+    const amount = Number(itemAmount);
+    if (!amount || amount <= 0) return;
+    setItemBusy(true);
+    try {
+      await createLineItem({
+        kind: itemKind, amount, load_id: load.id, notes: itemNote,
+      });
+      setItemAmount('');
+      setItemNote('');
+      setItems(await listLineItems(load.id));
+      onSaved();          // gross changed — refresh the list behind us
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not add the item');
+    } finally {
+      setItemBusy(false);
+    }
+  };
+
+  const removeItem = async (itemId: number) => {
+    if (!load || itemBusy) return;
+    setItemBusy(true);
+    try {
+      await deleteLineItem(itemId);
+      setItems(await listLineItems(load.id));
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not remove the item');
+    } finally {
+      setItemBusy(false);
+    }
+  };
 
   const set = (k: keyof Draft) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
@@ -147,6 +200,17 @@ export default function LoadManageDialog({
     }
   };
 
+  // Select item lists — built from the same source arrays so labels match.
+  const statusItems = LOAD_STATUSES.map((s) => ({ value: s, label: s.replace('_', '-') }));
+  const paymentItems = [
+    { value: '', label: '—' },
+    { value: 'unpaid', label: 'unpaid' },
+    { value: 'paid', label: 'paid' },
+  ];
+  const itemKindItems = LINE_ITEM_KINDS
+    .filter((k) => k !== 'layover')
+    .map((k) => ({ value: k, label: k }));
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-2xl">
@@ -166,11 +230,12 @@ export default function LoadManageDialog({
           </label>
           <label className="text-sm">
             <span className="text-muted-foreground">Status</span>
-            <select className={inputCls} value={draft.status} onChange={set('status')}>
-              {LOAD_STATUSES.map((s) => (
-                <option key={s} value={s}>{s.replace('_', '-')}</option>
-              ))}
-            </select>
+            <Select value={draft.status} onValueChange={(v) => setDraft((d) => ({ ...d, status: v ?? d.status }))} items={statusItems}>
+              <SelectTrigger className="w-full" aria-label="Status"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {statusItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </label>
           <label className="text-sm col-span-2">
             <span className="text-muted-foreground">Customer / broker</span>
@@ -214,11 +279,12 @@ export default function LoadManageDialog({
           </label>
           <label className="text-sm">
             <span className="text-muted-foreground">Payment</span>
-            <select className={inputCls} value={draft.payment_status} onChange={set('payment_status')}>
-              <option value="">—</option>
-              <option value="unpaid">unpaid</option>
-              <option value="paid">paid</option>
-            </select>
+            <Select value={draft.payment_status} onValueChange={(v) => setDraft((d) => ({ ...d, payment_status: v ?? d.payment_status }))} items={paymentItems}>
+              <SelectTrigger className="w-full" aria-label="Payment"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {paymentItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </label>
           <label className="text-sm">
             <span className="text-muted-foreground">Rate ($)</span>
@@ -241,6 +307,80 @@ export default function LoadManageDialog({
             <textarea className={inputCls} rows={2} value={draft.notes} onChange={set('notes')} />
           </label>
         </div>
+
+        {isEdit && (
+          <div className="mt-1 border-t border-border pt-3">
+            <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Extra pay &amp; costs
+            </div>
+            {items.length > 0 && (
+              <ul className="mb-2 space-y-1">
+                {items.map((it) => (
+                  <li key={it.id} className="flex items-center gap-2 text-sm">
+                    <span className="capitalize text-foreground">{it.kind}</span>
+                    <span className="text-2xs text-muted-foreground">
+                      {it.bucket === 'driver_pay' ? 'driver pay' : 'expense'}
+                      {it.notes ? ` · ${it.notes}` : ''}
+                    </span>
+                    <span className="ml-auto tabular-nums font-medium text-foreground">
+                      ${it.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      disabled={itemBusy}
+                      onClick={() => { void removeItem(it.id); }}
+                      aria-label="Remove item"
+                      title="Remove item"
+                    >
+                      <Trash2 size={12} />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex items-center gap-2">
+              <Select value={itemKind} onValueChange={(v) => setItemKind(v ?? 'tonu')} items={itemKindItems}>
+                <SelectTrigger className="w-full" aria-label="Item kind"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {itemKindItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <input
+                className={inputCls}
+                type="number"
+                min="0"
+                placeholder="Amount $"
+                value={itemAmount}
+                onChange={(e) => setItemAmount(e.target.value)}
+                aria-label="Item amount"
+              />
+              <input
+                className={inputCls}
+                placeholder="Note (optional)"
+                value={itemNote}
+                onChange={(e) => setItemNote(e.target.value)}
+                aria-label="Item note"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={itemBusy || !Number(itemAmount)}
+                onClick={() => { void addItem(); }}
+              >
+                <Plus size={14} className="mr-1" />
+                Add
+              </Button>
+            </div>
+            <p className="mt-1 text-2xs text-muted-foreground">
+              TONU / bonus / detention count as driver pay; tolls / lumper as
+              load expenses — both reduce this load's gross. Layover (no load)
+              is entered from the Loads page.
+            </p>
+          </div>
+        )}
 
         {error && <p className="text-sm text-danger">{error}</p>}
 

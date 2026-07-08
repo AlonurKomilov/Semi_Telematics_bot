@@ -14,14 +14,24 @@ from typing import Any
 from infra.platform import get_tenant_db
 
 
-def load_to_dict(l: Any) -> dict:
+def load_to_dict(l: Any, line_item_sums: dict[str, float] | None = None) -> dict:
     """Serialize a Load row; derived metrics (RPM, total miles, gross) are
-    computed here at read time — never stored."""
+    computed here at read time — never stored.
+
+    ``line_item_sums`` is this load's extra pay & costs aggregate
+    (``{"driver_pay": Σ, "expense": Σ}`` from the line-items table) —
+    TONU/bonus/tolls etc. land in gross through it."""
+    li = line_item_sums or {}
+    extra_driver_pay = float(li.get("driver_pay") or 0)
+    extra_costs = float(li.get("expense") or 0)
     loaded = float(l.loaded_miles or 0)
     empty = float(l.empty_miles or 0)
     total_miles = loaded + empty
     rate = float(l.total_rate or 0)
-    costs = float(l.driver_pay or 0) + float(l.other_costs or 0)
+    costs = (
+        float(l.driver_pay or 0) + float(l.other_costs or 0)
+        + extra_driver_pay + extra_costs
+    )
     return {
         "id": l.id,
         "seq": l.seq,
@@ -45,6 +55,8 @@ def load_to_dict(l: Any) -> dict:
         "empty_miles": l.empty_miles,
         "driver_pay": l.driver_pay,
         "other_costs": l.other_costs,
+        "extra_driver_pay": round(extra_driver_pay, 2) or None,
+        "extra_costs": round(extra_costs, 2) or None,
         "total_miles": total_miles or None,
         "rpm": round(rate / total_miles, 2) if rate and total_miles else None,
         "gross": round(rate - costs, 2) if rate else None,
@@ -79,7 +91,10 @@ async def get_loads(
         since=since, until=until,
         limit=limit,
     )
-    return [load_to_dict(l) for l in rows]
+    # Extra pay & costs (line items) aggregate in ONE query for the whole
+    # page — each load's TONU/tolls/bonus money rides into its gross.
+    sums = await tenant.sum_load_line_items(account_id, [l.id for l in rows])
+    return [load_to_dict(l, sums.get(l.id)) for l in rows]
 
 
 async def get_load_counts(
@@ -94,3 +109,32 @@ async def get_load_counts(
         account_id, driver_user_id=scope_driver_user_id,
         company_codes=company_codes,
     )
+
+
+def line_item_to_dict(i: Any) -> dict:
+    return {
+        "id": i.id,
+        "load_id": i.load_id,
+        "driver_user_id": i.driver_user_id,
+        "dispatcher_user_id": i.dispatcher_user_id,
+        "kind": i.kind,
+        "bucket": i.bucket,
+        "amount": i.amount,
+        "item_date": i.item_date,
+        "notes": i.notes,
+    }
+
+
+async def get_off_load_line_items(
+    account_id: int, *, since: str | None = None, until: str | None = None,
+) -> list[dict]:
+    """The no-load rows (layover: driver + date, dispatcher attributed) in
+    a window — the KPI consumer charges them to the responsible
+    dispatcher even though no load exists to carry them."""
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return []
+    items = await tenant.list_load_line_items(
+        account_id, off_load_only=True, since=since, until=until,
+    )
+    return [line_item_to_dict(i) for i in items]

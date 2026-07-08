@@ -10,6 +10,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
+from adapters.storage import Role
+
 
 @pytest.mark.asyncio
 async def test_add_list_get_round_trip(db):
@@ -137,3 +139,79 @@ async def test_list_loads_company_scope_fail_open(db):
     # company-less rows remain visible.
     rows = await db.list_loads(acct.id, company_codes=[])
     assert {l.load_number for l in rows} == {"N1"}
+
+
+# ── Line items (extra pay & costs) ──────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_line_items_ride_into_gross(db):
+    from features.loads import service as loads_service
+    acct = await db.create_account("Items Co")
+    lid = await db.add_load(
+        acct.id, load_number="L1", total_rate=3000.0, driver_pay=800.0,
+        pickup_date="2026-07-01",
+    )
+    # TONU defaults to the driver-pay bucket, tolls to expenses.
+    await db.add_load_line_item(acct.id, kind="tonu", amount=150, load_id=lid)
+    await db.add_load_line_item(acct.id, kind="tolls", amount=87.5, load_id=lid)
+    # Same path the service takes: batch aggregate → serializer.
+    rows = await db.list_loads(acct.id)
+    sums = await db.sum_load_line_items(acct.id, [x.id for x in rows])
+    l = loads_service.load_to_dict(
+        next(x for x in rows if x.id == lid), sums.get(lid),
+    )
+    assert l["extra_driver_pay"] == 150.0
+    assert l["extra_costs"] == 87.5
+    assert l["gross"] == round(3000 - 800 - 150 - 87.5, 2)
+
+
+@pytest.mark.asyncio
+async def test_line_item_inherits_people_and_date_from_load(db):
+    acct = await db.create_account("Items Co 2")
+    drv = await db.create_pending_user(acct.id, Role.DRIVER, "Eugene B")
+    dsp = await db.create_pending_user(acct.id, Role.DISPATCHER, "Jasur")
+    lid = await db.add_load(
+        acct.id, load_number="L2", driver_user_id=drv,
+        dispatcher_user_id=dsp, pickup_date="2026-07-02",
+    )
+    iid = await db.add_load_line_item(
+        acct.id, kind="bonus", amount=50, load_id=lid,
+    )
+    items = await db.list_load_line_items(acct.id, load_id=lid)
+    it = next(i for i in items if i.id == iid)
+    assert it.driver_user_id == drv
+    assert it.dispatcher_user_id == dsp
+    assert it.item_date == "2026-07-02"
+    assert it.bucket == "driver_pay"
+
+
+@pytest.mark.asyncio
+async def test_off_load_layover_and_validation(db):
+    acct = await db.create_account("Items Co 3")
+    drv = await db.create_pending_user(acct.id, Role.DRIVER, "Sat Waiting")
+    dsp = await db.create_pending_user(acct.id, Role.DISPATCHER, "Slow Dispatch")
+    # No anchor at all → refused.
+    with pytest.raises(ValueError):
+        await db.add_load_line_item(acct.id, kind="layover", amount=300)
+    with pytest.raises(ValueError):
+        await db.add_load_line_item(acct.id, kind="nope", amount=10,
+                                    driver_user_id=drv, item_date="2026-07-03")
+    with pytest.raises(ValueError):
+        await db.add_load_line_item(acct.id, kind="layover", amount=0,
+                                    driver_user_id=drv, item_date="2026-07-03")
+    iid = await db.add_load_line_item(
+        acct.id, kind="layover", amount=300,
+        driver_user_id=drv, dispatcher_user_id=dsp, item_date="2026-07-03",
+    )
+    off = await db.list_load_line_items(acct.id, off_load_only=True)
+    assert [i.id for i in off] == [iid]
+    assert off[0].bucket == "driver_pay"
+    # Window filter + tenant isolation + delete.
+    assert await db.list_load_line_items(
+        acct.id, off_load_only=True, since="2026-07-04",
+    ) == []
+    other = await db.create_account("Items Co 4")
+    assert await db.list_load_line_items(other.id) == []
+    assert await db.delete_load_line_item(other.id, iid) is False
+    assert await db.delete_load_line_item(acct.id, iid) is True

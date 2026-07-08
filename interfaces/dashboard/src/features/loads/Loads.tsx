@@ -10,7 +10,7 @@
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Package, Plus } from 'lucide-react';
+import { Clock, Package, Plus } from 'lucide-react';
 import DataGrid from '../../components/DataGrid';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
@@ -20,6 +20,8 @@ import { useRoleView } from '../../context/RoleViewContext';
 import { statusClasses } from '../../lib/status';
 import type { AnyColumn } from '../../types';
 import LoadManageDialog from './LoadManageDialog';
+import LayoverDialog from './LayoverDialog';
+import type { PersonOption } from './LayoverDialog';
 import { LOAD_STATUSES, listLoads } from './api';
 import type { LoadRow, LoadsResponse } from './api';
 
@@ -84,6 +86,7 @@ export default function Loads() {
   const [tab, setTab] = useState('');
   const [editing, setEditing] = useState<LoadRow | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [layoverOpen, setLayoverOpen] = useState(false);
 
   // Gate on the ACTIVE VIEW's permission so role-preview stays honest.
   const canManage = viewHas('can_manage_loads');
@@ -95,6 +98,22 @@ export default function Loads() {
 
   const loads = useMemo(() => data?.loads ?? [], [data]);
   const counts = data?.counts ?? {};
+
+  // Driver / dispatcher options for the layover dialog, derived from the
+  // loads on screen (the people who actually run freight here) — avoids
+  // a separate members endpoint the caller may not have permission for.
+  const people = useMemo(() => {
+    const drivers = new Map<number, string>();
+    const dispatchers = new Map<number, string>();
+    for (const l of loads) {
+      if (l.driver_user_id && l.driver_name) drivers.set(l.driver_user_id, l.driver_name);
+      if (l.dispatcher_user_id && l.dispatcher_name) dispatchers.set(l.dispatcher_user_id, l.dispatcher_name);
+    }
+    const opts = (m: Map<number, string>): PersonOption[] =>
+      [...m.entries()].map(([id, name]) => ({ id, name }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    return { drivers: opts(drivers), dispatchers: opts(dispatchers) };
+  }, [loads]);
 
   const refetch = () => qc.invalidateQueries({ queryKey: ['loads'] });
 
@@ -108,10 +127,16 @@ export default function Loads() {
           'Every load in one place — entered by hand or synced from your TMS.',
         )}
         actions={canManage ? (
-          <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
-            <Plus size={16} className="mr-1.5" />
-            {t('loads_page.add', 'Add load')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setLayoverOpen(true)}>
+              <Clock size={16} className="mr-1.5" />
+              {t('loads_page.add_layover', 'Add layover')}
+            </Button>
+            <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
+              <Plus size={16} className="mr-1.5" />
+              {t('loads_page.add', 'Add load')}
+            </Button>
+          </div>
         ) : undefined}
       />
 
@@ -191,6 +216,13 @@ export default function Loads() {
         open={dialogOpen}
         load={editing}
         onClose={() => setDialogOpen(false)}
+        onSaved={refetch}
+      />
+      <LayoverDialog
+        open={layoverOpen}
+        drivers={people.drivers}
+        dispatchers={people.dispatchers}
+        onClose={() => setLayoverOpen(false)}
         onSaved={refetch}
       />
     </div>

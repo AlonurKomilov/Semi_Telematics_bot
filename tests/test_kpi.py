@@ -128,3 +128,29 @@ async def test_thresholds_round_trip_and_validation(db):
     assert "nonsense_key" not in merged
     again = await get_kpi_thresholds(db, aid)
     assert again == merged
+
+
+def test_line_items_and_layover_hit_dispatcher_gross():
+    """Extra pay/costs on loads reduce that dispatcher's gross; an
+    off-load layover (driver sat — dispatch found no load) charges the
+    attributed dispatcher even with no load to carry it."""
+    rows = compute_dispatcher_kpis(
+        [{
+            "dispatcher_user_id": 7, "dispatcher_name": "Jasur",
+            "status": "delivered", "total_rate": 3000.0,
+            "loaded_miles": 900.0, "empty_miles": 100.0,
+            "driver_pay": 800.0, "other_costs": 0.0,
+            "extra_driver_pay": 150.0, "extra_costs": 87.5,
+            "vehicle_unit": "T1", "driver_user_id": 1,
+        }],
+        DEFAULT_KPI_THRESHOLDS,
+        off_load_items=[
+            {"dispatcher_user_id": 7, "bucket": "driver_pay", "amount": 300.0},
+            # Unattributed layover lands on "(unassigned)", never guessed.
+            {"dispatcher_user_id": None, "bucket": "driver_pay", "amount": 99.0},
+        ],
+    )
+    jasur = next(r for r in rows if r["dispatcher_user_id"] == 7)
+    assert jasur["gross"] == round(3000 - 800 - 150 - 87.5 - 300, 2)
+    unassigned = next(r for r in rows if r["dispatcher_name"] == "(unassigned)")
+    assert unassigned["driver_pay"] == 99.0

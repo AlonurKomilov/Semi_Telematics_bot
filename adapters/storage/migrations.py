@@ -5977,3 +5977,64 @@ async def migrate_carrier_intake(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("143_load_line_items")
+async def migrate_load_line_items(conn) -> None:
+    """Create ``load_line_items`` — per-type extra pay & costs the TMS API
+    can't provide (TONU / layover / bonus on the driver-pay side, tolls /
+    lumper / detention on the expense side).  A row attaches to a load, or
+    — for layover, which exists precisely because there was NO load — to a
+    driver + date, with the responsible dispatcher stamped so the cost
+    lands on their KPI."""
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS load_line_items (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id         INTEGER NOT NULL,
+            load_id            INTEGER,
+            driver_user_id     INTEGER,
+            dispatcher_user_id INTEGER,
+            kind               TEXT    NOT NULL,
+            bucket             TEXT    NOT NULL DEFAULT 'expense',
+            amount             REAL    NOT NULL,
+            item_date          TEXT    NOT NULL DEFAULT '',
+            notes              TEXT    NOT NULL DEFAULT '',
+            created_by         INTEGER NOT NULL DEFAULT 0,
+            created_at         TEXT    NOT NULL DEFAULT ''
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_load_line_items_load "
+        "ON load_line_items(account_id, load_id)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_load_line_items_date "
+        "ON load_line_items(account_id, item_date)"
+    )
+    await conn.commit()
+    logger.info("Migration 143: load_line_items table created")
+
+    # RLS — tenant-scoped, same gated pattern as 139_loads.
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 143: ENABLE_RLS not set; RLS policy skipped")
+        return
+    try:
+        await conn.execute("ALTER TABLE load_line_items ENABLE ROW LEVEL SECURITY")
+        await conn.execute("ALTER TABLE load_line_items FORCE ROW LEVEL SECURITY")
+        await conn.execute("DROP POLICY IF EXISTS tenant_isolation ON load_line_items")
+        await conn.execute(
+            """
+            CREATE POLICY tenant_isolation ON load_line_items
+            USING       (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+            """
+        )
+        await conn.commit()
+        logger.info("Migration 143: tenant_isolation RLS applied to load_line_items")
+    except Exception as e:
+        logger.error("Migration 143: RLS apply on load_line_items failed — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

@@ -109,6 +109,62 @@ def _parse_load_provenance(raw: Any) -> dict:
         return {}
 
 
+# ── Line items — extra pay & costs attached to a load or a driver-day ──
+#
+# The per-type money Datatruck's API can't give us: TONU / bonus / layover
+# on the driver-pay side, tolls / lumper / detention on the expense side.
+# A row attaches to a LOAD (tolls, TONU on a canceled load) or, for
+# layover — which exists precisely because there was NO load — to a
+# driver + date, with the responsible dispatcher stamped so the cost
+# lands on their KPI.
+
+LINE_ITEM_KINDS = (
+    "tonu", "layover", "bonus", "detention", "lumper", "tolls", "other",
+)
+# Which side of gross each kind hits by default; the caller may override
+# (an "other" item can be either).
+LINE_ITEM_DEFAULT_BUCKET = {
+    "tonu": "driver_pay", "layover": "driver_pay", "bonus": "driver_pay",
+    "detention": "driver_pay",
+    "lumper": "expense", "tolls": "expense", "other": "expense",
+}
+LINE_ITEM_BUCKETS = ("driver_pay", "expense")
+
+
+@dataclass
+class LoadLineItem:
+    id: int
+    account_id: int
+    load_id: int | None
+    driver_user_id: int | None
+    dispatcher_user_id: int | None
+    kind: str
+    bucket: str
+    amount: float
+    item_date: str
+    notes: str
+    created_by: int
+    created_at: str
+
+
+_LI_SELECT = (
+    "SELECT id, account_id, load_id, driver_user_id, dispatcher_user_id, "
+    "kind, bucket, amount, item_date, notes, created_by, created_at "
+    "FROM load_line_items"
+)
+
+
+def _row_to_line_item(r) -> LoadLineItem:
+    return LoadLineItem(
+        id=r[0], account_id=r[1], load_id=r[2],
+        driver_user_id=r[3], dispatcher_user_id=r[4],
+        kind=r[5] or "other", bucket=r[6] or "expense",
+        amount=float(r[7] or 0), item_date=r[8] or "",
+        notes=r[9] or "", created_by=int(r[10] or 0),
+        created_at=r[11] or "",
+    )
+
+
 def _row_to_load(r) -> Load:
     return Load(
         id=r[0], account_id=r[1], load_number=r[2] or "",
@@ -745,3 +801,130 @@ class LoadsMixin(_MixinBase):
         )
         await self._db.commit()
         return getattr(cur, "rowcount", 0) or 0
+
+    # ── Line items (extra pay & costs) ────────────────────────────
+
+    async def add_load_line_item(
+        self,
+        account_id: int,
+        *,
+        kind: str,
+        amount: float,
+        bucket: str | None = None,
+        load_id: int | None = None,
+        driver_user_id: int | None = None,
+        dispatcher_user_id: int | None = None,
+        item_date: str = "",
+        notes: str = "",
+        created_by: int = 0,
+    ) -> int:
+        """One extra pay/cost row.  Attaches to a load, or — for the
+        no-load case (layover) — to a driver + date.  When attached to a
+        load, driver/dispatcher default from the load so KPI attribution
+        is automatic."""
+        kind = (kind or "").strip().lower()
+        if kind not in LINE_ITEM_KINDS:
+            raise ValueError(f"kind must be one of {LINE_ITEM_KINDS}")
+        bucket = (bucket or LINE_ITEM_DEFAULT_BUCKET[kind]).strip().lower()
+        if bucket not in LINE_ITEM_BUCKETS:
+            raise ValueError(f"bucket must be one of {LINE_ITEM_BUCKETS}")
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            raise ValueError("amount must be a number")
+        if not amount > 0:
+            raise ValueError("amount must be positive")
+        if load_id is None:
+            if driver_user_id is None or not (item_date or "").strip():
+                raise ValueError(
+                    "an item needs a load_id, or driver_user_id + item_date "
+                    "for the no-load case (layover)",
+                )
+        else:
+            l = await self.get_load(account_id, load_id)
+            if l is None:
+                raise ValueError("load not found")
+            if driver_user_id is None:
+                driver_user_id = l.driver_user_id
+            if dispatcher_user_id is None:
+                dispatcher_user_id = l.dispatcher_user_id
+            if not (item_date or "").strip():
+                item_date = l.pickup_date or ""
+        now = self._now()
+        async with self.transaction():
+            cur = await self._db.execute(
+                """INSERT INTO load_line_items
+                   (account_id, load_id, driver_user_id, dispatcher_user_id,
+                    kind, bucket, amount, item_date, notes, created_by,
+                    created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (account_id, load_id, driver_user_id, dispatcher_user_id,
+                 kind, bucket, round(amount, 2), (item_date or "").strip(),
+                 (notes or "").strip(), created_by, now),
+            )
+            return cur.lastrowid
+
+    async def list_load_line_items(
+        self,
+        account_id: int,
+        *,
+        load_id: int | None = None,
+        driver_user_id: int | None = None,
+        since: str | None = None,
+        until: str | None = None,
+        off_load_only: bool = False,
+    ) -> list[LoadLineItem]:
+        """Items for one load, or across the account by date window.
+        ``off_load_only`` returns just the no-load rows (layover) — the
+        KPI consumer merges those onto dispatcher totals."""
+        where = ["account_id = ?"]
+        args: list[Any] = [account_id]
+        if load_id is not None:
+            where.append("load_id = ?")
+            args.append(load_id)
+        if driver_user_id is not None:
+            where.append("driver_user_id = ?")
+            args.append(driver_user_id)
+        if off_load_only:
+            where.append("load_id IS NULL")
+        if since:
+            where.append("item_date >= ?")
+            args.append(since)
+        if until:
+            where.append("item_date <= ?")
+            args.append(until)
+        cur = await self._db.execute(
+            f"{_LI_SELECT} WHERE {' AND '.join(where)} "
+            "ORDER BY item_date DESC, id DESC",
+            tuple(args),
+        )
+        return [_row_to_line_item(r) for r in await cur.fetchall()]
+
+    async def delete_load_line_item(
+        self, account_id: int, item_id: int,
+    ) -> bool:
+        cur = await self._db.execute(
+            "DELETE FROM load_line_items WHERE id = ? AND account_id = ?",
+            (item_id, account_id),
+        )
+        await self._db.commit()
+        return (getattr(cur, "rowcount", 0) or 0) > 0
+
+    async def sum_load_line_items(
+        self, account_id: int, load_ids: list[int],
+    ) -> dict[int, dict[str, float]]:
+        """``load_id → {"driver_pay": Σ, "expense": Σ}`` for the given
+        loads — one query, feeds the serializer's gross math."""
+        if not load_ids:
+            return {}
+        ph = ", ".join("?" for _ in load_ids)
+        cur = await self._db.execute(
+            "SELECT load_id, bucket, SUM(amount) FROM load_line_items "
+            f"WHERE account_id = ? AND load_id IN ({ph}) "
+            "GROUP BY load_id, bucket",
+            (account_id, *load_ids),
+        )
+        out: dict[int, dict[str, float]] = {}
+        for r in await cur.fetchall():
+            out.setdefault(int(r[0]), {})[str(r[1])] = float(r[2] or 0)
+        return out

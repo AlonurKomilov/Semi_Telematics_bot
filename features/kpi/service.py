@@ -76,11 +76,16 @@ def grade(m: dict, t: dict[str, float]) -> str:
 
 def compute_dispatcher_kpis(
     loads: list[dict], thresholds: dict[str, float],
+    off_load_items: list[dict] | None = None,
 ) -> list[dict]:
     """Group serialized loads by dispatcher and compute the KPI row for
     each.  Canceled loads don't count (no revenue was earned).  Dispatchers
     are keyed by linked user id when present, else by name — so TMS-synced
-    dispatchers rank correctly before they're 4truck users."""
+    dispatchers rank correctly before they're 4truck users.
+
+    ``off_load_items`` are the no-load line items (layover pay: a driver
+    sat because dispatch found no load) — charged to the attributed
+    dispatcher's costs even though no load exists to carry them."""
     groups: dict[Any, dict] = {}
     for l in loads:
         if l.get("status") == "canceled":
@@ -100,13 +105,31 @@ def compute_dispatcher_kpis(
         g["revenue"] += float(l.get("total_rate") or 0)
         g["loaded_miles"] += float(l.get("loaded_miles") or 0)
         g["empty_miles"] += float(l.get("empty_miles") or 0)
-        g["driver_pay"] += float(l.get("driver_pay") or 0)
-        g["other_costs"] += float(l.get("other_costs") or 0)
+        # Extra pay & costs (line items: TONU / bonus / tolls / …) ride
+        # into the same buckets the gross formula subtracts.
+        g["driver_pay"] += float(l.get("driver_pay") or 0) \
+            + float(l.get("extra_driver_pay") or 0)
+        g["other_costs"] += float(l.get("other_costs") or 0) \
+            + float(l.get("extra_costs") or 0)
         g["loads"] += 1
         if l.get("vehicle_unit"):
             g["_trucks"].add(str(l["vehicle_unit"]))
         if l.get("driver_user_id") or l.get("driver_name"):
             g["_drivers"].add(str(l.get("driver_user_id") or l.get("driver_name")))
+
+    for item in (off_load_items or []):
+        uid = item.get("dispatcher_user_id")
+        key = uid or "name:(unassigned)"
+        g = groups.setdefault(key, {
+            "dispatcher_user_id": uid,
+            "dispatcher_name": f"(user #{uid})" if uid else "(unassigned)",
+            "revenue": 0.0, "loaded_miles": 0.0, "empty_miles": 0.0,
+            "driver_pay": 0.0, "other_costs": 0.0,
+            "loads": 0, "_trucks": set(), "_drivers": set(),
+        })
+        bucket = "driver_pay" if item.get("bucket") == "driver_pay" \
+            else "other_costs"
+        g[bucket] += float(item.get("amount") or 0)
 
     out: list[dict] = []
     for g in groups.values():
@@ -193,6 +216,9 @@ async def get_dispatcher_kpis(
     loads = await loads_service.get_loads(
         account_id, since=since, company_codes=company_codes, limit=None,
     )
+    off_items = await loads_service.get_off_load_line_items(
+        account_id, since=since,
+    )
     tenant = await get_tenant_db(account_id)
     thresholds = (
         await get_kpi_thresholds(tenant, account_id)
@@ -201,5 +227,7 @@ async def get_dispatcher_kpis(
     return {
         "days": days,
         "thresholds": thresholds,
-        "dispatchers": compute_dispatcher_kpis(loads, thresholds),
+        "dispatchers": compute_dispatcher_kpis(
+            loads, thresholds, off_load_items=off_items,
+        ),
     }

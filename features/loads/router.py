@@ -193,3 +193,80 @@ async def get_load(
     if allowed and l.company_code and l.company_code not in allowed:
         raise HTTPException(404, "load not found")   # company-scope: don't leak
     return load_to_dict(l)
+
+
+# ── Line items (extra pay & costs: TONU / layover / tolls / …) ────────
+
+
+class LineItemCreate(BaseModel):
+    kind: str = Field(..., max_length=16)
+    amount: float = Field(..., gt=0)
+    bucket: str | None = Field(None, max_length=16)
+    load_id: int | None = None
+    driver_user_id: int | None = None
+    dispatcher_user_id: int | None = None
+    item_date: str = Field("", max_length=32)
+    notes: str = Field("", max_length=400)
+
+
+@router.get("/{load_id}/line-items")
+async def list_line_items(
+    load_id: int,
+    user: dict = Depends(_view_loads),
+):
+    """Extra pay & costs on one load — same visibility rules as the load."""
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    l = await tenant.get_load(account_id, load_id)
+    if l is None:
+        raise HTTPException(404, "load not found")
+    scope = await _scope_driver_id(user)
+    if scope is not None and l.driver_user_id != scope:
+        raise HTTPException(404, "load not found")
+    items = await tenant.list_load_line_items(account_id, load_id=load_id)
+    return {"items": [service.line_item_to_dict(i) for i in items]}
+
+
+@router.post("/line-items")
+async def create_line_item(
+    body: LineItemCreate,
+    user: dict = Depends(_manage_loads),
+):
+    """Add an extra pay/cost item — on a load, or (layover) on a
+    driver + date with the responsible dispatcher attributed."""
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    try:
+        item_id = await tenant.add_load_line_item(
+            account_id,
+            kind=body.kind,
+            amount=body.amount,
+            bucket=body.bucket,
+            load_id=body.load_id,
+            driver_user_id=body.driver_user_id,
+            dispatcher_user_id=body.dispatcher_user_id,
+            item_date=body.item_date,
+            notes=body.notes,
+            created_by=int(user["sub"]),
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"id": item_id}
+
+
+@router.delete("/line-items/{item_id}")
+async def delete_line_item(
+    item_id: int,
+    user: dict = Depends(_manage_loads),
+):
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    if not await tenant.delete_load_line_item(account_id, item_id):
+        raise HTTPException(404, "item not found")
+    return {"deleted": True, "id": item_id}
