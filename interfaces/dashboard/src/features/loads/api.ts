@@ -39,6 +39,10 @@ export interface LoadRow {
   /** Extra pay & costs (line items) aggregated per bucket. */
   extra_driver_pay: number | null;
   extra_costs: number | null;
+  /** TMS accessorial lump (already inside total_rate) + settlement mark. */
+  other_pay: number | null;
+  settlement_ref: string;
+  settlement_status: string;
   /** Derived server-side at read time. */
   total_miles: number | null;
   rpm: number | null;
@@ -58,7 +62,8 @@ export interface LoadsResponse {
 export type LoadDraft = Partial<
   Omit<LoadRow,
     'id' | 'total_miles' | 'rpm' | 'gross' | 'source'
-    | 'extra_driver_pay' | 'extra_costs'>
+    | 'extra_driver_pay' | 'extra_costs'
+    | 'other_pay' | 'settlement_ref' | 'settlement_status'>
 >;
 
 // ── Line items — extra pay & costs (TONU / layover / tolls / …) ──

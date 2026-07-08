@@ -798,3 +798,23 @@ async def test_sync_job_fans_out_gated_by_datatruck_toggle(monkeypatch):
     assert seen["capability"] == dt.RESOURCES["trucks"].capability
     assert seen["provider_id"] == "datatruck"
     assert seen["factory_name"] == "datatruck_sync_trucks"
+
+
+def test_norm_order_settlement_and_other_pay():
+    from capabilities.integrations.datatruck.sync import _norm_order
+    out = _norm_order({
+        "id": 22193, "load_id": "958511703",
+        "status": "Delivered",
+        "load_pay": "3000.00", "total_other_pay": "450.00",
+        "total_pay": "3450.00",
+        "trip": {
+            "driver__full_name": "Eugene B",
+            "settlement__settlement_number": "STL-1044",
+            "settlement__status": "Sent",
+            "settlement__is_sent": True,
+        },
+    })
+    assert out["total_rate"] == 3450.0       # linehaul + accessorials
+    assert out["other_pay"] == 450.0         # the informational split
+    assert out["settlement_ref"] == "STL-1044"
+    assert out["settlement_status"] == "Sent"

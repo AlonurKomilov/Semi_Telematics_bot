@@ -88,6 +88,12 @@ class Load:
     # from load_number (the broker/BOL reference).
     seq: int | None = None
     field_provenance: dict = field(default_factory=dict)
+    # Datatruck accessorial lump (already inside total_rate; the split is
+    # informational) + which settlement the load landed on (metadata —
+    # the settlements themselves have no API).
+    other_pay: float | None = None
+    settlement_ref: str = ""
+    settlement_status: str = ""
 
 
 _SELECT = (
@@ -96,7 +102,8 @@ _SELECT = (
     "delivery_date, driver_user_id, driver_name, dispatcher_user_id, "
     "dispatcher_name, vehicle_unit, trailer_unit, total_rate, loaded_miles, "
     "empty_miles, driver_pay, other_costs, source, external_ref, notes, "
-    "is_active, created_at, updated_at, field_provenance, seq FROM loads"
+    "is_active, created_at, updated_at, field_provenance, seq, "
+    "other_pay, settlement_ref, settlement_status FROM loads"
 )
 
 
@@ -182,6 +189,9 @@ def _row_to_load(r) -> Load:
         created_at=r[26] or "", updated_at=r[27] or "",
         field_provenance=_parse_load_provenance(r[28] if len(r) > 28 else None),
         seq=r[29] if len(r) > 29 else None,
+        other_pay=r[30] if len(r) > 30 else None,
+        settlement_ref=(r[31] or "") if len(r) > 31 else "",
+        settlement_status=(r[32] or "") if len(r) > 32 else "",
     )
 
 
@@ -684,9 +694,10 @@ class LoadsMixin(_MixinBase):
                             driver_name, dispatcher_user_id, dispatcher_name,
                             vehicle_unit, trailer_unit, total_rate, loaded_miles,
                             empty_miles, driver_pay, other_costs, source,
-                            external_ref, field_provenance, notes, is_active,
-                            created_at, updated_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                            external_ref, field_provenance, notes,
+                            other_pay, settlement_ref, settlement_status,
+                            is_active, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
                            ON CONFLICT(account_id, source, external_ref)
                            WHERE external_ref <> '' DO NOTHING""",
                         (
@@ -703,6 +714,9 @@ class LoadsMixin(_MixinBase):
                             r.get("total_rate"), r.get("loaded_miles"),
                             r.get("empty_miles"), r.get("driver_pay"),
                             None, source, ref, json.dumps(prov), "",
+                            r.get("other_pay"),
+                            str(r.get("settlement_ref") or ""),
+                            str(r.get("settlement_status") or ""),
                             now, now,
                         ),
                     )
@@ -757,6 +771,18 @@ class LoadsMixin(_MixinBase):
                 if ccode and existing.company_code != ccode:
                     sets.append("company_code = ?")
                     params.append(ccode)
+                opay = r.get("other_pay")
+                if opay is not None and existing.other_pay != opay:
+                    sets.append("other_pay = ?")
+                    params.append(opay)
+                sref = str(r.get("settlement_ref") or "")
+                if sref and existing.settlement_ref != sref:
+                    sets.append("settlement_ref = ?")
+                    params.append(sref)
+                sstat = str(r.get("settlement_status") or "")
+                if sstat and existing.settlement_status != sstat:
+                    sets.append("settlement_status = ?")
+                    params.append(sstat)
                 if not sets and not mr.cleared:
                     continue
                 sets.append("field_provenance = ?")

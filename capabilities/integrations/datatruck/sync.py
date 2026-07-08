@@ -298,6 +298,23 @@ def _norm_order(rec: dict[str, Any]) -> dict[str, Any]:
         "driver_pay":         _money(_first(
             rec, "driver_earnings", "driver_pay", "driverPay",
         )),
+        # Accessorial lump: total_other_pay = every "additional payment"
+        # on the order (layover/detention/TONU fees the customer was
+        # billed) with no per-type breakdown — total_pay above already
+        # includes it, this is the visible split.
+        "other_pay":          _money(_first(
+            rec, "total_other_pay", "other_pay",
+        )),
+        # Which settlement the load landed on (trip-nested compound keys).
+        # Metadata only — the settlements themselves have no API.
+        "settlement_ref":     _as_text(_first(
+            {**rec, "trip_stl": trip.get("settlement__settlement_number")},
+            "trip_stl", "settlement_number",
+        )),
+        "settlement_status":  _as_text(_first(
+            {**rec, "trip_stl_status": trip.get("settlement__status")},
+            "trip_stl_status", "settlement_status",
+        ), "name"),
         "payload":            rec,
     }
 

@@ -66,7 +66,35 @@ const COLUMNS: AnyColumn[] = [
   { key: 'pickup_location', label: 'Pickup', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   { key: 'delivery_location', label: 'Delivery', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   { key: 'delivery_date', label: 'DEL date', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
-  { key: 'total_rate', label: 'Rate', sortable: true, render: (v) => <MoneyCell value={v} /> },
+  {
+    key: 'total_rate', label: 'Rate', sortable: true,
+    render: (v, row) => {
+      const extra = Number((row as { other_pay?: number | null }).other_pay || 0);
+      return (
+        <span title={extra > 0 ? `Includes $${extra.toLocaleString()} extra pay (accessorials)` : undefined}>
+          <MoneyCell value={v} />
+        </span>
+      );
+    },
+  },
+  {
+    key: 'settlement_ref', label: 'Settled', sortable: true, filterable: true,
+    filterValue: (row) => ((row as { settlement_ref?: string }).settlement_ref ? 'settled' : 'unsettled'),
+    filterLabel: (row) => ((row as { settlement_ref?: string }).settlement_ref ? 'Settled' : 'Not settled'),
+    render: (v, row) => {
+      const ref = String(v || '');
+      if (!ref) return <span className="text-muted-foreground">—</span>;
+      const st = String((row as { settlement_status?: string }).settlement_status || '');
+      return (
+        <span
+          className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${statusClasses('completed')}`}
+          title={st ? `Settlement ${ref} · ${st}` : `Settlement ${ref}`}
+        >
+          {ref}
+        </span>
+      );
+    },
+  },
   { key: 'status', label: 'Status', sortable: true, render: (v) => <Pill value={v} /> },
   { key: 'source', label: 'Source', sortable: true, render: (v) => <SourceCell value={v} /> },
 ];

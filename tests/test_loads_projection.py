@@ -35,6 +35,9 @@ def _order(ref: str, **kw) -> dict:
         "loaded_miles": kw.get("loaded_miles", 1000.0),
         "empty_miles": kw.get("empty_miles", 150.0),
         "driver_pay": kw.get("driver_pay", 900.0),
+        "other_pay": kw.get("other_pay"),
+        "settlement_ref": kw.get("settlement_ref", ""),
+        "settlement_status": kw.get("settlement_status", ""),
         "payload": {},
     }
     return row
@@ -236,3 +239,24 @@ async def test_unknown_status_and_unmatched_driver_degrade_gracefully(db):
     l = (await db.list_loads(acct.id))[0]
     assert l.status == "upcoming"            # unknown vocab lands safe
     assert l.driver_user_id is None          # no fake links
+
+
+@pytest.mark.asyncio
+async def test_settlement_mark_and_other_pay_project_and_refresh(db):
+    """The accessorial lump + settlement number/status land on insert and
+    refresh on re-sync (TMS-authoritative metadata, like status)."""
+    acct = await db.create_account("Settle Co")
+    await db.project_external_loads(acct.id, [
+        _order("S1", other_pay=450.0),
+    ])
+    l = (await db.list_loads(acct.id))[0]
+    assert l.other_pay == 450.0
+    assert l.settlement_ref == "" and l.settlement_status == ""
+    # Next sync: the load landed on a settlement.
+    await db.project_external_loads(acct.id, [
+        _order("S1", other_pay=450.0,
+               settlement_ref="STL-1044", settlement_status="Sent"),
+    ])
+    l = (await db.list_loads(acct.id))[0]
+    assert l.settlement_ref == "STL-1044"
+    assert l.settlement_status == "Sent"

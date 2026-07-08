@@ -6038,3 +6038,40 @@ async def migrate_load_line_items(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("144_load_settlement_columns")
+async def migrate_load_settlement_columns(conn) -> None:
+    """Add loads.other_pay + settlement_ref/settlement_status — the
+    accessorial lump (total_other_pay, already inside total_rate; the
+    split is informational) and which Datatruck settlement the load
+    landed on.  Metadata only: the settlements themselves have no public
+    API.  No backfill — values stamp on the next sync's refresh pass."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(loads)")
+        cols = {r[1] for r in await cur.fetchall()}
+        added = []
+        if "other_pay" not in cols:
+            await conn.execute(
+                "ALTER TABLE loads ADD COLUMN other_pay REAL"
+            )
+            added.append("other_pay")
+        if "settlement_ref" not in cols:
+            await conn.execute(
+                "ALTER TABLE loads ADD COLUMN settlement_ref TEXT NOT NULL DEFAULT ''"
+            )
+            added.append("settlement_ref")
+        if "settlement_status" not in cols:
+            await conn.execute(
+                "ALTER TABLE loads ADD COLUMN settlement_status TEXT NOT NULL DEFAULT ''"
+            )
+            added.append("settlement_status")
+        if added:
+            await conn.commit()
+            logger.info("Migration 144: added loads columns %s", added)
+    except Exception as e:
+        logger.error("Migration 144 failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
