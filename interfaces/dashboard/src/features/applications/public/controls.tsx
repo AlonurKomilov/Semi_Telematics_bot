@@ -1,12 +1,16 @@
 // Public driver-application form — field controls.
 //
-// Hand-rolled (not the dashboard shadcn primitives) so the bundle stays
-// self-contained on apply.<apex>, but every colour/space/radius/icon
-// follows the design system: semantic tokens, lucide icons, 4px scale.
+// Text inputs / textareas / uploads are hand-rolled so the apply.<apex>
+// bundle stays light, but every colour/space/radius/icon follows the
+// design system: semantic tokens, lucide icons, 4px scale.  The one
+// exception is SelectInput, which composes the shared Select primitive so
+// its dropdown is themed + drops below the field (a native <select> opened
+// an OS-styled list that ignored the form theme — see the State picker).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { UploadCloud, Camera, X, FileText, Check } from 'lucide-react';
 import { formatPhone, formatSsn } from './lib';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../../components/ui/select';
 
 const inputCls =
   'w-full rounded-md border border-border bg-card px-3 py-2 text-sm text-foreground ' +
@@ -73,14 +77,22 @@ export function SelectInput({ value = '', onChange, options, placeholder = 'Sele
   value?: string; onChange: (v: string) => void; options: Opt[];
   placeholder?: string; mono?: boolean; error?: boolean;
 }) {
+  const items = options.map((o) => ({ value: optVal(o), label: optLbl(o) }));
+  // Trigger metrics match the hand-rolled inputs above (rounded-md,
+  // bg-card, px-3, ~h-10) so a Select row sits level with text fields.
   return (
-    <select
-      value={value} onChange={(e) => onChange(e.target.value)}
-      className={`${inputCls} ${mono ? 'font-mono' : ''} ${error ? errCls : ''} ${value ? '' : 'text-muted-foreground'}`}
-    >
-      <option value="" disabled>{placeholder}</option>
-      {options.map((o) => <option key={optVal(o)} value={optVal(o)} className="text-foreground">{optLbl(o)}</option>)}
-    </select>
+    <Select value={value} onValueChange={onChange} items={items}>
+      <SelectTrigger
+        className={`h-10 w-full rounded-md border-border bg-card px-3 ${mono ? 'font-mono' : ''} ${
+          error ? 'border-destructive focus-visible:border-destructive focus-visible:ring-destructive/30' : ''
+        }`}
+      >
+        <SelectValue placeholder={placeholder} />
+      </SelectTrigger>
+      <SelectContent>
+        {items.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+      </SelectContent>
+    </Select>
   );
 }
 
