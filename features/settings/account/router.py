@@ -373,3 +373,46 @@ async def set_account_timezone(
         details=f"Set account timezone to {tz_val}",
     )
     return {"timezone": tz_val}
+
+
+# ── Feature modules (account-level kill-switches) ─────────────────
+
+
+class PayrollEnabledUpdate(BaseModel):
+    enabled: bool
+
+
+@router.get("/payroll-enabled")
+async def get_payroll_enabled(
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+):
+    """The Payroll module's account kill-switch.  When off, the Payroll
+    page hides for EVERY role regardless of the permission matrix —
+    surfaced here because that interplay confused operators (a granted
+    permission with an invisible page)."""
+    acct = await platform_db.get_account(user["account_id"])
+    return {"enabled": bool(getattr(acct, "payroll_enabled", False))}
+
+
+@router.put("/payroll-enabled")
+async def set_payroll_enabled(
+    body: PayrollEnabledUpdate,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Flip the Payroll module for the account.  Visibility per role is
+    still the permission matrix's job — this only lifts the master gate."""
+    ok = await platform_db.update_account(
+        user["account_id"], payroll_enabled=bool(body.enabled),
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Account not found")
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "payroll_module_toggle",
+        target_type="account", target_id=str(user["account_id"]),
+        details=f"Payroll module {'enabled' if body.enabled else 'disabled'}",
+    )
+    return {"enabled": bool(body.enabled)}
