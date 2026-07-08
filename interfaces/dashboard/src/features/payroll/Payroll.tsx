@@ -28,6 +28,8 @@ interface DriverPaySettings {
   driver_id: string;
   base_pay_cents: number;
   opt_in: number | boolean;
+  pay_model?: string;
+  pay_rate?: number | null;
   updated_at: string;
 }
 
@@ -49,7 +51,7 @@ interface RunItem {
   base_pay_cents: number;
   bonus_total_cents: number;
   total_cents: number;
-  breakdown: { rule_id: number; name: string; kind: string; amount_cents: number; detail?: string }[];
+  breakdown: { rule_id: number | null; name: string; kind: string; amount_cents: number; detail?: string }[];
 }
 
 interface RunDetail extends PayrollRun {
@@ -294,6 +296,32 @@ function RunsTab() {
               },
               { key: 'base_pay_cents', label: 'Base', sortable: true,
                 render: (v) => <span className="tabular-nums">{fmtCents(Number(v))}</span> },
+              {
+                key: '_loads', label: 'Loads', sortable: true,
+                sortKey: (row) => {
+                  const b = (row as unknown as { breakdown?: { kind: string; amount_cents: number }[] }).breakdown || [];
+                  return b.find((x) => x.kind === 'load_earnings')?.amount_cents ?? 0;
+                },
+                render: (_v, row) => {
+                  const b = (row as unknown as { breakdown?: { kind: string; amount_cents: number }[] }).breakdown || [];
+                  const e = b.find((x) => x.kind === 'load_earnings');
+                  return e ? <span className="tabular-nums">{fmtCents(e.amount_cents)}</span>
+                           : <span className="text-muted-foreground">—</span>;
+                },
+              },
+              {
+                key: '_extras', label: 'Extras', sortable: true,
+                sortKey: (row) => {
+                  const b = (row as unknown as { breakdown?: { kind: string; amount_cents: number }[] }).breakdown || [];
+                  return b.find((x) => x.kind === 'extra_items')?.amount_cents ?? 0;
+                },
+                render: (_v, row) => {
+                  const b = (row as unknown as { breakdown?: { kind: string; amount_cents: number }[] }).breakdown || [];
+                  const e = b.find((x) => x.kind === 'extra_items');
+                  return e ? <span className="tabular-nums">{fmtCents(e.amount_cents)}</span>
+                           : <span className="text-muted-foreground">—</span>;
+                },
+              },
               { key: 'bonus_total_cents', label: 'Bonus', sortable: true,
                 render: (v) => <span className="tabular-nums">{fmtCents(Number(v))}</span> },
               { key: 'total_cents', label: 'Total', sortable: true,
@@ -492,6 +520,10 @@ function SettingsTab() {
   const [driverId, setDriverId] = useState('');
   const [basePay, setBasePay] = useState(0);
   const [optIn, setOptIn] = useState(true);
+  // Per-load earnings model for loads with no stored pay:
+  // percentage-of-rate or per-mile; '' = no per-load math.
+  const [payModel, setPayModel] = useState('');
+  const [payRate, setPayRate] = useState('');
 
   const load = () => {
     setLoading(true);
@@ -512,11 +544,17 @@ function SettingsTab() {
     try {
       await apiJSON(`/payroll/settings/${encodeURIComponent(driverId)}`, {
         method: 'PUT',
-        body: { base_pay_cents: Number(basePay), opt_in: optIn },
+        body: {
+          base_pay_cents: Number(basePay), opt_in: optIn,
+          pay_model: payModel,
+          pay_rate: payRate.trim() === '' ? null : Number(payRate),
+        },
       });
       setDriverId('');
       setBasePay(0);
       setOptIn(true);
+      setPayModel('');
+      setPayRate('');
       load();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'save failed');
@@ -535,6 +573,20 @@ function SettingsTab() {
           <input type="number" placeholder="Base pay (cents)" value={basePay}
             onChange={(e) => setBasePay(Number(e.target.value))}
             className="border rounded px-2 py-1 bg-background" />
+          <select
+            value={payModel}
+            onChange={(e) => setPayModel(e.target.value)}
+            aria-label="Pay model"
+            className="border rounded px-2 py-1 bg-background text-foreground"
+          >
+            <option value="">No per-load pay</option>
+            <option value="percentage">% of load rate</option>
+            <option value="per_mile">Per mile</option>
+          </select>
+          <input type="number" placeholder="Rate (28 = 28% / $ per mile)" value={payRate}
+            onChange={(e) => setPayRate(e.target.value)}
+            disabled={!payModel}
+            className="border rounded px-2 py-1 bg-background disabled:opacity-50" />
           <label className="text-sm flex items-center gap-2">
             <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)} />
             Opted in
@@ -553,6 +605,15 @@ function SettingsTab() {
           {
             key: 'base_pay_cents', label: 'Base Pay', sortable: true,
             render: (v) => <span className="tabular-nums">{fmtCents(Number(v))}</span>,
+          },
+          {
+            key: 'pay_model', label: 'Pay Model', sortable: true,
+            render: (v, row) => {
+              const m = String(v || '');
+              if (!m) return <span className="text-muted-foreground">—</span>;
+              const r = (row as unknown as DriverPaySettings).pay_rate;
+              return <span>{m === 'percentage' ? `${r ?? '?'}% of rate` : `$${r ?? '?'}/mi`}</span>;
+            },
           },
           {
             key: 'opt_in', label: 'Opted In', sortable: true,
