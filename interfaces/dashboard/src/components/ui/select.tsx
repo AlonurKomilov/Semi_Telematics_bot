@@ -59,9 +59,16 @@ function SelectContent({
   children,
   side = "bottom",
   sideOffset = 4,
-  align = "center",
+  // Drop straight down, left-aligned to the trigger — a normal dropdown,
+  // matching every other popover in the app.  base-ui's own defaults
+  // (align="center" + alignItemWithTrigger) overlay the SELECTED item on
+  // top of the trigger, so the menu opens partly ABOVE the field and
+  // shifts sideways over neighbouring controls (e.g. the expiry Select
+  // colliding with the Create-link button).  Callers can still opt back
+  // into the native-select overlay by passing alignItemWithTrigger.
+  align = "start",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<
