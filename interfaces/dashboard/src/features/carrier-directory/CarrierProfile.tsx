@@ -11,6 +11,7 @@ import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import DataGrid from '../../components/DataGrid';
 import type { AnyColumn } from '../../types';
 import { useRoleView } from '../../context/RoleViewContext';
@@ -34,6 +35,12 @@ interface Profile {
 }
 
 const intakeUrlOf = (token: string) => `https://apply.${APEX_DOMAIN}/carrier/${token}`;
+
+const EXPIRY_ITEMS = [
+  { value: '7', label: '7 days' },
+  { value: '30', label: '30 days' },
+  { value: '90', label: '90 days' },
+];
 
 function intakeActive(p: Profile): boolean {
   return Boolean(
@@ -168,14 +175,12 @@ function InvitePanel({ profile, reload }: { profile: Profile; reload: () => Prom
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Expires in</span>
-            {/* Metrics mirror ui/input.tsx so the row sits level with the
-                email Input (h-8 / rounded-lg / border-input / ring focus). */}
-            <select value={days} onChange={(e) => setDays(Number(e.target.value))}
-              className="h-8 rounded-lg border border-input bg-transparent px-2.5 text-sm text-foreground outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30">
-              <option value={7}>7 days</option>
-              <option value={30}>30 days</option>
-              <option value={90}>90 days</option>
-            </select>
+            <Select value={String(days)} onValueChange={(v) => setDays(Number(v))} items={EXPIRY_ITEMS}>
+              <SelectTrigger aria-label="Expires in"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {EXPIRY_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </label>
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={create} disabled={busy}>
