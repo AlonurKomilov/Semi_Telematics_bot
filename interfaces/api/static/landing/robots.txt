@@ -1,0 +1,16 @@
+# 4truck.us — public marketing surface.
+# The crawlable site is the landing page + legal pages; the auth pages
+# are functional UI with no search value.  App subdomains (dash., apply.,
+# app., api., system.) each serve their own Disallow-all robots.txt from
+# nginx — only the apex is meant to appear in search results.
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /signup/
+Disallow: /api/
+Disallow: /webhook
+
+Sitemap: https://4truck.us/sitemap.xml

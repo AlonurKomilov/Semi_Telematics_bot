@@ -463,6 +463,34 @@ def create_api() -> FastAPI:
             headers={"Cache-Control": "public, max-age=3600"},
         )
 
+    # SEO plumbing for the apex — robots.txt scopes crawling to the
+    # public pages, sitemap.xml enumerates them (this is the URL to
+    # submit in Google Search Console, NOT a subdomain root), and the
+    # OG image feeds link previews (social shares + AI-answer cards).
+    @app.get("/robots.txt", include_in_schema=False)
+    async def robots_txt():
+        return FileResponse(
+            os.path.join(_landing_dir, "robots.txt"),
+            media_type="text/plain",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+
+    @app.get("/sitemap.xml", include_in_schema=False)
+    async def sitemap_xml():
+        return FileResponse(
+            os.path.join(_landing_dir, "sitemap.xml"),
+            media_type="application/xml",
+            headers={"Cache-Control": "public, max-age=3600"},
+        )
+
+    @app.get("/og-image.png", include_in_schema=False)
+    async def og_image():
+        return FileResponse(
+            os.path.join(_static_dir, "brand", "logo-wide-1600x400.png"),
+            media_type="image/png",
+            headers={"Cache-Control": "public, max-age=86400"},
+        )
+
     # Serve miniapp static files (Telegram Mini App) — built via `npm run build`
     miniapp_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "miniapp", "dist")
     if os.path.isdir(miniapp_dir):
