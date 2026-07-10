@@ -225,6 +225,9 @@ async def list_line_items(
     scope = await _scope_driver_id(user)
     if scope is not None and l.driver_user_id != scope:
         raise HTTPException(404, "load not found")
+    allowed = await get_user_company_codes(user)
+    if allowed and l.company_code and l.company_code not in allowed:
+        raise HTTPException(404, "load not found")   # company-scope: don't leak
     items = await tenant.list_load_line_items(account_id, load_id=load_id)
     return {"items": [service.line_item_to_dict(i) for i in items]}
 
@@ -240,6 +243,13 @@ async def create_line_item(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
+    if body.load_id is not None:
+        l = await tenant.get_load(account_id, body.load_id)
+        if l is None:
+            raise HTTPException(404, "load not found")
+        allowed = await get_user_company_codes(user)
+        if allowed and l.company_code and l.company_code not in allowed:
+            raise HTTPException(404, "load not found")   # company-scope
     try:
         item_id = await tenant.add_load_line_item(
             account_id,
@@ -267,6 +277,15 @@ async def delete_line_item(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
+    item = await tenant.get_load_line_item(account_id, item_id)
+    if item is None:
+        raise HTTPException(404, "item not found")
+    if item.load_id is not None:
+        l = await tenant.get_load(account_id, item.load_id)
+        if l is not None:
+            allowed = await get_user_company_codes(user)
+            if allowed and l.company_code and l.company_code not in allowed:
+                raise HTTPException(404, "item not found")   # company-scope
     if not await tenant.delete_load_line_item(account_id, item_id):
         raise HTTPException(404, "item not found")
     return {"deleted": True, "id": item_id}

@@ -993,6 +993,16 @@ class LoadsMixin(_MixinBase):
         )
         return [_row_to_line_item(r) for r in await cur.fetchall()]
 
+    async def get_load_line_item(
+        self, account_id: int, item_id: int,
+    ) -> Optional[LoadLineItem]:
+        cur = await self._db.execute(
+            f"{_LI_SELECT} WHERE id = ? AND account_id = ?",
+            (item_id, account_id),
+        )
+        row = await cur.fetchone()
+        return _row_to_line_item(row) if row else None
+
     async def delete_load_line_item(
         self, account_id: int, item_id: int,
     ) -> bool:

@@ -215,3 +215,18 @@ async def test_off_load_layover_and_validation(db):
     assert await db.list_load_line_items(other.id) == []
     assert await db.delete_load_line_item(other.id, iid) is False
     assert await db.delete_load_line_item(acct.id, iid) is True
+
+
+@pytest.mark.asyncio
+async def test_get_load_line_item_scoped(db):
+    """The delete endpoint's company guard resolves items through this
+    getter — it must honor tenant boundaries like every other read."""
+    acct = await db.create_account("Items Co 5")
+    other = await db.create_account("Items Co 6")
+    lid = await db.add_load(acct.id, load_number="G1", company_code="OSY",
+                            pickup_date="2026-07-05")
+    iid = await db.add_load_line_item(acct.id, kind="tolls", amount=42,
+                                      load_id=lid)
+    it = await db.get_load_line_item(acct.id, iid)
+    assert it is not None and it.load_id == lid and it.amount == 42.0
+    assert await db.get_load_line_item(other.id, iid) is None
