@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DollarSign } from 'lucide-react';
+import { DollarSign, FileText } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 import DataGrid from '../../components/DataGrid';
+import { Button } from '../../components/ui/button';
+import StatementDrawer from './StatementDrawer';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import type { AnyColumn } from '../../types';
 
@@ -44,6 +46,24 @@ interface PayrollRun {
   finalized_at: string | null;
 }
 
+export interface StatementLoadLine {
+  date: string; load_number: string; route: string;
+  rate_cents: number; pay_cents: number;
+}
+export interface StatementAddition {
+  date: string; kind: string; amount_cents: number;
+  notes: string; load_number: string;
+}
+export interface Statement {
+  loads?: StatementLoadLine[];
+  additions?: StatementAddition[];
+  base_pay_cents?: number;
+  load_earnings_cents?: number;
+  extras_cents?: number;
+  bonus_total_cents?: number;
+  total_cents?: number;
+}
+
 interface RunItem {
   id: number;
   driver_id: string;
@@ -52,6 +72,7 @@ interface RunItem {
   bonus_total_cents: number;
   total_cents: number;
   breakdown: { rule_id: number | null; name: string; kind: string; amount_cents: number; detail?: string }[];
+  statement?: Statement;
 }
 
 interface RunDetail extends PayrollRun {
@@ -140,6 +161,7 @@ function RunsTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<RunDetail | null>(null);
+  const [statementItem, setStatementItem] = useState<RunItem | null>(null);
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
 
@@ -334,12 +356,35 @@ function RunsTab() {
                   return <span className="text-xs text-muted-foreground">{s || '—'}</span>;
                 },
               },
+              {
+                key: '_statement', label: '', sortable: false,
+                render: (_v, row) => {
+                  const it = row as unknown as RunItem;
+                  return (
+                    <Button
+                      type="button" variant="outline" size="xs"
+                      onClick={() => setStatementItem(it)}
+                    >
+                      <FileText size={12} className="mr-1" /> Statement
+                    </Button>
+                  );
+                },
+              },
             ]}
             data={selected.items as unknown as Record<string, unknown>[]}
             enableToolbar={false}
             enablePagination={false}
           />
         </div>
+      )}
+
+      {statementItem && (
+        <StatementDrawer
+          driver={statementItem.driver_name || statementItem.driver_id}
+          period={selected ? `${selected.period_start} → ${selected.period_end}` : ''}
+          statement={statementItem.statement ?? {}}
+          onClose={() => setStatementItem(null)}
+        />
       )}
     </div>
   );

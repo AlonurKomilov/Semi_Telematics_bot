@@ -141,3 +141,17 @@ async def get_off_load_line_items(
         account_id, off_load_only=True, since=since, until=until,
     )
     return [line_item_to_dict(i) for i in items]
+
+
+async def get_driver_pay_items(
+    account_id: int, *, since: str, until: str,
+) -> list[dict]:
+    """All driver-pay line items (on-load + off-load) in a window with
+    load context — the payroll engine itemizes these as the statement's
+    ADDITIONS lines (and their sum IS the run's extras total)."""
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return []
+    return await tenant.list_driver_pay_line_items(
+        account_id, since=since, until=until,
+    )

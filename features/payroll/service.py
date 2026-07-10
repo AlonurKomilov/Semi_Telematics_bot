@@ -189,6 +189,16 @@ async def create_run(
             bonus_total_cents=item.bonus_total_cents,
             total_cents=item.total_cents,
             breakdown=[b.to_dict() for b in item.breakdown],
+            # Frozen itemized snapshot — the settlement statement's detail.
+            statement={
+                "loads": item.load_lines,
+                "additions": item.addition_lines,
+                "base_pay_cents": item.base_pay_cents,
+                "load_earnings_cents": item.load_earnings_cents,
+                "extras_cents": item.extras_cents,
+                "bonus_total_cents": item.bonus_total_cents,
+                "total_cents": item.total_cents,
+            },
         )
         grand_total += item.total_cents
     await tenant.set_payroll_run_total(account_id, run_id, grand_total)

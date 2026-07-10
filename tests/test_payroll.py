@@ -59,7 +59,8 @@ def _patch_services(monkeypatch, tenant_db, *, payroll_enabled: bool = True,
                     cards: list[dict] | None = None,
                     safety_events: list[dict] | None = None,
                     loads: list[dict] | None = None,
-                    off_items: list[dict] | None = None) -> None:
+                    off_items: list[dict] | None = None,
+                    pay_items: list[dict] | None = None) -> None:
     """Wire the payroll engine + service to use our test tenant DB."""
 
     async def _get_tenant(_aid):
@@ -118,6 +119,9 @@ def _patch_services(monkeypatch, tenant_db, *, payroll_enabled: bool = True,
     async def _get_off_items(_aid, **_kw):
         return off_items or []
 
+    async def _get_pay_items(_aid, **_kw):
+        return pay_items or []
+
     monkeypatch.setattr(payroll_engine, "get_tenant_db", _get_tenant)
     monkeypatch.setattr(payroll_service, "get_tenant_db", _get_tenant)
     monkeypatch.setattr(payroll_service, "get_db", lambda: fake_pdb)
@@ -125,6 +129,9 @@ def _patch_services(monkeypatch, tenant_db, *, payroll_enabled: bool = True,
     monkeypatch.setattr(payroll_engine.loads_service, "get_loads", _get_loads)
     monkeypatch.setattr(
         payroll_engine.loads_service, "get_off_load_line_items", _get_off_items,
+    )
+    monkeypatch.setattr(
+        payroll_engine.loads_service, "get_driver_pay_items", _get_pay_items,
     )
     # Patch bound methods on this specific tenant instance.
     tenant_db.get_safety_events_warehouse = _events  # type: ignore[assignment]
@@ -315,10 +322,18 @@ class TestComputeRun:
             {"status": "delivered", "driver_user_id": 777,     # no user row
              "driver_pay": 400.0, "total_rate": 1200.0},
         ]
-        off = [{"driver_user_id": u.id, "dispatcher_user_id": None,
-                "bucket": "driver_pay", "amount": 300.0}]
+        # Extras are now sourced from the itemized driver-pay items
+        # (on-load $150 TONU + off-load $300 layover), which is also what
+        # the statement lists line by line.
+        pay = [
+            {"driver_user_id": u.id, "item_date": "2026-07-02", "kind": "tonu",
+             "amount": 150.0, "notes": "", "load_id": 1, "load_number": "L1"},
+            {"driver_user_id": u.id, "item_date": "2026-07-03",
+             "kind": "layover", "amount": 300.0, "notes": "sat all day",
+             "load_id": None, "load_number": ""},
+        ]
         _patch_services(monkeypatch, tenant, cards=[],
-                        loads=loads, off_items=off)
+                        loads=loads, pay_items=pay)
         await tenant.upsert_driver_pay_settings(
             acct.id, "S1", base_pay_cents=0, opt_in=True,
             pay_model="percentage", pay_rate=25,
@@ -329,10 +344,15 @@ class TestComputeRun:
         # $900 stored + 25% × $2,000 model = $1,400 over 2 delivered loads.
         assert s1.load_earnings_cents == 90000 + 50000
         assert s1.loads_count == 2
-        # $150 on-load extra + $300 layover.
+        # $150 on-load TONU + $300 layover.
         assert s1.extras_cents == 45000
         assert s1.total_cents == 140000 + 45000
         assert {b.kind for b in s1.breakdown} >= {"load_earnings", "extra_items"}
+        # Itemized statement lines are captured for the drawer/print.
+        assert len(s1.load_lines) == 2
+        assert s1.load_lines[0]["pay_cents"] == 90000        # stored pay wins
+        assert {a["kind"] for a in s1.addition_lines} == {"tonu", "layover"}
+        assert sum(a["amount_cents"] for a in s1.addition_lines) == s1.extras_cents
         # Datatruck-only / unlinked driver: statement still exists.
         assert by["user:777"].load_earnings_cents == 40000
 

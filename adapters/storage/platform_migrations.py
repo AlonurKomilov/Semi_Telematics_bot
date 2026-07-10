@@ -31,6 +31,7 @@ async def run_all(conn) -> None:
     await migrate_create_payroll_tables(conn)
     await migrate_payroll_pay_models(conn)
     await migrate_payroll_module_fold(conn)
+    await migrate_payroll_statement_json(conn)
     # Driver Module migrations
     await migrate_add_driver_profile_columns(conn)
     await migrate_create_driver_vehicle_assignments(conn)
@@ -3070,6 +3071,29 @@ async def migrate_payroll_module_fold(conn) -> None:
             )
     except Exception as e:
         logger.error("payroll module fold migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_payroll_statement_json(conn) -> None:
+    """Add payroll_run_items.statement_json — the itemized settlement
+    snapshot (per-load + addition lines) frozen at run time.  A run item
+    predating this migration reads as an empty statement (its summed
+    components still render)."""
+    try:
+        cur = await conn.execute("PRAGMA table_info(payroll_run_items)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "statement_json" not in cols:
+            await conn.execute(
+                "ALTER TABLE payroll_run_items "
+                "ADD COLUMN statement_json TEXT NOT NULL DEFAULT '{}'"
+            )
+            await conn.commit()
+            logger.info("Migration: payroll_run_items.statement_json added")
+    except Exception as e:
+        logger.error("payroll statement_json migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

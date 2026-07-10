@@ -1013,6 +1013,36 @@ class LoadsMixin(_MixinBase):
         await self._db.commit()
         return (getattr(cur, "rowcount", 0) or 0) > 0
 
+    async def list_driver_pay_line_items(
+        self, account_id: int, *, since: str, until: str,
+    ) -> list[dict]:
+        """Driver-pay line items (on-load + off-load layover) in a date
+        window, each with its load's number/route where attached — the
+        itemized ADDITIONS lines on a settlement statement."""
+        cur = await self._db.execute(
+            "SELECT li.item_date, li.kind, li.amount, li.notes, "
+            "       li.driver_user_id, li.load_id, "
+            "       l.load_number, l.pickup_location, l.delivery_location "
+            "FROM load_line_items li "
+            "LEFT JOIN loads l "
+            "  ON l.id = li.load_id AND l.account_id = li.account_id "
+            "WHERE li.account_id = ? AND li.bucket = 'driver_pay' "
+            "  AND li.item_date >= ? AND li.item_date <= ? "
+            "ORDER BY li.item_date, li.id",
+            (account_id, since, until),
+        )
+        out = []
+        for r in await cur.fetchall():
+            out.append({
+                "item_date": r[0] or "", "kind": r[1] or "other",
+                "amount": float(r[2] or 0), "notes": r[3] or "",
+                "driver_user_id": r[4], "load_id": r[5],
+                "load_number": r[6] or "",
+                "pickup_location": r[7] or "",
+                "delivery_location": r[8] or "",
+            })
+        return out
+
     async def sum_load_line_items(
         self, account_id: int, load_ids: list[int],
     ) -> dict[int, dict[str, float]]:

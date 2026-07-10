@@ -224,15 +224,21 @@ class PayrollMixin(_MixinBase):
         self, *, run_id: int, driver_id: str, driver_name: str,
         base_pay_cents: int, bonus_total_cents: int,
         total_cents: int, breakdown: list[dict],
+        statement: dict | None = None,
     ) -> int:
+        """``statement`` is the itemized settlement snapshot (per-load +
+        addition lines) frozen at run time, so a later load edit never
+        rewrites a finalized statement."""
         now = self._now()
         cur = await self._db.execute(
             "INSERT INTO payroll_run_items "
             "(run_id, driver_id, driver_name, base_pay_cents, "
-            " bonus_total_cents, total_cents, breakdown_json, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " bonus_total_cents, total_cents, breakdown_json, "
+            " statement_json, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (run_id, driver_id, driver_name, base_pay_cents,
-             bonus_total_cents, total_cents, json.dumps(breakdown), now),
+             bonus_total_cents, total_cents, json.dumps(breakdown),
+             json.dumps(statement or {}), now),
         )
         await self._db.commit()
         return cur.lastrowid or 0
@@ -251,6 +257,10 @@ class PayrollMixin(_MixinBase):
                 d["breakdown"] = json.loads(d.get("breakdown_json") or "[]")
             except Exception:
                 d["breakdown"] = []
+            try:
+                d["statement"] = json.loads(d.get("statement_json") or "{}")
+            except Exception:
+                d["statement"] = {}
             out.append(d)
         return out
 
@@ -275,5 +285,9 @@ class PayrollMixin(_MixinBase):
                 d["breakdown"] = json.loads(d.get("breakdown_json") or "[]")
             except Exception:
                 d["breakdown"] = []
+            try:
+                d["statement"] = json.loads(d.get("statement_json") or "{}")
+            except Exception:
+                d["statement"] = {}
             out.append(d)
         return out

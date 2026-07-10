@@ -66,3 +66,7 @@ class RunItem:
     load_earnings_cents: int = 0
     extras_cents: int = 0
     loads_count: int = 0
+    # Itemized statement lines — one per delivered load and one per
+    # addition — the verifiable detail behind the summed components.
+    load_lines: list[dict] = field(default_factory=list)
+    addition_lines: list[dict] = field(default_factory=list)

@@ -152,7 +152,9 @@ async def compute_run(
     period_loads = await loads_service.get_loads(
         account_id, since=start_iso, until=end_iso, limit=None,
     )
-    off_items = await loads_service.get_off_load_line_items(
+    # Driver-pay line items (on-load + off-load) — itemized, so the
+    # statement lists each addition AND their sum is the extras total.
+    pay_items = await loads_service.get_driver_pay_items(
         account_id, since=start_iso, until=end_iso,
     )
     users = await tenant.list_account_users(account_id)
@@ -170,6 +172,7 @@ async def compute_run(
     def _comp(uid: int) -> dict:
         return comp_by_key.setdefault(_key_for_uid(uid), {
             "uid": uid, "earnings": 0, "extras": 0, "loads": 0,
+            "load_lines": [], "addition_lines": [],
         })
 
     for l in period_loads:
@@ -179,20 +182,34 @@ async def compute_run(
         if not uid:
             continue
         c = _comp(int(uid))
-        c["earnings"] += _load_pay_cents(
+        pay_cents = _load_pay_cents(
             l, settings_by_driver.get(uid_to_sid.get(int(uid), "")),
         )
+        c["earnings"] += pay_cents
         c["loads"] += 1
-        extra = float(l.get("extra_driver_pay") or 0)
-        if extra:
-            c["extras"] += int(round(extra * 100))
-    for it in off_items:
-        if it.get("bucket") != "driver_pay":
-            continue
+        origin = str(l.get("pickup_location") or "")
+        dest = str(l.get("delivery_location") or "")
+        c["load_lines"].append({
+            "date": l.get("delivery_date") or l.get("pickup_date") or "",
+            "load_number": l.get("load_number") or "",
+            "route": f"{origin} → {dest}".strip(" →"),
+            "rate_cents": int(round(float(l.get("total_rate") or 0) * 100)),
+            "pay_cents": pay_cents,
+        })
+    for it in pay_items:
         uid = it.get("driver_user_id")
         if not uid:
             continue
-        _comp(int(uid))["extras"] += int(round(float(it.get("amount") or 0) * 100))
+        c = _comp(int(uid))
+        amt = int(round(float(it.get("amount") or 0) * 100))
+        c["extras"] += amt
+        c["addition_lines"].append({
+            "date": it.get("item_date") or "",
+            "kind": it.get("kind") or "other",
+            "amount_cents": amt,
+            "notes": it.get("notes") or "",
+            "load_number": it.get("load_number") or "",
+        })
 
     # Composite scorecards over the period
     cards = await evaluate_subjects(
@@ -311,6 +328,8 @@ async def compute_run(
             load_earnings_cents=load_earnings,
             extras_cents=extras,
             loads_count=loads_count,
+            load_lines=list(comp.get("load_lines") or []),
+            addition_lines=list(comp.get("addition_lines") or []),
         ))
 
     return items
