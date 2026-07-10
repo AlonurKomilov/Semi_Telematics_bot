@@ -142,7 +142,8 @@ const PERM_GROUPS: PermGroup[] = [
       { allKey: 'can_route_all', vehicleKey: 'can_route_vehicle', label: 'Routes', scoped: true },
       { key: 'can_loads_all', label: 'Loads (all)', description: 'See every load in the account' },
       { key: 'can_loads_own', label: 'Loads (own)', indented: true, description: 'See loads assigned to the user (driver scope)' },
-      { key: 'can_manage_loads', label: 'Manage Loads', indented: true, description: 'Add / edit / remove loads' },
+      { key: 'can_manage_loads', label: 'Manage Loads', indented: true, description: 'Add / edit / remove loads \u2014 own loads only unless "Manage all loads" is also granted' },
+      { key: 'can_loads_manage_all', label: 'Manage all loads', indented: true, description: 'Edit / delete ANY dispatcher\u2019s loads (the dispatch-manager grant); without it, a dispatcher manages only their own' },
     ],
   },
   {

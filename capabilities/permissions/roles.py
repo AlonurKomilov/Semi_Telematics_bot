@@ -97,7 +97,13 @@ class FeatureSet:
     # the same split work orders / payroll use.
     can_loads_all: bool = False       # view every load
     can_loads_own: bool = False       # view own loads (driver scope)
-    can_manage_loads: bool = False    # add/edit/remove loads
+    can_manage_loads: bool = False    # add/edit/remove loads (see manage_all
+                                      # for the scope: own vs any)
+    # Write SCOPE for can_manage_loads.  Without this, a dispatcher manages
+    # only loads they own (dispatcher_user_id == self) + the ones they
+    # create; unassigned/other dispatchers' loads are off-limits.  WITH it
+    # (owner/admin, or a delegated "dispatch manager") they manage ANY load.
+    can_loads_manage_all: bool = False
     # KPI — the account-wide performance analytics surface (dispatcher
     # grades first; fleet/safety/driver sections later).  One shared page,
     # delegatable to any role via the matrix.
@@ -179,6 +185,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_invite=True, can_manage_users=True,
         can_manage_companies=True, can_manage_vehicles=True, can_manage_account=True,
         can_loads_all=True, can_loads_own=True, can_manage_loads=True,
+        can_loads_manage_all=True,   # owner/admin manage any load
         can_kpi=True,
         can_manage_permissions=True, can_manage_integrations=True,
         can_manage_storage=True, can_manage_work_hours=True,
@@ -211,6 +218,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_invite=True, can_manage_users=True,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
         can_loads_all=True, can_loads_own=True, can_manage_loads=True,
+        can_loads_manage_all=True,   # owner/admin manage any load
         can_kpi=True,
         can_manage_permissions=False, can_manage_integrations=False,
         can_manage_storage=False, can_manage_work_hours=False,
@@ -1071,6 +1079,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_loads_all": "loads (all)",
     "can_loads_own": "own loads",
     "can_manage_loads": "manage loads",
+    "can_loads_manage_all": "manage all loads",
     "can_kpi": "KPI & performance",
     "can_manage_account": "account settings",
     "can_manage_permissions": "role permissions matrix",

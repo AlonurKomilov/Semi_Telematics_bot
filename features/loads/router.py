@@ -31,16 +31,38 @@ _manage_loads = require_permission("can_manage_loads")
 LIST_CAP = 500
 
 
-async def _scope_driver_id(user: dict) -> int | None:
-    """None = account-wide; a user id = own-scope (driver) caller."""
-    perms = await get_user_permissions(
+async def _user_perms(user: dict):
+    return await get_user_permissions(
         Role(user["role"]), user["account_id"],
         is_manager=bool(user.get("is_manager")),
         is_primary_owner=bool(user.get("is_primary_owner")),
     )
+
+
+async def _scope_driver_id(user: dict) -> int | None:
+    """None = account-wide; a user id = own-scope (driver) caller."""
+    perms = await _user_perms(user)
     if getattr(perms, "can_loads_all", False):
         return None
     return int(user["id"])
+
+
+async def _is_manage_all(user: dict) -> bool:
+    return bool(getattr(await _user_perms(user), "can_loads_manage_all", False))
+
+
+async def _can_write_load(user: dict, load) -> bool:
+    """A ``can_manage_loads`` holder may write a load either because they
+    manage ALL loads (owner/admin/dispatch-manager) or because they OWN it
+    (dispatcher_user_id == self).  An unassigned load (no dispatcher) is
+    manager-only — a base dispatcher claims a load by being assigned to it,
+    never by editing an orphan."""
+    if await _is_manage_all(user):
+        return True
+    return (
+        load.dispatcher_user_id is not None
+        and load.dispatcher_user_id == int(user["id"])
+    )
 
 
 class LoadCreate(BaseModel):
@@ -127,8 +149,17 @@ async def create_load(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
+    fields = body.model_dump()
+    perms = await _user_perms(user)
+    if not getattr(perms, "can_loads_manage_all", False):
+        # Own-scope creator: the new load is stamped to THEM, so they can
+        # keep managing it and can't hand it off to another dispatcher.
+        uid = int(user["id"])
+        fields["dispatcher_user_id"] = uid
+        me = await tenant.get_user(uid)
+        fields["dispatcher_name"] = (me.display_name if me else "") or ""
     try:
-        load_id = await tenant.add_load(account_id, **body.model_dump())
+        load_id = await tenant.add_load(account_id, **fields)
     except ValueError as e:
         raise HTTPException(400, str(e))
     l = await tenant.get_load(account_id, load_id)
@@ -145,7 +176,17 @@ async def update_load(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
+    existing = await tenant.get_load(account_id, load_id)
+    if existing is None:
+        raise HTTPException(404, "load not found")
+    if not await _can_write_load(user, existing):
+        # Another dispatcher's (or an unassigned) load — 404, don't leak.
+        raise HTTPException(404, "load not found")
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
+    # An own-scope dispatcher can't reassign a load away from themselves.
+    if not await _is_manage_all(user):
+        fields.pop("dispatcher_user_id", None)
+        fields.pop("dispatcher_name", None)
     try:
         changed = await tenant.update_load(account_id, load_id, **fields)
     except ValueError as e:
@@ -169,6 +210,11 @@ async def delete_load(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
+    existing = await tenant.get_load(account_id, load_id)
+    if existing is None:
+        raise HTTPException(404, "load not found")
+    if not await _can_write_load(user, existing):
+        raise HTTPException(404, "load not found")   # not yours — don't leak
     if not await tenant.deactivate_load(account_id, load_id):
         raise HTTPException(404, "load not found")
     return {"deleted": True, "id": load_id}
@@ -243,6 +289,8 @@ async def create_line_item(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
+    dispatcher_user_id = body.dispatcher_user_id
+    manage_all = await _is_manage_all(user)
     if body.load_id is not None:
         l = await tenant.get_load(account_id, body.load_id)
         if l is None:
@@ -250,6 +298,14 @@ async def create_line_item(
         allowed = await get_user_company_codes(user)
         if allowed and l.company_code and l.company_code not in allowed:
             raise HTTPException(404, "load not found")   # company-scope
+        # Own-scope: only the load's own dispatcher may add costs to it.
+        if not manage_all and not await _can_write_load(user, l):
+            raise HTTPException(404, "load not found")
+    else:
+        # Off-load layover — a base dispatcher can only charge it to
+        # THEMSELVES as the responsible dispatcher, never to a peer.
+        if not manage_all:
+            dispatcher_user_id = int(user["id"])
     try:
         item_id = await tenant.add_load_line_item(
             account_id,
@@ -258,7 +314,7 @@ async def create_line_item(
             bucket=body.bucket,
             load_id=body.load_id,
             driver_user_id=body.driver_user_id,
-            dispatcher_user_id=body.dispatcher_user_id,
+            dispatcher_user_id=dispatcher_user_id,
             item_date=body.item_date,
             notes=body.notes,
             created_by=int(user["sub"]),
@@ -280,12 +336,18 @@ async def delete_line_item(
     item = await tenant.get_load_line_item(account_id, item_id)
     if item is None:
         raise HTTPException(404, "item not found")
+    manage_all = await _is_manage_all(user)
     if item.load_id is not None:
         l = await tenant.get_load(account_id, item.load_id)
         if l is not None:
             allowed = await get_user_company_codes(user)
             if allowed and l.company_code and l.company_code not in allowed:
                 raise HTTPException(404, "item not found")   # company-scope
+            if not manage_all and not await _can_write_load(user, l):
+                raise HTTPException(404, "item not found")   # own-scope
+    elif not manage_all and item.dispatcher_user_id != int(user["id"]):
+        # Off-load layover owned by another dispatcher.
+        raise HTTPException(404, "item not found")
     if not await tenant.delete_load_line_item(account_id, item_id):
         raise HTTPException(404, "item not found")
     return {"deleted": True, "id": item_id}
