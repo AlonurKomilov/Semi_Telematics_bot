@@ -80,12 +80,41 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "payroll.my_pay.status",
         status=str(latest.get("status", "draft")).upper(),
     ))
-    lines.append(t(
-        "payroll.my_pay.base",
-        amount=_fmt_cents(latest.get("base_pay_cents", 0)),
-    ))
+    if latest.get("base_pay_cents", 0):
+        lines.append(t(
+            "payroll.my_pay.base",
+            amount=_fmt_cents(latest.get("base_pay_cents", 0)),
+        ))
 
-    breakdown = latest.get("breakdown") or []
+    st = latest.get("statement") or {}
+    load_lines = st.get("loads") or []
+    additions = st.get("additions") or []
+    deductions = st.get("deductions") or []
+
+    # Loads earned — count + total, then each load line.
+    if load_lines:
+        lines.append("")
+        lines.append("<b>" + t(
+            "payroll.my_pay.loads",
+            count=len(load_lines),
+            amount=_fmt_cents(st.get("load_earnings_cents", 0)),
+        ) + "</b>")
+        for l in load_lines[:15]:
+            num = l.get("load_number") or ""
+            lines.append(
+                f"• {l.get('date', '')} {num} — {_fmt_cents(l.get('pay_cents', 0))}"
+            )
+
+    if additions:
+        lines.append("")
+        lines.append("<b>" + t("payroll.my_pay.additions") + "</b>")
+        for a in additions:
+            lines.append(
+                f"• {a.get('kind', '')} — {_fmt_cents(a.get('amount_cents', 0))}"
+            )
+
+    breakdown = [b for b in (latest.get("breakdown") or [])
+                 if b.get("kind") not in ("load_earnings", "extra_items")]
     if breakdown:
         lines.append("")
         lines.append("<b>" + t("payroll.my_pay.bonuses") + "</b>")
@@ -94,10 +123,23 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"• {b.get('name', '')} — {_fmt_cents(b.get('amount_cents', 0))}"
             )
 
+    if deductions:
+        lines.append("")
+        lines.append("<b>" + t("payroll.my_pay.deductions") + "</b>")
+        for d in deductions:
+            lines.append(
+                f"• {d.get('kind', '')} — −{_fmt_cents(d.get('amount_cents', 0))}"
+            )
+
     lines.append("")
+    if latest.get("deductions_cents", 0):
+        lines.append(t(
+            "payroll.my_pay.gross",
+            amount=_fmt_cents(latest.get("total_cents", 0)),
+        ))
     lines.append("<b>" + t(
-        "payroll.my_pay.total",
-        amount=_fmt_cents(latest.get("total_cents", 0)),
+        "payroll.my_pay.net",
+        amount=_fmt_cents(latest.get("net_cents", latest.get("total_cents", 0))),
     ) + "</b>")
 
     if len(items) > 1:
@@ -107,7 +149,7 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lines.append(
                 f"• {it.get('period_start', '')} → "
                 f"{it.get('period_end', '')}: "
-                f"{_fmt_cents(it.get('total_cents', 0))}"
+                f"{_fmt_cents(it.get('net_cents', it.get('total_cents', 0)))}"
             )
 
     await update.message.reply_text(
