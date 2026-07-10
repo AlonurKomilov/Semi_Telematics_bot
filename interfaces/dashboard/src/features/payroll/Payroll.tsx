@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DollarSign, FileText } from 'lucide-react';
+import { DollarSign, FileText, Trash2 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
@@ -54,14 +54,21 @@ export interface StatementAddition {
   date: string; kind: string; amount_cents: number;
   notes: string; load_number: string;
 }
+export interface StatementDeduction {
+  date: string; kind: string; amount_cents: number;
+  notes: string; recurring?: boolean;
+}
 export interface Statement {
   loads?: StatementLoadLine[];
   additions?: StatementAddition[];
+  deductions?: StatementDeduction[];
   base_pay_cents?: number;
   load_earnings_cents?: number;
   extras_cents?: number;
   bonus_total_cents?: number;
   total_cents?: number;
+  deductions_cents?: number;
+  net_cents?: number;
 }
 
 interface RunItem {
@@ -73,6 +80,8 @@ interface RunItem {
   total_cents: number;
   breakdown: { rule_id: number | null; name: string; kind: string; amount_cents: number; detail?: string }[];
   statement?: Statement;
+  deductions_cents?: number;
+  net_cents?: number;
 }
 
 interface RunDetail extends PayrollRun {
@@ -87,7 +96,7 @@ const RULE_KIND_ITEMS: { value: BonusRule['kind']; label: string }[] = [
   { value: 'incident_count', label: 'Incidents ≤ max' },
 ];
 
-type Tab = 'rules' | 'runs' | 'settings';
+type Tab = 'rules' | 'runs' | 'settings' | 'deductions';
 
 // ── Page ─────────────────────────────────────────────────────────
 
@@ -134,7 +143,7 @@ export default function Payroll() {
       />
 
       <div className="flex gap-2 border-b border-border">
-        {(['runs', 'rules', 'settings'] as Tab[]).map((t) => (
+        {(['runs', 'rules', 'settings', 'deductions'] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -142,7 +151,7 @@ export default function Payroll() {
               tab === t ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'
             }`}
           >
-            {t === 'runs' ? 'Runs' : t === 'rules' ? 'Bonus Rules' : 'Driver Settings'}
+            {t === 'runs' ? 'Runs' : t === 'rules' ? 'Bonus Rules' : t === 'settings' ? 'Driver Settings' : 'Deductions'}
           </button>
         ))}
       </div>
@@ -150,6 +159,7 @@ export default function Payroll() {
       {tab === 'runs' && <RunsTab />}
       {tab === 'rules' && <RulesTab />}
       {tab === 'settings' && <SettingsTab />}
+      {tab === 'deductions' && <DeductionsTab />}
     </div>
   );
 }
@@ -346,8 +356,16 @@ function RunsTab() {
               },
               { key: 'bonus_total_cents', label: 'Bonus', sortable: true,
                 render: (v) => <span className="tabular-nums">{fmtCents(Number(v))}</span> },
-              { key: 'total_cents', label: 'Total', sortable: true,
-                render: (v) => <span className="font-semibold tabular-nums">{fmtCents(Number(v))}</span> },
+              { key: 'total_cents', label: 'Gross', sortable: true,
+                render: (v) => <span className="tabular-nums">{fmtCents(Number(v))}</span> },
+              { key: 'deductions_cents', label: 'Deductions', sortable: true,
+                render: (v) => (Number(v) ? <span className="tabular-nums text-danger">−{fmtCents(Number(v))}</span> : <span className="text-muted-foreground">—</span>) },
+              { key: 'net_cents', label: 'Net', sortable: true,
+                render: (v, row) => {
+                  const it = row as unknown as RunItem;
+                  const net = it.net_cents ?? it.total_cents;
+                  return <span className="font-semibold tabular-nums">{fmtCents(Number(net))}</span>;
+                } },
               {
                 key: 'breakdown', label: 'Breakdown', sortable: false,
                 render: (_v, row) => {
@@ -674,6 +692,147 @@ function SettingsTab() {
               </span>
             ),
           },
+        ]}
+        data={rows as unknown as Record<string, unknown>[]}
+        enableToolbar={false}
+        enablePagination={false}
+      />
+    </div>
+  );
+}
+
+// ── Deductions Tab ───────────────────────────────────────────────
+//
+// Money withheld from a driver's gross to reach NET pay (advance, escrow,
+// insurance, fuel card).  Recurring ones apply once per run; one-offs on
+// their date.  Not a load line item — deductions never touch KPI.
+
+interface Deduction {
+  id: number; driver_user_id: number; kind: string;
+  amount_cents: number; deduct_date: string; notes: string; recurring: boolean;
+}
+interface PayrollDriver { user_id: number; name: string }
+
+const DEDUCTION_KINDS = [
+  { value: 'advance', label: 'Advance' },
+  { value: 'escrow', label: 'Escrow' },
+  { value: 'insurance', label: 'Insurance' },
+  { value: 'fuel_card', label: 'Fuel card' },
+  { value: 'other', label: 'Other' },
+];
+
+function DeductionsTab() {
+  const [drivers, setDrivers] = useState<PayrollDriver[]>([]);
+  const [rows, setRows] = useState<Deduction[]>([]);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [driverId, setDriverId] = useState('');
+  const [kind, setKind] = useState('advance');
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState('');
+  const [notes, setNotes] = useState('');
+  const [recurring, setRecurring] = useState(false);
+
+  const nameOf = (uid: number) => drivers.find((d) => d.user_id === uid)?.name || `#${uid}`;
+
+  const load = () => {
+    Promise.all([
+      apiJSON<{ drivers: PayrollDriver[] }>('/payroll/drivers'),
+      apiJSON<{ deductions: Deduction[] }>('/payroll/deductions'),
+    ]).then(([d, x]) => { setDrivers(d.drivers); setRows(x.deductions); })
+      .catch((e) => setError(e instanceof Error ? e.message : 'failed'));
+  };
+  useEffect(load, []);
+
+  const add = async () => {
+    const amt = Math.round(Number(amount) * 100);
+    if (!driverId || !amt || amt <= 0 || busy) return;
+    setBusy(true); setError('');
+    try {
+      await apiJSON('/payroll/deductions', {
+        method: 'POST',
+        body: {
+          driver_user_id: Number(driverId), kind, amount_cents: amt,
+          deduct_date: recurring ? '' : date, notes, recurring,
+        },
+      });
+      setAmount(''); setDate(''); setNotes(''); setRecurring(false);
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'save failed');
+    } finally { setBusy(false); }
+  };
+
+  const remove = async (id: number) => {
+    if (busy) return;
+    setBusy(true);
+    try { await apiJSON(`/payroll/deductions/${id}`, { method: 'DELETE' }); load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'delete failed'); }
+    finally { setBusy(false); }
+  };
+
+  const driverItems = drivers.map((d) => ({ value: String(d.user_id), label: d.name }));
+
+  return (
+    <div className="space-y-4">
+      <div className="border rounded p-3 space-y-2">
+        <h3 className="font-semibold text-sm">Add deduction</h3>
+        {error && <div className="text-danger text-sm">{error}</div>}
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-sm items-end">
+          <Select value={driverId} onValueChange={(v) => setDriverId(v ?? '')} items={driverItems}>
+            <SelectTrigger className="w-full" aria-label="Driver"><SelectValue placeholder="Driver…" /></SelectTrigger>
+            <SelectContent>
+              {driverItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Select value={kind} onValueChange={(v) => setKind(v ?? 'other')} items={DEDUCTION_KINDS}>
+            <SelectTrigger className="w-full" aria-label="Kind"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {DEDUCTION_KINDS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <input type="number" min="0" step="0.01" placeholder="Amount $" value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="border rounded px-2 py-1 bg-background text-foreground" />
+          <input type="date" value={date} disabled={recurring}
+            onChange={(e) => setDate(e.target.value)}
+            className="border rounded px-2 py-1 bg-background text-foreground disabled:opacity-50" />
+          <label className="text-xs flex items-center gap-1.5 text-foreground">
+            <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
+            Recurring
+          </label>
+          <Button type="button" size="sm" disabled={busy || !driverId || !Number(amount)} onClick={() => { void add(); }}>
+            Add
+          </Button>
+        </div>
+        <input placeholder="Note (optional)" value={notes} onChange={(e) => setNotes(e.target.value)}
+          className="w-full border rounded px-2 py-1 bg-background text-foreground text-sm" />
+        <p className="text-2xs text-muted-foreground">
+          Recurring deductions (insurance, escrow) apply once to every run; one-offs (an advance) apply on their date.
+          Deductions reduce a driver&apos;s gross to their net pay on the statement.
+        </p>
+      </div>
+
+      <DataGrid
+        columns={[
+          { key: 'driver_user_id', label: 'Driver', sortable: true,
+            render: (v) => <span>{nameOf(Number(v))}</span> },
+          { key: 'kind', label: 'Type', sortable: true,
+            render: (v) => <span className="capitalize">{String(v).replace('_', ' ')}</span> },
+          { key: 'amount_cents', label: 'Amount', sortable: true,
+            render: (v) => <span className="tabular-nums text-danger">−{fmtCents(Number(v))}</span> },
+          { key: 'deduct_date', label: 'When', sortable: true,
+            render: (v, row) => ((row as unknown as Deduction).recurring
+              ? <span className="text-xs text-muted-foreground">recurring</span>
+              : <span>{String(v || '—')}</span>) },
+          { key: 'notes', label: 'Note', sortable: false,
+            render: (v) => <span className="text-xs text-muted-foreground">{String(v || '')}</span> },
+          { key: '_del', label: '', sortable: false,
+            render: (_v, row) => (
+              <Button type="button" variant="ghost" size="icon-xs"
+                onClick={() => { void remove((row as unknown as Deduction).id); }}
+                aria-label="Remove"><Trash2 size={12} /></Button>
+            ) },
         ]}
         data={rows as unknown as Record<string, unknown>[]}
         enableToolbar={false}

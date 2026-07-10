@@ -189,18 +189,24 @@ async def create_run(
             bonus_total_cents=item.bonus_total_cents,
             total_cents=item.total_cents,
             breakdown=[b.to_dict() for b in item.breakdown],
+            deductions_cents=item.deductions_cents,
+            net_cents=item.net_cents,
             # Frozen itemized snapshot — the settlement statement's detail.
             statement={
                 "loads": item.load_lines,
                 "additions": item.addition_lines,
+                "deductions": item.deduction_lines,
                 "base_pay_cents": item.base_pay_cents,
                 "load_earnings_cents": item.load_earnings_cents,
                 "extras_cents": item.extras_cents,
                 "bonus_total_cents": item.bonus_total_cents,
                 "total_cents": item.total_cents,
+                "deductions_cents": item.deductions_cents,
+                "net_cents": item.net_cents,
             },
         )
-        grand_total += item.total_cents
+        # The run's grand total is NET — what's actually disbursed.
+        grand_total += item.net_cents
     await tenant.set_payroll_run_total(account_id, run_id, grand_total)
 
     await _audit(account_id, user_id, "payroll_run_created", str(run_id))
@@ -283,3 +289,45 @@ async def get_paystub_history(
     return await tenant.get_paystub_history_for_driver(
         account_id, driver_id, limit=limit,
     )
+
+
+# ── Deductions (advance / escrow / insurance / fuel card) ─────────
+
+DEDUCTION_KINDS = ("advance", "escrow", "insurance", "fuel_card", "other")
+
+
+async def list_deductions(account_id: int, *, driver_user_id: int | None = None) -> list[dict]:
+    await _assert_enabled(account_id)
+    tenant = await get_tenant_db(account_id)
+    return await tenant.list_driver_deductions(
+        account_id, driver_user_id=driver_user_id,
+    )
+
+
+async def add_deduction(
+    account_id: int, *, user_id: int, driver_user_id: int, kind: str,
+    amount_cents: int, deduct_date: str = "", notes: str = "",
+    recurring: bool = False,
+) -> int:
+    if kind not in DEDUCTION_KINDS:
+        raise ValueError(f"kind must be one of {DEDUCTION_KINDS}")
+    if amount_cents <= 0:
+        raise ValueError("amount must be positive")
+    await _assert_enabled(account_id)
+    tenant = await get_tenant_db(account_id)
+    did = await tenant.add_driver_deduction(
+        account_id, driver_user_id=driver_user_id, kind=kind,
+        amount_cents=amount_cents, deduct_date=deduct_date, notes=notes,
+        recurring=recurring, created_by=user_id,
+    )
+    await _audit(account_id, user_id, "payroll_deduction_added", str(did))
+    return did
+
+
+async def delete_deduction(account_id: int, *, user_id: int, deduction_id: int) -> bool:
+    await _assert_enabled(account_id)
+    tenant = await get_tenant_db(account_id)
+    ok = await tenant.delete_driver_deduction(account_id, deduction_id)
+    if ok:
+        await _audit(account_id, user_id, "payroll_deduction_deleted", str(deduction_id))
+    return ok

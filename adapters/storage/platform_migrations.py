@@ -32,6 +32,7 @@ async def run_all(conn) -> None:
     await migrate_payroll_pay_models(conn)
     await migrate_payroll_module_fold(conn)
     await migrate_payroll_statement_json(conn)
+    await migrate_driver_deductions(conn)
     # Driver Module migrations
     await migrate_add_driver_profile_columns(conn)
     await migrate_create_driver_vehicle_assignments(conn)
@@ -3094,6 +3095,55 @@ async def migrate_payroll_statement_json(conn) -> None:
             logger.info("Migration: payroll_run_items.statement_json added")
     except Exception as e:
         logger.error("payroll statement_json migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_driver_deductions(conn) -> None:
+    """Driver deductions — money withheld from a driver's gross to reach
+    NET pay (advance, escrow, insurance, fuel card).  A payroll concept,
+    NOT a load line item (deductions never touch load gross / KPI).
+    ``recurring`` = applied once per run (weekly insurance/escrow);
+    otherwise a one-off on ``deduct_date``.  Plus the deductions/net
+    columns on payroll_run_items so a finalized statement freezes them."""
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS driver_deductions (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id     INTEGER NOT NULL,
+                driver_user_id INTEGER NOT NULL,
+                kind           TEXT    NOT NULL DEFAULT 'other',
+                amount_cents   INTEGER NOT NULL,
+                deduct_date    TEXT    NOT NULL DEFAULT '',
+                notes          TEXT    NOT NULL DEFAULT '',
+                recurring      INTEGER NOT NULL DEFAULT 0,
+                active         INTEGER NOT NULL DEFAULT 1,
+                created_by     INTEGER NOT NULL DEFAULT 0,
+                created_at     TEXT    NOT NULL DEFAULT ''
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_driver_deductions_acct "
+            "ON driver_deductions(account_id, driver_user_id)"
+        )
+        cur = await conn.execute("PRAGMA table_info(payroll_run_items)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "deductions_cents" not in cols:
+            await conn.execute(
+                "ALTER TABLE payroll_run_items "
+                "ADD COLUMN deductions_cents INTEGER NOT NULL DEFAULT 0"
+            )
+        if "net_cents" not in cols:
+            await conn.execute(
+                "ALTER TABLE payroll_run_items "
+                "ADD COLUMN net_cents INTEGER NOT NULL DEFAULT 0"
+            )
+        await conn.commit()
+        logger.info("Migration: driver_deductions + run-item net columns")
+    except Exception as e:
+        logger.error("driver_deductions migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

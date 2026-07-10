@@ -298,3 +298,84 @@ async def my_paystubs(
         user["account_id"], driver_id, limit=limit,
     )
     return {"driver_id": driver_id, "items": items}
+
+
+# ── Deductions (advance / escrow / insurance / fuel card) ─────────
+
+
+class DeductionIn(BaseModel):
+    driver_user_id: int
+    kind: str = Field(..., max_length=16)
+    amount_cents: int = Field(..., gt=0)
+    deduct_date: str = Field("", max_length=32)
+    notes: str = Field("", max_length=200)
+    recurring: bool = False
+
+
+@router.get("/deductions")
+async def list_deductions(
+    driver_user_id: int | None = Query(None),
+    user: dict = Depends(require_permission("can_payroll_admin")),
+):
+    """Active deductions — one-off + recurring — optionally for one driver."""
+    try:
+        items = await svc.list_deductions(
+            user["account_id"], driver_user_id=driver_user_id,
+        )
+    except PayrollDisabledError as e:
+        raise _disabled_to_403(e)
+    return {"deductions": items}
+
+
+@router.post("/deductions", status_code=201)
+async def create_deduction(
+    body: DeductionIn,
+    user: dict = Depends(require_permission("can_payroll_admin")),
+):
+    try:
+        did = await svc.add_deduction(
+            user["account_id"], user_id=int(user["sub"]),
+            driver_user_id=body.driver_user_id, kind=body.kind,
+            amount_cents=body.amount_cents, deduct_date=body.deduct_date,
+            notes=body.notes, recurring=body.recurring,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except PayrollDisabledError as e:
+        raise _disabled_to_403(e)
+    return {"id": did}
+
+
+@router.delete("/deductions/{deduction_id}")
+async def delete_deduction(
+    deduction_id: int,
+    user: dict = Depends(require_permission("can_payroll_admin")),
+):
+    try:
+        ok = await svc.delete_deduction(
+            user["account_id"], user_id=int(user["sub"]),
+            deduction_id=deduction_id,
+        )
+    except PayrollDisabledError as e:
+        raise _disabled_to_403(e)
+    if not ok:
+        raise HTTPException(404, "deduction not found")
+    return {"deleted": True, "id": deduction_id}
+
+
+@router.get("/drivers")
+async def list_payroll_drivers(
+    user: dict = Depends(require_permission("can_payroll_admin")),
+):
+    """Account drivers (user_id + name) for the deductions picker — gated
+    by payroll admin so it doesn't depend on driver-docs permission."""
+    from infra.platform import get_platform_db as _pdb
+    pdb = _pdb()
+    users = await pdb.list_account_users(user["account_id"])
+    drivers = [
+        {"user_id": u.id, "name": u.display_name or f"#{u.id}"}
+        for u in users
+        if (u.role.value if hasattr(u.role, "value") else u.role) == "driver"
+    ]
+    drivers.sort(key=lambda d: d["name"].lower())
+    return {"drivers": drivers}

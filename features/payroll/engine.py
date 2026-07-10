@@ -172,7 +172,8 @@ async def compute_run(
     def _comp(uid: int) -> dict:
         return comp_by_key.setdefault(_key_for_uid(uid), {
             "uid": uid, "earnings": 0, "extras": 0, "loads": 0,
-            "load_lines": [], "addition_lines": [],
+            "deductions": 0,
+            "load_lines": [], "addition_lines": [], "deduction_lines": [],
         })
 
     for l in period_loads:
@@ -209,6 +210,26 @@ async def compute_run(
             "amount_cents": amt,
             "notes": it.get("notes") or "",
             "load_number": it.get("load_number") or "",
+        })
+
+    # Deductions withheld from gross → NET (advance/escrow/insurance/…):
+    # recurring ones apply once per run, one-offs by date window.
+    deductions = await tenant.deductions_for_run(
+        account_id, since=start_iso, until=end_iso,
+    )
+    for d in deductions:
+        uid = d.get("driver_user_id")
+        if not uid:
+            continue
+        c = _comp(int(uid))
+        amt = int(d.get("amount_cents") or 0)
+        c["deductions"] += amt
+        c["deduction_lines"].append({
+            "date": d.get("deduct_date") or "",
+            "kind": d.get("kind") or "other",
+            "amount_cents": amt,
+            "notes": d.get("notes") or "",
+            "recurring": bool(d.get("recurring")),
         })
 
     # Composite scorecards over the period
@@ -313,9 +334,11 @@ async def compute_run(
                 detail="layover / TONU / detention / bonus",
             ))
         total = base_pay + bonus_total + load_earnings + extras
+        deductions = int(comp.get("deductions") or 0)
+        net = total - deductions
 
         # Skip drivers with nothing at all to keep runs clean.
-        if total <= 0 and not breakdown:
+        if total <= 0 and deductions <= 0 and not breakdown:
             continue
 
         items.append(RunItem(
@@ -330,6 +353,9 @@ async def compute_run(
             loads_count=loads_count,
             load_lines=list(comp.get("load_lines") or []),
             addition_lines=list(comp.get("addition_lines") or []),
+            deductions_cents=deductions,
+            net_cents=net,
+            deduction_lines=list(comp.get("deduction_lines") or []),
         ))
 
     return items

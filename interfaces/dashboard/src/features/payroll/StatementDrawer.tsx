@@ -11,7 +11,9 @@
 
 import { X, Printer, Download } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import type { Statement, StatementLoadLine, StatementAddition } from './Payroll';
+import type {
+  Statement, StatementLoadLine, StatementAddition, StatementDeduction,
+} from './Payroll';
 
 const money = (c: number | null | undefined) =>
   c == null ? '$0.00'
@@ -36,11 +38,19 @@ function toCsv(
       a.date, a.kind, a.notes, a.load_number, money(a.amount_cents),
     ]),
     [],
+    ['DEDUCTIONS'],
+    ['Date', 'Type', 'Note', 'Amount'],
+    ...(st.deductions ?? []).map((d) => [
+      d.date, d.kind, d.notes, `-${money(d.amount_cents)}`,
+    ]),
+    [],
     ['Base pay', money(st.base_pay_cents)],
     ['Load earnings', money(st.load_earnings_cents)],
     ['Additions', money(st.extras_cents)],
     ['Bonuses', money(st.bonus_total_cents)],
-    ['TOTAL', money(st.total_cents)],
+    ['Gross', money(st.total_cents)],
+    ['Deductions', `-${money(st.deductions_cents)}`],
+    ['NET PAY', money(st.net_cents)],
   ];
   return rows
     .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
@@ -57,6 +67,7 @@ export default function StatementDrawer({
 }) {
   const loads: StatementLoadLine[] = statement.loads ?? [];
   const additions: StatementAddition[] = statement.additions ?? [];
+  const deductions: StatementDeduction[] = statement.deductions ?? [];
 
   const downloadCsv = () => {
     const blob = new Blob([toCsv(driver, period, statement)], {
@@ -148,14 +159,42 @@ export default function StatementDrawer({
             </>
           )}
 
+          {deductions.length > 0 && (
+            <>
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Deductions</div>
+              <table className="mb-4 w-full text-xs">
+                <tbody>
+                  {deductions.map((d, i) => (
+                    <tr key={i} className="border-b border-border/50">
+                      <td className="py-1 text-foreground">{d.date || (d.recurring ? 'recurring' : '—')}</td>
+                      <td className="py-1 capitalize text-foreground">{d.kind.replace('_', ' ')}</td>
+                      <td className="py-1 text-muted-foreground">{d.notes}</td>
+                      <td className="py-1 text-right tabular-nums font-medium text-danger">−{money(d.amount_cents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
           <dl className="mt-4 space-y-1 border-t border-border pt-3 text-sm">
             <Row label="Base pay" value={money(statement.base_pay_cents)} />
             <Row label="Load earnings" value={money(statement.load_earnings_cents)} />
             <Row label="Additions" value={money(statement.extras_cents)} />
             <Row label="Bonuses" value={money(statement.bonus_total_cents)} />
+            <div className="flex justify-between pt-1">
+              <dt className="text-muted-foreground">Gross</dt>
+              <dd className="tabular-nums text-foreground">{money(statement.total_cents)}</dd>
+            </div>
+            {(statement.deductions_cents ?? 0) > 0 && (
+              <div className="flex justify-between">
+                <dt className="text-muted-foreground">Deductions</dt>
+                <dd className="tabular-nums text-danger">−{money(statement.deductions_cents)}</dd>
+              </div>
+            )}
             <div className="flex justify-between border-t border-border pt-2 text-base font-semibold text-foreground">
-              <dt>Total</dt>
-              <dd className="tabular-nums">{money(statement.total_cents)}</dd>
+              <dt>Net pay</dt>
+              <dd className="tabular-nums">{money(statement.net_cents ?? statement.total_cents)}</dd>
             </div>
           </dl>
         </div>

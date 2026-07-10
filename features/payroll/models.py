@@ -66,7 +66,11 @@ class RunItem:
     load_earnings_cents: int = 0
     extras_cents: int = 0
     loads_count: int = 0
-    # Itemized statement lines — one per delivered load and one per
-    # addition — the verifiable detail behind the summed components.
+    # Itemized statement lines — one per delivered load, one per
+    # addition, one per deduction — the verifiable detail behind the sums.
     load_lines: list[dict] = field(default_factory=list)
     addition_lines: list[dict] = field(default_factory=list)
+    # Deductions (advance/escrow/insurance/…) withheld from gross → NET.
+    deductions_cents: int = 0
+    net_cents: int = 0
+    deduction_lines: list[dict] = field(default_factory=list)

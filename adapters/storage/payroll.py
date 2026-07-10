@@ -225,23 +225,98 @@ class PayrollMixin(_MixinBase):
         base_pay_cents: int, bonus_total_cents: int,
         total_cents: int, breakdown: list[dict],
         statement: dict | None = None,
+        deductions_cents: int = 0, net_cents: int | None = None,
     ) -> int:
         """``statement`` is the itemized settlement snapshot (per-load +
-        addition lines) frozen at run time, so a later load edit never
-        rewrites a finalized statement."""
+        addition + deduction lines) frozen at run time, so a later edit
+        never rewrites a finalized statement.  ``net_cents`` = gross
+        (total_cents) minus deductions."""
+        if net_cents is None:
+            net_cents = total_cents - deductions_cents
         now = self._now()
         cur = await self._db.execute(
             "INSERT INTO payroll_run_items "
             "(run_id, driver_id, driver_name, base_pay_cents, "
             " bonus_total_cents, total_cents, breakdown_json, "
-            " statement_json, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " statement_json, deductions_cents, net_cents, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (run_id, driver_id, driver_name, base_pay_cents,
              bonus_total_cents, total_cents, json.dumps(breakdown),
-             json.dumps(statement or {}), now),
+             json.dumps(statement or {}), deductions_cents, net_cents, now),
         )
         await self._db.commit()
         return cur.lastrowid or 0
+
+    # ── driver_deductions ──────────────────────────────────────
+
+    async def add_driver_deduction(
+        self, account_id: int, *, driver_user_id: int, kind: str,
+        amount_cents: int, deduct_date: str = "", notes: str = "",
+        recurring: bool = False, created_by: int = 0,
+    ) -> int:
+        now = self._now()
+        cur = await self._db.execute(
+            "INSERT INTO driver_deductions "
+            "(account_id, driver_user_id, kind, amount_cents, deduct_date, "
+            " notes, recurring, active, created_by, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+            (account_id, driver_user_id, (kind or "other").strip().lower(),
+             int(amount_cents), (deduct_date or "").strip(),
+             (notes or "").strip(), 1 if recurring else 0, created_by, now),
+        )
+        await self._db.commit()
+        return cur.lastrowid or 0
+
+    async def list_driver_deductions(
+        self, account_id: int, *, driver_user_id: int | None = None,
+    ) -> list[dict]:
+        where = ["account_id = ?", "active = 1"]
+        args: list = [account_id]
+        if driver_user_id is not None:
+            where.append("driver_user_id = ?")
+            args.append(driver_user_id)
+        cur = await self._db.execute(
+            "SELECT id, driver_user_id, kind, amount_cents, deduct_date, "
+            "notes, recurring FROM driver_deductions "
+            f"WHERE {' AND '.join(where)} ORDER BY recurring DESC, deduct_date DESC, id DESC",
+            tuple(args),
+        )
+        return [
+            {"id": r[0], "driver_user_id": r[1], "kind": r[2],
+             "amount_cents": int(r[3]), "deduct_date": r[4] or "",
+             "notes": r[5] or "", "recurring": bool(r[6])}
+            for r in await cur.fetchall()
+        ]
+
+    async def deductions_for_run(
+        self, account_id: int, *, since: str, until: str,
+    ) -> list[dict]:
+        """Deductions that apply to a run window: every active recurring
+        one (applied once) + one-offs whose deduct_date falls inside."""
+        cur = await self._db.execute(
+            "SELECT id, driver_user_id, kind, amount_cents, deduct_date, "
+            "notes, recurring FROM driver_deductions "
+            "WHERE account_id = ? AND active = 1 AND ("
+            "  recurring = 1 OR (deduct_date >= ? AND deduct_date <= ?)"
+            ") ORDER BY driver_user_id, id",
+            (account_id, since, until),
+        )
+        return [
+            {"id": r[0], "driver_user_id": r[1], "kind": r[2],
+             "amount_cents": int(r[3]), "deduct_date": r[4] or "",
+             "notes": r[5] or "", "recurring": bool(r[6])}
+            for r in await cur.fetchall()
+        ]
+
+    async def delete_driver_deduction(
+        self, account_id: int, deduction_id: int,
+    ) -> bool:
+        cur = await self._db.execute(
+            "DELETE FROM driver_deductions WHERE id = ? AND account_id = ?",
+            (deduction_id, account_id),
+        )
+        await self._db.commit()
+        return (getattr(cur, "rowcount", 0) or 0) > 0
 
     async def get_payroll_run_items(self, run_id: int) -> list[dict]:
         cur = await self._db.execute(
@@ -261,6 +336,9 @@ class PayrollMixin(_MixinBase):
                 d["statement"] = json.loads(d.get("statement_json") or "{}")
             except Exception:
                 d["statement"] = {}
+            d["deductions_cents"] = d.get("deductions_cents") or 0
+            d["net_cents"] = d.get("net_cents") if d.get("net_cents") is not None \
+                else (d.get("total_cents") or 0)
             out.append(d)
         return out
 
@@ -289,5 +367,8 @@ class PayrollMixin(_MixinBase):
                 d["statement"] = json.loads(d.get("statement_json") or "{}")
             except Exception:
                 d["statement"] = {}
+            d["deductions_cents"] = d.get("deductions_cents") or 0
+            d["net_cents"] = d.get("net_cents") if d.get("net_cents") is not None \
+                else (d.get("total_cents") or 0)
             out.append(d)
         return out
