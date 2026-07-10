@@ -152,9 +152,10 @@ async def compute_run(
     period_loads = await loads_service.get_loads(
         account_id, since=start_iso, until=end_iso, limit=None,
     )
-    # Driver-pay line items (on-load + off-load) — itemized, so the
-    # statement lists each addition AND their sum is the extras total.
-    pay_items = await loads_service.get_driver_pay_items(
+    # Settlement line items (on-load + off-load), tagged by bucket:
+    # driver_pay = ADDITIONS, deduction = DEDUCTIONS — one unified
+    # mechanism, itemized so the statement lists each line.
+    settlement_items = await loads_service.get_settlement_items(
         account_id, since=start_iso, until=end_iso,
     )
     users = await tenant.list_account_users(account_id)
@@ -197,40 +198,25 @@ async def compute_run(
             "rate_cents": int(round(float(l.get("total_rate") or 0) * 100)),
             "pay_cents": pay_cents,
         })
-    for it in pay_items:
+    for it in settlement_items:
         uid = it.get("driver_user_id")
         if not uid:
             continue
         c = _comp(int(uid))
         amt = int(round(float(it.get("amount") or 0) * 100))
-        c["extras"] += amt
-        c["addition_lines"].append({
+        line = {
             "date": it.get("item_date") or "",
             "kind": it.get("kind") or "other",
             "amount_cents": amt,
             "notes": it.get("notes") or "",
             "load_number": it.get("load_number") or "",
-        })
-
-    # Deductions withheld from gross → NET (advance/escrow/insurance/…):
-    # recurring ones apply once per run, one-offs by date window.
-    deductions = await tenant.deductions_for_run(
-        account_id, since=start_iso, until=end_iso,
-    )
-    for d in deductions:
-        uid = d.get("driver_user_id")
-        if not uid:
-            continue
-        c = _comp(int(uid))
-        amt = int(d.get("amount_cents") or 0)
-        c["deductions"] += amt
-        c["deduction_lines"].append({
-            "date": d.get("deduct_date") or "",
-            "kind": d.get("kind") or "other",
-            "amount_cents": amt,
-            "notes": d.get("notes") or "",
-            "recurring": bool(d.get("recurring")),
-        })
+        }
+        if it.get("bucket") == "deduction":
+            c["deductions"] += amt
+            c["deduction_lines"].append(line)
+        else:
+            c["extras"] += amt
+            c["addition_lines"].append(line)
 
     # Composite scorecards over the period
     cards = await evaluate_subjects(

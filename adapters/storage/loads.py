@@ -116,26 +116,40 @@ def _parse_load_provenance(raw: Any) -> dict:
         return {}
 
 
-# ── Line items — extra pay & costs attached to a load or a driver-day ──
+# ── Line items — extra pay, costs & deductions on a load or driver-day ──
 #
-# The per-type money Datatruck's API can't give us: TONU / bonus / layover
-# on the driver-pay side, tolls / lumper / detention on the expense side.
-# A row attaches to a LOAD (tolls, TONU on a canceled load) or, for
-# layover — which exists precisely because there was NO load — to a
-# driver + date, with the responsible dispatcher stamped so the cost
-# lands on their KPI.
+# One unified mechanism for every per-load money adjustment the base rate
+# doesn't capture.  Three buckets:
+#   * driver_pay — ADDITIONS to the driver's pay (TONU / bonus / layover /
+#     detention).  Raise the driver's statement earnings.
+#   * expense    — company costs (tolls / lumper).  Lower the LOAD's gross
+#     for KPI; not the driver's pay.
+#   * deduction  — money WITHHELD from the driver (advance / escrow /
+#     insurance / fuel card / a per-load charge).  Lower the driver's NET
+#     on the settlement; never touch load gross / KPI.
+# A row attaches to a LOAD, or — when there's no load (a layover the driver
+# sat through, a cash advance on a date) — to a driver + date.
 
 LINE_ITEM_KINDS = (
-    "tonu", "layover", "bonus", "detention", "lumper", "tolls", "other",
+    # driver_pay (additions)
+    "tonu", "layover", "bonus", "detention",
+    # expense (company cost)
+    "lumper", "tolls",
+    # deduction (withheld from the driver)
+    "advance", "escrow", "insurance", "fuel_card", "charge",
+    # bucket-ambiguous
+    "other",
 )
-# Which side of gross each kind hits by default; the caller may override
-# (an "other" item can be either).
+# Which bucket each kind defaults to; the caller may override (an "other"
+# item can be any bucket).
 LINE_ITEM_DEFAULT_BUCKET = {
     "tonu": "driver_pay", "layover": "driver_pay", "bonus": "driver_pay",
     "detention": "driver_pay",
     "lumper": "expense", "tolls": "expense", "other": "expense",
+    "advance": "deduction", "escrow": "deduction", "insurance": "deduction",
+    "fuel_card": "deduction", "charge": "deduction",
 }
-LINE_ITEM_BUCKETS = ("driver_pay", "expense")
+LINE_ITEM_BUCKETS = ("driver_pay", "expense", "deduction")
 
 
 @dataclass
@@ -1013,20 +1027,22 @@ class LoadsMixin(_MixinBase):
         await self._db.commit()
         return (getattr(cur, "rowcount", 0) or 0) > 0
 
-    async def list_driver_pay_line_items(
+    async def list_driver_settlement_items(
         self, account_id: int, *, since: str, until: str,
     ) -> list[dict]:
-        """Driver-pay line items (on-load + off-load layover) in a date
-        window, each with its load's number/route where attached — the
-        itemized ADDITIONS lines on a settlement statement."""
+        """Driver-pay (additions) AND deduction line items — on-load +
+        off-load (driver+date) — in a window, each tagged with its bucket
+        and its load's number/route where attached.  These are the
+        itemized ADDITIONS and DEDUCTIONS lines on a settlement statement
+        (the expense bucket is a company cost, not a driver line)."""
         cur = await self._db.execute(
             "SELECT li.item_date, li.kind, li.amount, li.notes, "
-            "       li.driver_user_id, li.load_id, "
+            "       li.driver_user_id, li.load_id, li.bucket, "
             "       l.load_number, l.pickup_location, l.delivery_location "
             "FROM load_line_items li "
             "LEFT JOIN loads l "
             "  ON l.id = li.load_id AND l.account_id = li.account_id "
-            "WHERE li.account_id = ? AND li.bucket = 'driver_pay' "
+            "WHERE li.account_id = ? AND li.bucket IN ('driver_pay', 'deduction') "
             "  AND li.item_date >= ? AND li.item_date <= ? "
             "ORDER BY li.item_date, li.id",
             (account_id, since, until),
@@ -1037,9 +1053,10 @@ class LoadsMixin(_MixinBase):
                 "item_date": r[0] or "", "kind": r[1] or "other",
                 "amount": float(r[2] or 0), "notes": r[3] or "",
                 "driver_user_id": r[4], "load_id": r[5],
-                "load_number": r[6] or "",
-                "pickup_location": r[7] or "",
-                "delivery_location": r[8] or "",
+                "bucket": r[6] or "driver_pay",
+                "load_number": r[7] or "",
+                "pickup_location": r[8] or "",
+                "delivery_location": r[9] or "",
             })
         return out
 

@@ -60,8 +60,7 @@ def _patch_services(monkeypatch, tenant_db, *, payroll_enabled: bool = True,
                     safety_events: list[dict] | None = None,
                     loads: list[dict] | None = None,
                     off_items: list[dict] | None = None,
-                    pay_items: list[dict] | None = None,
-                    deductions: list[dict] | None = None) -> None:
+                    pay_items: list[dict] | None = None) -> None:
     """Wire the payroll engine + service to use our test tenant DB."""
 
     async def _get_tenant(_aid):
@@ -120,12 +119,8 @@ def _patch_services(monkeypatch, tenant_db, *, payroll_enabled: bool = True,
     async def _get_off_items(_aid, **_kw):
         return off_items or []
 
-    async def _get_pay_items(_aid, **_kw):
+    async def _get_settlement_items(_aid, **_kw):
         return pay_items or []
-
-    async def _deductions_for_run(_aid, **_kw):
-        return deductions or []
-    tenant_db.deductions_for_run = _deductions_for_run
 
     monkeypatch.setattr(payroll_engine, "get_tenant_db", _get_tenant)
     monkeypatch.setattr(payroll_service, "get_tenant_db", _get_tenant)
@@ -136,7 +131,7 @@ def _patch_services(monkeypatch, tenant_db, *, payroll_enabled: bool = True,
         payroll_engine.loads_service, "get_off_load_line_items", _get_off_items,
     )
     monkeypatch.setattr(
-        payroll_engine.loads_service, "get_driver_pay_items", _get_pay_items,
+        payroll_engine.loads_service, "get_settlement_items", _get_settlement_items,
     )
     # Patch bound methods on this specific tenant instance.
     tenant_db.get_safety_events_warehouse = _events  # type: ignore[assignment]
@@ -332,10 +327,15 @@ class TestComputeRun:
         # the statement lists line by line.
         pay = [
             {"driver_user_id": u.id, "item_date": "2026-07-02", "kind": "tonu",
-             "amount": 150.0, "notes": "", "load_id": 1, "load_number": "L1"},
+             "amount": 150.0, "notes": "", "load_id": 1, "load_number": "L1",
+             "bucket": "driver_pay"},
             {"driver_user_id": u.id, "item_date": "2026-07-03",
              "kind": "layover", "amount": 300.0, "notes": "sat all day",
-             "load_id": None, "load_number": ""},
+             "load_id": None, "load_number": "", "bucket": "driver_pay"},
+            # A deduction rides the same list, tagged by bucket → NET.
+            {"driver_user_id": u.id, "item_date": "2026-07-01",
+             "kind": "advance", "amount": 200.0, "notes": "cash",
+             "load_id": None, "load_number": "", "bucket": "deduction"},
         ]
         _patch_services(monkeypatch, tenant, cards=[],
                         loads=loads, pay_items=pay)
@@ -358,6 +358,10 @@ class TestComputeRun:
         assert s1.load_lines[0]["pay_cents"] == 90000        # stored pay wins
         assert {a["kind"] for a in s1.addition_lines} == {"tonu", "layover"}
         assert sum(a["amount_cents"] for a in s1.addition_lines) == s1.extras_cents
+        # Deduction reduces gross → net.
+        assert s1.deductions_cents == 20000
+        assert [d["kind"] for d in s1.deduction_lines] == ["advance"]
+        assert s1.net_cents == s1.total_cents - 20000
         # Datatruck-only / unlinked driver: statement still exists.
         assert by["user:777"].load_earnings_cents == 40000
 
@@ -492,33 +496,3 @@ def test_account_modules_routes_replace_payroll_enabled():
     paths = {r.path for r in router.routes if hasattr(r, "path")}
     assert "/admin/account/modules" in paths
     assert not any("payroll-enabled" in p for p in paths)
-
-
-@pytest.mark.asyncio
-async def test_deductions_reduce_gross_to_net(db):
-    """One-off + recurring deductions itemize on the statement and reduce
-    gross to NET; deductions_for_run applies recurring once + one-offs in
-    window."""
-    acct = await db.create_account("Deduct Co")
-    u = await db.create_user(9501, acct.id, role=Role.DRIVER, display_name="Ded Driver")
-    # A one-off advance in-window, a recurring insurance, and an out-of-window
-    # one-off that must NOT count.
-    await db.add_driver_deduction(acct.id, driver_user_id=u.id, kind="advance",
-                                  amount_cents=20000, deduct_date="2026-07-03")
-    await db.add_driver_deduction(acct.id, driver_user_id=u.id, kind="insurance",
-                                  amount_cents=8500, recurring=True)
-    await db.add_driver_deduction(acct.id, driver_user_id=u.id, kind="advance",
-                                  amount_cents=99900, deduct_date="2026-06-01")
-    applied = await db.deductions_for_run(acct.id, since="2026-07-01", until="2026-07-31")
-    kinds = sorted((d["kind"], d["amount_cents"]) for d in applied)
-    assert kinds == [("advance", 20000), ("insurance", 8500)]   # not the June advance
-
-    # Full listing (no window) shows all active, recurring first.
-    all_d = await db.list_driver_deductions(acct.id, driver_user_id=u.id)
-    assert len(all_d) == 3
-    assert all_d[0]["recurring"] is True
-
-    # Delete is tenant-scoped.
-    other = await db.create_account("Deduct Co 2")
-    assert await db.delete_driver_deduction(other.id, all_d[0]["id"]) is False
-    assert await db.delete_driver_deduction(acct.id, all_d[0]["id"]) is True

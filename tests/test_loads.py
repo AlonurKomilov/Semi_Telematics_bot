@@ -230,3 +230,31 @@ async def test_get_load_line_item_scoped(db):
     it = await db.get_load_line_item(acct.id, iid)
     assert it is not None and it.load_id == lid and it.amount == 42.0
     assert await db.get_load_line_item(other.id, iid) is None
+
+
+@pytest.mark.asyncio
+async def test_deduction_bucket_and_settlement_items(db):
+    """Deductions are a third line-item bucket (unified with additions):
+    they do NOT reduce the load's gross (driver-side, not company cost),
+    and settlement-items returns driver_pay + deduction tagged by bucket."""
+    from features.loads import service as loads_service
+    acct = await db.create_account("Ded Bucket Co")
+    lid = await db.add_load(acct.id, load_number="D1", total_rate=3000.0,
+                            driver_pay=800.0, pickup_date="2026-07-02")
+    await db.add_load_line_item(acct.id, kind="tonu", amount=150, load_id=lid)
+    # 'insurance' auto-buckets to deduction; on-load charge here.
+    await db.add_load_line_item(acct.id, kind="insurance", amount=85, load_id=lid)
+    rows = await db.list_loads(acct.id)
+    sums = await db.sum_load_line_items(acct.id, [x.id for x in rows])
+    l = loads_service.load_to_dict(rows[0], sums.get(lid))
+    # Gross = rate − pay − tonu; the deduction does NOT touch gross.
+    assert l["extra_driver_pay"] == 150.0
+    assert l["extra_deductions"] == 85.0
+    assert l["gross"] == round(3000 - 800 - 150, 2)   # deduction excluded
+
+    items = await db.list_driver_settlement_items(
+        acct.id, since="2026-07-01", until="2026-07-31",
+    )
+    by_kind = {i["kind"]: i for i in items}
+    assert by_kind["tonu"]["bucket"] == "driver_pay"
+    assert by_kind["insurance"]["bucket"] == "deduction"

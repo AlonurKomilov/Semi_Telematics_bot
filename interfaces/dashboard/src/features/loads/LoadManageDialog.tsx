@@ -20,7 +20,7 @@ import {
   DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
 import {
-  LINE_ITEM_KINDS, LOAD_STATUSES,
+  LINE_ITEM_KINDS, LINE_ITEM_BUCKET, LOAD_STATUSES,
   createLineItem, createLoad, deleteLineItem, deleteLoad,
   listLineItems, updateLoad,
 } from './api';
@@ -207,9 +207,17 @@ export default function LoadManageDialog({
     { value: 'unpaid', label: 'unpaid' },
     { value: 'paid', label: 'paid' },
   ];
+  // Layover has no load (it's the no-load case) → not offered here; every
+  // other kind — additions, company costs, and driver deductions — can
+  // attach to a load, grouped by bucket in the label so it's clear which
+  // way the money moves.
+  const bucketLabel = (k: string) => {
+    const b = LINE_ITEM_BUCKET[k];
+    return b === 'driver_pay' ? `+ ${k}` : b === 'deduction' ? `− ${k.replace('_', ' ')}` : `cost · ${k}`;
+  };
   const itemKindItems = LINE_ITEM_KINDS
     .filter((k) => k !== 'layover')
-    .map((k) => ({ value: k, label: k }));
+    .map((k) => ({ value: k, label: bucketLabel(k) }));
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>

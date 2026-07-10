@@ -1,13 +1,19 @@
 /**
- * Layover entry — the no-load line item.
+ * Off-load driver adjustment — a line item with NO load, attached to a
+ * driver + date.  Two shapes share this one entry point:
  *
- * Layover pay exists precisely because there was NO load (the driver sat
- * waiting), so it attaches to a driver + date instead of a load, with the
- * responsible dispatcher stamped so the cost lands on their KPI gross.
+ *   * Layover (an addition) — pay for a driver who sat without a load;
+ *     stamped with the responsible dispatcher so the cost lands on their
+ *     KPI gross.
+ *   * A deduction (advance / escrow / insurance / fuel card / charge) —
+ *     money withheld from the driver's net that isn't tied to any load
+ *     (a cash advance on a date).  No dispatcher — deductions never touch
+ *     dispatcher KPI.
  *
- * Driver / dispatcher options are derived from the loads already on
- * screen (the people who actually run freight here) — no extra
- * permission-gated endpoint needed.
+ * Both flow through the same load-line-item mechanism the on-load
+ * "Extra pay & costs" editor uses, so the settlement statement reads them
+ * uniformly.  Driver / dispatcher options are derived from the loads on
+ * screen (the people who actually run freight here).
  */
 
 import { useEffect, useState } from 'react';
@@ -17,7 +23,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
-import { createLineItem } from './api';
+import { createLineItem, LINE_ITEM_BUCKET } from './api';
 
 const inputCls =
   'w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm ' +
@@ -28,6 +34,17 @@ export interface PersonOption {
   name: string;
 }
 
+// Off-load kinds: layover (addition) + the deductions.  A per-load charge
+// stays on the load; these are the ones that legitimately have no load.
+const OFF_LOAD_KINDS = [
+  { value: 'layover', label: 'Layover (pay)' },
+  { value: 'advance', label: 'Advance (deduction)' },
+  { value: 'escrow', label: 'Escrow (deduction)' },
+  { value: 'insurance', label: 'Insurance (deduction)' },
+  { value: 'fuel_card', label: 'Fuel card (deduction)' },
+  { value: 'charge', label: 'Charge (deduction)' },
+];
+
 export default function LayoverDialog({
   open, drivers, dispatchers, onClose, onSaved,
 }: {
@@ -37,6 +54,7 @@ export default function LayoverDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const [kind, setKind] = useState('layover');
   const [driverId, setDriverId] = useState('');
   const [dispatcherId, setDispatcherId] = useState('');
   const [date, setDate] = useState('');
@@ -47,6 +65,7 @@ export default function LayoverDialog({
 
   useEffect(() => {
     if (!open) return;
+    setKind('layover');
     setDriverId('');
     setDispatcherId('');
     setDate('');
@@ -55,6 +74,7 @@ export default function LayoverDialog({
     setError('');
   }, [open]);
 
+  const isDeduction = LINE_ITEM_BUCKET[kind] === 'deduction';
   const canSave = !!driverId && !!date && Number(amount) > 0;
 
   const save = async () => {
@@ -63,17 +83,19 @@ export default function LayoverDialog({
     setError('');
     try {
       await createLineItem({
-        kind: 'layover',
+        kind,
         amount: Number(amount),
         driver_user_id: Number(driverId),
-        dispatcher_user_id: dispatcherId ? Number(dispatcherId) : undefined,
+        // Dispatcher attribution is only meaningful for layover (it hits
+        // that dispatcher's KPI); a deduction has none.
+        dispatcher_user_id: !isDeduction && dispatcherId ? Number(dispatcherId) : undefined,
         item_date: date,
         notes,
       });
       onSaved();
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save the layover');
+      setError(e instanceof Error ? e.message : 'Could not save the entry');
     } finally {
       setSaving(false);
     }
@@ -83,14 +105,23 @@ export default function LayoverDialog({
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Add layover</DialogTitle>
+          <DialogTitle>Add off-load entry</DialogTitle>
           <DialogDescription>
-            Guaranteed pay for a driver who sat without a load. It counts
-            against the responsible dispatcher&apos;s KPI for that day.
+            Pay or a deduction for a driver that isn&apos;t tied to a load — a
+            layover they sat through, or an advance/insurance withheld. It
+            lands on that driver&apos;s settlement for the date.
           </DialogDescription>
         </DialogHeader>
 
         <div className="grid grid-cols-2 gap-3">
+          <label className="text-sm col-span-2">
+            <span className="text-muted-foreground">Type</span>
+            <select className={inputCls} value={kind} onChange={(e) => setKind(e.target.value)}>
+              {OFF_LOAD_KINDS.map((k) => (
+                <option key={k.value} value={k.value}>{k.label}</option>
+              ))}
+            </select>
+          </label>
           <label className="text-sm col-span-2">
             <span className="text-muted-foreground">Driver</span>
             <select className={inputCls} value={driverId} onChange={(e) => setDriverId(e.target.value)}>
@@ -108,15 +139,17 @@ export default function LayoverDialog({
             <span className="text-muted-foreground">Amount ($)</span>
             <input className={inputCls} type="number" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
           </label>
-          <label className="text-sm col-span-2">
-            <span className="text-muted-foreground">Responsible dispatcher (for KPI)</span>
-            <select className={inputCls} value={dispatcherId} onChange={(e) => setDispatcherId(e.target.value)}>
-              <option value="">—</option>
-              {dispatchers.map((d) => (
-                <option key={d.id} value={String(d.id)}>{d.name}</option>
-              ))}
-            </select>
-          </label>
+          {!isDeduction && (
+            <label className="text-sm col-span-2">
+              <span className="text-muted-foreground">Responsible dispatcher (for KPI)</span>
+              <select className={inputCls} value={dispatcherId} onChange={(e) => setDispatcherId(e.target.value)}>
+                <option value="">—</option>
+                {dispatchers.map((d) => (
+                  <option key={d.id} value={String(d.id)}>{d.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <label className="text-sm col-span-2">
             <span className="text-muted-foreground">Note (optional)</span>
             <input className={inputCls} value={notes} onChange={(e) => setNotes(e.target.value)} />
@@ -131,7 +164,7 @@ export default function LayoverDialog({
           </Button>
           <Button onClick={() => { void save(); }} disabled={saving || !canSave}>
             {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
-            Add layover
+            {isDeduction ? 'Add deduction' : 'Add layover'}
           </Button>
         </DialogFooter>
       </DialogContent>

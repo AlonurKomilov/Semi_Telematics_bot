@@ -24,6 +24,9 @@ def load_to_dict(l: Any, line_item_sums: dict[str, float] | None = None) -> dict
     li = line_item_sums or {}
     extra_driver_pay = float(li.get("driver_pay") or 0)
     extra_costs = float(li.get("expense") or 0)
+    # Deductions are withheld from the DRIVER's net (payroll), not a
+    # company cost — they never reduce the load's gross / KPI.
+    extra_deductions = float(li.get("deduction") or 0)
     loaded = float(l.loaded_miles or 0)
     empty = float(l.empty_miles or 0)
     total_miles = loaded + empty
@@ -57,6 +60,7 @@ def load_to_dict(l: Any, line_item_sums: dict[str, float] | None = None) -> dict
         "other_costs": l.other_costs,
         "extra_driver_pay": round(extra_driver_pay, 2) or None,
         "extra_costs": round(extra_costs, 2) or None,
+        "extra_deductions": round(extra_deductions, 2) or None,
         "other_pay": getattr(l, "other_pay", None),
         "settlement_ref": getattr(l, "settlement_ref", ""),
         "settlement_status": getattr(l, "settlement_status", ""),
@@ -143,15 +147,15 @@ async def get_off_load_line_items(
     return [line_item_to_dict(i) for i in items]
 
 
-async def get_driver_pay_items(
+async def get_settlement_items(
     account_id: int, *, since: str, until: str,
 ) -> list[dict]:
-    """All driver-pay line items (on-load + off-load) in a window with
-    load context — the payroll engine itemizes these as the statement's
-    ADDITIONS lines (and their sum IS the run's extras total)."""
+    """Driver-pay (additions) + deduction line items (on-load + off-load)
+    in a window, each tagged with its bucket — the payroll engine itemizes
+    these as the statement's ADDITIONS and DEDUCTIONS lines."""
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return []
-    return await tenant.list_driver_pay_line_items(
+    return await tenant.list_driver_settlement_items(
         account_id, since=since, until=until,
     )

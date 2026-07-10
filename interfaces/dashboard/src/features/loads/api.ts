@@ -69,9 +69,23 @@ export type LoadDraft = Partial<
 // ── Line items — extra pay & costs (TONU / layover / tolls / …) ──
 
 export const LINE_ITEM_KINDS = [
-  'tonu', 'layover', 'bonus', 'detention', 'lumper', 'tolls', 'other',
+  // driver_pay (additions to the driver's pay)
+  'tonu', 'layover', 'bonus', 'detention',
+  // expense (company cost — affects load gross/KPI, not driver pay)
+  'lumper', 'tolls',
+  // deduction (withheld from the driver's net)
+  'advance', 'escrow', 'insurance', 'fuel_card', 'charge',
+  'other',
 ] as const;
 export type LineItemKind = (typeof LINE_ITEM_KINDS)[number];
+
+/** Which bucket a kind lands in — mirrors the backend default map. */
+export const LINE_ITEM_BUCKET: Record<string, 'driver_pay' | 'expense' | 'deduction'> = {
+  tonu: 'driver_pay', layover: 'driver_pay', bonus: 'driver_pay', detention: 'driver_pay',
+  lumper: 'expense', tolls: 'expense', other: 'expense',
+  advance: 'deduction', escrow: 'deduction', insurance: 'deduction',
+  fuel_card: 'deduction', charge: 'deduction',
+};
 
 export interface LineItem {
   id: number;

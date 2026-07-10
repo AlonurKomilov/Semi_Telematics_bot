@@ -167,7 +167,7 @@ export default function Loads() {
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setLayoverOpen(true)}>
               <Clock size={16} className="mr-1.5" />
-              {t('loads_page.add_layover', 'Add layover')}
+              {t('loads_page.add_off_load', 'Off-load pay / deduction')}
             </Button>
             <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
               <Plus size={16} className="mr-1.5" />
