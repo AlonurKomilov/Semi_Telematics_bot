@@ -185,14 +185,9 @@ const PERM_GROUPS: PermGroup[] = [
       // here because it's cost-owned data (deliberately split from Maintenance).
       { key: 'can_cost_reports', label: 'Cost Reports', description: 'Executive cost rollups (in the Reports hub)' },
       { key: 'can_manage_billing',   label: 'Billing' },
-    ],
-  },
-  // Payroll is its own single-feature module — the band switch IS the
-  // account's payroll on/off (formerly the legacy payroll_enabled flag).
-  {
-    title: 'Payroll',
-    flags: [
-      { key: 'can_payroll_admin',    label: 'Payroll' },
+      // Payroll is an Accounting feature (docs/FEATURES.md), beside Costs /
+      // Cost Reports / Billing — gated by the Accounting module, not its own.
+      { key: 'can_payroll_admin',    label: 'Payroll', description: 'Driver pay runs, statements & bonus rules' },
       { key: 'can_payroll_view_own', label: 'View Own Paystubs', indented: true },
     ],
   },
@@ -219,7 +214,6 @@ const GROUP_BLOCKS = PERM_GROUPS.map((g) => ({ title: g.title, blocks: toBlocks(
 // System/Shared bands have no switch (core + account are always on).
 const GROUP_MODULE: Record<string, string> = {
   Fleet: 'fleet', Dispatch: 'dispatch', Safety: 'safety', HR: 'hr', Accounting: 'accounting',
-  Payroll: 'payroll',
 };
 interface ModulesData { enabled: string[]; all: string[] }
 // Parents that have sub-rows — collapsed by default (only features show).

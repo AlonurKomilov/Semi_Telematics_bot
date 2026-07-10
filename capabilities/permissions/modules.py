@@ -17,11 +17,8 @@ featureCatalog.ts (TOGGLEABLE_MODULES); keep the two in sync.
 from __future__ import annotations
 
 # Order is display order on the Permissions page's department bands.
-# "payroll" is a single-feature module: it was historically gated by the
-# one-off accounts.payroll_enabled flag; folding it here gives it the same
-# on/off mechanism as every other department (one switch, one home).
 TOGGLEABLE_MODULES: tuple[str, ...] = (
-    "fleet", "dispatch", "safety", "hr", "accounting", "payroll",
+    "fleet", "dispatch", "safety", "hr", "accounting",
 )
 
 
@@ -98,9 +95,8 @@ FLAG_MODULES: dict[str, frozenset[str]] = {
     # Accounting (costs + payroll)
     "can_fuel_cost": frozenset({"accounting", "dispatch"}),
     "can_cost_per_mile": frozenset({"accounting", "fleet"}),
-    # Payroll — its own module (see TOGGLEABLE_MODULES note).
-    "can_payroll_admin": frozenset({"payroll"}),
-    "can_payroll_view_own": frozenset({"payroll"}),
+    "can_payroll_admin": frozenset({"accounting"}),
+    "can_payroll_view_own": frozenset({"accounting"}),
 }
 
 

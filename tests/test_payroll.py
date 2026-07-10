@@ -70,7 +70,9 @@ def _patch_services(monkeypatch, tenant_db, *, payroll_enabled: bool = True,
         name="Test",
         # The service now reads the MODULE mask, not the legacy flag —
         # the harness keeps its boolean param and maps it.
-        disabled_modules="" if payroll_enabled else "payroll",
+        # Payroll is an Accounting feature now — disabling it = disabling
+        # the accounting module (the per-user gate is can_payroll_admin).
+        disabled_modules="" if payroll_enabled else "accounting",
     )
 
     class _FakePlatformDB:
@@ -440,21 +442,20 @@ class TestServiceLifecycle:
 
 # ── Payroll as a standard module (legacy flag folded) ─────────────
 
-def test_payroll_is_a_toggleable_module():
+def test_payroll_is_an_accounting_feature_not_a_module():
+    """Payroll is an Accounting feature (docs/FEATURES.md), beside Costs /
+    Cost Reports / Billing — NOT its own module.  Its flags mask under the
+    accounting module; there is no standalone 'payroll' module."""
     from capabilities.permissions.modules import (
-        TOGGLEABLE_MODULES, masked_off_flags, module_enabled, to_disabled_csv,
+        TOGGLEABLE_MODULES, masked_off_flags,
     )
-    assert "payroll" in TOGGLEABLE_MODULES
-    # Disabling the module force-masks its permission flags…
-    off = masked_off_flags("payroll")
+    assert "payroll" not in TOGGLEABLE_MODULES
+    # Disabling ACCOUNTING masks the payroll flags (they own only accounting).
+    off = masked_off_flags("accounting")
     assert {"can_payroll_admin", "can_payroll_view_own"} <= off
-    # …without touching the accounting department's own flags.
-    assert "can_fuel_cost" not in off
-    assert module_enabled("", "payroll") is True
-    assert module_enabled("payroll", "payroll") is False
-    # Enabled-list round trip keeps payroll togglable like the rest.
-    csv = to_disabled_csv(["fleet", "dispatch", "safety", "hr", "accounting"])
-    assert csv == "payroll"
+    # A payroll flag is never masked by any OTHER department alone.
+    for mod in ("fleet", "dispatch", "safety", "hr"):
+        assert "can_payroll_admin" not in masked_off_flags(mod)
 
 
 def test_account_modules_routes_replace_payroll_enabled():

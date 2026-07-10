@@ -36,11 +36,14 @@ async def _assert_enabled(account_id: int) -> None:
     from capabilities.permissions.modules import module_enabled
     pdb = get_db()
     acct = await pdb.get_account(account_id)
+    # Payroll is an Accounting feature (docs/FEATURES.md): available when
+    # the Accounting module is on; who may use it is the can_payroll_admin
+    # permission (masked off with the module).  No standalone switch.
     if acct is None or not module_enabled(
-        getattr(acct, "disabled_modules", ""), "payroll",
+        getattr(acct, "disabled_modules", ""), "accounting",
     ):
         raise PayrollDisabledError(
-            f"payroll module is disabled for account {account_id}"
+            f"accounting module is disabled for account {account_id}"
         )
 
 

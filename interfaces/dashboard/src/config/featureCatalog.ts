@@ -47,7 +47,6 @@ export type Module =
   | 'safety'      // scorecards, safety events, cameras, coaching
   | 'hr'          // drivers, coaching, onboarding, working hours
   | 'accounting'  // costs, billing
-  | 'payroll'     // driver pay periods + statements (single-feature module)
   | 'account';    // owner/admin account configuration (always on for owner)
 
 // tier = how widely a feature is used:
@@ -151,7 +150,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // redirect in router.tsx for any legacy bookmark.
 
   // ── ACCOUNTING (money) ────────────────────────────────────────────
-  { id: 'payroll',       labelKey: 'nav.payroll',       path: '/payroll',   icon: CreditCard, modules: ['accounting', 'payroll'], tier: 'role', permission: ['can_payroll_admin'], navGroup: 'costs' },
+  { id: 'payroll',       labelKey: 'nav.payroll',       path: '/payroll',   icon: CreditCard, modules: ['accounting'], tier: 'role', permission: ['can_payroll_admin'], navGroup: 'costs' },
   // Costs — one accounting-leaning feature with two components (Fuel
   // Costs + Cost per Mile), so both are role-tier; the module lists let
   // dispatch (fuel) and fleet (CPM) surface their half.
@@ -187,7 +186,6 @@ export const TOGGLEABLE_MODULES: { id: Module; label: string; icon: LucideIcon; 
   { id: 'safety',     label: 'Safety',     icon: AlertTriangle, blurb: 'Scorecards, safety events, cameras' },
   { id: 'hr',         label: 'HR',         icon: IdCard,       blurb: 'Drivers, coaching, onboarding, working hours' },
   { id: 'accounting', label: 'Accounting', icon: DollarSign,   blurb: 'Fuel costs, cost per mile, billing' },
-  { id: 'payroll',    label: 'Payroll',    icon: CreditCard,   blurb: 'Driver pay periods, statements, bonus rules' },
 ];
 
 export const ALWAYS_ON_MODULES: Module[] = ['core', 'account'];

@@ -146,9 +146,10 @@ async def user_me(
             if db_user.email else True
         ),
         "permissions": perm_dict,
-        # Derived from the payroll MODULE (disabled_modules) — the field
-        # name stays for frontend compat; the legacy column is retired.
-        "payroll_enabled": "payroll" not in _parse_disabled(
+        # Payroll is an Accounting feature now — "available" == Accounting
+        # module on (per-user access is the can_payroll_admin permission).
+        # Field name kept for frontend compat.
+        "payroll_enabled": "accounting" not in _parse_disabled(
             getattr(acct, "disabled_modules", ""),
         ),
         "coaching_enabled": bool(getattr(acct, "coaching_enabled", False)),

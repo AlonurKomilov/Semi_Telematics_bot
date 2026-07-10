@@ -12,7 +12,7 @@ import calendar
 import logging
 from datetime import date, datetime, timezone
 
-from infra.platform import get_platform_db
+from infra.platform import get_platform_db, get_tenant_db
 
 from . import service as svc
 from .service import PayrollDisabledError
@@ -48,7 +48,21 @@ async def run_monthly_payroll_job(_app=None) -> None:
     failed = 0
     for acc in accounts:
         from capabilities.permissions.modules import module_enabled
-        if not module_enabled(getattr(acc, "disabled_modules", ""), "payroll"):
+        # Accounting module must be on (payroll lives under it now)…
+        if not module_enabled(getattr(acc, "disabled_modules", ""), "accounting"):
+            skipped += 1
+            continue
+        # …and the account must actually USE payroll — configured driver
+        # pay or bonus rules.  Without a standalone switch, this is the
+        # "uses payroll" signal, so we don't spawn empty drafts for every
+        # accounting-enabled account.
+        tenant = await get_tenant_db(acc.id)
+        if tenant is None:
+            skipped += 1
+            continue
+        has_settings = await tenant.list_driver_pay_settings(acc.id)
+        has_rules = await tenant.list_bonus_rules(acc.id, active_only=True)
+        if not has_settings and not has_rules:
             skipped += 1
             continue
         try:
