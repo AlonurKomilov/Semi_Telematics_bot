@@ -378,7 +378,7 @@ class TestStripeInvoiceProjection:
     """The _invoice_fields helper must project Stripe payloads safely."""
 
     def test_subscription_invoice_with_lines(self):
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         payload = {
             "id": "in_test_1",
             "customer": "cus_1",
@@ -402,7 +402,7 @@ class TestStripeInvoiceProjection:
         assert out["paid_at"].startswith("2024-")
 
     def test_open_invoice_without_paid_at(self):
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         out = StripeBillingProvider._invoice_fields({
             "id": "in_test_2", "amount_due": 4900, "status": "open",
         })
@@ -419,7 +419,7 @@ class TestStripeWebhookDispatch:
     async def test_invoice_payment_succeeded_records_and_recovers(
         self, pg_db, monkeypatch
     ):
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         db = pg_db
         acct = await db.create_account("WebhookCo")
         await db.get_or_create_subscription(acct.id, tier="starter")
@@ -451,7 +451,7 @@ class TestStripeWebhookDispatch:
                 class SignatureVerificationError(Exception): ...
         monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
         monkeypatch.setattr(
-            "capabilities.billing.stripe_client._stripe", lambda: _FakeStripe
+            "capabilities.platform.billing.stripe_client._stripe", lambda: _FakeStripe
         )
 
         result = await StripeBillingProvider().handle_webhook(b"{}", "sig", db)
@@ -472,7 +472,7 @@ class TestStripeWebhookDispatch:
         self, pg_db, monkeypatch
     ):
         """past_due_since is set on failed payment, cleared on recovery."""
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         db = pg_db
         acct = await db.create_account("GraceCo")
         await db.get_or_create_subscription(acct.id, tier="starter")
@@ -501,7 +501,7 @@ class TestStripeWebhookDispatch:
             }},
         }
         monkeypatch.setattr(
-            "capabilities.billing.stripe_client._stripe", lambda: _stub(fail_event)
+            "capabilities.platform.billing.stripe_client._stripe", lambda: _stub(fail_event)
         )
         await StripeBillingProvider().handle_webhook(b"{}", "sig", db)
         sub = await db.get_subscription(acct.id)
@@ -512,7 +512,7 @@ class TestStripeWebhookDispatch:
         # Second failure: timestamp must NOT reset (grace clock keeps ticking)
         fail2 = dict(fail_event, id="evt_g_fail2")
         monkeypatch.setattr(
-            "capabilities.billing.stripe_client._stripe", lambda: _stub(fail2)
+            "capabilities.platform.billing.stripe_client._stripe", lambda: _stub(fail2)
         )
         await StripeBillingProvider().handle_webhook(b"{}", "sig", db)
         sub2 = await db.get_subscription(acct.id)
@@ -529,7 +529,7 @@ class TestStripeWebhookDispatch:
             }},
         }
         monkeypatch.setattr(
-            "capabilities.billing.stripe_client._stripe", lambda: _stub(ok_event)
+            "capabilities.platform.billing.stripe_client._stripe", lambda: _stub(ok_event)
         )
         await StripeBillingProvider().handle_webhook(b"{}", "sig", db)
         sub3 = await db.get_subscription(acct.id)
@@ -538,7 +538,7 @@ class TestStripeWebhookDispatch:
 
     @pytest.mark.asyncio
     async def test_invoice_payment_failed_marks_past_due(self, pg_db, monkeypatch):
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         db = pg_db
         acct = await db.create_account("FailCo")
         await db.get_or_create_subscription(acct.id, tier="starter")
@@ -563,7 +563,7 @@ class TestStripeWebhookDispatch:
                 class SignatureVerificationError(Exception): ...
         monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_test")
         monkeypatch.setattr(
-            "capabilities.billing.stripe_client._stripe", lambda: _FakeStripe
+            "capabilities.platform.billing.stripe_client._stripe", lambda: _FakeStripe
         )
 
         await StripeBillingProvider().handle_webhook(b"{}", "sig", db)
@@ -951,7 +951,7 @@ class TestStripeTwoLineSubscription:
 
     @pytest.mark.asyncio
     async def test_checkout_attaches_extras_line_item(self, pg_db, monkeypatch):
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         monkeypatch.setenv("STRIPE_PRICE_STARTER", "price_starter_test")
         monkeypatch.setenv("STRIPE_PRICE_EXTRA_VEHICLE", "price_extras_test")
         # Capture the line_items the provider sends to Stripe
@@ -970,7 +970,7 @@ class TestStripeTwoLineSubscription:
             Customer = _FakeCustomer
             checkout = _FakeCheckout
         monkeypatch.setattr(
-            "capabilities.billing.stripe_client._stripe", lambda: _FakeStripe
+            "capabilities.platform.billing.stripe_client._stripe", lambda: _FakeStripe
         )
         db = pg_db
         acct = await db.create_account("CheckoutCo")
@@ -986,7 +986,7 @@ class TestStripeTwoLineSubscription:
 
     @pytest.mark.asyncio
     async def test_checkout_single_line_when_extras_unset(self, pg_db, monkeypatch):
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         monkeypatch.setenv("STRIPE_PRICE_STARTER", "price_starter_test")
         monkeypatch.delenv("STRIPE_PRICE_EXTRA_VEHICLE", raising=False)
         captured: dict = {}
@@ -1001,7 +1001,7 @@ class TestStripeTwoLineSubscription:
                         captured["line_items"] = kw["line_items"]
                         return {"url": "u", "id": "s"}
         monkeypatch.setattr(
-            "capabilities.billing.stripe_client._stripe", lambda: _FakeStripe
+            "capabilities.platform.billing.stripe_client._stripe", lambda: _FakeStripe
         )
         db = pg_db
         acct = await db.create_account("SingleLineCo")
@@ -1012,7 +1012,7 @@ class TestStripeTwoLineSubscription:
         assert captured["line_items"] == [{"price": "price_starter_test", "quantity": 1}]
 
     def test_extract_item_ids_matches_extras_price(self, monkeypatch):
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         monkeypatch.setenv("STRIPE_PRICE_EXTRA_VEHICLE", "price_extras_test")
         stripe_sub = {
             "items": {"data": [
@@ -1029,7 +1029,7 @@ class TestStripeTwoLineSubscription:
         self, pg_db, monkeypatch
     ):
         from datetime import datetime, timezone, timedelta
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         db = pg_db
         acct = await db.create_account("SyncNoOpCo")
         await db.get_or_create_subscription(acct.id, tier="starter")
@@ -1052,7 +1052,7 @@ class TestStripeTwoLineSubscription:
                     patched["called"] = True
         monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "x")
         monkeypatch.setattr(
-            "capabilities.billing.stripe_client._stripe", lambda: _FakeStripe
+            "capabilities.platform.billing.stripe_client._stripe", lambda: _FakeStripe
         )
         result = await StripeBillingProvider().sync_billing_quantity(acct.id, db)
         assert result["skipped"] == "noop"
@@ -1061,7 +1061,7 @@ class TestStripeTwoLineSubscription:
     @pytest.mark.asyncio
     async def test_sync_billing_quantity_patches_on_change(self, pg_db, monkeypatch):
         from datetime import datetime, timezone, timedelta
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         db = pg_db
         acct = await db.create_account("SyncPatchCo")
         await db.get_or_create_subscription(acct.id, tier="starter")
@@ -1084,7 +1084,7 @@ class TestStripeTwoLineSubscription:
                     patched["qty"] = quantity
                     patched["proration"] = proration_behavior
         monkeypatch.setattr(
-            "capabilities.billing.stripe_client._stripe", lambda: _FakeStripe
+            "capabilities.platform.billing.stripe_client._stripe", lambda: _FakeStripe
         )
         result = await StripeBillingProvider().sync_billing_quantity(acct.id, db)
         assert result["before"] == 2
@@ -1093,7 +1093,7 @@ class TestStripeTwoLineSubscription:
 
     @pytest.mark.asyncio
     async def test_sync_billing_quantity_skips_non_stripe(self, pg_db):
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         db = pg_db
         acct = await db.create_account("StubAcct")
         await db.get_or_create_subscription(acct.id)
@@ -1106,7 +1106,7 @@ class TestMonthlyBillingSnapshot:
     """Snapshot job: previous-month window, idempotency, active-driven amount."""
 
     def test_previous_month_window_mid_year(self):
-        from capabilities.billing.jobs import _previous_month_window
+        from capabilities.platform.billing.jobs import _previous_month_window
         from datetime import datetime, timezone
         # Pretend it's 2026-06-15 → window covers all of May 2026
         now = datetime(2026, 6, 15, 12, 0, tzinfo=timezone.utc)
@@ -1115,7 +1115,7 @@ class TestMonthlyBillingSnapshot:
         assert end.startswith("2026-06-01T00:00:00")
 
     def test_previous_month_window_january_rolls_year(self):
-        from capabilities.billing.jobs import _previous_month_window
+        from capabilities.platform.billing.jobs import _previous_month_window
         from datetime import datetime, timezone
         now = datetime(2026, 1, 5, 4, 30, tzinfo=timezone.utc)
         start, end = _previous_month_window(now)
@@ -1126,7 +1126,7 @@ class TestMonthlyBillingSnapshot:
     async def test_snapshot_uses_active_count(self, pg_db, monkeypatch):
         """The recorded row's amount_due reflects active count, not raw."""
         from datetime import datetime, timezone, timedelta
-        from capabilities.billing.jobs import snapshot_account_billing
+        from capabilities.platform.billing.jobs import snapshot_account_billing
         db = pg_db
         acct = await db.create_account("MonthCo")
         await db.get_or_create_subscription(acct.id, tier="starter")
@@ -1163,7 +1163,7 @@ class TestMonthlyBillingSnapshot:
     async def test_snapshot_idempotent_on_replay(self, pg_db, monkeypatch):
         """Re-running for the same period returns the same row, no dupes."""
         from datetime import datetime, timezone, timedelta
-        from capabilities.billing.jobs import snapshot_account_billing
+        from capabilities.platform.billing.jobs import snapshot_account_billing
         db = pg_db
         acct = await db.create_account("ReplayCo")
         await db.get_or_create_subscription(acct.id, tier="starter")
@@ -1182,7 +1182,7 @@ class TestMonthlyBillingSnapshot:
 
     @pytest.mark.asyncio
     async def test_snapshot_skips_account_without_subscription(self, pg_db, monkeypatch):
-        from capabilities.billing.jobs import snapshot_account_billing
+        from capabilities.platform.billing.jobs import snapshot_account_billing
         db = pg_db
         acct = await db.create_account("NoSubCo")
         # Don't create a subscription
@@ -1198,7 +1198,7 @@ class TestBillingEmailUpdate:
 
     @pytest.mark.asyncio
     async def test_stub_provider_writes_local_only(self, pg_db):
-        from capabilities.billing.stub import StubBillingProvider
+        from capabilities.platform.billing.stub import StubBillingProvider
         db = pg_db
         acct = await db.create_account("EmailStubCo")
         await db.get_or_create_subscription(acct.id)
@@ -1211,7 +1211,7 @@ class TestBillingEmailUpdate:
 
     @pytest.mark.asyncio
     async def test_stripe_skips_when_no_customer_id(self, pg_db, monkeypatch):
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         db = pg_db
         acct = await db.create_account("StripeNoCustCo")
         await db.get_or_create_subscription(acct.id)
@@ -1219,7 +1219,7 @@ class TestBillingEmailUpdate:
         # _stripe shouldn't be called in this path; trip it if it is
         def _fail(): raise AssertionError("_stripe should not be called")
         monkeypatch.setattr(
-            "capabilities.billing.stripe_client._stripe", _fail,
+            "capabilities.platform.billing.stripe_client._stripe", _fail,
         )
         result = await StripeBillingProvider().update_billing_email(
             acct.id, db, "ops@example.com",
@@ -1231,7 +1231,7 @@ class TestBillingEmailUpdate:
 
     @pytest.mark.asyncio
     async def test_stripe_pushes_to_customer_on_change(self, pg_db, monkeypatch):
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         db = pg_db
         acct = await db.create_account("StripeCustCo")
         await db.get_or_create_subscription(acct.id)
@@ -1246,7 +1246,7 @@ class TestBillingEmailUpdate:
                     captured["cust_id"] = cust_id
                     captured["email"]   = email
         monkeypatch.setattr(
-            "capabilities.billing.stripe_client._stripe", lambda: _FakeStripe
+            "capabilities.platform.billing.stripe_client._stripe", lambda: _FakeStripe
         )
         result = await StripeBillingProvider().update_billing_email(
             acct.id, db, "finance@example.com",
@@ -1259,7 +1259,7 @@ class TestBillingNotifications:
     """Telegram notifications: helpers, throttling, webhook + comp wiring."""
 
     def test_reminder_bucket_only_fires_on_exact_match(self):
-        from capabilities.billing.notifications import reminder_bucket
+        from capabilities.platform.billing.notifications import reminder_bucket
         assert reminder_bucket(7) == 7
         assert reminder_bucket(3) == 3
         assert reminder_bucket(1) == 1
@@ -1270,7 +1270,7 @@ class TestBillingNotifications:
         assert reminder_bucket(-2) is None
 
     def test_days_until_handles_malformed(self):
-        from capabilities.billing.notifications import days_until
+        from capabilities.platform.billing.notifications import days_until
         from datetime import datetime, timezone, timedelta
         now = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
         target = (now + timedelta(days=5)).isoformat()
@@ -1282,7 +1282,7 @@ class TestBillingNotifications:
     async def test_send_to_admins_only_owner_admin(self, pg_db, monkeypatch):
         """Only Owner + Admin recipients get billing notifications."""
         from adapters.storage.models import Role
-        from capabilities.billing import notifications as notif
+        from capabilities.platform.billing import notifications as notif
         db = pg_db
         acct = await db.create_account("NotifyCo")
         owner = await db.create_user(telegram_id=1001, account_id=acct.id, role=Role.OWNER)
@@ -1310,7 +1310,7 @@ class TestBillingNotifications:
     @pytest.mark.asyncio
     async def test_send_to_admins_no_bot_registered_no_op(self, pg_db, monkeypatch):
         from adapters.storage.models import Role
-        from capabilities.billing import notifications as notif
+        from capabilities.platform.billing import notifications as notif
         db = pg_db
         acct = await db.create_account("NoBotCo")
         await db.create_user(telegram_id=2001, account_id=acct.id, role=Role.OWNER)
@@ -1328,7 +1328,7 @@ class TestBillingNotifications:
         self, pg_db, monkeypatch,
     ):
         from adapters.storage.models import Role
-        from capabilities.billing import notifications as notif
+        from capabilities.platform.billing import notifications as notif
         db = pg_db
         acct = await db.create_account("FailCo")
         await db.create_user(telegram_id=3001, account_id=acct.id, role=Role.OWNER)
@@ -1352,7 +1352,7 @@ class TestBillingNotifications:
         self, pg_db, monkeypatch,
     ):
         from adapters.storage.models import Role
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         db = pg_db
         acct = await db.create_account("WebhookNotifyCo")
         await db.get_or_create_subscription(acct.id, tier="starter")
@@ -1391,7 +1391,7 @@ class TestBillingNotifications:
                 class SignatureVerificationError(Exception): ...
         monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "x")
         monkeypatch.setattr(
-            "capabilities.billing.stripe_client._stripe", lambda: _FakeStripe
+            "capabilities.platform.billing.stripe_client._stripe", lambda: _FakeStripe
         )
         await StripeBillingProvider().handle_webhook(b"{}", "sig", db)
         assert seen, "expected a notification message"
@@ -1406,7 +1406,7 @@ class TestCompExpirySweep:
     @pytest.mark.asyncio
     async def test_sweep_expires_and_notifies(self, pg_db, monkeypatch):
         from adapters.storage.models import Role
-        from capabilities.billing.jobs import run_comp_expiry_sweep
+        from capabilities.platform.billing.jobs import run_comp_expiry_sweep
         db = pg_db
         a1 = await db.create_account("LapsedCo")
         a2 = await db.create_account("ActiveCo")
@@ -1444,7 +1444,7 @@ class TestCompExpirySweep:
     ):
         """A 7-day reminder fires once; a second sweep on the same window no-ops."""
         from adapters.storage.models import Role
-        from capabilities.billing.jobs import run_comp_expiry_sweep
+        from capabilities.platform.billing.jobs import run_comp_expiry_sweep
         from datetime import datetime, timezone, timedelta
         db = pg_db
         acct = await db.create_account("ExpiringCo")
@@ -1480,7 +1480,7 @@ class TestCompExpirySweep:
     ):
         """Renewing the comp counts as a new window — reminders can fire again."""
         from adapters.storage.models import Role
-        from capabilities.billing.jobs import run_comp_expiry_sweep
+        from capabilities.platform.billing.jobs import run_comp_expiry_sweep
         from datetime import datetime, timezone, timedelta
         db = pg_db
         acct = await db.create_account("RenewSweepCo")
@@ -1573,7 +1573,7 @@ class TestBillingMetrics:
         self, pg_db, monkeypatch,
     ):
         """Each branch of sync_billing_quantity ticks the right label."""
-        from capabilities.billing.stripe_client import StripeBillingProvider
+        from capabilities.platform.billing.stripe_client import StripeBillingProvider
         from infra import observability as obs
         db = pg_db
 

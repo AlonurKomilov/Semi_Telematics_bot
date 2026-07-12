@@ -300,7 +300,7 @@ async def ingest_vehicle_state(account_id: int) -> int:
     # for stub-provider accounts and any account without a saved
     # extras subscription_item id.
     try:
-        from capabilities.billing import get_provider as _get_billing_provider
+        from capabilities.platform.billing import get_provider as _get_billing_provider
         provider = _get_billing_provider()
         await provider.sync_billing_quantity(account_id, tenant)
     except Exception:

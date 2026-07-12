@@ -32,15 +32,18 @@ function formatWhen(iso: string | null): string {
 // Display order for the subsystem groups; any category not listed (incl.
 // "Other") renders after these, alphabetically.
 const CATEGORY_ORDER = [
+  // Tenant-feature subsystems first…
   'Telematics',
   'Alerts',
   'Scorecards & coaching',
   'Inspections (PTI)',
   'Work orders',
-  'Billing & payroll',
+  'Payroll',
   'Reporting',
   'Integrations',
   'Storage & data',
+  // …platform/system-owner subsystems last (us charging + operating).
+  'Platform billing',
   'Accounts & system',
 ];
 

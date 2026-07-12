@@ -1,16 +1,20 @@
 import { useState, useMemo, Fragment, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Shield, Check, X, Lock, ChevronRight, ChevronDown, Bell, Bot, FileText } from 'lucide-react';
+import { Shield, Check, X, Lock, ChevronRight, ChevronDown, Bell, Bot, FileText, Smartphone, AlertTriangle } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
-import { toneClasses } from '../../lib/status';
+import { toneClasses, toneText } from '../../lib/status';
 
-// Column order mirrors the persona-selector dropdown.
+// Column order mirrors the persona-selector dropdown.  The Driver role is
+// deliberately ABSENT: a driver never manages anything and lives only in the
+// Telegram mini app, so the staff-matrix columns (Permissions, Storage,
+// Manage-*) are meaningless for it.  Driver access is configured in the
+// dedicated "Driver — self-service" panel below the matrix instead.
 const ROLES = [
-  'owner', 'admin', 'fleet', 'dispatcher', 'safety', 'hr', 'accounting', 'recruiter', 'driver',
+  'owner', 'admin', 'fleet', 'dispatcher', 'safety', 'hr', 'accounting', 'recruiter',
 ] as const;
 type RoleId = typeof ROLES[number];
 
@@ -123,7 +127,10 @@ const PERM_GROUPS: PermGroup[] = [
       { allKey: 'can_geofence_all', vehicleKey: 'can_geofence_vehicle', label: 'Geofences', scoped: true },
       { key: 'can_kpi', label: 'KPI & Performance', description: 'Account-wide performance analytics — dispatcher grades first; fleet/safety/driver sections later' },
       { key: 'can_manage_driver_docs', label: 'Drivers', description: 'Driver list + document management' },
-      { key: 'can_driver_docs_own',    label: 'View Own Documents', indented: true },
+      { key: 'can_manage_drivers',     label: 'Manage Drivers', indented: true, description: 'Roster admin — invite drivers, assign trucks, link Samsara/TMS, activate/deactivate' },
+      // NOTE: can_driver_docs_own (a driver viewing their OWN docs) is a
+      // driver self-service flag — it lives in the "Driver — self-service"
+      // panel, not this staff matrix.  Same for the other view-own flags.
       { allKey: 'can_scorecard_all', vehicleKey: 'can_scorecard_vehicle', label: 'Scorecards', scoped: true },
       { key: 'can_manage_scorecard_rules', label: 'Scorecard Rules', indented: true, description: 'Edit the scoring rules + pillar caps — this feature’s admin component (was bundled in account Settings)' },
     ],
@@ -142,8 +149,8 @@ const PERM_GROUPS: PermGroup[] = [
       { allKey: 'can_route_all', vehicleKey: 'can_route_vehicle', label: 'Routes', scoped: true },
       { key: 'can_loads_all', label: 'Loads (all)', description: 'See every load in the account' },
       { key: 'can_loads_own', label: 'Loads (own)', indented: true, description: 'See loads assigned to the user (driver scope)' },
-      { key: 'can_manage_loads', label: 'Manage Loads', indented: true, description: 'Add / edit / remove loads \u2014 own loads only unless "Manage all loads" is also granted' },
-      { key: 'can_loads_manage_all', label: 'Manage all loads', indented: true, description: 'Edit / delete ANY dispatcher\u2019s loads (the dispatch-manager grant); without it, a dispatcher manages only their own' },
+      { key: 'can_manage_loads', label: 'Manage Loads', indented: true, description: 'Add / edit / remove loads — own loads only unless "Manage all loads" is also granted' },
+      { key: 'can_loads_manage_all', label: 'Manage all loads', indented: true, description: 'Edit / delete ANY dispatcher’s loads (the dispatch-manager grant); without it, a dispatcher manages only their own' },
     ],
   },
   {
@@ -161,8 +168,9 @@ const PERM_GROUPS: PermGroup[] = [
   {
     title: 'HR',
     flags: [
+      // can_coaching_view_own (a driver viewing their OWN coaching) is driver
+      // self-service — it lives in the Driver panel, not here.
       { key: 'can_coaching_admin',    label: 'Coaching' },
-      { key: 'can_coaching_view_own', label: 'View Own Coaching', indented: true },
     ],
   },
   {
@@ -184,11 +192,14 @@ const PERM_GROUPS: PermGroup[] = [
       // a report TYPE (feature) surfaced in the always-on Reports hub.  Lives
       // here because it's cost-owned data (deliberately split from Maintenance).
       { key: 'can_cost_reports', label: 'Cost Reports', description: 'Executive cost rollups (in the Reports hub)' },
-      { key: 'can_manage_billing',   label: 'Billing' },
+      // billing = the platform charging family; the customer-facing label is
+      // "Subscription" (the page shows their plan).  Not driver pay (Payroll).
+      { key: 'can_manage_billing',   label: 'Subscription', description: 'The account’s plan & payment — not driver pay (that’s Payroll)' },
       // Payroll is an Accounting feature (docs/FEATURES.md), beside Costs /
-      // Cost Reports / Billing — gated by the Accounting module, not its own.
+      // Cost Reports / Subscription — gated by the Accounting module.
+      // can_payroll_view_own (a driver viewing their OWN paystubs via the
+      // Telegram bot) is driver self-service — it lives in the Driver panel.
       { key: 'can_payroll_admin',    label: 'Payroll', description: 'Driver pay runs, statements & bonus rules' },
-      { key: 'can_payroll_view_own', label: 'View Own Paystubs', indented: true },
     ],
   },
 ];
@@ -207,6 +218,53 @@ function toBlocks(flags: PermFlag[]): Block[] {
   return blocks;
 }
 const GROUP_BLOCKS = PERM_GROUPS.map((g) => ({ title: g.title, blocks: toBlocks(g.flags) }));
+
+// ── Driver — self-service ─────────────────────────────────────────
+// The Driver role is pulled OUT of the staff matrix (see ROLES) into its
+// own panel because it is a fundamentally different thing: a driver never
+// MANAGES anything, and works only in the Telegram mini app.  This curated
+// list is exactly the driver-relevant, STORED flags — no Permissions /
+// Storage / Manage-* rows that would be nonsense for a driver.  Every toggle
+// writes the `driver` role's stored perms, which the mini app reads verbatim
+// via /api/user/me, so a change here lands in every driver's app on next load.
+//
+// "Own truck" mirrors the mini app's page gates (App.tsx canAccessPage +
+// BottomNav): each grant is written at the driver's vehicle scope (their
+// assigned truck only).  Alerts and the AI assistant are intentionally NOT
+// here: both are DERIVED from the Vehicle grant in
+// capabilities/permissions/roles.derive_service_perms — give a driver their
+// truck and the alerts inbox + assistant tab come with it.
+const DRIVER_TRUCK: ScopedFlag[] = [
+  { allKey: 'can_location_map',    vehicleKey: 'can_location_vehicle',    label: 'Live Map',            scoped: true, description: 'See their assigned truck on the map' },
+  { allKey: 'can_vehicle_all',     vehicleKey: 'can_vehicle_vehicle',     label: 'Vehicle & Assistant', scoped: true, description: 'Their truck’s info + the AI assistant tab (also carries the Alerts inbox)' },
+  { allKey: 'can_maintenance_all', vehicleKey: 'can_maintenance_vehicle', label: 'Maintenance',         scoped: true, description: 'Their truck’s maintenance schedule' },
+  { allKey: 'can_inspections_all', vehicleKey: 'can_inspections_vehicle', label: 'PTI Inspections',     scoped: true, description: 'Do & review pre-trip inspections on their truck' },
+  { allKey: 'can_route_all',       vehicleKey: 'can_route_vehicle',       label: 'Routes',              scoped: true, description: 'Their own assigned routes' },
+  { allKey: 'can_scorecard_all',   vehicleKey: 'can_scorecard_vehicle',   label: 'Scorecard',           scoped: true, description: 'Their own safety scorecard' },
+  { allKey: 'can_events_all',      vehicleKey: 'can_events_vehicle',      label: 'Safety Events',       scoped: true, description: 'Their own safety events' },
+  // Not mini-app pages, but stored driver grants with LIVE driver surfaces
+  // (Telegram bot menus, alert relevance, driver API scopes) — they need an
+  // edit path here since the staff matrix no longer has a Driver column.
+  { allKey: 'can_geofence_all',    vehicleKey: 'can_geofence_vehicle',    label: 'Geofences',           scoped: true, description: 'Bot geofence/parking menus + geofence & parking alerts for their truck' },
+  { allKey: 'can_parking_all',     vehicleKey: 'can_parking_vehicle',     label: 'Parking',             scoped: true, description: 'Their truck’s unsafe-parking events' },
+  { allKey: 'can_work_orders_all', vehicleKey: 'can_work_orders_vehicle', label: 'Work Orders',         scoped: true, description: 'View their truck’s work orders + upload shop invoices' },
+];
+// The driver's OWN-record flags (view-own).  Kept out of the staff matrix for
+// the same reason — they only ever apply to the driver themself.
+const DRIVER_RECORDS: SimpleFlag[] = [
+  { key: 'can_driver_docs_own',   label: 'Own Documents', description: 'View their own driver documents' },
+  { key: 'can_payroll_view_own',  label: 'Own Paystubs',  description: 'View their own paystubs (Telegram /payroll)' },
+  { key: 'can_coaching_view_own', label: 'Own Coaching',  description: 'View their own coaching notes' },
+  { key: 'can_loads_own',         label: 'Own Loads',     description: 'Loads assigned to them (dashboard Loads page, own scope)' },
+  { key: 'can_risk_report_own',   label: 'Own Risk Summary', description: 'Their own Stakeholder Risk Summary report' },
+];
+// The flags the Driver panel edits.  The `driver` role is diffed against THIS
+// list (not PERM_GROUPS) because the view-own records here deliberately have
+// no staff-matrix row — so a driver-panel edit still surfaces in the save bar
+// + confirm dialog.
+const DRIVER_PANEL_FLAGS: PermFlag[] = [...DRIVER_TRUCK, ...DRIVER_RECORDS];
+// Static flag list for the change diff — PERM_GROUPS never changes at runtime.
+const ALL_MATRIX_FLAGS: PermFlag[] = PERM_GROUPS.flatMap((g) => g.flags);
 
 // Department band → account module.  The Modules page folded into this
 // matrix: the on/off switch lives ON the department header, so "is the
@@ -338,8 +396,11 @@ export default function Permissions() {
   };
   const columns: Col[] = ROLES.flatMap(roleColumns);
   // Distinct storage keys + a display label per key (for the confirm summary).
-  const colKeys = [...new Set(columns.map((c) => c.key))];
-  const keyLabel: Record<string, string> = {};
+  // `driver` has no grid column (it's edited in the panel below) but IS a
+  // storage key, so include it here so its edits surface in the change diff
+  // and the sticky save bar exactly like a matrix column.
+  const colKeys = [...new Set([...columns.map((c) => c.key), 'driver'])];
+  const keyLabel: Record<string, string> = { driver: 'Driver' };
   for (const c of columns) {
     if (c.role === 'owner') keyLabel[c.key] = `Owner · ${c.label}`;                 // Primary / Co-owner
     else if (c.tier === 'senior') keyLabel[c.key] = `${ROLE_LABELS[c.role] ?? c.role} · ${c.label}`;
@@ -383,14 +444,17 @@ export default function Permissions() {
   const changes = useMemo<Change[]>(() => {
     if (!data) return [];
     const out: Change[] = [];
-    for (const key of colKeys)
-      for (const g of PERM_GROUPS)
-        for (const f of g.flags) {
-          if (isHeader(f)) continue;
-          const before = cellState(key, f, curFlagVal);
-          const after = cellState(key, f, flagVal);
-          if (before !== after) out.push({ key, roleLabel: keyLabel[key] ?? key, label: f.label, from: before, to: after, granted: after !== 'No access' });
-        }
+    for (const key of colKeys) {
+      // The driver has no grid column — it's diffed against the panel's own
+      // flag list (which includes the view-own records that have no matrix row).
+      const flags = key === 'driver' ? DRIVER_PANEL_FLAGS : ALL_MATRIX_FLAGS;
+      for (const f of flags) {
+        if (isHeader(f)) continue;
+        const before = cellState(key, f, curFlagVal);
+        const after = cellState(key, f, flagVal);
+        if (before !== after) out.push({ key, roleLabel: keyLabel[key] ?? key, label: f.label, from: before, to: after, granted: after !== 'No access' });
+      }
+    }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, edits]);
@@ -535,6 +599,35 @@ export default function Permissions() {
           );
         })}
       </tr>
+    );
+  };
+
+  // One driver-panel row: a single-column toggle (the driver has no tiers and
+  // no "whose data" choice — always their own truck), editing the `driver`
+  // storage key.  Reuses the matrix's grant/toggle logic so the change flows
+  // through the same save bar + confirm dialog.
+  const renderDriverRow = (f: ScopedFlag | SimpleFlag): ReactNode => {
+    const on = isGranted('driver', f);
+    const changed = cellChanged('driver', f);
+    const rowKey = isScoped(f) ? f.vehicleKey : f.key;
+    return (
+      <li key={rowKey} className={`flex items-center justify-between gap-3 rounded px-1.5 py-1 ${changed ? 'bg-primary/10' : ''}`}>
+        <div className="min-w-0">
+          <div className="text-sm text-foreground">{f.label}</div>
+          {f.description && <div className="text-2xs text-muted-foreground/70">{f.description}</div>}
+        </div>
+        <button
+          type="button"
+          onClick={() => toggle('driver', f)}
+          role="switch"
+          aria-checked={on}
+          aria-label={f.label}
+          title={`${f.label}: ${on ? 'granted' : 'no access'}`}
+          className={`relative w-8 h-4 rounded-full transition shrink-0 ${on ? 'bg-primary' : 'bg-muted'}`}
+        >
+          <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-background shadow transition-transform ${on ? 'translate-x-4' : ''}`} />
+        </button>
+      </li>
     );
   };
 
@@ -685,6 +778,49 @@ export default function Permissions() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* Driver — self-service.  The driver role lives HERE, not in the
+              staff matrix: a driver only ever sees their OWN truck + records,
+              in the Telegram mini app.  Edits write the `driver` role's stored
+              perms, which the mini app reads via /api/user/me — so a change
+              reaches every driver's app on next load. */}
+          <div className="mt-4 rounded-lg border border-border bg-card p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <Smartphone size={16} className="text-primary shrink-0" />
+              <span className="text-base font-semibold text-foreground">Driver — self-service</span>
+              <span className={`text-2xs px-1.5 py-0.5 rounded normal-case tracking-normal ${toneClasses('info')}`}>mobile app</span>
+            </div>
+            <p className="text-2xs text-muted-foreground mb-3">
+              Drivers don&apos;t manage anything and use the Telegram <span className="font-medium text-foreground/80">mini app</span> only, so they sit apart from the matrix above. Tick what a driver sees of their <span className="font-medium text-foreground/80">own truck</span> and <span className="font-medium text-foreground/80">own records</span> — changes reach every driver&apos;s app on next load. The <span className="font-medium text-foreground/80">Alerts</span> inbox and <span className="font-medium text-foreground/80">AI assistant</span> come automatically with the Vehicle grant.
+            </p>
+
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">Own truck</div>
+            <ul className="space-y-0.5 mb-4">
+              {DRIVER_TRUCK.map((f) => {
+                // The Vehicle grant silently carries the Alerts inbox + AI tab
+                // (derived, not stored — roles.derive_service_perms).  When it's
+                // OFF, name that consequence at the point of the loss so an
+                // admin can't strip a driver's inbox + assistant without knowing.
+                if (isScoped(f) && f.vehicleKey === 'can_vehicle_vehicle' && !isGranted('driver', f)) {
+                  return (
+                    <Fragment key="veh-derived">
+                      {renderDriverRow(f)}
+                      <li className={`flex items-start gap-1.5 pl-1.5 pb-0.5 text-2xs ${toneText('warn')}`}>
+                        <AlertTriangle size={12} className="mt-0.5 shrink-0" />
+                        <span>Alerts inbox &amp; AI assistant are off too — both ride the Vehicle grant.</span>
+                      </li>
+                    </Fragment>
+                  );
+                }
+                return renderDriverRow(f);
+              })}
+            </ul>
+
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1.5">Own records</div>
+            <ul className="space-y-0.5">
+              {DRIVER_RECORDS.map(renderDriverRow)}
+            </ul>
           </div>
 
           {/* System Services — always-on infrastructure, NOT owner-toggled.

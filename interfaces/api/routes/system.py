@@ -903,7 +903,7 @@ async def force_sync_quantity(
     acc = await platform_db.get_account(account_id)
     if not acc:
         raise HTTPException(status_code=404, detail="Account not found")
-    from capabilities.billing import get_provider
+    from capabilities.platform.billing import get_provider
     provider = get_provider()
     result = await provider.sync_billing_quantity(account_id, platform_db)
     logger.info(
@@ -984,7 +984,7 @@ async def operator_set_billing_email(
     acc = await platform_db.get_account(account_id)
     if not acc:
         raise HTTPException(status_code=404, detail="Account not found")
-    from capabilities.billing import get_provider
+    from capabilities.platform.billing import get_provider
     provider = get_provider()
     result = await provider.update_billing_email(account_id, platform_db, email)
     logger.info(

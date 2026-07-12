@@ -437,6 +437,85 @@ class AccountsMixin:
         await self._db.commit()
         return True
 
+    # ── Co-owner promotion codes (email half of the 2FA confirm) ──────
+
+    async def create_owner_promotion_code(
+        self, account_id: int, initiator_user_id: int, target_user_id: int,
+        *, ttl_minutes: int = 15,
+    ) -> str:
+        """Mint a 6-digit code for the co-owner promotion confirm.
+
+        One pending promotion per account (UNIQUE on account_id) — a fresh
+        request replaces any prior one.  Binds the initiating primary owner
+        to the exact target.  Returns the plaintext code for emailing; only
+        the hash persists.  Mirrors the account-deletion code flow.
+        """
+        import secrets
+        from datetime import datetime, timedelta, timezone
+        code = str(secrets.randbelow(1_000_000)).zfill(6)
+        now = datetime.now(timezone.utc)
+        expires = now + timedelta(minutes=ttl_minutes)
+        await self._db.execute(
+            """
+            INSERT INTO owner_promotion_codes
+                (account_id, initiator_user_id, target_user_id, code_hash, expires_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(account_id) DO UPDATE SET
+                initiator_user_id = excluded.initiator_user_id,
+                target_user_id    = excluded.target_user_id,
+                code_hash         = excluded.code_hash,
+                expires_at        = excluded.expires_at,
+                created_at        = excluded.created_at
+            """,
+            (
+                account_id, initiator_user_id, target_user_id,
+                self._hash_deletion_code(code),
+                expires.isoformat(timespec="seconds").replace("+00:00", "Z"),
+                now.isoformat(timespec="seconds").replace("+00:00", "Z"),
+            ),
+        )
+        await self._db.commit()
+        return code
+
+    async def consume_owner_promotion_code(
+        self, account_id: int, initiator_user_id: int, code: str,
+    ) -> Optional[int]:
+        """Verify a promotion code; on success burn the row + return the
+        target_user_id.  Returns None on any mismatch/expiry.  The code must
+        have been minted by the SAME initiator (primary owner) for THIS
+        account — a second owner can't complete another's pending promotion.
+        """
+        from datetime import datetime, timezone
+        now_iso = (
+            datetime.now(timezone.utc).isoformat(timespec="seconds")
+            .replace("+00:00", "Z")
+        )
+        cur = await self._db.execute(
+            """
+            SELECT initiator_user_id, target_user_id, code_hash, expires_at
+              FROM owner_promotion_codes
+             WHERE account_id = ?
+            """,
+            (account_id,),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        row = dict(row)
+        if int(row["initiator_user_id"]) != int(initiator_user_id):
+            return None
+        if (row["expires_at"] or "") < now_iso:
+            return None
+        if row["code_hash"] != self._hash_deletion_code(code):
+            return None
+        target = int(row["target_user_id"])
+        await self._db.execute(
+            "DELETE FROM owner_promotion_codes WHERE account_id = ?",
+            (account_id,),
+        )
+        await self._db.commit()
+        return target
+
     async def purge_account_data(self, account_id: int) -> dict[str, int]:
         """Hard-delete EVERY row belonging to one account, then the account.
 

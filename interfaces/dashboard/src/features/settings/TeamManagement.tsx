@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Users as UsersIcon, X, Truck, User as UserIcon, Shield, Settings as SettingsIcon,
   Building2, Globe, Clock, Check, Mail, Send, Copy, Search, Crown,
-  ChevronDown, ChevronRight,
+  ChevronDown, ChevronRight, IdCard,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
@@ -425,7 +425,15 @@ export default function TeamManagement() {
   // the tab is opened and can't disagree with the panel's own header.
   const { data: linksData } = useIntegrationLinksQuery();
   const linksTotal = unlinkedTotal(linksData);
-  const users = useMemo(() => usersData?.users ?? [], [usersData]);
+  const allUsers = useMemo(() => usersData?.users ?? [], [usersData]);
+  // Drivers are managed in the Drivers feature — hide them from the STAFF list
+  // by default (a chip reveals them; still needed here for promote-to-staff).
+  const [showDrivers, setShowDrivers] = useState(false);
+  const driverCount = useMemo(() => allUsers.filter((u) => u.role === 'driver').length, [allUsers]);
+  const users = useMemo(
+    () => (showDrivers ? allUsers : allUsers.filter((u) => u.role !== 'driver')),
+    [allUsers, showDrivers],
+  );
   useEffect(() => {
     if (usersError) setError(usersError instanceof Error ? usersError.message : 'Failed');
   }, [usersError]);
@@ -824,7 +832,12 @@ export default function TeamManagement() {
       ) : pageTab === 'working-hours' ? (
         <WorkHoursPanel />
       ) : pageTab === 'integration-links' ? (
-        <IntegrationLinksPanel members={users} onChanged={() => { void loadUsers(); }} />
+        <IntegrationLinksPanel
+          // allUsers, not the driver-filtered `users`: the panel derives its
+          // link pool from driver rows, which the staff list hides by default.
+          members={allUsers}
+          onChanged={() => { void loadUsers(); }}
+        />
       ) : (
         <>
 
@@ -844,7 +857,7 @@ export default function TeamManagement() {
           identities aren't members, so they don't belong above (or
           inside) the members grid. */}
 
-      {loading && users.length === 0 ? <TableSkeleton rows={6} cols={5} /> : users.length === 0 ? (
+      {loading && allUsers.length === 0 ? <TableSkeleton rows={6} cols={5} /> : allUsers.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
           title="No team members yet"
@@ -852,6 +865,22 @@ export default function TeamManagement() {
         />
       ) : (
         <>
+          {driverCount > 0 && (
+            <div className="flex items-center justify-end mb-2">
+              <button
+                onClick={() => setShowDrivers((v) => !v)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-2xs font-medium border transition ${
+                  showDrivers
+                    ? 'bg-primary/10 border-primary/30 text-primary'
+                    : 'bg-muted border-border text-muted-foreground hover:border-primary/30'
+                }`}
+                title="Drivers are managed in the Drivers feature; shown here for role changes (promote to staff)."
+              >
+                <IdCard size={12} />
+                {showDrivers ? 'Hide drivers' : `Show drivers (${driverCount})`}
+              </button>
+            </div>
+          )}
           <DataGrid
             tableId="team-management"
             segments={TEAM_SEGMENTS}
@@ -1961,13 +1990,12 @@ interface LinkPlanEntry {
   matched_user_id?: number; matched_name?: string; reason?: string;
 }
 interface LinksResponse {
+  // External-integration identities only.  Load-sheet names are NOT here —
+  // "Loads" isn't an integration (rows can be manual or datatruck); a free-
+  // text name on a load is operational data, not an integration identity.
   datatruck_drivers: {
     create: LinkPlanEntry[]; link: LinkPlanEntry[]; review: LinkPlanEntry[];
     counts: Record<string, number>;
-  };
-  load_names: {
-    dispatchers: { name: string; loads: number }[];
-    drivers: { name: string; loads: number }[];
   };
 }
 
@@ -1984,9 +2012,7 @@ function unlinkedTotal(data: LinksResponse | undefined): number | null {
   if (!data) return null;
   return data.datatruck_drivers.counts.create
     + data.datatruck_drivers.counts.link
-    + data.datatruck_drivers.counts.review
-    + data.load_names.dispatchers.length
-    + data.load_names.drivers.length;
+    + data.datatruck_drivers.counts.review;
 }
 
 function IntegrationLinksPanel({ members, onChanged }: {
@@ -2016,11 +2042,6 @@ function IntegrationLinksPanel({ members, onChanged }: {
     act(() => apiJSON(`/admin/users/${userId}/link-datatruck-driver`, {
       method: 'POST', body: { external_id: externalId },
     }), 'Driver linked');
-
-  const linkName = (name: string, field: 'driver' | 'dispatcher', userId: number) =>
-    act(() => apiJSON(`/admin/users/${userId}/link-load-name`, {
-      method: 'POST', body: { name, field },
-    }), 'Linked to member');
 
   const provision = (body: Record<string, string>) =>
     act(() => apiJSON('/admin/users/provision', { method: 'POST', body }),
@@ -2065,16 +2086,6 @@ function IntegrationLinksPanel({ members, onChanged }: {
         matched_user_id: d.matched_user_id,
         matched_name: d.matched_name,
         reason: d.reason,
-      })),
-    );
-    ([['dispatchers', 'dispatcher'], ['drivers', 'driver']] as const).forEach(([group, field]) =>
-      data.load_names[group].forEach((n) => out.push({
-        id: `${field}-${n.name}`,
-        name: n.name,
-        source: 'Loads',
-        role: field,
-        loads: n.loads,
-        field,
       })),
     );
     return out;
@@ -2190,31 +2201,20 @@ function IntegrationLinksPanel({ members, onChanged }: {
         const r = row as LinkRow;
         return (
           <span className="inline-flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-            {r.field
-              ? (
-                <LinkMemberMenu
-                  pool={r.field === 'driver' ? drivers : members}
-                  onPick={(uid) => linkName(r.name, r.field!, uid)}
-                />
-              )
-              : (
-                <LinkMemberMenu
-                  pool={drivers}
-                  onPick={(uid) => linkDriver(r.external_id!, uid)}
-                />
-              )}
-            {(r.field || r.bucket !== 'link') && (
+            <LinkMemberMenu
+              pool={drivers}
+              onPick={(uid) => linkDriver(r.external_id!, uid)}
+            />
+            {r.bucket !== 'link' && (
               <Button
                 type="button"
                 variant="outline"
                 size="xs"
                 disabled={busy}
-                onClick={() => (r.field
-                  ? provision({ kind: r.field, name: r.name, load_name: r.name })
-                  : provision({
-                      kind: 'driver', name: r.name, email: r.email || '',
-                      phone: r.phone || '', datatruck_driver_id: r.external_id!,
-                    }))}
+                onClick={() => provision({
+                  kind: 'driver', name: r.name, email: r.email || '',
+                  phone: r.phone || '', datatruck_driver_id: r.external_id!,
+                })}
               >
                 Add as pending member
               </Button>

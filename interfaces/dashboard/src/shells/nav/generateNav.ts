@@ -79,19 +79,39 @@ const NAV_GROUP_ORDER: { key: NavGroupKey; titleKey: string | null; collapsible?
 const asArray = (p: string | string[] | null): string[] =>
   p == null ? [] : Array.isArray(p) ? p : [p];
 
+// Own-scope ("baseline crumb") flags — the assigned-vehicle / self-service
+// variants every low-scope role carries.  These deliberately do NOT pull a
+// cross-department feature into the sidebar (a recruiter's
+// can_maintenance_vehicle shouldn't surface Maintenance on the recruiting
+// dashboard); only an ACCOUNT-WIDE grant does.
+const OWN_SCOPE_FLAG = /(_vehicle|_own)$/;
+
 export function generateNav(
   activeView: string,
   has: (...flags: string[]) => boolean,
   enabledModules: string[] | undefined,
 ): NavGroup[] {
   const visibleModules = new Set(PERSONA_MODULES[activeView] ?? ['core']);
+  // Department personas surface CROSS-DEPARTMENT features they hold an
+  // account-wide grant for (the Permissions matrix is the source of truth —
+  // a granted feature must be reachable from the nav, not just by URL).
+  // Owner/Admin are exempt: they hold everything, and their sidebar stays
+  // the curated account view (they switch persona for operational work).
+  const crossGrantsSurface = !visibleModules.has('account');
 
   const inScope = (f: CatalogFeature): boolean => {
     if (f.navHidden) return false;
-    if (!f.modules.some((m) => visibleModules.has(m))) return false;
     if (!isPathModuleEnabled(f.path, enabledModules)) return false;
     const flags = asArray(f.permission);
-    return flags.length === 0 || has(...flags);
+    if (f.modules.some((m) => visibleModules.has(m))) {
+      return flags.length === 0 || has(...flags);
+    }
+    // Outside the persona's own department: surfaces ONLY via an
+    // account-wide grant (never the own-vehicle/self baseline crumbs,
+    // and never for permissionless features).
+    if (!crossGrantsSurface) return false;
+    const accountWide = flags.filter((k) => !OWN_SCOPE_FLAG.test(k));
+    return accountWide.length > 0 && has(...accountWide);
   };
 
   const groups: NavGroup[] = [];

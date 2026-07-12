@@ -1,8 +1,8 @@
 """Abstract BillingProvider protocol.
 
 Concrete implementations:
-  - StubBillingProvider   (capabilities/billing/stub.py) — dev/no-Stripe
-  - StripeBillingProvider (capabilities/billing/stripe_client.py) — production
+  - StubBillingProvider   (capabilities/platform/billing/stub.py) — dev/no-Stripe
+  - StripeBillingProvider (capabilities/platform/billing/stripe_client.py) — production
 
 All methods accept the platform DB instance so providers can read/write
 subscription and snapshot rows without needing their own DB connection.

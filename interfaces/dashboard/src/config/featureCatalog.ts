@@ -46,7 +46,7 @@ export type Module =
   | 'dispatch'    // routing: routes, parking, geofences
   | 'safety'      // scorecards, safety events, cameras, coaching
   | 'hr'          // drivers, coaching, onboarding, working hours
-  | 'accounting'  // costs, billing
+  | 'accounting'  // costs, subscription
   | 'account';    // owner/admin account configuration (always on for owner)
 
 // tier = how widely a feature is used:
@@ -185,7 +185,7 @@ export const TOGGLEABLE_MODULES: { id: Module; label: string; icon: LucideIcon; 
   { id: 'dispatch',   label: 'Dispatch',   icon: Route,        blurb: 'Routes, parking, geofences' },
   { id: 'safety',     label: 'Safety',     icon: AlertTriangle, blurb: 'Scorecards, safety events, cameras' },
   { id: 'hr',         label: 'HR',         icon: IdCard,       blurb: 'Drivers, coaching, onboarding, working hours' },
-  { id: 'accounting', label: 'Accounting', icon: DollarSign,   blurb: 'Fuel costs, cost per mile, billing' },
+  { id: 'accounting', label: 'Accounting', icon: DollarSign,   blurb: 'Fuel costs, cost per mile, subscription' },
 ];
 
 export const ALWAYS_ON_MODULES: Module[] = ['core', 'account'];

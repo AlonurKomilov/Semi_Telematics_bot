@@ -25,9 +25,18 @@ describe('TABS_FOR_PERSONA — per-persona drawer tab sets', () => {
   });
 
   it('Owner/Admin keep the full superset in the original order', () => {
-    const all = ['profile', 'vehicles', 'documents', 'inspections', 'trainings', 'hos'];
+    const all = ['profile', 'vehicles', 'documents', 'inspections', 'trainings', 'hos', 'integrations'];
     expect(tabsForPersona('owner')).toEqual(all);
     expect(tabsForPersona('admin')).toEqual(all);
+  });
+
+  it('driver-managing personas (owner/admin/fleet/hr) get the Integrations tab; others do not', () => {
+    for (const p of ['owner', 'admin', 'fleet', 'hr'] as Persona[]) {
+      expect(tabsForPersona(p)).toContain('integrations');
+    }
+    for (const p of ['safety', 'dispatcher', 'accounting', 'recruiter', 'driver'] as Persona[]) {
+      expect(tabsForPersona(p)).not.toContain('integrations');
+    }
   });
 
   it('Dispatch is assignment + availability only (no docs/trainings)', () => {
@@ -42,7 +51,7 @@ describe('TABS_FOR_PERSONA — per-persona drawer tab sets', () => {
 
   it('HR owns people/compliance; HOS (ops) is omitted', () => {
     expect(tabsForPersona('hr')).toEqual(
-      ['profile', 'vehicles', 'documents', 'inspections', 'trainings'],
+      ['profile', 'vehicles', 'documents', 'inspections', 'trainings', 'integrations'],
     );
   });
 });

@@ -137,7 +137,7 @@ class FeatureSet:
     can_cost_per_mile: bool = False     # cost-per-mile dashboard
     can_events_all: bool = False        # safety events (all trucks)
     can_events_vehicle: bool = False        # safety events (assigned vehicle)
-    can_manage_billing: bool = False    # billing & subscription management (owner + admin)
+    can_manage_billing: bool = False    # the SUBSCRIPTION page (our charge to this account) — not driver pay/Payroll
     can_manage_poi_layers: bool = False # create/edit/delete custom POI map layers (owner/admin/fleet)
     can_risk_report_all: bool = False   # generate Stakeholder Risk Summary for any subject
     can_risk_report_own: bool = False   # generate Stakeholder Risk Summary for own subject only
@@ -152,6 +152,12 @@ class FeatureSet:
     # miniapp (read-only in MVP; re-upload requests go to admin).
     can_manage_driver_docs: bool = False   # create / update / upload / delete for any driver
     can_driver_docs_own: bool = False      # read own profile + documents
+    # Driver LIFECYCLE management — the Drivers feature's roster admin surface:
+    # invite a driver, assign trucks, link Samsara/Datatruck/load identities,
+    # provision-as-pending, activate/deactivate.  Distinct from
+    # ``can_manage_users`` (STAFF administration): a fleet lead can run the
+    # driver roster without holding office-user admin power.
+    can_manage_drivers: bool = False
     # PTI (Pre-Trip Inspection) module — weekly photo-evidence
     # walkaround.  ``can_inspections_all`` lets fleet/safety review
     # submissions across the whole account; ``can_inspections_vehicle``
@@ -207,6 +213,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_payroll_admin=True, can_payroll_view_own=True,
         can_coaching_admin=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
+        can_manage_drivers=True,
         can_inspections_all=True, can_inspections_vehicle=True,
         can_manage_applications=True, can_convert_to_driver=True,
         can_carrier_directory=True, can_manage_carrier_directory=True,
@@ -238,6 +245,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_payroll_admin=True, can_payroll_view_own=True,
         can_coaching_admin=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
+        can_manage_drivers=True,
         can_inspections_all=True, can_inspections_vehicle=True,
         can_manage_applications=True, can_convert_to_driver=True,
         can_carrier_directory=True, can_manage_carrier_directory=True,
@@ -248,7 +256,10 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_vehicle_all=True, can_vehicle_vehicle=True,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
-        can_loads_all=True, can_loads_own=True,
+        # Loads is a Dispatch-owned feature (dispatcher CRUDs, KPI grades on
+        # can_kpi, payroll reads loads server-side) — Fleet has no loads
+        # consumer, so it is NOT granted here.  Left at the FeatureSet default
+        # (False) rather than seeded True.
         can_geofence_all=True, can_geofence_vehicle=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
@@ -266,6 +277,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         # Fleet managers handle driver records day-to-day (assignments,
         # CDL renewals) so they get the admin permission too.
         can_manage_driver_docs=True, can_driver_docs_own=False,
+        can_manage_drivers=True,   # runs the driver roster (trucks, TMS links)
         can_inspections_all=True, can_inspections_vehicle=False,
     ),
     Role.SAFETY: FeatureSet(
@@ -297,7 +309,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_faults=False, can_fuel=True,
         can_efficiency=False, can_health=False,
         can_vehicle_all=True, can_vehicle_vehicle=True,
-        can_loads_all=True, can_loads_own=True, can_manage_loads=True,
+        can_loads_all=True, can_loads_own=True, can_manage_loads=True,  # can_loads_manage_all stays False → own-scope
         # Dispatchers need the geofence and safety-event features (granted
         # below) to react to deviations mid-shift.  Those alerts surface in the
         # always-on Alerts inbox every role has — the features decide WHICH
@@ -325,6 +337,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_users=True,                 # User admin
         can_coaching_admin=True,               # Training / coaching workflows
         can_manage_driver_docs=True,           # CDL / medical / docs
+        can_manage_drivers=True,               # driver roster (onboarding is HR's job)
         can_inspections_all=True,              # PTI review for compliance audit
         # Read-only context — HR needs to see WHO is doing WHAT,
         # not edit fleet ops:

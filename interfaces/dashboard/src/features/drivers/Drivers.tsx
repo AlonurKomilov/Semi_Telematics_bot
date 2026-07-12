@@ -4,9 +4,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   IdCard, X, Truck, Upload, FileText, Trash2, Download, Save,
   AlertTriangle, Calendar, Plus, ClipboardCheck, GraduationCap, Clock,
-  Check, Search, Link2, Link2Off,
+  Check, Search, Link2, Link2Off, UserPlus, Copy,
 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
+import { buildSignupInviteUrl, useSignupBase } from '../../lib/inviteUrl';
+import { Button } from '../../components/ui/button';
 import { toneClasses, toneText } from '../../lib/status';
 import DataGrid from '../../components/DataGrid';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
@@ -26,6 +28,10 @@ import type {
   AnyColumn,
 } from '../../types';
 import { useShellConfig } from '../../hooks/useShellConfig';
+import { useRoleView } from '../../context/RoleViewContext';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '../../components/ui/dialog';
 import {
   tabsForPersona, showsExpiringBanner, type DriverDetailTab,
 } from '../../features/drivers/personaConfig';
@@ -145,9 +151,104 @@ const driverColumns: AnyColumn[] = [
   },
 ];
 
+/** Invite a new driver — role hard-locked to Driver server-side, optional
+ *  truck bound at claim time.  Gated on can_manage_drivers (the roster admin
+ *  right — NOT the staff-wide can_invite).  Returns a link/code the manager
+ *  hands to the driver; it lands in the shared Invites table (revocable). */
+function InviteDriverButton({ onCreated }: { onCreated: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [truck, setTruck] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [result, setResult] = useState<{ code: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const signupBase = useSignupBase();
+
+  const joinUrl = result ? buildSignupInviteUrl(result.code, signupBase) : '';
+
+  const reset = () => { setTruck(''); setErr(''); setResult(null); setCopied(false); };
+
+  const submit = async () => {
+    setBusy(true); setErr('');
+    try {
+      const r = await apiJSON<{ code: string }>('/admin/drivers/invite', {
+        method: 'POST',
+        body: { truck_num: truck.trim() || null },
+      });
+      setResult(r);
+      onCreated();
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <Button onClick={() => { reset(); setOpen(true); }}>
+        <UserPlus size={16} /> Invite driver
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite a driver</DialogTitle>
+          </DialogHeader>
+          {result ? (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Share this link with the driver. It's also in the Invites list, where you can revoke it.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  readOnly value={joinUrl}
+                  className="flex-1 px-3 py-2 rounded-lg border border-border bg-muted/40 text-foreground text-xs font-mono"
+                />
+                <Button
+                  variant="outline"
+                  onClick={() => { navigator.clipboard?.writeText(joinUrl); setCopied(true); }}
+                >
+                  {copied ? <Check size={14} className="text-ok" /> : <Copy size={14} />}
+                  {copied ? 'Copied' : 'Copy'}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Creates a driver-only invite. Optionally assign a truck now — it binds when they sign in.
+              </p>
+              <label className="block">
+                <span className="text-xs font-medium text-muted-foreground">Truck number (optional)</span>
+                <input
+                  value={truck} onChange={(e) => setTruck(e.target.value)}
+                  placeholder="e.g. 107"
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm"
+                />
+              </label>
+              {err && <p className={`text-sm rounded-md px-3 py-2 ${toneClasses('danger')}`}>{err}</p>}
+            </div>
+          )}
+          <DialogFooter>
+            {result ? (
+              <Button onClick={() => setOpen(false)}>Done</Button>
+            ) : (
+              <>
+                <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
+                <Button onClick={submit} disabled={busy}>
+                  {busy ? 'Creating…' : 'Create invite'}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export default function Drivers() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const { viewHas } = useRoleView();
+  const canManageDrivers = viewHas('can_manage_drivers');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -156,7 +257,12 @@ export default function Drivers() {
   // Persona composition: resolve the active persona's tab set once at
   // the page wrapper; the drawer + tab bodies never read persona state.
   const { persona } = useShellConfig();
-  const visibleTabs = tabsForPersona(persona);
+  // The Integrations tab (per-driver Samsara/TMS links) is additionally
+  // gated on the driver-roster permission — hide it for anyone who can't act.
+  const visibleTabs = useMemo(
+    () => tabsForPersona(persona).filter((tb) => tb !== 'integrations' || canManageDrivers),
+    [persona, canManageDrivers],
+  );
   useEffect(() => {
     // Live persona switch (View-As) can strand the open tab on one the
     // new persona doesn't have — snap back to its first tab.
@@ -245,6 +351,11 @@ export default function Drivers() {
           />
           Include terminated
         </label>
+        {canManageDrivers && (
+          <div className="ml-auto">
+            <InviteDriverButton onCreated={() => { setSuccess('Driver invite created'); refetchList(); }} />
+          </div>
+        )}
       </div>
 
       {isLoading && drivers.length === 0 ? (
@@ -253,7 +364,9 @@ export default function Drivers() {
         <EmptyState
           icon={IdCard}
           title="No drivers yet"
-          description='Invite drivers from the Invites page (role "Driver") to populate this list.'
+          description={canManageDrivers
+            ? 'Use "Invite driver" above to onboard your first driver.'
+            : 'Drivers appear here once they\'re invited and sign in.'}
         />
       ) : (
         <DataGrid
@@ -350,6 +463,7 @@ function DriverDrawer({
             { key: 'inspections' as DetailTab, label: 'Inspections', icon: <ClipboardCheck size={12} />, soon: true  },
             { key: 'trainings' as DetailTab,   label: 'Trainings',   icon: <GraduationCap size={12} />,  soon: true  },
             { key: 'hos' as DetailTab,         label: 'HOS',         icon: <Clock size={12} />,          soon: true  },
+            { key: 'integrations' as DetailTab, label: 'Integrations', icon: <Link2 size={12} />,        soon: false },
           ]).filter((tt) => tabs.includes(tt.key)).map((tt) => (
             <button
               key={tt.key}
@@ -400,8 +514,113 @@ function DriverDrawer({
             description="Live duty status (on duty / off duty / driving / sleeper berth) plus drive-time, on-duty time, and cycle/shift remaining — synced from Samsara HOS."
           />
         )}
+        {tab === 'integrations' && (
+          <IntegrationsTab profile={p} onSaved={onSaved} onError={onError} />
+        )}
       </div>
     </>
+  );
+}
+
+/** Per-driver Integrations — the Samsara (telematics), Datatruck (TMS) and
+ *  load-name links, together in one tab instead of scattered on Profile.  All
+ *  actions hit the driver-roster admin endpoints (gated can_manage_drivers).
+ *  Samsara + Datatruck save IMMEDIATELY (not part of the profile form). */
+function IntegrationsTab({
+  profile, onSaved, onError,
+}: {
+  profile: DriverProfile;
+  onSaved: (m: string) => void;
+  onError: (m: string) => void;
+}) {
+  const qc = useQueryClient();
+  const userId = profile.user_id;
+
+  const [savingSamsara, setSavingSamsara] = useState(false);
+  const saveSamsara = async (sid: string | null) => {
+    setSavingSamsara(true);
+    try {
+      await apiJSON(`/admin/users/${userId}/samsara-driver-id`, {
+        method: 'PUT', body: { samsara_driver_id: sid },
+      });
+      onSaved('Samsara link updated');
+      qc.invalidateQueries({ queryKey: ['driver-detail', userId] });
+    } catch (e) { onError(e instanceof Error ? e.message : 'Failed'); }
+    finally { setSavingSamsara(false); }
+  };
+
+  const { data: sources } = useQuery({
+    queryKey: ['integration-sources'],
+    queryFn: () => apiJSON<{
+      datatruck: Array<{ external_id: string; name: string; linked_user_id: number | null }>;
+    }>('/admin/users/integration-sources'),
+    staleTime: 60_000,
+  });
+  const datatruck = sources?.datatruck ?? [];
+  const currentDt = datatruck.find((d) => d.linked_user_id === userId) ?? null;
+  const [dtBusy, setDtBusy] = useState(false);
+  const linkDatatruck = async (externalId: string) => {
+    setDtBusy(true);
+    try {
+      const r = await apiJSON<{ loads_backfilled: number }>(
+        `/admin/users/${userId}/link-datatruck-driver`,
+        { method: 'POST', body: { external_id: externalId } },
+      );
+      onSaved(externalId
+        ? `Datatruck linked${r.loads_backfilled ? ` — ${r.loads_backfilled} loads backfilled` : ''}`
+        : 'Datatruck unlinked');
+      qc.invalidateQueries({ queryKey: ['integration-sources'] });
+    } catch (e) { onError(e instanceof Error ? e.message : 'Failed'); }
+    finally { setDtBusy(false); }
+  };
+
+  return (
+    <div className="space-y-5">
+      <Section title="Samsara (telematics)">
+        <SamsaraDriverPicker
+          value={profile.samsara_driver_id ?? null}
+          onChange={(sid) => saveSamsara(sid)}
+          currentUserId={userId}
+        />
+        <p className="text-2xs text-muted-foreground mt-1">
+          Binds this driver to their Samsara identity — powers HOS, coaching, and payroll self-service.{savingSamsara ? ' Saving…' : ''}
+        </p>
+      </Section>
+
+      <Section title="Datatruck (TMS)">
+        {currentDt ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-muted/30 p-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium inline-flex items-center gap-1.5">
+                <Link2 size={14} className="text-primary shrink-0" /> {currentDt.name}
+              </p>
+              <p className="text-2xs text-muted-foreground">Linked — the driver's Datatruck loads attribute to them automatically.</p>
+            </div>
+            <button
+              disabled={dtBusy}
+              onClick={() => linkDatatruck('')}
+              className="shrink-0 text-xs text-danger hover:opacity-80 inline-flex items-center gap-1 disabled:opacity-50"
+            >
+              <Link2Off size={12} /> Unlink
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <p className="text-2xs text-muted-foreground">Bind a synced Datatruck driver — their loads backfill onto this member automatically.</p>
+            <Select value="" onValueChange={(v) => { if (v) linkDatatruck(v); }} disabled={dtBusy}>
+              <SelectTrigger className={inputCls}>
+                <SelectValue placeholder={datatruck.some((d) => d.linked_user_id == null) ? 'Select a Datatruck driver…' : 'No unlinked Datatruck drivers'} />
+              </SelectTrigger>
+              <SelectContent>
+                {datatruck.filter((d) => d.linked_user_id == null).map((d) => (
+                  <SelectItem key={d.external_id} value={d.external_id}>{d.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </Section>
+    </div>
   );
 }
 
@@ -489,14 +708,9 @@ function ProfileTab({
           <Field label="Termination">
             <input type="date" className={inputCls} value={String(v('termination_date'))} onChange={(e) => set('termination_date', e.target.value)} />
           </Field>
-          <Field label="Samsara Driver">
-            <SamsaraDriverPicker
-              value={(draft.samsara_driver_id !== undefined ? draft.samsara_driver_id : profile.samsara_driver_id) ?? null}
-              onChange={(sid) => set('samsara_driver_id', sid ?? '')}
-              currentUserId={profile.user_id}
-            />
-          </Field>
         </div>
+        {/* Samsara link moved to the Integrations tab (roster action, gated on
+            can_manage_drivers) — it no longer rides the profile save. */}
       </Section>
 
       <Section title="Contact">

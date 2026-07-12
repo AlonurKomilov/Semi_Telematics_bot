@@ -167,7 +167,7 @@ async def notify_payment_failed(
     )
     if hosted_invoice_url:
         text += f"• Invoice: {hosted_invoice_url}\n"
-    text += f"• Billing portal: <code>{_portal_link(account_id)}</code>"
+    text += f"• Subscription page: <code>{_portal_link(account_id)}</code>"
     return await _send_and_record("payment_failed", account_id, text)
 
 
@@ -196,10 +196,10 @@ async def notify_comp_granted(
         "<b>🎁 Complimentary access granted</b>\n\n"
         "4truck is covering your subscription at no charge through "
         f"<b>{nice_date}</b>.\n"
-        "You'll see the would-be bill on your billing page with a "
+        "You'll see the would-be bill on your Subscription page with a "
         "100% Special Discount line — that's what we're covering for "
         f"you.{reason_line}\n\n"
-        f"Billing page: <code>{_portal_link(account_id)}</code>"
+        f"Subscription page: <code>{_portal_link(account_id)}</code>"
     )
     return await _send_and_record("comp_granted", account_id, text)
 
@@ -215,7 +215,7 @@ async def notify_comp_expiring(
         f"Your comp window ends on <b>{nice_date}</b>.  After that you'll "
         "be billed normally based on your tier + active-vehicle count.\n\n"
         "If you'd like to extend or move to a paid plan, reach out to your "
-        "4truck contact or pick a plan from the billing page:\n"
+        "4truck contact or pick a plan from the Subscription page:\n"
         f"<code>{_portal_link(account_id)}</code>"
     )
     return await _send_and_record("comp_expiring", account_id, text)
@@ -229,7 +229,7 @@ async def notify_comp_expired(account_id: int) -> int:
         "based on tier + active vehicles in the last 3 days.\n\n"
         "If this was an error or you'd like another comp window, contact "
         "4truck support.\n"
-        f"Billing page: <code>{_portal_link(account_id)}</code>"
+        f"Subscription page: <code>{_portal_link(account_id)}</code>"
     )
     return await _send_and_record("comp_expired", account_id, text)
 

@@ -120,11 +120,13 @@ function getSubdomainRole(): string | null {
   }
 }
 
-// Mirror of capabilities/permissions/roles.TIER_GRANTS — the per-user senior
-// tier (labels + the flags it adds) each role supports.  Used ONLY to shape an
-// Owner/Admin's PREVIEW of a role's senior tier; a REAL senior's permissions
-// come from /user/me (backend-resolved), so drift here only affects preview
-// accuracy, never a live user's access.  Keep in sync.
+// Mirror of capabilities/permissions/roles.TIER_GRANTS — labels for the
+// tier switcher UI, plus SEED grants kept only as a legacy fallback: the
+// manager-tier PREVIEW reads the tier's stored row from
+// /admin/permissions/roles (``{role}__manager`` key — owner-editable, the
+// matrix is the source of truth); the grants here apply only if that key is
+// absent (older backend).  A REAL senior's permissions come from /user/me,
+// so drift here never affects a live user's access.  Keep labels in sync.
 interface RoleTierMirror { senior: string; base: string; grants: string[] }
 const ROLE_TIERS: Record<string, RoleTierMirror> = {
   recruiter:  { senior: 'Manager', base: 'Employee', grants: ['can_invite', 'can_manage_carrier_directory'] },
@@ -253,6 +255,13 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   }, [activeView]);
 
   const [rolePermSets, setRolePermSets] = useState<Record<string, Partial<Permissions>>>({});
+  // Tracks whether the role-perms fetch has SETTLED (success or failure).
+  // While pending, previews stay empty (skeleton — no full-nav flash);
+  // once settled, a missing role set falls back to the previewer's own
+  // permissions.  Without the fallback a standard admin (no
+  // can_manage_permissions → the fetch 403s) would preview a permanently
+  // blank sidebar — including the automatic subdomain preview.
+  const [rolePermsSettled, setRolePermsSettled] = useState(false);
 
   // Fetch all role permission sets from backend (Owner/Admin only)
   const fetchRolePerms = useCallback(async () => {
@@ -263,7 +272,10 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
       );
       setRolePermSets(data.current);
     } catch {
-      // Not authorized or not available — use user's own permissions
+      // Not authorized (stock admin) or transient failure — previews fall
+      // back to the user's own permissions once `rolePermsSettled` flips.
+    } finally {
+      setRolePermsSettled(true);
     }
   }, [canSwitch]);
 
@@ -314,16 +326,32 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
 
   // For the active view, use server-fetched permission sets if available.
   const activeViewSupportsManager = canSwitch && roleSupportsManager(activeView);
-  const baseViewPerms: Partial<Permissions> = canSwitch
-    ? (rolePermSets[activeView] ?? user?.permissions ?? {})
-    : (user?.permissions ?? {});
-  // Previewing a manager-capable role AS its manager tier → overlay the
-  // manager-grant flags so the Owner sees the full manager experience.
-  const viewPerms: Partial<Permissions> = (activeViewSupportsManager && previewAsManager)
-    ? {
-        ...baseViewPerms,
-        ...(Object.fromEntries((ROLE_TIERS[activeView]?.grants ?? []).map((f) => [f, true])) as Partial<Permissions>),
-      }
+  const isSelfView = activeView === realRole;
+  // Self view = the user's OWN resolved permissions (/user/me — already
+  // includes their real tier).  A PREVIEW uses the fetched role sets ONLY:
+  // while /admin/permissions/roles is still loading, perms stay EMPTY
+  // (minimal nav skeleton) instead of falling back to the previewing
+  // Owner's own full set — that fallback painted EVERY feature for a
+  // flash frame on refresh before snapping to the role's real nav.
+  const baseViewPerms: Partial<Permissions> = (!canSwitch || isSelfView)
+    ? (user?.permissions ?? {})
+    : (rolePermSets[activeView]
+        ?? (rolePermsSettled ? (user?.permissions ?? {}) : {}));
+  // Previewing a manager-capable role AS its manager tier → use the tier's
+  // OWN STORED permission row (``{role}__manager`` from the same endpoint;
+  // tiers are independently owner-editable, so the matrix — not the
+  // hardcoded seed mirror — is the source of truth).  The mirror overlay
+  // survives only as a fallback for an older backend that doesn't return
+  // tier rows yet.  Never applied to the self view: a real user's tier is
+  // already resolved into their own permissions.
+  const viewPerms: Partial<Permissions> = (activeViewSupportsManager && previewAsManager && !isSelfView)
+    ? (rolePermSets[`${activeView}__manager`]
+        ?? (Object.keys(baseViewPerms).length
+          ? {
+              ...baseViewPerms,
+              ...(Object.fromEntries((ROLE_TIERS[activeView]?.grants ?? []).map((f) => [f, true])) as Partial<Permissions>),
+            }
+          : {}))
     : baseViewPerms;
 
   const viewHas = (flag: string) => !!viewPerms[flag as keyof Permissions];

@@ -69,10 +69,13 @@ _JOB_META = {
     "pti_fleet_digest":               ("Inspections (PTI)", "PTI fleet digest to managers"),
     # ── Work orders ──
     "nightly_stale_close":            ("Work orders", "Auto-close stale work orders"),
-    # ── Billing & payroll ──
-    "billing_snapshot_monthly":       ("Billing & payroll", "Record monthly billing-usage snapshots"),
-    "billing_comp_expiry_sweep":      ("Billing & payroll", "Expire lapsed comp accounts + send reminders"),
-    "payroll_monthly":                ("Billing & payroll", "Run the monthly pay-for-performance payroll"),
+    # ── Payroll (tenant feature — the customer paying their drivers) ──
+    "payroll_monthly":                ("Payroll", "Draft the monthly payroll run for each payroll-enabled account"),
+    # ── Platform billing (system side — us charging the customer) ──
+    # Deliberately a SEPARATE category from tenant Payroll: same word
+    # ("money"), opposite direction and audience.
+    "billing_snapshot_monthly":       ("Platform billing", "Record monthly billing-usage snapshots"),
+    "billing_comp_expiry_sweep":      ("Platform billing", "Expire lapsed comp accounts + send reminders"),
     # ── Reporting ──
     "scheduled_reports_send":         ("Reporting", "Send due scheduled reports"),
     # ── Integrations ──
@@ -235,7 +238,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # dashboard can render historical periods (and finance can audit
     # what we actually billed for).  Fires 30 min after payroll so the
     # database isn't doing two big batches simultaneously.
-    from capabilities.billing.jobs import run_monthly_billing_snapshots
+    from capabilities.platform.billing.jobs import run_monthly_billing_snapshots
     scheduler.add_job(
         run_monthly_billing_snapshots, "cron",
         day=1, hour=2, minute=30, args=[app], id="billing_snapshot_monthly",
@@ -247,7 +250,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # closed (and pings their admins), then sends 7-day / 3-day /
     # 1-day reminders to comps approaching expiry.  Both phases are
     # idempotent so a re-run on the same UTC day is a no-op.
-    from capabilities.billing.jobs import run_comp_expiry_sweep
+    from capabilities.platform.billing.jobs import run_comp_expiry_sweep
     scheduler.add_job(
         run_comp_expiry_sweep, "cron",
         hour=3, minute=0, args=[app], id="billing_comp_expiry_sweep",

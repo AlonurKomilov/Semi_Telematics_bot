@@ -17,11 +17,16 @@
 import type { Persona } from '../_lib/types';
 
 export type DriverDetailTab =
-  | 'profile' | 'vehicles' | 'documents' | 'inspections' | 'trainings' | 'hos';
+  | 'profile' | 'vehicles' | 'documents' | 'inspections' | 'trainings' | 'hos'
+  | 'integrations';
 
-/** Owner/Admin superset — the original drawer order. */
+/** Owner/Admin superset — the original drawer order.  ``integrations`` (the
+ *  per-driver Samsara/Datatruck/loads links) sits last; it is additionally
+ *  gated on can_manage_drivers at the page level, so a persona that has the
+ *  tab but lacks the permission never sees it. */
 const ALL_TABS: DriverDetailTab[] = [
   'profile', 'vehicles', 'documents', 'inspections', 'trainings', 'hos',
+  'integrations',
 ];
 
 /**
@@ -40,8 +45,8 @@ const ALL_TABS: DriverDetailTab[] = [
 export const TABS_FOR_PERSONA: Record<Persona, DriverDetailTab[]> = {
   owner: ALL_TABS,
   admin: ALL_TABS,
-  hr: ['profile', 'vehicles', 'documents', 'inspections', 'trainings'],
-  fleet: ['profile', 'vehicles', 'documents', 'inspections', 'hos'],
+  hr: ['profile', 'vehicles', 'documents', 'inspections', 'trainings', 'integrations'],
+  fleet: ['profile', 'vehicles', 'documents', 'inspections', 'hos', 'integrations'],
   safety: ['profile', 'documents', 'inspections', 'trainings', 'hos'],
   dispatcher: ['profile', 'vehicles', 'hos'],
   driver: ['profile', 'documents'],

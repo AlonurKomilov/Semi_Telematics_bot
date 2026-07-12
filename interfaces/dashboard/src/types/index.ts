@@ -41,6 +41,7 @@ export interface Permissions {
   can_coaching_admin: boolean;
   can_coaching_view_own: boolean;
   can_manage_driver_docs: boolean;
+  can_manage_drivers: boolean;
   can_driver_docs_own: boolean;
   [key: string]: boolean;
 }

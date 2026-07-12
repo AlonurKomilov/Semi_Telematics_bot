@@ -179,7 +179,7 @@ async def run_comp_expiry_sweep(_app=None, *, now: datetime | None = None) -> di
     helper is itself idempotent.  Returns a small status dict for
     metrics / logs.
     """
-    from capabilities.billing.notifications import (
+    from capabilities.platform.billing.notifications import (
         notify_comp_expired, notify_comp_expiring,
         days_until, reminder_bucket,
     )

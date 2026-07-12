@@ -125,6 +125,54 @@ def send_deletion_code_email(
     return send_email(to=to, subject=subject, body=text, html_body=_shell(inner))
 
 
+def send_owner_promotion_code_email(
+    *, to: str, code: str, account_name: str,
+    recipient_name: str = "", target_name: str = "",
+) -> bool:
+    """The 6-digit code confirming promotion of another user to co-owner.
+
+    Sent to the PRIMARY owner (the authorizer) as the email half of the
+    two-factor confirm (password + code)."""
+    if not is_email_configured():
+        logger.info(
+            "owner-promotion code email NOT sent (SMTP unconfigured) — code for %s: %s",
+            to, code,
+        )
+        return False
+    brand = _company_name()
+    greeting = f"Hi {recipient_name}," if recipient_name else "Hi,"
+    who = f'"{target_name}"' if target_name else "another admin"
+    subject = f"{brand}: confirm new co-owner — code {code}"
+    text = (
+        f"{greeting}\n\n"
+        f"You asked to make {who} a co-owner of the {brand} account "
+        f"\"{account_name}\".\n\n"
+        f"Confirmation code: {code}\n\n"
+        "Enter this code on the confirmation screen to finish. The code "
+        "expires in 15 minutes.\n\n"
+        "A co-owner gets full owner access to this account (subscription, users, "
+        "settings). They do NOT become the primary owner and cannot remove "
+        "you or delete the account.\n\n"
+        "If you did NOT request this, change your password right away.\n"
+    )
+    inner = (
+        f'<p style="font-size:15px">{html.escape(greeting)}</p>'
+        f'<p style="font-size:15px">You asked to make {html.escape(who)} a '
+        f'<strong>co-owner</strong> of the <strong>{html.escape(brand)}</strong> '
+        f'account "<strong>{html.escape(account_name)}</strong>".</p>'
+        f'<p style="font-size:28px;letter-spacing:6px;font-weight:700;'
+        f'background:#f3f4f6;padding:14px 20px;border-radius:8px;'
+        f'display:inline-block">{html.escape(code)}</p>'
+        '<p style="font-size:13px;color:#6b7280">The code expires in 15 minutes.</p>'
+        '<p style="font-size:14px">A co-owner gets full owner access (subscription, '
+        "users, settings). They do NOT become the primary owner and cannot "
+        "remove you or delete the account.</p>"
+        '<p style="font-size:14px;color:#b91c1c">If you did NOT request this, '
+        "change your password right away.</p>"
+    )
+    return send_email(to=to, subject=subject, body=text, html_body=_shell(inner))
+
+
 def send_deletion_confirmed_email(
     *, to: str, account_name: str, purge_at: str,
 ) -> bool:

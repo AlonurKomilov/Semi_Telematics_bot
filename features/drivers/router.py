@@ -39,13 +39,13 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from interfaces.api.deps import (
-    get_platform_db, get_tenant_db,
+    get_platform_db, get_tenant_db, get_current_db_user,
     require_permission, require_permission_any,
     get_user_company_codes, filter_by_company_map,
 )
 from adapters.storage import Role
 from adapters.storage.drivers import VALID_DOC_TYPES
-from capabilities.permissions.roles import can
+from capabilities.permissions.roles import can, role_rank
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/drivers", tags=["drivers"])
@@ -758,3 +758,313 @@ async def request_doc_reupload(
     if sent == 0:
         return {"status": "no_admins"}
     return {"status": "notified", "admins": sent}
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Driver ROSTER admin — the Drivers feature's own management surface.
+#
+# These endpoints moved here from Settings · Team Management so the driver
+# lifecycle (invite, assign trucks, link Samsara/Datatruck/loads, provision-
+# as-pending) lives WITH the Drivers feature instead of the generic staff
+# admin.  URLs are byte-identical to the old ones (prefix "/admin/users/…") so
+# the miniapp/bot/existing callers are unaffected.  Gates: driver INVITE is
+# roster-only (``can_manage_drivers``); everything Team Management still
+# calls (trucks, integration links/sources, identity linking, provision)
+# accepts EITHER flag — staff admins keep their pre-split powers, roster
+# admins (fleet/HR) get theirs without staff admin.
+# Staff administration (roles, tiers, ownership, deactivation) stays in Team
+# Management.
+# ─────────────────────────────────────────────────────────────────────
+
+admin_router = APIRouter(prefix="/admin", tags=["drivers"])
+
+_MANAGE = "can_manage_drivers"
+
+
+@admin_router.get("/users/integration-links")
+async def integration_links(
+    user: dict = Depends(require_permission_any("can_manage_users", _MANAGE)),
+    tenant=Depends(get_tenant_db),
+):
+    """External-INTEGRATION identities awaiting a member link — currently the
+    Datatruck driver import plan (link/create/review buckets).
+
+    Load-sheet dispatcher/driver NAMES are deliberately NOT surfaced here.
+    ``loads`` is its own feature (rows can be source='manual' OR 'datatruck'),
+    so a free-text name on a load is operational-data attribution, not an
+    integration identity.  Loads attribute to a member automatically when their
+    Datatruck driver is linked; the manual case belongs in a Loads-side tool."""
+    account_id = int(user["account_id"])
+    return {
+        "datatruck_drivers": await tenant.plan_datatruck_driver_import(account_id),
+    }
+
+
+class LinkDatatruckDriverBody(BaseModel):
+    external_id: str = ""       # '' unlinks
+
+
+@admin_router.post("/users/{user_id}/link-datatruck-driver")
+async def link_datatruck_driver(
+    user_id: int,
+    body: LinkDatatruckDriverBody,
+    user: dict = Depends(require_permission_any("can_manage_users", _MANAGE)),
+    tenant=Depends(get_tenant_db),
+):
+    """Bind a synced Datatruck driver to this member + backfill their loads
+    (matched by the staged driver's display name)."""
+    account_id = int(user["account_id"])
+    try:
+        await tenant.link_datatruck_driver(account_id, user_id, body.external_id)
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    backfilled = 0
+    if body.external_id:
+        staged_name = await tenant.get_datatruck_driver_name(account_id, body.external_id)
+        if staged_name:
+            backfilled = await tenant.assign_load_person_by_name(
+                account_id, user_id, staged_name, field="driver",
+            )
+    return {"linked": bool(body.external_id), "loads_backfilled": backfilled}
+
+
+class LinkNameBody(BaseModel):
+    name: str
+    field: str = "dispatcher"   # 'dispatcher' | 'driver'
+
+
+@admin_router.post("/users/{user_id}/link-load-name")
+async def link_load_name(
+    user_id: int,
+    body: LinkNameBody,
+    user: dict = Depends(require_permission_any("can_manage_users", _MANAGE)),
+    tenant=Depends(get_tenant_db),
+):
+    """Associate every unlinked load carrying this dispatcher/driver name
+    with the member (name association — the manager's explicit decision)."""
+    if body.field not in ("dispatcher", "driver"):
+        raise HTTPException(400, "field must be dispatcher or driver")
+    account_id = int(user["account_id"])
+    n = await tenant.assign_load_person_by_name(account_id, user_id, body.name, field=body.field)
+    return {"loads_backfilled": n}
+
+
+class ProvisionBody(BaseModel):
+    kind: str                    # 'driver' | 'dispatcher'
+    name: str = Field(..., min_length=1, max_length=120)
+    email: str = Field("", max_length=200)
+    phone: str = Field("", max_length=40)
+    datatruck_driver_id: str = Field("", max_length=64)
+    load_name: str = Field("", max_length=120)
+
+
+@admin_router.post("/users/provision")
+async def provision_member(
+    body: ProvisionBody,
+    user: dict = Depends(require_permission_any("can_manage_users", _MANAGE)),
+    tenant=Depends(get_tenant_db),
+):
+    """Create a PENDING member from a synced identity — activates when the
+    person signs in (Telegram link or email password).  Links + loads
+    backfill happen in the same step."""
+    if body.kind not in ("driver", "dispatcher"):
+        raise HTTPException(400, "kind must be driver or dispatcher")
+    account_id = int(user["account_id"])
+    role = Role.DRIVER if body.kind == "driver" else Role.DISPATCHER
+    uid = await tenant.create_pending_user(
+        account_id, role, body.name.strip(), email=body.email or None,
+    )
+    if body.kind == "driver" and body.phone:
+        await tenant.update_driver_profile(uid, phone=body.phone)
+    backfilled = 0
+    if body.kind == "driver" and body.datatruck_driver_id:
+        try:
+            await tenant.link_datatruck_driver(account_id, uid, body.datatruck_driver_id)
+        except ValueError as e:
+            raise HTTPException(409, str(e))
+        staged_name = await tenant.get_datatruck_driver_name(account_id, body.datatruck_driver_id)
+        if staged_name:
+            backfilled = await tenant.assign_load_person_by_name(
+                account_id, uid, staged_name, field="driver",
+            )
+    if body.load_name:
+        backfilled += await tenant.assign_load_person_by_name(
+            account_id, uid, body.load_name, field=body.kind,
+        )
+    return {"id": uid, "lifecycle": "pending", "loads_backfilled": backfilled}
+
+
+@admin_router.get("/users/integration-sources")
+async def integration_sources(
+    user: dict = Depends(require_permission_any("can_manage_users", _MANAGE)),
+    platform_db=Depends(get_platform_db),
+    tenant=Depends(get_tenant_db),
+):
+    """Rosters for the roster link pickers: staged Datatruck drivers + live
+    Samsara drivers, each carrying which member (if any) already holds that
+    ref so the UI can grey it out.  Samsara soft-fails (empty list + error
+    marker) when the account has no working Samsara connection."""
+    account_id = int(user["account_id"])
+    datatruck = await tenant.list_datatruck_driver_options(account_id)
+
+    samsara: list[dict] = []
+    samsara_error: Optional[str] = None
+    try:
+        from infra.services import get_client as _get_samsara
+        client = await _get_samsara(account_id)
+        drivers = await client.get_drivers()
+        linked = {
+            (getattr(u, "samsara_driver_id", None) or "").strip(): u.id
+            for u in await platform_db.list_account_users(account_id)
+            if getattr(u, "samsara_driver_id", None)
+        }
+        for d in drivers:
+            sid = str(d.get("id", "") or "")
+            samsara.append({
+                "samsara_driver_id": sid,
+                "name": d.get("name") or "",
+                "company_code": d.get("_org") or "",
+                "deactivated": bool(d.get("deactivatedAtMs")),
+                "linked_user_id": linked.get(sid),
+            })
+    except Exception as e:
+        logger.warning("Samsara roster unavailable for account %s: %s", account_id, e)
+        samsara_error = "samsara_unavailable"
+    return {"datatruck": datatruck, "samsara": samsara, "samsara_error": samsara_error}
+
+
+class SamsaraDriverIdUpdate(BaseModel):
+    samsara_driver_id: Optional[str] = Field(default=None, max_length=128)
+
+
+@admin_router.put("/users/{user_id}/samsara-driver-id")
+async def update_user_samsara_driver_id(
+    user_id: int,
+    body: SamsaraDriverIdUpdate,
+    user: dict = Depends(require_permission_any("can_manage_users", _MANAGE)),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Bind a member to a Samsara driver_id (gates their /coaching/me and
+    /payroll/me self-service data).  Setting NULL unbinds."""
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    caller_rank = role_rank(user["role"])
+    existing_rank = role_rank(target.role.value if hasattr(target.role, "value") else target.role)
+    if existing_rank >= caller_rank:
+        raise HTTPException(status_code=403, detail="Cannot modify a user with equal or higher role")
+
+    new_did = (body.samsara_driver_id or "").strip() or None
+    try:
+        await tenant_db.link_samsara_driver(user["account_id"], user_id, new_did or "")
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "user_samsara_driver_id_set",
+        target_type="user", target_id=str(user_id),
+        details=f"driver_id={new_did or '(unset)'}",
+    )
+    return {"ok": True, "samsara_driver_id": new_did}
+
+
+@admin_router.get("/users/{user_id}/trucks")
+async def get_user_vehicles(
+    user_id: int,
+    user: dict = Depends(require_permission_any("can_manage_users", _MANAGE)),
+    platform_db=Depends(get_platform_db),
+):
+    """Get all vehicle assignments for a user."""
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+    vehicles = await platform_db.get_user_vehicles(user_id)
+    return {
+        "user_id": user_id,
+        "trucks": [
+            {"vehicle_num": t.vehicle_num, "is_primary": t.is_primary, "assigned_at": t.assigned_at}
+            for t in vehicles
+        ],
+        "legacy_truck_num": target.truck_num,
+    }
+
+
+class VehicleAssignment(BaseModel):
+    trucks: list[str] = Field(..., max_length=200)  # kept as 'trucks' for API compat
+
+
+@admin_router.put("/users/{user_id}/trucks")
+async def set_user_vehicles(
+    user_id: int,
+    body: VehicleAssignment,
+    user: dict = Depends(require_permission_any("can_manage_users", _MANAGE)),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Set vehicle assignments for a user. First vehicle in list is primary."""
+    target = await platform_db.get_user(user_id)
+    if not target or target.account_id != user["account_id"]:
+        raise HTTPException(status_code=404, detail="User not found")
+    cleaned = [t.strip() for t in body.trucks if t.strip()]
+    if len(cleaned) != len(set(cleaned)):
+        raise HTTPException(status_code=400, detail="Duplicate vehicle numbers")
+    vehicles = await platform_db.set_user_vehicles(
+        user_id, target.account_id, cleaned, assigned_by=int(user["sub"]),
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "vehicle_assignment",
+        target_type="user", target_id=str(user_id),
+        details=f"Vehicles: {', '.join(cleaned) or 'none'}",
+    )
+    return {
+        "ok": True,
+        "trucks": [{"vehicle_num": t.vehicle_num, "is_primary": t.is_primary} for t in vehicles],
+    }
+
+
+class DriverInviteBody(BaseModel):
+    truck_num: Optional[str] = Field(default=None, max_length=64)
+    hours: int = Field(default=168, ge=1, le=720)   # link TTL — default 7 days
+
+
+@admin_router.post("/drivers/invite")
+async def invite_driver(
+    body: DriverInviteBody,
+    user: dict = Depends(require_permission(_MANAGE)),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Create a driver onboarding invite (link-channel).  Role is HARD-LOCKED
+    to DRIVER and an optional truck is bound at claim time.  Gated on
+    can_manage_drivers (NOT can_invite): a fleet/HR lead onboards drivers
+    without staff-invite power, and the target can never be anything but a
+    driver.  Reuses the shared invite engine, so the invite lands in the same
+    invites table — visible + revocable in the Invites surface like any other.
+    """
+    db_user = await get_current_db_user(user, platform_db)
+    if not db_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    invite = await platform_db.create_invite(
+        account_id=user["account_id"],
+        created_by=db_user.id,
+        role=Role.DRIVER,                       # hard-locked — never staff
+        truck_num=(body.truck_num or None),
+        hours=body.hours,
+        recipient_email=None,                   # link the manager hands over
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "invite_create",
+        target_type="invite", target_id=str(invite.id),
+        details="Role: driver, channel: link (driver roster)",
+    )
+    return {
+        "id": invite.id,
+        "code": invite.code,
+        "role": invite.role,
+        "truck_num": invite.truck_num,
+        "expires_at": invite.expires_at,
+    }

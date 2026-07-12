@@ -1,4 +1,7 @@
-"""Billing API routes.
+"""Billing API routes — the customer-facing surface, labelled "Subscription".
+
+NAMING: billing = the platform charging family (us -> customer); not
+carrier invoicing (future features/invoicing), not driver pay (payroll).
 
 Endpoints:
   GET  /billing/summary      — current subscription + vehicle usage
@@ -43,14 +46,24 @@ async def _count_users(account_id: int, platform_db) -> int:
 # ── Summary ───────────────────────────────────────────────────────
 
 async def _sync_vehicle_count(account_id: int, platform_db) -> int | None:
-    """Query live vehicle count from Samsara and sync it to the subscription row.
+    """Refresh ``subscriptions.vehicle_count`` from the warehouse.
 
-    Returns the live count, or None if Samsara is unavailable.
+    Total known fleet = active + inactive over ``vehicle_state`` — the same
+    table billing's pricing math reads, so the summary can never disagree
+    with what we charge.  (Deliberately NOT features.vehicles: platform
+    domains don't import the customer product — tests/test_layer_boundaries.py.)
+    Returns the count, or None if the warehouse read fails.
     """
     try:
-        from features.vehicles.service import get_vehicles_overview
-        vehicles = await get_vehicles_overview(account_id)
-        count = len(vehicles)
+        # Registry first (the vehicles-table SSOT — includes manual trucks +
+        # trailers, matching the pre-refactor fleet-overview semantics); fall
+        # back to the Samsara warehouse for accounts with no registry rows.
+        count = await platform_db.count_vehicles(account_id)
+        if not count:
+            count = (
+                await platform_db.count_active_vehicles(account_id)
+                + await platform_db.count_inactive_vehicles(account_id)
+            )
         await platform_db.update_subscription(account_id, vehicle_count=count)
         return count
     except Exception as exc:
@@ -64,7 +77,7 @@ async def billing_summary(
     platform_db=Depends(get_platform_db),
 ):
     """Return the current billing tier, vehicle count, and next invoice estimate."""
-    from capabilities.billing import get_provider
+    from capabilities.platform.billing import get_provider
     provider = get_provider()
     account_id = user["account_id"]
 
@@ -92,7 +105,7 @@ async def billing_usage(
     """Return monthly usage snapshots (newest first)."""
     if limit < 1 or limit > 36:
         raise HTTPException(status_code=400, detail="limit must be 1–36")
-    from capabilities.billing import get_provider
+    from capabilities.platform.billing import get_provider
     provider = get_provider()
     history = await provider.get_usage_history(user["account_id"], platform_db, limit=limit)
     return {"items": history, "count": len(history)}
@@ -131,7 +144,7 @@ async def billing_checkout(
     platform_db=Depends(get_platform_db),
 ):
     """Create a checkout/upgrade session.  Returns a redirect URL."""
-    from capabilities.billing import get_provider
+    from capabilities.platform.billing import get_provider
     provider = get_provider()
     account_id = user["account_id"]
     success_url = f"{_BASE_URL}/dashboard/billing?success=1"
@@ -157,7 +170,7 @@ async def billing_portal(
     platform_db=Depends(get_platform_db),
 ):
     """Create a Stripe billing portal session.  Returns a redirect URL."""
-    from capabilities.billing import get_provider
+    from capabilities.platform.billing import get_provider
     provider = get_provider()
     return_url = f"{_BASE_URL}/dashboard/billing"
     try:
@@ -184,7 +197,7 @@ async def billing_webhook(
     The payload is raw bytes so the Stripe SDK can verify the signature.
     """
     payload = await request.body()
-    from capabilities.billing import get_provider
+    from capabilities.platform.billing import get_provider
     provider = get_provider()
     try:
         result = await provider.handle_webhook(payload, stripe_signature, platform_db)
@@ -219,7 +232,7 @@ async def update_billing_email(
     email = body.email.strip()
     if "@" not in email or "." not in email:
         raise HTTPException(status_code=400, detail="Invalid email address")
-    from capabilities.billing import get_provider
+    from capabilities.platform.billing import get_provider
     provider = get_provider()
     result = await provider.update_billing_email(
         user["account_id"], platform_db, email,
@@ -296,7 +309,7 @@ async def comp_grant(
     # Tell the recipient.  Best-effort — the comp itself is already
     # persisted, so a notification failure doesn't roll back the grant.
     try:
-        from capabilities.billing.notifications import notify_comp_granted
+        from capabilities.platform.billing.notifications import notify_comp_granted
         await notify_comp_granted(body.account_id, body.expires_at, body.reason)
     except Exception:
         logger.exception("notify_comp_granted failed acct=%s", body.account_id)
@@ -327,7 +340,7 @@ async def comp_renew(
     # about the new end date, not whether this was technically the
     # first or fifth grant.
     try:
-        from capabilities.billing.notifications import notify_comp_granted
+        from capabilities.platform.billing.notifications import notify_comp_granted
         await notify_comp_granted(body.account_id, body.new_expires_at, body.reason)
     except Exception:
         logger.exception("notify_comp_granted (renew) failed acct=%s", body.account_id)

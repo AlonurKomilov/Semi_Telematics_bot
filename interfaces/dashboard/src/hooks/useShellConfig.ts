@@ -83,10 +83,9 @@ export function useShellConfig() {
     'Use this time to review scorecards or coaching backlogs.';
 
   // ``persona`` is the canonical Persona-typed handle on the active
-  // view — Pattern B layout maps key against this, and adding HR /
-  // Accounting later just extends the Persona union in one place.
-  // ``activeView`` stays the wider ``string`` type for compatibility
-  // with existing callers that still compare against literals.
+  // view — Pattern B layout maps key against this.  Role == persona 1:1
+  // (a "manager" is a per-user tier on the base role, NOT a distinct
+  // persona — see is_manager), so a direct cast is correct.
   const persona: Persona = (activeView as Persona) || 'owner';
 
   return {

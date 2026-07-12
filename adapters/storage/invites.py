@@ -426,7 +426,7 @@ class InvitesMixin:
         ``svix_id``; False if it's a retry we already processed.
 
         Pattern mirrors Stripe's ``mark_stripe_event_processed`` in
-        capabilities/billing/stripe_client.py — INSERT OR IGNORE on a
+        capabilities/platform/billing/stripe_client.py — INSERT OR IGNORE on a
         primary-key table is the cheapest atomic check-and-set.
         """
         if not svix_id:

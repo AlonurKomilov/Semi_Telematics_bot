@@ -35,7 +35,7 @@ from capabilities.reporting import router as reports_routes
 from capabilities.ai import router as ai_routes
 from features.scorecards import router as scorecards_routes
 from features.scorecards import config_router as scorecard_rules_routes
-from capabilities.billing import router as billing_routes
+from capabilities.platform.billing import router as billing_routes
 from capabilities.integrations import router as integrations_routes
 from capabilities.storage import router as storage_routes
 # Feature-owned routers live with their feature (vertical slice):
@@ -419,6 +419,10 @@ def create_api() -> FastAPI:
         app.include_router(payroll_routes.router, prefix=prefix)
         app.include_router(coaching_routes.router, prefix=prefix)
         app.include_router(drivers_routes.router, prefix=prefix)
+        # Driver roster admin (moved out of Team Management; same URLs, gated
+        # on can_manage_drivers) — /admin/users/{id}/trucks, samsara-driver-id,
+        # link-datatruck-driver, link-load-name, provision, integration-*.
+        app.include_router(drivers_routes.admin_router, prefix=prefix)
         app.include_router(integrations_routes.router, prefix=prefix)
         app.include_router(webhooks_routes.router, prefix=prefix)
 

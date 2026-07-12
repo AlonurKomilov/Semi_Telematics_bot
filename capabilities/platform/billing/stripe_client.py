@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from adapters.storage.billing import BillingMixin
-from capabilities.billing.notifications import (
+from capabilities.platform.billing.notifications import (
     notify_checkout_complete as _notify_checkout_complete,
     notify_payment_failed as _notify_payment_failed,
     notify_payment_recovered as _notify_payment_recovered,
