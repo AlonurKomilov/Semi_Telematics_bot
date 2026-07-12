@@ -240,6 +240,26 @@ async def finalize_run(
     return {"ok": True}
 
 
+@router.post("/runs/{run_id}/recompute")
+async def recompute_run(
+    run_id: int,
+    user: dict = Depends(require_permission("can_driver_pay_admin")),
+):
+    """Refresh a DRAFT run's statements from the current loads — picks up
+    additions/deductions added since it was created.  Finalized runs 400."""
+    try:
+        ok = await svc.recompute_run(
+            user["account_id"], run_id, user_id=int(user["sub"]),
+        )
+    except DriverPayDisabledError as e:
+        raise _disabled_to_403(e)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not ok:
+        raise HTTPException(404, "run not found")
+    return {"ok": True}
+
+
 @router.post("/runs/{run_id}/cancel")
 async def cancel_run(
     run_id: int,

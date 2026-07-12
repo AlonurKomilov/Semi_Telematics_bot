@@ -496,3 +496,61 @@ def test_account_modules_routes_replace_payroll_enabled():
     paths = {r.path for r in router.routes if hasattr(r, "path")}
     assert "/admin/account/modules" in paths
     assert not any("payroll-enabled" in p for p in paths)
+
+
+
+class TestRecomputeDraft:
+    async def test_recompute_picks_up_new_line_item(self, tenant: Database, monkeypatch):
+        """A draft run recomputes to include a line item added after it was
+        created; a finalized run refuses."""
+        acct = await tenant.create_account("Recompute Co")
+        u = await tenant.create_user(9501, acct.id, role=Role.DRIVER,
+                                     display_name="Eugene B")
+        await tenant.link_samsara_driver(acct.id, u.id, "S1")
+        loads = [{"status": "delivered", "driver_user_id": u.id,
+                  "driver_pay": 900.0, "total_rate": 3000.0,
+                  "total_miles": 1000.0, "extra_driver_pay": None}]
+        off: list[dict] = []          # mutated in place so the patch sees it
+        _patch_services(monkeypatch, tenant, cards=[], loads=loads, pay_items=off)
+
+        rid = await payroll_service.create_run(
+            acct.id, user_id=1,
+            period_start=date(2026, 7, 1), period_end=date(2026, 7, 31),
+        )
+        d = await payroll_service.get_run_detail(acct.id, rid)
+        assert d["total_cents"] == 90000
+        # The persisted statement carries driver_user_id (inline-edit needs it).
+        assert d["items"][0]["statement"]["driver_user_id"] == u.id
+
+        # Accounting adds a $300 bonus off-load → recompute picks it up.
+        off.append({"driver_user_id": u.id, "item_date": "2026-07-15",
+                    "kind": "bonus", "amount": 300.0, "notes": "",
+                    "load_id": None, "load_number": "", "bucket": "driver_pay"})
+        assert await payroll_service.recompute_run(acct.id, rid, user_id=1) is True
+        d = await payroll_service.get_run_detail(acct.id, rid)
+        assert d["total_cents"] == 90000 + 30000
+
+        # Finalize → recompute refused.
+        await payroll_service.finalize_run(acct.id, rid, user_id=1)
+        with pytest.raises(ValueError):
+            await payroll_service.recompute_run(acct.id, rid, user_id=1)
+
+    async def test_zero_pay_loads_counted(self, tenant: Database, monkeypatch):
+        """A delivered load with no stored pay AND no pay model → $0 pay,
+        counted so the statement can warn."""
+        acct = await tenant.create_account("ZeroPay Co")
+        u = await tenant.create_user(9601, acct.id, role=Role.DRIVER,
+                                     display_name="Nopay Ned")
+        await tenant.link_samsara_driver(acct.id, u.id, "S2")
+        loads = [{"status": "delivered", "driver_user_id": u.id,
+                  "driver_pay": None, "total_rate": 2000.0,
+                  "total_miles": 800.0, "extra_driver_pay": None}]
+        _patch_services(monkeypatch, tenant, cards=[], loads=loads, pay_items=[])
+        rid = await payroll_service.create_run(
+            acct.id, user_id=1,
+            period_start=date(2026, 7, 1), period_end=date(2026, 7, 31),
+        )
+        d = await payroll_service.get_run_detail(acct.id, rid)
+        it = d["items"][0]
+        assert it["statement"]["zero_pay_loads"] == 1
+        assert it["total_cents"] == 0     # no model, no stored pay

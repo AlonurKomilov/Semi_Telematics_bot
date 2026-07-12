@@ -169,16 +169,25 @@ async def create_run(
     if period_end < period_start:
         raise ValueError("period_end must be >= period_start")
 
-    items: list[RunItem] = await compute_run(account_id, period_start, period_end)
     tenant = await get_tenant_db(account_id)
-
     run_id = await tenant.create_driver_pay_run(
         account_id,
         period_start=period_start.isoformat(),
         period_end=period_end.isoformat(),
         created_by=user_id,
     )
+    await _fill_run_items(account_id, tenant, run_id, period_start, period_end)
+    await _audit(account_id, user_id, "driver_pay_run_created", str(run_id))
+    return run_id
 
+
+async def _fill_run_items(
+    account_id: int, tenant, run_id: int,
+    period_start: date, period_end: date,
+) -> None:
+    """(Re)compute the period and persist one item per driver + the run's
+    NET grand total.  Shared by create and draft-recompute."""
+    items: list[RunItem] = await compute_run(account_id, period_start, period_end)
     grand_total = 0
     for item in items:
         await tenant.add_driver_pay_run_item(
@@ -193,6 +202,8 @@ async def create_run(
             net_cents=item.net_cents,
             # Frozen itemized snapshot — the settlement statement's detail.
             statement={
+                "driver_user_id": item.driver_user_id,
+                "zero_pay_loads": item.zero_pay_loads,
                 "loads": item.load_lines,
                 "additions": item.addition_lines,
                 "deductions": item.deduction_lines,
@@ -209,8 +220,28 @@ async def create_run(
         grand_total += item.net_cents
     await tenant.set_driver_pay_run_total(account_id, run_id, grand_total)
 
-    await _audit(account_id, user_id, "driver_pay_run_created", str(run_id))
-    return run_id
+
+async def recompute_run(
+    account_id: int, run_id: int, *, user_id: int,
+) -> bool:
+    """Re-pull the period into an existing DRAFT run — picks up line items
+    (additions/deductions) added since it was created, so accounting can
+    fix a forgotten entry on the load and refresh the statement in place.
+    Refuses a finalized run (a settled statement never silently changes)."""
+    await _assert_enabled(account_id)
+    tenant = await get_tenant_db(account_id)
+    run = await tenant.get_driver_pay_run(account_id, run_id)
+    if run is None:
+        return False
+    if run["status"] != STATUS_DRAFT:
+        raise ValueError("only a draft run can be recomputed")
+    from datetime import date as _date
+    ps = _date.fromisoformat(run["period_start"])
+    pe = _date.fromisoformat(run["period_end"])
+    await tenant.delete_driver_pay_run_items(run_id)
+    await _fill_run_items(account_id, tenant, run_id, ps, pe)
+    await _audit(account_id, user_id, "driver_pay_run_recomputed", str(run_id))
+    return True
 
 
 async def list_runs(account_id: int, *, limit: int = 50) -> list[dict]:

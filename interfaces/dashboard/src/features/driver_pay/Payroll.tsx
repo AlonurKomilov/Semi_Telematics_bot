@@ -58,6 +58,8 @@ export interface StatementDeduction {
   notes: string; recurring?: boolean;
 }
 export interface Statement {
+  driver_user_id?: number | null;
+  zero_pay_loads?: number;
   loads?: StatementLoadLine[];
   additions?: StatementAddition[];
   deductions?: StatementDeduction[];
@@ -394,11 +396,24 @@ function RunsTab() {
         </div>
       )}
 
-      {statementItem && (
+      {statementItem && selected && (
         <StatementDrawer
           driver={statementItem.driver_name || statementItem.driver_id}
-          period={selected ? `${selected.period_start} → ${selected.period_end}` : ''}
+          period={`${selected.period_start} → ${selected.period_end}`}
           statement={statementItem.statement ?? {}}
+          runId={selected.id}
+          runStatus={selected.status}
+          onChanged={async () => {
+            // Recompute pulled fresh items → re-open the run and re-point
+            // the drawer at this driver's refreshed statement.
+            const d = await apiJSON<RunDetail>(`/driver-pay/runs/${selected.id}`);
+            setSelected(d);
+            const again = (d.items || []).find(
+              (it) => it.driver_id === statementItem.driver_id,
+            );
+            setStatementItem(again ?? null);
+            load();
+          }}
           onClose={() => setStatementItem(null)}
         />
       )}
@@ -579,7 +594,7 @@ function SettingsTab() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [driverId, setDriverId] = useState('');
-  const [basePay, setBasePay] = useState(0);
+  const [basePay, setBasePay] = useState('');   // dollars (string; '' = 0)
   const [optIn, setOptIn] = useState(true);
   // Per-load earnings model for loads with no stored pay:
   // percentage-of-rate or per-mile; '' = no per-load math.
@@ -606,13 +621,13 @@ function SettingsTab() {
       await apiJSON(`/driver-pay/settings/${encodeURIComponent(driverId)}`, {
         method: 'PUT',
         body: {
-          base_pay_cents: Number(basePay), opt_in: optIn,
+          base_pay_cents: Math.round((Number(basePay) || 0) * 100), opt_in: optIn,
           pay_model: payModel,
           pay_rate: payRate.trim() === '' ? null : Number(payRate),
         },
       });
       setDriverId('');
-      setBasePay(0);
+      setBasePay('');
       setOptIn(true);
       setPayModel('');
       setPayRate('');
@@ -631,8 +646,8 @@ function SettingsTab() {
           <input placeholder="Driver ID (Samsara)" value={driverId}
             onChange={(e) => setDriverId(e.target.value)}
             className="border rounded px-2 py-1 bg-background" />
-          <input type="number" placeholder="Base pay (cents)" value={basePay}
-            onChange={(e) => setBasePay(Number(e.target.value))}
+          <input type="number" min="0" step="0.01" placeholder="Base pay ($)" value={basePay}
+            onChange={(e) => setBasePay(e.target.value)}
             className="border rounded px-2 py-1 bg-background" />
           <select
             value={payModel}

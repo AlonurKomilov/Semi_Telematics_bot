@@ -61,6 +61,12 @@ class RunItem:
     bonus_total_cents: int
     total_cents: int
     breakdown: list[BreakdownEntry] = field(default_factory=list)
+    # Raw 4truck user id (for the inline draft-statement editor to attach a
+    # line item); None for a settings-only driver with no loads.
+    driver_user_id: Optional[int] = None
+    # Delivered loads in the period that resolved to $0 pay (no stored pay
+    # AND no pay model) — the statement warns so nobody is silently underpaid.
+    zero_pay_loads: int = 0
     # Settlement components (computed from the canonical loads):
     # earnings for delivered loads + extra pay items (layover/TONU/…).
     load_earnings_cents: int = 0

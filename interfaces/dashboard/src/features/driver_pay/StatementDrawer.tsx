@@ -1,16 +1,23 @@
 /**
- * Driver settlement statement — the itemized document behind a payroll run
- * item.  Lists every counted load (date, load #, route, rate, this load's
- * pay), then each addition (layover / TONU / detention), then the totals —
- * the verifiable "settlement" a trucking accountant hands a driver.
+ * Driver settlement statement — the itemized document behind a driver-pay
+ * run item.  Lists every counted load (date, load #, route, rate, this
+ * load's pay), then additions, then deductions, then Gross → NET — the
+ * verifiable "settlement" a trucking accountant hands a driver.
  *
- * The lines are a FROZEN snapshot taken at run time (statement_json), so a
- * later load edit never rewrites a finalized statement.  Print → the
- * browser's print dialog (→ PDF); CSV → a spreadsheet download.
+ * The lines are a snapshot taken at run time (statement_json).  On a DRAFT
+ * run the accountant can add an addition/deduction INLINE (for something the
+ * dispatcher forgot) without leaving the page: it writes the same load
+ * line-item the load form writes, then recomputes the draft in place.  A
+ * FINALIZED statement is locked — a settled document never silently changes.
+ * Print → the browser dialog (→ PDF); CSV → a spreadsheet download.
  */
 
-import { X, Printer, Download } from 'lucide-react';
+import { useState } from 'react';
+import { X, Printer, Download, Plus, AlertTriangle } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '../../components/ui/button';
+import { apiFetch } from '../../api/client';
+import { createLineItem, LINE_ITEM_BUCKET } from '../loads/api';
 import type {
   Statement, StatementLoadLine, StatementAddition, StatementDeduction,
 } from './Payroll';
@@ -19,17 +26,18 @@ const money = (c: number | null | undefined) =>
   c == null ? '$0.00'
     : `$${(c / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-function toCsv(
-  driver: string, period: string, st: Statement,
-): string {
+// Kinds offered in the inline editor, grouped by which side of net they hit.
+const ADD_KINDS = ['bonus', 'tonu', 'detention', 'layover'];
+const DEDUCT_KINDS = ['advance', 'escrow', 'insurance', 'fuel_card', 'charge'];
+
+function toCsv(driver: string, period: string, st: Statement): string {
   const rows: string[][] = [
     [`Settlement — ${driver} — ${period}`],
     [],
     ['LOADS'],
     ['Date', 'Load #', 'Route', 'Rate', 'Pay'],
     ...(st.loads ?? []).map((l) => [
-      l.date, l.load_number, l.route,
-      money(l.rate_cents), money(l.pay_cents),
+      l.date, l.load_number, l.route, money(l.rate_cents), money(l.pay_cents),
     ]),
     [],
     ['ADDITIONS'],
@@ -58,21 +66,63 @@ function toCsv(
 }
 
 export default function StatementDrawer({
-  driver, period, statement, onClose,
+  driver, period, statement, runId, runStatus, onChanged, onClose,
 }: {
   driver: string;
   period: string;
   statement: Statement;
+  runId?: number;
+  runStatus?: 'draft' | 'finalized' | 'cancelled';
+  onChanged?: () => void | Promise<void>;
   onClose: () => void;
 }) {
   const loads: StatementLoadLine[] = statement.loads ?? [];
   const additions: StatementAddition[] = statement.additions ?? [];
   const deductions: StatementDeduction[] = statement.deductions ?? [];
+  const zeroPay = statement.zero_pay_loads ?? 0;
+  const driverUserId = statement.driver_user_id ?? null;
+
+  // Inline editing is offered only on a DRAFT run and only when we know the
+  // driver's user id (needed to attach the line item).
+  const editable = runStatus === 'draft' && driverUserId != null && runId != null;
+
+  const [kind, setKind] = useState('bonus');
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // The statement period is "start → end"; attach a manual entry to the
+  // period end so it lands inside the window on recompute.
+  const periodEnd = period.split('→').pop()?.trim() || '';
+
+  const addEntry = async () => {
+    if (busy || driverUserId == null || runId == null) return;
+    const amt = Number(amount);
+    if (!amt || amt <= 0) return;
+    setBusy(true);
+    try {
+      await createLineItem({
+        kind,
+        amount: amt,
+        driver_user_id: driverUserId,
+        item_date: periodEnd,
+        notes: note,
+      });
+      // Recompute the draft so the statement reflects the new line.
+      await apiFetch(`/driver-pay/runs/${runId}/recompute`, { method: 'POST' });
+      setAmount('');
+      setNote('');
+      toast.success(LINE_ITEM_BUCKET[kind] === 'deduction' ? 'Deduction added' : 'Addition added');
+      await onChanged?.();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not add the entry');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const downloadCsv = () => {
-    const blob = new Blob([toCsv(driver, period, statement)], {
-      type: 'text/csv;charset=utf-8',
-    });
+    const blob = new Blob([toCsv(driver, period, statement)], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -81,11 +131,10 @@ export default function StatementDrawer({
     URL.revokeObjectURL(url);
   };
 
+  const selectCls = 'bg-muted border border-input rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring';
+
   return (
-    <div
-      className="fixed inset-0 z-50 flex justify-end bg-black/40"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
       <div
         className="w-full max-w-lg overflow-y-auto bg-card border-l border-border print:max-w-none print:border-0"
         onClick={(e) => e.stopPropagation()}
@@ -106,10 +155,28 @@ export default function StatementDrawer({
         </div>
 
         <div className="px-5 py-4 text-sm">
+          {/* Header — self-identifies on paper: draft vs final + generated date. */}
           <div className="mb-4">
             <div className="text-lg font-semibold text-foreground">{driver}</div>
             <div className="text-xs text-muted-foreground">Period {period}</div>
+            <div className="mt-0.5 text-2xs">
+              {runStatus === 'finalized'
+                ? <span className="text-ok">Final settlement</span>
+                : <span className="text-warn">Draft — not yet finalized</span>}
+              <span className="text-muted-foreground"> · generated {new Date().toISOString().slice(0, 10)}</span>
+            </div>
           </div>
+
+          {/* Zero-pay warning — a delivered load resolving to $0 underpays silently. */}
+          {zeroPay > 0 && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-warn-bd bg-warn-bg px-3 py-2 text-xs text-warn print:border">
+              <AlertTriangle size={14} className="mt-0.5 shrink-0" />
+              <span>
+                {zeroPay} delivered load{zeroPay === 1 ? '' : 's'} resolved to $0 pay —
+                set this driver&apos;s pay model or enter pay on the load, or they&apos;ll be underpaid.
+              </span>
+            </div>
+          )}
 
           <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Loads</div>
           {loads.length === 0 ? (
@@ -132,7 +199,7 @@ export default function StatementDrawer({
                     <td className="py-1 font-mono text-foreground">{l.load_number || '—'}</td>
                     <td className="py-1 text-muted-foreground">{l.route || '—'}</td>
                     <td className="py-1 text-right tabular-nums text-muted-foreground">{money(l.rate_cents)}</td>
-                    <td className="py-1 text-right tabular-nums font-medium text-foreground">{money(l.pay_cents)}</td>
+                    <td className={`py-1 text-right tabular-nums font-medium ${l.pay_cents === 0 ? 'text-warn' : 'text-foreground'}`}>{money(l.pay_cents)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -148,9 +215,7 @@ export default function StatementDrawer({
                     <tr key={i} className="border-b border-border/50">
                       <td className="py-1 text-foreground">{a.date || '—'}</td>
                       <td className="py-1 capitalize text-foreground">{a.kind}</td>
-                      <td className="py-1 text-muted-foreground">
-                        {a.notes || (a.load_number ? `Load ${a.load_number}` : '')}
-                      </td>
+                      <td className="py-1 text-muted-foreground">{a.notes || (a.load_number ? `Load ${a.load_number}` : '')}</td>
                       <td className="py-1 text-right tabular-nums font-medium text-foreground">{money(a.amount_cents)}</td>
                     </tr>
                   ))}
@@ -166,7 +231,7 @@ export default function StatementDrawer({
                 <tbody>
                   {deductions.map((d, i) => (
                     <tr key={i} className="border-b border-border/50">
-                      <td className="py-1 text-foreground">{d.date || (d.recurring ? 'recurring' : '—')}</td>
+                      <td className="py-1 text-foreground">{d.date || '—'}</td>
                       <td className="py-1 capitalize text-foreground">{d.kind.replace('_', ' ')}</td>
                       <td className="py-1 text-muted-foreground">{d.notes}</td>
                       <td className="py-1 text-right tabular-nums font-medium text-danger">−{money(d.amount_cents)}</td>
@@ -175,6 +240,28 @@ export default function StatementDrawer({
                 </tbody>
               </table>
             </>
+          )}
+
+          {/* Inline editor — draft only.  Fix a forgotten entry without leaving. */}
+          {editable && (
+            <div className="mb-4 rounded-lg border border-border bg-muted/30 px-3 py-2 print:hidden">
+              <div className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">Add to this statement</div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select className={selectCls} value={kind} onChange={(e) => setKind(e.target.value)} aria-label="Entry type">
+                  <optgroup label="Addition">
+                    {ADD_KINDS.map((k) => <option key={k} value={k}>+ {k}</option>)}
+                  </optgroup>
+                  <optgroup label="Deduction">
+                    {DEDUCT_KINDS.map((k) => <option key={k} value={k}>− {k.replace('_', ' ')}</option>)}
+                  </optgroup>
+                </select>
+                <input className={`${selectCls} w-24`} type="number" min="0" placeholder="Amount $" value={amount} onChange={(e) => setAmount(e.target.value)} aria-label="Amount" />
+                <input className={`${selectCls} flex-1 min-w-[6rem]`} placeholder="Note" value={note} onChange={(e) => setNote(e.target.value)} aria-label="Note" />
+                <Button type="button" variant="outline" size="xs" disabled={busy || !Number(amount)} onClick={() => { void addEntry(); }}>
+                  <Plus size={12} className="mr-1" /> Add
+                </Button>
+              </div>
+            </div>
           )}
 
           <dl className="mt-4 space-y-1 border-t border-border pt-3 text-sm">

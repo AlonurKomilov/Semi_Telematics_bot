@@ -173,7 +173,7 @@ async def compute_run(
     def _comp(uid: int) -> dict:
         return comp_by_key.setdefault(_key_for_uid(uid), {
             "uid": uid, "earnings": 0, "extras": 0, "loads": 0,
-            "deductions": 0,
+            "deductions": 0, "zero_pay_loads": 0,
             "load_lines": [], "addition_lines": [], "deduction_lines": [],
         })
 
@@ -189,6 +189,10 @@ async def compute_run(
         )
         c["earnings"] += pay_cents
         c["loads"] += 1
+        # A delivered load that resolves to $0 (no stored pay, no pay
+        # model) silently underpays — count it so the statement can warn.
+        if pay_cents == 0:
+            c["zero_pay_loads"] += 1
         origin = str(l.get("pickup_location") or "")
         dest = str(l.get("delivery_location") or "")
         c["load_lines"].append({
@@ -329,7 +333,9 @@ async def compute_run(
 
         items.append(RunItem(
             driver_id=did,
+            driver_user_id=comp.get("uid"),
             driver_name=str(driver_name),
+            zero_pay_loads=int(comp.get("zero_pay_loads") or 0),
             base_pay_cents=base_pay,
             bonus_total_cents=bonus_total,
             total_cents=total,

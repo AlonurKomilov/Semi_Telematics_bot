@@ -253,6 +253,13 @@ class DriverPayMixin(_MixinBase):
     # deductions_cents columns on payroll_run_items are still used.
 
 
+    async def delete_driver_pay_run_items(self, run_id: int) -> None:
+        """Clear a run's items — used by a draft recompute before re-adding."""
+        await self._db.execute(
+            "DELETE FROM payroll_run_items WHERE run_id = ?", (run_id,),
+        )
+        await self._db.commit()
+
     async def get_driver_pay_run_items(self, run_id: int) -> list[dict]:
         cur = await self._db.execute(
             "SELECT * FROM payroll_run_items WHERE run_id = ? "
