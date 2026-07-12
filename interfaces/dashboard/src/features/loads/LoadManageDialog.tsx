@@ -151,11 +151,13 @@ export default function LoadManageDialog({
     }
   };
 
-  const removeItem = async (itemId: number) => {
+  const removeItem = async (it: { id: number; kind: string; amount: number }) => {
     if (!load || itemBusy) return;
+    const amt = `$${it.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+    if (!confirm(`Remove ${it.kind} (${amt})? This can't be undone.`)) return;
     setItemBusy(true);
     try {
-      await deleteLineItem(itemId);
+      await deleteLineItem(it.id);
       setItems(await listLineItems(load.id));
       onSaved();
     } catch (e) {
@@ -338,7 +340,7 @@ export default function LoadManageDialog({
                       variant="ghost"
                       size="icon-xs"
                       disabled={itemBusy}
-                      onClick={() => { void removeItem(it.id); }}
+                      onClick={() => { void removeItem(it); }}
                       aria-label="Remove item"
                       title="Remove item"
                     >

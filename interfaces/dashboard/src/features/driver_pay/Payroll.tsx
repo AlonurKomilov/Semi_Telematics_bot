@@ -92,6 +92,39 @@ interface RunDetail extends PayrollRun {
 const fmtCents = (c: number | null | undefined) =>
   c == null ? '$0.00' : `$${(c / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Whole-run export — one CSV row per driver so accounting can hand the
+// batch to a bookkeeper / import it, instead of opening each statement.
+// Amounts in dollars (bookkeeping convention), not the wire's cents.
+function exportRunCsv(run: RunDetail) {
+  const esc = (s: unknown) => `"${String(s ?? '').replace(/"/g, '""')}"`;
+  const dollars = (c: number | null | undefined) => (Number(c || 0) / 100).toFixed(2);
+  const header = ['Driver', 'Driver ID', 'Base', 'Load earnings', 'Extras', 'Bonuses', 'Gross', 'Deductions', 'Net'];
+  const rows = (run.items || []).map((it) => {
+    const st = it.statement || {};
+    return [
+      it.driver_name || it.driver_id,
+      it.driver_id,
+      dollars(st.base_pay_cents ?? it.base_pay_cents),
+      dollars(st.load_earnings_cents),
+      dollars(st.extras_cents),
+      dollars(it.bonus_total_cents),
+      dollars(st.total_cents ?? it.total_cents),
+      dollars(it.deductions_cents ?? st.deductions_cents),
+      dollars(it.net_cents ?? st.net_cents ?? it.total_cents),
+    ];
+  });
+  const csv = [header, ...rows].map((r) => r.map(esc).join(',')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `driver-pay-run-${run.id}_${run.period_start}_to_${run.period_end}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 const RULE_KIND_ITEMS: { value: BonusRule['kind']; label: string }[] = [
   { value: 'score_threshold', label: 'Score ≥ threshold' },
   { value: 'incident_count', label: 'Incidents ≤ max' },
@@ -313,9 +346,15 @@ function RunsTab() {
             <h3 className="font-semibold">
               Run #{selected.id}: {selected.period_start} → {selected.period_end}
             </h3>
-            <button onClick={() => setSelected(null)} className="text-sm text-muted-foreground hover:underline">
-              Close
-            </button>
+            <div className="flex items-center gap-3">
+              <button onClick={() => exportRunCsv(selected)}
+                className="text-primary text-sm hover:underline">
+                Export CSV
+              </button>
+              <button onClick={() => setSelected(null)} className="text-sm text-muted-foreground hover:underline">
+                Close
+              </button>
+            </div>
           </div>
           <DataGrid
             columns={[
@@ -589,6 +628,8 @@ function RulesTab() {
 
 // ── Settings Tab ─────────────────────────────────────────────────
 
+interface SamsaraDriver { samsara_driver_id: string; name: string }
+
 function SettingsTab() {
   const [rows, setRows] = useState<DriverPaySettings[]>([]);
   const [loading, setLoading] = useState(true);
@@ -600,6 +641,15 @@ function SettingsTab() {
   // percentage-of-rate or per-mile; '' = no per-load math.
   const [payModel, setPayModel] = useState('');
   const [payRate, setPayRate] = useState('');
+  // Roster for the driver picker — beats hand-typing an opaque Samsara id.
+  // Soft-fails (empty) if Samsara isn't connected; the picker then just
+  // shows nothing and the operator can still type via "Other".
+  const [drivers, setDrivers] = useState<SamsaraDriver[]>([]);
+  useEffect(() => {
+    apiJSON<{ drivers: SamsaraDriver[] }>('/drivers/samsara')
+      .then((r) => setDrivers(r.drivers ?? []))
+      .catch(() => setDrivers([]));
+  }, []);
 
   const load = () => {
     setLoading(true);
@@ -643,9 +693,25 @@ function SettingsTab() {
         <h3 className="font-semibold text-sm">Set Driver Pay</h3>
         {error && <div className="text-danger text-sm">{error}</div>}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-          <input placeholder="Driver ID (Samsara)" value={driverId}
-            onChange={(e) => setDriverId(e.target.value)}
-            className="border rounded px-2 py-1 bg-background" />
+          <div className="flex flex-col gap-0.5">
+            <input placeholder="Driver (name or Samsara ID)" value={driverId}
+              list="dp-driver-roster"
+              onChange={(e) => setDriverId(e.target.value)}
+              className="border rounded px-2 py-1 bg-background text-foreground" />
+            <datalist id="dp-driver-roster">
+              {drivers.map((d) => (
+                <option key={d.samsara_driver_id} value={d.samsara_driver_id}>
+                  {d.name}
+                </option>
+              ))}
+            </datalist>
+            {(() => {
+              const match = drivers.find((d) => d.samsara_driver_id === driverId.trim());
+              return match ? (
+                <span className="text-2xs text-muted-foreground">→ {match.name}</span>
+              ) : null;
+            })()}
+          </div>
           <input type="number" min="0" step="0.01" placeholder="Base pay ($)" value={basePay}
             onChange={(e) => setBasePay(e.target.value)}
             className="border rounded px-2 py-1 bg-background" />
@@ -677,7 +743,16 @@ function SettingsTab() {
 
       <DataGrid
         columns={[
-          { key: 'driver_id', label: 'Driver ID', sortable: true },
+          {
+            key: 'driver_id', label: 'Driver', sortable: true,
+            render: (v) => {
+              const id = String(v ?? '');
+              const match = drivers.find((d) => d.samsara_driver_id === id);
+              return match
+                ? <span>{match.name} <span className="text-2xs text-muted-foreground font-mono">{id}</span></span>
+                : <span className="font-mono text-xs">{id}</span>;
+            },
+          },
           {
             key: 'base_pay_cents', label: 'Base Pay', sortable: true,
             render: (v) => <span className="tabular-nums">{fmtCents(Number(v))}</span>,
