@@ -30,6 +30,7 @@ from capabilities.ai.registry import (
     TIER_FOR_CATEGORY,
     _is_openai_compat,
     is_vision_capable,
+    get_model_tier,
     get_tier_chain,
 )
 
@@ -410,6 +411,24 @@ def switch_user_model(user_id: int, model_name: str,
         _user_models[user_id] = (model_name, target_loc, model_obj)
 
 
+async def switch_user_model_async(user_id: int, model_name: str,
+                                  location: str | None = None):
+    """``switch_user_model`` off the event loop.
+
+    ``_build_model`` constructs a Vertex client synchronously
+    (credential refresh included) — seconds of work that, awaited
+    inline, froze the tier picker AND stalled every other request on
+    the same gunicorn worker.  Async call sites use this wrapper;
+    openai-compat models skip the thread hop (no build, just a dict
+    write).
+    """
+    if _is_openai_compat(model_name):
+        switch_user_model(user_id, model_name, location)
+        return
+    import asyncio
+    await asyncio.to_thread(switch_user_model, user_id, model_name, location)
+
+
 async def ensure_user_model(account_id: int, user_id: int):
     """Load user's model preference from DB and cache it."""
     if user_id in _user_models:
@@ -418,7 +437,7 @@ async def ensure_user_model(account_id: int, user_id: int):
     if result:
         model_name, location = result
         try:
-            switch_user_model(user_id, model_name, location)
+            await switch_user_model_async(user_id, model_name, location)
         except Exception as e:
             logger.warning(f"Failed to build user model for user {user_id}: {e}")
 
@@ -497,22 +516,38 @@ async def resolve_tier(account_id: int | None,
                        user_id: int | None) -> str:
     """User pref → account default → DEFAULT_TIER (Fast).
 
-    Reads in-memory cache first; falls back to DB for cold start.
+    DB-FIRST, cache as fallback — not the other way around.  The
+    picker's PUT persists the tier to the DB and warms only the worker
+    that served it; under multi-worker gunicorn every other worker's
+    ``_user_tiers`` entry is stale until restart.  Trusting the cache
+    first had a user who switched to Reasoning still served by their
+    old Thinking tier on 5 of 6 workers (staged model and all — the
+    bubble label honestly said "Thinking" while the picker said
+    "Reasoning").  One indexed account_settings read per resolution is
+    noise next to the model call it precedes; the caches now only
+    answer when the DB read fails.
     """
-    if user_id is not None and user_id in _user_tiers:
-        return _user_tiers[user_id]
-    if account_id is not None and account_id in _account_tiers:
-        return _account_tiers[account_id]
     if user_id is not None and account_id is not None:
-        t = await load_user_tier(account_id, user_id)
+        try:
+            t = await load_user_tier(account_id, user_id)
+        except Exception:
+            t = _user_tiers.get(user_id)
         if t:
             _user_tiers[user_id] = t
             return t
     if account_id is not None:
-        t = await load_account_tier(account_id)
+        try:
+            t = await load_account_tier(account_id)
+        except Exception:
+            t = _account_tiers.get(account_id)
         if t:
             _account_tiers[account_id] = t
             return t
+    # Degraded fallbacks (DB unreachable / partial ids).
+    if user_id is not None and user_id in _user_tiers:
+        return _user_tiers[user_id]
+    if account_id is not None and account_id in _account_tiers:
+        return _account_tiers[account_id]
     return DEFAULT_TIER
 
 
@@ -558,7 +593,7 @@ async def ensure_user_tier(account_id: int, user_id: int):
         info = MODEL_REGISTRY[model_name]
         loc = info["locations"][0]
         try:
-            switch_user_model(user_id, model_name, loc)
+            await switch_user_model_async(user_id, model_name, loc)
         except Exception as e:
             logger.debug("Tier-resolved switch_user_model failed: %s", e)
 
@@ -592,25 +627,44 @@ async def resolve_tier_for_request(
     cached in ``_user_models`` for this user, hot-swap the cached
     model so ``generate()`` / ``ask_agent()`` see the right pick on
     the next call without an extra round-trip.
+
+    The staging runs for EXPLICIT tiers too, not just auto.  The tier
+    choice is persisted in the DB, but the model pick lives only in
+    this process's ``_user_models`` cache — after a restart (or in a
+    worker that never saw the picker click) the cache is empty and
+    ``get_model_for_user`` would silently fall back to the account
+    default, serving a Reasoning user a Fast model while the DB says
+    "reasoning".  Re-staging whenever the cached pick is missing or
+    from the wrong tier makes the DB choice the source of truth.
     """
     stored = await resolve_tier(account_id, user_id)
     real_tier = auto_resolve_tier(prompt) if stored == TIER_AUTO else stored
 
-    # When auto-mode is on, the in-memory user-model cache may point
-    # at a model from a previous prompt's resolved tier.  Re-pick the
-    # model from the newly-resolved tier and stage it before the call.
-    if stored == TIER_AUTO and user_id is not None:
-        model_name = await pick_model_for_tier(real_tier)
-        if model_name in MODEL_REGISTRY:
-            info = MODEL_REGISTRY[model_name]
-            loc = info["locations"][0]
-            try:
-                switch_user_model(user_id, model_name, loc)
-            except Exception as e:
-                logger.debug(
-                    "Auto-tier switch_user_model failed (tier=%s, model=%s): %s",
-                    real_tier, model_name, e,
-                )
+    # Only stage when a tier preference actually EXISTS (resolve_tier
+    # populates these caches from the DB on a hit).  A legacy account
+    # that configured a specific model but never touched the tier
+    # picker resolves to DEFAULT_TIER by fallthrough — staging on that
+    # default would override their chosen account model with a Fast
+    # pick on every request.
+    has_tier_pref = (
+        (user_id is not None and user_id in _user_tiers)
+        or (account_id is not None and account_id in _account_tiers)
+    )
+    if user_id is not None and has_tier_pref:
+        cached = _user_models.get(user_id)
+        cached_tier = get_model_tier(cached[0]) if cached else None
+        if cached is None or cached_tier != real_tier:
+            model_name = await pick_model_for_tier(real_tier)
+            if model_name in MODEL_REGISTRY:
+                info = MODEL_REGISTRY[model_name]
+                loc = info["locations"][0]
+                try:
+                    await switch_user_model_async(user_id, model_name, loc)
+                except Exception as e:
+                    logger.debug(
+                        "Tier staging switch_user_model failed (tier=%s, model=%s): %s",
+                        real_tier, model_name, e,
+                    )
     return real_tier
 
 
@@ -651,12 +705,13 @@ async def switch_tier(tier: str, account_id: int,
         return model_name
     loc = info["locations"][0]
     if user_id is not None:
-        switch_user_model(user_id, model_name, loc)
+        await switch_user_model_async(user_id, model_name, loc)
     else:
         if _is_openai_compat(model_name):
             _account_models[account_id] = (model_name, loc, None)
         else:
-            model_obj = _build_model(model_name, loc, info)
+            import asyncio
+            model_obj = await asyncio.to_thread(_build_model, model_name, loc, info)
             _account_models[account_id] = (model_name, loc, model_obj)
     return model_name
 

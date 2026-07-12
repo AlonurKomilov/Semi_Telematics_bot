@@ -7,6 +7,7 @@ from capabilities.ai.tools.registry import (                              # noqa
     filter_tools_for_role,
     get_cached_vertex_tools,
     get_anthropic_tools,
+    get_openai_tools,
     invalidate_tool_cache,
     execute_tool,
     tool_ok,

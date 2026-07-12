@@ -47,11 +47,17 @@ export function useShellConfig() {
   const isAccountingView = activeView === 'accounting';
 
   // Persona-tuned button label for the AI assistant's primary briefing.
+  // Every persona has one — the briefing content itself is derived from the
+  // role's effective permissions on the backend (BRIEFING_TOPICS), so this
+  // is purely the display name.
   const briefingLabel =
     activeView === 'driver' ? 'My Truck Briefing' :
     activeView === 'dispatcher' ? 'Dispatch Briefing' :
     activeView === 'safety' ? 'Safety Briefing' :
     activeView === 'fleet' ? 'Fleet Briefing' :
+    activeView === 'recruiter' ? 'Hiring Briefing' :
+    activeView === 'hr' ? 'People Briefing' :
+    activeView === 'accounting' ? 'Cost Briefing' :
     'Operations Briefing';
 
   // Persona-tuned noun used inside the chat placeholder / loading copy.

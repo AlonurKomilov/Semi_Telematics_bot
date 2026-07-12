@@ -61,17 +61,20 @@ describe('extractVehicleRefs', () => {
     expect(by['P-1'].company).toBe('C');
   });
 
-  it('classifies maintenance pending/overdue task rows', () => {
+  it('classifies maintenance overdue/due-soon/pending task rows', () => {
     const refs = extractVehicleRefs([
       tr('get_maintenance_summary', {
-        total_pending: 2, total_overdue: 1,
+        total_pending: 1, total_due_soon: 1, total_overdue: 1,
         overdue_tasks: [{ vehicle: 'Truck 9', type: 'brake_inspection' }],
+        due_soon_tasks: [{ vehicle: 'Truck 233', type: 'oil_change' }],
         pending_tasks: [{ vehicle: 'Truck 212', type: 'oil_change' }],
       }),
     ]);
     const by = Object.fromEntries(refs.map((r) => [r.vehicle, r]));
     expect(by['Truck 9'].tone).toBe('danger');          // overdue
     expect(by['Truck 9'].note).toBe('overdue brake inspection');
+    expect(by['Truck 233'].tone).toBe('warn');          // due soon
+    expect(by['Truck 233'].note).toBe('oil change due soon');
     expect(by['Truck 212'].tone).toBe('info');          // pending
     expect(by['Truck 212'].note).toBe('due oil change');
   });

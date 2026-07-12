@@ -26,6 +26,7 @@ from capabilities.ai.tools import (  # noqa: E402,F401
     execute_tool as _execute_tool,
     get_cached_vertex_tools as _get_cached_tools,
     get_anthropic_tools as _get_anthropic_tools,
+    get_openai_tools as _get_openai_tools,
     AI_TOOLS,  # backward compat re-export
 )
 from capabilities.permissions.roles import (
@@ -248,21 +249,29 @@ async def build_context(account_id: int,
             tasks = await tenant.get_maintenance_tasks(account_id)
             if _vehicle_set:
                 tasks = [t for t in tasks if t.get("vehicle_name", "").lower() in _vehicle_set]
-            active = [t for t in tasks if t.get("status") in ("pending", "overdue")]
-            if active:
+            # DERIVED urgency (date / mileage / engine-hours), same as the
+            # dashboard chips and the maintenance AI tools.  Counting the
+            # stored ``status`` column here made the model answer "0 overdue"
+            # straight from the snapshot (it's told to skip tools when the
+            # snapshot suffices) while the page showed a truck past its due
+            # odometer as overdue.
+            from features.maintenance.ai_tool import _bucket_open_tasks, _task_row
+            from features.maintenance.service import apply_live_readings
+            # Live odometer / engine-hours merge before classifying —
+            # stored readings can be stranded stale (alerted_at filter).
+            await apply_live_readings(tenant, account_id, tasks)
+            overdue, due_soon, pending = _bucket_open_tasks(tasks)
+            if overdue or due_soon or pending:
+                ordered = (
+                    [(t, "overdue") for t in overdue]
+                    + [(t, "due_soon") for t in due_soon]
+                    + [(t, "pending") for t in pending]
+                )
                 snapshot["maintenance"] = {
-                    "pending": sum(1 for t in active if t["status"] == "pending"),
-                    "overdue": sum(1 for t in active if t["status"] == "overdue"),
-                    "tasks": [
-                        {
-                            "vehicle": t.get("vehicle_name", "?"),
-                            "type": t.get("task_type", "custom"),
-                            "status": t.get("status"),
-                            "due_date": t.get("due_date"),
-                            "due_miles": t.get("due_miles"),
-                        }
-                        for t in active[:10]
-                    ],
+                    "pending": len(pending),
+                    "due_soon": len(due_soon),
+                    "overdue": len(overdue),
+                    "tasks": [_task_row(t, u) for t, u in ordered[:10]],
                 }
         except Exception as e:
             logger.debug(f"AI maintenance snapshot skipped: {e}")
@@ -343,11 +352,38 @@ async def generate_summary(vehicle_data: dict,
                            language: str = "en",
                            user_context: dict | None = None,
                            ) -> tuple[str, dict | None]:
-    """Generate an AI executive summary of fleet status.
+    """Generate an AI status briefing tailored to the caller's role.
+
+    The focus areas are NOT hardcoded per role: they resolve from the role's
+    effective per-account permissions via ``briefing_focus_for_account``
+    (the Permissions-matrix SSOT).  A dispatcher gets movement/availability,
+    safety gets events/coaching, a recruiter gets the hiring pipeline — and a
+    future feature added to ``BRIEFING_TOPICS`` reaches every role that holds
+    its permission with no changes here.  Falls back to a generic operations
+    briefing when the role can't be resolved.
 
     Returns ``(summary_text, usage)``.
     """
-    prompt = "Generate a morning fleet status briefing from this data."
+    role = (user_context or {}).get("role")
+    topics: list[str] = []
+    if role and account_id:
+        try:
+            from capabilities.permissions.roles import briefing_focus_for_account
+            topics = await briefing_focus_for_account(role, account_id)
+        except Exception:
+            logger.debug("briefing focus resolution failed; generic briefing")
+            topics = []
+    if topics:
+        prompt = (
+            f"Generate a morning status briefing for this user (role: {role}) "
+            f"from this data. Their work areas: {'; '.join(topics)}. "
+            "Cover ONLY these areas, leading with whatever most needs "
+            "attention and weighting the areas most central to their role. "
+            "Skip any area with no data in the snapshot rather than saying "
+            "it is unavailable."
+        )
+    else:
+        prompt = "Generate a morning operations status briefing from this data."
     return await generate(prompt, system=SUMMARY_SYSTEM,
                           context_data=vehicle_data, account_id=account_id,
                           language=language, user_context=user_context,
@@ -661,7 +697,13 @@ async def _run_anthropic_agent(
     url = _anthropic_url(location, project, anthropic_model_id)
     messages: list[dict] = [{"role": "user", "content": user_prompt}]
     tool_results: list[dict] = []
+    reasoning_chunks: list[str] = []
     usage_total = {"prompt_tokens": 0, "reply_tokens": 0, "thinking_tokens": 0, "total_tokens": 0}
+    # Extended thinking (registry-declared) — makes a Thinking-tier
+    # Claude actually think.  Tool rounds are compatible because the
+    # assistant message is replayed verbatim below, thinking blocks
+    # included (the API requires them back unmodified).
+    _thinking_budget = model_info.get("anthropic_thinking_budget")
 
     # Per-attempt telemetry — one ai_usage row per Claude rawPredict
     # call (initial + each tool_use re-call) so the router sees the
@@ -690,7 +732,8 @@ async def _run_anthropic_agent(
 
     final_text = ""
     for _round in range(max_tool_rounds):  # 1 initial + (max_tool_rounds-1) tool-use rounds
-        body = {
+        from capabilities.ai.generation import _apply_anthropic_thinking
+        body = _apply_anthropic_thinking({
             "anthropic_version": "vertex-2023-10-16",
             "system": system_prompt,
             "messages": messages,
@@ -698,7 +741,7 @@ async def _run_anthropic_agent(
             "max_tokens": max_tokens,
             "temperature": _agent_temperature,
             "top_p": 0.8,
-        }
+        }, _thinking_budget)
         _started = _t.monotonic()
         try:
             data = await asyncio.to_thread(_post, body)
@@ -746,7 +789,7 @@ async def _run_anthropic_agent(
         )
 
         content_blocks = data.get("content", []) or []
-        # Collect text + tool_use blocks
+        # Collect text + tool_use + thinking blocks
         text_chunks: list[str] = []
         tool_use_blocks: list[dict] = []
         for block in content_blocks:
@@ -755,6 +798,19 @@ async def _run_anthropic_agent(
                 text_chunks.append(block.get("text", ""))
             elif btype == "tool_use":
                 tool_use_blocks.append(block)
+            elif btype == "thinking":
+                chunk = block.get("thinking", "")
+                if chunk:
+                    reasoning_chunks.append(chunk)
+                    # Live-stream the reasoning into the chat's
+                    # collapsible panel, same as the Gemini path.
+                    if event_callback is not None:
+                        try:
+                            await event_callback(
+                                {"type": "thinking", "text": chunk},
+                            )
+                        except Exception:
+                            pass
 
         stop_reason = data.get("stop_reason")
         # If no tool calls, we're done.
@@ -821,7 +877,475 @@ async def _run_anthropic_agent(
         _store_history(user_id, question, final_text, account_id=account_id or 0)
     if ck and not has_history:
         _cache_put(ck, final_text)
-    return {"text": final_text, "tool_results": tool_results, "usage": usage_out}
+    return {
+        "text": final_text, "tool_results": tool_results, "usage": usage_out,
+        "reasoning": "\n\n".join(reasoning_chunks).strip(),
+    }
+
+
+_DEFAULT_TOOL_ROUNDS_OPENAI = 4
+
+
+def _clean_tool_arguments(args: str) -> str:
+    """Reduce streamed tool-call ``arguments`` to valid JSON.
+
+    R1-style models leak raw special tokens into the streamed arguments
+    tail (``{}\\n```<｜tool▁call▁end｜>…``) — the non-stream endpoint
+    trims these, the stream does not.  Replaying them 400s the next
+    round ("Expected a valid JSON object") and breaks execution-side
+    parsing.  Strategy: if the string already parses, keep it; else
+    take the first balanced ``{…}`` object (string-aware scan); else
+    ``{}``.
+    """
+    s = (args or "").strip()
+    if not s:
+        return "{}"
+    try:
+        json.loads(s)
+        return s
+    except (TypeError, ValueError):
+        pass
+    depth = 0
+    start = None
+    in_str = False
+    esc = False
+    for i, ch in enumerate(s):
+        if esc:
+            esc = False
+            continue
+        if in_str:
+            if ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            if depth > 0:
+                depth -= 1
+                if depth == 0 and start is not None:
+                    cand = s[start:i + 1]
+                    try:
+                        json.loads(cand)
+                        return cand
+                    except (TypeError, ValueError):
+                        start = None
+    return "{}"
+
+
+def _consume_openai_stream(lines, on_thinking=None) -> tuple[dict, dict | None]:
+    """Assemble a chat-completions message from an SSE stream.
+
+    Returns ``(message, usage)`` in the same shape a non-streaming
+    response's ``choices[0].message`` / ``usage`` carry, so the caller's
+    parsing is identical either way.  ``on_thinking(text)`` fires live
+    for each reasoning fragment — both ``delta.reasoning_content``
+    (DeepSeek V3-style separated field) and content deltas inside an
+    R1-style inline ``<think>…</think>`` head, so the chat's live
+    timeline shows the model's actual thoughts while it works instead
+    of a canned phrase for 30+ seconds.
+
+    Tool-call deltas arrive fragmented (arguments split across chunks,
+    keyed by ``index``) — merged here.  The final text is re-parsed by
+    ``_parse_openai_compat_reply`` afterwards, so the live ``<think>``
+    routing is display-only and needs no perfect tag-boundary handling.
+    """
+    content_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    tool_calls: dict[int, dict] = {}
+    usage = None
+    # Inline-<think> router: decided on the first content delta.
+    #   None → undecided, "think" → routing content to thinking,
+    #   "answer" → content is answer text (not emitted live).
+    mode: str | None = None
+
+    for raw in lines:
+        if not raw:
+            continue
+        line = raw.decode() if isinstance(raw, bytes) else raw
+        if not line.startswith("data:"):
+            continue
+        payload = line[5:].strip()
+        if payload == "[DONE]":
+            break
+        try:
+            chunk = json.loads(payload)
+        except (TypeError, ValueError):
+            continue
+        if chunk.get("usage"):
+            usage = chunk["usage"]
+        for ch in chunk.get("choices") or []:
+            d = ch.get("delta") or {}
+            rc = d.get("reasoning_content")
+            if rc:
+                reasoning_parts.append(rc)
+                if on_thinking:
+                    on_thinking(rc)
+            c = d.get("content")
+            if c:
+                content_parts.append(c)
+                if mode is None:
+                    mode = "think" if c.lstrip().startswith("<think") else "answer"
+                if mode == "think":
+                    if on_thinking:
+                        visible = c.replace("<think>", "").replace("</think>", "")
+                        if visible:
+                            on_thinking(visible)
+                    if "</think>" in c:
+                        mode = "answer"
+            for tc in d.get("tool_calls") or []:
+                idx = tc.get("index") or 0
+                slot = tool_calls.setdefault(idx, {
+                    "id": "", "type": "function",
+                    "function": {"name": "", "arguments": ""},
+                })
+                if tc.get("id"):
+                    slot["id"] = tc["id"]
+                fn = tc.get("function") or {}
+                if fn.get("name"):
+                    slot["function"]["name"] = fn["name"]
+                if fn.get("arguments"):
+                    slot["function"]["arguments"] += fn["arguments"]
+
+    message: dict = {
+        "role": "assistant",
+        "content": "".join(content_parts),
+        "reasoning_content": "".join(reasoning_parts),
+    }
+    if tool_calls:
+        calls = [tool_calls[i] for i in sorted(tool_calls)]
+        for tc in calls:
+            tc["function"]["arguments"] = _clean_tool_arguments(
+                tc["function"]["arguments"],
+            )
+        message["tool_calls"] = calls
+    return message, usage
+
+
+async def _run_openai_compat_agent(
+    question: str,
+    vehicle_context: dict,
+    samsara_client,
+    model_name: str,
+    model_info: dict,
+    user_id: int | None,
+    account_id: int | None,
+    db,
+    language: str,
+    user_context: dict | None,
+    event_callback,
+) -> dict:
+    """Function-calling loop for OpenAI-compat MaaS models (DeepSeek,
+    Qwen, Kimi, Grok, gpt-oss) — makes the Reasoning tier a first-class
+    agent instead of a snapshot-only chat.
+
+    Chat-completions shape: tool calls arrive as
+    ``message.tool_calls[{id, function:{name, arguments}}]``; we execute
+    each, append the assistant message verbatim plus one
+    ``{"role": "tool", "tool_call_id": …}`` result message, and re-call
+    up to N rounds.  Mirrors the role/permission enforcement of the
+    Gemini and Anthropic paths.  ``reasoning_content`` (or inline
+    ``<think>``) is captured per round and streamed as ``thinking``
+    events.  Any endpoint that rejects the ``tools`` field falls back
+    to the chat-only path — same answer quality as before this loop
+    existed, never worse.
+    """
+    import asyncio
+    import os
+    import requests
+    from google.auth.transport.requests import Request
+
+    from capabilities.ai.registry import (
+        _maas_base_url,
+        _get_credentials,
+        model_temperature,
+    )
+    from capabilities.ai.generation import _parse_openai_compat_reply
+
+    async def _chat_only() -> dict:
+        from capabilities.ai.generation import get_last_reasoning
+        text, usage = await ask_ai(
+            question, vehicle_context, user_id=user_id,
+            account_id=account_id, language=language,
+            user_context=user_context,
+        )
+        return {"text": text, "tool_results": [], "usage": usage,
+                "reasoning": get_last_reasoning()}
+
+    project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+    creds = _get_credentials()
+    if not project or not creds:
+        return await _chat_only()
+    creds.refresh(Request())
+
+    location = model_info.get("locations", ["us-central1"])[0]
+    maas_model_id = model_info["maas_model_id"]
+    max_tokens = min(model_info.get("max_output_tokens", 4096), 8192)
+    max_tool_rounds = _resolve_tool_rounds(model_info, _DEFAULT_TOOL_ROUNDS_OPENAI)
+    _agent_temperature = model_temperature(model_info)
+    extra_body = model_info.get("extra_body") or {}
+
+    # Cache + history lookups mirror the Gemini/Anthropic paths.
+    has_history = bool(user_id and (user_id, account_id or 0) in _chat_histories)
+    snap_h = _snapshot_hash(vehicle_context) if not has_history else ""
+    ck = _cache_key(
+        question, snap_h, model_name,
+        account_id=account_id or 0,
+        user_id=user_id or 0,
+        language=language,
+    ) if not has_history else ""
+    if not has_history and ck:
+        cached = _cache_get(ck)
+        if cached is not None:
+            if user_id is not None:
+                _store_history(user_id, question, cached, account_id=account_id or 0)
+            return {"text": cached, "tool_results": [], "usage": None}
+
+    user_role = user_context.get("role") if user_context else None
+    tools = await _get_openai_tools(
+        role=user_role, account_id=account_id,
+        scoped=_effective_scoped_flag(user_context, user_role),
+    )
+
+    system_prompt = ASSISTANT_SYSTEM
+    if language and language != "en":
+        from capabilities.localization.i18n import LANGUAGE_NAMES
+        lang_name = LANGUAGE_NAMES.get(language, language)
+        system_prompt += (
+            f"\n\nIMPORTANT: You MUST respond in {lang_name}. "
+            f"All your output text must be in {lang_name}."
+        )
+
+    history = _chat_histories.get((user_id or 0, account_id or 0)) if user_id else None
+    user_prompt = _build_agent_user_prompt(question, vehicle_context, user_context, history)
+
+    url = _maas_base_url(location, project)
+    messages: list[dict] = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    tool_results: list[dict] = []
+    reasoning_chunks: list[str] = []
+    usage_total = {"prompt_tokens": 0, "reply_tokens": 0, "thinking_tokens": 0, "total_tokens": 0}
+
+    from capabilities.ai.usage import (
+        record_call_attempt as _record_call,
+        classify_error as _classify_err,
+        classify_prompt as _classify_prompt,
+    )
+    import time as _t
+    _prompt_category = _classify_prompt(question)
+
+    def _post(body: dict) -> dict:
+        r = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {creds.token}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+            timeout=120,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    # Streaming rounds — the model's ACTUAL reasoning flows to the chat
+    # as it's generated (30-60s R1 rounds otherwise show a canned phrase
+    # the whole time).  Thinking deltas are bridged from the requests
+    # thread back onto the event loop, same pattern as the Gemini
+    # streaming bridge.  Falls back to plain POST per-round if the
+    # endpoint rejects the stream options.
+    _loop = asyncio.get_running_loop()
+    _streamed_any = {"flag": False}
+
+    def _emit_thinking_blocking(text: str) -> None:
+        if event_callback is None:
+            return
+        _streamed_any["flag"] = True
+        try:
+            asyncio.run_coroutine_threadsafe(
+                event_callback({"type": "thinking", "text": text}), _loop,
+            ).result()
+        except Exception:
+            pass
+
+    def _post_stream(body: dict) -> dict:
+        b = {**body, "stream": True, "stream_options": {"include_usage": True}}
+        r = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {creds.token}",
+                "Content-Type": "application/json",
+            },
+            json=b,
+            timeout=180,
+            stream=True,
+        )
+        r.raise_for_status()
+        message, usage = _consume_openai_stream(
+            r.iter_lines(decode_unicode=True),
+            on_thinking=_emit_thinking_blocking if event_callback else None,
+        )
+        return {"choices": [{"message": message}], "usage": usage}
+
+    use_stream = event_callback is not None
+    final_text = ""
+    final_reasoning_tail = ""
+    for _round in range(max_tool_rounds):
+        body = {
+            "model": maas_model_id,
+            "messages": messages,
+            "tools": tools,
+            "max_tokens": max_tokens,
+            "temperature": _agent_temperature,
+            "top_p": 0.8,
+            **extra_body,
+        }
+        _started = _t.monotonic()
+        _streamed_any["flag"] = False
+        try:
+            if use_stream:
+                try:
+                    data = await asyncio.to_thread(_post_stream, body)
+                except Exception as stream_exc:
+                    # Endpoint may not accept stream/stream_options —
+                    # degrade to plain POST for the rest of the turn.
+                    logger.info(
+                        "OpenAI-compat stream failed (%s); using non-stream",
+                        stream_exc,
+                    )
+                    use_stream = False
+                    _streamed_any["flag"] = False
+                    data = await asyncio.to_thread(_post, body)
+            else:
+                data = await asyncio.to_thread(_post, body)
+        except Exception as e:
+            latency_ms = int((_t.monotonic() - _started) * 1000)
+            await _record_call(
+                account_id=account_id, user_id=user_id,
+                role=user_role, action="question",
+                model=model_name, latency_ms=latency_ms,
+                error_type=_classify_err(e),
+                usage=None,
+                prompt_category=_prompt_category,
+            )
+            logger.warning(
+                "OpenAI-compat agent call failed (round %d), falling back: %s",
+                _round, e,
+            )
+            # First-round failure may mean "endpoint rejects tools" —
+            # the chat-only fallback preserves pre-loop behaviour.
+            result = await _chat_only()
+            result["tool_results"] = tool_results
+            return result
+
+        latency_ms = int((_t.monotonic() - _started) * 1000)
+        text, usage, reasoning = _parse_openai_compat_reply(data)
+        if usage:
+            for k in usage_total:
+                usage_total[k] += usage.get(k, 0) or 0
+        await _record_call(
+            account_id=account_id, user_id=user_id,
+            role=user_role, action="question",
+            model=model_name, latency_ms=latency_ms,
+            error_type="ok",
+            usage=usage,
+            prompt_category=_prompt_category,
+        )
+
+        if reasoning:
+            reasoning_chunks.append(reasoning)
+            # Emit whole only when it WASN'T already streamed live —
+            # otherwise the client's timeline would show it twice.
+            if event_callback is not None and not _streamed_any["flag"]:
+                try:
+                    await event_callback({"type": "thinking", "text": reasoning})
+                except Exception:
+                    pass
+
+        msg = (data.get("choices") or [{}])[0].get("message", {}) or {}
+        tool_calls = msg.get("tool_calls") or []
+        if not tool_calls:
+            final_text = text
+            break
+
+        # Append the assistant message (the API requires the tool_calls
+        # echoed back) WITHOUT ``reasoning_content`` — DeepSeek-style
+        # endpoints emit that field but 400 when it's sent back as
+        # input.  Then one tool message per call.
+        messages.append({k: v for k, v in msg.items() if k != "reasoning_content"})
+        for tc in tool_calls:
+            fn = (tc.get("function") or {})
+            tool_name = fn.get("name", "")
+            tc_id = tc.get("id", "")
+            try:
+                tool_args = json.loads(fn.get("arguments") or "{}")
+            except (TypeError, ValueError):
+                tool_args = {}
+            logger.info("AI agent (openai-compat) calling tool: %s(%s)", tool_name, tool_args)
+
+            blocked = await _check_tool_permission(
+                tool_name, tool_args, user_role, user_context, account_id,
+            )
+            if blocked is not None:
+                tool_results.append({"tool": tool_name, "args": tool_args, "data": blocked})
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tc_id,
+                    "content": json.dumps(blocked, default=str),
+                })
+                continue
+
+            if event_callback is not None:
+                try:
+                    await event_callback({
+                        "type": "tool",
+                        "name": tool_name,
+                        "label": _TOOL_LABELS.get(tool_name, tool_name),
+                    })
+                except Exception:
+                    pass
+            try:
+                result = await _execute_tool(
+                    tool_name, tool_args, samsara_client,
+                    account_id=account_id, db=db,
+                    scope_vehicles=_scoped_vehicle_set(user_context, user_role),
+                )
+            except Exception as e:
+                result = {"error": f"Tool execution failed: {e}"}
+            tool_results.append({"tool": tool_name, "args": tool_args, "data": result})
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc_id,
+                "content": json.dumps(result, default=str)[:20000],
+            })
+        # Loop continues — the model sees the tool results next round.
+        final_reasoning_tail = text  # non-empty text alongside tool calls is rare; keep last
+    else:
+        # Ran out of rounds while the model kept calling tools — use
+        # whatever text the last round produced rather than nothing.
+        final_text = final_reasoning_tail
+
+    if not final_text:
+        final_text = (
+            "I couldn't generate a response for that question. "
+            "Please try rephrasing it."
+        )
+
+    usage_out = usage_total if any(usage_total.values()) else None
+    if user_id is not None:
+        _store_history(user_id, question, final_text, account_id=account_id or 0)
+    if ck and not has_history:
+        _cache_put(ck, final_text)
+    return {
+        "text": final_text, "tool_results": tool_results, "usage": usage_out,
+        "reasoning": "\n\n".join(reasoning_chunks).strip(),
+    }
 
 
 async def _gemini_streamed_call(model, contents, tools, emit):
@@ -939,12 +1463,32 @@ async def ask_agent(question: str, vehicle_context: dict,
             event_callback=event_callback,
         )
 
-    # openai_compat / mistral_raw → no FC support; degrade to chat-only.
+    # OpenAI-compat MaaS models (DeepSeek/Qwen/Kimi/Grok/gpt-oss) get
+    # their own function-calling loop — the Reasoning tier can call
+    # tools like the Gemini/Anthropic tiers instead of answering from
+    # the snapshot alone.  A per-model registry opt-out
+    # (``supports_tools: False``) or any tools-rejection error degrades
+    # to the chat-only path inside the loop.
+    if _api_type == "openai_compat" and _info.get("supports_tools", True):
+        return await _run_openai_compat_agent(
+            question, vehicle_context, samsara_client,
+            model_name=cur_model_name, model_info=_info,
+            user_id=user_id, account_id=account_id, db=db,
+            language=language, user_context=user_context,
+            event_callback=event_callback,
+        )
+
+    # mistral_raw (and opted-out models) → no FC support; chat-only.
     if _api_type != "gemini":
         text, usage = await ask_ai(question, vehicle_context, user_id=user_id,
                                account_id=account_id, language=language,
                                user_context=user_context)
-        return {"text": text, "tool_results": [], "usage": usage}
+        # Reasoning models produced a chain-of-thought the raw generator
+        # captured on the task-local side channel — attach it so the
+        # chat can show it instead of silently discarding it.
+        from capabilities.ai.generation import get_last_reasoning
+        return {"text": text, "tool_results": [], "usage": usage,
+                "reasoning": get_last_reasoning()}
 
     model, cur_model_name, _ = get_model_for_user(user_id, account_id)
 
@@ -1290,8 +1834,56 @@ async def ask_agent_stream(question: str, vehicle_context: dict,
 
     queue: _asyncio.Queue = _asyncio.Queue()
 
+    # Ordered process timeline — the step log the chat renders under
+    # "Thought process" (thinking → tool → thinking → …, in the order
+    # it actually happened).  Every agent loop (Gemini / Anthropic /
+    # OpenAI-compat) funnels its events through this one callback, so
+    # accumulating here covers all of them with a single site.
+    # Consecutive thinking chunks coalesce into one step (Gemini
+    # streams token-sized fragments).
+    process: list[dict] = []
+
     async def _callback(event: dict):
+        etype = event.get("type")
+        if etype == "thinking":
+            if process and process[-1].get("type") == "thinking":
+                process[-1]["text"] += event.get("text", "")
+            else:
+                process.append({"type": "thinking",
+                                "text": event.get("text", "")})
+        elif etype == "tool":
+            process.append({"type": "tool",
+                            "name": event.get("name", ""),
+                            "label": event.get("label", "")})
         await queue.put(event)
+
+    def _finish_process(result: dict) -> list[dict]:
+        """Zip tool results into the tool steps + digest them.
+
+        ``result["tool_results"]`` appends in execution order — the
+        same order the tool events fired — so index-zipping is exact.
+        Results are digested (truncated JSON) because full tool payloads
+        can be tens of KB; the timeline needs a glance, not the data.
+        """
+        tool_steps = [s for s in process if s["type"] == "tool"]
+        for step, tr in zip(tool_steps, result.get("tool_results") or []):
+            try:
+                digest = json.dumps(tr.get("data"), default=str)
+            except (TypeError, ValueError):
+                digest = str(tr.get("data"))
+            if len(digest) > 400:
+                digest = digest[:400] + "…"
+            step["result"] = digest
+            if tr.get("args"):
+                try:
+                    step["args"] = json.dumps(tr["args"], default=str)[:200]
+                except (TypeError, ValueError):
+                    pass
+        # Chat-only paths emit no thinking events but may return the
+        # whole chain-of-thought on the result — surface it as one step.
+        if not any(s["type"] == "thinking" for s in process) and result.get("reasoning"):
+            process.insert(0, {"type": "thinking", "text": result["reasoning"]})
+        return process
 
     async def _run():
         try:
@@ -1303,21 +1895,33 @@ async def ask_agent_stream(question: str, vehicle_context: dict,
             )
             reply = result.get("text", "")
             clean, suggestions = _parse_sug(reply)
-            # The model that actually produced THIS answer (same resolution
-            # ask_agent used), so the client can attribute each bubble to its
-            # own model instead of relabelling history with whatever model is
-            # currently selected.
+            # Attribute THIS answer to the tier that produced it ("Fast" /
+            # "Thinking" / "Reasoning"), frozen at receipt so switching the
+            # tier picker never relabels history.  The raw model id
+            # ("deepseek-r1") deliberately does NOT leave the server on this
+            # path — users picked a tier, so the bubble speaks tier; the
+            # real model stays in the ai_usage rows the operator console
+            # and router analytics read.
             try:
                 _answer_model = result.get("model") or get_model_for_user(user_id, account_id)[1]
             except Exception:
                 _answer_model = result.get("model") or ""
+            from capabilities.ai.registry import get_model_tier_label
             await queue.put({
                 "type": "done",
                 "reply": clean,
                 "suggestions": suggestions,
                 "usage": result.get("usage"),
                 "tool_results": result.get("tool_results", []),
-                "model": _answer_model,
+                "model_tier": get_model_tier_label(_answer_model) or "",
+                # Full chain-of-thought for models that return it whole
+                # (reasoning tier / Claude thinking).  Gemini reasoning
+                # streams live as `thinking` events instead; the client
+                # keeps whichever it received.
+                "reasoning": result.get("reasoning") or "",
+                # Ordered step timeline (thinking + tool calls with
+                # result digests) — the "N steps" process log.
+                "process": _finish_process(result),
             })
         except Exception as exc:
             # The route layer (``_event_stream`` in interfaces/api/routes/ai.py)

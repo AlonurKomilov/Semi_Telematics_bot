@@ -25,6 +25,7 @@ _CONTRIBUTORS = (
     "features.loads.retention",           # owns loads.records (load/shipment history)
     "capabilities.scorecards.retention",  # owns scorecards.score_history
     "capabilities.email.retention",       # owns email.delivery_events
+    "capabilities.ai.retention",          # owns ai.chat_history (age-cap)
     "infra.scan_retention",               # owns platform.scan_log (AV scan audit)
 )
 

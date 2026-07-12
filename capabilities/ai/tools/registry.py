@@ -151,6 +151,42 @@ async def get_anthropic_tools(
     return converted
 
 
+# OpenAI-format tool cache (chat-completions function calling — the
+# Vertex MaaS models: DeepSeek, Qwen, Kimi, Grok, gpt-oss).
+_openai_tools_cache: dict[tuple, tuple[float, list[dict]]] = {}
+
+
+async def get_openai_tools(
+    role: str | None = None,
+    account_id: int | None = None,
+    scoped: bool = False,
+) -> list[dict]:
+    """Return OpenAI-format tool definitions filtered for the user.
+
+    The chat-completions API wraps each JSON-Schema tool in
+    ``{"type": "function", "function": {name, description, parameters}}``
+    — same schema body as Gemini, one wrapper level deeper.
+    """
+    key = (account_id, role, scoped)
+    hit = _cache_hit(_openai_tools_cache, key)
+    if hit is not None:
+        return hit
+    tool_defs = await filter_tools_for_role(role, account_id, scoped)
+    converted = [
+        {
+            "type": "function",
+            "function": {
+                "name": td["name"],
+                "description": td["description"],
+                "parameters": td.get("parameters", {"type": "object", "properties": {}}),
+            },
+        }
+        for td in tool_defs
+    ]
+    _openai_tools_cache[key] = (_time.monotonic() + _TOOLS_CACHE_TTL_S, converted)
+    return converted
+
+
 def invalidate_tool_cache(account_id: int | None = None):
     """Clear cached advertised-tool lists.
 
@@ -161,8 +197,9 @@ def invalidate_tool_cache(account_id: int | None = None):
     if account_id is None:
         _cached_tools.clear()
         _anthropic_tools_cache.clear()
+        _openai_tools_cache.clear()
         return
-    for cache in (_cached_tools, _anthropic_tools_cache):
+    for cache in (_cached_tools, _anthropic_tools_cache, _openai_tools_cache):
         for k in [k for k in cache if k[0] == account_id]:
             del cache[k]
 

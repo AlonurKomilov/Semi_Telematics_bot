@@ -1,15 +1,16 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
-import { Bot, Send, Square, Trash2, Copy, Check, RefreshCw, Sparkles, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, ThumbsUp, ThumbsDown, Eye, type LucideIcon } from 'lucide-react';
+import { Bot, Send, Square, Trash2, Copy, Check, RefreshCw, Sparkles, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, Lightbulb, Loader2, ThumbsUp, ThumbsDown, Eye, History, SquarePen, type LucideIcon } from 'lucide-react';
 import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
 import { useShellConfig } from '../../hooks/useShellConfig';
-import type { AIChatMessage, AIChatResponse, AIHistoryResponse, AISummaryResponse, AIModel, AIModelsResponse, AIUsage, AITierChoice, AITierOption, AITierResponse } from '../../types';
+import type { AIChatMessage, AIConversation, AIConversationsResponse, AIConversationMessagesResponse, AIProcessStep, AISummaryResponse, AIUsage, AITierChoice, AITierOption, AITierResponse } from '../../types';
 import { formatAIResponse } from '../../utils/formatAI';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, formatTime } from '../../utils/datetime';
 import { DislikeReasonForm } from './sections/DislikeReasonForm';
 import { ReferencedVehicles } from './sections/ReferencedVehicles';
+import { thoughtKey, saveThought, getThought, deleteThoughtsForConversation } from './thoughtStore';
 
 // Extended message type with client-side timestamp
 interface LocalMessage extends AIChatMessage {
@@ -19,10 +20,21 @@ interface LocalMessage extends AIChatMessage {
    *  "Vehicles in this answer" chips.  Absent on history-loaded messages
    *  (the DB stores text only). */
   toolResults?: unknown[];
-  /** Internal name of the model that produced THIS answer, frozen at receipt.
-   *  Per-message so switching the tier picker never relabels past answers.
+  /** Tier label ("Fast" / "Thinking" / "Reasoning") that produced THIS
+   *  answer, frozen at receipt — per-message so switching the tier picker
+   *  never relabels past answers.  The raw model id never reaches the
+   *  client (server-side vocabulary for the operator console/analytics).
    *  Absent on history-loaded messages (the DB stores text only). */
-  model?: string;
+  modelTier?: string;
+  /** Chain-of-thought that produced THIS answer — from the done event
+   *  (reasoning-tier models, Claude thinking) or accumulated from the
+   *  live `thinking` stream (Gemini).  Shown as a collapsible section
+   *  on the bubble.  Absent on history-loaded messages and on models
+   *  that ran without thinking. */
+  reasoning?: string;
+  /** Ordered process timeline (thinking + tool steps with result
+   *  digests) — preferred over the flat `reasoning` blob when present. */
+  process?: AIProcessStep[];
 }
 
 // No hardcoded loading messages — we show real tool activity from the stream
@@ -119,6 +131,52 @@ function getChatTopics(view?: string): string {
   }
 }
 
+/** Split thinking steps into paragraph-level steps so the timeline reads
+ *  as discrete thoughts — one dot per thought — instead of one flat text
+ *  wall.  Tool steps pass through unchanged.  Purely a display transform;
+ *  the stored process keeps the raw chunks. */
+function explodeProcess(steps: AIProcessStep[]): AIProcessStep[] {
+  const out: AIProcessStep[] = [];
+  for (const s of steps) {
+    if (s.type === 'thinking') {
+      for (const para of (s.text || '').split(/\n\s*\n/)) {
+        const text = para.trim();
+        if (text) out.push({ type: 'thinking', text });
+      }
+    } else {
+      out.push(s);
+    }
+  }
+  return out;
+}
+
+/** One row of the dot-and-line process timeline: marker column (dot /
+ *  check / beacon) with a connector line down to the next row, content
+ *  beside it. */
+function TimelineRow({ marker, last, children }: {
+  marker: ReactNode; last: boolean; children: ReactNode;
+}) {
+  return (
+    <div className="flex gap-2">
+      <div className="flex w-4 shrink-0 flex-col items-center">
+        <span className="mt-1 flex h-3 items-center justify-center">{marker}</span>
+        {!last && <span className="mt-1 w-px flex-1 bg-border" aria-hidden />}
+      </div>
+      <div className={`min-w-0 flex-1 ${last ? '' : 'pb-3'}`}>{children}</div>
+    </div>
+  );
+}
+
+const THINKING_DOT = (
+  <span className="size-1.5 rounded-full bg-muted-foreground/50" aria-hidden />
+);
+const ACTIVE_BEACON = (
+  <span className="relative inline-flex size-2" aria-hidden>
+    <span className="absolute inline-flex h-full w-full rounded-full bg-primary/60 animate-ping" />
+    <span className="relative inline-flex size-2 rounded-full bg-primary" />
+  </span>
+);
+
 export default function Chat() {
   const { t } = useTranslation();
   const tz = useTimezone();
@@ -149,8 +207,32 @@ export default function Chat() {
    *  null = no form open.  Opens on thumbs-down click; closes on
    *  Skip / Send / outside-click.  Only one form open at a time. */
   const [dislikeFormFor, setDislikeFormFor] = useState<number | null>(null);
-  const [clearConfirm, setClearConfirm] = useState(false);
-  const clearConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Threads (History panel) ──────────────────────────────────
+  /** The open thread's id.  null until the first reply of a brand-new
+   *  chat comes back (the backend creates the thread lazily and returns
+   *  its id on the done event). */
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  /** True between "New chat" and the first send — tells the backend to
+   *  force a fresh thread instead of reusing the latest one. */
+  const [isNewChat, setIsNewChat] = useState(false);
+  const [conversations, setConversations] = useState<AIConversation[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  /** Two-step confirm on New chat while a LONG run is in flight — a
+   *  stray click shouldn't discard 30+ seconds of Reasoning work. */
+  const [newChatConfirm, setNewChatConfirm] = useState(false);
+  const newChatConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** One-time "step logs are stored on this device" note — honest
+   *  expectation-setting for the browser-local thought-log policy. */
+  const [thoughtNoteDismissed, setThoughtNoteDismissed] = useState(() => {
+    try { return localStorage.getItem('4truck:ai-thoughts-note:v1') === '1'; } catch { return true; }
+  });
+  /** Two-step delete confirm inside the panel — id armed for deletion. */
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
+  /** Bubble indexes whose per-message Reasoning section is expanded. */
+  const [reasoningExpanded, setReasoningExpanded] = useState<Set<number>>(new Set());
+  const deleteConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const historyRef = useRef<HTMLDivElement>(null);
 
   // ── Streaming state ──────────────────────────────────────────
   /** Tool labels shown while streaming (e.g. "Checking fault codes") */
@@ -161,13 +243,34 @@ export default function Chat() {
   const [streamingText, setStreamingText] = useState('');
   /** Live reasoning text as it streams in (`thinking` events) — shown in a
    *  collapsible panel while the model works. */
-  const [reasoning, setReasoning] = useState('');
-  const [reasoningOpen, setReasoningOpen] = useState(true);
   /** Last message that failed — shown in retry button */
   const [lastFailed, setLastFailed] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   /** Cycling index for pre-tool thinking phrases */
   const [thinkIdx, setThinkIdx] = useState(0);
+  /** REAL process steps building live from the event stream, in true
+   *  order (thinking → tool → thinking → …) — the live bubble renders
+   *  these, so the user watches the actual process instead of canned
+   *  "figuring out…" phrases.  Same shape as the persisted timeline. */
+  const [liveSteps, setLiveSteps] = useState<AIProcessStep[]>([]);
+  /** Inner scroller of the live timeline — kept pinned to the newest
+   *  step as thoughts stream in. */
+  const liveScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    liveScrollRef.current?.scrollTo({ top: liveScrollRef.current.scrollHeight });
+  }, [liveSteps]);
+  /** Seconds since the request started — the live bubble's elapsed
+   *  counter, so a long Reasoning-tier turn reads as progress, not a
+   *  hang.  Resets whenever loading flips. */
+  const [elapsedSec, setElapsedSec] = useState(0);
+  useEffect(() => {
+    if (!loading) { setElapsedSec(0); return; }
+    const started = Date.now();
+    const id = setInterval(
+      () => setElapsedSec(Math.floor((Date.now() - started) / 1000)), 1000,
+    );
+    return () => clearInterval(id);
+  }, [loading]);
 
   // ── Model state ──────────────────────────────────────────────
   // ``currentModel`` resolves the tier into a model name so per-reply
@@ -176,7 +279,6 @@ export default function Chat() {
   // the per-model picker was retired in 73894ed.  The picker itself is
   // a single-button dropdown — see the design pass that flagged the
   // emoji icons and always-visible-3-chip layout for revision.
-  const [models, setModels] = useState<AIModel[]>([]);
   const [tiers, setTiers] = useState<AITierOption[]>([]);
   const [currentTier, setCurrentTier] = useState<AITierChoice>('fast');
   const [tierSwitching, setTierSwitching] = useState(false);
@@ -200,13 +302,42 @@ export default function Chat() {
     // — sequenced AFTER history load so it appends to the conversation
     // instead of being clobbered by the history replace.
     const wantBriefing = new URLSearchParams(location.search).get('tab') === 'briefing';
-    apiJSON<AIHistoryResponse>('/ai/history')
-      .then((d) => setMessages((d.messages || []).map(m => ({
-        ...m,
-        // Use the backend timestamp when present so loaded scrollback
-        // shows the real send time, not "12:34 PM" stamped at page load.
-        timestamp: m.ts ? new Date(m.ts) : new Date(),
-      }))))
+    // Threads-first load: list the user's conversations, open the most
+    // recent one.  No threads yet → clean empty chat (first message
+    // creates one lazily server-side).
+    apiJSON<AIConversationsResponse>('/ai/conversations')
+      .then(async (d) => {
+        const convs = d.conversations || [];
+        setConversations(convs);
+        if (convs.length > 0) {
+          const m = await apiJSON<AIConversationMessagesResponse>(
+            `/ai/conversations/${convs[0].id}/messages`,
+          );
+          setConversationId(convs[0].id);
+          const loaded = (m.messages || []).map(msg => {
+            // Thought logs live in localStorage (never the DB) — re-attach
+            // by content-derived key so refresh restores them on this device.
+            const local = msg.role === 'model'
+              ? getThought(thoughtKey(convs[0].id, msg.text)) : null;
+            return {
+              ...msg,
+              // Use the backend timestamp when present so loaded scrollback
+              // shows the real send time, not "12:34 PM" stamped at page load.
+              timestamp: msg.ts ? new Date(msg.ts) : new Date(),
+              modelTier: msg.model_tier || undefined,
+              reasoning: local?.reasoning,
+              process: local?.process,
+            };
+          });
+          setMessages(loaded);
+          // Restore the last answer's suggestion chips (browser-local too).
+          const lastModel = [...loaded].reverse().find(msg => msg.role === 'model');
+          if (lastModel) {
+            const localLast = getThought(thoughtKey(convs[0].id, lastModel.text));
+            if (localLast?.suggestions?.length) setSuggestions(localLast.suggestions);
+          }
+        }
+      })
       .catch((e: unknown) => {
         // Don't swallow silently — an empty chat after history failed
         // to load is indistinguishable from a genuine first-visit
@@ -220,12 +351,10 @@ export default function Chat() {
           runBriefing();
         }
       });
-    // /ai/models still queried so the chat-bubble "produced by Gemini 2.5 Flash"
-    // subtitle can resolve display names from model names.  The user-facing
-    // picker is /ai/tier below.
-    apiJSON<AIModelsResponse>('/ai/models')
-      .then((d) => setModels(d.models || []))
-      .catch(() => {});
+    // The bubble subtitle shows the TIER label carried on each done event
+    // (never the raw model id — that's server-side vocabulary for the
+    // operator console), so no /ai/models fetch is needed here.  The
+    // user-facing picker is /ai/tier below.
     apiJSON<AITierResponse>('/ai/tier')
       .then((d) => {
         setTiers(d.tiers || []);
@@ -244,10 +373,11 @@ export default function Chat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-scroll on new messages
+  // Auto-scroll on new messages AND as live steps / streamed text grow,
+  // so the newest step is always in view while the model works.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loading]);
+  }, [messages, loading, liveSteps, streamingText]);
 
   // Cycle through thinking phrases before first tool fires
   const THINK_PHRASES = [
@@ -276,9 +406,22 @@ export default function Chat() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, [tierOpen]);
 
-  // Cleanup clear-confirm timeout on unmount
+  // Close the History panel on outside click (same pattern as the tier picker)
   useEffect(() => {
-    return () => { if (clearConfirmTimer.current) clearTimeout(clearConfirmTimer.current); };
+    if (!historyOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (historyRef.current && !historyRef.current.contains(e.target as Node)) {
+        setHistoryOpen(false);
+        setDeleteConfirmId(null);
+      }
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [historyOpen]);
+
+  // Cleanup delete-confirm timeout on unmount
+  useEffect(() => {
+    return () => { if (deleteConfirmTimer.current) clearTimeout(deleteConfirmTimer.current); };
   }, []);
 
   // ── Chat functions ───────────────────────────────────────────
@@ -291,8 +434,8 @@ export default function Chat() {
     setLoading(true);
     setError('');
     setToolActivity([]);
+    setLiveSteps([]);
     setStreamingText('');
-    setReasoning('');
     setLastFailed(null);
 
     // Cancel any in-flight request
@@ -305,15 +448,33 @@ export default function Chat() {
       let finalSuggestions: string[] = [];
       let finalUsage: AIUsage | undefined;
       let finalToolResults: unknown[] = [];
-      let finalModel = '';
+      let finalModelTier = '';
+      let finalConversationId: number | null = null;
+      let finalReasoning = '';
+      let finalProcess: AIProcessStep[] = [];
+      // Mirror of the streamed `reasoning` state — the state itself is
+      // stale inside this closure, so accumulate locally too and attach
+      // it to the finished message (Gemini streams thinking live; the
+      // reasoning tier delivers it whole on `done`).
+      let liveReasoning = '';
 
       await apiStreamChat(
         text.trim(),
         (event) => {
           if (event.type === 'tool') {
             setToolActivity((prev) => [...prev, event.label]);
+            setLiveSteps((prev) => [...prev, { type: 'tool', name: event.name, label: event.label }]);
           } else if (event.type === 'thinking') {
-            setReasoning((prev) => prev + event.text);
+            liveReasoning += event.text;
+            // Coalesce consecutive thinking chunks into one growing step —
+            // Gemini streams token-sized fragments.
+            setLiveSteps((prev) => {
+              const last = prev[prev.length - 1];
+              if (last?.type === 'thinking') {
+                return [...prev.slice(0, -1), { ...last, text: (last.text || '') + event.text }];
+              }
+              return [...prev, { type: 'thinking', text: event.text }];
+            });
           } else if (event.type === 'delta') {
             setStreamingText((prev) => prev + event.text);
           } else if (event.type === 'done') {
@@ -321,19 +482,38 @@ export default function Chat() {
             finalSuggestions = event.suggestions || [];
             finalUsage = event.usage as unknown as AIUsage | undefined;
             finalToolResults = event.tool_results || [];
-            finalModel = event.model || '';
+            finalModelTier = event.model_tier || '';
+            finalConversationId = event.conversation_id ?? null;
+            finalReasoning = event.reasoning || '';
+            finalProcess = event.process || [];
             if (event.scope) setScope(event.scope);
           } else if (event.type === 'error') {
             throw new Error(event.message);
           }
         },
         abort.signal,
+        { conversationId, newConversation: isNewChat },
       );
 
       if (!finalReply) throw new Error('No response received');
-      const aiMsg: LocalMessage = { role: 'model', text: finalReply, timestamp: new Date(), usage: finalUsage, toolResults: finalToolResults, model: finalModel || undefined };
+      const aiMsg: LocalMessage = { role: 'model', text: finalReply, timestamp: new Date(), usage: finalUsage, toolResults: finalToolResults, modelTier: finalModelTier || undefined, reasoning: (finalReasoning || liveReasoning).trim() || undefined, process: finalProcess.length > 0 ? finalProcess : undefined };
+      // Thought logs + suggestion chips are browser-local by policy (the
+      // server stores only text + tier) — stash them so refresh /
+      // thread-reopen restores them.
+      if (aiMsg.reasoning || aiMsg.process || finalSuggestions.length > 0) {
+        saveThought(thoughtKey(finalConversationId, finalReply), {
+          reasoning: aiMsg.reasoning, process: aiMsg.process,
+          suggestions: finalSuggestions,
+        });
+      }
       setMessages((prev) => [...prev, aiMsg]);
       setSuggestions(finalSuggestions);
+      // Adopt the thread the backend answered in (created lazily for a
+      // new chat / a stale id) and refresh the History panel's list so
+      // the thread title + activity time stay current.
+      if (finalConversationId != null) setConversationId(finalConversationId);
+      setIsNewChat(false);
+      void loadConversations();
     } catch (e) {
       if (e instanceof Error && e.name === 'AbortError') return;
       const msg = e instanceof Error ? e.message : 'Failed to get response';
@@ -346,9 +526,9 @@ export default function Chat() {
     } finally {
       setLoading(false);
       setToolActivity([]);
+      setLiveSteps([]);
       setStreamingText('');
-      setReasoning('');
-      inputRef.current?.focus();
+        inputRef.current?.focus();
     }
   }
 
@@ -379,16 +559,15 @@ export default function Chat() {
     }
   }
 
-  // The Operations Briefing is a fleet-ops summary, so it's only surfaced for
-  // operations-facing personas — a Recruiter / HR / Accounting view keeps its
-  // empty state and command menu focused on their own work, not fleet health.
-  const briefingRelevant = !['recruiter', 'hr', 'accounting'].includes(activeView ?? '');
-
   /** Slash commands typed in the chat input.  Extensible — add an entry here
    *  to expose a new shortcut (e.g. /parked, /undriven).  Discoverable via the
-   *  `/` menu above the input and the empty-state chips. */
+   *  `/` menu above the input and the empty-state chips.
+   *
+   *  The briefing is available to EVERY persona: its content is derived
+   *  server-side from the role's effective permissions (BRIEFING_TOPICS), so
+   *  a recruiter gets a hiring-pipeline brief, accounting a cost brief, etc. */
   const SLASH_COMMANDS: { name: string; label: string; run: () => void }[] = [
-    ...(briefingRelevant ? [{ name: 'briefing', label: briefingLabel, run: runBriefing }] : []),
+    { name: 'briefing', label: briefingLabel, run: runBriefing },
   ];
 
   /** Dispatch the input box: a known `/command` runs its action, anything
@@ -413,56 +592,142 @@ export default function Chat() {
     abortRef.current?.abort();
     setLoading(false);
     setToolActivity([]);
+    setLiveSteps([]);
     setStreamingText('');
-    setReasoning('');
   }
 
-  async function switchTier(tier: AITierChoice) {
+  function switchTier(tier: AITierChoice) {
     if (tierSwitching || tier === currentTier) {
       setTierOpen(false);
       return;
     }
+    // Optimistic: reflect the choice and close the dropdown IMMEDIATELY,
+    // then persist in the background.  The PUT can take a couple of
+    // seconds (the backend warms the tier's model), and holding the
+    // dropdown open with disabled buttons for that long read as a
+    // frozen UI.  On failure the previous tier is restored + an error
+    // banner explains why.  Chat requests racing the PUT are safe —
+    // the server re-stages the model per request from the DB-stored
+    // tier, so the worst case is one message on the old tier.
+    const prev = currentTier;
+    setCurrentTier(tier);
+    setTierOpen(false);
     setTierSwitching(true);
-    try {
-      const r = await apiJSON<{
-        ok: boolean;
-        tier: AITierChoice;
-        resolved_model: string | null;
-        resolved_model_display: string | null;
-      }>('/ai/tier', {
-        method: 'PUT',
-        body: { tier },
-      });
-      setCurrentTier(r.tier);
-      // The "produced by" label is now per-message (frozen from each answer's
-      // `done` event), so switching the tier no longer needs to touch any
-      // global model hint.
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to switch tier');
-    } finally {
-      setTierSwitching(false);
-      setTierOpen(false);
-    }
+    apiJSON<{
+      ok: boolean;
+      tier: AITierChoice;
+      resolved_model: string | null;
+      resolved_model_display: string | null;
+    }>('/ai/tier', {
+      method: 'PUT',
+      body: { tier },
+    })
+      .then((r) => setCurrentTier(r.tier))
+      .catch((e: unknown) => {
+        setCurrentTier(prev);
+        setError(e instanceof Error ? e.message : 'Failed to switch tier');
+      })
+      .finally(() => setTierSwitching(false));
   }
 
-  async function clearChat() {
+  // ── Thread (History panel) actions ───────────────────────────
+
+  async function loadConversations() {
+    try {
+      const d = await apiJSON<AIConversationsResponse>('/ai/conversations');
+      setConversations(d.conversations || []);
+    } catch { /* panel keeps its last list; next open retries */ }
+  }
+
+  function dismissThoughtNote() {
+    setThoughtNoteDismissed(true);
+    try { localStorage.setItem('4truck:ai-thoughts-note:v1', '1'); } catch { /* ignore */ }
+  }
+
+  /** Start a fresh thread: clean slate locally; the backend creates the
+   *  thread lazily on the first message (so abandoning an empty "new
+   *  chat" leaves no hollow row in the panel).  While a LONG run is in
+   *  flight (>10s), the first click arms a confirm instead of silently
+   *  discarding the work. */
+  function newChat() {
+    if (loading && elapsedSec > 10 && !newChatConfirm) {
+      setNewChatConfirm(true);
+      if (newChatConfirmTimer.current) clearTimeout(newChatConfirmTimer.current);
+      newChatConfirmTimer.current = setTimeout(() => setNewChatConfirm(false), 3000);
+      return;
+    }
+    setNewChatConfirm(false);
     abortRef.current?.abort();
-    await apiJSON('/ai/history', { method: 'DELETE' }).catch(() => {});
     setMessages([]);
     setSuggestions([]);
     setError('');
     setLastFailed(null);
     setToolActivity([]);
-    setClearConfirm(false);
+    setLiveSteps([]);
+    setConversationId(null);
+    setIsNewChat(true);
+    setHistoryOpen(false);
+    inputRef.current?.focus();
   }
 
-  function handleClearClick() {
-    if (!clearConfirm) {
-      setClearConfirm(true);
-      if (clearConfirmTimer.current) clearTimeout(clearConfirmTimer.current);
-      clearConfirmTimer.current = setTimeout(() => setClearConfirm(false), 3000);
-    } else {
-      clearChat();
+  /** Open a previous thread from the History panel. */
+  async function openConversation(conv: AIConversation) {
+    abortRef.current?.abort();
+    setHistoryOpen(false);
+    setDeleteConfirmId(null);
+    try {
+      const m = await apiJSON<AIConversationMessagesResponse>(
+        `/ai/conversations/${conv.id}/messages`,
+      );
+      setConversationId(conv.id);
+      setIsNewChat(false);
+      const loaded = (m.messages || []).map(msg => {
+        const local = msg.role === 'model'
+          ? getThought(thoughtKey(conv.id, msg.text)) : null;
+        return {
+          ...msg,
+          timestamp: msg.ts ? new Date(msg.ts) : new Date(),
+          modelTier: msg.model_tier || undefined,
+          reasoning: local?.reasoning,
+          process: local?.process,
+        };
+      });
+      setMessages(loaded);
+      // Restore the reopened thread's last suggestion chips too.
+      const lastModel = [...loaded].reverse().find(msg => msg.role === 'model');
+      const localLast = lastModel
+        ? getThought(thoughtKey(conv.id, lastModel.text)) : null;
+      setSuggestions(localLast?.suggestions ?? []);
+      setError('');
+      setLastFailed(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(`Couldn't open that chat: ${msg}`);
+    }
+  }
+
+  /** Arm the row's inline delete confirm — the trash swaps for explicit
+   *  Delete / Cancel buttons, so nobody has to guess "press it twice".
+   *  Auto-disarms after 5s of inaction. */
+  function armDelete(id: number) {
+    setDeleteConfirmId(id);
+    if (deleteConfirmTimer.current) clearTimeout(deleteConfirmTimer.current);
+    deleteConfirmTimer.current = setTimeout(() => setDeleteConfirmId(null), 5000);
+  }
+
+  /** Per-chat delete — called by the armed row's explicit Delete button. */
+  async function deleteConversation(conv: AIConversation) {
+    setDeleteConfirmId(null);
+    await apiJSON(`/ai/conversations/${conv.id}`, { method: 'DELETE' }).catch(() => {});
+    deleteThoughtsForConversation(conv.id);  // local thought logs go with it
+    await loadConversations();
+    // Deleting the OPEN thread clears the view — next message starts fresh.
+    if (conv.id === conversationId) {
+      abortRef.current?.abort();
+      setMessages([]);
+      setSuggestions([]);
+      setConversationId(null);
+      setIsNewChat(true);
     }
   }
 
@@ -575,8 +840,10 @@ export default function Chat() {
     }, 0);
   }
 
-  function exportChat() {
-    const lines = messages.map((m) => {
+  function downloadTranscript(
+    rows: { role: string; text: string; timestamp: Date }[],
+  ) {
+    const lines = rows.map((m) => {
       const time = formatDate(m.timestamp, { timeZone: tz });
       const who = m.role === 'user' ? 'You' : 'AI';
       // Strip HTML tags for plain-text export
@@ -590,6 +857,28 @@ export default function Chat() {
     a.download = `4truck-chat-${new Date().toISOString().slice(0, 10)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  /** Per-chat export from the History panel.  The open thread exports
+   *  what's on screen; other threads are fetched first. */
+  async function exportConversation(conv: AIConversation) {
+    if (conv.id === conversationId) {
+      downloadTranscript(messages);
+      return;
+    }
+    try {
+      const m = await apiJSON<AIConversationMessagesResponse>(
+        `/ai/conversations/${conv.id}/messages`,
+      );
+      downloadTranscript((m.messages || []).map(msg => ({
+        role: msg.role,
+        text: msg.text,
+        timestamp: msg.ts ? new Date(msg.ts) : new Date(),
+      })));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(`Couldn't export that chat: ${msg}`);
+    }
   }
 
   const suggestedQuestions = getSuggestedQuestions(activeView);
@@ -707,34 +996,107 @@ export default function Chat() {
           })()}
 
           {/* Separator */}
-          {messages.length > 0 && (
-            <div className="w-px h-5 bg-border" />
-          )}
+          <div className="w-px h-5 bg-border" />
 
-          {/* Export + Clear — only when there are messages */}
-          {messages.length > 0 && (
-            <>
-              <button
-                onClick={exportChat}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors bg-muted hover:bg-muted/80 text-muted-foreground border border-border"
-                title={t('chat.export_conversation')}
-              >
-                <Download size={14} />
-                {t('chat.export')}
-              </button>
-              <button
-                onClick={handleClearClick}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
-                  clearConfirm
-                    ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
-                    : 'bg-muted hover:bg-muted/80 text-muted-foreground border-border'
-                }`}
-              >
-                <Trash2 size={14} />
-                {clearConfirm ? t('chat.confirm_clear') : t('chat.clear')}
-              </button>
-            </>
-          )}
+          {/* New chat — start a fresh thread (created lazily on first send) */}
+          <button
+            onClick={newChat}
+            disabled={messages.length === 0 && conversationId === null && !loading}
+            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-default ${
+              newChatConfirm
+                ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
+                : 'bg-muted hover:bg-muted/80 text-muted-foreground border-border'
+            }`}
+            title={newChatConfirm ? t('chat.confirm_discard') : t('chat.new_chat')}
+          >
+            <SquarePen size={14} />
+            {newChatConfirm ? t('chat.confirm_discard') : t('chat.new_chat')}
+          </button>
+
+          {/* History — previous chats with per-chat export / delete,
+              the standard AI-chat threads panel. */}
+          <div className="relative" ref={historyRef}>
+            <button
+              onClick={() => { setHistoryOpen(!historyOpen); setDeleteConfirmId(null); if (!historyOpen) void loadConversations(); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors bg-muted hover:bg-muted/80 text-muted-foreground border border-border"
+              aria-haspopup="listbox"
+              aria-expanded={historyOpen}
+              title={t('chat.history')}
+            >
+              <History size={14} />
+              {t('chat.history')}
+            </button>
+            {historyOpen && (
+              <div className="absolute right-0 top-full mt-1 z-50 w-80 rounded-lg border border-border bg-card shadow-xl max-h-96 overflow-y-auto">
+                {conversations.length === 0 ? (
+                  <div className="px-3 py-4 text-xs text-muted-foreground text-center">
+                    {t('chat.no_previous_chats')}
+                  </div>
+                ) : (
+                  conversations.map((conv) => (
+                    <div
+                      key={conv.id}
+                      className={`group/conv flex items-center gap-2 px-3 py-2 transition-colors cursor-pointer ${
+                        conv.id === conversationId
+                          ? 'bg-primary/10'
+                          : 'hover:bg-muted'
+                      }`}
+                      onClick={() => void openConversation(conv)}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className={`text-sm truncate ${conv.id === conversationId ? 'text-primary font-medium' : 'text-foreground'}`}>
+                          {conv.title}
+                        </div>
+                        <div className="text-3xs text-muted-foreground">
+                          {formatDate(new Date(conv.updated_at), { timeZone: tz })}
+                          {' · '}
+                          {conv.message_count} {t('chat.messages_count')}
+                        </div>
+                      </div>
+                      {deleteConfirmId === conv.id ? (
+                        /* Armed: explicit Delete / Cancel — two distinct
+                           targets, never "press the same icon twice". */
+                        <div
+                          className="flex items-center gap-1"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            onClick={() => void deleteConversation(conv)}
+                            className="px-2 py-1 rounded-md text-2xs font-medium bg-destructive/15 text-destructive hover:bg-destructive/25 transition-colors"
+                          >
+                            {t('chat.delete_yes')}
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirmId(null)}
+                            className="px-2 py-1 rounded-md text-2xs text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {t('chat.cancel')}
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); void exportConversation(conv); }}
+                            className="opacity-0 group-hover/conv:opacity-100 p-1 rounded text-muted-foreground hover:text-foreground transition-opacity"
+                            title={t('chat.export_conversation')}
+                          >
+                            <Download size={14} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); armDelete(conv.id); }}
+                            className="opacity-0 group-hover/conv:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-opacity"
+                            title={t('chat.delete_chat')}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -752,16 +1114,14 @@ export default function Chat() {
             {/* Primary action: the operations briefing.  Lives here (and as the
                 /briefing command) instead of a separate tab. */}
             <div className="mt-6 flex flex-col items-center gap-3">
-              {briefingRelevant && (
-                <button
-                  onClick={runBriefing}
-                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors"
-                  title="Generate an operations briefing — or type /briefing"
-                >
-                  <Sparkles size={16} aria-hidden />
-                  {briefingLabel}
-                </button>
-              )}
+              <button
+                onClick={runBriefing}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors"
+                title={`Generate your ${briefingLabel.toLowerCase()} — or type /briefing`}
+              >
+                <Sparkles size={16} aria-hidden />
+                {briefingLabel}
+              </button>
               <div className="flex flex-wrap justify-center gap-2">
                 {suggestedQuestions.map((q) => (
                   <button
@@ -802,21 +1162,113 @@ export default function Chat() {
               </div>
             ) : (
               <div className="max-w-[82%] group">
+                {/* Process log — the ordered timeline of what produced
+                    this answer (thinking → tool call → result → …),
+                    collapsed by default.  Falls back to the flat
+                    reasoning blob for messages saved before timelines
+                    existed.  Deliberately NOT labelled with a tier name
+                    ("Reasoning" / "Thinking") or a tier icon — those
+                    belong to the picker and the footer label. */}
+                {(msg.process || msg.reasoning) && (() => {
+                  // Paragraph-exploded steps: each discrete thought gets its
+                  // own dot on the rule, tools keep their check markers —
+                  // one visual language for "what happened", never a flat
+                  // text wall.  Legacy messages without a process array
+                  // explode their flat reasoning the same way.
+                  const exploded = explodeProcess(
+                    msg.process ?? [{ type: 'thinking', text: msg.reasoning || '' }],
+                  );
+                  return (
+                    <div className="mb-1">
+                      <button
+                        onClick={() => setReasoningExpanded((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(i)) next.delete(i); else next.add(i);
+                          return next;
+                        })}
+                        className="flex items-center gap-1.5 text-2xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        <Lightbulb size={12} />
+                        <span>
+                          {exploded.length > 1
+                            ? `${exploded.length} ${t('chat.steps')}`
+                            : t('chat.thought_process')}
+                        </span>
+                        <ChevronDown size={12} className={`transition-transform ${reasoningExpanded.has(i) ? 'rotate-180' : ''}`} />
+                      </button>
+                      {reasoningExpanded.has(i) && (
+                        <div className="mt-1.5 max-h-64 overflow-y-auto pr-1">
+                          {/* One-time expectation-setter: thought logs are
+                              browser-local by policy — say so before a user
+                              meets it as a surprise on another device. */}
+                          {!thoughtNoteDismissed && (
+                            <div className="mb-2 flex items-start justify-between gap-2 rounded-md bg-muted px-2 py-1.5 text-3xs text-muted-foreground">
+                              <span>{t('chat.thoughts_local_note')}</span>
+                              <button
+                                onClick={dismissThoughtNote}
+                                className="shrink-0 font-medium hover:text-foreground transition-colors"
+                              >
+                                {t('chat.got_it')}
+                              </button>
+                            </div>
+                          )}
+                          {exploded.map((step, si) => (
+                            step.type === 'thinking' ? (
+                              <TimelineRow key={si} marker={THINKING_DOT} last={false}>
+                                <div className="text-2xs text-muted-foreground/80 whitespace-pre-wrap leading-relaxed">
+                                  {(step.text || '').replace(/\*\*/g, '')}
+                                </div>
+                              </TimelineRow>
+                            ) : (
+                              <TimelineRow
+                                key={si}
+                                marker={<Check size={12} className="text-primary/70" />}
+                                last={false}
+                              >
+                                <div className="text-2xs font-medium text-muted-foreground">
+                                  {step.label || step.name}
+                                </div>
+                                {step.result && (
+                                  <div className="mt-0.5 text-3xs text-muted-foreground/60 font-mono break-all line-clamp-2">
+                                    {step.result}
+                                  </div>
+                                )}
+                              </TimelineRow>
+                            )
+                          ))}
+                          <TimelineRow
+                            marker={<Check size={12} className="text-primary/70" />}
+                            last
+                          >
+                            <div className="text-2xs text-muted-foreground">
+                              {t('chat.done_step')}
+                            </div>
+                          </TimelineRow>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div
                   className="rounded-2xl px-4 py-3 text-sm bg-card border border-border text-foreground rounded-bl-none ai-response shadow-sm"
                   dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }}
                 />
                 {msg.toolResults && <ReferencedVehicles toolResults={msg.toolResults} />}
                 <div className="flex items-center gap-2 mt-1">
-                  {/* The model that produced THIS answer, frozen at receipt.
-                      Absent on history-loaded bubbles (no model stored), so
-                      they simply show no label — and switching the tier picker
+                  {/* The tier that produced THIS answer, frozen at receipt,
+                      shown with the SAME icon the tier picker uses so the
+                      two read as one concept.  Absent on history-loaded
+                      bubbles (no tier stored) — and switching the picker
                       never relabels past answers. */}
-                  {msg.model && (
-                    <span className="text-3xs text-muted-foreground/60">
-                      {models.find((m) => m.name === msg.model)?.display || msg.model}
-                    </span>
-                  )}
+                  {msg.modelTier && (() => {
+                    const TierIcon = (TIER_ICONS as Record<string, LucideIcon>)[msg.modelTier.toLowerCase()];
+                    return (
+                      <span className="inline-flex items-center gap-1 text-3xs text-muted-foreground/60">
+                        {TierIcon && <TierIcon size={12} aria-hidden />}
+                        {msg.modelTier}
+                      </span>
+                    );
+                  })()}
                   {/* Data-freshness stamp — hover-reveal like the action
                       icons, so it's available but not noisy by default. */}
                   <span className="text-3xs text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -901,27 +1353,27 @@ export default function Chat() {
 
         {loading && (
           <div className="flex justify-start">
-            <div className="bg-muted rounded-xl px-4 py-3 text-sm rounded-bl-sm max-w-[82%] min-w-[220px]">
-              {/* Live reasoning (streaming models) — collapsible.  Only
-                  present when the backend emits `thinking` events; the
-                  non-streaming path never sets this, so nothing shows. */}
-              {reasoning && (
-                <div className="mb-2 border-b border-border/40 pb-2">
-                  <button
-                    onClick={() => setReasoningOpen((o) => !o)}
-                    className="flex items-center gap-1.5 text-2xs font-medium text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    <Brain size={12} />
-                    <span>Thinking</span>
-                    <ChevronDown size={12} className={`transition-transform ${reasoningOpen ? 'rotate-180' : ''}`} />
-                  </button>
-                  {reasoningOpen && (
-                    <div className="mt-1.5 text-2xs text-muted-foreground/80 whitespace-pre-wrap max-h-40 overflow-y-auto leading-relaxed">
-                      {reasoning}
-                    </div>
-                  )}
-                </div>
-              )}
+            {/* Live progress card — renders the REAL process as it happens,
+                in true event order (thinking → tool → thinking → …), using
+                the SAME visual language as the finished "N steps" timeline.
+                Canned phrases appear only in the first seconds before any
+                real event has arrived. */}
+            <div className="bg-muted rounded-xl px-4 py-3 text-sm rounded-bl-sm max-w-[82%] min-w-[260px]">
+              <div className="flex items-center justify-between gap-4 mb-2">
+                <span className="inline-flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
+                  <Loader2 size={12} className="animate-spin text-primary" aria-hidden />
+                  <span>
+                    {liveSteps.length > 0
+                      ? `${explodeProcess(liveSteps).length} ${t('chat.steps')}`
+                      : t('chat.working')}
+                  </span>
+                </span>
+                {elapsedSec > 0 && (
+                  <span className="text-3xs text-muted-foreground/60 tabular-nums">
+                    {elapsedSec}s
+                  </span>
+                )}
+              </div>
 
               {streamingText ? (
                 /* Answer streaming in token-by-token (streaming models). */
@@ -929,30 +1381,59 @@ export default function Chat() {
                   className="ai-response"
                   dangerouslySetInnerHTML={{ __html: formatAIResponse(streamingText) }}
                 />
-              ) : (
-                <>
-                  {/* Completed tool steps */}
-                  {toolActivity.slice(0, toolActivity.length > 0 ? toolActivity.length - 1 : 0).map((label, i) => (
-                    <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground/70 mb-1.5">
-                      <Check size={12} className="text-primary/70 flex-shrink-0" />
-                      <span>{label}</span>
-                    </div>
-                  ))}
-                  {/* Active step */}
-                  <div className="flex items-center gap-2">
-                    <span className="inline-flex gap-0.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </span>
-                    <span className="text-foreground font-medium">
-                      {toolActivity.length > 0
-                        ? `${toolActivity[toolActivity.length - 1]}…`
-                        : THINK_PHRASES[thinkIdx]}
-                    </span>
+              ) : (() => {
+                // Same dot-and-line timeline as the finished view, one
+                // paragraph-thought per dot, building in real time.
+                const exploded = explodeProcess(liveSteps);
+                const lastIsTool = exploded.length > 0
+                  && exploded[exploded.length - 1].type === 'tool';
+                return (
+                  <div ref={liveScrollRef} className="max-h-72 overflow-y-auto pr-1">
+                    {exploded.map((step, si) => {
+                      const isActiveTool = step.type === 'tool'
+                        && si === exploded.length - 1;
+                      if (step.type === 'thinking') {
+                        return (
+                          <TimelineRow key={si} marker={THINKING_DOT} last={false}>
+                            <div className="text-2xs text-muted-foreground/80 whitespace-pre-wrap leading-relaxed">
+                              {(step.text || '').replace(/\*\*/g, '')}
+                            </div>
+                          </TimelineRow>
+                        );
+                      }
+                      return isActiveTool ? (
+                        <TimelineRow key={si} marker={ACTIVE_BEACON} last>
+                          <div className="text-xs font-medium text-foreground animate-pulse">
+                            {step.label}…
+                          </div>
+                        </TimelineRow>
+                      ) : (
+                        <TimelineRow
+                          key={si}
+                          marker={<Check size={12} className="text-primary/70" />}
+                          last={false}
+                        >
+                          <div className="text-2xs font-medium text-muted-foreground">
+                            {step.label}
+                          </div>
+                        </TimelineRow>
+                      );
+                    })}
+                    {/* Trailing activity row: canned phrase only before the
+                        first real event; honest "Thinking…" while the last
+                        step is a growing thought. */}
+                    {!lastIsTool && (
+                      <TimelineRow marker={ACTIVE_BEACON} last>
+                        <div className="text-xs font-medium text-foreground animate-pulse">
+                          {exploded.length === 0
+                            ? THINK_PHRASES[thinkIdx]
+                            : `${t('chat.thinking_live')}…`}
+                        </div>
+                      </TimelineRow>
+                    )}
                   </div>
-                </>
-              )}
+                );
+              })()}
             </div>
           </div>
         )}

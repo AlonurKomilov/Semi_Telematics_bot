@@ -200,7 +200,7 @@ export type StreamEvent =
   | { type: 'tool'; name: string; label: string }
   | { type: 'thinking'; text: string }   // live reasoning chunk (streaming models)
   | { type: 'delta'; text: string }      // live answer chunk (streaming models)
-  | { type: 'done'; reply: string; suggestions: string[]; usage: Record<string, number> | null; tool_results: unknown[]; scope?: { restricted: boolean; vehicle_count?: number }; model?: string }
+  | { type: 'done'; reply: string; suggestions: string[]; usage: Record<string, number> | null; tool_results: unknown[]; scope?: { restricted: boolean; vehicle_count?: number }; model_tier?: string; conversation_id?: number; reasoning?: string; process?: { type: 'thinking' | 'tool'; text?: string; name?: string; label?: string; args?: string; result?: string }[] }
   | { type: 'error'; message: string };
 
 /**
@@ -212,6 +212,12 @@ export async function apiStreamChat(
   message: string,
   onEvent: (event: StreamEvent) => void,
   signal?: AbortSignal,
+  opts?: {
+    /** Continue this thread; omit/null for the latest one. */
+    conversationId?: number | null;
+    /** Force a fresh thread (the "New chat" button). */
+    newConversation?: boolean;
+  },
 ): Promise<void> {
   const token = getToken();
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -223,7 +229,11 @@ export async function apiStreamChat(
   const res = await fetch(`${API_BASE}/ai/chat/stream`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({
+      message,
+      conversation_id: opts?.conversationId ?? null,
+      new_conversation: opts?.newConversation ?? false,
+    }),
     signal,
     credentials: 'include',
   });

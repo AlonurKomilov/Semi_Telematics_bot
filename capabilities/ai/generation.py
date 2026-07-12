@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 from capabilities.ai.registry import (
     MODEL_REGISTRY,
@@ -217,10 +218,11 @@ Rules:
 
 SUMMARY_SYSTEM = """\
 You are a vehicle operations intelligence AI. Given raw vehicle and operations \
-data, produce a brief status summary adapted to the user's role. For \
-owners/managers: executive summary. For drivers: personal truck status \
-briefing. For safety supervisors: safety-focused summary. For dispatchers: \
-route and availability summary. Include:
+data, produce a brief status summary adapted to the user's role. The request \
+lists the user's work areas (derived from their actual permissions) — cover \
+those areas and nothing else; do NOT default to a generic whole-operation \
+health summary. Drivers get a personal briefing about their own truck(s). \
+Include:
 - Overall vehicle health status (good / some issues / needs attention)
 - Key metrics at a glance
 - Any vehicles that need immediate attention
@@ -240,17 +242,81 @@ Rules:
 
 # ── Per-backend generators ───────────────────────────────────────
 
+# Reasoning side-channel.  The raw generators keep their (text, usage)
+# return shape — half a dozen call sites unpack it — but reasoning
+# models produce a third artifact: the chain-of-thought.  Each raw
+# call resets this task-local var, then stores whatever reasoning the
+# response carried; the agent layer reads it back with
+# ``get_last_reasoning()`` right after the call returns (same asyncio
+# task, so concurrent requests can't cross-contaminate) and attaches
+# it to the chat result so the dashboard can show it.
+import contextvars as _contextvars
+
+_last_reasoning: _contextvars.ContextVar[str] = _contextvars.ContextVar(
+    "ai_last_reasoning", default="",
+)
+
+
+def get_last_reasoning() -> str:
+    """Chain-of-thought from the most recent raw model call in this task."""
+    return _last_reasoning.get()
+
+
+def _parse_openai_compat_reply(data: dict) -> tuple[str, dict | None, str]:
+    """(text, usage, reasoning) from an OpenAI-compat chat response.
+
+    Reasoning arrives two ways depending on the model server:
+    ``message.reasoning_content`` (DeepSeek-style separated field) or
+    inline ``<think>…</think>`` tags at the head of ``content``
+    (R1-style).  Both are captured; the tags are stripped from the
+    answer text either way.
+    """
+    text = ""
+    reasoning = ""
+    usage = None
+    if "choices" in data and data["choices"]:
+        msg = data["choices"][0].get("message", {}) or {}
+        text = msg.get("content", "") or ""
+        reasoning = (msg.get("reasoning_content") or "").strip()
+        m = re.search(r"<think>(.*?)</think>", text, flags=re.DOTALL)
+        if m:
+            inline = m.group(1).strip()
+            reasoning = f"{reasoning}\n\n{inline}".strip() if reasoning else inline
+            text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
+    if "usage" in data:
+        u = data["usage"]
+        prompt = u.get("prompt_tokens", 0)
+        reply = u.get("completion_tokens", 0)
+        thinking = (u.get("completion_tokens_details") or {}).get("reasoning_tokens", 0) or 0
+        total = u.get("total_tokens", 0)
+        if total < prompt + reply + thinking:
+            total = prompt + reply + thinking
+        usage = {
+            "prompt_tokens": prompt,
+            "reply_tokens": reply,
+            "thinking_tokens": thinking,
+            "total_tokens": total,
+        }
+    return text.strip(), usage, reasoning
+
 
 async def _generate_openai_compat(
     model_id: str, location: str, system: str, prompt: str,
     max_tokens: int = 4096, temperature: float = DEFAULT_TEMPERATURE,
+    extra_body: dict | None = None,
 ) -> tuple[str, dict | None]:
-    """Generate via the Vertex AI OpenAI-compatible endpoint."""
+    """Generate via the Vertex AI OpenAI-compatible endpoint.
+
+    ``extra_body`` merges registry-declared per-model request fields —
+    e.g. DeepSeek hybrids need ``chat_template_kwargs.thinking`` to
+    actually run in thinking mode when they serve the Thinking tier.
+    """
     import asyncio
     import os
     import requests
     from google.auth.transport.requests import Request
 
+    _last_reasoning.set("")
     project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
     creds = _get_credentials()
     if not project or not creds:
@@ -267,6 +333,7 @@ async def _generate_openai_compat(
         "max_tokens": max_tokens,
         "temperature": temperature,
         "top_p": 0.8,
+        **(extra_body or {}),
     }
 
     def _call():
@@ -283,72 +350,50 @@ async def _generate_openai_compat(
         return r.json()
 
     data = await asyncio.to_thread(_call)
-    text = ""
+    text, usage, reasoning = _parse_openai_compat_reply(data)
+    if reasoning:
+        _last_reasoning.set(reasoning)
+    return text, usage
+
+
+def _apply_anthropic_thinking(body: dict, thinking_budget: int | None) -> dict:
+    """Enable Claude extended thinking on a rawPredict body, in place.
+
+    The Anthropic API has hard constraints when thinking is on:
+    ``temperature`` must be 1, ``top_p`` must not be sent, and
+    ``max_tokens`` must exceed the thinking budget (the budget is
+    carved out of it).  Applied only when the registry declares
+    ``anthropic_thinking_budget`` for the model — that's what makes a
+    Thinking-tier Claude actually think instead of running as a plain
+    model with a "Thinking" label.
+    """
+    if not thinking_budget:
+        return body
+    budget = int(thinking_budget)
+    body["thinking"] = {"type": "enabled", "budget_tokens": budget}
+    body["temperature"] = 1
+    body.pop("top_p", None)
+    body["max_tokens"] = max(int(body.get("max_tokens", 0)), budget + 2048)
+    return body
+
+
+def _parse_anthropic_reply(data: dict) -> tuple[str, dict | None, str]:
+    """(text, usage, reasoning) from an Anthropic messages response.
+
+    Block-type aware: with extended thinking on, ``content[0]`` is a
+    ``thinking`` block — the old ``content[0]["text"]`` read would have
+    returned an empty answer.  Text blocks concatenate into the answer;
+    thinking blocks into the reasoning artifact.
+    """
+    text_chunks: list[str] = []
+    thinking_chunks: list[str] = []
+    for block in data.get("content") or []:
+        btype = block.get("type")
+        if btype == "text":
+            text_chunks.append(block.get("text", ""))
+        elif btype == "thinking":
+            thinking_chunks.append(block.get("thinking", ""))
     usage = None
-    if "choices" in data and data["choices"]:
-        msg = data["choices"][0].get("message", {})
-        text = msg.get("content", "")
-    if "usage" in data:
-        u = data["usage"]
-        prompt = u.get("prompt_tokens", 0)
-        reply = u.get("completion_tokens", 0)
-        thinking = (u.get("completion_tokens_details") or {}).get("reasoning_tokens", 0) or 0
-        total = u.get("total_tokens", 0)
-        if total < prompt + reply + thinking:
-            total = prompt + reply + thinking
-        usage = {
-            "prompt_tokens": prompt,
-            "reply_tokens": reply,
-            "thinking_tokens": thinking,
-            "total_tokens": total,
-        }
-    return text.strip(), usage
-
-
-async def _generate_anthropic(
-    model_id: str, location: str, system: str, prompt: str,
-    max_tokens: int = 4096, temperature: float = DEFAULT_TEMPERATURE,
-) -> tuple[str, dict | None]:
-    """Generate via Anthropic rawPredict on Vertex AI."""
-    import asyncio
-    import os
-    import requests
-    from google.auth.transport.requests import Request
-
-    project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
-    creds = _get_credentials()
-    if not project or not creds:
-        raise RuntimeError("GOOGLE_CLOUD_PROJECT or credentials not set.")
-    creds.refresh(Request())
-
-    url = _anthropic_url(location, project, model_id)
-    body = {
-        "anthropic_version": "vertex-2023-10-16",
-        "system": system,
-        "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-        "top_p": 0.8,
-    }
-
-    def _call():
-        r = requests.post(
-            url,
-            headers={
-                "Authorization": f"Bearer {creds.token}",
-                "Content-Type": "application/json",
-            },
-            json=body,
-            timeout=120,
-        )
-        r.raise_for_status()
-        return r.json()
-
-    data = await asyncio.to_thread(_call)
-    text = ""
-    usage = None
-    if "content" in data and data["content"]:
-        text = data["content"][0].get("text", "")
     if "usage" in data:
         u = data["usage"]
         inp = u.get("input_tokens", 0)
@@ -359,7 +404,57 @@ async def _generate_anthropic(
             "thinking_tokens": 0,
             "total_tokens": inp + out,
         }
-    return text.strip(), usage
+    return "".join(text_chunks).strip(), usage, "\n\n".join(
+        c for c in thinking_chunks if c
+    ).strip()
+
+
+async def _generate_anthropic(
+    model_id: str, location: str, system: str, prompt: str,
+    max_tokens: int = 4096, temperature: float = DEFAULT_TEMPERATURE,
+    thinking_budget: int | None = None,
+) -> tuple[str, dict | None]:
+    """Generate via Anthropic rawPredict on Vertex AI."""
+    import asyncio
+    import os
+    import requests
+    from google.auth.transport.requests import Request
+
+    _last_reasoning.set("")
+    project = os.getenv("GOOGLE_CLOUD_PROJECT", "")
+    creds = _get_credentials()
+    if not project or not creds:
+        raise RuntimeError("GOOGLE_CLOUD_PROJECT or credentials not set.")
+    creds.refresh(Request())
+
+    url = _anthropic_url(location, project, model_id)
+    body = _apply_anthropic_thinking({
+        "anthropic_version": "vertex-2023-10-16",
+        "system": system,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+        "top_p": 0.8,
+    }, thinking_budget)
+
+    def _call():
+        r = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {creds.token}",
+                "Content-Type": "application/json",
+            },
+            json=body,
+            timeout=120,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    data = await asyncio.to_thread(_call)
+    text, usage, reasoning = _parse_anthropic_reply(data)
+    if reasoning:
+        _last_reasoning.set(reasoning)
+    return text, usage
 
 
 async def _generate_mistral_raw(
@@ -482,6 +577,7 @@ async def _generate_with_model(
                 text, usage = await _generate_anthropic(
                     info["anthropic_model_id"], loc,
                     system, user_content, max_tokens, _temp,
+                    thinking_budget=info.get("anthropic_thinking_budget"),
                 )
             elif api_type == "mistral_raw":
                 text, usage = await _generate_mistral_raw(
@@ -493,6 +589,7 @@ async def _generate_with_model(
                 text, usage = await _generate_openai_compat(
                     info["maas_model_id"], loc,
                     system, user_content, max_tokens, _temp,
+                    extra_body=info.get("extra_body"),
                 )
         else:
             loc = location or info["locations"][0]
@@ -580,7 +677,15 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
         lang_name = LANGUAGE_NAMES.get(language, language)
         system = system + f"\n\nIMPORTANT: You MUST respond in {lang_name}. All your output text must be in {lang_name}."
 
-    if account_id is not None and account_id in _account_models:
+    # Model resolution: USER-staged pick → account default → global.
+    # The user entry is where the tier picker lands (resolve_tier_for_
+    # request stages the chosen tier's model per user) — skipping it
+    # here was the bug that had a Reasoning-tier user's question
+    # answered by the account's Flash default while the bubble label
+    # (which reads the staged model) claimed "Reasoning".
+    if user_id is not None and user_id in _models_mod._user_models:
+        cur_model_name, cur_location, model_obj = _models_mod._user_models[user_id]
+    elif account_id is not None and account_id in _account_models:
         cur_model_name, cur_location, model_obj = _account_models[account_id]
     else:
         cur_model_name = get_current_model_name()
@@ -661,6 +766,7 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                     text, usage = await _generate_anthropic(
                         info["anthropic_model_id"], location,
                         system, user_content, max_tokens, _temp,
+                        thinking_budget=info.get("anthropic_thinking_budget"),
                     )
                 elif api_type == "mistral_raw":
                     text, usage = await _generate_mistral_raw(
@@ -672,6 +778,7 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
                     text, usage = await _generate_openai_compat(
                         info["maas_model_id"], location,
                         system, user_content, max_tokens, _temp,
+                        extra_body=info.get("extra_body"),
                     )
                 latency_ms = int((_t.monotonic() - started) * 1000)
                 await record_call_attempt(
@@ -876,7 +983,13 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
             raise
         _saved_exc = primary_exc
 
-    if account_id is not None and account_id in _account_models:
+    # Mirror _generate_impl's user-first resolution so the fallback
+    # chain starts from the model that ACTUALLY failed — a rate-limited
+    # Reasoning pick must retry within the Reasoning chain, not walk
+    # the account default's chain.
+    if user_id is not None and user_id in _models_mod._user_models:
+        failed_model = _models_mod._user_models[user_id][0]
+    elif account_id is not None and account_id in _account_models:
         failed_model = _account_models[account_id][0]
     else:
         failed_model = get_current_model_name()

@@ -168,6 +168,138 @@ async def run_all(conn) -> None:
     # binding, sibling of samsara_driver_id) + users.driver_field_provenance
     # (per-field source map for the reconciliation hub).
     await migrate_add_users_datatruck_driver_columns(conn)
+    # Chat threading — ai_conversations table + conversation_id on
+    # ai_chat_history, with legacy rows folded into one "Earlier
+    # conversation" per user so the History panel shows them.
+    await migrate_ai_conversations(conn)
+    # Answer metadata — model_tier label on model rows so a refresh
+    # keeps the per-answer tier attribution.
+    await migrate_ai_chat_answer_metadata(conn)
+    # Privacy: chain-of-thought + process timeline are browser-local
+    # (localStorage) by policy — drop the short-lived server columns.
+    await migrate_ai_chat_thoughts_local_only(conn)
+
+
+async def migrate_ai_chat_answer_metadata(conn) -> None:
+    """Add ``model_tier`` to ``ai_chat_history``.
+
+    Set on 'model' rows only; legacy rows default to '' and simply show
+    no tier label — exactly what they showed when live.  Idempotent via
+    ADD COLUMN IF NOT EXISTS.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE ai_chat_history"
+            " ADD COLUMN IF NOT EXISTS model_tier TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.error("ai_chat answer-metadata migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_ai_chat_thoughts_local_only(conn) -> None:
+    """Drop ``reasoning`` + ``process`` from ``ai_chat_history``.
+
+    Policy decision (2026-07-07): the chain-of-thought and the step
+    timeline are display-only artifacts for the owning user — they are
+    kept in the user's browser (localStorage), and the server stores
+    only what it functionally needs (message text for the model's
+    follow-up context, tier label for attribution).  Dropping the
+    columns also scrubs the few days of values written while they were
+    briefly server-side.  Idempotent via DROP COLUMN IF EXISTS; no-op
+    on fresh installs whose schema never creates them.
+    """
+    try:
+        for col in ("reasoning", "process"):
+            await conn.execute(
+                f"ALTER TABLE ai_chat_history DROP COLUMN IF EXISTS {col}"
+            )
+        await conn.commit()
+    except Exception as e:
+        logger.error("ai_chat thoughts-local-only migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_ai_conversations(conn) -> None:
+    """Chat threads: ``ai_conversations`` + ``ai_chat_history.conversation_id``.
+
+    Turns the one-rolling-history-per-user model into named
+    conversations (the dashboard's History panel).  Three idempotent
+    steps:
+
+    1. Create ``ai_conversations`` (fresh installs get it from
+       platform_schema; this covers upgrades).
+    2. Add ``conversation_id`` to ``ai_chat_history`` + its index —
+       the index MUST live here, not in platform_schema (the CREATE
+       TABLE IF NOT EXISTS no-ops on upgraded DBs whose table predates
+       the column, so a schema-side index would crash boot).
+    3. Backfill: every user's pre-threading rows become one "Earlier
+       conversation" so nothing disappears from their scrollback.
+       Re-runs match zero NULL rows — no duplicate conversations.
+    """
+    try:
+        await conn.execute(
+            """CREATE TABLE IF NOT EXISTS ai_conversations (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                user_id    BIGINT  NOT NULL,
+                title      TEXT    NOT NULL DEFAULT '',
+                created_at TEXT    NOT NULL,
+                updated_at TEXT    NOT NULL
+            )"""
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ai_conversations_user"
+            " ON ai_conversations(account_id, user_id, updated_at)"
+        )
+        await conn.execute(
+            "ALTER TABLE ai_chat_history"
+            " ADD COLUMN IF NOT EXISTS conversation_id INTEGER"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ai_chat_history_conversation"
+            " ON ai_chat_history(conversation_id)"
+        )
+        cur = await conn.execute(
+            """SELECT account_id, user_id,
+                      MIN(created_at) AS first_at, MAX(created_at) AS last_at
+                 FROM ai_chat_history
+                WHERE conversation_id IS NULL
+                GROUP BY account_id, user_id"""
+        )
+        groups = await cur.fetchall()
+        for g in groups:
+            acct, uid, first_at, last_at = g[0], g[1], g[2], g[3]
+            ins = await conn.execute(
+                "INSERT INTO ai_conversations"
+                " (account_id, user_id, title, created_at, updated_at)"
+                " VALUES (?, ?, ?, ?, ?)",
+                (acct, uid, "Earlier conversation", first_at, last_at),
+            )
+            await conn.execute(
+                "UPDATE ai_chat_history SET conversation_id = ?"
+                " WHERE account_id = ? AND user_id = ?"
+                "   AND conversation_id IS NULL",
+                (ins.lastrowid, acct, uid),
+            )
+        await conn.commit()
+        if groups:
+            logger.info(
+                "Migration: threaded %d users' legacy chat history", len(groups)
+            )
+    except Exception as e:
+        logger.error("ai_conversations migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
 
 
 async def migrate_ai_chat_history(conn) -> None:

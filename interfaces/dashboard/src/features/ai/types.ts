@@ -31,6 +31,28 @@ export interface AIChatMessage {
   ts?: string;
   /** Token usage from the backend — only present on model messages */
   usage?: AIUsage;
+  /** Persisted chain-of-thought (model rows) — restores the
+   *  Thought-process section after a refresh. */
+  reasoning?: string;
+  /** Persisted tier label ("Fast"/"Thinking"/"Reasoning") frozen at
+   *  receipt — restores the per-answer attribution after a refresh. */
+  model_tier?: string;
+  /** Ordered process timeline (thinking + tool steps) — persisted so
+   *  the "N steps" log survives refresh. */
+  process?: AIProcessStep[];
+}
+
+/** One step in the answer's process timeline. */
+export interface AIProcessStep {
+  type: 'thinking' | 'tool';
+  /** Thinking steps: the reasoning text chunk. */
+  text?: string;
+  /** Tool steps: internal tool name + human label + optional digests. */
+  name?: string;
+  label?: string;
+  args?: string;
+  /** Truncated JSON digest of the tool's result. */
+  result?: string;
 }
 
 export interface AIChatResponse {
@@ -117,6 +139,26 @@ export interface AITierSwitchResponse {
 }
 
 export interface AIHistoryResponse {
+  messages: AIChatMessage[];
+  count: number;
+}
+
+/** One chat thread in the History panel. */
+export interface AIConversation {
+  id: number;
+  /** Derived from the first question (decrypted server-side). */
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+}
+
+export interface AIConversationsResponse {
+  conversations: AIConversation[];
+}
+
+export interface AIConversationMessagesResponse {
+  conversation_id: number;
   messages: AIChatMessage[];
   count: number;
 }

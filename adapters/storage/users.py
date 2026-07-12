@@ -841,7 +841,29 @@ class UsersMixin:
         return stats
 
     async def remove_user(self, user_id: int) -> bool:
-        """Soft-delete a user."""
+        """Soft-delete a user; hard-delete their AI chat history.
+
+        The user row stays (audit trail, FK targets, possible
+        re-invite) but their assistant conversations are personal
+        free-form content with no operational value once they're off
+        the team — privacy-first, delete now rather than waiting for
+        the 90-day age-cap.  ``ai_chat_history.user_id`` carries the
+        JWT ``sub`` — the telegram_id when the user has one, else the
+        ``users.id`` PK (see ``create_jwt``) — so purge both keys,
+        scoped to the account.
+        """
+        cur = await self._db.execute(
+            "SELECT account_id, telegram_id FROM users WHERE id = ?",
+            (user_id,),
+        )
+        row = await cur.fetchone()
+        if row is not None:
+            for chat_uid in {row[1] or 0, user_id} - {0}:
+                for table in ("ai_chat_history", "ai_conversations"):
+                    await self._db.execute(
+                        f"DELETE FROM {table} WHERE account_id = ? AND user_id = ?",
+                        (row[0], chat_uid),
+                    )
         await self._db.execute(
             "UPDATE users SET is_active = 0 WHERE id = ?", (user_id,)
         )

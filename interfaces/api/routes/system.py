@@ -1628,6 +1628,11 @@ async def system_ai_feedback(
     cur = await platform_db._db.execute(sql, params)
     rows = await cur.fetchall()
 
+    from adapters.storage.ai_chat import decrypt_chat_text
+
+    def _decrypt_chat(v):
+        return decrypt_chat_text(v) if v else v
+
     # Companion aggregate: how many rows per reason in the window
     # (regardless of pagination) so the panel can show the breakdown.
     counts_sql = f"""
@@ -1670,8 +1675,11 @@ async def system_ai_feedback(
                 "feedback_note": r["feedback_note"],
                 "latency_ms": r["latency_ms"],
                 "created_at": r["created_at"],
-                "user_question": r["user_question"],
-                "ai_answer": r["ai_answer"],
+                # Chat text is encrypted at rest — decrypt for display,
+                # degrading per-row on key mismatch (same helper the
+                # user-facing history read uses).
+                "user_question": _decrypt_chat(r["user_question"]),
+                "ai_answer": _decrypt_chat(r["ai_answer"]),
             }
             for r in rows
         ],

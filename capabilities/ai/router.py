@@ -12,7 +12,6 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 import capabilities.ai as ai
-from capabilities.ai import _chat_histories
 from capabilities.ai.registry import DEFAULT_LOCATION
 from capabilities.ai.usage import build_user_ai_context, log_ai_usage as _log_ai_usage_fn, parse_ai_suggestions as _parse_suggestions
 from capabilities.permissions.roles import is_management_role
@@ -68,6 +67,12 @@ def _safe_error_message(exc: Exception, max_len: int = 200) -> str:
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
+    # Thread targeting (dashboard History panel).  ``conversation_id``
+    # continues an existing thread; ``new_conversation`` forces a fresh
+    # one (the "New chat" button).  Neither set → the user's latest
+    # thread, created lazily on first-ever message (miniapp behaviour).
+    conversation_id: int | None = None
+    new_conversation: bool = False
 
 
 class DiagnoseRequest(BaseModel):
@@ -223,11 +228,32 @@ async def ai_chat(
 
         # Auto-mode tier resolution.  When the user's stored choice is
         # "auto" this classifies the prompt and hot-swaps the per-user
-        # model cache to the right tier before ask_agent runs.  No-op
-        # for explicit-tier users — returns the stored tier unchanged.
+        # model cache to the right tier before ask_agent runs.  For
+        # explicit-tier users it re-stages the model when this worker's
+        # cache is cold or from the wrong tier (post-restart / cross-
+        # worker), so the DB-stored tier is always honoured.
         await ai.resolve_tier_for_request(
             body.message,
             account_id=account_id, user_id=int(user["sub"]),
+        )
+        # Resolve the thread BEFORE the context sync so the model's
+        # memory is scoped to THIS conversation (a stale/foreign id
+        # falls through to a fresh thread), and so the reply can carry
+        # the id of a lazily-created thread back to the client.
+        if body.new_conversation:
+            conv_id = await platform_db.create_ai_conversation(
+                account_id, int(user["sub"]), body.message,
+            )
+        else:
+            conv_id = await platform_db.resolve_ai_conversation(
+                account_id, int(user["sub"]), body.conversation_id, body.message,
+            )
+        # Conversational context comes from the DB, not this worker's
+        # memory — a follow-up usually lands on a different gunicorn
+        # worker than the previous turn, and without the sync the model
+        # answers with no memory of it.
+        await ai.sync_history_from_db(
+            platform_db, account_id, int(user["sub"]), conversation_id=conv_id,
         )
         snapshot = await ai.build_context(
             account_id, vehicle_nums=vehicle_filter,
@@ -285,13 +311,26 @@ async def ai_chat(
 
         # Persist to DB using clean text so suggestions don't re-appear on reload
         try:
+            from capabilities.ai.registry import get_model_tier_label
+            _tier_label = ""
+            try:
+                _m = result.get("model") or ai.get_model_for_user(
+                    int(user["sub"]), account_id)[1]
+                _tier_label = get_model_tier_label(_m) or ""
+            except Exception:
+                pass
             await platform_db.save_chat_messages(
-                account_id, int(user["sub"]), body.message, clean
+                account_id, int(user["sub"]), body.message, clean,
+                conversation_id=conv_id,
+                model_tier=_tier_label,
             )
         except Exception:
             pass  # never block the chat reply on DB failure
 
-        return {"reply": clean, "suggestions": suggestions, "usage": usage}
+        return {
+            "reply": clean, "suggestions": suggestions, "usage": usage,
+            "conversation_id": conv_id,
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"AI error: {type(e).__name__}")
@@ -344,6 +383,19 @@ async def ai_chat_stream(
             body.message,
             account_id=account_id, user_id=int(user["sub"]),
         )
+        # Thread resolution + DB-backed conversational-context sync —
+        # same as the non-streaming /chat path; see the comments there.
+        if body.new_conversation:
+            conv_id = await platform_db.create_ai_conversation(
+                account_id, int(user["sub"]), body.message,
+            )
+        else:
+            conv_id = await platform_db.resolve_ai_conversation(
+                account_id, int(user["sub"]), body.conversation_id, body.message,
+            )
+        await ai.sync_history_from_db(
+            platform_db, account_id, int(user["sub"]), conversation_id=conv_id,
+        )
         snapshot = await ai.build_context(account_id, vehicle_nums=vehicle_filter)
         from infra.services import get_client
         samsara = await get_client(account_id)
@@ -376,14 +428,27 @@ async def ai_chat_stream(
                 elif event.get("type") == "done":
                     # Attach the data-scope descriptor so the client can show a
                     # "Answering for your N vehicles" trust badge for restricted
-                    # users (and nothing for unrestricted ones).
-                    event = {**event, "scope": _scope_descriptor(user_context)}
+                    # users (and nothing for unrestricted ones) — plus the
+                    # thread id so a lazily-created conversation is adopted
+                    # by the client for its follow-up messages.
+                    event = {
+                        **event,
+                        "scope": _scope_descriptor(user_context),
+                        "conversation_id": conv_id,
+                    }
                 yield f"data: {json.dumps(event)}\n\n"
                 if event.get("type") == "done":
                     # Persist the final reply to DB
                     reply = event.get("reply", "")
                     try:
-                        await platform_db.save_chat_messages(account_id, uid, body.message, reply)
+                        # Text + tier label only — the chain-of-thought
+                        # and process timeline stay browser-local (the
+                        # client stores them from this same done event).
+                        await platform_db.save_chat_messages(
+                            account_id, uid, body.message, reply,
+                            conversation_id=conv_id,
+                            model_tier=event.get("model_tier") or "",
+                        )
                     except Exception:
                         pass
                     # Log per-turn observability row.  Per-attempt rows
@@ -444,20 +509,51 @@ async def ai_summary(
     user: dict = Depends(
         require_permission_any("can_ai_chat")
     ),
+    view: str = Depends(active_view),
     platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
 ):
-    """Generate an AI executive fleet briefing."""
+    """Generate an AI status briefing tailored to the caller's role.
+
+    Honors the owner/admin "View as <role>" persona (like /chat) so the
+    briefing matches the dashboard the user is looking at; the focus areas
+    themselves resolve from the role's effective permissions inside
+    ``generate_summary`` — nothing here is per-role.
+    """
     if not ai.is_configured():
         raise HTTPException(status_code=503, detail="AI not configured")
 
     account_id = user["account_id"]
     await ai.ensure_account_model(account_id)
     user_context, vehicle_filter, language = await _get_user_info(user, platform_db)
+    _apply_persona_preview(user_context, view)  # owner/admin "View as <role>"
 
     try:
         snapshot = await ai.build_context(
             account_id, vehicle_nums=vehicle_filter,
         )
+
+        # Feature-keyed snapshot enrichment: roles whose permissions include
+        # the hiring pipeline (recruiter, hr, or anyone granted the flag) get
+        # application counts in their briefing data.  Keyed by the permission,
+        # never the role name — best-effort, a failure never blocks the brief.
+        try:
+            from adapters.storage import Role as _Role
+            from capabilities.permissions.roles import get_account_permissions
+            _role_str = (user_context or {}).get("role")
+            if _role_str:
+                _perms = await get_account_permissions(_Role(_role_str), account_id)
+                if getattr(_perms, "can_manage_applications", False):
+                    _apps = await tenant_db.list_driver_applications(account_id, limit=500)
+                    _by_stage: dict[str, int] = {}
+                    for _a in _apps:
+                        _s = str(_a.get("status") or "unknown")
+                        _by_stage[_s] = _by_stage.get(_s, 0) + 1
+                    snapshot["driver_applications"] = {
+                        "total": len(_apps), "by_stage": _by_stage,
+                    }
+        except Exception:
+            pass
         # ``generate_summary`` passes action="summary" into generate() which
         # writes router telemetry per model attempt — no external log call
         # needed (it would double-log the same row).
@@ -717,17 +813,11 @@ async def get_history(
     user: dict = Depends(get_current_user),
     platform_db=Depends(get_platform_db),
 ):
-    """Get the current conversation history.
+    """Flat all-threads scrollback (legacy shape — the miniapp's view).
 
-    Reads straight from the DB so the dashboard sees the full
-    scrollback window (``_MAX_ROWS_PER_USER`` rows), not just the
-    smaller slice the in-memory ``_chat_histories`` cache holds for
-    prompt-building.  The cache is still warmed here so the next AI
-    call has prior context when chosen — but only with the recent
-    slice, since the prompt has a token budget the UI doesn't.
+    The dashboard uses the /conversations endpoints instead.  Reads
+    straight from the DB (``_MAX_ROWS_PER_USER`` rows).
     """
-    from capabilities.ai.chat import _MAX_HISTORY
-
     uid = int(user["sub"])
     account_id = user["account_id"]
 
@@ -743,17 +833,9 @@ async def get_history(
             detail=f"Failed to load history: {type(e).__name__}",
         )
 
-    # Warm the in-memory cache with the recent slice used for prompt
-    # context.  ``_store_history`` caps this at ``_MAX_HISTORY * 2``
-    # rows on next write, so seeding with that same window keeps the
-    # cache from oscillating in size.
-    if db_rows and (uid, account_id) not in _chat_histories:
-        recent = db_rows[-_MAX_HISTORY * 2:]
-        _chat_histories[(uid, account_id)] = [
-            {"role": ("User" if r["role"] == "user" else "Assistant"),
-             "text": r["text"]}
-            for r in recent
-        ]
+    # No cache-warm here anymore: the chat endpoints sync the model's
+    # context from the DB per request, scoped to ONE thread — seeding
+    # from this flat all-threads window would mix conversations.
 
     def _norm_role(r: str) -> str:
         return "user" if r.lower() in ("user",) else "model"
@@ -789,6 +871,94 @@ async def clear_history(
     except Exception:
         pass
     return {"ok": True}
+
+
+# ── Conversations (the History panel's threads) ──────────────────
+
+@router.get("/conversations")
+async def list_conversations(
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """The caller's chat threads, newest activity first.
+
+    Strictly self-scoped — same access rule as /history: nobody reads
+    another user's conversations through the customer API.
+    """
+    try:
+        conversations = await platform_db.list_ai_conversations(
+            user["account_id"], int(user["sub"]),
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load conversations: {type(e).__name__}",
+        )
+    return {"conversations": conversations}
+
+
+@router.get("/conversations/{conversation_id}/messages")
+async def get_conversation_messages(
+    conversation_id: int,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """One thread's messages, oldest first — the History panel's open
+    action.  A foreign/unknown id simply yields an empty list (the
+    query is scoped to the caller), which the client renders as an
+    empty chat rather than an error worth probing."""
+    uid = int(user["sub"])
+    account_id = user["account_id"]
+    try:
+        rows = await platform_db.get_chat_history(
+            account_id, uid, conversation_id=conversation_id,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to load conversation: {type(e).__name__}",
+        )
+
+    def _norm_role(r: str) -> str:
+        return "user" if r.lower() in ("user",) else "model"
+
+    return {
+        "conversation_id": conversation_id,
+        "messages": [
+            {"role": _norm_role(r["role"]), "text": r["text"],
+             "ts": r.get("created_at"),
+             # Tier label only — the thought log lives in the browser's
+             # localStorage (the client re-attaches it by message key).
+             "model_tier": r.get("model_tier") or ""}
+            for r in rows
+        ],
+        "count": len(rows),
+    }
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: int,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Delete ONE thread (per-chat trash icon).  Scoped delete — a
+    foreign id deletes nothing and reports ok=False."""
+    uid = int(user["sub"])
+    account_id = user["account_id"]
+    try:
+        deleted = await platform_db.delete_ai_conversation(
+            account_id, uid, conversation_id,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete conversation: {type(e).__name__}",
+        )
+    # Drop this worker's in-memory context if it was following the
+    # deleted thread; the per-request DB sync heals every other worker.
+    ai.clear_history(uid, account_id=account_id)
+    return {"ok": deleted}
 
 
 # ── Feedback signals ─────────────────────────────────────────────

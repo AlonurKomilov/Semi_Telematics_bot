@@ -67,6 +67,12 @@ MODEL_REGISTRY: dict[str, dict] = {
         "maas_model_id": "deepseek-ai/deepseek-v3.2-maas",
         "locations": ["global"],
         "max_output_tokens": 8192,
+        # Hybrid model: thinking mode is OFF by default on the API.
+        # This model serves the Thinking tier, so opt in explicitly —
+        # the vLLM-style toggle passed through the OpenAI-compat body.
+        # If the endpoint ever rejects the field, the router's error
+        # scoring downweights the model and the chain moves on.
+        "extra_body": {"chat_template_kwargs": {"thinking": True}},
     },
     "deepseek-v3.1": {
         "display": "DeepSeek V3.1",
@@ -76,6 +82,8 @@ MODEL_REGISTRY: dict[str, dict] = {
         "maas_model_id": "deepseek-ai/deepseek-v3.1-maas",
         "locations": ["us-west2"],
         "max_output_tokens": 8192,
+        # Same Thinking-tier opt-in as deepseek-v3.2 — see that entry.
+        "extra_body": {"chat_template_kwargs": {"thinking": True}},
     },
     "deepseek-ocr": {
         "display": "DeepSeek OCR",
@@ -207,6 +215,12 @@ MODEL_REGISTRY: dict[str, dict] = {
         "anthropic_model_id": "claude-sonnet-4-6",
         "locations": ["global"],
         "max_output_tokens": 8192,
+        # Extended thinking ON — this model serves the Thinking tier, so
+        # it must actually think.  The budget is carved out of
+        # max_tokens; the caller bumps max_tokens to budget + headroom
+        # and switches to the thinking-mode constraints (temperature=1,
+        # no top_p).  Remove this key to run it as a plain model.
+        "anthropic_thinking_budget": 4096,
     },
     # ── Gemini 3.5 Flash (newer than 2.5, drop-in upgrade) ────
     "gemini-3.5-flash": {
@@ -420,7 +434,10 @@ TIER_DISPLAY: dict[str, dict[str, str]] = {
 # - analysis      → thinking   ("why is X happening" needs depth)
 # - comparison    → thinking   (multi-entity needs structure)
 # - summary       → thinking   (briefings benefit from quality)
-# - troubleshooting → thinking (diagnosis needs reasoning chains)
+# - troubleshooting → reasoning (root-cause diagnosis is exactly what
+#                     the deep chain-of-thought models are for; they
+#                     gained tool access with the openai-compat agent
+#                     loop, so this is an upgrade, not a blindfold)
 # - other         → fast       (default to cheap when unsure)
 #
 # Adding a new category to the classifier?  Add a row here too —
@@ -430,7 +447,7 @@ TIER_FOR_CATEGORY: dict[str, str] = {
     "analysis":        TIER_THINKING,
     "comparison":      TIER_THINKING,
     "summary":         TIER_THINKING,
-    "troubleshooting": TIER_THINKING,
+    "troubleshooting": TIER_REASONING,
     "other":           TIER_FAST,
 }
 
@@ -556,6 +573,23 @@ def get_model_tier(model_name: str) -> str | None:
     being slotted into TIER_FALLBACK_CHAINS.
     """
     return _MODEL_TIER_INDEX.get(model_name)
+
+
+def get_model_tier_label(model_name: str) -> str | None:
+    """User-facing tier label ("Fast" / "Thinking" / "Reasoning") for a model.
+
+    This is what customer chat bubbles show as per-answer attribution —
+    users pick a tier in the picker, so the answer is attributed in the
+    same vocabulary.  The raw model id ("deepseek-r1") is an
+    implementation detail that stays server-side: ai_usage rows carry
+    it for the operator console and router analytics.
+
+    None when the model isn't slotted into any tier chain.
+    """
+    tier = _MODEL_TIER_INDEX.get(model_name)
+    if tier is None:
+        return None
+    return TIER_DISPLAY.get(tier, {}).get("label")
 
 
 def get_tier_chain(tier: str) -> list[str]:

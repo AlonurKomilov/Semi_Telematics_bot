@@ -38,6 +38,8 @@ function classifyRow(listKey: string, row: Record<string, unknown>): { tone: Ton
     }
     case 'overdue_tasks':
       return { tone: 'danger', note: row.type ? `overdue ${String(row.type).replace(/_/g, ' ')}` : 'overdue' };
+    case 'due_soon_tasks':
+      return { tone: 'warn', note: row.type ? `${String(row.type).replace(/_/g, ' ')} due soon` : 'due soon' };
     case 'pending_tasks':
       return { tone: 'info', note: row.type ? `due ${String(row.type).replace(/_/g, ' ')}` : 'pending' };
     case 'off_vehicles':
@@ -76,7 +78,7 @@ function classifyRow(listKey: string, row: Record<string, unknown>): { tone: Ton
  */
 export function extractVehicleRefs(toolResults: unknown): VehicleRef[] {
   if (!Array.isArray(toolResults)) return [];
-  const LIST_KEYS = ['vehicles', 'alerts', 'off_vehicles', 'idling_vehicles', 'rolling_vehicles', 'overdue_tasks', 'pending_tasks'];
+  const LIST_KEYS = ['vehicles', 'alerts', 'off_vehicles', 'idling_vehicles', 'rolling_vehicles', 'overdue_tasks', 'due_soon_tasks', 'pending_tasks'];
   const byVehicle = new Map<string, VehicleRef>();
 
   for (const tr of toolResults) {

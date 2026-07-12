@@ -24,7 +24,7 @@ __all__ = [
     "_cache_key", "_snapshot_hash", "_cache_get", "_cache_put",
     # chat
     "_chat_histories", "_MAX_HISTORY", "_MAX_CHAT_USERS",
-    "_store_history", "clear_history",
+    "_store_history", "clear_history", "sync_history_from_db",
     # models
     "_account_models", "_account_vision_models",
     "set_db",
@@ -115,6 +115,7 @@ from capabilities.ai.chat import (                                        # noqa
     _MAX_CHAT_USERS,
     _store_history,
     clear_history,
+    sync_history_from_db,
 )
 
 # ── models (depends: registry) ──────────────────────────────────

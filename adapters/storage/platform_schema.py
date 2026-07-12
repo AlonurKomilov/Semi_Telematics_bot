@@ -145,15 +145,42 @@ async def create_tables(conn) -> None:
         -- fail before the migration has a chance to add the column.
 
         CREATE TABLE IF NOT EXISTS ai_chat_history (
-            id         INTEGER PRIMARY KEY AUTOINCREMENT,
-            account_id INTEGER NOT NULL,
-            user_id    BIGINT  NOT NULL,
-            role       TEXT    NOT NULL,
-            text       TEXT    NOT NULL,
-            created_at TEXT    NOT NULL
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            user_id         BIGINT  NOT NULL,
+            role            TEXT    NOT NULL,
+            text            TEXT    NOT NULL,
+            created_at      TEXT    NOT NULL,
+            -- Thread id (ai_conversations.id).  NULL only on legacy rows
+            -- created before threading; the migration backfills those
+            -- into one "Earlier conversation" per user.  Its index lives
+            -- in the migration only (same rationale as
+            -- idx_ai_usage_category above).
+            conversation_id INTEGER,
+            -- Tier label ("Fast"/"Thinking"/"Reasoning") frozen at
+            -- receipt, set on 'model' rows only.  Deliberately the ONLY
+            -- answer metadata stored server-side: the chain-of-thought
+            -- and process timeline are display-only artifacts and live
+            -- in the user's browser (localStorage) — they never touch
+            -- the DB.  See migrate_ai_chat_thoughts_local_only.
+            model_tier      TEXT    NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_ai_chat_history_user
             ON ai_chat_history(account_id, user_id, created_at);
+
+        -- Chat threads (the History panel's "previous chats").  One row
+        -- per conversation; the title derives from the first question
+        -- and is encrypted at rest like the messages themselves.
+        CREATE TABLE IF NOT EXISTS ai_conversations (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            user_id    BIGINT  NOT NULL,
+            title      TEXT    NOT NULL DEFAULT '',
+            created_at TEXT    NOT NULL,
+            updated_at TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_conversations_user
+            ON ai_conversations(account_id, user_id, updated_at);
 
         CREATE TABLE IF NOT EXISTS knowledge_base (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,

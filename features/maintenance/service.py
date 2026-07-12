@@ -136,6 +136,143 @@ def classify_task_urgency(task: dict) -> Optional[str]:
 logger = logging.getLogger(__name__)
 
 
+async def apply_live_readings(tenant_db, account_id: int, tasks: list[dict]) -> None:
+    """Merge LIVE odometer / engine-hours from ``vehicle_state`` into task rows.
+
+    Mutates ``tasks`` in place, refreshing ``last_odometer`` /
+    ``last_engine_hours`` so that :func:`classify_task_urgency` judges
+    against the truck's CURRENT reading — even for tasks the 6-h
+    scheduler hasn't touched yet (newly created tasks, or tasks where
+    the alerted_at filter strands last_odometer at the value it had
+    when the first alert fired).
+
+    Shared by every reader that derives urgency: the dashboard list
+    endpoint, the maintenance AI tools, and the AI context snapshot.
+    Before this was shared, the AI classified against the stale stored
+    odometer and answered "0 overdue" while the dashboard (which had
+    the live merge inline) showed the same truck past due.
+
+    Key by ``vehicle_id`` when the task has one (always unique in
+    vehicle_state — it's the table's PRIMARY KEY).  Fall back to
+    ``(company_code, vehicle_name)`` for legacy tasks that pre-date
+    vehicle_id capture.  Keying by ``vehicle_name`` alone was the old
+    bug: two companies under the same account can both have a "103",
+    and the dict-write last-row-wins would silently merge them and
+    show the wrong company's odometer.
+
+    Falls through silently on any warehouse error; each row just keeps
+    whatever last_odometer / last_engine_hours was stored.
+    """
+    if not tasks:
+        return
+    try:
+        # Bulk lookup pulls every state row for the account once; the
+        # python-side index then routes each task to its OWN vehicle.
+        # One DB query, three index lookups per task.
+        state_rows = await tenant_db.get_vehicle_state(account_id)
+        by_id: dict[str, dict] = {}
+        by_company_name: dict[tuple[str, str], dict] = {}
+        # Name-only fallback table — populated ONLY for vehicle names
+        # that appear exactly once across the whole account.  Lets us
+        # enrich legacy tasks that were created without
+        # company_code / vehicle_id without ever colliding into a
+        # cross-company match (when a name is ambiguous, the entry
+        # is removed and the task stays blank — better empty than
+        # wrong).
+        name_counts: dict[str, int] = {}
+        by_name_unique: dict[str, dict] = {}
+        for row in state_rows:
+            vid = row.get("vehicle_id") or ""
+            if vid:
+                by_id[vid] = row
+            cc = (row.get("company_code") or "").strip()
+            nm = (row.get("vehicle_name") or "").strip()
+            if cc and nm:
+                by_company_name[(cc, nm)] = row
+            # Legacy rows without company_code can still be reached
+            # via name-only — we accept a single-tenant collision
+            # risk here only when company_code is empty in BOTH the
+            # task and the state row.
+            elif nm:
+                by_company_name[("", nm)] = row
+            if nm:
+                name_counts[nm] = name_counts.get(nm, 0) + 1
+                if name_counts[nm] == 1:
+                    by_name_unique[nm] = row
+                else:
+                    by_name_unique.pop(nm, None)
+        for t in tasks:
+            live = None
+            # ``trust_live`` flips on when the lookup is unambiguous
+            # (vehicle_id match or company-scoped name match) — at
+            # that point the live reading is authoritative for THAT
+            # exact vehicle and can be used even if it's lower than
+            # the stored value.  This is the recovery path for
+            # tasks whose ``last_odometer`` was corrupted by the
+            # pre-fix scheduler's name-only cross-company merge.
+            trust_live = False
+            tid = (t.get("vehicle_id") or "").strip()
+            if tid and tid in by_id:
+                live = by_id[tid]
+                trust_live = True
+            else:
+                cc = (t.get("company_code") or "").strip()
+                nm = (t.get("vehicle_name") or "").strip()
+                if nm:
+                    live = by_company_name.get((cc, nm))
+                    if live is not None:
+                        # Scoped by company → authoritative.
+                        trust_live = bool(cc)
+                    # Final fallback: name-only when unambiguous.
+                    # Catches tasks that were created with neither
+                    # vehicle_id nor company_code (the SPN
+                    # auto-creator + legacy dashboard form did
+                    # this).  Skipped when the name resolves to
+                    # multiple companies — we'd rather leave the
+                    # company chip blank than guess wrong.
+                    if live is None:
+                        live = by_name_unique.get(nm)
+                        trust_live = live is not None
+            if not live:
+                continue
+            # Backfill the task row's identity fields from the
+            # matched vehicle_state row so the Company column +
+            # future telemetry lookups have something to work with.
+            # ``or ""`` guards against None on the state row.
+            if not (t.get("company_code") or "").strip():
+                t["company_code"] = live.get("company_code") or ""
+            if not (t.get("vehicle_id") or "").strip():
+                t["vehicle_id"] = live.get("vehicle_id") or ""
+            # When ``trust_live`` is set, take the live value
+            # unconditionally — it's the current odometer for the
+            # uniquely identified vehicle.  Otherwise keep the
+            # historical "never go backwards" guard so a transient
+            # warehouse blip (returns 0 or stale low value) can't
+            # undo a real reading.
+            live_odo = live.get("odometer_mi")
+            if isinstance(live_odo, (int, float)):
+                stored_odo = t.get("last_odometer")
+                if (
+                    trust_live
+                    or stored_odo is None
+                    or float(live_odo) > float(stored_odo)
+                ):
+                    t["last_odometer"] = float(live_odo)
+            live_hrs = live.get("engine_hours")
+            if isinstance(live_hrs, (int, float)):
+                stored_hrs = t.get("last_engine_hours")
+                if (
+                    trust_live
+                    or stored_hrs is None
+                    or float(live_hrs) > float(stored_hrs)
+                ):
+                    t["last_engine_hours"] = float(live_hrs)
+    except Exception:
+        # Warehouse outage (or a context without vehicle_state, e.g.
+        # unit-test fakes) shouldn't break the caller's read.
+        pass
+
+
 async def fetch_current_telemetry_for_vehicle(
     tenant_db,
     account_id: int,

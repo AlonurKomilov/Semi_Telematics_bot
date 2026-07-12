@@ -72,13 +72,28 @@ async def get_alert_history(tool_args: dict, samsara_client,
     limit = min(int(tool_args.get("limit") or 25), 100)
     alert_type = (tool_args.get("alert_type") or "").strip() or None
     veh = (tool_args.get("vehicle_substring") or "").strip() or None
-    status = (tool_args.get("status") or "").strip() or None
-    severity = (tool_args.get("severity") or "").strip() or None
+    status = (tool_args.get("status") or "").strip().lower() or None
+    severity = (tool_args.get("severity") or "").strip().lower() or None
 
-    rows = await db.get_alert_history(
-        account_id, limit=limit,
+    # Same source the dashboard's Alerts page reads (``alert_history``
+    # with the severity/occurrence columns + acknowledged_by_name join)
+    # — the AI's answers must match what the user sees on screen.  The
+    # old read hit ``alert_acknowledgments``, which has NO severity /
+    # occurrence_count / first_seen / location columns: a severity
+    # filter crashed the tool outright, and every returned alert
+    # claimed severity "info".  ``status`` maps onto the page's
+    # ack-state semantics: 'active', 'acknowledged'/'cleared' (both
+    # mean "no longer active" in alert_history), or all states.
+    ack_state = "all"
+    if status == "active":
+        ack_state = "active"
+    elif status in ("acknowledged", "cleared"):
+        ack_state = "acknowledged"
+    rows = await db.get_active_alert_history_for_account_paged(
+        account_id,
         alert_type=alert_type, vehicle_substring=veh,
-        status=status, severity=severity,
+        severity=severity, ack_state=ack_state,
+        limit=limit,
     )
 
     # Vehicle-Access scope: only the caller's own vehicles' alerts.
@@ -97,11 +112,11 @@ async def get_alert_history(tool_args: dict, samsara_client,
                 "type": r.get("alert_type") or "",
                 "severity": r.get("severity") or "info",
                 "status": r.get("status") or "",
-                "first_seen": r.get("created_at") or r.get("first_seen") or "",
+                "first_seen": r.get("first_seen") or "",
                 "last_seen": r.get("last_seen") or "",
                 "occurrence_count": r.get("occurrence_count") or 1,
                 "location": r.get("location") or "",
-                "detail": r.get("last_detail") or r.get("message") or "",
+                "detail": r.get("last_detail") or "",
                 "acknowledged_by": r.get("acknowledged_by_name") or "",
                 "acknowledged_at": r.get("acknowledged_at") or "",
             }
