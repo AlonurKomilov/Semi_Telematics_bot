@@ -34,7 +34,7 @@ interface DriverPaySettings {
   updated_at: string;
 }
 
-interface PayrollRun {
+interface DriverPayRun {
   id: number;
   account_id: number;
   period_start: string;
@@ -85,7 +85,7 @@ interface RunItem {
   net_cents?: number;
 }
 
-interface RunDetail extends PayrollRun {
+interface RunDetail extends DriverPayRun {
   items: RunItem[];
 }
 
@@ -134,7 +134,7 @@ type Tab = 'rules' | 'runs' | 'settings';
 
 // ── Page ─────────────────────────────────────────────────────────
 
-export default function Payroll() {
+export default function DriverPay() {
   const { t } = useTranslation();
   const [tab, setTab] = useState<Tab>('runs');
   const { user, loading: authLoading } = useAuth();
@@ -162,7 +162,7 @@ export default function Payroll() {
           description={t('pages.driver_pay_desc_short')}
         />
         <div className={`rounded-lg border px-4 py-3 text-sm ${toneClasses('warn')}`}>
-          Payroll is not enabled for this account. Contact your administrator to activate Pay-for-Performance.
+          Driver Pay is not enabled for this account. Contact your administrator to activate the Accounting module.
         </div>
       </div>
     );
@@ -200,7 +200,7 @@ export default function Payroll() {
 // ── Runs Tab ─────────────────────────────────────────────────────
 
 function RunsTab() {
-  const [runs, setRuns] = useState<PayrollRun[]>([]);
+  const [runs, setRuns] = useState<DriverPayRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<RunDetail | null>(null);
@@ -210,7 +210,7 @@ function RunsTab() {
 
   const load = () => {
     setLoading(true);
-    apiJSON<PayrollRun[]>('/driver-pay/runs')
+    apiJSON<DriverPayRun[]>('/driver-pay/runs')
       .then(setRuns)
       .catch((e) => setError(e instanceof Error ? e.message : 'failed'))
       .finally(() => setLoading(false));
@@ -284,7 +284,7 @@ function RunsTab() {
           {
             key: 'period_start', label: 'Period', sortable: true,
             render: (_v, row) => {
-              const r = row as unknown as PayrollRun;
+              const r = row as unknown as DriverPayRun;
               return <span>{r.period_start} → {r.period_end}</span>;
             },
           },
@@ -314,7 +314,7 @@ function RunsTab() {
           {
             key: '_actions', label: '', sortable: false,
             render: (_v, row) => {
-              const r = row as unknown as PayrollRun;
+              const r = row as unknown as DriverPayRun;
               return (
                 <span className="inline-flex justify-end gap-2 w-full">
                   <button onClick={() => openRun(r.id)} className="text-primary text-xs hover:underline">

@@ -1,4 +1,4 @@
-"""Payroll API endpoints — bonus rules, runs, driver settings, paystubs."""
+"""Driver Pay API endpoints — bonus rules, runs, driver settings, paystubs."""
 # router.py is interface-layer code co-located with its feature
 # (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
 # service/alert/ai_tool/signal modules never do.
@@ -72,7 +72,7 @@ def _parse_iso_date(s: str) -> date:
 def _disabled_to_403(exc: DriverPayDisabledError) -> HTTPException:
     return HTTPException(
         status_code=403,
-        detail="Payroll feature is not enabled for this account.",
+        detail="Driver Pay feature is not enabled for this account.",
     )
 
 

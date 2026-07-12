@@ -1,4 +1,4 @@
-"""Payroll service — orchestrates run lifecycle: create / finalize / cancel.
+"""Driver Pay service — orchestrates run lifecycle: create / finalize / cancel.
 
 All calls write to the tenant audit log.  Respects the per-account
 ``payroll_enabled`` kill-switch.

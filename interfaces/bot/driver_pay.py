@@ -72,17 +72,17 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("<b>" + t("driver_pay.my_pay.title") + "</b>")
     lines.append("")
     lines.append(t(
-        "payroll.my_pay.period",
+        "driver_pay.my_pay.period",
         start=latest.get("period_start", ""),
         end=latest.get("period_end", ""),
     ))
     lines.append(t(
-        "payroll.my_pay.status",
+        "driver_pay.my_pay.status",
         status=str(latest.get("status", "draft")).upper(),
     ))
     if latest.get("base_pay_cents", 0):
         lines.append(t(
-            "payroll.my_pay.base",
+            "driver_pay.my_pay.base",
             amount=_fmt_cents(latest.get("base_pay_cents", 0)),
         ))
 
@@ -95,7 +95,7 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if load_lines:
         lines.append("")
         lines.append("<b>" + t(
-            "payroll.my_pay.loads",
+            "driver_pay.my_pay.loads",
             count=len(load_lines),
             amount=_fmt_cents(st.get("load_earnings_cents", 0)),
         ) + "</b>")
@@ -134,11 +134,11 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines.append("")
     if latest.get("deductions_cents", 0):
         lines.append(t(
-            "payroll.my_pay.gross",
+            "driver_pay.my_pay.gross",
             amount=_fmt_cents(latest.get("total_cents", 0)),
         ))
     lines.append("<b>" + t(
-        "payroll.my_pay.net",
+        "driver_pay.my_pay.net",
         amount=_fmt_cents(latest.get("net_cents", latest.get("total_cents", 0))),
     ) + "</b>")
 

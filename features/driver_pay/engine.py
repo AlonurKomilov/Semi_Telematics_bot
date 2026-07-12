@@ -1,4 +1,4 @@
-"""Payroll computation engine — pure-ish: pulls scorecards + safety events,
+"""Driver Pay computation engine — pure-ish: pulls scorecards + safety events,
 applies bonus rules, returns RunItem objects.  Not yet persisted.
 """
 

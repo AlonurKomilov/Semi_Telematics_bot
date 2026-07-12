@@ -1,4 +1,4 @@
-"""Payroll scheduled jobs.
+"""Driver Pay scheduled jobs.
 
 The monthly job runs on the 1st of every month at 02:00 UTC.  For each
 account with the driver-pay module enabled it computes a *draft* run for the

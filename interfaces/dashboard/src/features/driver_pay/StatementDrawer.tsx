@@ -20,7 +20,7 @@ import { apiFetch } from '../../api/client';
 import { createLineItem, LINE_ITEM_BUCKET } from '../loads/api';
 import type {
   Statement, StatementLoadLine, StatementAddition, StatementDeduction,
-} from './Payroll';
+} from './DriverPay';
 
 const money = (c: number | null | undefined) =>
   c == null ? '$0.00'

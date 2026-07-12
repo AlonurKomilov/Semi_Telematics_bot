@@ -1,4 +1,4 @@
-"""Payroll (Pay-for-Performance) CRUD mixin.
+"""Driver Pay CRUD mixin (physical tables kept as payroll_* — internal legacy).
 
 Tables:
   - bonus_rules         — per-account configurable bonus rules

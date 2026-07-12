@@ -104,7 +104,7 @@ const Invites          = lazyWithReload(() => import('./features/settings/Invite
 const Permissions      = lazyWithReload(() => import('./features/permissions/Permissions'));
 const ScorecardRules   = lazyWithReload(() => import('./features/scorecards/ScorecardRules'));
 const Billing          = lazyWithReload(() => import('./features/billing/Billing'));
-const Payroll          = lazyWithReload(() => import('./features/driver_pay/Payroll'));
+const DriverPay        = lazyWithReload(() => import('./features/driver_pay/DriverPay'));
 const Coaching         = lazyWithReload(() => import('./features/coaching/Coaching'));
 const Drivers          = lazyWithReload(() => import('./features/drivers/Drivers'));
 const Applications     = lazyWithReload(() => import('./features/applications/Applications'));
@@ -279,7 +279,7 @@ export default function AppRouter() {
           path="admin/inspection-template"
           element={<Navigate to="/inspections?tab=template" replace />}
         />
-        <Route path="driver-pay" element={L(<P perm="can_driver_pay_admin"><Payroll /></P>)} />
+        <Route path="driver-pay" element={L(<P perm="can_driver_pay_admin"><DriverPay /></P>)} />
         <Route path="coaching" element={L(<P perm="can_coaching_admin"><Coaching /></P>)} />
         <Route path="workforce/drivers" element={L(<P perm="can_manage_driver_docs"><Drivers /></P>)} />
         <Route path="workforce/applications" element={L(<P perm="can_manage_applications"><Applications /></P>)} />
