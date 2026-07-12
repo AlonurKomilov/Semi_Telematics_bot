@@ -27,8 +27,8 @@ from .models import (
 log = logging.getLogger(__name__)
 
 
-class PayrollDisabledError(RuntimeError):
-    """Raised when payroll operations are attempted on an account where
+class DriverPayDisabledError(RuntimeError):
+    """Raised when driver-pay operations are attempted on an account where
     the ``payroll_enabled`` kill-switch is OFF."""
 
 
@@ -37,12 +37,12 @@ async def _assert_enabled(account_id: int) -> None:
     pdb = get_db()
     acct = await pdb.get_account(account_id)
     # Payroll is an Accounting feature (docs/FEATURES.md): available when
-    # the Accounting module is on; who may use it is the can_payroll_admin
+    # the Accounting module is on; who may use it is the can_driver_pay_admin
     # permission (masked off with the module).  No standalone switch.
     if acct is None or not module_enabled(
         getattr(acct, "disabled_modules", ""), "accounting",
     ):
-        raise PayrollDisabledError(
+        raise DriverPayDisabledError(
             f"accounting module is disabled for account {account_id}"
         )
 
@@ -58,11 +58,11 @@ async def _audit(
             account_id=account_id,
             user_id=user_id,
             action=action,
-            target_type="payroll_run",
+            target_type="driver_pay_run",
             target_id=target_id,
         )
     except Exception:  # pragma: no cover — audit must never break a run
-        log.exception("payroll audit failed")
+        log.exception("driver-pay audit failed")
 
 
 # ── Rule CRUD ──────────────────────────────────────────────────────
@@ -99,7 +99,7 @@ async def create_rule(
         period_days=period_days, score_min=score_min,
         event_type=event_type, max_count=max_count, active=active,
     )
-    await _audit(account_id, user_id, "payroll_rule_created", str(rule_id))
+    await _audit(account_id, user_id, "driver_pay_rule_created", str(rule_id))
     return rule_id
 
 
@@ -110,7 +110,7 @@ async def update_rule(
     tenant = await get_tenant_db(account_id)
     ok = await tenant.update_bonus_rule(account_id, rule_id, **fields)
     if ok:
-        await _audit(account_id, user_id, "payroll_rule_updated", str(rule_id))
+        await _audit(account_id, user_id, "driver_pay_rule_updated", str(rule_id))
     return ok
 
 
@@ -120,7 +120,7 @@ async def delete_rule(
     await _assert_enabled(account_id)
     tenant = await get_tenant_db(account_id)
     await tenant.delete_bonus_rule(account_id, rule_id)
-    await _audit(account_id, user_id, "payroll_rule_deleted", str(rule_id))
+    await _audit(account_id, user_id, "driver_pay_rule_deleted", str(rule_id))
     return True
 
 
@@ -150,7 +150,7 @@ async def upsert_driver_settings(
         pay_model=pay_model, pay_rate=pay_rate,
     )
     await _audit(
-        account_id, user_id, "payroll_driver_settings_updated", driver_id,
+        account_id, user_id, "driver_pay_driver_settings_updated", driver_id,
     )
 
 
@@ -160,7 +160,7 @@ async def create_run(
     account_id: int, *, user_id: int,
     period_start: date, period_end: date,
 ) -> int:
-    """Compute payroll for the given period and persist as a draft run.
+    """Compute driver pay for the given period and persist as a draft run.
 
     Returns the new run_id.  Status starts as ``draft``; admins finalize
     it via :func:`finalize_run` once they've reviewed.
@@ -172,7 +172,7 @@ async def create_run(
     items: list[RunItem] = await compute_run(account_id, period_start, period_end)
     tenant = await get_tenant_db(account_id)
 
-    run_id = await tenant.create_payroll_run(
+    run_id = await tenant.create_driver_pay_run(
         account_id,
         period_start=period_start.isoformat(),
         period_end=period_end.isoformat(),
@@ -181,7 +181,7 @@ async def create_run(
 
     grand_total = 0
     for item in items:
-        await tenant.add_payroll_run_item(
+        await tenant.add_driver_pay_run_item(
             run_id=run_id,
             driver_id=item.driver_id,
             driver_name=item.driver_name,
@@ -207,9 +207,9 @@ async def create_run(
         )
         # The run's grand total is NET — what's actually disbursed.
         grand_total += item.net_cents
-    await tenant.set_payroll_run_total(account_id, run_id, grand_total)
+    await tenant.set_driver_pay_run_total(account_id, run_id, grand_total)
 
-    await _audit(account_id, user_id, "payroll_run_created", str(run_id))
+    await _audit(account_id, user_id, "driver_pay_run_created", str(run_id))
     return run_id
 
 
@@ -218,17 +218,17 @@ async def list_runs(account_id: int, *, limit: int = 50) -> list[dict]:
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return []
-    return await tenant.list_payroll_runs(account_id, limit=limit)
+    return await tenant.list_driver_pay_runs(account_id, limit=limit)
 
 
 async def get_run_detail(account_id: int, run_id: int) -> Optional[dict]:
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return None
-    run = await tenant.get_payroll_run(account_id, run_id)
+    run = await tenant.get_driver_pay_run(account_id, run_id)
     if run is None:
         return None
-    items = await tenant.get_payroll_run_items(run_id)
+    items = await tenant.get_driver_pay_run_items(run_id)
     run["items"] = items
     return run
 
@@ -238,15 +238,15 @@ async def finalize_run(
 ) -> bool:
     await _assert_enabled(account_id)
     tenant = await get_tenant_db(account_id)
-    run = await tenant.get_payroll_run(account_id, run_id)
+    run = await tenant.get_driver_pay_run(account_id, run_id)
     if run is None:
         return False
     if run["status"] != STATUS_DRAFT:
         raise ValueError(
             f"can only finalize a draft run (current status: {run['status']})"
         )
-    await tenant.set_payroll_run_status(account_id, run_id, STATUS_FINALIZED)
-    await _audit(account_id, user_id, "payroll_run_finalized", str(run_id))
+    await tenant.set_driver_pay_run_status(account_id, run_id, STATUS_FINALIZED)
+    await _audit(account_id, user_id, "driver_pay_run_finalized", str(run_id))
     return True
 
 
@@ -255,13 +255,13 @@ async def cancel_run(
 ) -> bool:
     await _assert_enabled(account_id)
     tenant = await get_tenant_db(account_id)
-    run = await tenant.get_payroll_run(account_id, run_id)
+    run = await tenant.get_driver_pay_run(account_id, run_id)
     if run is None:
         return False
     if run["status"] not in (STATUS_DRAFT, STATUS_FINALIZED):
         return False
-    await tenant.set_payroll_run_status(account_id, run_id, STATUS_CANCELLED)
-    await _audit(account_id, user_id, "payroll_run_cancelled", str(run_id))
+    await tenant.set_driver_pay_run_status(account_id, run_id, STATUS_CANCELLED)
+    await _audit(account_id, user_id, "driver_pay_run_cancelled", str(run_id))
     return True
 
 

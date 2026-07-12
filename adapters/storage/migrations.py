@@ -6075,3 +6075,45 @@ async def migrate_load_settlement_columns(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+
+@_register("145_rename_payroll_flags_to_driver_pay")
+async def migrate_rename_payroll_flags(conn) -> None:
+    """Feature rename payroll → driver_pay: re-key the two permission
+    flags inside stored role_permissions JSON so saved overrides keep
+    working under the new flag names.  Idempotent; a missed row degrades
+    gracefully (the role's code default still applies).  Physical table
+    names (payroll_runs / payroll_run_items) stay as internal storage
+    identifiers — the Billing→Subscription precedent (billing_* tables
+    kept)."""
+    import json as _json
+    try:
+        cur = await conn.execute("SELECT id, permissions FROM role_permissions")
+        for r in await cur.fetchall():
+            row = dict(r)
+            try:
+                perms = _json.loads(row.get("permissions") or "{}")
+            except (TypeError, ValueError):
+                continue
+            changed = False
+            for old, new in (
+                ("can_payroll_admin", "can_driver_pay_admin"),
+                ("can_payroll_view_own", "can_driver_pay_view_own"),
+            ):
+                if old in perms:
+                    perms[new] = perms.pop(old)
+                    changed = True
+            if changed:
+                await conn.execute(
+                    "UPDATE role_permissions SET permissions = ? WHERE id = ?",
+                    (_json.dumps(perms), row["id"]),
+                )
+        await conn.commit()
+        logger.info("Migration 145: payroll→driver_pay permission flags re-keyed")
+    except Exception as e:
+        logger.error("Migration 145 flag rekey failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass

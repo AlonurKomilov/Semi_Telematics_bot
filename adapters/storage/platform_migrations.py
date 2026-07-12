@@ -887,7 +887,7 @@ async def migrate_add_users_last_seen(conn) -> None:
 
 async def migrate_add_users_samsara_driver_id(conn) -> None:
     """Add users.samsara_driver_id — explicit Telegram-user ↔ Samsara-driver
-    binding. Required for /coaching/me and /payroll/me; without it those
+    binding. Required for /coaching/me and /driver-pay/me; without it those
     endpoints can't safely return per-driver data because the prior heuristic
     (most-recent safety event by truck) would leak data after vehicle reassignment.
     Default NULL: existing rows must be linked by an admin before the driver

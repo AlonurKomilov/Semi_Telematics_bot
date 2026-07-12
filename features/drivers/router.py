@@ -946,7 +946,7 @@ async def update_user_samsara_driver_id(
     tenant_db=Depends(get_tenant_db),
 ):
     """Bind a member to a Samsara driver_id (gates their /coaching/me and
-    /payroll/me self-service data).  Setting NULL unbinds."""
+    /driver-pay/me self-service data).  Setting NULL unbinds."""
     target = await platform_db.get_user(user_id)
     if not target or target.account_id != user["account_id"]:
         raise HTTPException(status_code=404, detail="User not found")

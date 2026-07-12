@@ -75,7 +75,7 @@ from .geofence import GeofenceMixin
 from .custom_poi import CustomPoiMixin
 from .scorecard import ScorecardMixin
 from .warehouse import WarehouseMixin
-from .payroll import PayrollMixin
+from .driver_pay import DriverPayMixin
 from .coaching import CoachingMixin
 from .storage_sync import StorageSyncMixin
 from .ai_chat import AIChatHistoryMixin
@@ -126,7 +126,7 @@ class Database(
     CustomPoiMixin,
     ScorecardMixin,
     WarehouseMixin,
-    PayrollMixin,
+    DriverPayMixin,
     CoachingMixin,
     StorageSyncMixin,
     AIChatHistoryMixin,

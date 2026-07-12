@@ -823,21 +823,6 @@
     "error_content": "📋 <b>Rukunka Warbixinta</b>\n\n⚠️ Warbixinta lama samayn karin.",
     "sending": "📋 Warbixintaada <b>{rtype}</b> ee la qorsheeyay waa la sameynayaa..."
   },
-  "payroll": {
-    "title": "Mushahar lagu Bixiyo Waxqabad",
-    "disabled_for_account": "Adeegga mushaharka kuma shaqeeyo akoonkan.",
-    "my_pay": {
-      "title": "Mushahaarkayga",
-      "period": "Muddo: {start} → {end}",
-      "status": "Xaalada: {status}",
-      "base": "Mushahar aasaasi ah: {amount}",
-      "bonuses": "Bonus",
-      "total": "Wadarta: {amount}",
-      "history": "Taariikh",
-      "no_driver_mapping": "Akoonkaaga lama xidhi karin diiwaan darawal.",
-      "no_history": "Wali ma jiraan jeegag mushahar."
-    }
-  },
   "coaching": {
     "title": "Tababar Otomaatik ah",
     "disabled_for_account": "Tababarka kuma shaqeeyo akoonkan.",
@@ -866,6 +851,21 @@
       "ack_button": "Aqbal",
       "ack_done": "La aqbalay. Mahadsanid!",
       "ack_failed": "Lama aqbali karin hawsha."
+    }
+  },
+  "driver_pay": {
+    "title": "Mushahar lagu Bixiyo Waxqabad",
+    "disabled_for_account": "Adeegga mushaharka kuma shaqeeyo akoonkan.",
+    "my_pay": {
+      "title": "Mushahaarkayga",
+      "period": "Muddo: {start} → {end}",
+      "status": "Xaalada: {status}",
+      "base": "Mushahar aasaasi ah: {amount}",
+      "bonuses": "Bonus",
+      "total": "Wadarta: {amount}",
+      "history": "Taariikh",
+      "no_driver_mapping": "Akoonkaaga lama xidhi karin diiwaan darawal.",
+      "no_history": "Wali ma jiraan jeegag mushahar."
     }
   }
 }

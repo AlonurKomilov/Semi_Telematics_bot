@@ -141,8 +141,8 @@ class FeatureSet:
     can_manage_poi_layers: bool = False # create/edit/delete custom POI map layers (owner/admin/fleet)
     can_risk_report_all: bool = False   # generate Stakeholder Risk Summary for any subject
     can_risk_report_own: bool = False   # generate Stakeholder Risk Summary for own subject only
-    can_payroll_admin: bool = False     # configure rules / trigger runs / view all paystubs
-    can_payroll_view_own: bool = False  # view own paystub history (driver self-service)
+    can_driver_pay_admin: bool = False     # configure rules / trigger runs / view all paystubs
+    can_driver_pay_view_own: bool = False  # view own paystub history (driver self-service)
     can_coaching_admin: bool = False    # manage coaching rules + assign manually + view all
     can_coaching_view_own: bool = False # see + acknowledge own coaching assignments
     # Driver Module — profile + document management.
@@ -210,7 +210,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_billing=True,
         can_manage_poi_layers=True,
         can_risk_report_all=True, can_risk_report_own=True,
-        can_payroll_admin=True, can_payroll_view_own=True,
+        can_driver_pay_admin=True, can_driver_pay_view_own=True,
         can_coaching_admin=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_manage_drivers=True,
@@ -242,7 +242,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_billing=True,
         can_manage_poi_layers=True,
         can_risk_report_all=True, can_risk_report_own=True,
-        can_payroll_admin=True, can_payroll_view_own=True,
+        can_driver_pay_admin=True, can_driver_pay_view_own=True,
         can_coaching_admin=True, can_coaching_view_own=True,
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_manage_drivers=True,
@@ -272,7 +272,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_events_all=True, can_events_vehicle=True,
         can_manage_poi_layers=True,
         can_risk_report_all=False, can_risk_report_own=True,
-        can_payroll_admin=False, can_payroll_view_own=False,
+        can_driver_pay_admin=False, can_driver_pay_view_own=False,
         can_coaching_admin=True, can_coaching_view_own=False,
         # Fleet managers handle driver records day-to-day (assignments,
         # CDL renewals) so they get the admin permission too.
@@ -296,7 +296,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_cost_per_mile=False,
         can_events_all=True, can_events_vehicle=True,
         can_risk_report_all=True, can_risk_report_own=True,
-        can_payroll_admin=False, can_payroll_view_own=False,
+        can_driver_pay_admin=False, can_driver_pay_view_own=False,
         can_coaching_admin=True, can_coaching_view_own=False,
         # Safety needs read-only access for compliance checks (CDL /
         # medical card expirations) — read-only via the admin route
@@ -325,7 +325,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_cost_per_mile=False,
         can_events_all=True, can_events_vehicle=True,
         can_risk_report_all=False, can_risk_report_own=False,
-        can_payroll_admin=False, can_payroll_view_own=False,
+        can_driver_pay_admin=False, can_driver_pay_view_own=False,
         can_coaching_admin=False, can_coaching_view_own=False,
         can_inspections_all=True, can_inspections_vehicle=False,
     ),
@@ -356,7 +356,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_fuel=True,                         # Fuel report
         can_fuel_cost=True,                    # Fuel cost tracker
         can_cost_per_mile=True,                # CPM dashboard
-        can_payroll_admin=True,                # Payroll runs + history
+        can_driver_pay_admin=True,                # Payroll runs + history
         can_efficiency=True,                   # Efficiency report for cost analysis
         # Cost rollups by truck — used to be granted via the overloaded
         # ``can_maintenance_all`` flag; split into its own gate in
@@ -385,7 +385,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_cost_per_mile=False,
         can_events_all=False, can_events_vehicle=True,
         can_risk_report_all=False, can_risk_report_own=True,
-        can_payroll_admin=False, can_payroll_view_own=True,
+        can_driver_pay_admin=False, can_driver_pay_view_own=True,
         can_coaching_admin=False, can_coaching_view_own=True,
         # Drivers see their own profile + documents (read-only); they
         # never see other drivers' records.
@@ -418,7 +418,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_cost_per_mile=False,
         can_events_all=False, can_events_vehicle=True,
         can_risk_report_all=False, can_risk_report_own=True,
-        can_payroll_admin=False, can_payroll_view_own=True,
+        can_driver_pay_admin=False, can_driver_pay_view_own=True,
         can_coaching_admin=False, can_coaching_view_own=True,
         can_manage_driver_docs=False, can_driver_docs_own=True,
         can_inspections_all=False, can_inspections_vehicle=True,
@@ -1127,8 +1127,8 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_manage_billing": "billing & subscription management",
     "can_risk_report_all": "stakeholder risk summary report (all subjects)",
     "can_risk_report_own": "stakeholder risk summary report (own subject)",
-    "can_payroll_admin": "payroll: manage rules, trigger runs, view all paystubs",
-    "can_payroll_view_own": "payroll: view own paystub history",
+    "can_driver_pay_admin": "driver pay: manage rules, trigger runs, view all paystubs",
+    "can_driver_pay_view_own": "driver pay: view own paystub history",
     "can_coaching_admin": "coaching: manage rules, assign coaching, view all",
     "can_coaching_view_own": "coaching: see + acknowledge own assignments",
     "can_carrier_directory": "carrier directory (view)",

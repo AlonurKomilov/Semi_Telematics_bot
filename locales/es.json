@@ -823,21 +823,6 @@
     "error_content": "📋 <b>Suscripción de Reporte</b>\n\n⚠️ No se pudo generar el reporte.",
     "sending": "📋 Generando su reporte programado de <b>{rtype}</b>..."
   },
-  "payroll": {
-    "title": "Pago por rendimiento",
-    "disabled_for_account": "La función de nómina no está habilitada para esta cuenta.",
-    "my_pay": {
-      "title": "Mi pago",
-      "period": "Período: {start} → {end}",
-      "status": "Estado: {status}",
-      "base": "Pago base: {amount}",
-      "bonuses": "Bonos",
-      "total": "Total: {amount}",
-      "history": "Historial",
-      "no_driver_mapping": "No pudimos vincular tu cuenta a un registro de conductor.",
-      "no_history": "Aún no hay recibos de pago."
-    }
-  },
   "coaching": {
     "title": "Coaching automático",
     "disabled_for_account": "El coaching no está habilitado para esta cuenta.",
@@ -866,6 +851,21 @@
       "ack_button": "Reconocer",
       "ack_done": "Reconocido. ¡Gracias!",
       "ack_failed": "No se pudo reconocer la asignación."
+    }
+  },
+  "driver_pay": {
+    "title": "Pago por rendimiento",
+    "disabled_for_account": "La función de nómina no está habilitada para esta cuenta.",
+    "my_pay": {
+      "title": "Mi pago",
+      "period": "Período: {start} → {end}",
+      "status": "Estado: {status}",
+      "base": "Pago base: {amount}",
+      "bonuses": "Bonos",
+      "total": "Total: {amount}",
+      "history": "Historial",
+      "no_driver_mapping": "No pudimos vincular tu cuenta a un registro de conductor.",
+      "no_history": "Aún no hay recibos de pago."
     }
   }
 }

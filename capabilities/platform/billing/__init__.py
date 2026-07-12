@@ -4,7 +4,7 @@ NAMING: Billing is the platform money FAMILY — everything about 4truck
 charging the customer account (subscription, invoices, comp, enforcement;
 future: payments, one-time purchases go HERE as children).  Customers see
 it labelled "Subscription".  Customer→broker money is a future
-`features/invoicing/`; driver pay is `features/payroll/` — never here.
+`features/invoicing/`; driver pay is `features/driver_pay/` — never here.
 SSOT: docs/FEATURES.md "Money domains".
 
 Usage:

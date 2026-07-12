@@ -2,9 +2,9 @@
 
 Covers:
   * Pure rule evaluation matrix (score_threshold, incident_count)
-  * PayrollMixin CRUD round-trip on Database
+  * DriverPayMixin CRUD round-trip on Database
   * service.create_run / finalize_run lifecycle
-  * payroll_enabled kill-switch (raises PayrollDisabledError)
+  * payroll_enabled kill-switch (raises DriverPayDisabledError)
   * compute_run end-to-end with a synthetic 3-driver fleet + 2 rules
 """
 
@@ -23,21 +23,21 @@ import pytest_asyncio
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from adapters.storage import Database, Role
-from features.payroll import engine as payroll_engine
-from features.payroll import service as payroll_service
-from features.payroll.engine import (
+from features.driver_pay import engine as payroll_engine
+from features.driver_pay import service as payroll_service
+from features.driver_pay.engine import (
     compute_run,
     evaluate_incident_rule,
     evaluate_score_rule,
 )
-from features.payroll.models import (
+from features.driver_pay.models import (
     KIND_INCIDENT_COUNT,
     KIND_SCORE_THRESHOLD,
     STATUS_DRAFT,
     STATUS_FINALIZED,
     BonusRule,
 )
-from features.payroll.service import PayrollDisabledError
+from features.driver_pay.service import DriverPayDisabledError
 
 
 ACCOUNT_ID = 1
@@ -72,7 +72,7 @@ def _patch_services(monkeypatch, tenant_db, *, payroll_enabled: bool = True,
         # The service now reads the MODULE mask, not the legacy flag —
         # the harness keeps its boolean param and maps it.
         # Payroll is an Accounting feature now — disabling it = disabling
-        # the accounting module (the per-user gate is can_payroll_admin).
+        # the accounting module (the per-user gate is can_driver_pay_admin).
         disabled_modules="" if payroll_enabled else "accounting",
     )
 
@@ -188,9 +188,9 @@ class TestRuleEvaluation:
         assert evaluate_incident_rule(self._score_rule(), 0) is None
 
 
-# ── PayrollMixin CRUD round-trip ─────────────────────────────────
+# ── DriverPayMixin CRUD round-trip ─────────────────────────────────
 
-class TestPayrollMixinCRUD:
+class TestDriverPayMixinCRUD:
     async def test_bonus_rule_crud(self, tenant: Database):
         rid = await tenant.create_bonus_rule(
             ACCOUNT_ID, name="r1", kind=KIND_SCORE_THRESHOLD,
@@ -232,29 +232,29 @@ class TestPayrollMixinCRUD:
         assert int(rows[0]["opt_in"]) == 0
 
     async def test_payroll_run_with_items(self, tenant: Database):
-        run_id = await tenant.create_payroll_run(
+        run_id = await tenant.create_driver_pay_run(
             ACCOUNT_ID, period_start="2025-01-01",
             period_end="2025-01-31", created_by=0,
         )
-        await tenant.add_payroll_run_item(
+        await tenant.add_driver_pay_run_item(
             run_id=run_id, driver_id="DRV1", driver_name="Alice",
             base_pay_cents=200000, bonus_total_cents=15000,
             total_cents=215000,
             breakdown=[{"rule_id": 1, "name": "Safe", "kind": "score_threshold",
                         "amount_cents": 15000, "detail": "score 90"}],
         )
-        await tenant.set_payroll_run_total(ACCOUNT_ID, run_id, 215000)
+        await tenant.set_driver_pay_run_total(ACCOUNT_ID, run_id, 215000)
 
-        run = await tenant.get_payroll_run(ACCOUNT_ID, run_id)
+        run = await tenant.get_driver_pay_run(ACCOUNT_ID, run_id)
         assert run and run["status"] == STATUS_DRAFT
         assert run["total_cents"] == 215000
 
-        items = await tenant.get_payroll_run_items(run_id)
+        items = await tenant.get_driver_pay_run_items(run_id)
         assert len(items) == 1
         assert items[0]["breakdown"][0]["amount_cents"] == 15000
 
-        await tenant.set_payroll_run_status(ACCOUNT_ID, run_id, STATUS_FINALIZED)
-        run = await tenant.get_payroll_run(ACCOUNT_ID, run_id)
+        await tenant.set_driver_pay_run_status(ACCOUNT_ID, run_id, STATUS_FINALIZED)
+        run = await tenant.get_driver_pay_run(ACCOUNT_ID, run_id)
         assert run["status"] == STATUS_FINALIZED
         assert run.get("finalized_at")
 
@@ -382,7 +382,7 @@ class TestServiceLifecycle:
         self, tenant: Database, monkeypatch,
     ):
         _patch_services(monkeypatch, tenant, payroll_enabled=False)
-        with pytest.raises(PayrollDisabledError):
+        with pytest.raises(DriverPayDisabledError):
             await payroll_service.create_rule(
                 ACCOUNT_ID, user_id=1, name="x",
                 kind=KIND_SCORE_THRESHOLD, amount_cents=1000, score_min=80.0,
@@ -392,7 +392,7 @@ class TestServiceLifecycle:
         self, tenant: Database, monkeypatch,
     ):
         _patch_services(monkeypatch, tenant, payroll_enabled=False)
-        with pytest.raises(PayrollDisabledError):
+        with pytest.raises(DriverPayDisabledError):
             await payroll_service.create_run(
                 ACCOUNT_ID, user_id=1,
                 period_start=date(2025, 1, 1), period_end=date(2025, 1, 31),
@@ -459,13 +459,13 @@ class TestServiceLifecycle:
     async def test_cancel_run(self, tenant: Database, monkeypatch):
         _patch_services(monkeypatch, tenant, cards=[], safety_events=[])
         # Create a draft directly via tenant
-        rid = await tenant.create_payroll_run(
+        rid = await tenant.create_driver_pay_run(
             ACCOUNT_ID, period_start="2025-01-01",
             period_end="2025-01-31", created_by=1,
         )
         ok = await payroll_service.cancel_run(ACCOUNT_ID, rid, user_id=1)
         assert ok
-        run = await tenant.get_payroll_run(ACCOUNT_ID, rid)
+        run = await tenant.get_driver_pay_run(ACCOUNT_ID, rid)
         assert run["status"] == "cancelled"
 
 
@@ -481,10 +481,10 @@ def test_payroll_is_an_accounting_feature_not_a_module():
     assert "payroll" not in TOGGLEABLE_MODULES
     # Disabling ACCOUNTING masks the payroll flags (they own only accounting).
     off = masked_off_flags("accounting")
-    assert {"can_payroll_admin", "can_payroll_view_own"} <= off
+    assert {"can_driver_pay_admin", "can_driver_pay_view_own"} <= off
     # A payroll flag is never masked by any OTHER department alone.
     for mod in ("fleet", "dispatch", "safety", "hr"):
-        assert "can_payroll_admin" not in masked_off_flags(mod)
+        assert "can_driver_pay_admin" not in masked_off_flags(mod)
 
 
 def test_account_modules_routes_replace_payroll_enabled():

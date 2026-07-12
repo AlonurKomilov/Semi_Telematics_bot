@@ -9,6 +9,7 @@ import { lazy, Suspense, type ReactNode } from 'react';
 import { pickShell } from './shells';
 import { useRoleView } from './context/RoleViewContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import AssistantHost from './features/ai/AssistantHost';
 
 /**
  * Wrap ``lazy(() => import(...))`` so a "chunk-not-found" failure
@@ -22,9 +23,11 @@ import ProtectedRoute from './components/ProtectedRoute';
  * the chunk, surface the error so it shows up in the error boundary
  * rather than spinning forever.
  */
-function lazyWithReload<T extends { default: React.ComponentType<unknown> }>(
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lazyWithReload<T extends { default: React.ComponentType<any> }>(
   loader: () => Promise<T>,
-): React.LazyExoticComponent<React.ComponentType<unknown>> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): React.LazyExoticComponent<React.ComponentType<any>> {
   return lazy(() =>
     loader().catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
@@ -101,7 +104,7 @@ const Invites          = lazyWithReload(() => import('./features/settings/Invite
 const Permissions      = lazyWithReload(() => import('./features/permissions/Permissions'));
 const ScorecardRules   = lazyWithReload(() => import('./features/scorecards/ScorecardRules'));
 const Billing          = lazyWithReload(() => import('./features/billing/Billing'));
-const Payroll          = lazyWithReload(() => import('./features/payroll/Payroll'));
+const Payroll          = lazyWithReload(() => import('./features/driver_pay/Payroll'));
 const Coaching         = lazyWithReload(() => import('./features/coaching/Coaching'));
 const Drivers          = lazyWithReload(() => import('./features/drivers/Drivers'));
 const Applications     = lazyWithReload(() => import('./features/applications/Applications'));
@@ -151,7 +154,12 @@ export default function AppRouter() {
           exactly like the real form, but still auth + permission gated. */}
       <Route path="applications/preview/:companyId"
         element={L(<P perm="can_manage_applications"><ApplyPreview /></P>)} />
-      <Route element={<Shell />}>
+      {/* AssistantHost wraps the shell ONCE: it mounts the copilot panel
+          + page-context providers above every dashboard page, so the
+          panel is a single instance and feature pages can publish their
+          context.  Wrapping is transparent to routing — Shell still
+          renders <Outlet/> for the child routes below. */}
+      <Route element={<AssistantHost><Shell /></AssistantHost>}>
         <Route index element={L(<Overview />)} />
 
         {/* Shared feature pages.  URL = feature name (single source of
@@ -271,7 +279,7 @@ export default function AppRouter() {
           path="admin/inspection-template"
           element={<Navigate to="/inspections?tab=template" replace />}
         />
-        <Route path="payroll" element={L(<P perm="can_payroll_admin"><Payroll /></P>)} />
+        <Route path="driver-pay" element={L(<P perm="can_driver_pay_admin"><Payroll /></P>)} />
         <Route path="coaching" element={L(<P perm="can_coaching_admin"><Coaching /></P>)} />
         <Route path="workforce/drivers" element={L(<P perm="can_manage_driver_docs"><Drivers /></P>)} />
         <Route path="workforce/applications" element={L(<P perm="can_manage_applications"><Applications /></P>)} />

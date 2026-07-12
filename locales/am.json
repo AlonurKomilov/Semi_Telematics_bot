@@ -823,21 +823,6 @@
     "error_content": "📋 <b>የሪፖርት ደንበኝነት</b>\n\n⚠️ ሪፖርቱን ማዘጋጀት አልተቻለም።",
     "sending": "📋 የታቀደው <b>{rtype}</b> ሪፖርትዎ እየተዘጋጀ ነው..."
   },
-  "payroll": {
-    "title": "በአፈጻጸም ላይ የተመሰረተ ክፍያ",
-    "disabled_for_account": "ለዚህ መለያ የክፍያ ሥርዓት አልነቃም።",
-    "my_pay": {
-      "title": "የእኔ ክፍያ",
-      "period": "ጊዜ፡ {start} → {end}",
-      "status": "ሁኔታ፡ {status}",
-      "base": "መሠረታዊ ክፍያ፡ {amount}",
-      "bonuses": "ቦነሶች",
-      "total": "ድምር፡ {amount}",
-      "history": "ታሪክ",
-      "no_driver_mapping": "መለያዎን ከአሽከርካሪ መዝገብ ጋር ማዛመድ አልተቻለም።",
-      "no_history": "እስካሁን የክፍያ ሰነድ የለም።"
-    }
-  },
   "coaching": {
     "title": "ራስ-ሰር ኮቺንግ",
     "disabled_for_account": "ኮቺንግ ለዚህ መለያ አልነቃም።",
@@ -866,6 +851,21 @@
       "ack_button": "ተቀበል",
       "ack_done": "ተቀብሏል። አመሰግናለሁ!",
       "ack_failed": "ምድብን መቀበል አልተቻለም።"
+    }
+  },
+  "driver_pay": {
+    "title": "በአፈጻጸም ላይ የተመሰረተ ክፍያ",
+    "disabled_for_account": "ለዚህ መለያ የክፍያ ሥርዓት አልነቃም።",
+    "my_pay": {
+      "title": "የእኔ ክፍያ",
+      "period": "ጊዜ፡ {start} → {end}",
+      "status": "ሁኔታ፡ {status}",
+      "base": "መሠረታዊ ክፍያ፡ {amount}",
+      "bonuses": "ቦነሶች",
+      "total": "ድምር፡ {amount}",
+      "history": "ታሪክ",
+      "no_driver_mapping": "መለያዎን ከአሽከርካሪ መዝገብ ጋር ማዛመድ አልተቻለም።",
+      "no_history": "እስካሁን የክፍያ ሰነድ የለም።"
     }
   }
 }

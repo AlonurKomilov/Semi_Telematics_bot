@@ -850,26 +850,6 @@
     "refresh": "🔄 Refresh",
     "back": "◀️ Back"
   },
-  "payroll": {
-    "title": "Pay-for-Performance",
-    "disabled_for_account": "Payroll feature is not enabled for this account.",
-    "my_pay": {
-      "title": "My Pay",
-      "period": "Period: {start} → {end}",
-      "status": "Status: {status}",
-      "base": "Base pay: {amount}",
-      "loads": "Loads ({count}): {amount}",
-      "additions": "Additions",
-      "bonuses": "Bonuses",
-      "deductions": "Deductions",
-      "gross": "Gross: {amount}",
-      "net": "Net pay: {amount}",
-      "total": "Total: {amount}",
-      "history": "Recent history",
-      "no_driver_mapping": "We couldn't match your account to a driver record yet.",
-      "no_history": "No paystubs are available yet."
-    }
-  },
   "coaching": {
     "title": "Auto Coaching",
     "disabled_for_account": "Coaching is not enabled for this account.",
@@ -898,6 +878,26 @@
       "ack_button": "Acknowledge",
       "ack_done": "Acknowledged. Thank you!",
       "ack_failed": "Could not acknowledge this assignment."
+    }
+  },
+  "driver_pay": {
+    "title": "Driver Pay",
+    "disabled_for_account": "Driver Pay is not enabled for this account.",
+    "my_pay": {
+      "title": "My Pay",
+      "period": "Period: {start} → {end}",
+      "status": "Status: {status}",
+      "base": "Base pay: {amount}",
+      "loads": "Loads ({count}): {amount}",
+      "additions": "Additions",
+      "bonuses": "Bonuses",
+      "deductions": "Deductions",
+      "gross": "Gross: {amount}",
+      "net": "Net pay: {amount}",
+      "total": "Total: {amount}",
+      "history": "Recent history",
+      "no_driver_mapping": "We couldn't match your account to a driver record yet.",
+      "no_history": "No paystubs are available yet."
     }
   }
 }

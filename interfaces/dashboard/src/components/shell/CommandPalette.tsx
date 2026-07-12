@@ -37,7 +37,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
 
   const visibleEntries = useMemo(() => {
     return ROUTE_ENTRIES.filter((e) => {
-      if (e.path === '/payroll' && user?.payroll_enabled === false) return false;
+      if (e.path === '/driver-pay' && user?.payroll_enabled === false) return false;
       if (e.path === '/coaching' && user?.coaching_enabled === false) return false;
       if (!e.permission) return true;
       const flags = Array.isArray(e.permission) ? e.permission : [e.permission];

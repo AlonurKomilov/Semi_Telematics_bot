@@ -823,21 +823,6 @@
     "error_content": "📋 <b>ਰਿਪੋਰਟ ਸਬਸਕ੍ਰਿਪਸ਼ਨ</b>\n\n⚠️ ਰਿਪੋਰਟ ਤਿਆਰ ਨਹੀਂ ਹੋ ਸਕੀ।",
     "sending": "📋 ਤੁਹਾਡੀ ਸ਼ਡਿਊਲਡ <b>{rtype}</b> ਰਿਪੋਰਟ ਤਿਆਰ ਹੋ ਰਹੀ ਹੈ..."
   },
-  "payroll": {
-    "title": "ਪ੍ਰਦਰਸ਼ਨ ਅਨੁਸਾਰ ਤਨਖਾਹ",
-    "disabled_for_account": "ਇਸ ਖਾਤੇ ਲਈ ਪੇਰੋਲ ਫੀਚਰ ਯੋਗ ਨਹੀਂ ਹੈ।",
-    "my_pay": {
-      "title": "ਮੇਰੀ ਤਨਖਾਹ",
-      "period": "ਅਵਧੀ: {start} → {end}",
-      "status": "ਸਥਿਤੀ: {status}",
-      "base": "ਮੁੱਢਲੀ ਤਨਖਾਹ: {amount}",
-      "bonuses": "ਬੋਨਸ",
-      "total": "ਕੁੱਲ: {amount}",
-      "history": "ਇਤਿਹਾਸ",
-      "no_driver_mapping": "ਤੁਹਾਡੇ ਖਾਤੇ ਨੂੰ ਡਰਾਈਵਰ ਰਿਕਾਰਡ ਨਾਲ ਮਿਲਾਨ ਨਹੀਂ ਹੋ ਸਕਿਆ।",
-      "no_history": "ਅਜੇ ਕੋਈ ਤਨਖਾਹ ਪਰਚੀ ਨਹੀਂ।"
-    }
-  },
   "coaching": {
     "title": "ਆਟੋ ਕੋਚਿੰਗ",
     "disabled_for_account": "ਇਸ ਖਾਤੇ ਲਈ ਕੋਚਿੰਗ ਚਾਲੂ ਨਹੀਂ ਹੈ।",
@@ -866,6 +851,21 @@
       "ack_button": "ਮੰਨੋ",
       "ack_done": "ਮੰਨ ਲਿਆ। ਧੰਨਵਾਦ!",
       "ack_failed": "ਸੌਂਪਣੀ ਨੂੰ ਮੰਨਿਆ ਨਹੀਂ ਜਾ ਸਕਿਆ।"
+    }
+  },
+  "driver_pay": {
+    "title": "ਪ੍ਰਦਰਸ਼ਨ ਅਨੁਸਾਰ ਤਨਖਾਹ",
+    "disabled_for_account": "ਇਸ ਖਾਤੇ ਲਈ ਪੇਰੋਲ ਫੀਚਰ ਯੋਗ ਨਹੀਂ ਹੈ।",
+    "my_pay": {
+      "title": "ਮੇਰੀ ਤਨਖਾਹ",
+      "period": "ਅਵਧੀ: {start} → {end}",
+      "status": "ਸਥਿਤੀ: {status}",
+      "base": "ਮੁੱਢਲੀ ਤਨਖਾਹ: {amount}",
+      "bonuses": "ਬੋਨਸ",
+      "total": "ਕੁੱਲ: {amount}",
+      "history": "ਇਤਿਹਾਸ",
+      "no_driver_mapping": "ਤੁਹਾਡੇ ਖਾਤੇ ਨੂੰ ਡਰਾਈਵਰ ਰਿਕਾਰਡ ਨਾਲ ਮਿਲਾਨ ਨਹੀਂ ਹੋ ਸਕਿਆ।",
+      "no_history": "ਅਜੇ ਕੋਈ ਤਨਖਾਹ ਪਰਚੀ ਨਹੀਂ।"
     }
   }
 }

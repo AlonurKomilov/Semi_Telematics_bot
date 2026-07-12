@@ -23,7 +23,7 @@ else:
     _MixinBase = object
 
 
-class PayrollMixin(_MixinBase):
+class DriverPayMixin(_MixinBase):
 
     # ── bonus_rules ────────────────────────────────────────────
 
@@ -155,7 +155,7 @@ class PayrollMixin(_MixinBase):
 
     # ── payroll_runs ───────────────────────────────────────────
 
-    async def create_payroll_run(
+    async def create_driver_pay_run(
         self, account_id: int, *, period_start: str, period_end: str,
         created_by: int = 0,
     ) -> int:
@@ -169,7 +169,7 @@ class PayrollMixin(_MixinBase):
         await self._db.commit()
         return cur.lastrowid or 0
 
-    async def list_payroll_runs(
+    async def list_driver_pay_runs(
         self, account_id: int, limit: int = 50,
     ) -> list[dict]:
         cur = await self._db.execute(
@@ -180,7 +180,7 @@ class PayrollMixin(_MixinBase):
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
-    async def get_payroll_run(
+    async def get_driver_pay_run(
         self, account_id: int, run_id: int,
     ) -> Optional[dict]:
         cur = await self._db.execute(
@@ -190,7 +190,7 @@ class PayrollMixin(_MixinBase):
         row = await cur.fetchone()
         return dict(row) if row else None
 
-    async def set_payroll_run_status(
+    async def set_driver_pay_run_status(
         self, account_id: int, run_id: int, status: str,
     ) -> None:
         now = self._now()
@@ -208,7 +208,7 @@ class PayrollMixin(_MixinBase):
             )
         await self._db.commit()
 
-    async def set_payroll_run_total(
+    async def set_driver_pay_run_total(
         self, account_id: int, run_id: int, total_cents: int,
     ) -> None:
         await self._db.execute(
@@ -220,7 +220,7 @@ class PayrollMixin(_MixinBase):
 
     # ── payroll_run_items ──────────────────────────────────────
 
-    async def add_payroll_run_item(
+    async def add_driver_pay_run_item(
         self, *, run_id: int, driver_id: str, driver_name: str,
         base_pay_cents: int, bonus_total_cents: int,
         total_cents: int, breakdown: list[dict],
@@ -253,7 +253,7 @@ class PayrollMixin(_MixinBase):
     # deductions_cents columns on payroll_run_items are still used.
 
 
-    async def get_payroll_run_items(self, run_id: int) -> list[dict]:
+    async def get_driver_pay_run_items(self, run_id: int) -> list[dict]:
         cur = await self._db.execute(
             "SELECT * FROM payroll_run_items WHERE run_id = ? "
             "ORDER BY driver_name ASC, driver_id ASC",

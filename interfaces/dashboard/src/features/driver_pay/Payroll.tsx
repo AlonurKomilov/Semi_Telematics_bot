@@ -110,8 +110,8 @@ export default function Payroll() {
       <div className="space-y-4">
         <PageHeader
           icon={DollarSign}
-          title={t('pages.payroll_title')}
-          description={t('pages.payroll_desc_long')}
+          title={t('pages.driver_pay_title')}
+          description={t('pages.driver_pay_desc_long')}
         />
         <CardSkeleton height="h-40" />
       </div>
@@ -123,8 +123,8 @@ export default function Payroll() {
       <div className="space-y-4">
         <PageHeader
           icon={DollarSign}
-          title={t('pages.payroll_title')}
-          description={t('pages.payroll_desc_short')}
+          title={t('pages.driver_pay_title')}
+          description={t('pages.driver_pay_desc_short')}
         />
         <div className={`rounded-lg border px-4 py-3 text-sm ${toneClasses('warn')}`}>
           Payroll is not enabled for this account. Contact your administrator to activate Pay-for-Performance.
@@ -137,8 +137,8 @@ export default function Payroll() {
     <div className="space-y-4">
       <PageHeader
         icon={DollarSign}
-        title={t('pages.payroll_title')}
-        description={t('pages.payroll_desc_long')}
+        title={t('pages.driver_pay_title')}
+        description={t('pages.driver_pay_desc_long')}
       />
 
       <div className="flex gap-2 border-b border-border">
@@ -175,7 +175,7 @@ function RunsTab() {
 
   const load = () => {
     setLoading(true);
-    apiJSON<PayrollRun[]>('/payroll/runs')
+    apiJSON<PayrollRun[]>('/driver-pay/runs')
       .then(setRuns)
       .catch((e) => setError(e instanceof Error ? e.message : 'failed'))
       .finally(() => setLoading(false));
@@ -190,7 +190,7 @@ function RunsTab() {
     }
     setError('');
     try {
-      await apiJSON('/payroll/runs', {
+      await apiJSON('/driver-pay/runs', {
         method: 'POST',
         body: { period_start: periodStart, period_end: periodEnd },
       });
@@ -202,7 +202,7 @@ function RunsTab() {
 
   const openRun = async (id: number) => {
     try {
-      const d = await apiJSON<RunDetail>(`/payroll/runs/${id}`);
+      const d = await apiJSON<RunDetail>(`/driver-pay/runs/${id}`);
       setSelected(d);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'open failed');
@@ -211,14 +211,14 @@ function RunsTab() {
 
   const finalize = async (id: number) => {
     if (!confirm('Finalize this run? It cannot be edited afterward.')) return;
-    await apiFetch(`/payroll/runs/${id}/finalize`, { method: 'POST' });
+    await apiFetch(`/driver-pay/runs/${id}/finalize`, { method: 'POST' });
     load();
     if (selected?.id === id) openRun(id);
   };
 
   const cancel = async (id: number) => {
     if (!confirm('Cancel this run?')) return;
-    await apiFetch(`/payroll/runs/${id}/cancel`, { method: 'POST' });
+    await apiFetch(`/driver-pay/runs/${id}/cancel`, { method: 'POST' });
     load();
     if (selected?.id === id) openRun(id);
   };
@@ -419,7 +419,7 @@ function RulesTab() {
 
   const load = () => {
     setLoading(true);
-    apiJSON<BonusRule[]>('/payroll/rules')
+    apiJSON<BonusRule[]>('/driver-pay/rules')
       .then(setRules)
       .catch((e) => setError(e instanceof Error ? e.message : 'failed'))
       .finally(() => setLoading(false));
@@ -442,7 +442,7 @@ function RulesTab() {
         body.max_count = Number(draft.max_count);
         if (draft.event_type) body.event_type = draft.event_type;
       }
-      await apiJSON('/payroll/rules', { method: 'POST', body });
+      await apiJSON('/driver-pay/rules', { method: 'POST', body });
       setDraft({
         name: '', kind: 'score_threshold', amount_cents: 5000,
         period_days: 30, score_min: 80, max_count: null, event_type: '', active: true,
@@ -455,12 +455,12 @@ function RulesTab() {
 
   const remove = async (id: number) => {
     if (!confirm('Delete rule?')) return;
-    await apiFetch(`/payroll/rules/${id}`, { method: 'DELETE' });
+    await apiFetch(`/driver-pay/rules/${id}`, { method: 'DELETE' });
     load();
   };
 
   const toggle = async (r: BonusRule) => {
-    await apiJSON(`/payroll/rules/${r.id}`, { method: 'PUT', body: { active: !r.active } });
+    await apiJSON(`/driver-pay/rules/${r.id}`, { method: 'PUT', body: { active: !r.active } });
     load();
   };
 
@@ -588,7 +588,7 @@ function SettingsTab() {
 
   const load = () => {
     setLoading(true);
-    apiJSON<DriverPaySettings[]>('/payroll/settings')
+    apiJSON<DriverPaySettings[]>('/driver-pay/settings')
       .then(setRows)
       .catch((e) => setError(e instanceof Error ? e.message : 'failed'))
       .finally(() => setLoading(false));
@@ -603,7 +603,7 @@ function SettingsTab() {
     }
     setError('');
     try {
-      await apiJSON(`/payroll/settings/${encodeURIComponent(driverId)}`, {
+      await apiJSON(`/driver-pay/settings/${encodeURIComponent(driverId)}`, {
         method: 'PUT',
         body: {
           base_pay_cents: Number(basePay), opt_in: optIn,

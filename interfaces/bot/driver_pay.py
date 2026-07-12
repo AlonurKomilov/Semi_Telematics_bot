@@ -11,7 +11,7 @@ from telegram.ext import ContextTypes
 
 from capabilities.permissions.roles import can
 from capabilities.localization.i18n import t
-from features.payroll import service as svc
+from features.driver_pay import service as svc
 from infra.platform import get_platform_db
 
 logger = logging.getLogger(__name__)
@@ -40,8 +40,8 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(t("access.no_access"))
         return
 
-    if not (can(user.role, "can_payroll_admin")
-            or can(user.role, "can_payroll_view_own")):
+    if not (can(user.role, "can_driver_pay_admin")
+            or can(user.role, "can_driver_pay_view_own")):
         await update.message.reply_text(t("access.no_access"))
         return
 
@@ -52,24 +52,24 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if acct is None or not module_enabled(
         getattr(acct, "disabled_modules", ""), "accounting",
     ):
-        await update.message.reply_text(t("payroll.disabled_for_account"))
+        await update.message.reply_text(t("driver_pay.disabled_for_account"))
         return
 
     driver_id = await _resolve_driver_id_for_user(user.account_id, user)
     if not driver_id:
-        await update.message.reply_text(t("payroll.my_pay.no_driver_mapping"))
+        await update.message.reply_text(t("driver_pay.my_pay.no_driver_mapping"))
         return
 
     items = await svc.get_paystub_history(
         user.account_id, driver_id, limit=6,
     )
     if not items:
-        await update.message.reply_text(t("payroll.my_pay.no_history"))
+        await update.message.reply_text(t("driver_pay.my_pay.no_history"))
         return
 
     latest = items[0]
     lines: list[str] = []
-    lines.append("<b>" + t("payroll.my_pay.title") + "</b>")
+    lines.append("<b>" + t("driver_pay.my_pay.title") + "</b>")
     lines.append("")
     lines.append(t(
         "payroll.my_pay.period",
@@ -107,7 +107,7 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if additions:
         lines.append("")
-        lines.append("<b>" + t("payroll.my_pay.additions") + "</b>")
+        lines.append("<b>" + t("driver_pay.my_pay.additions") + "</b>")
         for a in additions:
             lines.append(
                 f"• {a.get('kind', '')} — {_fmt_cents(a.get('amount_cents', 0))}"
@@ -117,7 +117,7 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  if b.get("kind") not in ("load_earnings", "extra_items")]
     if breakdown:
         lines.append("")
-        lines.append("<b>" + t("payroll.my_pay.bonuses") + "</b>")
+        lines.append("<b>" + t("driver_pay.my_pay.bonuses") + "</b>")
         for b in breakdown:
             lines.append(
                 f"• {b.get('name', '')} — {_fmt_cents(b.get('amount_cents', 0))}"
@@ -125,7 +125,7 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if deductions:
         lines.append("")
-        lines.append("<b>" + t("payroll.my_pay.deductions") + "</b>")
+        lines.append("<b>" + t("driver_pay.my_pay.deductions") + "</b>")
         for d in deductions:
             lines.append(
                 f"• {d.get('kind', '')} — −{_fmt_cents(d.get('amount_cents', 0))}"
@@ -144,7 +144,7 @@ async def cmd_my_pay(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if len(items) > 1:
         lines.append("")
-        lines.append("<b>" + t("payroll.my_pay.history") + "</b>")
+        lines.append("<b>" + t("driver_pay.my_pay.history") + "</b>")
         for it in items[1:]:
             lines.append(
                 f"• {it.get('period_start', '')} → "

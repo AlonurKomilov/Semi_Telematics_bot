@@ -150,7 +150,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // redirect in router.tsx for any legacy bookmark.
 
   // ── ACCOUNTING (money) ────────────────────────────────────────────
-  { id: 'payroll',       labelKey: 'nav.payroll',       path: '/payroll',   icon: CreditCard, modules: ['accounting'], tier: 'role', permission: ['can_payroll_admin'], navGroup: 'costs' },
+  { id: 'driver_pay',    labelKey: 'nav.driver_pay',    path: '/driver-pay',   icon: CreditCard, modules: ['accounting'], tier: 'role', permission: ['can_driver_pay_admin'], navGroup: 'costs' },
   // Costs — one accounting-leaning feature with two components (Fuel
   // Costs + Cost per Mile), so both are role-tier; the module lists let
   // dispatch (fuel) and fleet (CPM) surface their half.

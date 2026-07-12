@@ -120,7 +120,7 @@ async def compute_run(
     period_start: date,
     period_end: date,
 ) -> list[RunItem]:
-    """Compute payroll for one period.
+    """Compute driver pay for one period.
 
     Pulls active bonus_rules + driver_pay_settings + scorecards over
     the period window; for incident_count rules, queries warehouse
@@ -145,7 +145,7 @@ async def compute_run(
     # ── Load earnings + extra pay items (the settlements core) ──
     # Read through the loads service (service-contract rule; limit=None
     # is the aggregation contract).  Loads key people by users.id — the
-    # bridge into payroll's samsara-keyed world is
+    # bridge into driver-pay's samsara-keyed world is
     # users.samsara_driver_id; drivers without one (Datatruck-only /
     # manual) get a "user:{id}" key so their statement still exists.
     start_iso, end_iso = period_start.isoformat(), period_end.isoformat()

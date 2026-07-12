@@ -151,7 +151,7 @@ async def get_settlement_items(
     account_id: int, *, since: str, until: str,
 ) -> list[dict]:
     """Driver-pay (additions) + deduction line items (on-load + off-load)
-    in a window, each tagged with its bucket — the payroll engine itemizes
+    in a window, each tagged with its bucket — the driver-pay engine itemizes
     these as the statement's ADDITIONS and DEDUCTIONS lines."""
     tenant = await get_tenant_db(account_id)
     if tenant is None:

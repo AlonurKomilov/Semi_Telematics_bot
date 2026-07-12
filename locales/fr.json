@@ -823,21 +823,6 @@
     "error_content": "📋 <b>Abonnement au Rapport</b>\n\n⚠️ Impossible de générer le rapport.",
     "sending": "📋 Génération de votre rapport planifié <b>{rtype}</b>..."
   },
-  "payroll": {
-    "title": "Paie à la performance",
-    "disabled_for_account": "La fonctionnalité de paie n'est pas activée pour ce compte.",
-    "my_pay": {
-      "title": "Ma paie",
-      "period": "Période : {start} → {end}",
-      "status": "Statut : {status}",
-      "base": "Paie de base : {amount}",
-      "bonuses": "Bonus",
-      "total": "Total : {amount}",
-      "history": "Historique",
-      "no_driver_mapping": "Impossible d'associer votre compte à un conducteur.",
-      "no_history": "Aucune fiche de paie pour le moment."
-    }
-  },
   "coaching": {
     "title": "Coaching automatique",
     "disabled_for_account": "Le coaching n'est pas activé pour ce compte.",
@@ -866,6 +851,21 @@
       "ack_button": "Reconnaître",
       "ack_done": "Reconnu. Merci !",
       "ack_failed": "Impossible de reconnaître l'affectation."
+    }
+  },
+  "driver_pay": {
+    "title": "Paie à la performance",
+    "disabled_for_account": "La fonctionnalité de paie n'est pas activée pour ce compte.",
+    "my_pay": {
+      "title": "Ma paie",
+      "period": "Période : {start} → {end}",
+      "status": "Statut : {status}",
+      "base": "Paie de base : {amount}",
+      "bonuses": "Bonus",
+      "total": "Total : {amount}",
+      "history": "Historique",
+      "no_driver_mapping": "Impossible d'associer votre compte à un conducteur.",
+      "no_history": "Aucune fiche de paie pour le moment."
     }
   }
 }

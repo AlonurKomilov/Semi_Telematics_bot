@@ -204,7 +204,7 @@ class User:
     email: Optional[str] = None         # For dashboard email+password login
     password_hash: Optional[str] = None # bcrypt hash
     # Samsara driver_id this user is linked to. Set by an admin so /coaching/me
-    # and /payroll/me have a trustworthy identity binding instead of a
+    # and /driver-pay/me have a trustworthy identity binding instead of a
     # most-recent-event-by-truck heuristic. NULL ⇒ user has no fleet identity yet.
     samsara_driver_id: Optional[str] = None
     # Datatruck driver ref — the TMS sibling of samsara_driver_id.  Stamped

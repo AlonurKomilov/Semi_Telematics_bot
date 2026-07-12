@@ -67,7 +67,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Driver profiles, CDL/medical docs, and vehicle assignments', keywords: ['cdl','medical','driver','documents'] },
   { label: 'Coaching',        path: '/coaching',         icon: GraduationCap, group: 'Workforce', permission: ['can_coaching_admin'],
     description: 'Driver coaching assignments and acks', keywords: ['training','review'] },
-  { label: 'Payroll',         path: '/payroll',          icon: DollarSign,    group: 'Workforce', permission: ['can_payroll_admin'],
+  { label: 'Driver Pay',      path: '/driver-pay',          icon: DollarSign,    group: 'Workforce', permission: ['can_driver_pay_admin'],
     description: 'Driver paystubs and pay rules', keywords: ['pay','salary','wages'] },
   { label: 'Working Hours',   path: '/work-hours', icon: Clock,         group: 'Workforce', permission: ['can_manage_work_hours'],
     description: 'Driver hours, HOS and shifts', keywords: ['hos','hours','shift'] },

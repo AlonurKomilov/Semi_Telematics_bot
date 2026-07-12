@@ -97,8 +97,8 @@ FLAG_MODULES: dict[str, frozenset[str]] = {
     # Accounting (costs + payroll)
     "can_fuel_cost": frozenset({"accounting", "dispatch"}),
     "can_cost_per_mile": frozenset({"accounting", "fleet"}),
-    "can_payroll_admin": frozenset({"accounting"}),
-    "can_payroll_view_own": frozenset({"accounting"}),
+    "can_driver_pay_admin": frozenset({"accounting"}),
+    "can_driver_pay_view_own": frozenset({"accounting"}),
 }
 
 

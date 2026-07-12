@@ -55,7 +55,7 @@ export default function Sidebar() {
   const { viewHasAny, activeView } = useRoleView();
 
   // The generated nav already applies module + permission filtering; the
-  // only thing left is the two account kill-switches (payroll / coaching)
+  // only thing left is the two account kill-switches (driver-pay / coaching)
   // which are separate from the department modules.
   const navConfig = generateNav(activeView, viewHasAny, user?.enabled_modules);
 
@@ -70,7 +70,7 @@ export default function Sidebar() {
 
   const filterItems = (items: NavItem[]) =>
     items.filter((item) => {
-      if (item.path === '/payroll') return user?.payroll_enabled !== false;
+      if (item.path === '/driver-pay') return user?.payroll_enabled !== false;
       if (item.path === '/coaching') return user?.coaching_enabled !== false;
       return true;
     });

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Admin helper — link Telegram users (role=driver) to their Samsara
-driver_id so the new /api/coaching/me and /api/payroll/me endpoints
+driver_id so the new /api/coaching/me and /api/driver-pay/me endpoints
 can return per-driver data safely.
 
 Why this script exists

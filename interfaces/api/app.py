@@ -55,7 +55,7 @@ from features.loads import router as loads_routes
 from features.kpi import router as kpi_routes
 from features.inspections import router as inspections_routes
 from features.knowledge import router as knowledge_routes
-from features.payroll import router as payroll_routes
+from features.driver_pay import router as driver_pay_routes
 from features.coaching import router as coaching_routes
 from features.drivers import router as drivers_routes
 from interfaces.api.auth import router as auth_router
@@ -416,7 +416,7 @@ def create_api() -> FastAPI:
         app.include_router(ai_routes.router, prefix=prefix)
         app.include_router(knowledge_routes.router, prefix=prefix)
         app.include_router(billing_routes.router, prefix=prefix)
-        app.include_router(payroll_routes.router, prefix=prefix)
+        app.include_router(driver_pay_routes.router, prefix=prefix)
         app.include_router(coaching_routes.router, prefix=prefix)
         app.include_router(drivers_routes.router, prefix=prefix)
         # Driver roster admin (moved out of Team Management; same URLs, gated

@@ -197,9 +197,9 @@ const PERM_GROUPS: PermGroup[] = [
       { key: 'can_manage_billing',   label: 'Subscription', description: 'The account’s plan & payment — not driver pay (that’s Payroll)' },
       // Payroll is an Accounting feature (docs/FEATURES.md), beside Costs /
       // Cost Reports / Subscription — gated by the Accounting module.
-      // can_payroll_view_own (a driver viewing their OWN paystubs via the
+      // can_driver_pay_view_own (a driver viewing their OWN paystubs via the
       // Telegram bot) is driver self-service — it lives in the Driver panel.
-      { key: 'can_payroll_admin',    label: 'Payroll', description: 'Driver pay runs, statements & bonus rules' },
+      { key: 'can_driver_pay_admin',    label: 'Driver Pay', description: 'Driver pay runs, statements & bonus rules' },
     ],
   },
 ];
@@ -253,7 +253,7 @@ const DRIVER_TRUCK: ScopedFlag[] = [
 // the same reason — they only ever apply to the driver themself.
 const DRIVER_RECORDS: SimpleFlag[] = [
   { key: 'can_driver_docs_own',   label: 'Own Documents', description: 'View their own driver documents' },
-  { key: 'can_payroll_view_own',  label: 'Own Paystubs',  description: 'View their own paystubs (Telegram /payroll)' },
+  { key: 'can_driver_pay_view_own',  label: 'Own Paystubs',  description: 'View their own paystubs (Telegram /driver-pay)' },
   { key: 'can_coaching_view_own', label: 'Own Coaching',  description: 'View their own coaching notes' },
   { key: 'can_loads_own',         label: 'Own Loads',     description: 'Loads assigned to them (dashboard Loads page, own scope)' },
   { key: 'can_risk_report_own',   label: 'Own Risk Summary', description: 'Their own Stakeholder Risk Summary report' },

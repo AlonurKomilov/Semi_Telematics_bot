@@ -823,21 +823,6 @@
     "error_content": "📋 <b>Hisobot Obunasi</b>\n\n⚠️ Hisobotni yaratib bolmadi.",
     "sending": "📋 Rejalashtirilgan <b>{rtype}</b> hisobotingiz yaratilmoqda..."
   },
-  "payroll": {
-    "title": "Natija uchun to'lov",
-    "disabled_for_account": "Bu akkaunt uchun ish haqi xizmati yoqilmagan.",
-    "my_pay": {
-      "title": "Mening to'lovim",
-      "period": "Davr: {start} → {end}",
-      "status": "Holat: {status}",
-      "base": "Asosiy to'lov: {amount}",
-      "bonuses": "Bonuslar",
-      "total": "Jami: {amount}",
-      "history": "Tarix",
-      "no_driver_mapping": "Akkauntingizni haydovchi yozuvi bilan moslab bo'lmadi.",
-      "no_history": "Hozircha to'lov varaqasi yo'q."
-    }
-  },
   "coaching": {
     "title": "Avto-kouching",
     "disabled_for_account": "Kouching ushbu hisob uchun yoqilmagan.",
@@ -866,6 +851,21 @@
       "ack_button": "Qabul qilish",
       "ack_done": "Qabul qilindi. Rahmat!",
       "ack_failed": "Topshiriqni qabul qilib bo'lmadi."
+    }
+  },
+  "driver_pay": {
+    "title": "Natija uchun to'lov",
+    "disabled_for_account": "Bu akkaunt uchun ish haqi xizmati yoqilmagan.",
+    "my_pay": {
+      "title": "Mening to'lovim",
+      "period": "Davr: {start} → {end}",
+      "status": "Holat: {status}",
+      "base": "Asosiy to'lov: {amount}",
+      "bonuses": "Bonuslar",
+      "total": "Jami: {amount}",
+      "history": "Tarix",
+      "no_driver_mapping": "Akkauntingizni haydovchi yozuvi bilan moslab bo'lmadi.",
+      "no_history": "Hozircha to'lov varaqasi yo'q."
     }
   }
 }

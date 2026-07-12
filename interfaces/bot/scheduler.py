@@ -70,7 +70,7 @@ _JOB_META = {
     # ── Work orders ──
     "nightly_stale_close":            ("Work orders", "Auto-close stale work orders"),
     # ── Payroll (tenant feature — the customer paying their drivers) ──
-    "payroll_monthly":                ("Payroll", "Draft the monthly payroll run for each payroll-enabled account"),
+    "driver_pay_monthly":                ("Payroll", "Draft the monthly payroll run for each payroll-enabled account"),
     # ── Platform billing (system side — us charging the customer) ──
     # Deliberately a SEPARATE category from tenant Payroll: same word
     # ("money"), opposite direction and audience.
@@ -226,10 +226,10 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     )
 
     # ── monthly Pay-for-Performance payroll job ─────────
-    from features.payroll.jobs import run_monthly_payroll_job
+    from features.driver_pay.jobs import run_monthly_driver_pay_job
     scheduler.add_job(
-        run_monthly_payroll_job, "cron",
-        day=1, hour=2, minute=0, args=[app], id="payroll_monthly",
+        run_monthly_driver_pay_job, "cron",
+        day=1, hour=2, minute=0, args=[app], id="driver_pay_monthly",
         max_instances=1, coalesce=True,
     )
 

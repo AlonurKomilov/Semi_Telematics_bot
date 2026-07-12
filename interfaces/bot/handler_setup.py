@@ -91,7 +91,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("risk_report", cmd_risk_report))
 
     # Pay-for-Performance — driver self-service paystub
-    from interfaces.bot.payroll import cmd_my_pay
+    from interfaces.bot.driver_pay import cmd_my_pay
     app.add_handler(CommandHandler("my_pay", cmd_my_pay))
 
     # PTI — driver self-service deep-link to the Mini App + fleet

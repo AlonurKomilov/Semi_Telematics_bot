@@ -13,8 +13,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from features.payroll import service as svc
-from features.payroll.service import PayrollDisabledError
+from features.driver_pay import service as svc
+from features.driver_pay.service import DriverPayDisabledError
 from interfaces.api.deps import (
     require_permission,
     require_permission_any,
@@ -22,7 +22,7 @@ from interfaces.api.deps import (
 
 log = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/payroll", tags=["payroll"])
+router = APIRouter(prefix="/driver-pay", tags=["driver-pay"])
 
 
 # ── Pydantic schemas ──────────────────────────────────────────────
@@ -69,7 +69,7 @@ def _parse_iso_date(s: str) -> date:
         raise HTTPException(400, f"invalid date format: {e}")
 
 
-def _disabled_to_403(exc: PayrollDisabledError) -> HTTPException:
+def _disabled_to_403(exc: DriverPayDisabledError) -> HTTPException:
     return HTTPException(
         status_code=403,
         detail="Payroll feature is not enabled for this account.",
@@ -81,18 +81,18 @@ def _disabled_to_403(exc: PayrollDisabledError) -> HTTPException:
 @router.get("/rules")
 async def list_rules(
     active_only: bool = Query(False),
-    user: dict = Depends(require_permission("can_payroll_admin")),
+    user: dict = Depends(require_permission("can_driver_pay_admin")),
 ):
     try:
         return await svc.list_rules(user["account_id"], active_only=active_only)
-    except PayrollDisabledError as e:
+    except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
 
 
 @router.post("/rules", status_code=201)
 async def create_rule(
     body: BonusRuleIn,
-    user: dict = Depends(require_permission("can_payroll_admin")),
+    user: dict = Depends(require_permission("can_driver_pay_admin")),
 ):
     try:
         rule_id = await svc.create_rule(
@@ -105,7 +105,7 @@ async def create_rule(
             max_count=body.max_count,
             active=body.active,
         )
-    except PayrollDisabledError as e:
+    except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -116,7 +116,7 @@ async def create_rule(
 async def update_rule(
     rule_id: int,
     body: BonusRulePatch,
-    user: dict = Depends(require_permission("can_payroll_admin")),
+    user: dict = Depends(require_permission("can_driver_pay_admin")),
 ):
     fields = body.model_dump(exclude_unset=True, exclude_none=True)
     if not fields:
@@ -125,7 +125,7 @@ async def update_rule(
         ok = await svc.update_rule(
             user["account_id"], rule_id, user_id=int(user["sub"]), **fields,
         )
-    except PayrollDisabledError as e:
+    except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
     if not ok:
         raise HTTPException(404, "rule not found")
@@ -135,13 +135,13 @@ async def update_rule(
 @router.delete("/rules/{rule_id}")
 async def delete_rule(
     rule_id: int,
-    user: dict = Depends(require_permission("can_payroll_admin")),
+    user: dict = Depends(require_permission("can_driver_pay_admin")),
 ):
     try:
         await svc.delete_rule(
             user["account_id"], rule_id, user_id=int(user["sub"]),
         )
-    except PayrollDisabledError as e:
+    except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
     return {"ok": True}
 
@@ -150,11 +150,11 @@ async def delete_rule(
 
 @router.get("/settings")
 async def list_settings(
-    user: dict = Depends(require_permission("can_payroll_admin")),
+    user: dict = Depends(require_permission("can_driver_pay_admin")),
 ):
     try:
         return await svc.list_driver_settings(user["account_id"])
-    except PayrollDisabledError as e:
+    except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
 
 
@@ -162,7 +162,7 @@ async def list_settings(
 async def upsert_settings(
     driver_id: str,
     body: DriverPaySettingsIn,
-    user: dict = Depends(require_permission("can_payroll_admin")),
+    user: dict = Depends(require_permission("can_driver_pay_admin")),
 ):
     if not driver_id.strip():
         raise HTTPException(400, "driver_id required")
@@ -174,7 +174,7 @@ async def upsert_settings(
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
-    except PayrollDisabledError as e:
+    except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
     return {"ok": True}
 
@@ -184,18 +184,18 @@ async def upsert_settings(
 @router.get("/runs")
 async def list_runs(
     limit: int = Query(50, ge=1, le=500),
-    user: dict = Depends(require_permission("can_payroll_admin")),
+    user: dict = Depends(require_permission("can_driver_pay_admin")),
 ):
     try:
         return await svc.list_runs(user["account_id"], limit=limit)
-    except PayrollDisabledError as e:
+    except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
 
 
 @router.post("/runs", status_code=201)
 async def create_run(
     body: CreateRunIn,
-    user: dict = Depends(require_permission("can_payroll_admin")),
+    user: dict = Depends(require_permission("can_driver_pay_admin")),
 ):
     ps = _parse_iso_date(body.period_start)
     pe = _parse_iso_date(body.period_end)
@@ -204,7 +204,7 @@ async def create_run(
             user["account_id"], user_id=int(user["sub"]),
             period_start=ps, period_end=pe,
         )
-    except PayrollDisabledError as e:
+    except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -214,7 +214,7 @@ async def create_run(
 @router.get("/runs/{run_id}")
 async def get_run(
     run_id: int,
-    user: dict = Depends(require_permission("can_payroll_admin")),
+    user: dict = Depends(require_permission("can_driver_pay_admin")),
 ):
     detail = await svc.get_run_detail(user["account_id"], run_id)
     if detail is None:
@@ -225,13 +225,13 @@ async def get_run(
 @router.post("/runs/{run_id}/finalize")
 async def finalize_run(
     run_id: int,
-    user: dict = Depends(require_permission("can_payroll_admin")),
+    user: dict = Depends(require_permission("can_driver_pay_admin")),
 ):
     try:
         ok = await svc.finalize_run(
             user["account_id"], run_id, user_id=int(user["sub"]),
         )
-    except PayrollDisabledError as e:
+    except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -243,13 +243,13 @@ async def finalize_run(
 @router.post("/runs/{run_id}/cancel")
 async def cancel_run(
     run_id: int,
-    user: dict = Depends(require_permission("can_payroll_admin")),
+    user: dict = Depends(require_permission("can_driver_pay_admin")),
 ):
     try:
         ok = await svc.cancel_run(
             user["account_id"], run_id, user_id=int(user["sub"]),
         )
-    except PayrollDisabledError as e:
+    except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
     if not ok:
         raise HTTPException(404, "run not found or not cancellable")
@@ -287,7 +287,7 @@ async def _resolve_caller_driver_id(user: dict) -> Optional[str]:
 async def my_paystubs(
     limit: int = Query(12, ge=1, le=60),
     user: dict = Depends(require_permission_any(
-        "can_payroll_admin", "can_payroll_view_own",
+        "can_driver_pay_admin", "can_driver_pay_view_own",
     )),
 ):
     """Return paystub history for the calling driver."""
