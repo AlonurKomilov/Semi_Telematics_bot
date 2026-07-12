@@ -9,7 +9,6 @@ import DataGrid from '../../components/DataGrid';
 import { Button } from '../../components/ui/button';
 import StatementDrawer from './StatementDrawer';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
-import type { AnyColumn } from '../../types';
 
 // ── Types ─────────────────────────────────────────────────────────
 

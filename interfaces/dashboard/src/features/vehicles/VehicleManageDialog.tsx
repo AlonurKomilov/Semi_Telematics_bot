@@ -30,10 +30,6 @@ const TYPES = [
   { value: 'other', label: 'Other' },
 ];
 
-const inputCls =
-  'w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm ' +
-  'focus:outline-none focus:border-ring';
-
 type Draft = {
   unit_number: string;
   vehicle_type: string;

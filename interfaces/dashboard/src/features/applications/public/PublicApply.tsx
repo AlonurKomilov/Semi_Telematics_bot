@@ -272,7 +272,6 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
   // Server-side draft sync: the write credential + sync status.
   const [draftSecret, setDraftSecret] = useState<string | null>(null);
   const [savedCloud, setSavedCloud] = useState(false);
-  const syncBlocked = useRef(false);   // another session owns the draft → local-only
   const [laterState, setLaterState] = useState<'idle' | 'sending' | 'sent' | 'fail'>('idle');
   // Pre-seed the signature defaults (today's date, type mode) so Step 8
   // never has to write state during render.
@@ -392,7 +391,6 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
       if (res) { setDraftSecret(res.draft_secret); setSavedCloud(true); }
     }, 1500);
     return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, step, maxReached, preview, token, done, resumeDraft, draftSecret, applicantEmail]);
 
   // "Save & finish later" — force a sync, then email the resume link.

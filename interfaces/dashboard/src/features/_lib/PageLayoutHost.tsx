@@ -59,7 +59,6 @@ export function PageLayoutHost<P extends object>({
           // build surfaces it; CI catches it via the layout-coverage
           // audit script.
           if (import.meta.env.DEV) {
-            // eslint-disable-next-line no-console
             console.warn(
               `[PageLayoutHost] Layout for persona="${persona}" references unknown section: "${sectionId}"`,
             );
@@ -116,7 +115,6 @@ class SectionErrorBoundary extends Component<
   }
 
   componentDidCatch(error: Error) {
-    // eslint-disable-next-line no-console
     console.error(`[Section "${this.props.sectionId}"] render error:`, error);
   }
 

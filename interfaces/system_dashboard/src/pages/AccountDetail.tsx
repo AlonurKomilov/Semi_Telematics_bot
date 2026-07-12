@@ -447,7 +447,7 @@ function TelemetryCascadeCard({ accountId }: { accountId: number }) {
     apiJSON<{ tiers: Tier[] }>(`/system/accounts/${accountId}/telemetry`)
       .then((d) => setTiers(d.tiers))
       .catch(() => setErr('Failed to load telemetry cascade'));
-  }, [accountId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [accountId]);
 
   return (
     <Card title="Telemetry pipeline">

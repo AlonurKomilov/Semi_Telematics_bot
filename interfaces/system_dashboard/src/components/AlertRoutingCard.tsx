@@ -67,7 +67,7 @@ export default function AlertRoutingCard({ accountId }: { accountId: number }) {
     }
   };
 
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [accountId]);
+  useEffect(() => { load(); }, [accountId]);
 
   const toggleMode = async () => {
     if (!config || modeBusy) return;

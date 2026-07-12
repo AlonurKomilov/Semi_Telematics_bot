@@ -339,7 +339,6 @@ export function usePoiLayers(
     setBrandFilters((prev)  => fillRecord(prev, () => new Set<string>()));
     setPresentBrands((prev) => fillRecord(prev, () => new Set<string>()));
     setAllFeatures((prev)   => fillRecord(prev, () => []));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customLayers]);
 
   // One LayerGroup per POI type, stored by id

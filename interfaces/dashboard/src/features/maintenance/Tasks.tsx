@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  Wrench, Plus, X, Download, History, FileText,
+  Wrench, Plus, X, History, FileText,
   List, CalendarDays, Trash2, CheckSquare, BellOff, Bell,
   Paperclip, Image as ImageIcon, Upload, ClipboardList,
 } from 'lucide-react';

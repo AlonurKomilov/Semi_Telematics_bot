@@ -1,6 +1,5 @@
 import { useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
 import { apiFetch, apiJSON } from '../../api/client';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 
@@ -76,7 +75,6 @@ function Combobox({ value, onChange, options, placeholder }: ComboboxProps) {
 // ── Page ─────────────────────────────────────────────────────────
 
 export default function RiskSummary() {
-  const { t } = useTranslation();
   const [params] = useSearchParams();
   const [subjectType, setSubjectType] = useState<'driver' | 'vehicle'>(
     (params.get('subject_type') as 'driver' | 'vehicle') || 'vehicle',

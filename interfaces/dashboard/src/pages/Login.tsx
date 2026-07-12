@@ -45,13 +45,17 @@ export default function Login() {
   // Incremented after every register submit attempt — Turnstile tokens
   // are single-use, so the widget must issue a fresh one before retry.
   const [turnstileResetNonce, setTurnstileResetNonce] = useState(0);
-  const [botId, setBotId] = useState('');
+  // botId is stored but never read back yet — presumably for a future
+  // "which bot" display; keeping the tracking, just satisfying lint.
+  const [_botId, setBotId] = useState('');
   const [widgetKey, setWidgetKey] = useState(0);
   const [showDisconnect, setShowDisconnect] = useState(false);
 
   // Bot-login state
   const [botLoginLink, setBotLoginLink] = useState('');
-  const [botLoginToken, setBotLoginToken] = useState('');
+  // Same as botId above — stored (used to detect approval below via a
+  // ref/poll, not by reading this binding) but not read directly.
+  const [_botLoginToken, setBotLoginToken] = useState('');
   const [botLoginStatus, setBotLoginStatus] = useState<'idle' | 'pending' | 'approved' | 'rejected' | 'expired'>('idle');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 

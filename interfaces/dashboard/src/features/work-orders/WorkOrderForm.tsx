@@ -12,7 +12,7 @@ import { PageHeader, ErrorState } from '../../components/shell';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { toneClasses } from '../../lib/status';
 import type {
-  WorkOrder, WorkOrderDetail, WorkOrderPart, WorkOrderAttachment,
+  WorkOrder, WorkOrderDetail, WorkOrderAttachment,
   MaintenanceTask, CompanyInfo,
 } from '../../types';
 import { VehiclePicker, type VehicleSummary } from '../maintenance/pickers';

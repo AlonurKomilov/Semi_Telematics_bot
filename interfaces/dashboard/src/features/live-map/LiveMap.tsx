@@ -403,7 +403,7 @@ export default function LiveMap() {
   // marker traces the road faithfully on curves: there is no straight-line
   // extrapolation that could overshoot the outside of a turn.
 
-  function startPhysicsLoop(vid: string, Leaf: typeof L) {
+  function startPhysicsLoop(vid: string, _Leaf: typeof L) {
     const prevRaf = animFramesRef.current.get(vid);
     if (prevRaf !== undefined) cancelAnimationFrame(prevRaf);
 

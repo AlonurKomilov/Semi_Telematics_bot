@@ -37,7 +37,7 @@ function Stat({ tone, icon, n, text }: {
 }
 
 export default function SyncPreviewModal({
-  resource, label, preview, applying, onAccept, onClose,
+  resource: _resource, label, preview, applying, onAccept, onClose,
 }: Props) {
   const diff = preview.diff;
   if (!diff) return null;  // only rendered once the preview is ready

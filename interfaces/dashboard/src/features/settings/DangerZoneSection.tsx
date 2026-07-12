@@ -39,7 +39,7 @@ export default function DangerZoneSection() {
       .then(setLc)
       .catch(() => { /* non-fatal — section just stays hidden */ });
   };
-  useEffect(() => { if (isOwner) load(); }, [isOwner]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (isOwner) load(); }, [isOwner]);
 
   if (!isOwner || !lc) return null;
 

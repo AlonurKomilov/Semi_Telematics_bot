@@ -14,12 +14,10 @@ import {
   EmptyState,
   ErrorState,
   TableSkeleton,
-  FilterBar,
-  FilterChips,
   useLoadingStage,
   DateRangePresets,
 } from '../../components/shell';
-import type { SafetyEvent, SafetyEventsResponse, EventsSummary, AnyColumn } from '../../types';
+import type { SafetyEvent, SafetyEventsResponse, AnyColumn } from '../../types';
 
 const EVENT_TYPES = ['all', 'crash', 'braking', 'harshTurn', 'laneDeparture', 'followingDistance', 'rollingStop', 'acceleration'] as const;
 

@@ -8,7 +8,6 @@ import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 import DataGrid from '../../components/DataGrid';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
-import type { AnyColumn } from '../../types';
 
 // ── Types ─────────────────────────────────────────────────────────
 

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import { Download, Sparkles, FileText } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
@@ -16,10 +15,10 @@ import { useShellConfig } from '../../hooks/useShellConfig';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import type {
-  FaultVehicle, FaultReportResponse,
-  FuelVehicle, FuelReportResponse,
-  HealthVehicle, HealthReportResponse,
-  EfficiencyVehicle, EfficiencyReportResponse,
+  FaultReportResponse,
+  FuelReportResponse,
+  HealthReportResponse,
+  EfficiencyReportResponse,
   AnyColumn,
 } from '../../types';
 import { REPORTS } from '../../data/reports';
@@ -125,7 +124,6 @@ const columnsMap = (tz: string): Record<TabKey, AnyColumn[]> => ({
 });
 
 export default function Reports() {
-  const { t } = useTranslation();
   const tz = useTimezone();
   const { persona } = useShellConfig();
   // Outlet context comes from ReportsLayout — lets this child page

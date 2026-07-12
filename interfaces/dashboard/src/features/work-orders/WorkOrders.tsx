@@ -5,7 +5,6 @@ import { useQuery } from '@tanstack/react-query';
 import { FileText, Plus, Paperclip, Receipt, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/DataGrid';
-import StatusBadge from '../../components/StatusBadge';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
 } from '../../components/shell';

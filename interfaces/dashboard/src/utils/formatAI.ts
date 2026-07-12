@@ -110,10 +110,10 @@ export function formatAIResponse(text: string): string {
     }
 
     // Bullet lists: collect consecutive `• item` or `- item` lines
-    if (/^[•\-]\s+/.test(line)) {
+    if (/^[•-]\s+/.test(line)) {
       const items: string[] = [];
-      while (i < lines.length && /^[•\-]\s+/.test(lines[i])) {
-        const m = lines[i].match(/^[•\-]\s+(.+)$/);
+      while (i < lines.length && /^[•-]\s+/.test(lines[i])) {
+        const m = lines[i].match(/^[•-]\s+(.+)$/);
         items.push(`<li>${m ? m[1] : lines[i]}</li>`);
         i++;
       }

@@ -39,7 +39,6 @@ import type {
   ProviderCompaniesResponse,
   ProviderCompanyEntry,
   ProviderFeedsResponse,
-  TestCompanyResponse,
   TestConnectionResponse,
 } from './types';
 import DatatruckSyncPanel from './DatatruckSyncPanel';
@@ -1039,10 +1038,14 @@ function FeatureToggleList({
   toggles,
   defaults,
   onChange,
-  onTriggerBackfill,
+  // TODO: wired by the caller (IntegrationCard passes handleTrigger /
+  // the last-done label) but this component doesn't render a trigger
+  // button or the label yet — prefixed to satisfy no-unused-vars until
+  // that UI is built.
+  onTriggerBackfill: _onTriggerBackfill,
   backfillPending,
   backfillRunningLabel,
-  backfillLastDoneLabel,
+  backfillLastDoneLabel: _backfillLastDoneLabel,
 }: {
   capabilities: string[];
   toggles: FeatureToggleMap;

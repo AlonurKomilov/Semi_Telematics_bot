@@ -95,7 +95,6 @@ describe('AlertsSelectionContext', () => {
       wrapper: withProvider,
     });
     const sample = { id: 42, vehicle_name: 'Truck 4', alert_type: 'events' };
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     act(() => result.current.openDrillIn(sample as any));
     expect(result.current.drillInAlert?.id).toBe(42);
     act(() => result.current.closeDrillIn());
@@ -106,9 +105,7 @@ describe('AlertsSelectionContext', () => {
     const { result } = renderHook(() => useAlertsSelection(), {
       wrapper: withProvider,
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     act(() => result.current.openDrillIn({ id: 1 } as any));
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     act(() => result.current.openDrillIn({ id: 2 } as any));
     expect(result.current.drillInAlert?.id).toBe(2);
   });
