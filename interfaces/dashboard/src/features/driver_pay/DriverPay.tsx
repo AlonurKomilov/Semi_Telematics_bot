@@ -4,6 +4,8 @@ import { DollarSign, FileText } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
+import { useTimezone } from '../../hooks/useTimezone';
+import { todayInTimeZone } from '../../utils/datetime';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 import DataGrid from '../../components/DataGrid';
 import { Button } from '../../components/ui/button';
@@ -91,6 +93,18 @@ interface RunDetail extends DriverPayRun {
 
 const fmtCents = (c: number | null | undefined) =>
   c == null ? '$0.00' : `$${(c / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// A new run defaults to the PREVIOUS calendar month — the dominant driver-pay
+// period — so the operator confirms one dropdown instead of typing two dates.
+// Computed from the account-tz "today" (never UTC) to avoid month-boundary drift.
+function lastCalendarMonth(tz: string): { start: string; end: string } {
+  const [y, m] = todayInTimeZone(tz).split('-').map(Number);   // m = 1..12
+  const py = m === 1 ? y - 1 : y;
+  const pm = m === 1 ? 12 : m - 1;                             // previous month, 1-indexed
+  const mm = String(pm).padStart(2, '0');
+  const lastDay = new Date(py, pm, 0).getDate();              // last day of month pm
+  return { start: `${py}-${mm}-01`, end: `${py}-${mm}-${String(lastDay).padStart(2, '0')}` };
+}
 
 // Whole-run export — one CSV row per driver so accounting can hand the
 // batch to a bookkeeper / import it, instead of opening each statement.
@@ -205,8 +219,16 @@ function RunsTab() {
   const [error, setError] = useState('');
   const [selected, setSelected] = useState<RunDetail | null>(null);
   const [statementItem, setStatementItem] = useState<RunItem | null>(null);
+  const tz = useTimezone();
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
+  // Seed last-month defaults once the account tz resolves; never clobber a
+  // date the operator has already picked (the `|| prev` guard).
+  useEffect(() => {
+    const d = lastCalendarMonth(tz);
+    setPeriodStart((p) => p || d.start);
+    setPeriodEnd((p) => p || d.end);
+  }, [tz]);
 
   const load = () => {
     setLoading(true);
