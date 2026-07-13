@@ -7,7 +7,7 @@ the customer's daily work:
                                ai, scorecards, warehouse, …) — AUDIENCE: tenant
     capabilities/platform/   → system-owner domains (billing, …)
                                — AUDIENCE: platform
-    features/                → the customer's working services (payroll,
+    features/                → the customer's working services (driver pay,
                                loads, drivers, …) — AUDIENCE: tenant
 
 Boundary rules (enforced by tests/test_layer_boundaries.py):

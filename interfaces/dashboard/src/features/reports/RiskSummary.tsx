@@ -271,7 +271,7 @@ export default function RiskSummary() {
 
       <div className="mt-8 text-xs text-muted-foreground">
         <p className="mb-2">
-          <strong>Audiences:</strong> Insurance / Owner / Broker / Auditor / Payroll.
+          <strong>Audiences:</strong> Insurance / Owner / Broker / Auditor / Safety-Pay.
           Driver-identifiable info is automatically redacted in broker packets.
         </p>
         <p>

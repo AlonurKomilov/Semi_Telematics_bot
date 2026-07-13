@@ -1874,7 +1874,7 @@ class RegisterAccountRequest(BaseModel):
 # the industry-standard self-trial window (Stripe, GitHub teams, etc.)
 # and is short enough that an inactive signup falls off paid telemetry
 # quickly but long enough for a fleet operator to evaluate the dashboard
-# across a full payroll/dispatch cycle.
+# across a full driver-pay/dispatch cycle.
 _AUTO_TRIAL_DAYS = 14
 
 

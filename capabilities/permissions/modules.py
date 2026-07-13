@@ -94,7 +94,7 @@ FLAG_MODULES: dict[str, frozenset[str]] = {
     # just hidden in the nav — so "module off" is a real switch.
     "can_manage_applications": frozenset({"hr"}),
     "can_convert_to_driver": frozenset({"hr"}),
-    # Accounting (costs + payroll)
+    # Accounting (costs + driver pay)
     "can_fuel_cost": frozenset({"accounting", "dispatch"}),
     "can_cost_per_mile": frozenset({"accounting", "fleet"}),
     "can_driver_pay_admin": frozenset({"accounting"}),
@@ -103,7 +103,7 @@ FLAG_MODULES: dict[str, frozenset[str]] = {
 
 
 def module_enabled(disabled_csv: str | None, module: str) -> bool:
-    """Whether one module is on for the account — the check the payroll
+    """Whether one module is on for the account — the check the driver-pay
     service/bot/API gates use (replaces the legacy payroll_enabled flag)."""
     return module not in parse_disabled(disabled_csv)
 

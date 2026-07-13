@@ -583,7 +583,7 @@ function IntegrationsTab({
           currentUserId={userId}
         />
         <p className="text-2xs text-muted-foreground mt-1">
-          Binds this driver to their Samsara identity — powers HOS, coaching, and payroll self-service.{savingSamsara ? ' Saving…' : ''}
+          Binds this driver to their Samsara identity — powers HOS, coaching, and driver-pay self-service.{savingSamsara ? ' Saving…' : ''}
         </p>
       </Section>
 

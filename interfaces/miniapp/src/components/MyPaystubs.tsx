@@ -1,7 +1,7 @@
 /**
  * MyPaystubs — driver self-service paystub history card.
  *
- * Fetches /payroll/me; renders a compact card with the most recent
+ * Fetches /driver-pay/me; renders a compact card with the most recent
  * paystub (period, status, base, bonuses, total) plus a collapsed
  * history of prior periods.  Hides itself silently if the API returns
  * 403 (permission denied) or 404, so the same component can render on
@@ -50,7 +50,7 @@ export function MyPaystubs() {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch('/api/payroll/me?limit=12')
+    apiFetch('/api/driver-pay/me?limit=12')
       .then(async (res) => {
         if (cancelled) return;
         if (res.status === 403 || res.status === 404) {

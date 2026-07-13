@@ -48,7 +48,7 @@ async def run_monthly_driver_pay_job(_app=None) -> None:
     failed = 0
     for acc in accounts:
         from capabilities.permissions.modules import module_enabled
-        # Accounting module must be on (payroll lives under it now)…
+        # Accounting module must be on (driver pay lives under it now)…
         if not module_enabled(getattr(acc, "disabled_modules", ""), "accounting"):
             skipped += 1
             continue

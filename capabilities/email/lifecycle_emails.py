@@ -150,7 +150,7 @@ def send_owner_promotion_code_email(
         f"Confirmation code: {code}\n\n"
         "Enter this code on the confirmation screen to finish. The code "
         "expires in 15 minutes.\n\n"
-        "A co-owner gets full owner access to this account (subscription, users, "
+        "A co-owner gets full owner access to this account (billing, users, "
         "settings). They do NOT become the primary owner and cannot remove "
         "you or delete the account.\n\n"
         "If you did NOT request this, change your password right away.\n"
@@ -164,7 +164,7 @@ def send_owner_promotion_code_email(
         f'background:#f3f4f6;padding:14px 20px;border-radius:8px;'
         f'display:inline-block">{html.escape(code)}</p>'
         '<p style="font-size:13px;color:#6b7280">The code expires in 15 minutes.</p>'
-        '<p style="font-size:14px">A co-owner gets full owner access (subscription, '
+        '<p style="font-size:14px">A co-owner gets full owner access (billing, '
         "users, settings). They do NOT become the primary owner and cannot "
         "remove you or delete the account.</p>"
         '<p style="font-size:14px;color:#b91c1c">If you did NOT request this, '

@@ -94,7 +94,7 @@ class FeatureSet:
     can_manage_companies: bool = False    # /addcompany, /removecompany
     can_manage_vehicles: bool = False     # add/edit/remove vehicles in the registry
     # Loads (the load/shipment feature) — view-all vs own-scope vs manage,
-    # the same split work orders / payroll use.
+    # the same split work orders / driver pay use.
     can_loads_all: bool = False       # view every load
     can_loads_own: bool = False       # view own loads (driver scope)
     can_manage_loads: bool = False    # add/edit/remove loads (see manage_all
@@ -137,7 +137,7 @@ class FeatureSet:
     can_cost_per_mile: bool = False     # cost-per-mile dashboard
     can_events_all: bool = False        # safety events (all trucks)
     can_events_vehicle: bool = False        # safety events (assigned vehicle)
-    can_manage_billing: bool = False    # the SUBSCRIPTION page (our charge to this account) — not driver pay/Payroll
+    can_manage_billing: bool = False    # the BILLING page (our charge to this account) — not Driver Pay
     can_manage_poi_layers: bool = False # create/edit/delete custom POI map layers (owner/admin/fleet)
     can_risk_report_all: bool = False   # generate Stakeholder Risk Summary for any subject
     can_risk_report_own: bool = False   # generate Stakeholder Risk Summary for own subject only
@@ -257,7 +257,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_vehicles=True, can_manage_account=False,
         # Loads is a Dispatch-owned feature (dispatcher CRUDs, KPI grades on
-        # can_kpi, payroll reads loads server-side) — Fleet has no loads
+        # can_kpi, driver pay reads loads server-side) — Fleet has no loads
         # consumer, so it is NOT granted here.  Left at the FeatureSet default
         # (False) rather than seeded True.
         can_geofence_all=True, can_geofence_vehicle=True,
@@ -350,13 +350,13 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     ),
     Role.ACCOUNTING: FeatureSet(
         # Accounting persona — money management.  Focus: billing,
-        # cost analytics, payroll, financial reports.  No driver
+        # cost analytics, driver pay, financial reports.  No driver
         # admin or vehicle-ops controls.
         can_manage_billing=True,               # Billing & subscriptions
         can_fuel=True,                         # Fuel report
         can_fuel_cost=True,                    # Fuel cost tracker
         can_cost_per_mile=True,                # CPM dashboard
-        can_driver_pay_admin=True,                # Payroll runs + history
+        can_driver_pay_admin=True,                # Driver Pay runs + history
         can_efficiency=True,                   # Efficiency report for cost analysis
         # Cost rollups by truck — used to be granted via the overloaded
         # ``can_maintenance_all`` flag; split into its own gate in
@@ -1192,13 +1192,13 @@ def build_role_guidance(role_str: str, is_manager: bool = False) -> str:
     elif role == Role.HR:
         lines.append(
             "Focus on people: driver onboarding, qualification files, "
-            "trainings, working hours, payroll context. Avoid vehicle "
+            "trainings, working hours, driver pay context. Avoid vehicle "
             "telematics detail unless it relates to a driver's record."
         )
     elif role == Role.ACCOUNTING:
         lines.append(
             "Focus on money: costs, fuel spend, cost-per-mile, billing, "
-            "invoices, payroll figures. Avoid live operational telematics "
+            "invoices, driver pay figures. Avoid live operational telematics "
             "unless it drives a cost number."
         )
     elif role == Role.RECRUITER:

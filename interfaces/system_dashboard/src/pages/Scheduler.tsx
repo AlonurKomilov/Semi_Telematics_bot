@@ -38,7 +38,7 @@ const CATEGORY_ORDER = [
   'Scorecards & coaching',
   'Inspections (PTI)',
   'Work orders',
-  'Payroll',
+  'Driver Pay',
   'Reporting',
   'Integrations',
   'Storage & data',

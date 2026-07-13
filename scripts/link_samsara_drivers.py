@@ -8,7 +8,7 @@ Why this script exists
 Before the Phase 3 refactor the backend inferred a Telegram user's
 Samsara driver from the most-recent safety event on whatever truck
 they were assigned to. That heuristic leaked data after a vehicle
-re-assignment (driver A's payroll could surface for driver B).
+re-assignment (driver A's driver pay could surface for driver B).
 
 The fix made `users.samsara_driver_id` a hard prerequisite — those
 two endpoints now return empty when the field is NULL. Existing rows

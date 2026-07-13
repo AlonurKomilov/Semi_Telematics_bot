@@ -193,10 +193,10 @@ const PERM_GROUPS: PermGroup[] = [
       // here because it's cost-owned data (deliberately split from Maintenance).
       { key: 'can_cost_reports', label: 'Cost Reports', description: 'Executive cost rollups (in the Reports hub)' },
       // billing = the platform charging family; the customer-facing label is
-      // "Subscription" (the page shows their plan).  Not driver pay (Payroll).
-      { key: 'can_manage_billing',   label: 'Subscription', description: 'The account’s plan & payment — not driver pay (that’s Payroll)' },
-      // Payroll is an Accounting feature (docs/FEATURES.md), beside Costs /
-      // Cost Reports / Subscription — gated by the Accounting module.
+      // "Billing" (the page shows their plan).  Not driver pay (Driver Pay).
+      { key: 'can_manage_billing',   label: 'Billing', description: 'The account’s plan & payment — not driver pay (that’s Driver Pay)' },
+      // Driver Pay is an Accounting feature (docs/FEATURES.md), beside Costs /
+      // Cost Reports / Billing — gated by the Accounting module.
       // can_driver_pay_view_own (a driver viewing their OWN paystubs via the
       // Telegram bot) is driver self-service — it lives in the Driver panel.
       { key: 'can_driver_pay_admin',    label: 'Driver Pay', description: 'Driver pay runs, statements & bonus rules' },

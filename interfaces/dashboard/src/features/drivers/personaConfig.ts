@@ -40,7 +40,7 @@ const ALL_TABS: DriverDetailTab[] = [
  *    Vehicle assignment isn't theirs to action — omitted.
  *  - Dispatch: "who can I put where, and for how long" — assignment + HOS.
  *  - Driver: own profile + own documents (the can_driver_docs_own case).
- *  - Accounting: identity only (pay lives in Payroll, not here).
+ *  - Accounting: identity only (pay lives in Driver Pay, not here).
  */
 export const TABS_FOR_PERSONA: Record<Persona, DriverDetailTab[]> = {
   owner: ALL_TABS,

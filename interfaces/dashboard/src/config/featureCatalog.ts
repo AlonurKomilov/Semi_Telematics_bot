@@ -52,7 +52,7 @@ export type Module =
 // tier = how widely a feature is used:
 //   system = everyone (Overview, Alerts, Reports…)
 //   shared = several departments (Live Map, Vehicles, Drivers…)
-//   role   = one department's own tool (Maintenance, Routes, Payroll…)
+//   role   = one department's own tool (Maintenance, Routes, Driver Pay…)
 // NB: distinct from the `modules` field (WHICH department) — tier is the
 // breadth, modules is the owner.
 export type Tier = 'system' | 'shared' | 'role';

@@ -1,7 +1,7 @@
 """Billing API routes — the customer-facing surface, labelled "Subscription".
 
 NAMING: billing = the platform charging family (us -> customer); not
-carrier invoicing (future features/invoicing), not driver pay (payroll).
+carrier invoicing (future features/invoicing), not driver pay (Driver Pay).
 
 Endpoints:
   GET  /billing/summary      — current subscription + vehicle usage

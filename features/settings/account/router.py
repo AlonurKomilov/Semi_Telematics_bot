@@ -381,7 +381,7 @@ async def set_account_timezone(
 # ``accounts.disabled_modules`` (CSV of disabled ids) is the storage;
 # a disabled module force-masks its permission flags account-wide (see
 # capabilities/permissions/modules.py), so "module off" is a real API
-# switch, not just hidden nav.  Payroll folded in here 2026-07-08,
+# switch, not just hidden nav.  Driver Pay folded in here 2026-07-08,
 # replacing the legacy one-off ``payroll_enabled`` flag + its bespoke
 # Settings card.
 

@@ -84,7 +84,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
   { label: 'Scorecard Rules',  path: '/scorecard-rules', icon: Trophy,        group: 'Safety', permission: ['can_manage_scorecard_rules'],
     description: 'Rules that build the scorecard', keywords: ['scoring','penalties','config'] },
   { label: 'Billing & Plan',   path: '/billing',         icon: CreditCard,    group: 'Admin', permission: ['can_manage_billing'],
-    description: 'Subscription plan and invoices', keywords: ['plan','subscription','invoice'] },
+    description: 'Billing, plan and invoices', keywords: ['plan','subscription','invoice','billing'] },
   { label: 'Audit Log',        path: '/audit',           icon: ClipboardList, group: 'Admin', permission: ['can_manage_users'],
     description: 'Who changed what, when', keywords: ['log','history','audit'] },
   { label: 'Settings',         path: '/settings',        icon: Shield,        group: 'Admin', permission: ['can_manage_account'],

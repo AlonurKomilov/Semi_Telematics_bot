@@ -1,6 +1,6 @@
 // NAMING: billing = the platform charging family (our charge to the customer
-// account, via Stripe) — displayed to customers as "Subscription".  Never
-// carrier invoicing (future features/invoicing), never driver pay (Payroll).
+// account, via Stripe) — displayed to customers as "Billing".  Never carrier
+// invoicing (future features/invoicing), never driver pay (Driver Pay).
 // SSOT: docs/FEATURES.md "Money domains".
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';

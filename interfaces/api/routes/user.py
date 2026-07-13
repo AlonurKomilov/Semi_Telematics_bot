@@ -146,7 +146,7 @@ async def user_me(
             if db_user.email else True
         ),
         "permissions": perm_dict,
-        # Payroll is an Accounting feature now — "available" == Accounting
+        # Driver Pay is an Accounting feature now — "available" == Accounting
         # module on (per-user access is the can_driver_pay_admin permission).
         # Field name kept for frontend compat.
         "payroll_enabled": "accounting" not in _parse_disabled(

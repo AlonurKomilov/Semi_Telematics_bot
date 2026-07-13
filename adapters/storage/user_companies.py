@@ -145,9 +145,9 @@ class UserCompaniesMixin:
         return out
 
     async def get_driver_company_codes_by_samsara(self, account_id: int) -> dict[str, list[str]]:
-        """``samsara_driver_id → [company codes]`` for coaching/payroll list views.
+        """``samsara_driver_id → [company codes]`` for coaching/driver-pay list views.
 
-        Coaching/payroll rows carry only the Samsara driver id; this maps it
+        Coaching/driver-pay rows carry only the Samsara driver id; this maps it
         through the linked user (``users.samsara_driver_id``) to the user's
         companies.  Drivers with no linked user / no company are absent.
         """

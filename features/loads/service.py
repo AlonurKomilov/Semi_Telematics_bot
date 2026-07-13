@@ -24,7 +24,7 @@ def load_to_dict(l: Any, line_item_sums: dict[str, float] | None = None) -> dict
     li = line_item_sums or {}
     extra_driver_pay = float(li.get("driver_pay") or 0)
     extra_costs = float(li.get("expense") or 0)
-    # Deductions are withheld from the DRIVER's net (payroll), not a
+    # Deductions are withheld from the DRIVER's net (driver pay), not a
     # company cost — they never reduce the load's gross / KPI.
     extra_deductions = float(li.get("deduction") or 0)
     loaded = float(l.loaded_miles or 0)

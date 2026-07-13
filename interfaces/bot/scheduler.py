@@ -4,7 +4,7 @@ Alert sources (the per-feature contributions to the Alerts hub) are
 registry-driven: each source self-registers its job id + cadence via
 ``@register_alert_source`` in its own module, and this file just loops
 ``alert_sources()``.  Platform jobs (warehouse ingestion, billing,
-payroll, PTI, reports, cleanup) stay registered inline below.  Job
+driver pay, PTI, reports, cleanup) stay registered inline below.  Job
 *implementations* remain in their domain modules either way.
 """
 
@@ -69,10 +69,10 @@ _JOB_META = {
     "pti_fleet_digest":               ("Inspections (PTI)", "PTI fleet digest to managers"),
     # ── Work orders ──
     "nightly_stale_close":            ("Work orders", "Auto-close stale work orders"),
-    # ── Payroll (tenant feature — the customer paying their drivers) ──
-    "driver_pay_monthly":                ("Payroll", "Draft the monthly payroll run for each payroll-enabled account"),
+    # ── Driver Pay (tenant feature — the customer paying their drivers) ──
+    "driver_pay_monthly":                ("Driver Pay", "Draft the monthly driver-pay run for each enabled account"),
     # ── Platform billing (system side — us charging the customer) ──
-    # Deliberately a SEPARATE category from tenant Payroll: same word
+    # Deliberately a SEPARATE category from tenant Driver Pay: same word
     # ("money"), opposite direction and audience.
     "billing_snapshot_monthly":       ("Platform billing", "Record monthly billing-usage snapshots"),
     "billing_comp_expiry_sweep":      ("Platform billing", "Expire lapsed comp accounts + send reminders"),
@@ -225,7 +225,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         max_instances=1, coalesce=True,
     )
 
-    # ── monthly Pay-for-Performance payroll job ─────────
+    # ── monthly driver-pay job ───────────────────────────
     from features.driver_pay.jobs import run_monthly_driver_pay_job
     scheduler.add_job(
         run_monthly_driver_pay_job, "cron",
@@ -236,7 +236,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # ── monthly billing snapshot ─────────────────────────
     # Records one billing_usage_snapshots row per active account so the
     # dashboard can render historical periods (and finance can audit
-    # what we actually billed for).  Fires 30 min after payroll so the
+    # what we actually billed for).  Fires 30 min after driver pay so the
     # database isn't doing two big batches simultaneously.
     from capabilities.platform.billing.jobs import run_monthly_billing_snapshots
     scheduler.add_job(
