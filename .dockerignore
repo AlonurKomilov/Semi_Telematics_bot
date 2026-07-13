@@ -29,3 +29,10 @@ mypy.ini
 *.db-shm
 *.db-wal
 semi-telematics-*.json
+
+# Docs, Claude Code config, editor state — never belong in the image
+# build context (the app serves nothing from them; docs/ alone is MBs).
+docs/
+.claude/
+.vscode/
+.idea/
