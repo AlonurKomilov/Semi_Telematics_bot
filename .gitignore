@@ -62,6 +62,8 @@ bot/_*_old.py
 docs/*
 !docs/runbooks/
 !docs/grafana/
+# Architecture decision docs — SSOT plans, must travel with the repo.
+!docs/architecture/
 # UX psychology audit reports (written by the ux-psychology-audit skill
 # in .claude/skills/ — tracked so parallel-session reports can be
 # aggregated later).

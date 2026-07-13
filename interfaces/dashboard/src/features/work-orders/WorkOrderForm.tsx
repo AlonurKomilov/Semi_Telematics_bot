@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useLocation } from 'react-router-dom';
+import { WO_PREFILL_STATE_KEY, type WorkOrderPrefill } from './createFrom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -11,11 +12,15 @@ import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader, ErrorState } from '../../components/shell';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { toneClasses } from '../../lib/status';
+import TypePicker from '../maintenance/TypePicker';
+import { TASK_TYPE_OPTIONS } from '../maintenance/badges';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type {
   WorkOrder, WorkOrderDetail, WorkOrderAttachment,
   MaintenanceTask, CompanyInfo,
 } from '../../types';
 import { VehiclePicker, type VehicleSummary } from '../maintenance/pickers';
+import { VendorPicker } from '../vendors/VendorPicker';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay, todayInTimeZone } from '../../utils/datetime';
 
@@ -32,6 +37,7 @@ const blankWorkOrder = (): Partial<WorkOrder> => ({
   vendor_name: '',
   vendor_address: '',
   vendor_phone: '',
+  vendor_id: null,
   service_date: '',
   odometer_at_service: null,
   engine_hours_at_service: null,
@@ -43,6 +49,10 @@ const blankWorkOrder = (): Partial<WorkOrder> => ({
   payment_method: '',
   payment_status: 'unpaid',
   status: 'draft',
+  repair_priority: '',
+  complaint: '',
+  cause: '',
+  correction: '',
   notes: '',
   assigned_to: '',
 });
@@ -87,16 +97,21 @@ interface DraftPart {
   unit_cost: number;
   total_cost: number;
   warranty_months: number;
+  /** Task-type slug this line belongs to ('brakes', 'custom_…');
+   *  '' = the General (untagged) group.  Drives the task→parts
+   *  grouping in the editor and the per-task cost report. */
+  service_task: string;
   notes: string;
 }
 
-const blankPart = (): DraftPart => ({
+const blankPart = (serviceTask = ''): DraftPart => ({
   part_name: '',
   part_number: '',
   quantity: 1,
   unit_cost: 0,
   total_cost: 0,
   warranty_months: 0,
+  service_task: serviceTask,
   notes: '',
 });
 
@@ -114,8 +129,26 @@ export default function WorkOrderForm() {
   const isEdit = Boolean(idParam && idParam !== 'new');
   const workOrderId = isEdit ? Number(idParam) : null;
 
-  const [wo, setWo] = useState<Partial<WorkOrder>>(blankWorkOrder());
+  // Cross-feature pre-fill (create mode only): a fault code or a failed
+  // inspection item can hand us ``location.state.woPrefill`` — vehicle +
+  // a complaint description + a priority guess.  Seeded once into the
+  // initial state; the rest of the form (and the POST body it spreads)
+  // treats those exactly like operator-typed values.  Ignored in edit
+  // mode, where the server copy is authoritative.
+  const location = useLocation();
+  const [wo, setWo] = useState<Partial<WorkOrder>>(() => {
+    const base = blankWorkOrder();
+    if (isEdit) return base;
+    const seed = (location.state as { [WO_PREFILL_STATE_KEY]?: WorkOrderPrefill } | null)
+      ?.[WO_PREFILL_STATE_KEY];
+    return seed ? { ...base, ...seed } : base;
+  });
   const [parts, setParts] = useState<DraftPart[]>([]);
+  // Ordered service-task group keys shown in the parts editor (the
+  // '' General group is implicit and always renders last when it has
+  // rows).  A group can exist before it has parts so the operator can
+  // "open" a task then add lines under it.
+  const [taskGroups, setTaskGroups] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<WorkOrderAttachment[]>([]);
   const [linkedTasks, setLinkedTasks] = useState<MaintenanceTask[]>([]);
   const [saving, setSaving] = useState(false);
@@ -138,6 +171,16 @@ export default function WorkOrderForm() {
     staleTime: 5 * 60_000,
   });
   const companies = companiesData?.companies ?? [];
+
+  // Parts catalog for the editor's autocomplete (native <datalist> —
+  // suggestions only; the server resolves/creates the catalog link
+  // from whatever name is saved, picked or free-typed).
+  const { data: catalogData } = useQuery<{ parts: Array<{ id: number; name: string }> }>({
+    queryKey: ['parts-catalog'],
+    queryFn: () => apiJSON('/work-orders/parts-catalog'),
+    staleTime: 60_000,
+  });
+  const catalogParts = catalogData?.parts ?? [];
 
   // Account fleet for the Vehicle picker (registry-backed, already
   // permission/company-scoped server-side).  Same paged shape +
@@ -311,7 +354,11 @@ export default function WorkOrderForm() {
   useEffect(() => {
     if (!detail) return;
     setWo(detail.work_order);
-    setParts(detail.parts.map(p => ({ ...p })));
+    setParts(detail.parts.map(p => ({ service_task: '', ...p })));
+    // Seed the task groups from the loaded parts, first-seen order.
+    setTaskGroups(Array.from(new Set(
+      detail.parts.map(p => (p as { service_task?: string }).service_task || '').filter(Boolean),
+    )));
     setAttachments(detail.attachments);
     setLinkedTasks(detail.linked_tasks);
   }, [detail]);
@@ -358,6 +405,148 @@ export default function WorkOrderForm() {
       }
     }
     setParts(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  // ── Service-task grouping helpers ─────────────────────────────
+  //
+  // The editor shows parts grouped under task headers (task → parts
+  // hierarchy).  Groups are just distinct ``service_task`` values —
+  // no separate entity — so "renaming" a group retags its parts and
+  // "removing" one untags them into the trailing General section.
+  const { has } = useViewPermissions();
+  // Creating a NEW custom task type goes through the maintenance
+  // endpoint gated by can_maintenance_all — hide the inline creator
+  // from anyone who'd 403 on it.
+  const canManageTaskTypes = has('can_maintenance_all');
+
+  const entriesFor = (task: string) =>
+    parts.map((pt, idx) => ({ pt, idx })).filter(e => (e.pt.service_task || '') === task);
+  const groupSubtotal = (task: string) =>
+    entriesFor(task).reduce((acc, e) => acc + (e.pt.total_cost || 0), 0);
+
+  const addTaskGroup = () => {
+    // Default the new group to the first built-in type not in use —
+    // the operator immediately changes it via the header picker.
+    const used = new Set(taskGroups);
+    const next = TASK_TYPE_OPTIONS
+      .map(o => o.value)
+      .filter(v => v !== 'custom')
+      .find(v => !used.has(v));
+    if (!next) return;   // every built-in already open — unlikely
+    setTaskGroups(prev => [...prev, next]);
+  };
+
+  const renameTaskGroup = (from: string, to: string) => {
+    if (!to || to === from) return;
+    // Same value picked twice → the two groups merge (Set dedupes).
+    setTaskGroups(prev => Array.from(new Set(prev.map(g => (g === from ? to : g)))));
+    setParts(prev => prev.map(pt => (pt.service_task === from ? { ...pt, service_task: to } : pt)));
+  };
+
+  const removeTaskGroup = (task: string) => {
+    // Never deletes part lines — they fall back to General (untagged).
+    setTaskGroups(prev => prev.filter(g => g !== task));
+    setParts(prev => prev.map(pt => (pt.service_task === task ? { ...pt, service_task: '' } : pt)));
+  };
+
+  // One parts table per task group.  Entries carry the ORIGINAL index
+  // into ``parts`` so updatePart / removePart address the right row
+  // regardless of grouping.  (Raw <table>: the sanctioned form-embedded
+  // line-item-editor exception to the DataGrid rule.)
+  const renderPartsTable = (entries: Array<{ pt: DraftPart; idx: number }>) => {
+    if (entries.length === 0) {
+      return (
+        <p className="px-3 py-2.5 text-xs text-muted-foreground">
+          {t('work_orders_page.group_empty_hint')}
+        </p>
+      );
+    }
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm min-w-[680px]">
+          <thead>
+            <tr className="text-xs text-muted-foreground border-b border-border">
+              <th className="text-left font-medium py-1.5 px-2">{t('work_orders_page.col_part')}</th>
+              <th className="text-left font-medium py-1.5 px-2 w-28">{t('work_orders_page.col_part_number')}</th>
+              <th className="text-right font-medium py-1.5 px-2 w-16">{t('work_orders_page.col_qty')}</th>
+              <th className="text-right font-medium py-1.5 px-2 w-24">{t('work_orders_page.col_unit')}</th>
+              <th className="text-right font-medium py-1.5 px-2 w-24">{t('work_orders_page.col_total')}</th>
+              <th className="text-right font-medium py-1.5 px-2 w-20">{t('work_orders_page.col_warranty')}</th>
+              <th className="py-1.5 px-2 w-8"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map(({ pt, idx }) => (
+              <tr key={pt.id ?? `new-${idx}`} className="border-b border-border/40">
+                <td className="py-1.5 px-2">
+                  <input
+                    type="text"
+                    list="wo-parts-catalog"
+                    value={pt.part_name}
+                    onChange={e => updatePart(idx, { part_name: e.target.value })}
+                    placeholder={t('work_orders_page.ph_part_name')}
+                    className="w-full bg-transparent border-0 px-1 py-0.5 text-sm focus:outline-none focus:bg-muted/40 rounded"
+                  />
+                </td>
+                <td className="py-1.5 px-2">
+                  <input
+                    type="text"
+                    value={pt.part_number}
+                    onChange={e => updatePart(idx, { part_number: e.target.value })}
+                    placeholder={t('work_orders_page.ph_part_number')}
+                    className="w-full bg-transparent border-0 px-1 py-0.5 text-xs font-mono focus:outline-none focus:bg-muted/40 rounded"
+                  />
+                </td>
+                <td className="py-1.5 px-2">
+                  <input
+                    type="number" min="0" step="1"
+                    value={pt.quantity}
+                    onChange={e => updatePart(idx, { quantity: Number(e.target.value) || 0 })}
+                    className="w-full bg-transparent border-0 px-1 py-0.5 text-sm text-right tabular-nums focus:outline-none focus:bg-muted/40 rounded"
+                  />
+                </td>
+                <td className="py-1.5 px-2">
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={pt.unit_cost}
+                    onChange={e => updatePart(idx, { unit_cost: Number(e.target.value) || 0 })}
+                    className="w-full bg-transparent border-0 px-1 py-0.5 text-sm text-right tabular-nums focus:outline-none focus:bg-muted/40 rounded"
+                  />
+                </td>
+                <td className="py-1.5 px-2">
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={pt.total_cost}
+                    onChange={e => updatePart(idx, { total_cost: Number(e.target.value) || 0 })}
+                    className="w-full bg-transparent border-0 px-1 py-0.5 text-sm text-right tabular-nums font-medium focus:outline-none focus:bg-muted/40 rounded"
+                  />
+                </td>
+                <td className="py-1.5 px-2">
+                  <input
+                    type="number" min="0" step="1"
+                    value={pt.warranty_months}
+                    onChange={e => updatePart(idx, { warranty_months: Number(e.target.value) || 0 })}
+                    placeholder="0"
+                    className="w-full bg-transparent border-0 px-1 py-0.5 text-sm text-right tabular-nums focus:outline-none focus:bg-muted/40 rounded"
+                  />
+                </td>
+                <td className="py-1.5 px-2 text-right">
+                  <button
+                    type="button"
+                    onClick={() => removePart(idx)}
+                    className="text-muted-foreground hover:text-destructive p-1"
+                    title={t('work_orders_page.remove_part')}
+                    aria-label={t('work_orders_page.remove_part')}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
   };
 
   // ── Save ──────────────────────────────────────────────────────
@@ -468,6 +657,14 @@ export default function WorkOrderForm() {
     { value: 'trailer', label: t('work_orders_page.vehicle_type_trailer') },
   ];
   const statusItems = ['draft', 'submitted', 'paid', 'void'].map((s) => ({ value: s, label: s }));
+  // Reason-for-repair class.  '' = unclassified (the honest default for
+  // rows created before this field, or when the operator hasn't tagged it).
+  const priorityItems = [
+    { value: '', label: t('work_orders_page.priority_unset', { defaultValue: 'Unclassified' }) },
+    { value: 'scheduled', label: t('work_orders_page.priority_scheduled', { defaultValue: 'Scheduled' }) },
+    { value: 'non_scheduled', label: t('work_orders_page.priority_non_scheduled', { defaultValue: 'Non-scheduled' }) },
+    { value: 'emergency', label: t('work_orders_page.priority_emergency', { defaultValue: 'Emergency' }) },
+  ];
   const paymentStatusItems = ['unpaid', 'paid', 'partial', 'void'].map((s) => ({ value: s, label: s }));
   const companyItems = [
     { value: '', label: '— none —' },
@@ -552,6 +749,14 @@ export default function WorkOrderForm() {
               </SelectContent>
             </Select>
           </Field>
+          <Field label={t('work_orders_page.field_repair_priority', { defaultValue: 'Repair priority' })}>
+            <Select value={wo.repair_priority || ''} onValueChange={(v) => setField('repair_priority', v)} items={priorityItems}>
+              <SelectTrigger className="w-full" aria-label={t('work_orders_page.field_repair_priority', { defaultValue: 'Repair priority' })}><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {priorityItems.map((it) => <SelectItem key={it.value || 'unset'} value={it.value}>{it.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </Field>
           <Field label={t('work_orders_page.field_odometer')}>
             <input
               type="text" inputMode="numeric"
@@ -604,12 +809,22 @@ export default function WorkOrderForm() {
         <h3 className="text-sm font-semibold mb-3">{t('work_orders_page.section_vendor')}</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Field label={t('work_orders_page.field_vendor_name')}>
-            <input
-              type="text"
+            {/* Registry-first picker: choosing a vendor links vendor_id
+                + auto-fills contact; free-typing a new name still saves
+                (the server resolves-or-creates the registry row). */}
+            <VendorPicker
               value={wo.vendor_name || ''}
-              onChange={e => setField('vendor_name', e.target.value)}
-              placeholder={t('work_orders_page.ph_vendor_name')}
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+              onChange={(name, vendor) => {
+                setWo(prev => ({
+                  ...prev,
+                  vendor_name: name,
+                  vendor_id: vendor ? vendor.id : null,
+                  ...(vendor ? {
+                    vendor_phone: prev.vendor_phone || vendor.phone,
+                    vendor_address: prev.vendor_address || vendor.address,
+                  } : {}),
+                }));
+              }}
             />
           </Field>
           <Field label={t('work_orders_page.field_vendor_phone')}>
@@ -633,7 +848,14 @@ export default function WorkOrderForm() {
         </div>
       </section>
 
-      {/* ── Parts editor ───────────────────────────────────────── */}
+      {/* ── Parts editor — grouped by service task ──────────────
+          Task → parts hierarchy: each group header is a TypePicker
+          (same vocabulary as Maintenance, built-ins + the account's
+          custom types) and the lines under it are that task's parts.
+          Grouping is just the ``service_task`` tag on each line, so
+          cost reports can sum per task while a mixed invoice still
+          splits correctly.  Untagged lines live in the trailing
+          General section. */}
       <section className="bg-card border border-border rounded-xl p-5 mb-5">
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -642,100 +864,82 @@ export default function WorkOrderForm() {
               ↻ {t('work_orders_page.parts_hint')}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => setParts(prev => [...prev, blankPart()])}
-            className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-muted hover:bg-muted/80 border border-border rounded"
-          >
-            <Plus size={12} />
-            {t('work_orders_page.add_part')}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={addTaskGroup}
+              className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-muted hover:bg-muted/80 border border-border rounded"
+            >
+              <Plus size={12} />
+              {t('work_orders_page.add_task_group')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setParts(prev => [...prev, blankPart()])}
+              className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-muted hover:bg-muted/80 border border-border rounded"
+            >
+              <Plus size={12} />
+              {t('work_orders_page.add_part')}
+            </button>
+          </div>
         </div>
-        {parts.length === 0 ? (
+        {/* Shared suggestion list for every part-name input (native
+            datalist: zero JS, browser-rendered dropdown). */}
+        <datalist id="wo-parts-catalog">
+          {catalogParts.map(cp => <option key={cp.id} value={cp.name} />)}
+        </datalist>
+        {parts.length === 0 && taskGroups.length === 0 ? (
           <p className="text-xs text-muted-foreground">{t('work_orders_page.no_parts')}</p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[680px]">
-              <thead>
-                <tr className="text-xs text-muted-foreground border-b border-border">
-                  <th className="text-left font-medium py-1.5 px-2">{t('work_orders_page.col_part')}</th>
-                  <th className="text-left font-medium py-1.5 px-2 w-28">{t('work_orders_page.col_part_number')}</th>
-                  <th className="text-right font-medium py-1.5 px-2 w-16">{t('work_orders_page.col_qty')}</th>
-                  <th className="text-right font-medium py-1.5 px-2 w-24">{t('work_orders_page.col_unit')}</th>
-                  <th className="text-right font-medium py-1.5 px-2 w-24">{t('work_orders_page.col_total')}</th>
-                  <th className="text-right font-medium py-1.5 px-2 w-20">{t('work_orders_page.col_warranty')}</th>
-                  <th className="py-1.5 px-2 w-8"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {parts.map((p, idx) => (
-                  <tr key={p.id ?? `new-${idx}`} className="border-b border-border/40">
-                    <td className="py-1.5 px-2">
-                      <input
-                        type="text"
-                        value={p.part_name}
-                        onChange={e => updatePart(idx, { part_name: e.target.value })}
-                        placeholder={t('work_orders_page.ph_part_name')}
-                        className="w-full bg-transparent border-0 px-1 py-0.5 text-sm focus:outline-none focus:bg-muted/40 rounded"
-                      />
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <input
-                        type="text"
-                        value={p.part_number}
-                        onChange={e => updatePart(idx, { part_number: e.target.value })}
-                        placeholder={t('work_orders_page.ph_part_number')}
-                        className="w-full bg-transparent border-0 px-1 py-0.5 text-xs font-mono focus:outline-none focus:bg-muted/40 rounded"
-                      />
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <input
-                        type="number" min="0" step="1"
-                        value={p.quantity}
-                        onChange={e => updatePart(idx, { quantity: Number(e.target.value) || 0 })}
-                        className="w-full bg-transparent border-0 px-1 py-0.5 text-sm text-right tabular-nums focus:outline-none focus:bg-muted/40 rounded"
-                      />
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <input
-                        type="number" min="0" step="0.01"
-                        value={p.unit_cost}
-                        onChange={e => updatePart(idx, { unit_cost: Number(e.target.value) || 0 })}
-                        className="w-full bg-transparent border-0 px-1 py-0.5 text-sm text-right tabular-nums focus:outline-none focus:bg-muted/40 rounded"
-                      />
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <input
-                        type="number" min="0" step="0.01"
-                        value={p.total_cost}
-                        onChange={e => updatePart(idx, { total_cost: Number(e.target.value) || 0 })}
-                        className="w-full bg-transparent border-0 px-1 py-0.5 text-sm text-right tabular-nums font-medium focus:outline-none focus:bg-muted/40 rounded"
-                      />
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <input
-                        type="number" min="0" step="1"
-                        value={p.warranty_months}
-                        onChange={e => updatePart(idx, { warranty_months: Number(e.target.value) || 0 })}
-                        placeholder="0"
-                        className="w-full bg-transparent border-0 px-1 py-0.5 text-sm text-right tabular-nums focus:outline-none focus:bg-muted/40 rounded"
-                      />
-                    </td>
-                    <td className="py-1.5 px-2 text-right">
-                      <button
-                        type="button"
-                        onClick={() => removePart(idx)}
-                        className="text-muted-foreground hover:text-destructive p-1"
-                        title={t('work_orders_page.remove_part')}
-                        aria-label={t('work_orders_page.remove_part')}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="space-y-4">
+            {taskGroups.map((gv) => (
+              <div key={gv} className="border border-border rounded-lg overflow-hidden">
+                <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/60 border-b border-border">
+                  <TypePicker
+                    value={gv}
+                    onChange={(next) => renameTaskGroup(gv, next)}
+                    canCreate={canManageTaskTypes}
+                    className="w-56"
+                  />
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {t('work_orders_page.group_subtotal')}: ${groupSubtotal(gv).toFixed(2)}
+                  </span>
+                  <span className="ml-auto inline-flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setParts(prev => [...prev, blankPart(gv)])}
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded"
+                    >
+                      <Plus size={12} />
+                      {t('work_orders_page.add_part')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeTaskGroup(gv)}
+                      title={t('work_orders_page.remove_task_group')}
+                      aria-label={t('work_orders_page.remove_task_group')}
+                      className="text-muted-foreground hover:text-destructive p-1"
+                    >
+                      <X size={14} />
+                    </button>
+                  </span>
+                </div>
+                {renderPartsTable(entriesFor(gv))}
+              </div>
+            ))}
+            {(entriesFor('').length > 0 || taskGroups.length === 0) && (
+              <div className="border border-border rounded-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-3 py-2 bg-muted/60 border-b border-border">
+                  <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    {t('work_orders_page.group_general')}
+                  </span>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {t('work_orders_page.group_subtotal')}: ${groupSubtotal('').toFixed(2)}
+                  </span>
+                </div>
+                {renderPartsTable(entriesFor(''))}
+              </div>
+            )}
           </div>
         )}
       </section>
@@ -766,6 +970,45 @@ export default function WorkOrderForm() {
           <span className="text-muted-foreground">{t('work_orders_page.sum_labor')}: <span className="font-medium tabular-nums text-foreground">${(Number(wo.labor_cost) || 0).toFixed(2)}</span></span>
           <span className="text-muted-foreground">{t('work_orders_page.sum_tax')}: <span className="font-medium tabular-nums text-foreground">${(Number(wo.tax_amount) || 0).toFixed(2)}</span></span>
           <span className="text-foreground font-semibold ml-auto">{t('work_orders_page.sum_total')}: <span className="tabular-nums">${totalCostComputed.toFixed(2)}</span></span>
+        </div>
+      </section>
+
+      {/* ── Repair documentation (3C) ──────────────────────────────
+          The Complaint / Cause / Correction triplet — the DOT- and
+          warranty-standard way to record a repair (reported → found →
+          fixed).  All optional; a shop invoice with just costs stays
+          valid, but filling these gives an audit-ready paper trail. */}
+      <section className="bg-card border border-border rounded-xl p-5 mb-5">
+        <h3 className="text-sm font-semibold mb-1">{t('work_orders_page.section_diagnosis', { defaultValue: 'Repair documentation' })}</h3>
+        <p className="text-xs text-muted-foreground mb-3">{t('work_orders_page.diagnosis_hint', { defaultValue: 'The 3C format auditors and warranty claims expect. Optional.' })}</p>
+        <div className="flex flex-col gap-3">
+          <Field label={t('work_orders_page.field_complaint', { defaultValue: 'Complaint — what was reported' })}>
+            <textarea
+              rows={2}
+              value={wo.complaint || ''}
+              onChange={e => setField('complaint', e.target.value)}
+              placeholder={t('work_orders_page.ph_complaint', { defaultValue: 'e.g. Driver reported grinding noise when braking' })}
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+            />
+          </Field>
+          <Field label={t('work_orders_page.field_cause', { defaultValue: 'Cause — what was found' })}>
+            <textarea
+              rows={2}
+              value={wo.cause || ''}
+              onChange={e => setField('cause', e.target.value)}
+              placeholder={t('work_orders_page.ph_cause', { defaultValue: 'e.g. Front brake pads worn below minimum, rotor scored' })}
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+            />
+          </Field>
+          <Field label={t('work_orders_page.field_correction', { defaultValue: 'Correction — what was done' })}>
+            <textarea
+              rows={2}
+              value={wo.correction || ''}
+              onChange={e => setField('correction', e.target.value)}
+              placeholder={t('work_orders_page.ph_correction', { defaultValue: 'e.g. Replaced front pads and rotors, road-tested' })}
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+            />
+          </Field>
         </div>
       </section>
 

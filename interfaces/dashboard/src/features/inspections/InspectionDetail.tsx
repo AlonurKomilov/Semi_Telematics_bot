@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
+import { useWorkOrderBridge } from '../work-orders/useWorkOrderBridge';
 import { toast } from 'sonner';
 import { X, BellRing, MapPin, FileDown } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
@@ -47,8 +49,17 @@ function _formatTs(iso: string | null, tz?: string): string {
 }
 
 
+// Defect statuses (mirror of DEFECT_ITEM_STATUSES in
+// features/inspections/templates.py) — the three item states that
+// warrant a repair: 'oos' (out-of-service) is severe, 'minor'/'major'
+// are drivable defects.  'ok' / 'na' / 'pending' are NOT defects.
+const DEFECT_STATUSES = new Set(['minor', 'major', 'oos']);
+
 export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }: Props) {
   const { t } = useTranslation();
+  const { has } = useViewPermissions();
+  const canCreateWorkOrder = has('can_maintenance_all');
+  const { createFrom, bridgeDialog } = useWorkOrderBridge();
   const qc = useQueryClient();
   const tz = useTimezone();
   const [tab, setTab] = useState<'items' | 'media'>('items');
@@ -309,6 +320,28 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                             📸 {itemMedia.length} {itemMedia.length === 1 ? 'photo/video' : 'photos/videos'}
                           </p>
                         )}
+                        {/* Bridge: a defect item can spawn a pre-filled
+                            work order (vehicle + the defect as the 3C
+                            complaint).  Only on actual defects, and only
+                            for users who can create work orders. */}
+                        {canCreateWorkOrder && DEFECT_STATUSES.has(it.status) && (
+                          <button
+                            onClick={() => createFrom({
+                              vehicle_name: ins.vehicle_name ?? '',
+                              complaint: [
+                                `${it.category}: ${it.label}`,
+                                it.notes ? `— ${it.notes}` : '',
+                              ].filter(Boolean).join(' '),
+                              // Out-of-service = can't legally run =
+                              // emergency; other defects are unplanned
+                              // but drivable.
+                              repair_priority: it.status === 'oos' ? 'emergency' : 'non_scheduled',
+                            })}
+                            className="mt-2 inline-flex items-center px-2.5 py-1 text-xs rounded-lg border border-border hover:bg-accent text-foreground font-medium transition-colors"
+                          >
+                            + Work order
+                          </button>
+                        )}
                       </li>
                     );
                   })}
@@ -412,6 +445,9 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
           </>
         )}
       </div>
+      {/* Portaled to body by base-ui, so tree placement is cosmetic —
+          the "work order already open" confirm from the bridge. */}
+      {bridgeDialog}
     </div>
   );
 }

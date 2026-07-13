@@ -13,6 +13,7 @@ import {
   EmptyState, ErrorState, CardSkeleton,
 } from '../../components/shell';
 import type { WorkOrderCostRow, AnyColumn } from '../../types';
+import { TASK_TYPE_OPTIONS } from '../maintenance/badges';
 import type { ReportsLayoutOutletContext } from './ReportsLayout';
 import { chartColor } from '../../lib/status';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
@@ -119,9 +120,18 @@ export default function Reports() {
     queryKey: ['wo-reports', 'per-vehicle', days],
     queryFn: () => apiJSON<ReportResponse>(`/reports/cost-reports/per-vehicle?days=${days}`),
   });
+  // Parts spend per service-task tag (summed at the part level, so a
+  // mixed "oil + brakes" invoice splits correctly).  Replaced the old
+  // per-task-type source, which only saw work orders linked to a
+  // maintenance task and silently dropped everything else.
   const perType = useQuery<ReportResponse>({
-    queryKey: ['wo-reports', 'per-task-type', days],
-    queryFn: () => apiJSON<ReportResponse>(`/reports/cost-reports/per-task-type?days=${days}`),
+    queryKey: ['wo-reports', 'per-service-task', days],
+    queryFn: () => apiJSON<ReportResponse>(`/reports/cost-reports/per-service-task?days=${days}`),
+  });
+  // Usage + spend per part name — "which part keeps costing us".
+  const perPart = useQuery<ReportResponse>({
+    queryKey: ['wo-reports', 'per-part', days],
+    queryFn: () => apiJSON<ReportResponse>(`/reports/cost-reports/per-part?days=${days}`),
   });
   const perVendor = useQuery<ReportResponse>({
     queryKey: ['wo-reports', 'per-vendor', days],
@@ -133,7 +143,8 @@ export default function Reports() {
   });
 
   const loading = summaryQuery.isLoading || perVehicle.isLoading
-    || perType.isLoading || perVendor.isLoading || monthly.isLoading;
+    || perType.isLoading || perVendor.isLoading || monthly.isLoading
+    || perPart.isLoading;
   const firstError =
     summaryQuery.error || perVehicle.error || perType.error
     || perVendor.error || monthly.error;
@@ -164,12 +175,29 @@ export default function Reports() {
     ];
   }, [perVehicle.data]);
 
-  // Task-type donut — sorted descending so the legend is meaningful.
+  // Service-task donut — sorted descending so the legend is
+  // meaningful.  Rows carry task-type SLUGS ('brakes',
+  // 'custom_oil_change', 'untagged'); label them with the shared
+  // maintenance vocabulary, falling back to de-slugged text.
   const typeChart = useMemo(() => {
+    const labelOf = (slug: string): string => {
+      if (slug === 'untagged') return 'Untagged';
+      const opt = TASK_TYPE_OPTIONS.find(o => o.value === slug);
+      if (opt) return opt.label;
+      return slug.replace(/^custom_/, '').replace(/[_-]+/g, ' ')
+        .replace(/\b\w/g, c => c.toUpperCase());
+    };
     return (perType.data?.rows ?? [])
       .slice()
-      .sort((a, b) => b.total_spent - a.total_spent);
+      .sort((a, b) => b.total_spent - a.total_spent)
+      .map(r => ({ ...r, label: labelOf(String(r.service_task ?? '')) }));
   }, [perType.data]);
+
+  // Top parts — highest spend first; the backend already caps at 25.
+  const partRows = useMemo(
+    () => (perPart.data?.rows ?? []).slice().sort((a, b) => b.total_spent - a.total_spent),
+    [perPart.data],
+  );
 
   // Vendor table — top 10 by spend.  Pure HTML table rather than a
   // chart because text is the right primitive for "which vendor got
@@ -393,15 +421,17 @@ export default function Reports() {
                     <Pie
                       data={typeChart}
                       dataKey="total_spent"
-                      nameKey="task_type"
+                      nameKey="label"
                       innerRadius={55} outerRadius={95}
                       paddingAngle={2}
                       // Pie.onClick passes the data element as the
                       // first arg.  Recharts' types are loose here
                       // — cast to a known shape locally.
                       onClick={(d) => {
-                        const taskType = (d as { task_type?: string }).task_type;
-                        if (taskType) navigate(`/work-orders?task_type=${encodeURIComponent(taskType)}`);
+                        const slug = (d as { service_task?: string }).service_task;
+                        if (slug && slug !== 'untagged') {
+                          navigate(`/work-orders?task_type=${encodeURIComponent(slug)}`);
+                        }
                       }}
                       style={{ cursor: 'pointer' }}
                     >
@@ -498,6 +528,48 @@ export default function Reports() {
                     />
                   </LineChart>
                 </ResponsiveContainer>
+              )}
+            </ChartCard>
+          </div>
+
+          {/* ── Top parts ────────────────────────────────────────
+              "Which part keeps costing us" — a part recurring across
+              many work orders is the early-warning signal for a
+              failing-component pattern (and the lever for challenging
+              a vendor's pricing). */}
+          <div className="grid grid-cols-1 gap-5 mt-5">
+            <ChartCard title={t('cost_reports.top_parts', { defaultValue: 'Top parts' })}
+              hint={t('cost_reports.top_parts_hint', { defaultValue: 'Highest-spend parts across all work orders — recurring parts flag failing-component patterns.' })}>
+              {partRows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No data.</p>
+              ) : (
+                <DataGrid
+                  columns={[
+                    {
+                      key: 'part_name', label: 'Part', sortable: true,
+                      render: (v) => <span>{String(v ?? '—')}</span>,
+                    },
+                    {
+                      key: 'usage_count', label: 'Line Items', sortable: true,
+                      render: (v) => <span className="tabular-nums">{String(v)}</span>,
+                    },
+                    {
+                      key: 'work_order_count', label: 'Work Orders', sortable: true,
+                      render: (v) => <span className="tabular-nums">{String(v)}</span>,
+                    },
+                    {
+                      key: 'total_quantity', label: 'Qty', sortable: true,
+                      render: (v) => <span className="tabular-nums text-muted-foreground">{Number(v ?? 0).toLocaleString()}</span>,
+                    },
+                    {
+                      key: 'total_spent', label: 'Total', sortable: true,
+                      render: (v) => <span className="tabular-nums font-medium">{moneyDetail(Number(v))}</span>,
+                    },
+                  ] satisfies AnyColumn[]}
+                  data={partRows as unknown as Record<string, unknown>[]}
+                  enableToolbar={false}
+                  enablePagination={false}
+                />
               )}
             </ChartCard>
           </div>

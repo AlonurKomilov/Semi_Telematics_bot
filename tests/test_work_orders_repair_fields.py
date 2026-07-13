@@ -1,0 +1,52 @@
+"""Repair-priority + 3C (complaint/cause/correction) fields round-trip.
+
+Pins the Tier-1 work-order additions through the real storage methods
+(migrations 146 / 147): both create-with-fields and update-later flow
+through ``add_work_order`` / ``update_work_order`` / ``list_work_orders``
+and read back intact, and existing rows created without them default to
+'' (unclassified / undocumented) rather than NULL.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+
+@pytest.mark.asyncio
+async def test_repair_fields_create_and_readback(db):
+    wo_id = await db.add_work_order(
+        7, "ACME", "T100", "Roadside Repair Co",
+        repair_priority="emergency",
+        complaint="Driver reported grinding noise when braking",
+        cause="Front pads worn below minimum, rotor scored",
+        correction="Replaced front pads and rotors, road-tested",
+    )
+    rows = await db.list_work_orders(7)
+    wo = next(r for r in rows if r["id"] == wo_id)
+    assert wo["repair_priority"] == "emergency"
+    assert wo["complaint"].startswith("Driver reported grinding")
+    assert wo["cause"].startswith("Front pads worn")
+    assert wo["correction"].startswith("Replaced front pads")
+
+
+@pytest.mark.asyncio
+async def test_repair_fields_default_blank_then_updatable(db):
+    # Created WITHOUT the new fields — must default to '' (not NULL).
+    wo_id = await db.add_work_order(7, "ACME", "T200", "Cross-Country Truck")
+    wo = await db.get_work_order(wo_id, 7)
+    assert wo["repair_priority"] == ""
+    assert wo["complaint"] == "" and wo["cause"] == "" and wo["correction"] == ""
+
+    # Classify + document it after the fact (the retro-tagging path).
+    ok = await db.update_work_order(
+        wo_id, account_id=7,
+        repair_priority="scheduled",
+        complaint="Routine PM due",
+        correction="Oil + filter change",
+    )
+    assert ok is True
+    wo = await db.get_work_order(wo_id, 7)
+    assert wo["repair_priority"] == "scheduled"
+    assert wo["complaint"] == "Routine PM due"
+    assert wo["cause"] == ""          # left untouched
+    assert wo["correction"] == "Oil + filter change"

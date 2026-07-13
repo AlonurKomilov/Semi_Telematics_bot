@@ -67,6 +67,9 @@ class WorkOrderCreate(BaseModel):
     vendor_name: str = ""
     vendor_address: str = ""
     vendor_phone: str = ""
+    # Registry link (features/vendors).  Snapshot fields above stay the
+    # invoice truth; this id is the analytical spine.
+    vendor_id: Optional[int] = None
     service_date: Optional[str] = None
     odometer_at_service: Optional[float] = Field(None, ge=0)
     engine_hours_at_service: Optional[float] = Field(None, ge=0)
@@ -78,6 +81,13 @@ class WorkOrderCreate(BaseModel):
     payment_method: str = ""
     payment_status: str = Field("unpaid", pattern=r"^(unpaid|paid|partial|void)$")
     status: str = Field("draft", pattern=r"^(draft|submitted|paid|void)$")
+    # Reason-for-repair class (VMRS-style): planned upkeep vs unplanned
+    # firefighting.  '' = unclassified.
+    repair_priority: str = Field("", pattern=r"^(scheduled|non_scheduled|emergency|)$")
+    # 3C repair documentation (DOT / warranty standard).
+    complaint: str = ""
+    cause: str = ""
+    correction: str = ""
     notes: str = ""
     assigned_to: str = ""
 
@@ -90,6 +100,7 @@ class WorkOrderUpdate(BaseModel):
     vendor_name: Optional[str] = None
     vendor_address: Optional[str] = None
     vendor_phone: Optional[str] = None
+    vendor_id: Optional[int] = None
     service_date: Optional[str] = None
     odometer_at_service: Optional[float] = Field(None, ge=0)
     engine_hours_at_service: Optional[float] = Field(None, ge=0)
@@ -101,6 +112,10 @@ class WorkOrderUpdate(BaseModel):
     payment_method: Optional[str] = None
     payment_status: Optional[str] = Field(None, pattern=r"^(unpaid|paid|partial|void)$")
     status: Optional[str] = Field(None, pattern=r"^(draft|submitted|paid|void)$")
+    repair_priority: Optional[str] = Field(None, pattern=r"^(scheduled|non_scheduled|emergency|)$")
+    complaint: Optional[str] = None
+    cause: Optional[str] = None
+    correction: Optional[str] = None
     notes: Optional[str] = None
     assigned_to: Optional[str] = None
 
@@ -112,6 +127,14 @@ class PartCreate(BaseModel):
     unit_cost: float = Field(0.0, ge=0)
     total_cost: float = Field(0.0, ge=0)
     warranty_months: int = Field(0, ge=0, le=1200)
+    # Task-type slug this part line belongs to ('brakes', 'oil',
+    # 'custom_…'); shares the maintenance task-type vocabulary.  '' =
+    # untagged.  Free-form (not a pattern) because custom slugs are
+    # account-defined.
+    service_task: str = Field("", max_length=100)
+    # Catalog link — normally omitted; the server resolves it from
+    # part_name on save.
+    part_id: Optional[int] = None
     notes: str = ""
 
 
@@ -215,9 +238,22 @@ async def create_work_order(
     """Create a new work order.  Manager-only — drivers use the bot
     /invoice flow (which creates a draft on their behalf)."""
     internal_uid = await resolve_user_id(user)
+    payload = body.model_dump()
+    # Vendor registry auto-link: a free-typed vendor name (no id from
+    # the picker) resolves-or-creates its registry row so every saved
+    # WO is linked.  Snapshot fields still store exactly what was
+    # typed; only the id is derived.
+    if payload.get("vendor_name") and not payload.get("vendor_id"):
+        _v = await tenant_db.resolve_or_create_vendor(
+            user["account_id"], payload["vendor_name"],
+            address=payload.get("vendor_address") or "",
+            phone=payload.get("vendor_phone") or "",
+        )
+        if _v:
+            payload["vendor_id"] = _v["id"]
     wo_id = await tenant_db.add_work_order(
         account_id=user["account_id"], created_by=internal_uid,
-        **body.model_dump(),
+        **payload,
     )
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),
@@ -226,6 +262,43 @@ async def create_work_order(
         details=f"{body.vendor_name}: ${body.total_cost:.2f}",
     )
     return {"id": wo_id, "status": "created"}
+
+
+# NOTE: declared BEFORE the /{work_order_id} routes — "parts-catalog" is a
+# single path segment and would otherwise be captured by the int param.
+@router.get("/parts-catalog")
+async def list_parts_catalog(
+    user: dict = Depends(require_permission("can_work_orders_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Per-account parts catalog with usage rollups — feeds the parts
+    editor's autocomplete.  Manager-gated like the rest of the parts
+    write surface (usage totals aggregate the whole account)."""
+    return {"parts": await tenant_db.list_parts_catalog(user["account_id"])}
+
+
+@router.post("/parts-catalog/{loser_id}/merge-into/{winner_id}")
+async def merge_parts_catalog(
+    loser_id: int,
+    winner_id: int,
+    user: dict = Depends(require_permission("can_work_orders_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Fold a duplicate catalog part into the canonical one (same
+    contract as vendor merge: repoint lines, alias the loser's key so
+    re-syncs resolve to the survivor, delete the loser)."""
+    if loser_id == winner_id:
+        raise HTTPException(status_code=422, detail="Cannot merge a part into itself")
+    ok = await tenant_db.merge_catalog_parts(user["account_id"], loser_id, winner_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Catalog part not found")
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "part_catalog_merge",
+        target_type="part", target_id=str(winner_id),
+        details=f"merged #{loser_id} into #{winner_id}",
+    )
+    return {"ok": True}
 
 
 @router.get("/{work_order_id}")
@@ -273,6 +346,16 @@ async def update_work_order(
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
+    # Same auto-link on rename: a changed vendor_name without an
+    # explicit vendor_id re-resolves so the link follows the edit.
+    if updates.get("vendor_name") and "vendor_id" not in updates:
+        _v = await tenant_db.resolve_or_create_vendor(
+            user["account_id"], updates["vendor_name"],
+            address=updates.get("vendor_address") or "",
+            phone=updates.get("vendor_phone") or "",
+        )
+        if _v:
+            updates["vendor_id"] = _v["id"]
     ok = await tenant_db.update_work_order(
         work_order_id, account_id=user["account_id"], **updates,
     )
@@ -339,7 +422,19 @@ async def add_part(
     tenant_db=Depends(get_tenant_db),
 ):
     await _require_visible_work_order(work_order_id, user, tenant_db)
-    pid = await tenant_db.add_work_order_part(work_order_id, **body.model_dump())
+    payload = body.model_dump()
+    # Parts-catalog auto-link: every saved line resolves-or-creates its
+    # catalog row (exact-normalized, alias-aware) so per-part analytics
+    # work no matter how the name was typed.  ``part_name`` stays the
+    # invoice-truth snapshot.
+    if payload.get("part_name"):
+        _cp = await tenant_db.resolve_or_create_part(
+            user["account_id"], payload["part_name"],
+            part_number=payload.get("part_number") or "",
+        )
+        if _cp:
+            payload["part_id"] = _cp["id"]
+    pid = await tenant_db.add_work_order_part(work_order_id, **payload)
     return {"id": pid}
 
 
@@ -560,6 +655,36 @@ async def report_per_task_type(
     from datetime import datetime, timedelta, timezone
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     rows = await tenant_db.cost_by_task_type(user["account_id"], since=since)
+    return {"days": days, "rows": rows}
+
+
+@router.get("/reports/per-service-task")
+async def report_per_service_task(
+    days: int = Query(90, ge=1, le=3650),
+    user: dict = Depends(require_permission("can_cost_reports")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Parts spend per service-task tag, summed at the PART level so a
+    mixed invoice splits correctly across tasks.  ``untagged`` rows
+    keep unclassified spend visible."""
+    from datetime import datetime, timedelta, timezone
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    rows = await tenant_db.cost_by_service_task(user["account_id"], since=since)
+    return {"days": days, "rows": rows}
+
+
+@router.get("/reports/per-part")
+async def report_per_part(
+    days: int = Query(90, ge=1, le=3650),
+    user: dict = Depends(require_permission("can_cost_reports")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Usage + spend per part name — the "which part keeps costing us"
+    early-warning list (a part recurring across many work orders flags
+    a failing-component pattern)."""
+    from datetime import datetime, timedelta, timezone
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    rows = await tenant_db.cost_by_part(user["account_id"], since=since)
     return {"days": days, "rows": rows}
 
 

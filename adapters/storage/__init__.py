@@ -47,6 +47,9 @@ from .forum_routing import ForumRoutingMixin
 from .account_persona_groups import AccountPersonaGroupsMixin
 from .maintenance import MaintenanceMixin
 from .work_orders import WorkOrdersMixin
+from .vendors import VendorsMixin
+from .parts_catalog import PartsCatalogMixin
+from .vendor_directory import VendorDirectoryMixin
 from .fuel import FuelMixin
 from .alerts import AlertsMixin
 from .settings import SettingsMixin
@@ -103,6 +106,9 @@ class Database(
     AccountPersonaGroupsMixin,
     MaintenanceMixin,
     WorkOrdersMixin,
+    VendorsMixin,
+    PartsCatalogMixin,
+    VendorDirectoryMixin,
     FuelMixin,
     AlertsMixin,
     SettingsMixin,

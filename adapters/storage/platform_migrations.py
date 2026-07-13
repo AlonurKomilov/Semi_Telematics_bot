@@ -14,6 +14,7 @@ logger = logging.getLogger(__name__)
 async def run_all(conn) -> None:
     """Execute every platform migration in order."""
     await migrate_email_unique_per_account(conn)
+    await migrate_vendor_directory(conn)
     await migrate_add_bot_columns(conn)
     await migrate_rename_fleet_manager_role(conn)
     await migrate_knowledge_base_to_platform(conn)
@@ -3276,6 +3277,44 @@ async def migrate_driver_deductions(conn) -> None:
         logger.info("Migration: driver_deductions + run-item net columns")
     except Exception as e:
         logger.error("driver_deductions migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_vendor_directory(conn) -> None:
+    """Global vendor-directory table (Phase C1 of
+    docs/architecture/vendor-parts-master-data.md) — platform-owned,
+    no account_id, no RLS (system routes gate operator access; account
+    routes only ever read ACTIVE rows' identity fields).  Idempotent:
+    CREATE IF NOT EXISTS mirrors platform_schema for upgraded DBs.
+    """
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS vendor_directory (
+                id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+                name                 TEXT    NOT NULL,
+                name_key             TEXT    NOT NULL UNIQUE,
+                address              TEXT    NOT NULL DEFAULT '',
+                phone                TEXT    NOT NULL DEFAULT '',
+                email                TEXT    NOT NULL DEFAULT '',
+                website              TEXT    NOT NULL DEFAULT '',
+                services             TEXT    NOT NULL DEFAULT '',
+                notes                TEXT    NOT NULL DEFAULT '',
+                status               TEXT    NOT NULL DEFAULT 'pending',
+                source               TEXT    NOT NULL DEFAULT 'operator',
+                suggested_by_account INTEGER,
+                created_at           TEXT    NOT NULL,
+                updated_at           TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_vendor_directory_status
+                ON vendor_directory(status);
+        """)
+        await conn.commit()
+        logger.info("Platform migration: vendor_directory ready")
+    except Exception as e:
+        logger.error("vendor_directory migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

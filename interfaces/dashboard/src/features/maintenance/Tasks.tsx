@@ -8,6 +8,7 @@ import {
   Paperclip, Image as ImageIcon, Upload, ClipboardList,
 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
+import { usePublishContext } from '../ai/PageContext';
 import DataGrid, { type DataGridSegment } from '../../components/DataGrid';
 import {
   useMaintenanceTasksQuery, makeUrgencyClassifier, classifyTaskBuckets,
@@ -353,6 +354,19 @@ export default function Tasks() {
   // matching fleet entry is found.
   const [fCompany, setFCompany] = useState('');
   const [fType, setFType] = useState('inspection');
+
+  // Copilot page context — tells the assistant what's on screen so
+  // "why is this overdue?" / "these tasks" resolve to this page.  One
+  // hook call, in the feature's own file; no shared code touched.
+  usePublishContext({
+    feature: 'maintenance',
+    label: t('nav.maintenance'),
+    filters: { company: fCompany || undefined },
+    selectedIds: [...selectedIds],
+    focus: selected
+      ? { kind: 'maintenance task', id: selected.id, label: `Truck ${selected.vehicle_name}` }
+      : undefined,
+  });
   const [fDesc, setFDesc] = useState('');
   const [fDueDate, setFDueDate] = useState('');
   const [fDueMiles, setFDueMiles] = useState('');

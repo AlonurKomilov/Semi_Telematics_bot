@@ -32,6 +32,31 @@ const PAYMENT_TONE: Record<string, Tone> = {
   void:    'neutral',
 };
 
+// Reason-for-repair class → tone.  Emergency shouts (danger),
+// non-scheduled warns (unplanned but not a breakdown), scheduled is
+// the quiet "as-planned" green.  '' (unclassified) renders a muted
+// dash rather than a pill so untagged rows don't add noise.
+const PRIORITY_TONE: Record<string, Tone> = {
+  scheduled:     'ok',
+  non_scheduled: 'warn',
+  emergency:     'danger',
+};
+const PRIORITY_LABEL: Record<string, string> = {
+  scheduled:     'Scheduled',
+  non_scheduled: 'Non-scheduled',
+  emergency:     'Emergency',
+};
+
+function PriorityCell({ value }: { value: unknown }) {
+  const v = String(value || '').toLowerCase();
+  if (!v) return <span className="text-muted-foreground">—</span>;
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses(PRIORITY_TONE[v] ?? 'neutral')}`}>
+      {PRIORITY_LABEL[v] ?? v}
+    </span>
+  );
+}
+
 function Pill({ value, palette }: { value: unknown; palette: Record<string, Tone> }) {
   const v = String(value || '').toLowerCase();
   const cls = toneClasses(palette[v] ?? 'neutral');
@@ -95,6 +120,16 @@ function makeColumns(tz: string): AnyColumn[] {
     filterValue: (row) => String((row as { status?: string }).status ?? ''),
     filterLabel: (row) => titleCase(String((row as { status?: string }).status ?? '')),
     render: (v) => <Pill value={v} palette={STATUS_TONE} /> },
+  // Reason-for-repair class — planned upkeep vs unplanned firefighting.
+  // Filterable so an operator can isolate emergency spend; the label
+  // maps '' → "Unclassified" so that bucket is filterable too.
+  { key: 'repair_priority', label: 'Priority', sortable: true, filterable: true,
+    filterValue: (row) => String((row as { repair_priority?: string }).repair_priority ?? ''),
+    filterLabel: (row) => {
+      const p = String((row as { repair_priority?: string }).repair_priority ?? '');
+      return p ? (PRIORITY_LABEL[p] ?? titleCase(p)) : 'Unclassified';
+    },
+    render: (v) => <PriorityCell value={v} /> },
   { key: 'payment_status', label: 'Payment', sortable: true, filterable: true,
     filterValue: (row) => String((row as { payment_status?: string }).payment_status ?? ''),
     filterLabel: (row) => titleCase(String((row as { payment_status?: string }).payment_status ?? '')),
@@ -279,7 +314,7 @@ export default function WorkOrders() {
           tableId="work-orders"
           columns={makeColumns(tz)}
           data={workOrders as unknown as Record<string, unknown>[]}
-          searchKey={['vendor_name', 'vehicle_name', 'invoice_number', 'company_code']}
+          searchKey={['vendor_name', 'vehicle_name', 'invoice_number', 'company_code', 'complaint', 'cause', 'correction']}
           searchPlaceholder={t('work_orders_page.search_placeholder')}
           onRowClick={(row) => {
             const w = row as unknown as WorkOrder;

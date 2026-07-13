@@ -24,6 +24,7 @@ class WorkOrdersMixin:
         vehicle_type: str = "",
         vendor_address: str = "",
         vendor_phone: str = "",
+        vendor_id: Optional[int] = None,
         service_date: Optional[str] = None,
         odometer_at_service: Optional[float] = None,
         engine_hours_at_service: Optional[float] = None,
@@ -35,6 +36,10 @@ class WorkOrdersMixin:
         payment_method: str = "",
         payment_status: str = "unpaid",
         status: str = "draft",
+        repair_priority: str = "",
+        complaint: str = "",
+        cause: str = "",
+        correction: str = "",
         notes: str = "",
         assigned_to: str = "",
         created_by: int = 0,
@@ -44,18 +49,22 @@ class WorkOrdersMixin:
             """INSERT INTO work_orders
                (account_id, company_code, vehicle_id, vehicle_name,
                 vehicle_type, vendor_name, vendor_address, vendor_phone,
-                service_date, odometer_at_service, engine_hours_at_service,
+                vendor_id, service_date, odometer_at_service,
+                engine_hours_at_service,
                 labor_cost, parts_cost, tax_amount, total_cost,
                 invoice_number, payment_method, payment_status,
-                status, notes, assigned_to, created_by, created_at, updated_at)
+                status, repair_priority, complaint, cause, correction,
+                notes, assigned_to, created_by, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, company_code, vehicle_id, vehicle_name,
              vehicle_type, vendor_name, vendor_address, vendor_phone,
-             service_date, odometer_at_service, engine_hours_at_service,
+             vendor_id, service_date, odometer_at_service,
+             engine_hours_at_service,
              labor_cost, parts_cost, tax_amount, total_cost,
              invoice_number, payment_method, payment_status,
-             status, notes, assigned_to, created_by, now, now),
+             status, repair_priority, complaint, cause, correction,
+             notes, assigned_to, created_by, now, now),
         )
         await self._db.commit()
         return cur.lastrowid
@@ -201,6 +210,15 @@ class WorkOrdersMixin:
                 vendor_name = str(r.get("vendor_name") or "")
                 vendor_address = str(r.get("vendor_address") or "")
                 vendor_phone = str(r.get("vendor_phone") or "")
+                # Vendor registry link: exact-normalized resolve-or-create
+                # (alias-aware post-merge).  The snapshot columns above
+                # still store what the invoice said; the id is the
+                # analytical spine.  Blank vendor → no link.
+                _vend = await self.resolve_or_create_vendor(
+                    account_id, vendor_name,
+                    address=vendor_address, phone=vendor_phone,
+                ) if vendor_name else None
+                vendor_id = _vend["id"] if _vend else None
                 payment_method = str(r.get("payment_method") or "")
                 service_date = str(r.get("opened_at") or "") or None
                 odometer = r.get("odometer")
@@ -243,14 +261,14 @@ class WorkOrdersMixin:
                         "UPDATE work_orders SET vehicle_name = ?, "
                         "vehicle_type = ?, company_code = ?, assigned_to = ?, "
                         "invoice_number = ?, vendor_name = ?, "
-                        "vendor_address = ?, vendor_phone = ?, "
+                        "vendor_address = ?, vendor_phone = ?, vendor_id = ?, "
                         "payment_method = ?, service_date = ?, "
                         "odometer_at_service = ?, labor_cost = ?, "
                         "parts_cost = ?, tax_amount = ?, total_cost = ?, "
                         "updated_at = ? WHERE id = ? AND account_id = ?",
                         (vehicle_name, vehicle_type, company_code, assigned_to,
                          invoice_number, vendor_name,
-                         vendor_address, vendor_phone, payment_method,
+                         vendor_address, vendor_phone, vendor_id, payment_method,
                          service_date, odometer, labor_cost, parts_cost,
                          tax, total, now, wo_id, account_id),
                     )
@@ -264,19 +282,19 @@ class WorkOrdersMixin:
                     """INSERT INTO work_orders
                        (account_id, company_code, vehicle_id, vehicle_name,
                         vehicle_type, vendor_name, vendor_address, vendor_phone,
-                        service_date, odometer_at_service,
+                        vendor_id, service_date, odometer_at_service,
                         engine_hours_at_service,
                         labor_cost, parts_cost, tax_amount, total_cost,
                         invoice_number, payment_method, payment_status,
                         status, notes, assigned_to, source, external_id,
                         created_by, created_at, updated_at)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT (account_id, source, external_id)
                        WHERE external_id <> '' DO NOTHING""",
                     (account_id, company_code, "", vehicle_name,
                      vehicle_type, vendor_name, vendor_address, vendor_phone,
-                     service_date, odometer, None,
+                     vendor_id, service_date, odometer, None,
                      labor_cost, parts_cost, tax, total,
                      invoice_number, payment_method, payment_status,
                      "submitted", str(r.get("note") or ""), assigned_to, source, ext,
@@ -292,16 +310,23 @@ class WorkOrdersMixin:
                 if new_row and items:
                     new_id = dict(new_row)["id"]
                     for it in items:
+                        _pname = str(it.get("name") or "")
+                        # Catalog auto-link (alias-aware) — same
+                        # contract as the vendor link above.
+                        _part = await self.resolve_or_create_part(
+                            account_id, _pname,
+                        ) if _pname else None
                         await self._db.execute(
                             """INSERT INTO work_order_parts
                                (work_order_id, part_name, part_number,
                                 quantity, unit_cost, total_cost,
-                                warranty_months, notes)
-                               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                            (new_id, str(it.get("name") or ""), "",
+                                warranty_months, part_id, notes)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                            (new_id, _pname, "",
                              it.get("quantity") or 0.0,
                              it.get("unit_cost") or 0.0,
-                             it.get("total") or 0.0, 0, ""),
+                             it.get("total") or 0.0, 0,
+                             _part["id"] if _part else None, ""),
                         )
                 written += 1
         return written
@@ -461,11 +486,12 @@ class WorkOrdersMixin:
         """
         allowed = {
             "company_code", "vehicle_id", "vehicle_name", "vehicle_type",
-            "vendor_name", "vendor_address", "vendor_phone",
+            "vendor_name", "vendor_address", "vendor_phone", "vendor_id",
             "service_date", "odometer_at_service", "engine_hours_at_service",
             "labor_cost", "parts_cost", "tax_amount", "total_cost",
             "invoice_number", "payment_method", "payment_status",
-            "status", "notes", "assigned_to",
+            "status", "repair_priority", "complaint", "cause", "correction",
+            "notes", "assigned_to",
         }
         updates = {k: v for k, v in kwargs.items() if k in allowed}
         if not updates:
@@ -538,15 +564,19 @@ class WorkOrdersMixin:
         unit_cost: float = 0.0,
         total_cost: float = 0.0,
         warranty_months: int = 0,
+        service_task: str = "",
+        part_id: Optional[int] = None,
         notes: str = "",
     ) -> int:
         cur = await self._db.execute(
             """INSERT INTO work_order_parts
                (work_order_id, part_name, part_number, quantity,
-                unit_cost, total_cost, warranty_months, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                unit_cost, total_cost, warranty_months, service_task,
+                part_id, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (work_order_id, part_name, part_number, quantity,
-             unit_cost, total_cost, warranty_months, notes),
+             unit_cost, total_cost, warranty_months, service_task,
+             part_id, notes),
         )
         await self._db.commit()
         return cur.lastrowid
@@ -755,6 +785,88 @@ class WorkOrdersMixin:
         cur = await self._db.execute(q, params)
         return [dict(r) for r in await cur.fetchall()]
 
+    async def cost_by_service_task(
+        self, account_id: int, since: Optional[str] = None,
+    ) -> list[dict]:
+        """Spend grouped by the part lines' ``service_task`` tag.
+
+        Sums at the PART level (unlike ``cost_by_task_type``, which
+        sums whole work orders through the maintenance-task link), so a
+        mixed invoice ("oil change + brake job") splits correctly per
+        task.  '' rows are returned as ``untagged`` so unclassified
+        spend stays visible instead of silently vanishing.  Labor / tax
+        aren't part lines and are deliberately excluded — this report
+        answers "parts spend by kind of work".
+        """
+        q = (
+            "SELECT CASE WHEN p.service_task = '' THEN 'untagged' "
+            "            ELSE p.service_task END AS service_task, "
+            "       COUNT(DISTINCT w.id) AS work_order_count, "
+            "       SUM(p.total_cost) AS total_spent "
+            "FROM work_order_parts p "
+            "JOIN work_orders w ON w.id = p.work_order_id "
+            "WHERE w.account_id = ? AND w.service_date IS NOT NULL"
+        )
+        params: list = [account_id]
+        if since:
+            q += " AND w.service_date >= ?"
+            params.append(since)
+        q += (
+            " GROUP BY CASE WHEN p.service_task = '' THEN 'untagged' "
+            "               ELSE p.service_task END"
+            " ORDER BY total_spent DESC"
+        )
+        cur = await self._db.execute(q, params)
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def cost_by_part(
+        self, account_id: int, since: Optional[str] = None,
+        limit: int = 25,
+    ) -> list[dict]:
+        """Usage + spend grouped by part name — "which part keeps
+        costing us".  Case-insensitive grouping so "Oil Filter" and
+        "oil filter" from different vendors merge; the display name is
+        the most common casing via MIN() (deterministic, portable).
+        ``usage_count`` counts line occurrences, ``total_quantity``
+        sums quantities (2 pads × 2 visits = 4), and the recurrence of
+        a part across many work orders is the early-warning signal for
+        a failing component pattern.
+        """
+        # Catalog id is the primary group key; unlinked residual rows
+        # (part_id NULL — dead after migration 150's backfill + the
+        # auto-link, kept for safety) fall back to lowercase-name
+        # groups via the CASE second key (constant '' when linked, so
+        # it never splits an id group).  Display name: the catalog
+        # name when linked (MAX satisfies Postgres grouping — c.name
+        # is constant within an id group), else the most deterministic
+        # raw casing (MIN).
+        q = (
+            "SELECT COALESCE(MAX(c.name), MIN(p.part_name)) AS part_name, "
+            "       p.part_id AS part_id, "
+            "       COUNT(*) AS usage_count, "
+            "       COUNT(DISTINCT w.id) AS work_order_count, "
+            "       SUM(p.quantity) AS total_quantity, "
+            "       SUM(p.total_cost) AS total_spent "
+            "FROM work_order_parts p "
+            "JOIN work_orders w ON w.id = p.work_order_id "
+            "LEFT JOIN parts_catalog c "
+            "     ON c.id = p.part_id AND c.account_id = w.account_id "
+            "WHERE w.account_id = ? AND w.service_date IS NOT NULL "
+            "  AND p.part_name <> ''"
+        )
+        params: list = [account_id]
+        if since:
+            q += " AND w.service_date >= ?"
+            params.append(since)
+        q += (
+            " GROUP BY p.part_id, "
+            "   CASE WHEN p.part_id IS NULL THEN LOWER(p.part_name) ELSE '' END"
+            " ORDER BY total_spent DESC"
+            f" LIMIT {int(limit)}"
+        )
+        cur = await self._db.execute(q, params)
+        return [dict(r) for r in await cur.fetchall()]
+
     async def cost_by_month(
         self, account_id: int, since: Optional[str] = None,
     ) -> list[dict]:
@@ -864,17 +976,31 @@ class WorkOrdersMixin:
     async def cost_by_vendor(
         self, account_id: int, since: Optional[str] = None,
     ) -> list[dict]:
+        """Spend per vendor, keyed on the REGISTRY id so name-casing
+        variants of one shop no longer split its spend.  The display
+        name comes from the vendors table when linked; unlinked rows
+        (vendor_id NULL — effectively none after the migration-149
+        backfill + sync auto-link, kept for safety) fall back to one
+        residual bucket per raw name.  ``vendor_id`` rides along so
+        the dashboard can link each row to the vendor profile page."""
         q = (
-            "SELECT vendor_name, COUNT(*) AS work_order_count, "
-            "       SUM(total_cost) AS total_spent "
-            "FROM work_orders "
-            "WHERE account_id = ? AND service_date IS NOT NULL "
-            "  AND vendor_name != ''"
+            "SELECT COALESCE(v.name, w.vendor_name) AS vendor_name, "
+            "       w.vendor_id AS vendor_id, "
+            "       COUNT(*) AS work_order_count, "
+            "       SUM(w.total_cost) AS total_spent "
+            "FROM work_orders w "
+            "LEFT JOIN vendors v "
+            "     ON v.id = w.vendor_id AND v.account_id = w.account_id "
+            "WHERE w.account_id = ? AND w.service_date IS NOT NULL "
+            "  AND w.vendor_name != ''"
         )
         params: list = [account_id]
         if since:
-            q += " AND service_date >= ?"
+            q += " AND w.service_date >= ?"
             params.append(since)
-        q += " GROUP BY vendor_name ORDER BY total_spent DESC"
+        q += (
+            " GROUP BY w.vendor_id, COALESCE(v.name, w.vendor_name)"
+            " ORDER BY total_spent DESC"
+        )
         cur = await self._db.execute(q, params)
         return [dict(r) for r in await cur.fetchall()]

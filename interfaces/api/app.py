@@ -51,6 +51,8 @@ from features.events import router as events_routes
 from features.costs import router as costs_routes
 from features.maintenance import router as maintenance_routes
 from features.work_orders import router as work_orders_routes
+from features.vendors import router as vendors_routes
+from capabilities.platform.vendor_directory import router as vendor_directory_routes
 from features.loads import router as loads_routes
 from features.kpi import router as kpi_routes
 from features.inspections import router as inspections_routes
@@ -410,6 +412,8 @@ def create_api() -> FastAPI:
         app.include_router(permissions_routes.router, prefix=prefix)
         app.include_router(maintenance_routes.router, prefix=prefix)
         app.include_router(work_orders_routes.router, prefix=prefix)
+        app.include_router(vendors_routes.router, prefix=prefix)
+        app.include_router(vendor_directory_routes.router, prefix=prefix)
         app.include_router(inspections_routes.router, prefix=prefix)
         app.include_router(storage_routes.router, prefix=prefix)
         app.include_router(storage_routes.admin_router, prefix=prefix)

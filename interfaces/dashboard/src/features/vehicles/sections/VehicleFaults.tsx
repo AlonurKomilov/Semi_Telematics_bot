@@ -19,6 +19,7 @@ import { useNavigate } from 'react-router-dom';
 import { apiJSON } from '../../../api/client';
 import { CardSkeleton } from '../../../components/shell';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';
+import { useWorkOrderBridge } from '../../work-orders/useWorkOrderBridge';
 import { formatAIResponse } from '../../../utils/formatAI';
 import type {
   AIDiagnoseResponse,
@@ -32,6 +33,14 @@ export default function VehicleFaults({ vehicleName, company }: VehicleSectionPr
   const { has } = useViewPermissions();
   const navigate = useNavigate();
   const hasFaultsPerm = has('can_faults');
+  // The bridge button only shows to users who can actually create a
+  // work order (that route is gated ``can_maintenance_all``) — else it
+  // would just lead to a 403.
+  const canCreateWorkOrder = has('can_maintenance_all');
+  // createFrom checks for an already-open WO on this vehicle for the
+  // same fault before navigating; bridgeDialog renders the "already
+  // open — create anyway?" confirm when it finds one.
+  const { createFrom, bridgeDialog } = useWorkOrderBridge();
 
   const [diagnosing, setDiagnosing] = useState(false);
   const [diagnosis, setDiagnosis] = useState('');
@@ -149,14 +158,35 @@ export default function VehicleFaults({ vehicleName, company }: VehicleSectionPr
                 )}
               </div>
               {desc && <p className="text-muted-foreground mt-1">{desc}</p>}
-              {(count != null || src) && (
-                <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+              <div className="flex items-center justify-between gap-3 mt-1">
+                <div className="flex gap-3 text-xs text-muted-foreground">
                   {count != null && (
                     <span>× {count} occurrence{count !== 1 ? 's' : ''}</span>
                   )}
                   {src && <span>Source: {src}</span>}
                 </div>
-              )}
+                {canCreateWorkOrder && (
+                  <button
+                    onClick={() => createFrom({
+                      vehicle_name: vehicleName,
+                      company_code: company ?? '',
+                      // Seed the 3C "complaint" with the fault: the
+                      // problem name + failure mode (+ ECU source),
+                      // which is exactly what a shop needs told.
+                      complaint: [
+                        fmi ? `${spn} — ${fmi}` : spn,
+                        src ? `(source: ${src})` : '',
+                      ].filter(Boolean).join(' '),
+                      // A fault is unplanned but not automatically an
+                      // emergency — the operator escalates in the form.
+                      repair_priority: 'non_scheduled',
+                    })}
+                    className="shrink-0 whitespace-nowrap px-2.5 py-1 text-xs rounded-lg border border-border hover:bg-accent text-foreground font-medium transition-colors"
+                  >
+                    + Work order
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
@@ -191,6 +221,7 @@ export default function VehicleFaults({ vehicleName, company }: VehicleSectionPr
           />
         </div>
       )}
+      {bridgeDialog}
     </div>
   );
 }

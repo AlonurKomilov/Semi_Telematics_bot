@@ -23,10 +23,12 @@ import AssistantHost from './features/ai/AssistantHost';
  * the chunk, surface the error so it shows up in the error boundary
  * rather than spinning forever.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+// Components have heterogeneous props (most take none, Chat takes an
+// optional `variant`), so this router helper is intentionally prop-
+// agnostic via `any` — the concrete prop types are enforced at each
+// render site, not here.
 function lazyWithReload<T extends { default: React.ComponentType<any> }>(
   loader: () => Promise<T>,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): React.LazyExoticComponent<React.ComponentType<any>> {
   return lazy(() =>
     loader().catch((err: unknown) => {
@@ -85,6 +87,8 @@ const WorkOrders       = lazyWithReload(() => import('./features/work-orders/Wor
 const Loads            = lazyWithReload(() => import('./features/loads/Loads'));
 const Kpi              = lazyWithReload(() => import('./features/kpi/Kpi'));
 const WorkOrderForm    = lazyWithReload(() => import('./features/work-orders/WorkOrderForm'));
+const Vendors          = lazyWithReload(() => import('./features/vendors/Vendors'));
+const VendorProfile    = lazyWithReload(() => import('./features/vendors/VendorProfile'));
 const CostReports      = lazyWithReload(() => import('./features/reports/CostReports'));
 // Inspections page hosts both the submissions list AND the template
 // editor (as tabs) — the editor is fleet's tool, not a separate admin
@@ -231,6 +235,11 @@ export default function AppRouter() {
         <Route path="loads"               element={L(<P perm={['can_loads_all', 'can_loads_own']}><Loads /></P>)} />
         <Route path="kpi"                 element={L(<P perm="can_kpi"><Kpi /></P>)} />
         <Route path="work-orders"         element={L(<P perm={['can_maintenance_all', 'can_maintenance_vehicle']}><WorkOrders /></P>)} />
+        {/* Manager-only: a vendor profile aggregates ALL trucks' work
+            orders + account-wide spend — vehicle-scope users must not
+            read it (their WO visibility is per-truck). */}
+        <Route path="vendors"             element={L(<P perm="can_work_orders_all"><Vendors /></P>)} />
+        <Route path="vendors/:id"         element={L(<P perm="can_work_orders_all"><VendorProfile /></P>)} />
         <Route path="work-orders/new"     element={L(<P perm="can_maintenance_all"><WorkOrderForm /></P>)} />
         <Route path="work-orders/:id"     element={L(<P perm={['can_maintenance_all', 'can_maintenance_vehicle']}><WorkOrderForm /></P>)} />
         {/* Cost Reports route lives under /reports/* (see above) since

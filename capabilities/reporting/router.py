@@ -429,6 +429,8 @@ async def report_risk_summary_me(
 from features.work_orders.router import (
     report_per_vehicle as _wo_report_per_vehicle,
     report_per_task_type as _wo_report_per_task_type,
+    report_per_service_task as _wo_report_per_service_task,
+    report_per_part as _wo_report_per_part,
     report_per_vendor as _wo_report_per_vendor,
     report_summary as _wo_report_summary,
     report_monthly_trend as _wo_report_monthly_trend,
@@ -436,6 +438,8 @@ from features.work_orders.router import (
 
 router.get("/cost-reports/per-vehicle")(_wo_report_per_vehicle)
 router.get("/cost-reports/per-task-type")(_wo_report_per_task_type)
+router.get("/cost-reports/per-service-task")(_wo_report_per_service_task)
+router.get("/cost-reports/per-part")(_wo_report_per_part)
 router.get("/cost-reports/per-vendor")(_wo_report_per_vendor)
 router.get("/cost-reports/summary")(_wo_report_summary)
 router.get("/cost-reports/monthly-trend")(_wo_report_monthly_trend)

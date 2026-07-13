@@ -1437,10 +1437,22 @@ export interface WorkOrder {
   payment_status: string;
   /** draft / submitted / paid / void */
   status: string;
+  /** Reason-for-repair class: scheduled / non_scheduled / emergency,
+   *  or '' when unclassified.  Splits planned upkeep from unplanned
+   *  firefighting for spend analysis. */
+  repair_priority?: string;
+  /** 3C repair documentation (DOT / warranty standard): what the
+   *  driver reported / what the shop found / what they did. */
+  complaint?: string;
+  cause?: string;
+  correction?: string;
   notes: string;
   /** Who the work order is assigned to (synced from Datatruck's
    *  assigned_to, or set by the operator). */
   assigned_to?: string;
+  /** Vendor registry link (features/vendors).  The vendor_* snapshot
+   *  fields stay the invoice truth; this id is the analytical spine. */
+  vendor_id?: number | null;
   /** Provenance: 'manual' (hand-entered) or an integration id like
    *  'datatruck'.  Drives the Source column badge on the list. */
   source?: string;
@@ -1461,6 +1473,9 @@ export interface WorkOrderPart {
   unit_cost: number;
   total_cost: number;
   warranty_months: number;
+  /** Task-type slug this line belongs to ('brakes', 'custom_…');
+   *  '' = untagged.  Shares the maintenance task-type vocabulary. */
+  service_task?: string;
   notes: string;
 }
 
@@ -1495,9 +1510,49 @@ export interface WorkOrderDetail {
   linked_tasks: MaintenanceTask[];
 }
 
+// ── Vendors (registry — features/vendors) ───────────────────
+
+export interface Vendor {
+  id: number;
+  account_id: number;
+  name: string;
+  name_key: string;
+  address: string;
+  phone: string;
+  email: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  /** Rollups present on the list endpoint. */
+  work_order_count?: number;
+  total_spent?: number;
+  last_service_date?: string | null;
+  /** Link to the platform global directory (Phase C). */
+  global_vendor_id?: number | null;
+}
+
+/** Global-directory identity (active entries only; identity fields
+ *  only — the platform never exposes account data through it). */
+export interface DirectoryEntry {
+  id: number;
+  name: string;
+  address: string;
+  phone: string;
+  email: string;
+  website: string;
+  services: string;
+}
+
 export interface WorkOrderCostRow {
   vehicle_name?: string;
   task_type?: string;
+  /** Service-task slug (per-service-task report); 'untagged' bucket
+   *  keeps unclassified spend visible. */
+  service_task?: string;
+  /** Part-level fields (per-part report). */
+  part_name?: string;
+  usage_count?: number;
+  total_quantity?: number;
   vendor_name?: string;
   work_order_count: number;
   total_spent: number;

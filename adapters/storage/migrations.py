@@ -1533,6 +1533,10 @@ async def migrate_work_orders_skeleton(conn) -> None:
                 payment_method           TEXT    NOT NULL DEFAULT '',
                 payment_status           TEXT    NOT NULL DEFAULT 'unpaid',
                 status                   TEXT    NOT NULL DEFAULT 'draft',
+                repair_priority          TEXT    NOT NULL DEFAULT '',
+                complaint                TEXT    NOT NULL DEFAULT '',
+                cause                    TEXT    NOT NULL DEFAULT '',
+                correction               TEXT    NOT NULL DEFAULT '',
                 notes                    TEXT    NOT NULL DEFAULT '',
                 source                   TEXT    NOT NULL DEFAULT 'manual',
                 external_id             TEXT    NOT NULL DEFAULT '',
@@ -1563,6 +1567,12 @@ async def migrate_work_orders_skeleton(conn) -> None:
                 unit_cost           REAL    NOT NULL DEFAULT 0,
                 total_cost          REAL    NOT NULL DEFAULT 0,
                 warranty_months     INTEGER NOT NULL DEFAULT 0,
+                -- Service-task tag (maintenance task-type slug, e.g.
+                -- 'brakes' / 'custom_oil_change').  The parts editor
+                -- groups lines by this, giving the task→parts
+                -- hierarchy without a separate grouping table; ''
+                -- means untagged/general.
+                service_task        TEXT    NOT NULL DEFAULT '',
                 notes               TEXT    NOT NULL DEFAULT ''
             );
             CREATE INDEX IF NOT EXISTS idx_work_order_parts_wo
@@ -6117,3 +6127,403 @@ async def migrate_rename_payroll_flags(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+@_register("146_work_orders_repair_priority")
+async def migrate_work_orders_repair_priority(conn) -> None:
+    """Add ``work_orders.repair_priority`` — the reason-for-repair class
+    (``scheduled`` / ``non_scheduled`` / ``emergency``), the trucking
+    equivalent of a VMRS reason code.  Lets the fleet split planned
+    upkeep from unplanned firefighting when analysing spend.
+
+    Existing rows default to '' (unclassified) — honest, since we can't
+    retroactively know why a past repair happened; the operator sets it
+    going forward.  Idempotent: ADD COLUMN no-ops on the duplicate-
+    column error.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE work_orders ADD COLUMN repair_priority TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.commit()
+        logger.info("Migration 146: added work_orders.repair_priority")
+    except Exception as e:
+        logger.info("Migration 146: work_orders.repair_priority likely exists — %s", e)
+
+
+@_register("147_work_orders_complaint_cause_correction")
+async def migrate_work_orders_ccc(conn) -> None:
+    """Add ``complaint`` / ``cause`` / ``correction`` to ``work_orders``.
+
+    The 3C repair-documentation standard (what the driver reported /
+    what the shop found / what they did) — the format DOT audits and
+    warranty claims expect.  All default '' so existing rows and
+    integration-projected rows read as blank until filled.  Idempotent:
+    each ADD COLUMN no-ops on the duplicate-column error, independently
+    so a partial prior run still completes.
+    """
+    for col in ("complaint", "cause", "correction"):
+        try:
+            await conn.execute(
+                f"ALTER TABLE work_orders ADD COLUMN {col} TEXT NOT NULL DEFAULT ''"
+            )
+            await conn.commit()
+            logger.info("Migration 147: added work_orders.%s", col)
+        except Exception as e:
+            logger.info("Migration 147: work_orders.%s likely exists — %s", col, e)
+
+
+@_register("148_work_order_parts_service_task")
+async def migrate_work_order_parts_service_task(conn) -> None:
+    """Add ``work_order_parts.service_task`` — the task-type slug each
+    part line belongs to ('brakes', 'oil', 'custom_…'), sharing the
+    maintenance task-type vocabulary.  The parts editor groups lines by
+    this tag (task → parts hierarchy) and cost reports aggregate spend
+    per task from it.  '' = untagged; existing rows stay untagged.
+
+    Idempotent: ADD COLUMN no-ops on the duplicate-column error.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE work_order_parts ADD COLUMN service_task TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.commit()
+        logger.info("Migration 148: added work_order_parts.service_task")
+    except Exception as e:
+        logger.info("Migration 148: work_order_parts.service_task likely exists — %s", e)
+
+
+@_register("149_vendors_registry")
+async def migrate_vendors_registry(conn) -> None:
+    """Per-account vendor registry (master data) + ``work_orders.vendor_id``.
+
+    Three steps, per docs/architecture/vendor-parts-master-data.md
+    (Phase A; shape confirmed 2026-07-13):
+
+    1. **Table** — ``vendors`` with a stored normalized ``name_key``
+       and ``UNIQUE(account_id, name_key)`` so concurrent sync upserts
+       can't create case-duplicates.  ``name_key`` is a plain column
+       (not an expression index) so it works identically through the
+       SQLite-compat layer and Postgres.
+    2. **Link column** — nullable ``work_orders.vendor_id`` (app-level
+       FK: plain INTEGER + index, consistent with the rest of the
+       schema).  The ``vendor_name/address/phone`` snapshot columns on
+       work_orders are NOT touched, ever — they remain the invoice
+       truth; the id is the analytical spine.
+    3. **Backfill** — per account, one vendor per distinct non-empty
+       ``name_key`` across existing work orders (display name = most
+       frequent casing, contact = most recent non-empty), then link
+       ALL matching rows.  Deterministic, idempotent (ON CONFLICT DO
+       NOTHING + only fills vendor_id IS NULL rows).
+
+    Plus the standard tenant-isolation RLS block (gated on ENABLE_RLS),
+    so the table is protected from birth.
+    """
+    import os
+
+    # 1. Table + indexes.
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS vendors (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id  INTEGER NOT NULL,
+                name        TEXT    NOT NULL,
+                name_key    TEXT    NOT NULL,
+                address     TEXT    NOT NULL DEFAULT '',
+                phone       TEXT    NOT NULL DEFAULT '',
+                email       TEXT    NOT NULL DEFAULT '',
+                notes       TEXT    NOT NULL DEFAULT '',
+                created_at  TEXT    NOT NULL,
+                updated_at  TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_vendors_account_name_key
+                ON vendors(account_id, name_key);
+
+            -- Merge tombstones: a merged-away vendor's name_key lands
+            -- here pointing at the SURVIVOR, so the next Datatruck
+            -- sync re-resolves to the winner instead of recreating
+            -- the loser.  (Plan doc open-question #1 → resolved yes.)
+            CREATE TABLE IF NOT EXISTS vendor_aliases (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id  INTEGER NOT NULL,
+                name_key    TEXT    NOT NULL,
+                vendor_id   INTEGER NOT NULL,
+                created_at  TEXT    NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_vendor_aliases_key
+                ON vendor_aliases(account_id, name_key);
+        """)
+        await conn.commit()
+        logger.info("Migration 149: vendors + vendor_aliases tables ready")
+    except Exception as e:
+        logger.error("Migration 149 vendors table failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        return
+
+    # 2. work_orders.vendor_id.
+    try:
+        await conn.execute(
+            "ALTER TABLE work_orders ADD COLUMN vendor_id INTEGER"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_work_orders_vendor_id "
+            "ON work_orders(account_id, vendor_id)"
+        )
+        await conn.commit()
+        logger.info("Migration 149: added work_orders.vendor_id")
+    except Exception as e:
+        logger.info("Migration 149: work_orders.vendor_id likely exists — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+    # 3. Backfill: create + link.  Normalization here MUST match
+    #    VendorsMixin._vendor_name_key (trim, collapse inner
+    #    whitespace, casefold) — done in Python for dialect parity.
+    try:
+        cur = await conn.execute(
+            "SELECT id, account_id, vendor_name, vendor_address, "
+            "       vendor_phone, created_at "
+            "FROM work_orders WHERE vendor_name <> '' AND vendor_id IS NULL"
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+        if rows:
+            def key_of(name: str) -> str:
+                return " ".join((name or "").split()).casefold()
+
+            # (account, key) → aggregate for display name + contact.
+            agg: dict = {}
+            for r in rows:
+                k = (r["account_id"], key_of(r["vendor_name"]))
+                a = agg.setdefault(k, {"casings": {}, "addr": "", "phone": "", "latest": ""})
+                a["casings"][r["vendor_name"]] = a["casings"].get(r["vendor_name"], 0) + 1
+                created = r.get("created_at") or ""
+                if created >= a["latest"]:
+                    if r.get("vendor_address"):
+                        a["addr"] = r["vendor_address"]
+                    if r.get("vendor_phone"):
+                        a["phone"] = r["vendor_phone"]
+                    a["latest"] = created
+
+            now = __import__("datetime").datetime.utcnow().isoformat()
+            for (account_id, nkey), a in agg.items():
+                display = max(a["casings"].items(), key=lambda kv: kv[1])[0]
+                await conn.execute(
+                    "INSERT INTO vendors (account_id, name, name_key, address, "
+                    " phone, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT (account_id, name_key) DO NOTHING",
+                    (account_id, display, nkey, a["addr"], a["phone"], now, now),
+                )
+            # Link every row by (account, key).
+            vcur = await conn.execute("SELECT id, account_id, name_key FROM vendors")
+            vmap = {(v["account_id"], v["name_key"]): v["id"]
+                    for v in (dict(x) for x in await vcur.fetchall())}
+            for r in rows:
+                vid = vmap.get((r["account_id"], key_of(r["vendor_name"])))
+                if vid:
+                    await conn.execute(
+                        "UPDATE work_orders SET vendor_id = ? WHERE id = ?",
+                        (vid, r["id"]),
+                    )
+            await conn.commit()
+            logger.info(
+                "Migration 149: backfilled %d vendors, linked %d work orders",
+                len(agg), len(rows),
+            )
+    except Exception as e:
+        logger.error("Migration 149 backfill failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+    # 4. RLS from birth (same gating + shape as migrations 057/103).
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 149: ENABLE_RLS not set; vendors RLS skipped")
+        return
+    for tbl in ("vendors", "vendor_aliases"):
+        try:
+            await conn.execute(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY")
+            await conn.execute(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY")
+            await conn.execute(f"DROP POLICY IF EXISTS tenant_isolation ON {tbl}")
+            await conn.execute(
+                f"""
+                CREATE POLICY tenant_isolation ON {tbl}
+                USING       (account_id::text = current_setting('app.account_id', true))
+                WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+                """
+            )
+            logger.info("Migration 149: RLS enabled on %s", tbl)
+        except Exception as e:
+            logger.warning("Migration 149: %s RLS skipped (%s)", tbl, e)
+
+
+@_register("150_parts_catalog")
+async def migrate_parts_catalog(conn) -> None:
+    """Per-account parts catalog (master data) + ``work_order_parts.part_id``.
+
+    Phase B of docs/architecture/vendor-parts-master-data.md — the same
+    recipe migration 149 used for vendors: catalog table with a stored
+    normalized ``name_key`` + per-account uniqueness, alias tombstones
+    for merge+resync correctness, a nullable app-level FK on the line
+    rows, a deterministic backfill that links ALL existing lines, and
+    tenant RLS from birth.  ``part_name`` on line rows stays the
+    invoice-truth snapshot forever.
+
+    Note: ``work_order_parts`` itself has no ``account_id`` (legacy
+    shape) — the backfill resolves the account through the parent
+    work order, and the new tables do NOT copy that shape.
+    """
+    import os
+
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS parts_catalog (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id   INTEGER NOT NULL,
+                name         TEXT    NOT NULL,
+                name_key     TEXT    NOT NULL,
+                part_number  TEXT    NOT NULL DEFAULT '',
+                notes        TEXT    NOT NULL DEFAULT '',
+                created_at   TEXT    NOT NULL,
+                updated_at   TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_parts_catalog_account_key
+                ON parts_catalog(account_id, name_key);
+
+            CREATE TABLE IF NOT EXISTS part_aliases (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id  INTEGER NOT NULL,
+                name_key    TEXT    NOT NULL,
+                part_id     INTEGER NOT NULL,
+                created_at  TEXT    NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_part_aliases_key
+                ON part_aliases(account_id, name_key);
+        """)
+        await conn.commit()
+        logger.info("Migration 150: parts_catalog + part_aliases ready")
+    except Exception as e:
+        logger.error("Migration 150 tables failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        return
+
+    try:
+        await conn.execute(
+            "ALTER TABLE work_order_parts ADD COLUMN part_id INTEGER"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_work_order_parts_part_id "
+            "ON work_order_parts(part_id)"
+        )
+        await conn.commit()
+        logger.info("Migration 150: added work_order_parts.part_id")
+    except Exception as e:
+        logger.info("Migration 150: work_order_parts.part_id likely exists — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+    # Backfill: account resolved via the parent work order.  Display
+    # name = most frequent casing; part_number = most recent non-empty.
+    try:
+        cur = await conn.execute(
+            "SELECT p.id, p.part_name, p.part_number, w.account_id, "
+            "       w.created_at "
+            "FROM work_order_parts p "
+            "JOIN work_orders w ON w.id = p.work_order_id "
+            "WHERE p.part_name <> '' AND p.part_id IS NULL"
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+        if rows:
+            def key_of(name: str) -> str:
+                return " ".join((name or "").split()).casefold()
+
+            agg: dict = {}
+            for r in rows:
+                k = (r["account_id"], key_of(r["part_name"]))
+                a = agg.setdefault(k, {"casings": {}, "pn": "", "latest": ""})
+                a["casings"][r["part_name"]] = a["casings"].get(r["part_name"], 0) + 1
+                created = r.get("created_at") or ""
+                if created >= a["latest"]:
+                    if r.get("part_number"):
+                        a["pn"] = r["part_number"]
+                    a["latest"] = created
+
+            now = __import__("datetime").datetime.utcnow().isoformat()
+            for (account_id, nkey), a in agg.items():
+                display = max(a["casings"].items(), key=lambda kv: kv[1])[0]
+                await conn.execute(
+                    "INSERT INTO parts_catalog (account_id, name, name_key, "
+                    " part_number, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT (account_id, name_key) DO NOTHING",
+                    (account_id, display, nkey, a["pn"], now, now),
+                )
+            pcur = await conn.execute(
+                "SELECT id, account_id, name_key FROM parts_catalog"
+            )
+            pmap = {(p["account_id"], p["name_key"]): p["id"]
+                    for p in (dict(x) for x in await pcur.fetchall())}
+            for r in rows:
+                pid = pmap.get((r["account_id"], key_of(r["part_name"])))
+                if pid:
+                    await conn.execute(
+                        "UPDATE work_order_parts SET part_id = ? WHERE id = ?",
+                        (pid, r["id"]),
+                    )
+            await conn.commit()
+            logger.info(
+                "Migration 150: backfilled %d catalog parts, linked %d lines",
+                len(agg), len(rows),
+            )
+    except Exception as e:
+        logger.error("Migration 150 backfill failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 150: ENABLE_RLS not set; RLS skipped")
+        return
+    for tbl in ("parts_catalog", "part_aliases"):
+        try:
+            await conn.execute(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY")
+            await conn.execute(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY")
+            await conn.execute(f"DROP POLICY IF EXISTS tenant_isolation ON {tbl}")
+            await conn.execute(
+                f"""
+                CREATE POLICY tenant_isolation ON {tbl}
+                USING       (account_id::text = current_setting('app.account_id', true))
+                WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+                """
+            )
+            logger.info("Migration 150: RLS enabled on %s", tbl)
+        except Exception as e:
+            logger.warning("Migration 150: %s RLS skipped (%s)", tbl, e)
+
+
+@_register("151_vendors_global_link")
+async def migrate_vendors_global_link(conn) -> None:
+    """Add ``vendors.global_vendor_id`` — the optional link from an
+    account's private vendor record to its platform vendor_directory
+    identity (Phase C1).  Nullable app-level FK; linking is explicit
+    (operator/manager action), never automatic.
+    """
+    try:
+        await conn.execute(
+            "ALTER TABLE vendors ADD COLUMN global_vendor_id INTEGER"
+        )
+        await conn.commit()
+        logger.info("Migration 151: added vendors.global_vendor_id")
+    except Exception as e:
+        logger.info("Migration 151: vendors.global_vendor_id likely exists — %s", e)

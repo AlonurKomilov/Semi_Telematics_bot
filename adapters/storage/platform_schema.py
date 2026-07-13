@@ -171,6 +171,32 @@ async def create_tables(conn) -> None:
         -- Chat threads (the History panel's "previous chats").  One row
         -- per conversation; the title derives from the first question
         -- and is encrypted at rest like the messages themselves.
+        -- Global vendor directory (PLATFORM-owned, deliberately NO
+        -- account_id): one identity per real-world repair shop,
+        -- curated on system.4truck.us.  Accounts link their private
+        -- vendors to entries via vendors.global_vendor_id; identity
+        -- fields only — never any account's transaction data.
+        -- status: pending (suggested, awaiting operator review) |
+        -- active | rejected.
+        CREATE TABLE IF NOT EXISTS vendor_directory (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            name                 TEXT    NOT NULL,
+            name_key             TEXT    NOT NULL UNIQUE,
+            address              TEXT    NOT NULL DEFAULT '',
+            phone                TEXT    NOT NULL DEFAULT '',
+            email                TEXT    NOT NULL DEFAULT '',
+            website              TEXT    NOT NULL DEFAULT '',
+            services             TEXT    NOT NULL DEFAULT '',
+            notes                TEXT    NOT NULL DEFAULT '',
+            status               TEXT    NOT NULL DEFAULT 'pending',
+            source               TEXT    NOT NULL DEFAULT 'operator',
+            suggested_by_account INTEGER,
+            created_at           TEXT    NOT NULL,
+            updated_at           TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_vendor_directory_status
+            ON vendor_directory(status);
+
         CREATE TABLE IF NOT EXISTS ai_conversations (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id INTEGER NOT NULL,
