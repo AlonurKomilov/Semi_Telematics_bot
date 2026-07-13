@@ -50,6 +50,8 @@ export interface AIProcessStep {
   /** Tool steps: internal tool name + human label + optional digests. */
   name?: string;
   label?: string;
+  /** Tool steps: wall-clock the step took, ms (server-measured). */
+  elapsed_ms?: number;
   args?: string;
   /** Truncated JSON digest of the tool's result. */
   result?: string;

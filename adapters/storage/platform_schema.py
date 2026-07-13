@@ -208,6 +208,32 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_ai_conversations_user
             ON ai_conversations(account_id, user_id, updated_at);
 
+        -- AI write-action proposals (copilot "hands").  The AI never
+        -- writes directly: a write tool returns a PROPOSAL (persisted
+        -- here), the user approves, and POST /ai/actions/{id}/approve
+        -- executes after re-checking permission + scope.  Same platform-
+        -- DB isolation as ai_chat_history: scoped by (account_id,user_id)
+        -- + a uuid PK + endpoint 404-on-mismatch (RLS is a tenant-DB
+        -- mechanism; this is the shared platform DB).  ``payload`` +
+        -- ``result`` + ``summary`` are encrypted at rest like chat text.
+        -- Short-lived: ``expires_at`` bounds the propose→approve window;
+        -- old rows are pruned by the retention hub.
+        CREATE TABLE IF NOT EXISTS ai_action_proposals (
+            id          TEXT    PRIMARY KEY,          -- uuid4, unguessable
+            account_id  INTEGER NOT NULL,
+            user_id     BIGINT  NOT NULL,
+            tool        TEXT    NOT NULL,             -- the action/tool name
+            summary     TEXT    NOT NULL DEFAULT '',  -- human summary (encrypted)
+            payload     TEXT    NOT NULL DEFAULT '',  -- JSON args (encrypted)
+            risk        TEXT    NOT NULL DEFAULT 'low',
+            status      TEXT    NOT NULL DEFAULT 'pending',  -- pending|executing|consumed|declined|failed
+            result      TEXT    NOT NULL DEFAULT '',  -- JSON result after execute (encrypted)
+            created_at  TEXT    NOT NULL,
+            expires_at  TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_ai_action_proposals_user
+            ON ai_action_proposals(account_id, user_id, created_at);
+
         CREATE TABLE IF NOT EXISTS knowledge_base (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL,

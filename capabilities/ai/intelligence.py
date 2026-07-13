@@ -27,6 +27,7 @@ from capabilities.ai.tools import (  # noqa: E402,F401
     get_cached_vertex_tools as _get_cached_tools,
     get_anthropic_tools as _get_anthropic_tools,
     get_openai_tools as _get_openai_tools,
+    get_tool_schema,
     AI_TOOLS,  # backward compat re-export
 )
 from capabilities.permissions.roles import (
@@ -410,6 +411,42 @@ async def ask_ai(question: str, vehicle_context: dict,
 # ── Function-Calling Agent ───────────────────────────────────────
 
 
+def _render_page_context(user_context: dict | None) -> str:
+    """Copilot page context → a prompt block, or "" when none.
+
+    Describes what the user is looking at RIGHT NOW (feature / focused
+    entity / filters / selection) so "this truck", "these rows", "why is
+    it overdue" resolve to what's on their screen.  A HINT for
+    interpretation ONLY — the tools the model may call and the vehicles
+    it may read are enforced server-side from the JWT, unaffected by
+    anything in here (same trust boundary as X-View-As persona preview).
+    """
+    if not user_context:
+        return ""
+    pc = user_context.get("page_context")
+    if not isinstance(pc, dict) or not pc.get("feature"):
+        return ""
+    lines = ["The user is currently viewing this screen:",
+             f"- Page: {pc.get('label') or pc['feature']}"]
+    focus = pc.get("focus")
+    if isinstance(focus, dict) and focus.get("label"):
+        kind = focus.get("kind")
+        lines.append(f"- Focused on: {focus['label']}{f' ({kind})' if kind else ''}")
+    filters = pc.get("filters")
+    if isinstance(filters, dict):
+        active = {k: v for k, v in filters.items() if v not in (None, "", "all", [])}
+        if active:
+            lines.append(f"- Active filters: {json.dumps(active, default=str)[:400]}")
+    sel = pc.get("selectedIds")
+    if isinstance(sel, list) and sel:
+        lines.append(f"- Selected: {len(sel)} item(s)")
+    lines.append(
+        'When the user says "this", "these", "here", or asks without '
+        "naming an entity, assume they mean what's shown above."
+    )
+    return "\n".join(lines) + "\n\n"
+
+
 def _build_agent_user_prompt(
     question: str,
     vehicle_context: dict | None,
@@ -449,6 +486,7 @@ def _build_agent_user_prompt(
                 f"\n- If the user asks about another truck or account-wide totals, politely decline."
             )
         parts.append("\n".join(profile_lines) + "\n\n")
+        parts.append(_render_page_context(user_context))
 
     if vehicle_context:
         data_str = json.dumps(vehicle_context, separators=(',', ':'), default=str)
@@ -532,6 +570,28 @@ async def _check_tool_permission(
     """
     if not user_role:
         return None
+    # Write actions are suppressed in two cases, both checked at PROPOSE
+    # time so the model never offers a dead-end action:
+    #   • preview_active — an owner/admin is previewing another role
+    #     (X-View-As); preview is a read-only lens (fable-advisor).
+    #   • suppress_writes — the calling SURFACE has no approve UI / no
+    #     proposal persistence (the non-streaming /ai/chat path used by the
+    #     Telegram miniapp).  A proposal there could never be approved.
+    # The execute endpoint re-checks on the real role regardless; blocking
+    # the PROPOSE here keeps the preview faithful and the audit clean.
+    if user_context and (user_context.get("preview_active")
+                         or user_context.get("suppress_writes")):
+        _schema = get_tool_schema(tool_name)
+        if _schema and _schema.get("writes"):
+            if user_context.get("preview_active"):
+                return {"error": (
+                    "Write actions are disabled while previewing another role. "
+                    "Exit the preview to make changes."
+                )}
+            return {"error": (
+                "Write actions aren't available on this surface — open the "
+                "dashboard assistant to create or change anything."
+            )}
     req_perms = TOOL_PERMISSIONS.get(tool_name)
     if req_perms is not None:
         try:
@@ -587,6 +647,23 @@ async def _check_tool_permission(
                 "error": (
                     f"Access denied: {tool_name} returns account-wide data"
                     f" outside your access scope."
+                ),
+            }
+        # Fail-closed backstop for WRITE tools: a write must carry an explicit
+        # scope shape — either a vehicle_name param (VEHICLE_SPECIFIC_TOOLS) or
+        # id-filtering scope-awareness (SCOPE_AWARE_TOOLS).  A writes:True tool
+        # in neither is an un-scoped write; deny it for a restricted caller so a
+        # forgotten classification degrades to "blocked", never "account-wide
+        # write".  (The guard test in tests/test_ai_write_tool_scope.py stops
+        # this reaching prod, but the runtime deny is the belt to its braces.)
+        _schema = get_tool_schema(tool_name)
+        if (_schema and _schema.get("writes")
+                and tool_name not in VEHICLE_SPECIFIC_TOOLS
+                and tool_name not in SCOPE_AWARE_TOOLS):
+            return {
+                "error": (
+                    f"Access denied: {tool_name} is a write action not scoped"
+                    f" to your vehicle access."
                 ),
             }
     return None
@@ -1622,6 +1699,7 @@ async def ask_agent(question: str, vehicle_context: dict,
                 f"\n- If the user asks about another truck or account-wide totals, politely decline."
             )
         parts.append("\n".join(profile_lines) + "\n\n")
+        parts.append(_render_page_context(user_context))
 
     if vehicle_context:
         data_str = json.dumps(vehicle_context, separators=(',', ':'), default=str)
@@ -1843,8 +1921,24 @@ async def ask_agent_stream(question: str, vehicle_context: dict,
     # streams token-sized fragments).
     process: list[dict] = []
 
+    # Per-tool-step wall-clock: a tool step's duration ≈ the gap from its
+    # own event to the NEXT event (tool exec + the model round-trip that
+    # consumes the result).  We stamp elapsed_ms on the pending tool step
+    # when any new event arrives, and close the last one at finish.
+    import time as _dur_time
+    _pending_tool: dict = {"step": None, "ts": 0.0}
+
+    def _close_pending(now: float) -> None:
+        step = _pending_tool["step"]
+        if step is not None:
+            step["elapsed_ms"] = max(0, int((now - _pending_tool["ts"]) * 1000))
+            _pending_tool["step"] = None
+
     async def _callback(event: dict):
         etype = event.get("type")
+        now = _dur_time.monotonic()
+        if etype in ("thinking", "tool"):
+            _close_pending(now)
         if etype == "thinking":
             if process and process[-1].get("type") == "thinking":
                 process[-1]["text"] += event.get("text", "")
@@ -1852,9 +1946,12 @@ async def ask_agent_stream(question: str, vehicle_context: dict,
                 process.append({"type": "thinking",
                                 "text": event.get("text", "")})
         elif etype == "tool":
-            process.append({"type": "tool",
-                            "name": event.get("name", ""),
-                            "label": event.get("label", "")})
+            step = {"type": "tool",
+                    "name": event.get("name", ""),
+                    "label": event.get("label", "")}
+            process.append(step)
+            _pending_tool["step"] = step
+            _pending_tool["ts"] = now
         await queue.put(event)
 
     def _finish_process(result: dict) -> list[dict]:
@@ -1865,6 +1962,7 @@ async def ask_agent_stream(question: str, vehicle_context: dict,
         Results are digested (truncated JSON) because full tool payloads
         can be tens of KB; the timeline needs a glance, not the data.
         """
+        _close_pending(_dur_time.monotonic())  # stamp the final tool step
         tool_steps = [s for s in process if s["type"] == "tool"]
         for step, tr in zip(tool_steps, result.get("tool_results") or []):
             try:
@@ -1884,6 +1982,30 @@ async def ask_agent_stream(question: str, vehicle_context: dict,
         if not any(s["type"] == "thinking" for s in process) and result.get("reasoning"):
             process.insert(0, {"type": "thinking", "text": result["reasoning"]})
         return process
+
+    def _collect_artifacts(result: dict) -> list[dict]:
+        """Gather artifacts a tool attached to its result envelope.
+
+        A tool opts in by returning ``{"artifacts": [ {type, …}, … ]}`` in
+        its normal result dict (see ``tool_ok(..., artifacts=[...])``).
+        We flatten them in tool-execution order across all tool calls.
+        Malformed entries are skipped — a bad artifact must never break
+        the answer.  Capped so a runaway tool can't flood the client.
+        """
+        out: list[dict] = []
+        for tr in result.get("tool_results") or []:
+            data = tr.get("data")
+            if not isinstance(data, dict):
+                continue
+            arts = data.get("artifacts")
+            if not isinstance(arts, list):
+                continue
+            for a in arts:
+                if isinstance(a, dict) and a.get("type"):
+                    out.append(a)
+                if len(out) >= 8:
+                    return out
+        return out
 
     async def _run():
         try:
@@ -1922,6 +2044,11 @@ async def ask_agent_stream(question: str, vehicle_context: dict,
                 # Ordered step timeline (thinking + tool calls with
                 # result digests) — the "N steps" process log.
                 "process": _finish_process(result),
+                # Structured artifacts (tables/charts) a tool attached to
+                # its result — rendered natively by the client instead of
+                # flattened to prose.  Display-only + browser-local, like
+                # the process timeline.
+                "artifacts": _collect_artifacts(result),
             })
         except Exception as exc:
             # The route layer (``_event_stream`` in interfaces/api/routes/ai.py)

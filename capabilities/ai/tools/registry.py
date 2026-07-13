@@ -41,9 +41,80 @@ def get_tool_handler(name: str) -> Callable[..., Coroutine] | None:
     return entry["handler"] if entry else None
 
 
+def get_tool_schema(name: str) -> dict | None:
+    """Return a tool's registered schema (with ``writes``/``risk`` flags),
+    or None if unknown.  The approve path reads ``writes``/``risk`` from
+    HERE — the code registry, the trust root — never from the stored
+    proposal row (which is attacker-adjacent data)."""
+    entry = _TOOL_REGISTRY.get(name)
+    return entry["schema"] if entry else None
+
+
 def get_tool_count() -> int:
     """Return the number of registered tools."""
     return len(_TOOL_REGISTRY)
+
+
+# ── Write actions (copilot "hands") ──────────────────────────────
+#
+# A write TOOL proposes (validates, returns tool_propose(...)); a
+# separate EXECUTOR actually mutates, and runs ONLY from the approve
+# endpoint after re-authorization.  Both are declared in the feature's
+# own ``ai_tool.py`` — this registry is the shared plumbing.
+
+_ACTION_EXECUTORS: dict[str, Callable[..., Coroutine]] = {}
+
+
+def register_action_executor(name: str):
+    """Decorator — registers the async EXECUTOR for a write action.
+
+    Signature: ``async def fn(payload: dict, account_id: int,
+    user_context: dict, db) -> dict``.  It MUST re-resolve its target
+    (vehicle/alert) inside ``account_id`` — the payload is propose-time
+    data and may be stale.  Never called during a chat turn; only by the
+    approve endpoint post-authorization.
+    """
+    def decorator(fn: Callable[..., Coroutine]):
+        _ACTION_EXECUTORS[name] = fn
+        return fn
+    return decorator
+
+
+def get_action_executor(name: str) -> Callable[..., Coroutine] | None:
+    return _ACTION_EXECUTORS.get(name)
+
+
+def tool_propose(
+    tool: str, summary: str, payload: dict, *, risk: str = "low",
+    consequence: str = "",
+) -> dict:
+    """Build a write tool's PROPOSE-mode result.
+
+    Returns an ``action_proposal`` artifact (no id yet — the router
+    persists it and injects the ``proposal_id`` before it reaches the
+    client, keeping the raw payload server-side).  ``summary`` is the
+    plain-language effect the user will approve; ``payload`` is the
+    validated args the executor will re-resolve and act on.
+
+    ``consequence`` is an OPTIONAL one-line reversibility hint the card
+    renders at the approve moment ("You can delete this task anytime" vs.
+    "This clears the selected alerts") — display-only, so it rides on the
+    artifact and is never persisted.  A new write tool supplies its own
+    line here; the generic card needs no change to show it.
+    """
+    return {
+        "ok": True,
+        "proposed": True,
+        "summary": summary,
+        "artifacts": [{
+            "type": "action_proposal",
+            "tool": tool,
+            "summary": summary,
+            "payload": payload,   # stripped from the client copy by the router
+            "risk": risk,
+            "consequence": consequence,
+        }],
+    }
 
 
 async def filter_tools_for_role(

@@ -14,7 +14,9 @@ is looking at.
 
 from __future__ import annotations
 
-from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.registry import (
+    register_tool, register_action_executor, tool_propose, tool_error,
+)
 from capabilities.ai.tools.scope import filter_to_scope
 
 # Stored statuses that mean "closed" — excluded from every open-task bucket.
@@ -179,15 +181,150 @@ async def get_maintenance_summary(tool_args: dict, samsara_client,
     for t in overdue + due_soon + pending:
         tt = t.get("task_type", "custom")
         maint_by_type[tt] = maint_by_type.get(tt, 0) + 1
+    overdue_rows = [_task_row(t, "overdue") for t in overdue[:10]]
+    due_soon_rows = [_task_row(t, "due_soon") for t in due_soon[:10]]
+    pending_rows = [_task_row(t, "pending") for t in pending[:10]]
     return {
         "total_overdue": len(overdue),
         "total_due_soon": len(due_soon),
         "total_pending": len(pending),
         "tasks_by_type": maint_by_type,
-        "overdue_tasks": [_task_row(t, "overdue") for t in overdue[:10]],
-        "due_soon_tasks": [_task_row(t, "due_soon") for t in due_soon[:10]],
+        "overdue_tasks": overdue_rows,
+        "due_soon_tasks": due_soon_rows,
         # Per-vehicle pending rows too so the assistant can name specific
         # trucks (and the dashboard can render clickable chips) for "show me
         # pending tasks" — the common case when nothing is overdue yet.
-        "pending_tasks": [_task_row(t, "pending") for t in pending[:10]],
+        "pending_tasks": pending_rows,
+        # Copilot artifact — a glanceable table of open tasks the chat
+        # renders natively (the maintenance feature owns this, in its own
+        # ai_tool.py).  Display-only; omitted when nothing is open.
+        "artifacts": _maintenance_table_artifact(
+            overdue_rows + due_soon_rows + pending_rows,
+        ),
+    }
+
+
+def _maintenance_table_artifact(rows: list[dict]) -> list[dict]:
+    """A `table` artifact of open maintenance tasks, or [] when none."""
+    if not rows:
+        return []
+    return [{
+        "type": "table",
+        "title": "Open maintenance",
+        "columns": [
+            {"key": "vehicle", "label": "Vehicle"},
+            {"key": "type", "label": "Type"},
+            {"key": "status", "label": "Status"},
+            {"key": "miles_remaining", "label": "Miles left"},
+        ],
+        "rows": [{
+            "vehicle": r.get("vehicle", "?"),
+            "type": r.get("type", ""),
+            "status": r.get("status", ""),
+            "miles_remaining": r.get("miles_remaining"),
+        } for r in rows[:20]],
+    }]
+
+
+# ── Write action: create a maintenance task (copilot "hands") ──────
+#
+# PROPOSE (the registered tool, run during a chat turn): validate the
+# args, mutate NOTHING, return a proposal the user approves.
+# EXECUTE (the registered executor, run only from the approve endpoint
+# after re-authorization): actually create the task.
+
+_TASK_TYPES = (
+    "oil", "tires", "brakes", "inspection", "dot_inspection", "dpf_regen",
+    "def_refill", "transmission", "coolant", "battery", "custom",
+)
+
+
+@register_tool({
+    "name": "create_maintenance_task",
+    "description": (
+        "Propose creating a maintenance task for a vehicle (e.g. schedule "
+        "an oil change for Truck 228 due next month). This does NOT create "
+        "it directly — it asks the user to approve first. Use when the user "
+        "asks to add / schedule / create a maintenance task."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "vehicle_name": {"type": "string", "description": "Vehicle name/number (e.g. '228')."},
+            "task_type": {"type": "string", "description": "One of: oil, tires, brakes, inspection, dot_inspection, dpf_regen, def_refill, transmission, coolant, battery, custom."},
+            "description": {"type": "string", "description": "Short description of the work."},
+            "due_date": {"type": "string", "description": "Optional due date YYYY-MM-DD."},
+            "due_miles": {"type": "number", "description": "Optional absolute odometer (miles) at which it's due."},
+        },
+        "required": ["vehicle_name", "task_type"],
+    },
+    # Marks this a write action — proposes, never mutates in the loop.
+    "writes": True,
+    "risk": "low",
+    # Scope shape (enforced by tests/test_ai_write_tool_scope.py): a required
+    # vehicle_name, so the gate rejects a scoped caller naming a vehicle
+    # outside their access (⇒ must be in VEHICLE_SPECIFIC_TOOLS).
+    "scope": "vehicle_param",
+})
+async def create_maintenance_task(tool_args, samsara_client,
+                                  account_id=None, db=None):
+    vehicle = str(tool_args.get("vehicle_name", "")).strip()
+    task_type = str(tool_args.get("task_type", "")).strip().lower()
+    if not vehicle:
+        return tool_error("A vehicle is required to create a maintenance task.")
+    if task_type not in _TASK_TYPES:
+        task_type = "custom"
+    desc = str(tool_args.get("description", "")).strip()
+    due_date = str(tool_args.get("due_date", "")).strip() or None
+    due_miles = tool_args.get("due_miles")
+    try:
+        due_miles = float(due_miles) if due_miles is not None else None
+    except (TypeError, ValueError):
+        due_miles = None
+
+    when = []
+    if due_date:
+        when.append(f"due {due_date}")
+    if due_miles is not None:
+        when.append(f"due at {int(due_miles):,} mi")
+    when_str = (" (" + ", ".join(when) + ")") if when else ""
+    summary = (
+        f"Create a {task_type} maintenance task for Truck {vehicle}"
+        f"{f' — {desc}' if desc else ''}{when_str}."
+    )
+    return tool_propose(
+        "create_maintenance_task", summary,
+        {"vehicle_name": vehicle, "task_type": task_type,
+         "description": desc, "due_date": due_date, "due_miles": due_miles},
+        risk="low",
+        consequence="Adds a task to the schedule — you can edit or delete it anytime.",
+    )
+
+
+@register_action_executor("create_maintenance_task")
+async def _execute_create_maintenance_task(payload, account_id, user_context, db):
+    """Actually create the task — runs only post-approval.  Re-resolves
+    everything from ``payload`` inside ``account_id`` (never trusts a
+    client body)."""
+    vehicle = str(payload.get("vehicle_name", "")).strip()
+    task_type = str(payload.get("task_type", "custom")).strip().lower()
+    if task_type not in _TASK_TYPES:
+        task_type = "custom"
+    task_id = await db.add_maintenance_task(
+        account_id,
+        company_code="",
+        vehicle_name=vehicle,
+        task_type=task_type,
+        description=str(payload.get("description", "")).strip(),
+        due_date=payload.get("due_date") or None,
+        due_miles=payload.get("due_miles"),
+        created_by=int((user_context or {}).get("user_id") or 0),
+    )
+    return {
+        "created": True,
+        "target_type": "maintenance_task",
+        "target_id": str(task_id),
+        "vehicle_name": vehicle,
+        "task_type": task_type,
+        "message": f"Created a {task_type} task for Truck {vehicle}.",
     }

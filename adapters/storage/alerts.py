@@ -317,6 +317,7 @@ class AlertsMixin(_MixinBase):
 
     async def acknowledge_alert_history(
         self, history_id: int, user_id: int, account_id: int,
+        *, allowed_vehicle_names: list[str] | None = None,
     ) -> Optional[dict]:
         """Clear an `alert_history` row (the canonical logical alert) and
         cascade-ack every related `alert_acknowledgments` delivery row.
@@ -327,12 +328,30 @@ class AlertsMixin(_MixinBase):
         + alert_type) so callers can edit Telegram messages in chat to
         show the ack receipt; returns None when the row doesn't exist or
         is already cleared.
+
+        ``allowed_vehicle_names`` enforces Vehicle-Access scope IN the same
+        statements that read and clear the row (TOCTOU-free — a stale AI
+        proposal can never clear a vehicle the approver can't access):
+        ``None`` = unrestricted; a list = only alerts whose ``vehicle_name``
+        matches (case-insensitive); ``[]`` = nothing.  An out-of-scope id
+        returns None — the same idempotent-skip path as an unknown id.
         """
         now = self._now()
+        # Scope predicate, appended to BOTH the guard SELECT and the UPDATE so
+        # the clear can't race a scope change between read and write.
+        scope_sql = ""
+        scope_args: tuple = ()
+        if allowed_vehicle_names is not None:
+            names = [n.strip().lower() for n in allowed_vehicle_names if n and n.strip()]
+            if not names:
+                return None   # scoped to nothing — fail closed
+            placeholders = ",".join("?" for _ in names)
+            scope_sql = f" AND LOWER(vehicle_name) IN ({placeholders})"
+            scope_args = tuple(names)
         cur = await self._db.execute(
             "SELECT * FROM alert_history "
-            "WHERE id = ? AND account_id = ? AND status = 'active'",
-            (history_id, account_id),
+            "WHERE id = ? AND account_id = ? AND status = 'active'" + scope_sql,
+            (history_id, account_id, *scope_args),
         )
         row = await cur.fetchone()
         if not row:
@@ -347,8 +366,8 @@ class AlertsMixin(_MixinBase):
             "UPDATE alert_history "
             "SET status = 'cleared', last_seen = ?, "
             "    acknowledged_by = ?, acknowledged_at = ? "
-            "WHERE id = ? AND account_id = ?",
-            (now, user_id, now, history_id, account_id),
+            "WHERE id = ? AND account_id = ?" + scope_sql,
+            (now, user_id, now, history_id, account_id, *scope_args),
         )
         # 2. Cascade-ack every active delivery for this (account, type, vehicle)
         await self._db.execute(
@@ -360,6 +379,29 @@ class AlertsMixin(_MixinBase):
         )
         await self._db.commit()
         return history
+
+    async def get_alert_history_vehicles(
+        self, account_id: int, history_ids: list[int],
+    ) -> dict[int, str]:
+        """Map each `alert_history` id (within this account) to its
+        `vehicle_name`.  Used to scope-check an acknowledge request BEFORE
+        proposing it — a scoped caller may only ack their own vehicles'
+        alerts.  Unknown / foreign ids are simply absent from the result
+        (account_id already filters cross-tenant ids out)."""
+        ids = [int(i) for i in history_ids][:50]
+        if not ids:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        rows = await self.read_all(
+            f"SELECT id, vehicle_name FROM alert_history "
+            f"WHERE account_id = ? AND id IN ({placeholders})",
+            (account_id, *ids),
+        )
+        out: dict[int, str] = {}
+        for r in rows:
+            d = dict(r)
+            out[int(d["id"])] = d.get("vehicle_name") or ""
+        return out
 
     async def get_alert_history(
         self, account_id: int, limit: int = 50,

@@ -73,6 +73,12 @@ class ChatRequest(BaseModel):
     # thread, created lazily on first-ever message (miniapp behaviour).
     conversation_id: int | None = None
     new_conversation: bool = False
+    # Copilot page context — what the user is viewing (feature / filters /
+    # selection / focused entity).  A PROMPT HINT only: it's folded into
+    # the prompt so "this truck" / "these rows" resolve, but tools and
+    # vehicle scope are still authorized from the JWT, never from this.
+    # Same trust boundary as the X-View-As persona preview.
+    page_context: dict | None = None
 
 
 class DiagnoseRequest(BaseModel):
@@ -140,6 +146,11 @@ def _apply_persona_preview(user_context: dict | None, view: str | None) -> None:
     """
     if user_context and view and view != user_context.get("role"):
         user_context["role"] = view
+        # Mark the lens so write actions are suppressed while previewing —
+        # preview is a read-only view of another role, and a write proposed
+        # under the narrowed role but executed under the real role would
+        # muddy the audit trail (fable-advisor).  Enforced at the tool gate.
+        user_context["preview_active"] = True
 
 
 async def _get_user_info(user: dict, platform_db) -> tuple[dict | None, list[str] | None, str]:
@@ -211,6 +222,17 @@ async def ai_chat(
     await ai.ensure_account_model(account_id)
     user_context, vehicle_filter, language = await _get_user_info(user, platform_db)
     _apply_persona_preview(user_context, view)  # owner/admin "View as <role>"
+    # Copilot page context — a prompt hint (see ChatRequest.page_context);
+    # never an authorization input.
+    if user_context is not None and body.page_context:
+        user_context["page_context"] = body.page_context
+    # Write actions require an approve UI + server-side proposal persistence,
+    # both of which live only on the STREAMING path (dashboard).  This
+    # non-streaming endpoint is used by the Telegram miniapp, which has
+    # neither — so suppress write tools here to avoid proposing an action
+    # the user could never approve.  (Reads are unaffected.)
+    if user_context is not None:
+        user_context["suppress_writes"] = True
 
     try:
         import time as _t
@@ -365,6 +387,9 @@ async def ai_chat_stream(
     await ai.ensure_account_model(account_id)
     user_context, vehicle_filter, language = await _get_user_info(user, platform_db)
     _apply_persona_preview(user_context, view)  # owner/admin "View as <role>"
+    # Copilot page context — same prompt hint as the non-streaming path.
+    if user_context is not None and body.page_context:
+        user_context["page_context"] = body.page_context
 
     try:
         # Implicit-satisfaction markers (timing + phrase).  Same as
@@ -426,6 +451,25 @@ async def ai_chat_stream(
                         "message": _scrub_error_text(msg),
                     }
                 elif event.get("type") == "done":
+                    # Persist any write-action proposals the AI made this
+                    # turn, injecting their server ids and STRIPPING the raw
+                    # payload from the client copy (payload stays server-only
+                    # — the client approves by id, never resends it).
+                    for _a in event.get("artifacts") or []:
+                        if (isinstance(_a, dict)
+                                and _a.get("type") == "action_proposal"
+                                and not _a.get("proposal_id")):
+                            try:
+                                _pid = await platform_db.create_action_proposal(
+                                    account_id, uid, _a.get("tool", ""),
+                                    _a.get("summary", ""),
+                                    json.dumps(_a.get("payload") or {}, default=str),
+                                    risk=str(_a.get("risk", "low")),
+                                )
+                                _a["proposal_id"] = _pid
+                            except Exception:
+                                _a["error"] = "Could not create the action."
+                            _a.pop("payload", None)
                     # Attach the data-scope descriptor so the client can show a
                     # "Answering for your N vehicles" trust badge for restricted
                     # users (and nothing for unrestricted ones) — plus the
@@ -959,6 +1003,82 @@ async def delete_conversation(
     # deleted thread; the per-request DB sync heals every other worker.
     ai.clear_history(uid, account_id=account_id)
     return {"ok": deleted}
+
+
+# ── Write actions ("hands") — approve / reject / status ──────────
+#
+# The AI proposes a write during a chat turn (persisted server-side);
+# these endpoints are where the human decides.  approve/reject/status
+# deliberately gate on the REAL JWT role only — persona preview
+# (X-View-As) is a read-only lens and is never honored for writes.
+
+@router.post("/actions/{proposal_id}/approve")
+@limiter.limit("30/minute")
+async def approve_action(
+    proposal_id: str,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Execute an AI-proposed write after re-authorizing it server-side.
+
+    Re-runs the tool permission gate on the user's real role, atomically
+    claims the proposal (no double-execution), executes, and audits.
+    Idempotent — a re-approve of a consumed proposal returns the stored
+    result.  NOTE: no ``active_view`` dependency — writes never run under
+    a persona preview.
+    """
+    user_context, _vf, _lang = await _get_user_info(user, platform_db)
+    # Deliberately NOT applying persona preview here.
+    from capabilities.ai.actions import execute_approved_action
+    return await execute_approved_action(
+        proposal_id, user=user, user_context=user_context,
+        platform_db=platform_db, tenant_db=tenant_db,
+    )
+
+
+@router.post("/actions/{proposal_id}/reject")
+@limiter.limit("30/minute")
+async def reject_action(
+    proposal_id: str,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Decline a pending proposal — no write.  Records the refusal so the
+    audit trail shows the action was offered and rejected."""
+    ok = await platform_db.decline_action_proposal(
+        proposal_id, user["account_id"], int(user["sub"]),
+    )
+    return {"ok": ok}
+
+
+@router.get("/actions/{proposal_id}")
+async def get_action(
+    proposal_id: str,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Current status of a proposal (so a refreshed card shows
+    'already approved').  Never returns the raw payload — only the
+    display fields + the result once consumed."""
+    prop = await platform_db.get_action_proposal(
+        proposal_id, user["account_id"], int(user["sub"]),
+    )
+    if prop is None:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    result = None
+    if prop["status"] == "consumed" and prop.get("result"):
+        try:
+            result = json.loads(prop["result"])
+        except (TypeError, ValueError):
+            result = None
+    return {
+        "id": prop["id"], "tool": prop["tool"],
+        "summary": prop["summary"], "risk": prop["risk"],
+        "status": prop["status"], "result": result,
+    }
 
 
 # ── Feedback signals ─────────────────────────────────────────────

@@ -1395,6 +1395,10 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     "get_recent_inspections":   ["can_maintenance_all", "can_maintenance_vehicle"],  # owner/admin/fleet/safety/driver(own)
     "get_driver_applications":  ["can_manage_applications"],                          # owner/admin/hr/recruiter — applicant-pipeline triage, account-wide
     "get_vehicle_history":      ["can_vehicle_all", "can_vehicle_vehicle"],       # all roles — vehicle-specific tool, isolation enforced below
+    # ── Write actions (copilot "hands") — propose during a chat turn;
+    # the SAME flag is re-checked at the approve endpoint before the write.
+    "create_maintenance_task":  ["can_maintenance_all"],                         # owner/admin/fleet/hr — mirrors POST /maintenance/tasks
+    "acknowledge_alerts":       ["can_alerts_all", "can_alerts_vehicle"],        # owner/admin/fleet/safety/driver(own)
 }
 
 # Tools that are account-wide — driver must NOT call these even if permitted
@@ -1407,6 +1411,11 @@ ACCOUNT_WIDE_TOOLS: frozenset[str] = frozenset({
     "get_drivers_list", "search_vehicles",
     "get_parked_vehicles", "get_undriven_vehicles", "get_driver_hos_status",
     "get_alert_history", "get_driver_applications",
+    # Write action whose args are resource ids (not a vehicle_name): a scoped
+    # caller must not clear alerts account-wide.  Also in SCOPE_AWARE_TOOLS
+    # below, so the gate ALLOWS + injects _scope_vehicles and the tool filters
+    # the ids to the caller's own vehicles.
+    "acknowledge_alerts",
 })
 
 # Account-wide tools that have been taught to FILTER their results to a
@@ -1430,6 +1439,9 @@ SCOPE_AWARE_TOOLS: frozenset[str] = frozenset({
     "get_account_stats",
     "get_efficiency_summary",
     "get_events_summary",
+    # Write action: validates its alert ids against the injected scope at
+    # propose time; the executor + storage re-enforce it at approve time.
+    "acknowledge_alerts",
 })
 
 # Tools that accept a vehicle_name param and must enforce driver vehicle isolation.
@@ -1438,6 +1450,9 @@ VEHICLE_SPECIFIC_TOOLS: frozenset[str] = frozenset({
     "get_vehicle_events", "get_vehicle_maintenance", "get_vehicle_fuel_costs",
     "check_vehicle_camera", "get_vehicle_odometer",
     "get_recent_work_orders", "get_recent_inspections", "get_vehicle_history",
+    # Write action with a required vehicle_name — a scoped caller may only
+    # create a task on a vehicle they can access (gate rejects otherwise).
+    "create_maintenance_task",
 })
 
 # Legacy alias — keeps any external code that imports TRUCK_SPECIFIC_TOOLS working.

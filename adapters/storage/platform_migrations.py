@@ -179,6 +179,45 @@ async def run_all(conn) -> None:
     # Privacy: chain-of-thought + process timeline are browser-local
     # (localStorage) by policy — drop the short-lived server columns.
     await migrate_ai_chat_thoughts_local_only(conn)
+    # AI write-action proposals (copilot "hands") — the propose→approve
+    # →execute spine's server-stored proposal table.
+    await migrate_ai_action_proposals(conn)
+
+
+async def migrate_ai_action_proposals(conn) -> None:
+    """Create ``ai_action_proposals`` if absent (fresh installs get it
+    from platform_schema).  Platform-DB table, isolated by
+    (account_id, user_id) + uuid PK like ai_chat_history — no RLS (that's
+    a tenant-DB mechanism).  Idempotent."""
+    try:
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ai_action_proposals (
+                id          TEXT    PRIMARY KEY,
+                account_id  INTEGER NOT NULL,
+                user_id     BIGINT  NOT NULL,
+                tool        TEXT    NOT NULL,
+                summary     TEXT    NOT NULL DEFAULT '',
+                payload     TEXT    NOT NULL DEFAULT '',
+                risk        TEXT    NOT NULL DEFAULT 'low',
+                status      TEXT    NOT NULL DEFAULT 'pending',
+                result      TEXT    NOT NULL DEFAULT '',
+                created_at  TEXT    NOT NULL,
+                expires_at  TEXT    NOT NULL
+            )
+            """
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ai_action_proposals_user"
+            " ON ai_action_proposals(account_id, user_id, created_at)"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.error("ai_action_proposals migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
 
 
 async def migrate_ai_chat_answer_metadata(conn) -> None:

@@ -11,6 +11,12 @@ import { formatDate, formatTime } from '../../utils/datetime';
 import { DislikeReasonForm } from './sections/DislikeReasonForm';
 import { ReferencedVehicles } from './sections/ReferencedVehicles';
 import { thoughtKey, saveThought, getThought, deleteThoughtsForConversation } from './thoughtStore';
+import { useAssistant } from './AssistantContext';
+import { useCurrentPageContext } from './PageContext';
+import { toolDeepLink } from './toolLinks';
+import { useNavigate } from 'react-router-dom';
+import { ArrowUpRight } from 'lucide-react';
+import { renderArtifact, type Artifact } from './artifacts';
 
 // Extended message type with client-side timestamp
 interface LocalMessage extends AIChatMessage {
@@ -35,6 +41,9 @@ interface LocalMessage extends AIChatMessage {
   /** Ordered process timeline (thinking + tool steps with result
    *  digests) — preferred over the flat `reasoning` blob when present. */
   process?: AIProcessStep[];
+  /** Structured artifacts (tables/charts) rendered natively under the
+   *  answer.  Browser-local like reasoning/process. */
+  artifacts?: Artifact[];
 }
 
 // No hardcoded loading messages — we show real tool activity from the stream
@@ -167,6 +176,38 @@ function TimelineRow({ marker, last, children }: {
   );
 }
 
+/** "Open <Feature>" deep-link for a tool step — navigates to the
+ *  feature's page and closes the panel.  Renders nothing for tools with
+ *  no product page (get_weather etc.). */
+function ToolStepLink({ toolName }: { toolName?: string }) {
+  const link = toolName ? toolDeepLink(toolName) : null;
+  const navigate = useNavigate();
+  const { closePanel } = useAssistant();
+  const { t } = useTranslation();
+  if (!link) return null;
+  return (
+    <button
+      onClick={() => { navigate(link.path); closePanel(); }}
+      className="mt-1 inline-flex items-center gap-1 rounded-md border border-border bg-muted/50 px-1.5 py-0.5 text-3xs font-medium text-muted-foreground hover:text-foreground hover:border-ring transition-colors"
+      title={t(link.labelKey)}
+    >
+      <ArrowUpRight size={11} aria-hidden />
+      {t('chat.open_feature', { feature: t(link.labelKey) })}
+    </button>
+  );
+}
+
+/** Compact elapsed label for a step (e.g. "12s", "4m 3s"). */
+function stepDuration(ms?: number): string | null {
+  if (ms == null || ms < 0) return null;
+  const s = Math.round(ms / 1000);
+  if (s < 1) return '<1s';
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return rem ? `${m}m ${rem}s` : `${m}m`;
+}
+
 const THINKING_DOT = (
   <span className="size-1.5 rounded-full bg-muted-foreground/50" aria-hidden />
 );
@@ -177,11 +218,19 @@ const ACTIVE_BEACON = (
   </span>
 );
 
-export default function Chat() {
+/** `variant` decides the root chrome only:
+ *  - 'page'  (default): the full-page /ai/chat view — fixed viewport height.
+ *  - 'panel': embedded in the assistant slide-over — fills its container.
+ *  All chat logic is identical across both; this is a layout switch. */
+export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' }) {
   const { t } = useTranslation();
   const tz = useTimezone();
   const location = useLocation();
   const { activeView, isDriverView, briefingLabel, chatSubject } = useShellConfig();
+  // Copilot wiring: what the user is looking at (attached to each request)
+  // and the panel's prefill bus (a queued question to send on open).
+  const pageContext = useCurrentPageContext();
+  const { consumePrefill } = useAssistant();
 
   // ── Chat state ───────────────────────────────────────────────
   const [messages, setMessages] = useState<LocalMessage[]>([]);
@@ -327,6 +376,7 @@ export default function Chat() {
               modelTier: msg.model_tier || undefined,
               reasoning: local?.reasoning,
               process: local?.process,
+              artifacts: local?.artifacts,
             };
           });
           setMessages(loaded);
@@ -361,6 +411,9 @@ export default function Chat() {
         setCurrentTier(d.current_tier);
       })
       .catch(() => {});
+    // Mount-only: the ?tab=briefing read is a one-shot legacy-link honour,
+    // not a value we re-run on navigation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle initial message passed via router state (e.g. "Diagnose faults on Truck 231")
@@ -370,6 +423,9 @@ export default function Chat() {
       send(state.initialMessage);
       window.history.replaceState({}, document.title);
     }
+    // Panel prefill: a question queued by openPanel('…') sends on mount.
+    const queued = consumePrefill();
+    if (queued) send(queued);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -452,6 +508,7 @@ export default function Chat() {
       let finalConversationId: number | null = null;
       let finalReasoning = '';
       let finalProcess: AIProcessStep[] = [];
+      let finalArtifacts: Artifact[] = [];
       // Mirror of the streamed `reasoning` state — the state itself is
       // stale inside this closure, so accumulate locally too and attach
       // it to the finished message (Gemini streams thinking live; the
@@ -486,24 +543,25 @@ export default function Chat() {
             finalConversationId = event.conversation_id ?? null;
             finalReasoning = event.reasoning || '';
             finalProcess = event.process || [];
+            finalArtifacts = (event.artifacts || []) as Artifact[];
             if (event.scope) setScope(event.scope);
           } else if (event.type === 'error') {
             throw new Error(event.message);
           }
         },
         abort.signal,
-        { conversationId, newConversation: isNewChat },
+        { conversationId, newConversation: isNewChat, pageContext },
       );
 
       if (!finalReply) throw new Error('No response received');
-      const aiMsg: LocalMessage = { role: 'model', text: finalReply, timestamp: new Date(), usage: finalUsage, toolResults: finalToolResults, modelTier: finalModelTier || undefined, reasoning: (finalReasoning || liveReasoning).trim() || undefined, process: finalProcess.length > 0 ? finalProcess : undefined };
-      // Thought logs + suggestion chips are browser-local by policy (the
-      // server stores only text + tier) — stash them so refresh /
-      // thread-reopen restores them.
-      if (aiMsg.reasoning || aiMsg.process || finalSuggestions.length > 0) {
+      const aiMsg: LocalMessage = { role: 'model', text: finalReply, timestamp: new Date(), usage: finalUsage, toolResults: finalToolResults, modelTier: finalModelTier || undefined, reasoning: (finalReasoning || liveReasoning).trim() || undefined, process: finalProcess.length > 0 ? finalProcess : undefined, artifacts: finalArtifacts.length > 0 ? finalArtifacts : undefined };
+      // Thought logs + suggestion chips + artifacts are browser-local by
+      // policy (the server stores only text + tier) — stash them so
+      // refresh / thread-reopen restores them.
+      if (aiMsg.reasoning || aiMsg.process || aiMsg.artifacts || finalSuggestions.length > 0) {
         saveThought(thoughtKey(finalConversationId, finalReply), {
           reasoning: aiMsg.reasoning, process: aiMsg.process,
-          suggestions: finalSuggestions,
+          artifacts: aiMsg.artifacts, suggestions: finalSuggestions,
         });
       }
       setMessages((prev) => [...prev, aiMsg]);
@@ -690,6 +748,7 @@ export default function Chat() {
           modelTier: msg.model_tier || undefined,
           reasoning: local?.reasoning,
           process: local?.process,
+          artifacts: local?.artifacts,
         };
       });
       setMessages(loaded);
@@ -901,14 +960,18 @@ export default function Chat() {
   })();
 
   return (
-    <div className="flex flex-col h-[calc(100vh-6rem)]">
+    <div className={`flex flex-col ${variant === 'panel' ? 'h-full' : 'h-[calc(100vh-6rem)]'}`}>
       {/* ── Header ────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between mb-4 flex-shrink-0">
+      <div className={`flex items-center justify-between flex-shrink-0 ${variant === 'panel' ? 'mb-2' : 'mb-4'}`}>
         <div className="flex items-center gap-3 min-w-0">
-          <h1 className="text-xl font-semibold flex items-center gap-2">
-            <Bot size={20} className="text-primary" />
-            AI Assistant
-          </h1>
+          {/* The panel provides its own "Assistant" title bar, so the
+              full-page-only h1 would be redundant there. */}
+          {variant !== 'panel' && (
+            <h1 className="text-xl font-semibold flex items-center gap-2">
+              <Bot size={20} className="text-primary" />
+              AI Assistant
+            </h1>
+          )}
           {/* Trust badge: only for restricted (company/vehicle-scoped) users —
               surfaces the Vehicle Access scope so they understand answers cover
               a subset, not the whole account. */}
@@ -1225,14 +1288,20 @@ export default function Chat() {
                                 marker={<Check size={12} className="text-primary/70" />}
                                 last={false}
                               >
-                                <div className="text-2xs font-medium text-muted-foreground">
-                                  {step.label || step.name}
+                                <div className="flex items-center gap-2 text-2xs font-medium text-muted-foreground">
+                                  <span>{step.label || step.name}</span>
+                                  {stepDuration(step.elapsed_ms) && (
+                                    <span className="text-3xs text-muted-foreground/50 tabular-nums">
+                                      {stepDuration(step.elapsed_ms)}
+                                    </span>
+                                  )}
                                 </div>
                                 {step.result && (
                                   <div className="mt-0.5 text-3xs text-muted-foreground/60 font-mono break-all line-clamp-2">
                                     {step.result}
                                   </div>
                                 )}
+                                <ToolStepLink toolName={step.name} />
                               </TimelineRow>
                             )
                           ))}
@@ -1253,6 +1322,12 @@ export default function Chat() {
                   className="rounded-2xl px-4 py-3 text-sm bg-card border border-border text-foreground rounded-bl-none ai-response shadow-sm"
                   dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }}
                 />
+                {/* Native artifacts (tables/charts) the model produced —
+                    rendered through the registry (unknown types degrade
+                    to a safe fallback). */}
+                {msg.artifacts?.map((a, ai) => (
+                  <div key={ai}>{renderArtifact(a)}</div>
+                ))}
                 {msg.toolResults && <ReferencedVehicles toolResults={msg.toolResults} />}
                 <div className="flex items-center gap-2 mt-1">
                   {/* The tier that produced THIS answer, frozen at receipt,
@@ -1416,6 +1491,7 @@ export default function Chat() {
                           <div className="text-2xs font-medium text-muted-foreground">
                             {step.label}
                           </div>
+                          <ToolStepLink toolName={step.name} />
                         </TimelineRow>
                       );
                     })}

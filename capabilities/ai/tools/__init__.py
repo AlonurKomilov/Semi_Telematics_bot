@@ -12,6 +12,10 @@ from capabilities.ai.tools.registry import (                              # noqa
     execute_tool,
     tool_ok,
     tool_error,
+    tool_propose,
+    get_tool_schema,
+    register_action_executor,
+    get_action_executor,
 )
 
 # Pre-load the alerting capability FIRST.  Some feature packages' ``__init__``

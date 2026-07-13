@@ -190,6 +190,32 @@ export async function apiJSONAI<T = unknown>(path: string, opts: ApiFetchOpts = 
   return apiJSON<T>(path, opts, AI_REQUEST_TIMEOUT_MS);
 }
 
+// ── AI write actions (copilot "hands") ───────────────────────────
+/** Status of a proposed write action. */
+export interface AIActionStatus {
+  id: string;
+  tool: string;
+  summary: string;
+  risk: string;
+  status: 'pending' | 'executing' | 'consumed' | 'declined' | 'failed';
+  result: Record<string, unknown> | null;
+}
+
+/** Approve a proposed write — the server re-authorizes + executes. */
+export function aiApproveAction(proposalId: string): Promise<{ status: string; result: Record<string, unknown> }> {
+  return apiJSONAI(`/ai/actions/${encodeURIComponent(proposalId)}/approve`, { method: 'POST' });
+}
+
+/** Reject a proposed write (no mutation, recorded). */
+export function aiRejectAction(proposalId: string): Promise<{ ok: boolean }> {
+  return apiJSON(`/ai/actions/${encodeURIComponent(proposalId)}/reject`, { method: 'POST' });
+}
+
+/** Current status of a proposal (so a refreshed card shows the truth). */
+export function aiGetActionStatus(proposalId: string): Promise<AIActionStatus> {
+  return apiJSON(`/ai/actions/${encodeURIComponent(proposalId)}`);
+}
+
 /** apiJSON with 90-second timeout for heavy compute endpoints (scorecards, reports). */
 export async function apiJSONSlow<T = unknown>(path: string, opts: ApiFetchOpts = {}): Promise<T> {
   return apiJSON<T>(path, opts, AI_REQUEST_TIMEOUT_MS);
@@ -200,7 +226,7 @@ export type StreamEvent =
   | { type: 'tool'; name: string; label: string }
   | { type: 'thinking'; text: string }   // live reasoning chunk (streaming models)
   | { type: 'delta'; text: string }      // live answer chunk (streaming models)
-  | { type: 'done'; reply: string; suggestions: string[]; usage: Record<string, number> | null; tool_results: unknown[]; scope?: { restricted: boolean; vehicle_count?: number }; model_tier?: string; conversation_id?: number; reasoning?: string; process?: { type: 'thinking' | 'tool'; text?: string; name?: string; label?: string; args?: string; result?: string }[] }
+  | { type: 'done'; reply: string; suggestions: string[]; usage: Record<string, number> | null; tool_results: unknown[]; scope?: { restricted: boolean; vehicle_count?: number }; model_tier?: string; conversation_id?: number; reasoning?: string; process?: { type: 'thinking' | 'tool'; text?: string; name?: string; label?: string; args?: string; result?: string; elapsed_ms?: number }[]; artifacts?: { type: string; [k: string]: unknown }[] }
   | { type: 'error'; message: string };
 
 /**
@@ -217,6 +243,9 @@ export async function apiStreamChat(
     conversationId?: number | null;
     /** Force a fresh thread (the "New chat" button). */
     newConversation?: boolean;
+    /** What the user is viewing — a PROMPT HINT for the model (the
+     *  backend still authorizes tools/scope from the JWT, never this). */
+    pageContext?: unknown;
   },
 ): Promise<void> {
   const token = getToken();
@@ -233,6 +262,7 @@ export async function apiStreamChat(
       message,
       conversation_id: opts?.conversationId ?? null,
       new_conversation: opts?.newConversation ?? false,
+      page_context: opts?.pageContext ?? null,
     }),
     signal,
     credentials: 'include',

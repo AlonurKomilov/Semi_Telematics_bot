@@ -7,7 +7,9 @@ vehicles' alerts).
 
 from __future__ import annotations
 
-from capabilities.ai.tools.registry import register_tool
+from capabilities.ai.tools.registry import (
+    register_tool, register_action_executor, tool_propose, tool_error,
+)
 from capabilities.ai.tools.scope import filter_to_scope
 
 
@@ -122,4 +124,114 @@ async def get_alert_history(tool_args: dict, samsara_client,
             }
             for r in rows
         ],
+    }
+
+
+# ── Write action: acknowledge alerts (copilot "hands") ────────────
+#
+# PROPOSE: the AI names which alerts (by the ids get_alert_history
+# returned) to acknowledge, validates, returns a proposal.
+# EXECUTE (post-approval only): clear each logical alert, scoped to the
+# account, via acknowledge_alert_history.
+
+@register_tool({
+    "name": "acknowledge_alerts",
+    "description": (
+        "Propose acknowledging (clearing) one or more alerts by their id. "
+        "Does NOT clear them directly — asks the user to approve first. "
+        "Get the ids from get_alert_history. Use when the user asks to "
+        "acknowledge / clear / dismiss specific alerts."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "alert_ids": {
+                "type": "array",
+                "items": {"type": "number"},
+                "description": "Alert ids (from get_alert_history) to acknowledge.",
+            },
+        },
+        "required": ["alert_ids"],
+    },
+    "writes": True,
+    "risk": "low",
+    # Scope shape (enforced by tests/test_ai_write_tool_scope.py): args are
+    # resource ids, so scope is enforced by filtering the ids to the caller's
+    # vehicles (⇒ must be in SCOPE_AWARE_TOOLS).
+    "scope": "resource_ids",
+})
+async def acknowledge_alerts(tool_args, samsara_client,
+                             account_id=None, db=None):
+    raw = tool_args.get("alert_ids") or []
+    ids: list[int] = []
+    for x in raw:
+        try:
+            ids.append(int(x))
+        except (TypeError, ValueError):
+            continue
+    ids = ids[:25]
+    if not ids:
+        return tool_error("No alert ids given to acknowledge.")
+
+    # Vehicle-Access scope: for a company/vehicle-restricted caller the
+    # orchestrator injects the allowed vehicle names as ``_scope_vehicles``
+    # (None = unrestricted).  Refuse the batch if any requested id is on a
+    # vehicle outside that scope — counts only, never other vehicles'
+    # details.  The executor + storage re-enforce this at approve time; this
+    # is the early, in-chat feedback so the model never proposes a write the
+    # user can't approve.
+    scope = tool_args.get("_scope_vehicles")
+    if scope is not None and db is not None and account_id is not None:
+        allowed = {str(v).strip().lower() for v in scope if v}
+        veh_by_id = await db.get_alert_history_vehicles(account_id, ids)
+        out_of_scope = [
+            i for i in ids
+            if i in veh_by_id and veh_by_id[i].strip().lower() not in allowed
+        ]
+        if out_of_scope:
+            n_bad = len(out_of_scope)
+            return tool_error(
+                f"{n_bad} of these alert{'s are' if n_bad != 1 else ' is'} on "
+                f"vehicle(s) outside your access. You can only acknowledge "
+                f"alerts on your own vehicles."
+            )
+
+    n = len(ids)
+    summary = f"Acknowledge {n} alert{'s' if n != 1 else ''} (mark them cleared)."
+    return tool_propose(
+        "acknowledge_alerts", summary, {"alert_ids": ids}, risk="low",
+        consequence="Marks these alerts as acknowledged and clears them from the active list.",
+    )
+
+
+@register_action_executor("acknowledge_alerts")
+async def _execute_acknowledge_alerts(payload, account_id, user_context, db):
+    """Clear each logical alert — runs only post-approval.  Each ack is
+    account-scoped AND vehicle-scoped in the storage method; unknown /
+    already-cleared / out-of-scope ids are silently skipped (idempotent).
+
+    Defense-in-depth: even though the propose step scope-checks the ids, we
+    re-resolve the approver's scope here and let the SQL enforce it, so a
+    stale/tampered proposal can never clear a vehicle the approver can't
+    access.  Scope is resolved with the SAME helper the tool gate uses."""
+    from capabilities.ai.intelligence import _scoped_vehicle_set
+    ids = payload.get("alert_ids") or []
+    uid = int((user_context or {}).get("user_id") or 0)
+    # None = unrestricted; a list = only those vehicles ([] = none).
+    allowed = _scoped_vehicle_set(user_context, (user_context or {}).get("role"))
+    acked = 0
+    for aid in ids:
+        try:
+            row = await db.acknowledge_alert_history(
+                int(aid), uid, account_id, allowed_vehicle_names=allowed)
+            if row is not None:
+                acked += 1
+        except (TypeError, ValueError):
+            continue
+    return {
+        "acknowledged": acked,
+        "requested": len(ids),
+        "target_type": "alert",
+        "target_id": ",".join(str(i) for i in ids)[:200],
+        "message": f"Acknowledged {acked} of {len(ids)} alert(s).",
     }

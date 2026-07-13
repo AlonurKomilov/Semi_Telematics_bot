@@ -18,6 +18,7 @@
  */
 
 import type { AIProcessStep } from './types';
+import type { Artifact } from './artifacts/types';
 
 const STORE_KEY = '4truck:ai-thoughts:v1';
 const MAX_ENTRIES = 200;
@@ -30,6 +31,8 @@ interface ThoughtEntry {
   p?: AIProcessStep[];
   /** Follow-up suggestion chips shown under the answer. */
   s?: string[];
+  /** Structured artifacts (tables/charts) rendered under the answer. */
+  a?: Artifact[];
   /** Stored-at epoch ms — LRU eviction order. */
   t: number;
 }
@@ -91,16 +94,18 @@ function _nextT(): number {
 
 export function saveThought(
   key: string,
-  data: { reasoning?: string; process?: AIProcessStep[]; suggestions?: string[] },
+  data: { reasoning?: string; process?: AIProcessStep[]; suggestions?: string[]; artifacts?: Artifact[] },
 ): void {
   if (!data.reasoning
     && (!data.process || data.process.length === 0)
-    && (!data.suggestions || data.suggestions.length === 0)) return;
+    && (!data.suggestions || data.suggestions.length === 0)
+    && (!data.artifacts || data.artifacts.length === 0)) return;
   const map = load();
   map[key] = {
     r: data.reasoning || undefined,
     p: data.process && data.process.length > 0 ? data.process : undefined,
     s: data.suggestions && data.suggestions.length > 0 ? data.suggestions : undefined,
+    a: data.artifacts && data.artifacts.length > 0 ? data.artifacts : undefined,
     t: _nextT(),
   };
   persist(map);
@@ -108,10 +113,10 @@ export function saveThought(
 
 export function getThought(
   key: string,
-): { reasoning?: string; process?: AIProcessStep[]; suggestions?: string[] } | null {
+): { reasoning?: string; process?: AIProcessStep[]; suggestions?: string[]; artifacts?: Artifact[] } | null {
   const e = load()[key];
   if (!e) return null;
-  return { reasoning: e.r, process: e.p, suggestions: e.s };
+  return { reasoning: e.r, process: e.p, suggestions: e.s, artifacts: e.a };
 }
 
 /** Drop all thought logs for one conversation (per-chat delete). */
