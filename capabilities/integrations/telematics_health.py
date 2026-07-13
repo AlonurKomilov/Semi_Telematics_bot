@@ -62,8 +62,13 @@ async def run_integration_health_checks() -> int:
     async def _probe(account_id: int) -> None:
         nonlocal probes, flipped
         try:
+            # include_error=True: error rows MUST keep getting probed so a
+            # transient upstream failure can heal back to "connected" once
+            # test_connection passes again — otherwise the auto-flip is a
+            # one-way trap that silently pauses the account's ingests
+            # forever (ingest itself still skips non-connected rows).
             integrations = await db.list_enabled_account_integrations(
-                account_id,
+                account_id, include_error=True,
             )
         except Exception:
             logger.exception(

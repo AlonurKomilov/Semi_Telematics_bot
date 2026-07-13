@@ -133,21 +133,32 @@ class AccountIntegrationsMixin(_MixinBase):
         return [self._row_to_integration(r) for r in rows]
 
     async def list_enabled_account_integrations(
-        self, account_id: int,
+        self, account_id: int, *, include_error: bool = False,
     ) -> list[AccountIntegration]:
         """Integrations the account has actively connected.
 
         Excludes ``disabled`` / ``disconnected`` rows so the scheduler
         doesn't fire ingest jobs for paused providers.
+
+        ``include_error=True`` additionally returns ``error`` rows — the
+        health-check prober needs them so a status that auto-flipped to
+        ``error`` can heal back to ``connected`` when the provider
+        recovers.  Without this the flip is a one-way trap: the prober
+        never re-probes an error row, so one transient upstream failure
+        silently freezes every ingest for the account until a human
+        notices (that is exactly what stranded a fleet's vehicle_state
+        for 5 days).
         """
+        statuses = ("connected", "error") if include_error else ("connected",)
+        placeholders = ", ".join("?" for _ in statuses)
         cur = await self._db.execute(
             f"""
             SELECT {', '.join(_INTEGRATION_COLUMNS)}
               FROM account_integrations
-             WHERE account_id = ? AND status = 'connected'
+             WHERE account_id = ? AND status IN ({placeholders})
              ORDER BY provider_id
             """,
-            (account_id,),
+            (account_id, *statuses),
         )
         rows = await cur.fetchall()
         return [self._row_to_integration(r) for r in rows]

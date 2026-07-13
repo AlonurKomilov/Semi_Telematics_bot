@@ -157,7 +157,7 @@ async def test_health_check_iterates_multiple_accounts(monkeypatch):
         return_value=[_StubAccount(1), _StubAccount(2), _StubAccount(3)],
     )
 
-    async def _list(account_id):
+    async def _list(account_id, *, include_error=False):
         return [_integration(account_id=account_id)]
 
     db.list_enabled_account_integrations = _list
@@ -187,3 +187,38 @@ def test_prometheus_recorders_are_safe_before_metrics_init():
     # Should not raise.
     _obs.record_integration_health_check("samsara", "ok")
     _obs.record_integration_backfill_run("samsara", "completed")
+
+
+@pytest.mark.asyncio
+async def test_health_check_reprobes_error_rows_so_status_can_heal(monkeypatch):
+    """An integration that auto-flipped to ``error`` MUST keep being probed —
+    a passing probe records ok=True (which flips status back to connected).
+    Without include_error=True the prober never saw error rows again and one
+    transient upstream failure paused the account's ingests forever."""
+    db = MagicMock()
+    db.list_accounts = AsyncMock(return_value=[_StubAccount(42)])
+    db.list_enabled_account_integrations = AsyncMock(
+        return_value=[_integration(account_id=42, status="error")],
+    )
+    db.record_integration_health_check = AsyncMock()
+    monkeypatch.setattr(telematics_health, "get_platform_db", lambda: db)
+
+    provider = MagicMock()
+    provider.test_connection = AsyncMock(
+        return_value=ConnectionStatus(ok=True, message="recovered"),
+    )
+    monkeypatch.setattr(
+        telematics_health, "get_telematics_client",
+        AsyncMock(return_value=provider),
+    )
+
+    n = await telematics_health.run_integration_health_checks()
+    assert n == 1
+    # The prober must ASK for error rows…
+    db.list_enabled_account_integrations.assert_awaited_once_with(
+        42, include_error=True,
+    )
+    # …and a passing probe records ok=True, which is what heals the status.
+    db.record_integration_health_check.assert_awaited_once_with(
+        42, "samsara", ok=True, message="recovered",
+    )
