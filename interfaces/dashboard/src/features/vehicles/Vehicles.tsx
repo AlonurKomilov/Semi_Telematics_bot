@@ -6,7 +6,7 @@ import { Pencil, Plus, Truck } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/DataGrid';
 import StatusBadge from '../../components/StatusBadge';
-import { Freshness } from '../../components/Freshness';
+import { Freshness, Tip } from '../../components/tooltip';
 import { Button } from '../../components/ui/button';
 import {
   PageHeader,
@@ -116,7 +116,7 @@ const ALL_COLUMNS: AnyColumn[] = [
       const full = String(v ?? '');
       const { street } = parseAddress(full);
       return full
-        ? <span title={full}>{street || full}</span>
+        ? <Tip label={full}><span>{street || full}</span></Tip>
         : <span className="text-muted-foreground">—</span>;
     },
   },
@@ -256,13 +256,14 @@ export default function Vehicles() {
           const r = row as unknown as Vehicle;
           if (r.registry_id == null) return null;
           return (
+            <Tip label="Edit this vehicle">
             <Button
               type="button" variant="ghost" size="xs"
               onClick={(e) => { e.stopPropagation(); setDialog({ vehicle: r }); }}
-              title="Edit this vehicle"
             >
               <Pencil size={12} />
             </Button>
+            </Tip>
           );
         },
       } as AnyColumn,

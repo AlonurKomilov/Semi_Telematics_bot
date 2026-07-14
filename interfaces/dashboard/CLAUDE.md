@@ -46,6 +46,15 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
 - **Compose primitives.** Build from [`src/components/ui/`](src/components/ui/)
   and [`src/components/shell/`](src/components/shell/) — don't re-implement
   buttons, badges, dialogs, empty/error/loading states.
+- **Hover-info = the tooltip family, never native `title=`.**
+  [`components/tooltip/`](src/components/tooltip/) is the SSOT (same idea as
+  DataGrid for tables): `<Tip label="…">` for plain hover labels,
+  `<Freshness ts={…}>` for data-age indicators. Native `title=` renders the
+  browser's unthemed, delayed tooltip and is invisible on touch — an ESLint
+  warn flags it on DOM elements; migrate legacy usages as you touch files.
+  Keep `aria-label` on icon-only controls (the tooltip is not the
+  accessible name). One `TooltipProvider` is mounted in main.tsx — never
+  add per-instance providers.
 - **Tables = DataGrid, always.** Any tabular list of rows — even a
   5-row read-only summary — uses
   [`components/DataGrid`](src/components/DataGrid.tsx). It's the

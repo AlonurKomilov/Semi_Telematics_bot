@@ -51,6 +51,7 @@ import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from './ui/select';
 import { Button } from './ui/button';
+import { Tip } from './tooltip';
 import { exportRowsAsCsv, buildTsv, writeToClipboard } from '../lib/csv';
 import { useUserPreference } from '../hooks/useUserPreference';
 
@@ -1680,6 +1681,7 @@ export default function DataGrid({
           ) : null}
           {tableId && (
             <>
+              <Tip label="Active filters">
               <Button
                 ref={filterBtnRef}
                 type="button"
@@ -1687,7 +1689,6 @@ export default function DataGrid({
                 size="icon"
                 onClick={() => setFilterMenuOpen(o => !o)}
                 aria-label="Active filters"
-                title="Active filters"
                 className={cn(
                   'relative',
                   columnFilters.length > 0 && 'text-primary border-primary/30 bg-primary/10',
@@ -1700,6 +1701,8 @@ export default function DataGrid({
                   </span>
                 )}
               </Button>
+              </Tip>
+              <Tip label="Active sort">
               <Button
                 ref={sortBtnRef}
                 type="button"
@@ -1707,7 +1710,6 @@ export default function DataGrid({
                 size="icon"
                 onClick={() => setSortMenuOpen(o => !o)}
                 aria-label="Active sort"
-                title="Active sort"
                 className={cn(
                   'relative',
                   sorting.length > 0 && 'text-primary border-primary/30 bg-primary/10',
@@ -1720,6 +1722,8 @@ export default function DataGrid({
                   </span>
                 )}
               </Button>
+              </Tip>
+              <Tip label="Show / hide columns">
               <Button
                 ref={manageAnchorRef}
                 type="button"
@@ -1727,7 +1731,6 @@ export default function DataGrid({
                 size="icon"
                 onClick={() => setManageOpen((o) => !o)}
                 aria-label="Manage columns"
-                title="Show / hide columns"
                 className={cn(
                   'relative',
                   hiddenCount > 0 && 'text-primary border-primary/30 bg-primary/10',
@@ -1740,21 +1743,23 @@ export default function DataGrid({
                   </span>
                 )}
               </Button>
+              </Tip>
               {/* Export scope picker — "this page" vs "everything
                   that matches the current filters" (all pages). */}
               <MenuPrimitive.Root>
                 <MenuPrimitive.Trigger
                   render={(props) => (
+                    <Tip label="Export to CSV">
                     <Button
                       {...props}
                       type="button"
                       variant="outline"
                       size="icon"
                       aria-label="Export to CSV"
-                      title="Export to CSV"
                     >
                       <Download />
                     </Button>
+                    </Tip>
                   )}
                 />
                 <MenuPrimitive.Portal>
@@ -1805,16 +1810,17 @@ export default function DataGrid({
             ];
             const Icon = DENSITY_ICONS[density];
             return (
+              <Tip label={`Density: ${DENSITY_LABELS[density]} (click for ${DENSITY_LABELS[next]})`}>
               <Button
                 type="button"
                 variant="outline"
                 size="icon"
                 onClick={() => setDensity(next)}
                 aria-label={`Row density: ${DENSITY_LABELS[density]} — click for ${DENSITY_LABELS[next]}`}
-                title={`Density: ${DENSITY_LABELS[density]} (click for ${DENSITY_LABELS[next]})`}
               >
                 <Icon />
               </Button>
+              </Tip>
             );
           })()}
         </div>
@@ -2275,9 +2281,11 @@ export default function DataGrid({
                       <span className="shrink-0 font-medium text-foreground">
                         {col?.label || f.id}
                       </span>
-                      <span className="flex-1 truncate text-muted-foreground" title={describeFilter(f.id, f.value)}>
+                      <Tip label={describeFilter(f.id, f.value)}>
+                      <span className="flex-1 truncate text-muted-foreground">
                         {describeFilter(f.id, f.value)}
                       </span>
+                      </Tip>
                       <button
                         type="button"
                         onClick={() =>

@@ -55,6 +55,17 @@ export default [
       'react-refresh': reactRefresh,
     },
     rules: {
+      // Native title= renders the browser's unthemed, delayed tooltip and
+      // is invisible on touch — use <Tip> from components/tooltip (the
+      // hover-info SSOT, same idea as DataGrid for tables).  Warn-level:
+      // legacy usages migrate opportunistically as files are touched.
+      'no-restricted-syntax': ['warn', {
+        // Lowercase (DOM) elements only — <PageHeader title=…> and other
+        // component props legitimately named "title" are not tooltips.
+        selector: "JSXOpeningElement[name.name=/^[a-z]/] > JSXAttribute[name.name='title']",
+        message: 'Use <Tip label="…"> from components/tooltip instead of the native title= tooltip (unthemed, delayed, no touch support).',
+      }],
+
       // tsc owns these:
       'no-unused-vars': 'off',
       'no-undef': 'off',

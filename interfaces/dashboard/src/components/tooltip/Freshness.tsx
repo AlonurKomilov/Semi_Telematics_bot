@@ -13,13 +13,11 @@
  * own clock (fuel can be a week older than GPS on the same truck).
  */
 import type { ReactNode } from 'react';
-import {
-  Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
-} from './ui/tooltip';
-import { formatAgoShort } from '../utils/datetime';
-import { useTimezone } from '../hooks/useTimezone';
-import { useNow } from '../hooks/useNow';
-import { toneText } from '../lib/status';
+import { Tip } from './Tip';
+import { formatAgoShort } from '../../utils/datetime';
+import { useTimezone } from '../../hooks/useTimezone';
+import { useNow } from '../../hooks/useNow';
+import { toneText } from '../../lib/status';
 
 const STALE_MS = 60 * 60 * 1000;
 const VERY_STALE_MS = 24 * STALE_MS;
@@ -50,24 +48,19 @@ export function Freshness({ ts, cue = true, children }: FreshnessProps) {
   const rel = formatAgoShort(ts, { timeZone: tz });
 
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger
-          render={<span className="inline-flex items-center gap-1.5 cursor-default" />}
-        >
-          {children}
-          {cue && age >= VERY_STALE_MS && (
-            <span className={`text-2xs ${toneText('warn')}`}>· {rel}</span>
-          )}
-          {cue && age >= STALE_MS && (
-            <span
-              aria-label={`updated ${rel}`}
-              className={`inline-block w-1.5 h-1.5 rounded-full bg-current ${toneText('warn')}`}
-            />
-          )}
-        </TooltipTrigger>
-        <TooltipContent>Up {rel}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Tip label={`Up ${rel}`}>
+      <span className="inline-flex items-center gap-1.5 cursor-default">
+        {children}
+        {cue && age >= VERY_STALE_MS && (
+          <span className={`text-2xs ${toneText('warn')}`}>· {rel}</span>
+        )}
+        {cue && age >= STALE_MS && (
+          <span
+            aria-label={`updated ${rel}`}
+            className={`inline-block w-1.5 h-1.5 rounded-full bg-current ${toneText('warn')}`}
+          />
+        )}
+      </span>
+    </Tip>
   );
 }

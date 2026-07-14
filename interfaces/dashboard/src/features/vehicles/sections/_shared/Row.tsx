@@ -4,7 +4,7 @@
  * so visual output is byte-identical.
  */
 import type { ReactNode } from 'react';
-import { Freshness } from '../../../../components/Freshness';
+import { Freshness } from '../../../../components/tooltip';
 
 interface RowProps {
   label: string;

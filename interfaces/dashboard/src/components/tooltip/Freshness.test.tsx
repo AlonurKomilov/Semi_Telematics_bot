@@ -14,8 +14,8 @@ import { Freshness } from './Freshness';
 // stub the hooks so the test never touches auth context.  The clock is
 // FAKED system-wide (formatRelative reads Date.now() directly), so both
 // the hook and the formatter see the same frozen instant.
-vi.mock('../hooks/useTimezone', () => ({ useTimezone: () => 'UTC' }));
-vi.mock('../hooks/useNow', () => ({ useNow: () => new Date() }));
+vi.mock('../../hooks/useTimezone', () => ({ useTimezone: () => 'UTC' }));
+vi.mock('../../hooks/useNow', () => ({ useNow: () => new Date() }));
 
 beforeEach(() => {
   vi.useFakeTimers({ now: Date.parse('2026-07-14T12:00:00Z'), toFake: ['Date'] });

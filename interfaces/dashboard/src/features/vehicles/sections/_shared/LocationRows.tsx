@@ -6,7 +6,7 @@
  */
 import { useState } from 'react';
 import { Copy, Check, ExternalLink } from 'lucide-react';
-import { Freshness } from '../../../../components/Freshness';
+import { Freshness, Tip } from '../../../../components/tooltip';
 import { Row } from './Row';
 
 interface LocationRowsProps {
@@ -51,16 +51,17 @@ export function LocationRows({
         <span className="text-muted-foreground flex-shrink-0">Address</span>
         <Freshness ts={ts}>
           {address && mapsHref ? (
+            <Tip label="Open in Google Maps">
             <a
               href={mapsHref}
               target="_blank"
               rel="noopener noreferrer"
               className="text-primary hover:underline inline-flex items-center gap-1 text-right"
-              title="Open in Google Maps"
             >
               <span>{address}</span>
               <ExternalLink size={12} className="flex-shrink-0 opacity-70" />
             </a>
+            </Tip>
           ) : (
             <span>{address || '—'}</span>
           )}
@@ -74,11 +75,11 @@ export function LocationRows({
             <Freshness ts={ts} cue={false}>
               <span className="font-mono text-xs">{coordsText}</span>
             </Freshness>
+            <Tip label={copied ? 'Copied' : 'Copy to clipboard'}>
             <button
               type="button"
               onClick={copyCoords}
               className="text-muted-foreground hover:text-foreground transition-colors"
-              title={copied ? 'Copied' : 'Copy to clipboard'}
               aria-label={copied ? 'Coordinates copied' : 'Copy coordinates'}
             >
               {copied ? (
@@ -87,6 +88,7 @@ export function LocationRows({
                 <Copy size={14} />
               )}
             </button>
+            </Tip>
           </span>
         ) : (
           <span>—</span>
