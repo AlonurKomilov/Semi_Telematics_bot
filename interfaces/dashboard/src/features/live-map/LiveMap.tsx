@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight, FlaskConical, Fuel, TriangleAlert } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useLeafletMap } from '../../hooks/useLeafletMap';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
@@ -12,6 +13,8 @@ import type { MapVehicleFeature, MapVehiclesResponse, MapVehicleProperties, Live
 import type L from 'leaflet';
 import { PageLayoutHost } from '../../features/_lib/PageLayoutHost';
 import { LIVE_MAP_SECTIONS } from '../../features/live-map/registry';
+import PoiIcon from '../../features/live-map/PoiIcon';
+import { Tip } from '../../components/tooltip';
 import { LIVE_MAP_LAYOUTS } from '../../features/live-map/layouts';
 
 const REFRESH_MS      = 30_000;   // full data refresh (fuel, DEF, status)
@@ -717,9 +720,9 @@ export default function LiveMap() {
                 setSelected(null);
                 setSelectedPos(null);
               }}
-              className="text-primary hover:underline text-xs"
+              className="text-primary hover:underline text-xs inline-flex items-center gap-1"
             >
-              ← Back
+              <ArrowLeft size={12} /> Back
             </button>
             <h3 className="font-bold text-lg leading-tight">{selected.name}</h3>
             <p className="text-muted-foreground text-xs">{selected.address || 'Unknown location'}</p>
@@ -740,11 +743,12 @@ export default function LiveMap() {
                 {selected.fuel_percent != null && (
                   <div>
                     <div className="flex justify-between text-xs mb-1">
-                      <span className={selected.fuel_percent < 15 ? 'text-danger font-semibold' : 'text-muted-foreground'}>
-                        ⛽ Fuel
+                      <span className={`inline-flex items-center gap-1 ${selected.fuel_percent < 15 ? 'text-danger font-semibold' : 'text-muted-foreground'}`}>
+                        <Fuel size={14} /> Fuel
                       </span>
-                      <span className={selected.fuel_percent < 15 ? 'text-danger font-semibold' : ''}>
-                        {Math.round(selected.fuel_percent)}%{selected.fuel_percent < 15 ? ' ⚠' : ''}
+                      <span className={`inline-flex items-center gap-1 ${selected.fuel_percent < 15 ? 'text-danger font-semibold' : ''}`}>
+                        {Math.round(selected.fuel_percent)}%
+                        {selected.fuel_percent < 15 && <TriangleAlert size={12} />}
                       </span>
                     </div>
                     <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -758,11 +762,12 @@ export default function LiveMap() {
                 {selected.def_percent != null && (
                   <div>
                     <div className="flex justify-between text-xs mb-1">
-                      <span className={selected.def_percent < 15 ? 'text-danger font-semibold' : 'text-muted-foreground'}>
-                        🧪 DEF
+                      <span className={`inline-flex items-center gap-1 ${selected.def_percent < 15 ? 'text-danger font-semibold' : 'text-muted-foreground'}`}>
+                        <FlaskConical size={14} /> DEF
                       </span>
-                      <span className={selected.def_percent < 15 ? 'text-danger font-semibold' : ''}>
-                        {Math.round(selected.def_percent)}%{selected.def_percent < 15 ? ' ⚠ DERATE RISK' : ''}
+                      <span className={`inline-flex items-center gap-1 ${selected.def_percent < 15 ? 'text-danger font-semibold' : ''}`}>
+                        {Math.round(selected.def_percent)}%
+                        {selected.def_percent < 15 && <><TriangleAlert size={12} /> DERATE RISK</>}
                       </span>
                     </div>
                     <div className="h-2 bg-muted rounded-full overflow-hidden">
@@ -805,7 +810,7 @@ export default function LiveMap() {
                         return (
                           <div key={def.id} className="opacity-50">
                             <div className="flex items-center gap-1 mb-0.5">
-                              <span className="text-2xs">{def.icon}</span>
+                              <PoiIcon icon={def.icon} size={12} color={def.color} />
                               <span className="text-3xs font-semibold tracking-wide" style={{ color: def.color }}>
                                 {def.label}
                               </span>
@@ -833,7 +838,7 @@ export default function LiveMap() {
                         <div key={def.id}>
                           {/* Layer header */}
                           <div className="flex items-center gap-1 mb-0.5">
-                            <span className="text-2xs">{def.icon}</span>
+                            <PoiIcon icon={def.icon} size={12} color={def.color} />
                             <span className="text-3xs font-semibold tracking-wide" style={{ color: def.color }}>
                               {def.label}
                             </span>
@@ -848,9 +853,8 @@ export default function LiveMap() {
                                 ? `${(dist * 5280).toFixed(0)} ft`
                                 : `${dist.toFixed(1)} mi`;
                               return (
+                                <Tip key={poiKey} label={isActive ? 'Click to clear route' : 'Click to show route on map'}>
                                 <button
-                                  key={poiKey}
-                                  title={isActive ? 'Click to clear route' : 'Click to show route on map'}
                                   onClick={() => handlePoiClick(def.color, [lat, lng], poiKey)}
                                   className={`w-full flex items-center gap-2 text-xs py-0.5 px-1.5 rounded text-left transition-colors ${
                                     isActive
@@ -859,7 +863,7 @@ export default function LiveMap() {
                                   }`}
                                 >
                                   <span className={`text-3xs shrink-0 ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>
-                                    {isActive ? '→' : `${i + 1}.`}
+                                    {isActive ? <ArrowRight size={12} /> : `${i + 1}.`}
                                   </span>
                                   <span className="flex-1 truncate">{name}</span>
                                   <span
@@ -869,6 +873,7 @@ export default function LiveMap() {
                                     {distStr}
                                   </span>
                                 </button>
+                                </Tip>
                               );
                             })}
                             {/* Show more / show less toggle */}
@@ -925,10 +930,10 @@ export default function LiveMap() {
                     />
                     <span className="font-medium truncate flex-1">{p.name}</span>
                     {p.fuel_percent != null && p.fuel_percent < 15 && (
-                      <span className="text-3xs text-danger">⛽⚠</span>
+                      <Fuel size={12} className="text-danger shrink-0" aria-label="Low fuel" />
                     )}
                     {p.def_percent != null && p.def_percent < 15 && (
-                      <span className="text-3xs text-danger">🧪⚠</span>
+                      <FlaskConical size={12} className="text-danger shrink-0" aria-label="Low DEF" />
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground ml-4 truncate">{p.address || '—'}</p>
@@ -937,7 +942,7 @@ export default function LiveMap() {
                     <div className="ml-4 mt-1.5 space-y-1">
                       {p.fuel_percent != null && (
                         <div className="flex items-center gap-1">
-                          <span className="text-3xs w-5 text-muted-foreground">⛽</span>
+                          <Fuel size={12} className="w-5 text-muted-foreground shrink-0" />
                           <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full ${p.fuel_percent < 15 ? 'bg-danger' : p.fuel_percent < 25 ? 'bg-warn' : 'bg-ok'}`}
@@ -951,7 +956,7 @@ export default function LiveMap() {
                       )}
                       {p.def_percent != null && (
                         <div className="flex items-center gap-1">
-                          <span className="text-3xs w-5 text-muted-foreground">🧪</span>
+                          <FlaskConical size={12} className="w-5 text-muted-foreground shrink-0" />
                           <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
                             <div
                               className={`h-full rounded-full ${p.def_percent < 15 ? 'bg-danger' : p.def_percent < 25 ? 'bg-warn' : 'bg-ok'}`}

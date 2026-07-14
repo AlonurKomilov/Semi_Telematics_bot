@@ -1564,6 +1564,10 @@ export interface DirectoryEntry {
    *  system console; entries without them never appear on map layers. */
   lat?: number | null;
   lng?: number | null;
+  /** Directory BROWSE only: the caller's own vendor linked to this
+   *  entry (their one account-specific fact — nobody else's). */
+  linked_vendor_id?: number | null;
+  linked_vendor_name?: string | null;
   /** Approved-only community signal (anonymous). */
   rating_avg?: number | null;
   rating_count?: number;

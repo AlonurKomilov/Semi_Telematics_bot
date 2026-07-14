@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Store, ArrowLeft, Merge, Globe, Link2, Link2Off, Send, Star, TrendingUp } from 'lucide-react';
+import { Store, ArrowLeft, Merge, Globe, Link2, Link2Off, Pencil, Send, Star, TrendingUp } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/DataGrid';
 import { PageHeader, ErrorState, TableSkeleton } from '../../components/shell';
@@ -47,6 +47,12 @@ export default function VendorProfile() {
   const [mergeTarget, setMergeTarget] = useState('');
   const [merging, setMerging] = useState(false);
 
+  // Edit dialog — contact/identity on the registry record (never
+  // rewrites work-order snapshots; server enforces that).
+  const [editOpen, setEditOpen] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', phone: '', email: '', address: '', notes: '' });
+
   const { data, isLoading, error } = useQuery<{
     vendor: Vendor; work_orders: WorkOrder[]; directory: DirectoryEntry | null;
   }>({
@@ -74,9 +80,25 @@ export default function VendorProfile() {
       toast.error(e instanceof Error ? e.message : 'Action failed');
     } finally { setDirBusy(false); }
   };
-  const suggestToDirectory = () => dirAction(async () => {
+  // Suggestion completion dialog: the user completes the shop's
+  // identity BEFORE it goes to platform review (a name-only suggestion
+  // gives the reviewer nothing to verify).  Fields write back to the
+  // vendor record too — same data, one source of truth.
+  const [suggestOpen, setSuggestOpen] = useState(false);
+  const [sugForm, setSugForm] = useState({ address: '', phone: '', email: '' });
+  const openSuggest = () => {
+    setSugForm({
+      address: vendor?.address ?? '',
+      phone: vendor?.phone ?? '',
+      email: vendor?.email ?? '',
+    });
+    setSuggestOpen(true);
+  };
+  const submitSuggestion = () => dirAction(async () => {
+    await apiJSON(`/vendors/${vendorId}`, { method: 'PUT', body: sugForm });
     const r = await apiJSON<{ status: string; linked: boolean }>(
       `/vendors/${vendorId}/suggest-to-directory`, { method: 'POST' });
+    setSuggestOpen(false);
     if (r.status === 'pending') {
       toast.info('Suggested — pending platform review.');
     }
@@ -138,6 +160,35 @@ export default function VendorProfile() {
       .filter(w => w.payment_status === 'unpaid' && w.status !== 'void')
       .reduce((a, w) => a + (w.total_cost ?? 0), 0),
   }), [workOrders]);
+
+  const openEdit = () => {
+    if (!vendor) return;
+    setEditForm({
+      name: vendor.name ?? '',
+      phone: vendor.phone ?? '',
+      email: vendor.email ?? '',
+      address: vendor.address ?? '',
+      notes: vendor.notes ?? '',
+    });
+    setEditOpen(true);
+  };
+
+  const saveEdit = async () => {
+    if (!editForm.name.trim()) return;
+    setEditBusy(true);
+    try {
+      await apiJSON(`/vendors/${vendorId}`, { method: 'PUT', body: editForm });
+      toast.success('Vendor updated');
+      qc.invalidateQueries({ queryKey: ['vendor', vendorId] });
+      qc.invalidateQueries({ queryKey: ['vendors'] });
+      setEditOpen(false);
+    } catch (e) {
+      // 409 = name collision with another vendor → the fix is a merge.
+      toast.error(e instanceof Error ? e.message : 'Update failed');
+    } finally {
+      setEditBusy(false);
+    }
+  };
 
   const doMerge = async () => {
     if (!mergeTarget) return;
@@ -204,6 +255,16 @@ export default function VendorProfile() {
               <ArrowLeft size={14} />
               All vendors
             </button>
+            {canWrite && vendor && (
+              <button
+                type="button"
+                onClick={openEdit}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded-md text-xs font-medium text-foreground transition"
+              >
+                <Pencil size={14} />
+                Edit
+              </button>
+            )}
             {canWrite && others.length > 0 && (
               <button
                 type="button"
@@ -283,11 +344,11 @@ export default function VendorProfile() {
                     }} disabled={dirBusy}
                       title="Anonymous rating — displayed with no company attribution, after platform moderation."
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-foreground transition">
-                      <Star size={13} /> {data.directory.my_review ? 'Edit review' : 'Rate this shop'}
+                      <Star size={14} /> {data.directory.my_review ? 'Edit review' : 'Rate this shop'}
                     </button>
                     <button type="button" onClick={unlink} disabled={dirBusy}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition">
-                      <Link2Off size={13} /> Unlink
+                      <Link2Off size={14} /> Unlink
                     </button>
                   </span>
                 )}
@@ -299,12 +360,12 @@ export default function VendorProfile() {
                   <span className="ml-auto inline-flex items-center gap-2">
                     <button type="button" onClick={() => setLinkOpen(true)} disabled={dirBusy}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-foreground transition">
-                      <Link2 size={13} /> Link to directory…
+                      <Link2 size={14} /> Link to directory…
                     </button>
-                    <button type="button" onClick={suggestToDirectory} disabled={dirBusy}
+                    <button type="button" onClick={openSuggest} disabled={dirBusy}
                       title="Share only this shop's name and contact info for platform review — never your invoices or spend."
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-foreground transition">
-                      <Send size={13} /> Suggest to directory
+                      <Send size={14} /> Suggest to directory
                     </button>
                   </span>
                 )}
@@ -318,7 +379,7 @@ export default function VendorProfile() {
           {data?.directory && market && market.reason !== 'disabled' && (
             <div className="bg-card border border-border rounded-lg p-3 mb-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1.5">
-                <TrendingUp size={13} /> Market price ranges
+                <TrendingUp size={14} /> Market price ranges
               </p>
               {market.available ? (
                 market.rows.length === 0 ? (
@@ -372,6 +433,108 @@ export default function VendorProfile() {
           )}
         </>
       )}
+
+      {/* Edit dialog — registry contact/identity.  Historical invoices
+          keep their snapshots; only the master record changes. */}
+      <Dialog open={editOpen} onOpenChange={(o) => { if (!o) setEditOpen(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit vendor</DialogTitle>
+            <DialogDescription>
+              Updates this registry record only — what past invoices said
+              stays untouched.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2.5">
+            {([
+              ['name', 'Name', 'Shop name'],
+              ['phone', 'Phone', '555-1234'],
+              ['email', 'Email', 'shop@example.com'],
+              ['address', 'Address', 'Street, City, State'],
+            ] as const).map(([key, label, ph]) => (
+              <label key={key} className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">{label}</span>
+                <input
+                  type="text"
+                  value={editForm[key]}
+                  onChange={(e) => setEditForm((f) => ({ ...f, [key]: e.target.value }))}
+                  placeholder={ph}
+                  className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+                />
+              </label>
+            ))}
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Notes</span>
+              <textarea
+                rows={2}
+                value={editForm.notes}
+                onChange={(e) => setEditForm((f) => ({ ...f, notes: e.target.value }))}
+                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+              />
+            </label>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setEditOpen(false)}>Cancel</Button>
+            <Button onClick={saveEdit} disabled={editBusy || !editForm.name.trim()}>
+              {editBusy ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Suggestion dialog — complete the shop's identity before it
+          goes to platform review.  Address is required: it's what the
+          reviewer verifies against the real world. */}
+      <Dialog open={suggestOpen} onOpenChange={(o) => { if (!o) setSuggestOpen(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Suggest “{vendor?.name}” to the directory</DialogTitle>
+            <DialogDescription>
+              Only the shop's name and contact info go to platform review —
+              never your invoices or spend. These fields also update your own
+              vendor record.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2.5">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Address (required)</span>
+              <input
+                type="text"
+                value={sugForm.address}
+                onChange={(e) => setSugForm((f) => ({ ...f, address: e.target.value }))}
+                placeholder="Street, City, State"
+                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Phone</span>
+              <input
+                type="text"
+                value={sugForm.phone}
+                onChange={(e) => setSugForm((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="555-1234"
+                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Email</span>
+              <input
+                type="text"
+                value={sugForm.email}
+                onChange={(e) => setSugForm((f) => ({ ...f, email: e.target.value }))}
+                placeholder="shop@example.com"
+                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+              />
+            </label>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setSuggestOpen(false)}>Cancel</Button>
+            <Button onClick={submitSuggestion} disabled={dirBusy || !sugForm.address.trim()}>
+              {dirBusy ? 'Sending…' : 'Send for review'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Directory link dialog: search ACTIVE global entries. */}
       <Dialog open={linkOpen} onOpenChange={(o) => { if (!o) setLinkOpen(false); }}>

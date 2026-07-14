@@ -17,6 +17,7 @@
  */
 
 import { useState } from 'react';
+import { Check, ChevronDown, ChevronUp, Map as MapIcon, Mountain, Satellite, type LucideIcon } from 'lucide-react';
 import type { MapType } from '@/hooks/useLeafletMap';
 
 interface MapTypeControlProps {
@@ -33,29 +34,29 @@ const MAP_TYPES: {
   label: string;
   /** CSS background used for the thumbnail preview card. */
   preview: string;
-  /** Unicode icon shown inside the card. */
-  icon: string;
+  /** lucide icon shown inside the card. */
+  icon: LucideIcon;
 }[] = [
   {
     id:      'standard',
     label:   'Default',
     // Green represents road/greenspace colors of OSM
     preview: 'linear-gradient(135deg, #4a8c5e 0%, #6aab7e 40%, #c8d8a0 100%)',
-    icon:    '🗺️',
+    icon:    MapIcon,
   },
   {
     id:      'satellite',
     label:   'Satellite',
     // Dark blue-grey represents aerial/space photography
     preview: 'linear-gradient(135deg, #1a2332 0%, #243447 50%, #2e4060 100%)',
-    icon:    '🛰️',
+    icon:    Satellite,
   },
   {
     id:      'terrain',
     label:   'Terrain',
     // Brown/green represents elevation contours
     preview: 'linear-gradient(135deg, #6b4c1e 0%, #8b6a2e 40%, #7a9c4a 100%)',
-    icon:    '⛰️',
+    icon:    Mountain,
   },
 ];
 
@@ -84,24 +85,26 @@ export default function MapTypeControl({
         className="w-full flex items-center justify-between px-3 py-2.5 font-semibold text-foreground hover:bg-muted/60 rounded-xl transition"
       >
         <span className="flex items-center gap-1.5">
-          <span>🗺</span>
+          <MapIcon size={16} className="text-muted-foreground" />
           <span>Map Type</span>
         </span>
-        <span className="text-muted-foreground text-xs">{collapsed ? '▼' : '▲'}</span>
+        {collapsed
+          ? <ChevronDown size={14} className="text-muted-foreground" />
+          : <ChevronUp size={14} className="text-muted-foreground" />}
       </button>
 
       {!collapsed && (
         <div className="border-t border-border px-3 pt-2.5 pb-3 space-y-3">
           {/* Tile type card grid */}
           <div className="flex gap-2 justify-between">
-            {MAP_TYPES.map(({ id, label, preview, icon }) => {
+            {MAP_TYPES.map(({ id, label, preview, icon: Icon }) => {
               const active = mapType === id;
               return (
                 <button
                   key={id}
                   onClick={() => setMapType(id)}
                   className="flex flex-col items-center gap-1 flex-1"
-                  title={label}
+                  aria-label={label}
                 >
                   {/* Preview card */}
                   <div
@@ -114,13 +117,13 @@ export default function MapTypeControl({
                   >
                     {/* Check badge */}
                     {active && (
-                      <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 text-3xs flex items-center justify-center leading-none">
-                        ✓
+                      <span className="bg-primary text-primary-foreground rounded-full w-4 h-4 flex items-center justify-center leading-none">
+                        <Check size={10} />
                       </span>
                     )}
                   </div>
                   {/* Icon + label */}
-                  <span className="text-base leading-none">{icon}</span>
+                  <Icon size={18} className={active ? 'text-primary' : 'text-muted-foreground'} />
                   <span
                     className={`text-2xs leading-tight ${
                       active ? 'text-primary font-medium' : 'text-muted-foreground'
@@ -150,7 +153,7 @@ export default function MapTypeControl({
                 onKeyDown={(e) => e.key === ' ' && setShowLabels(!showLabels)}
               >
                 {showLabels && (
-                  <span className="text-primary-foreground text-3xs leading-none">✓</span>
+                  <Check size={11} className="text-primary-foreground" />
                 )}
               </span>
               <span className={`text-xs ${showLabels ? 'text-foreground' : 'text-muted-foreground'}`}>

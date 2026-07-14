@@ -19,11 +19,16 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { ArrowLeft, ArrowRight, FileText, MapPin, Search, type LucideIcon } from 'lucide-react';
 import type L from 'leaflet';
 import { apiFetch, apiJSON } from '@/api/client';
 import type { PoiLayerDef } from '@/config/poiLayers';
 import { CUSTOM_LAYER_SWATCHES } from '@/config/mapColors';
 
+// The marker-icon picker below is USER content — the operator picks an
+// emoji that is stored on the layer row and shown on their map.  This is
+// the one sanctioned non-lucide icon surface (see PoiIconSpec); the
+// dialog's own chrome (tabs, buttons) uses lucide like everything else.
 /** Curated emoji list shown in the icon picker — kept short on purpose. */
 const ICON_CHOICES = ['📍', '⛽', '🅿️', '🛒', '🍔', '🔧', '🛏️', '🚿', '🏪', '🚛', '⚖️', '🛣️', '🗂️'];
 /** Curated swatch palette covering the primary POI brand families. */
@@ -137,7 +142,9 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
     if (!existing) return;
     setLabel(existing.label);
     setColor(existing.color);
-    setIcon(existing.icon);
+    // Custom layers always store an emoji string; the union type on
+    // PoiLayerDef.icon exists for built-ins (lucide components).
+    setIcon(typeof existing.icon === 'string' ? existing.icon : ICON_CHOICES[0]);
     setDefaultOn(existing.defaultOn);
   }, [mode, layerId, existingLayers]);
 
@@ -333,7 +340,7 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
           className="fixed left-1/2 top-4 -translate-x-1/2 z-[2100] bg-card border border-border rounded-lg shadow-lg px-4 py-2 flex items-center gap-3 text-sm"
           role="status"
         >
-          <span>📍 Click anywhere on the map to set the pin location</span>
+          <span className="inline-flex items-center gap-1.5"><MapPin size={14} /> Click anywhere on the map to set the pin location</span>
           <button
             type="button"
             onClick={() => setPicking(false)}
@@ -369,19 +376,19 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
         {mode === 'create' && (
           <div className="flex border-b border-border">
             {([
-              ['pin',      '📍 Pin-drop'],
-              ['overpass', '🔎 Brand search'],
-              ['csv',      '📄 CSV'],
-            ] as [Tab, string][]).map(([key, lbl]) => (
+              ['pin',      'Pin-drop',     MapPin],
+              ['overpass', 'Brand search', Search],
+              ['csv',      'CSV',          FileText],
+            ] as [Tab, string, LucideIcon][]).map(([key, lbl, Icon]) => (
               <button
                 key={key}
                 onClick={() => { setTab(key); setError(null); setInfo(null); }}
-                className={`flex-1 px-3 py-2 text-xs font-medium transition border-b-2 ${
+                className={`flex-1 px-3 py-2 text-xs font-medium transition border-b-2 inline-flex items-center justify-center gap-1.5 ${
                   tab === key
                     ? 'border-primary text-foreground'
                     : 'border-transparent text-muted-foreground hover:text-foreground'
                 }`}
-              >{lbl}</button>
+              ><Icon size={14} />{lbl}</button>
             ))}
           </div>
         )}
@@ -422,16 +429,16 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                     onClick={() => { setError(null); setInfo(null); setPicking(true); }}
                     className="flex-1 px-3 py-1.5 text-xs font-medium rounded border border-border bg-background hover:bg-muted transition flex items-center justify-center gap-1"
                   >
-                    <span>📍</span><span>Pick on map</span>
+                    <MapPin size={14} /><span>Pick on map</span>
                   </button>
                 )}
                 <button
                   type="button"
                   onClick={runPinPreview}
                   disabled={pinPreviewing || !pinLat || !pinLng}
-                  className="flex-1 px-3 py-1.5 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50"
+                  className="flex-1 px-3 py-1.5 text-xs font-medium rounded bg-primary/10 text-primary hover:bg-primary/20 transition disabled:opacity-50 inline-flex items-center justify-center gap-1.5"
                 >
-                  {pinPreviewing ? 'Detecting…' : '🔍 Detect brand'}
+                  {pinPreviewing ? 'Detecting…' : <><Search size={14} /> Detect brand</>}
                 </button>
               </div>
               {pinPreview && <BrandPreviewCard preview={pinPreview} />}
@@ -517,7 +524,9 @@ export default function CustomLayerEditor(props: CustomLayerEditorProps) {
                 onClick={() => setShowAdvancedOverpass((v) => !v)}
                 className="text-2xs text-muted-foreground hover:text-foreground underline"
               >
-                {showAdvancedOverpass ? '← Back to brand search' : 'Advanced: write raw Overpass query →'}
+                {showAdvancedOverpass
+                  ? <span className="inline-flex items-center gap-1"><ArrowLeft size={12} /> Back to brand search</span>
+                  : <span className="inline-flex items-center gap-1">Advanced: write raw Overpass query <ArrowRight size={12} /></span>}
               </button>
             </div>
           )}

@@ -9,12 +9,15 @@
 
 import { useState } from 'react';
 import type L from 'leaflet';
+import { Check, ChevronDown, ChevronUp, Download, Map as MapIcon, Pencil, Trash2, TriangleAlert } from 'lucide-react';
 import { POI_GROUPS } from '@/config/poiLayers';
 import type { PoiLayerDef } from '@/config/poiLayers';
 import type { UsePoiLayersResult, PoiFeature } from '@/hooks/usePoiLayers';
 import { useViewPermissions } from '@/hooks/useViewPermissions';
 import { apiFetch } from '@/api/client';
+import { Tip } from '@/components/tooltip';
 import CustomLayerEditor from './CustomLayerEditor';
+import PoiIcon from './PoiIcon';
 
 interface PoiLayerPanelProps {
   poiHook: UsePoiLayersResult;
@@ -117,10 +120,12 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
         className="w-full flex items-center justify-between px-3 py-2.5 font-semibold text-foreground hover:bg-muted/60 rounded-xl transition"
       >
         <span className="flex items-center gap-1.5">
-          <span>🗺</span>
+          <MapIcon size={16} className="text-muted-foreground" />
           <span>Map Layers</span>
         </span>
-        <span className="text-muted-foreground text-xs">{collapsed ? '▼' : '▲'}</span>
+        {collapsed
+          ? <ChevronDown size={14} className="text-muted-foreground" />
+          : <ChevronUp size={14} className="text-muted-foreground" />}
       </button>
 
       {/* CSV export — only shown when at least one layer is on with loaded data */}
@@ -130,7 +135,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
             onClick={() => exportCsv(effectiveLayers, allFeatures, enabled)}
             className="w-full text-3xs text-muted-foreground hover:text-foreground transition text-left flex items-center gap-1"
           >
-            <span>⬇</span><span>Export all POIs in current area (CSV)</span>
+            <Download size={12} /><span>Export all POIs in current area (CSV)</span>
           </button>
         </div>
       )}
@@ -151,19 +156,20 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
               <div key={grp.id} className="space-y-1.5">
                 {/* Group header — display only, NOT toggleable */}
                 <div className="flex items-center gap-1.5 text-3xs font-semibold uppercase tracking-wider text-muted-foreground pt-0.5">
-                  {grp.icon && <span className="text-xs leading-none">{grp.icon}</span>}
+                  {grp.icon && <PoiIcon icon={grp.icon} size={12} className="shrink-0" />}
                   <span>{grp.label}</span>
                   <span className="flex-1 border-t border-border ml-1" />
                   {/* "+ New" trigger only on the custom group, only for admins */}
                   {grp.id === 'custom' && canManage && (
-                    <button
-                      type="button"
-                      onClick={() => setEditorState({ mode: 'create' })}
-                      title="Create new POI layer"
-                      className="text-3xs font-bold text-primary hover:underline normal-case tracking-normal"
-                    >
-                      + New
-                    </button>
+                    <Tip label="Create new POI layer">
+                      <button
+                        type="button"
+                        onClick={() => setEditorState({ mode: 'create' })}
+                        className="text-3xs font-bold text-primary hover:underline normal-case tracking-normal"
+                      >
+                        + New
+                      </button>
+                    </Tip>
                   )}
                 </div>
                 {/* Layers in this group */}
@@ -229,13 +235,16 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                     tabIndex={0}
                     onKeyDown={(e) => e.key === ' ' && toggle(def.id)}
                   >
-                    {isOn && <span className="text-white text-3xs leading-none">✓</span>}
+                    {isOn && <Check size={11} className="text-white" />}
                   </span>
 
-                  {/* Icon */}
-                  <span className="text-base leading-none" onClick={() => toggle(def.id)}>
-                    {def.icon}
-                  </span>
+                  {/* Icon — token-coloured like the label so on/off state reads the same */}
+                  <PoiIcon
+                    icon={def.icon}
+                    size={16}
+                    className={`shrink-0 ${isOn ? 'text-foreground' : 'text-muted-foreground'}`}
+                    onClick={() => toggle(def.id)}
+                  />
 
                   {/* Label */}
                   <span
@@ -263,33 +272,37 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                   {/* Custom-layer admin controls */}
                   {showCustomCtrls && (
                     <>
-                      <button
-                        type="button"
-                        title="Edit layer"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          setEditorState({ mode: 'edit', layerId: customDbId! });
-                        }}
-                        className="text-3xs text-muted-foreground hover:text-foreground leading-none px-0.5"
-                      >✏</button>
-                      <button
-                        type="button"
-                        title="Delete layer"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleDeleteCustom(customDbId!, def.label);
-                        }}
-                        className="text-3xs text-muted-foreground hover:text-destructive leading-none px-0.5"
-                      >🗑</button>
+                      <Tip label="Edit layer">
+                        <button
+                          type="button"
+                          aria-label="Edit layer"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setEditorState({ mode: 'edit', layerId: customDbId! });
+                          }}
+                          className="text-muted-foreground hover:text-foreground leading-none px-0.5"
+                        ><Pencil size={12} /></button>
+                      </Tip>
+                      <Tip label="Delete layer">
+                        <button
+                          type="button"
+                          aria-label="Delete layer"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleDeleteCustom(customDbId!, def.label);
+                          }}
+                          className="text-muted-foreground hover:text-destructive leading-none px-0.5"
+                        ><Trash2 size={12} /></button>
+                      </Tip>
                     </>
                   )}
                 </label>
 
                 {/* Error */}
                 {errMsg && (
-                  <p className="text-3xs text-destructive leading-tight pl-7 pb-0.5">⚠ {errMsg}</p>
+                  <p className="text-3xs text-destructive leading-tight pl-7 pb-0.5 flex items-center gap-1"><TriangleAlert size={12} className="shrink-0" /> {errMsg}</p>
                 )}
 
                 {/* ── Brand filter section ── */}
@@ -302,7 +315,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                       }
                       className="flex items-center gap-1 pl-7 text-3xs text-muted-foreground hover:text-foreground transition py-0.5"
                     >
-                      <span style={{ fontSize: '8px' }}>{isChipsOpen ? '▲' : '▼'}</span>
+                      {isChipsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                       <span>Filter brands</span>
                       {/* Active-filter count badge (visible even when chips are collapsed) */}
                       {activeBrands.size > 0 && (
@@ -324,7 +337,6 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                             <button
                               key={bf.value}
                               onClick={() => toggleBrand(def.id, bf.value)}
-                              title={bf.label}
                               className={`text-3xs px-1.5 py-0.5 rounded-full border transition leading-none
                                 ${active
                                   ? 'text-white border-transparent'
@@ -332,7 +344,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                                 }`}
                               style={active ? { background: def.color, borderColor: def.color } : {}}
                             >
-                              {bf.icon ? `${bf.icon} ` : ''}{bf.label}
+                              {bf.label}
                             </button>
                           );
                         })}

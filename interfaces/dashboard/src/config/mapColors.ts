@@ -68,3 +68,12 @@ export const CUSTOM_LAYER_SWATCHES: string[] = [
 
 /** Brand link colour for <a> tags inside Leaflet popup HTML strings. */
 export const POPUP_LINK = '#2563eb';
+
+/** Neutral chrome inside Leaflet popup HTML strings (badges + secondary
+ *  text).  Popup markup is a plain string, so these can't be CSS tokens
+ *  — same rule as everything else in this file (design.md §8). */
+export const POPUP = {
+  badgeBg:   '#374151', // amenity-badge background
+  badgeText: '#e5e7eb', // amenity-badge text
+  muted:     '#9ca3af', // secondary text (subtitle, meta row)
+} as const;

@@ -17,19 +17,19 @@
  * this hook exists.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createElement, useCallback, useEffect, useRef, useState } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { apiFetch, apiJSON } from '../api/client';
 import { POI_LAYERS } from '../config/poiLayers';
-import type { PoiLayerDef } from '../config/poiLayers';
+import type { PoiLayerDef, PoiFeature, PoiIconSpec } from '../config/poiLayers';
+import { POPUP } from '../config/mapColors';
 import type L from 'leaflet';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface PoiFeature {
-  type: 'Feature';
-  geometry: { type: 'Point'; coordinates: [number, number] };
-  properties: Record<string, unknown>;
-}
+// PoiFeature moved to config/poiLayers.ts so layer defs can type their
+// popup builders; re-exported here so existing consumers keep working.
+export type { PoiFeature };
 
 interface PoisResponse {
   type: 'FeatureCollection';
@@ -155,6 +155,74 @@ function wordMatch(haystack: string, needle: string): boolean {
 /** Returns true when any of the given terms word-matches any of the text fields. */
 function brandMatch(terms: string[], name: string, brand: string, op: string): boolean {
   return terms.some((t) => wordMatch(name, t) || wordMatch(brand, t) || wordMatch(op, t));
+}
+
+/**
+ * Icon markup for Leaflet HTML strings (marker dots + cluster bubbles),
+ * where React components can't render: lucide icons become inline white
+ * SVG, custom layers' emoji strings render as before.  Memoized —
+ * renderToStaticMarkup would otherwise run per marker across thousands
+ * of features on every pan/zoom re-render.
+ */
+const _iconHtmlCache = new Map<PoiIconSpec | string, string>();
+function poiIconHtml(icon: PoiIconSpec, sizePx: number): string {
+  if (typeof icon === 'string') {
+    return `<span style="font-size:${sizePx}px;line-height:1">${icon}</span>`;
+  }
+  const key: string = `${icon.displayName ?? String(icon)}:${sizePx}`;
+  let html = _iconHtmlCache.get(key);
+  if (!html) {
+    html = renderToStaticMarkup(
+      createElement(icon, { size: sizePx, color: '#fff', strokeWidth: 2.5, 'aria-hidden': true }),
+    );
+    _iconHtmlCache.set(key, html);
+  }
+  return html;
+}
+
+/**
+ * Default marker popup — interprets feature properties as OSM tags
+ * (name/brand/operator + amenity badges).  A layer whose data is NOT
+ * OSM-shaped overrides this via `PoiLayerDef.popup`; exported so tests
+ * can pin the fallback contract.
+ */
+export function defaultOsmPopup(f: PoiFeature, def: PoiLayerDef): string {
+  const p = f.properties as Record<string, string> | null | undefined;
+
+  const name = (p?.name) || def.label;
+  const subtitle = (p?.brand && p.brand !== name) ? p.brand
+    : (p?.operator && p.operator !== name) ? p.operator
+    : def.label;
+
+  // Amenity badges
+  const amenities: string[] = [];
+  if (p?.['fuel:diesel'] === 'yes') amenities.push('⛽ Diesel');
+  if (p?.['fuel:adblue'] === 'yes') amenities.push('🧪 DEF');
+  if (p?.shower === 'yes')          amenities.push('🚿 Showers');
+  if (p?.toilets === 'yes')         amenities.push('🚻 Restrooms');
+  if (p?.capacity)                  amenities.push(`🅿 ${p.capacity} spots`);
+  if (p?.fee === 'no')              amenities.push('🆓 Free');
+  if (p?.fee === 'yes')             amenities.push('💰 Fee');
+
+  const meta: string[] = [];
+  if (p?.opening_hours) meta.push(`🕐 ${p.opening_hours}`);
+  if (p?.phone)         meta.push(`📞 ${p.phone}`);
+
+  const amenityHtml = amenities.length
+    ? `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:3px">${
+        amenities.map((a) => `<span style="background:${POPUP.badgeBg};color:${POPUP.badgeText};font-size:10px;padding:2px 6px;border-radius:10px;white-space:nowrap">${a}</span>`).join('')
+      }</div>`
+    : '';
+  const metaHtml = meta.length
+    ? `<div style="color:${POPUP.muted};font-size:10px;margin-top:4px">${meta.join(' &nbsp;·&nbsp; ')}</div>`
+    : '';
+
+  return `<div style="min-width:160px;max-width:240px">`
+    + `<div style="font-weight:600;font-size:13px">${name}</div>`
+    + `<div style="color:${POPUP.muted};font-size:11px">${subtitle}</div>`
+    + amenityHtml
+    + metaHtml
+    + `</div>`;
 }
 
 /**
@@ -469,7 +537,7 @@ export function usePoiLayers(
             font-size:${fontSize}px;line-height:1;
             border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);
             gap:2px;
-          "><span style="font-size:${fontSize - 1}px">${def.icon}</span><span>${n}</span></div>`,
+          ">${poiIconHtml(def.icon, fontSize + 1)}<span>${n}</span></div>`,
           iconSize: [size, size],
           iconAnchor: [size / 2, size / 2],
         });
@@ -521,47 +589,14 @@ export function usePoiLayers(
           box-shadow:0 1px 4px rgba(0,0,0,.45);
           display:flex;align-items:center;justify-content:center;
           font-size:${fs}px;line-height:1;
-        ">${def.icon}${hasDef ? '<span style="position:absolute;bottom:-3px;right:-5px;background:#0d9488;color:#fff;font-size:6px;padding:1px 3px;border-radius:2px;font-weight:700;line-height:1.2;border:1px solid #fff">DEF</span>' : ''}</div>`,
+        ">${poiIconHtml(def.icon, Math.round(sz * 0.55))}${hasDef ? '<span style="position:absolute;bottom:-3px;right:-5px;background:#0d9488;color:#fff;font-size:6px;padding:1px 3px;border-radius:2px;font-weight:700;line-height:1.2;border:1px solid #fff">DEF</span>' : ''}</div>`,
         iconSize: [sz, sz],
         iconAnchor: [sz / 2, sz / 2],
       });
 
-      const name = (p?.name) || def.label;
-      const subtitle = (p?.brand && p.brand !== name) ? p.brand
-        : (p?.operator && p.operator !== name) ? p.operator
-        : def.label;
-
-      // Amenity badges
-      const amenities: string[] = [];
-      if (p?.['fuel:diesel'] === 'yes') amenities.push('⛽ Diesel');
-      if (p?.['fuel:adblue'] === 'yes') amenities.push('🧪 DEF');
-      if (p?.shower === 'yes')          amenities.push('🚿 Showers');
-      if (p?.toilets === 'yes')         amenities.push('🚻 Restrooms');
-      if (p?.capacity)                  amenities.push(`🅿 ${p.capacity} spots`);
-      if (p?.fee === 'no')              amenities.push('🆓 Free');
-      if (p?.fee === 'yes')             amenities.push('💰 Fee');
-
-      const meta: string[] = [];
-      if (p?.opening_hours) meta.push(`🕐 ${p.opening_hours}`);
-      if (p?.phone)         meta.push(`📞 ${p.phone}`);
-
-      const amenityHtml = amenities.length
-        ? `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:3px">${
-            amenities.map((a) => `<span style="background:#374151;color:#e5e7eb;font-size:10px;padding:2px 6px;border-radius:10px;white-space:nowrap">${a}</span>`).join('')
-          }</div>`
-        : '';
-      const metaHtml = meta.length
-        ? `<div style="color:#9ca3af;font-size:10px;margin-top:4px">${meta.join(' &nbsp;·&nbsp; ')}</div>`
-        : '';
-
       // Defer attach: we'll bulk-add via addLayers() after the loop.
       markers.push(Leaf.marker([lat, lng], { icon }).bindPopup(
-        `<div style="min-width:160px;max-width:240px">`
-        + `<div style="font-weight:600;font-size:13px">${name}</div>`
-        + `<div style="color:#9ca3af;font-size:11px">${subtitle}</div>`
-        + amenityHtml
-        + metaHtml
-        + `</div>`,
+        def.popup ? def.popup(f, def) : defaultOsmPopup(f, def),
       ));
     });
     (group as L.LayerGroup & { addLayers?: (l: L.Layer[]) => void }).addLayers

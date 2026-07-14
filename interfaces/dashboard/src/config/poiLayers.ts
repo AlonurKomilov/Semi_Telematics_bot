@@ -10,12 +10,47 @@
  *
  * To ADD a new layer:
  *   1. Add one entry to POI_LAYERS below.
- *   2. Add a matching key to POI_OVERPASS_QUERIES in interfaces/api/routes/maps.py.
+ *   2. Add a matching key to POI_OVERPASS_QUERIES in features/location/pois.py
+ *      (or, for a DB-backed layer, a source branch in map_pois there).
  *   The hook and the panel pick it up automatically.
+ *   If the layer's feature properties are NOT OSM tags, also give it a
+ *   `popup` builder — the default popup renders OSM amenity badges.
  *
  * To REMOVE a layer:
  *   1. Delete the entry from POI_LAYERS (and the backend query if no longer used).
  */
+
+import {
+  BedDouble,
+  FlaskConical,
+  FolderOpen,
+  Fuel,
+  Scale,
+  ShowerHead,
+  SquareParking,
+  TrafficCone,
+  Wrench,
+  type LucideIcon,
+} from 'lucide-react';
+import { POPUP, POPUP_LINK } from './mapColors';
+
+/**
+ * Layer icon: a lucide component for BUILT-IN layers (rendered in the
+ * panel as a normal token-coloured icon, and inlined as SVG inside map
+ * markers/cluster bubbles) — or the user-picked emoji STRING for
+ * custom layers (stored in the DB; user content is exempt from the
+ * lucide-only rule).  Never author a new built-in with an emoji.
+ */
+export type PoiIconSpec = LucideIcon | string;
+
+/** One GeoJSON point as served by GET /map/pois — the unit every layer
+ *  renders.  Lives here (not in the hook) so layer defs can type their
+ *  popup builders without importing the engine. */
+export interface PoiFeature {
+  type: 'Feature';
+  geometry: { type: 'Point'; coordinates: [number, number] };
+  properties: Record<string, unknown>;
+}
 
 export interface PoiBrandFilter {
   /**
@@ -25,7 +60,8 @@ export interface PoiBrandFilter {
   value: string;
   /** Short display label in the UI chip. */
   label: string;
-  /** Optional emoji/icon for the chip. */
+  /** Legacy field — chips render text-only now.  Kept because custom
+   *  layers' brand_filters DTO (DB rows) may still carry it. */
   icon?: string;
   /**
    * One or more OSM brand/name strings to match against (case-insensitive,
@@ -45,8 +81,9 @@ export interface PoiLayerDef {
   label: string;
   /** Hex colour for markers on the map. */
   color: string;
-  /** Small icon character rendered inside the marker dot. */
-  icon: string;
+  /** Panel + marker icon — see PoiIconSpec (lucide for built-ins,
+   *  DB-stored emoji string for custom layers). */
+  icon: PoiIconSpec;
   /** Whether this layer is switched ON when the map first loads. */
   defaultOn: boolean;
   /**
@@ -60,6 +97,14 @@ export interface PoiLayerDef {
    * same group are rendered together under a header.  Omit for ungrouped layers.
    */
   group?: string;
+  /**
+   * Optional popup-HTML builder for this layer's markers.  When omitted the
+   * engine renders the default OSM-tag popup (name/brand + amenity badges).
+   * Layers whose feature properties are NOT OSM tags (DB-backed layers like
+   * the vendor directory) supply their own builder here — never add
+   * layer-specific branches inside usePoiLayers.
+   */
+  popup?: (feature: PoiFeature, def: PoiLayerDef) => string;
 }
 
 export interface PoiGroupDef {
@@ -67,8 +112,8 @@ export interface PoiGroupDef {
   id: string;
   /** Header label shown in the panel. */
   label: string;
-  /** Optional emoji for the header. */
-  icon?: string;
+  /** Optional header icon (lucide for our groups). */
+  icon?: PoiIconSpec;
 }
 
 /**
@@ -76,10 +121,60 @@ export interface PoiGroupDef {
  * Groups are NOT toggleable — they're just visual sorting/sectioning.
  */
 export const POI_GROUPS: PoiGroupDef[] = [
-  { id: 'fuel_plaza',     label: 'Fuel Stops & Plazas', icon: '⛽' },
-  { id: 'highway_safety', label: 'Highway & Safety',    icon: '🛣️' },
-  { id: 'custom',         label: 'My Layers',           icon: '🗂️' },
+  { id: 'fuel_plaza',     label: 'Fuel Stops & Plazas', icon: Fuel },
+  { id: 'highway_safety', label: 'Highway & Safety',    icon: TrafficCone },
+  { id: 'services',       label: 'Services',            icon: Wrench },
+  { id: 'custom',         label: 'My Layers',           icon: FolderOpen },
 ];
+
+// ── Vendor-directory popup ───────────────────────────────────────────────────
+
+/** Escape untrusted text for the popup HTML string. */
+function esc(v: unknown): string {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Identity-only popup for the platform vendor directory (Phase C2 of
+ * docs/architecture/vendor-parts-master-data.md): name, services,
+ * address, phone, website.  Deliberately NO ratings or usage counts —
+ * the map is visible to every role with can_location_map, while review
+ * data stays behind the manager-gated vendor endpoints.  Widening that
+ * is a product decision, not a popup tweak.
+ */
+export function vendorDirectoryPopup(f: PoiFeature): string {
+  const p = f.properties;
+  const services = String(p.services ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const badges = services.length
+    ? `<div style="margin-top:5px;display:flex;flex-wrap:wrap;gap:3px">${
+        services.map((s) => `<span style="background:${POPUP.badgeBg};color:${POPUP.badgeText};font-size:10px;padding:2px 6px;border-radius:10px;white-space:nowrap">${esc(s)}</span>`).join('')
+      }</div>`
+    : '';
+  const meta: string[] = [];
+  if (p.address) meta.push(esc(p.address));
+  if (p.phone)   meta.push(esc(p.phone));
+  const metaHtml = meta.length
+    ? `<div style="color:${POPUP.muted};font-size:10px;margin-top:4px">${meta.join(' &nbsp;·&nbsp; ')}</div>`
+    : '';
+  const site = String(p.website ?? '');
+  const siteHtml = /^https?:\/\//i.test(site)
+    ? `<div style="margin-top:4px"><a href="${esc(site)}" target="_blank" rel="noreferrer" style="color:${POPUP_LINK};font-size:10px">${esc(site.replace(/^https?:\/\//i, ''))}</a></div>`
+    : '';
+  return `<div style="min-width:160px;max-width:240px">`
+    + `<div style="font-weight:600;font-size:13px">${esc(p.name)}</div>`
+    + `<div style="color:${POPUP.muted};font-size:11px">Repair shop · 4truck directory</div>`
+    + badges
+    + metaHtml
+    + siteHtml
+    + `</div>`;
+}
 
 /**
  * Master list of available POI overlay layers.
@@ -97,7 +192,7 @@ export const POI_LAYERS: PoiLayerDef[] = [
     id: 'fuel_station',
     label: 'Fuel Stations',
     color: '#f59e0b',
-    icon: '⛽',
+    icon: Fuel,
     defaultOn: false,
     group: 'fuel_plaza',
     brandFilters: [
@@ -110,7 +205,6 @@ export const POI_LAYERS: PoiLayerDef[] = [
       {
         value:      'pilot_flyingj',
         label:      'Pilot / Flying J',
-        icon:       '✈️',
         matchTerms: ['Pilot Flying J', 'Pilot Travel Center', 'Pilot Travel Centre', 'Pilot', 'Flying J'],
       },
       //
@@ -118,7 +212,6 @@ export const POI_LAYERS: PoiLayerDef[] = [
       {
         value:      'loves',
         label:      "Love's",
-        icon:       '❤️',
         matchTerms: ["Love's", 'Loves', "Love's Travel Stop", 'Loves Travel Stop'],
       },
       //
@@ -129,7 +222,6 @@ export const POI_LAYERS: PoiLayerDef[] = [
       {
         value:      'ta_petro',
         label:      'TA / Petro',
-        icon:       '🔵',
         matchTerms: ['TA', 'Petro', 'TravelCenters of America', 'Petro Stopping Centers', 'TA Travel Center'],
       },
       //
@@ -137,42 +229,38 @@ export const POI_LAYERS: PoiLayerDef[] = [
       {
         value:      'sapp_bros',
         label:      'Sapp Bros',
-        icon:       '🟢',
         matchTerms: ['Sapp Bros', 'Sapp Bros.'],
       },
-      { value: 'Bosselman',    label: 'Bosselman',        icon: '🟡' },
-      { value: 'Ambest',       label: 'Ambest',           icon: '🟡' },
+      { value: 'Bosselman',    label: 'Bosselman' },
+      { value: 'Ambest',       label: 'Ambest' },
       {
         value:      'road_ranger',
         label:      'Road Ranger',
-        icon:       '🛣️',
         matchTerms: ['Road Ranger'],
       },
       //   Kwik Trip (WI/MN/IA) also operates as Kwik Star in Iowa — same company.
       {
         value:      'kwik_trip',
         label:      'Kwik Trip',
-        icon:       '🟠',
         matchTerms: ['Kwik Trip', 'Kwik Star'],
       },
 
       // ── Independent fuel stations ──────────────────────────────────────
-      { value: 'Shell',   label: 'Shell',   icon: '🐚' },
+      { value: 'Shell',   label: 'Shell' },
       // 'BP' is word-boundary matched to avoid hitting e.g. "Sapp Bros" (no 'bp')
-      { value: 'BP',      label: 'BP',      icon: '🟢' },
+      { value: 'BP',      label: 'BP' },
       //   Exxon and Mobil are distinct OSM brands (both ExxonMobil Corp).
       //   Keep as separate chips — OSM data rarely uses "ExxonMobil" on-screen.
       {
         value:      'Exxon',
         label:      'Exxon',
-        icon:       '🔴',
         matchTerms: ['ExxonMobil', 'Exxon', 'Esso'],
       },
-      { value: 'Mobil',    label: 'Mobil',    icon: '🔴' },
-      { value: 'Chevron',  label: 'Chevron',  icon: '🔵' },
-      { value: 'Valero',   label: 'Valero',   icon: '⭐' },
-      { value: 'Speedway', label: 'Speedway', icon: '🏎️' },
-      { value: 'Maverick', label: 'Maverick', icon: '🤠' },
+      { value: 'Mobil',    label: 'Mobil' },
+      { value: 'Chevron',  label: 'Chevron' },
+      { value: 'Valero',   label: 'Valero' },
+      { value: 'Speedway', label: 'Speedway' },
+      { value: 'Maverick', label: 'Maverick' },
     ],
   },
   {
@@ -184,38 +272,33 @@ export const POI_LAYERS: PoiLayerDef[] = [
     id: 'def_station',
     label: 'DEF / AdBlue Stations',
     color: '#0d9488',
-    icon: '🧪',
+    icon: FlaskConical,
     defaultOn: false,
     group: 'fuel_plaza',
     brandFilters: [
       {
         value:      'pilot_flyingj',
         label:      'Pilot / Flying J',
-        icon:       '✈️',
         matchTerms: ['Pilot Flying J', 'Pilot Travel Center', 'Pilot Travel Centre', 'Pilot', 'Flying J'],
       },
       {
         value:      'loves',
         label:      "Love's",
-        icon:       '❤️',
         matchTerms: ["Love's", 'Loves', "Love's Travel Stop", 'Loves Travel Stop'],
       },
       {
         value:      'ta_petro',
         label:      'TA / Petro',
-        icon:       '🔵',
         matchTerms: ['TA', 'Petro', 'TravelCenters of America', 'Petro Stopping Centers', 'TA Travel Center'],
       },
       {
         value:      'sapp_bros',
         label:      'Sapp Bros',
-        icon:       '🟢',
         matchTerms: ['Sapp Bros', 'Sapp Bros.'],
       },
       {
         value:      'road_ranger',
         label:      'Road Ranger',
-        icon:       '🛣️',
         matchTerms: ['Road Ranger'],
       },
     ],
@@ -225,7 +308,7 @@ export const POI_LAYERS: PoiLayerDef[] = [
     id: 'truck_parking',
     label: 'Truck Parking',
     color: '#3b82f6',
-    icon: '🅿',
+    icon: SquareParking,
     defaultOn: false,
     group: 'fuel_plaza',
   },
@@ -233,7 +316,7 @@ export const POI_LAYERS: PoiLayerDef[] = [
     id: 'shower',
     label: 'Showers',
     color: '#ec4899',
-    icon: '🚿',
+    icon: ShowerHead,
     defaultOn: false,
     group: 'fuel_plaza',
   },
@@ -245,7 +328,7 @@ export const POI_LAYERS: PoiLayerDef[] = [
     id: 'weigh_station',
     label: 'Weigh Stations',
     color: '#8b5cf6',
-    icon: '⚖️',
+    icon: Scale,
     defaultOn: false,
     group: 'highway_safety',
   },
@@ -253,9 +336,26 @@ export const POI_LAYERS: PoiLayerDef[] = [
     id: 'rest_area',
     label: 'Rest Areas',
     color: '#06b6d4',
-    icon: '🛏️',
+    icon: BedDouble,
     defaultOn: false,
     group: 'highway_safety',
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GROUP: Services
+  // ═══════════════════════════════════════════════════════════════════════════
+  {
+    // Platform-curated repair-shop directory (vendor-parts master data,
+    // Phase C2).  DB-backed: served by the vendor_directory branch in
+    // features/location/pois.py, NOT Overpass.  Only operator-geocoded
+    // ACTIVE entries appear; properties are identity-only.
+    id: 'vendor_directory',
+    label: 'Repair Shops',
+    color: '#16a34a',
+    icon: Wrench,
+    defaultOn: false,
+    group: 'services',
+    popup: vendorDirectoryPopup,
   },
   // ─── Add new layers above this line ───────────────────────────────────────
 ];
