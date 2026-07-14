@@ -6527,3 +6527,84 @@ async def migrate_vendors_global_link(conn) -> None:
         logger.info("Migration 151: added vendors.global_vendor_id")
     except Exception as e:
         logger.info("Migration 151: vendors.global_vendor_id likely exists — %s", e)
+
+
+@_register("152_vehicle_inventory")
+async def migrate_vehicle_inventory(conn) -> None:
+    """Onboard inventory — what physically lives in each truck.
+
+    Two tables: ``vehicle_inventory_items`` (one row per tracked item,
+    anchored to the vehicles registry) and ``vehicle_inventory_events``
+    (immutable accountability trail — every install/status/transfer/
+    verify with the acting user AND the driver assigned to the truck at
+    that moment).  RLS applied when ENABLE_RLS is on, same policy shape
+    as every other tenant table.
+    """
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS vehicle_inventory_items (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id        INTEGER NOT NULL,
+            vehicle_id        INTEGER NOT NULL,
+            category          TEXT    NOT NULL,
+            label             TEXT    NOT NULL DEFAULT '',
+            identifier        TEXT    NOT NULL DEFAULT '',
+            status            TEXT    NOT NULL DEFAULT 'installed',
+            notes             TEXT    NOT NULL DEFAULT '',
+            installed_at      TEXT    NOT NULL DEFAULT '',
+            last_verified_at  TEXT,
+            last_verified_by  INTEGER,
+            is_active         INTEGER NOT NULL DEFAULT 1,
+            created_at        TEXT    NOT NULL DEFAULT '',
+            updated_at        TEXT    NOT NULL DEFAULT ''
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vehicle_inventory_vehicle "
+        "ON vehicle_inventory_items(account_id, vehicle_id, is_active)"
+    )
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS vehicle_inventory_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            item_id         INTEGER NOT NULL,
+            event_type      TEXT    NOT NULL,
+            from_status     TEXT,
+            to_status       TEXT,
+            from_vehicle_id INTEGER,
+            to_vehicle_id   INTEGER,
+            actor_user_id   INTEGER,
+            driver_user_id  INTEGER,
+            note            TEXT    NOT NULL DEFAULT '',
+            created_at      TEXT    NOT NULL DEFAULT ''
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vehicle_inventory_events_item "
+        "ON vehicle_inventory_events(account_id, item_id)"
+    )
+    await conn.commit()
+    logger.info("Migration 152: vehicle inventory tables created")
+
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 152: ENABLE_RLS not set; RLS skipped")
+        return
+    for tbl in ("vehicle_inventory_items", "vehicle_inventory_events"):
+        try:
+            await conn.execute(f"ALTER TABLE {tbl} ENABLE ROW LEVEL SECURITY")
+            await conn.execute(f"ALTER TABLE {tbl} FORCE ROW LEVEL SECURITY")
+            await conn.execute(f"DROP POLICY IF EXISTS tenant_isolation ON {tbl}")
+            await conn.execute(
+                f"""
+                CREATE POLICY tenant_isolation ON {tbl}
+                USING       (account_id::text = current_setting('app.account_id', true))
+                WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+                """
+            )
+            logger.info("Migration 152: RLS enabled on %s", tbl)
+        except Exception as e:
+            logger.warning("Migration 152: %s RLS skipped (%s)", tbl, e)

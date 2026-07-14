@@ -41,6 +41,7 @@ from capabilities.storage import router as storage_routes
 # Feature-owned routers live with their feature (vertical slice):
 # features/<x>/router.py.  Aliases keep the mounting loop stable.
 from features.vehicles import router as vehicles_routes
+from features.vehicles.inventory import router as vehicle_inventory_routes
 from features.cameras import router as cameras_routes
 from features.location import router as maps
 from features.location import pois
@@ -386,6 +387,7 @@ def create_api() -> FastAPI:
         app.include_router(user_routes.router, prefix=prefix)
         app.include_router(overview_routes.router, prefix=prefix)
         app.include_router(vehicles_routes.router, prefix=prefix)
+        app.include_router(vehicle_inventory_routes.router, prefix=prefix)
         app.include_router(loads_routes.router, prefix=prefix)
         app.include_router(kpi_routes.router, prefix=prefix)
         app.include_router(maps.router, prefix=prefix)

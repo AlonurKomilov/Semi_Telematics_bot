@@ -84,6 +84,11 @@ const STATUS_TONE: Record<string, Tone> = {
   // as done (ok), unpaid flags follow-up (warn).
   upcoming: 'info', dispatched: 'info', in_transit: 'ok',
   delivered: 'ok', unpaid: 'warn',
+  // Onboard inventory (Vehicle > Inventory card) — installed is healthy,
+  // needs_check / in_repair await action, damaged / missing are the
+  // accountability cases, spare is parked stock.
+  installed: 'ok', needs_check: 'warn', in_repair: 'warn',
+  damaged: 'danger', missing: 'danger', spare: 'neutral',
   // Priority / severity
   low: 'neutral', medium: 'info', high: 'warn', critical: 'danger',
   // Generic health

@@ -7,6 +7,9 @@ import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/DataGrid';
 import StatusBadge from '../../components/StatusBadge';
 import { Freshness, Tip } from '../../components/tooltip';
+import { useInventoryAlerts } from './inventory/useInventory';
+import { PackageX } from 'lucide-react';
+import { toneClasses } from '../../lib/status';
 import { Button } from '../../components/ui/button';
 import {
   PageHeader,
@@ -237,13 +240,41 @@ export default function Vehicles() {
   // null = closed; {vehicle:null} = create; {vehicle:row} = edit.
   const [dialog, setDialog] = useState<{ vehicle: Vehicle | null } | null>(null);
 
+  // Fleet-list inventory badge — vehicle registry id → attention count.
+  // Shown ONLY when something needs attention (missing/damaged/…): zero
+  // noise when every truck's inventory is healthy.
+  const { data: invAlerts } = useInventoryAlerts(true);
+  const invByVehicle = invAlerts?.by_vehicle ?? {};
+
   const columns = useMemo(() => {
     const extras = PERSONA_EXTRA_COLUMNS[persona] ?? PERSONA_EXTRA_COLUMNS.owner ?? [];
     const allowed = new Set<string>([
       ...UNIVERSAL_COLUMN_KEYS,
       ...extras,
     ]);
-    const cols = ALL_COLUMNS.filter((c) => allowed.has(c.key));
+    const cols = ALL_COLUMNS.filter((c) => allowed.has(c.key)).map((c) => {
+      if (c.key !== 'name') return c;
+      return {
+        ...c,
+        render: (v: unknown, row: Record<string, unknown>) => {
+          const r = row as unknown as Vehicle;
+          const inv = r.registry_id != null ? invByVehicle[String(r.registry_id)] : undefined;
+          return (
+            <span className="inline-flex items-center gap-1.5">
+              <span>{String(v ?? '')}</span>
+              {inv && inv.attention > 0 && (
+                <Tip label={`Inventory: ${inv.attention} item${inv.attention === 1 ? '' : 's'} need attention`}>
+                  <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-2xs border ${toneClasses('danger')}`}>
+                    <PackageX size={12} />
+                    {inv.attention}
+                  </span>
+                </Tip>
+              )}
+            </span>
+          );
+        },
+      } as AnyColumn;
+    });
     if (!canManage) return cols;
     // Edit affordance — only for operators who can manage vehicles, and
     // only on rows that exist in the registry (registry_id present).
@@ -268,7 +299,7 @@ export default function Vehicles() {
         },
       } as AnyColumn,
     ];
-  }, [persona, canManage]);
+  }, [persona, canManage, invByVehicle]);
 
   const {
     data,

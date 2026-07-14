@@ -815,5 +815,43 @@ async def create_tables(conn) -> None:
             ON vehicles(account_id, is_active);
         CREATE INDEX IF NOT EXISTS idx_vehicles_type
             ON vehicles(account_id, vehicle_type);
+
+        -- Onboard inventory: what physically lives in each truck
+        -- (dashcam / fuel card / toll transponder / ELD / tablet / other)
+        -- + the immutable accountability event trail.
+        CREATE TABLE IF NOT EXISTS vehicle_inventory_items (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id        INTEGER NOT NULL,
+            vehicle_id        INTEGER NOT NULL,
+            category          TEXT    NOT NULL,
+            label             TEXT    NOT NULL DEFAULT '',
+            identifier        TEXT    NOT NULL DEFAULT '',
+            status            TEXT    NOT NULL DEFAULT 'installed',
+            notes             TEXT    NOT NULL DEFAULT '',
+            installed_at      TEXT    NOT NULL DEFAULT '',
+            last_verified_at  TEXT,
+            last_verified_by  INTEGER,
+            is_active         INTEGER NOT NULL DEFAULT 1,
+            created_at        TEXT    NOT NULL DEFAULT '',
+            updated_at        TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_vehicle_inventory_vehicle
+            ON vehicle_inventory_items(account_id, vehicle_id, is_active);
+        CREATE TABLE IF NOT EXISTS vehicle_inventory_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            item_id         INTEGER NOT NULL,
+            event_type      TEXT    NOT NULL,
+            from_status     TEXT,
+            to_status       TEXT,
+            from_vehicle_id INTEGER,
+            to_vehicle_id   INTEGER,
+            actor_user_id   INTEGER,
+            driver_user_id  INTEGER,
+            note            TEXT    NOT NULL DEFAULT '',
+            created_at      TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_vehicle_inventory_events_item
+            ON vehicle_inventory_events(account_id, item_id);
     """)
     await conn.commit()

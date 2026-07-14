@@ -20,6 +20,7 @@ _CONTRIBUTORS = (
     "features.maintenance.retention",     # consumer need on vehicle.metrics_daily
     "features.work_orders.retention",     # consumer need on vehicle.metrics_daily
     "features.drivers.retention",         # owns driver.efficiency_daily
+    "features.vehicles.inventory.retention",  # owns vehicles.inventory_events (accountability trail)
     "features.events.retention",          # owns safety_events
     "features.applications.retention",    # owns applications.drafts (save & resume)
     "features.loads.retention",           # owns loads.records (load/shipment history)
