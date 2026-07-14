@@ -38,6 +38,7 @@ export default function VehicleLocation({ vehicleName, company }: VehicleSection
         latitude={loc.latitude ?? v.latitude ?? null}
         longitude={loc.longitude ?? v.longitude ?? null}
         speedMph={v.speed_mph ?? null}
+        ts={loc.time ?? null}
       />
     </div>
   );

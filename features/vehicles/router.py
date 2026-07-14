@@ -382,6 +382,7 @@ async def fleet_weather(
             "temp_c": round(w["temp_c"], 1) if w.get("temp_c") is not None else None,
             "baro_inhg": round(w["baro_inhg"], 2) if w.get("baro_inhg") is not None else None,
             "temp_time": w.get("temp_time"),
+            "baro_time": w.get("baro_time"),
             "location": v.get("location", {}).get("reverseGeo", {}).get("formattedLocation", ""),
         }
         items.append(entry)

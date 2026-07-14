@@ -28,10 +28,15 @@ interface FreshnessProps {
   /** ISO timestamp of the reading itself.  Null/undefined/invalid →
    *  children render untouched (no tooltip, no cue). */
   ts?: string | null;
+  /** Show the visible staleness cue (dot / inline age).  Set false on
+   *  secondary rows that share one timestamp with a primary row (e.g.
+   *  Speed + Coordinates share the GPS fix shown on Address) so one
+   *  stale fix doesn't paint three dots — tooltip stays on all. */
+  cue?: boolean;
   children: ReactNode;
 }
 
-export function Freshness({ ts, children }: FreshnessProps) {
+export function Freshness({ ts, cue = true, children }: FreshnessProps) {
   const tz = useTimezone();
   // 60s tick keeps the age honest while the page sits open.
   const now = useNow();
@@ -51,10 +56,10 @@ export function Freshness({ ts, children }: FreshnessProps) {
           render={<span className="inline-flex items-center gap-1.5 cursor-default" />}
         >
           {children}
-          {age >= VERY_STALE_MS && (
+          {cue && age >= VERY_STALE_MS && (
             <span className={`text-2xs ${toneText('warn')}`}>· {rel}</span>
           )}
-          {age >= STALE_MS && (
+          {cue && age >= STALE_MS && (
             <span
               aria-label={`updated ${rel}`}
               className={`inline-block w-1.5 h-1.5 rounded-full bg-current ${toneText('warn')}`}

@@ -178,6 +178,9 @@ export interface Vehicle {
   /** Where the row came from: 'manual' (operator added), 'samsara'
    *  (synced from telematics), 'datatruck' (Phase 2). */
   source?: string;
+  /** Row-level freshness — freshest known reading time (GPS, else
+   *  fuel/DEF) emitted by the list endpoint's _simplify. */
+  time?: string;
   /** Registry row id for the manage UI's edit/delete.  Null for a
    *  live-only vehicle the registry hasn't caught yet. */
   registry_id?: number | null;
@@ -207,6 +210,15 @@ export interface HealthData {
   load_pct?: number;
   rpm?: number;
   seatbelt?: string;
+  /** Per-stat Samsara clocks — each sensor reading carries its own
+   *  timestamp (a dead sensor freezes independently of the others). */
+  battery_time?: string;
+  oil_time?: string;
+  coolant_time?: string;
+  def_time?: string;
+  load_time?: string;
+  rpm_time?: string;
+  seatbelt_time?: string;
 }
 
 export interface HealthResponse {
@@ -1548,6 +1560,10 @@ export interface DirectoryEntry {
   email: string;
   website: string;
   services: string;
+  /** Operator-confirmed coordinates — null until geocoded on the
+   *  system console; entries without them never appear on map layers. */
+  lat?: number | null;
+  lng?: number | null;
   /** Approved-only community signal (anonymous). */
   rating_avg?: number | null;
   rating_count?: number;

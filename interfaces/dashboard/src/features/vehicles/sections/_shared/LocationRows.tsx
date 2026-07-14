@@ -6,6 +6,7 @@
  */
 import { useState } from 'react';
 import { Copy, Check, ExternalLink } from 'lucide-react';
+import { Freshness } from '../../../../components/Freshness';
 import { Row } from './Row';
 
 interface LocationRowsProps {
@@ -13,6 +14,10 @@ interface LocationRowsProps {
   latitude: number | null;
   longitude: number | null;
   speedMph: number | null;
+  /** GPS fix time — ONE clock for all three rows.  Address carries the
+   *  visible staleness cue; Speed/Coordinates get tooltip-only so a
+   *  stale fix doesn't paint three dots. */
+  ts?: string | null;
 }
 
 export function LocationRows({
@@ -20,6 +25,7 @@ export function LocationRows({
   latitude,
   longitude,
   speedMph,
+  ts,
 }: LocationRowsProps) {
   const [copied, setCopied] = useState(false);
   const hasCoords = latitude != null && longitude != null;
@@ -43,27 +49,31 @@ export function LocationRows({
     <>
       <div className="flex justify-between text-sm gap-3">
         <span className="text-muted-foreground flex-shrink-0">Address</span>
-        {address && mapsHref ? (
-          <a
-            href={mapsHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-primary hover:underline inline-flex items-center gap-1 text-right"
-            title="Open in Google Maps"
-          >
-            <span>{address}</span>
-            <ExternalLink size={12} className="flex-shrink-0 opacity-70" />
-          </a>
-        ) : (
-          <span>{address || '—'}</span>
-        )}
+        <Freshness ts={ts}>
+          {address && mapsHref ? (
+            <a
+              href={mapsHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline inline-flex items-center gap-1 text-right"
+              title="Open in Google Maps"
+            >
+              <span>{address}</span>
+              <ExternalLink size={12} className="flex-shrink-0 opacity-70" />
+            </a>
+          ) : (
+            <span>{address || '—'}</span>
+          )}
+        </Freshness>
       </div>
-      <Row label="Speed" value={speedMph != null ? `${speedMph} mph` : '—'} />
+      <Row label="Speed" ts={ts} cue={false} value={speedMph != null ? `${speedMph} mph` : '—'} />
       <div className="flex justify-between items-center text-sm gap-3">
         <span className="text-muted-foreground flex-shrink-0">Coordinates</span>
         {hasCoords ? (
           <span className="inline-flex items-center gap-2">
-            <span className="font-mono text-xs">{coordsText}</span>
+            <Freshness ts={ts} cue={false}>
+              <span className="font-mono text-xs">{coordsText}</span>
+            </Freshness>
             <button
               type="button"
               onClick={copyCoords}

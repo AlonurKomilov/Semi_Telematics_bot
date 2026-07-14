@@ -6,6 +6,7 @@ import { Pencil, Plus, Truck } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/DataGrid';
 import StatusBadge from '../../components/StatusBadge';
+import { Freshness } from '../../components/Freshness';
 import { Button } from '../../components/ui/button';
 import {
   PageHeader,
@@ -90,7 +91,14 @@ const ALL_COLUMNS: AnyColumn[] = [
       const s = String((row as Vehicle).status ?? '').toLowerCase();
       return s ? s.charAt(0).toUpperCase() + s.slice(1) : '(none)';
     },
-    render: (v) => <StatusBadge status={v as string} />,
+    // Row-level freshness rides the Status badge — `time` is the
+    // freshest known reading for the row (_simplify: GPS, else
+    // fuel/DEF), so a frozen row announces itself in the list.
+    render: (v, row) => (
+      <Freshness ts={(row as Vehicle).time ?? null}>
+        <StatusBadge status={v as string} />
+      </Freshness>
+    ),
   },
   // ── Location group: Street | City | State ─────────────────
   // The full address is split into three columns bracketed under one

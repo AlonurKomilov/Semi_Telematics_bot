@@ -13,14 +13,16 @@ interface RowProps {
   /** ISO timestamp of THIS reading — adds the hover "updated Xs ago"
    *  tooltip + staleness cue (see components/Freshness). */
   ts?: string | null;
+  /** Forwarded to Freshness — false = tooltip only, no visible cue. */
+  cue?: boolean;
 }
 
-export function Row({ label, value, children, ts }: RowProps) {
+export function Row({ label, value, children, ts, cue }: RowProps) {
   const content = children || <span>{value ?? '—'}</span>;
   return (
     <div className="flex justify-between text-sm">
       <span className="text-muted-foreground">{label}</span>
-      {ts ? <Freshness ts={ts}>{content}</Freshness> : content}
+      {ts ? <Freshness ts={ts} cue={cue}>{content}</Freshness> : content}
     </div>
   );
 }

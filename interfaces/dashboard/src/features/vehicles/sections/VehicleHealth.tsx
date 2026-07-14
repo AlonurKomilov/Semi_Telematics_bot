@@ -22,6 +22,7 @@ interface CabinWeather {
   temp_c: number | null;
   baro_inhg: number | null;
   temp_time: string | null;
+  baro_time: string | null;
 }
 
 interface FleetWeatherEntry {
@@ -30,6 +31,7 @@ interface FleetWeatherEntry {
   temp_c: number | null;
   baro_inhg: number | null;
   temp_time: string | null;
+  baro_time?: string | null;
 }
 
 interface FleetWeatherResponse {
@@ -66,6 +68,7 @@ export default function VehicleHealth({ vehicleName, company }: VehicleSectionPr
             temp_c: entry.temp_c,
             baro_inhg: entry.baro_inhg,
             temp_time: entry.temp_time,
+            baro_time: entry.baro_time ?? null,
           }
         : null;
     },
@@ -83,21 +86,25 @@ export default function VehicleHealth({ vehicleName, company }: VehicleSectionPr
   return (
     <div className="bg-card border border-border rounded-xl p-5 space-y-3">
       <h2 className="text-lg font-semibold mb-3">Vehicle Health</h2>
-      <Row label="Battery" value={h.battery_v != null ? `${h.battery_v.toFixed(1)} V` : '—'} />
-      <Row label="Oil Pressure" value={h.oil_psi != null ? `${h.oil_psi.toFixed(1)} PSI` : '—'} />
-      <Row label="Coolant Temp" value={h.coolant_c != null ? `${h.coolant_c.toFixed(0)}°C` : '—'} />
-      <Row label="DEF Level" value={h.def_pct != null ? `${h.def_pct.toFixed(0)}%` : '—'} />
-      <Row label="Engine Load" value={h.load_pct != null ? `${h.load_pct.toFixed(0)}%` : '—'} />
-      <Row label="RPM" value={h.rpm != null ? Math.round(h.rpm) : '—'} />
-      <Row label="Seatbelt" value={h.seatbelt ?? '—'} />
+      {/* Each sensor carries its OWN Samsara clock — a dead oil-pressure
+          sensor freezes independently of the rest of the card. */}
+      <Row label="Battery" ts={h.battery_time} value={h.battery_v != null ? `${h.battery_v.toFixed(1)} V` : '—'} />
+      <Row label="Oil Pressure" ts={h.oil_time} value={h.oil_psi != null ? `${h.oil_psi.toFixed(1)} PSI` : '—'} />
+      <Row label="Coolant Temp" ts={h.coolant_time} value={h.coolant_c != null ? `${h.coolant_c.toFixed(0)}°C` : '—'} />
+      <Row label="DEF Level" ts={h.def_time} value={h.def_pct != null ? `${h.def_pct.toFixed(0)}%` : '—'} />
+      <Row label="Engine Load" ts={h.load_time} value={h.load_pct != null ? `${h.load_pct.toFixed(0)}%` : '—'} />
+      <Row label="RPM" ts={h.rpm_time} value={h.rpm != null ? Math.round(h.rpm) : '—'} />
+      <Row label="Seatbelt" ts={h.seatbelt_time} value={h.seatbelt ?? '—'} />
       {weather && (weather.temp_f != null || weather.baro_inhg != null) && (
         <>
           <Row
             label="Cabin Temp"
+            ts={weather.temp_time}
             value={weather.temp_f != null ? `${weather.temp_f}°F` : '—'}
           />
           <Row
             label="Barometer"
+            ts={weather.baro_time}
             value={weather.baro_inhg != null ? `${weather.baro_inhg} inHg` : '—'}
           />
         </>
