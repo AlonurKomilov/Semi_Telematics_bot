@@ -9,6 +9,16 @@ import { apiJSON, ApiError } from '../api/client';
 // spend, or which accounts use a shop (suggested_by_account is shown
 // as a bare account id for audit, nothing more).
 
+interface PendingReview {
+  id: number;
+  entry_id: number;
+  entry_name: string;
+  account_id: number;
+  rating: number;
+  comment: string;
+  updated_at: string;
+}
+
 interface DirEntry {
   id: number;
   name: string;
@@ -45,12 +55,15 @@ export default function VendorDirectoryPage() {
   const [newName, setNewName] = useState('');
   const [newAddress, setNewAddress] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [reviews, setReviews] = useState<PendingReview[]>([]);
 
   const load = useCallback(() => {
     setLoading(true);
     setErr('');
     apiJSON<{ entries: DirEntry[] }>('/system/vendor-directory')
       .then((r) => setEntries(r.entries))
+      .then(() => apiJSON<{ reviews: PendingReview[] }>('/system/vendor-directory/reviews?status=pending'))
+      .then((r) => setReviews(r.reviews))
       .catch((e: unknown) => {
         if (e instanceof ApiError && (e.status === 401 || e.status === 403)) {
           setErr('Session expired or no operator access.');
@@ -87,6 +100,9 @@ export default function VendorDirectoryPage() {
       });
       setNewName(''); setNewAddress(''); setNewPhone('');
     });
+
+  const reviewAct = (id: number, verb: 'approve' | 'reject') =>
+    act(id, () => apiJSON(`/system/vendor-directory/reviews/${id}/${verb}`, { method: 'POST' }));
 
   const shown = filter === 'all' ? entries : entries.filter(e => e.status === filter);
   const pendingCount = entries.filter(e => e.status === 'pending').length;
@@ -248,6 +264,47 @@ export default function VendorDirectoryPage() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Review moderation queue — anonymous stars/comments submitted
+          by accounts with verified usage.  The account id shown is
+          operator audit only; approved reviews display publicly with
+          NO attribution. */}
+      <h2 className="text-sm font-semibold text-slate-200 mt-8 mb-2">
+        Pending reviews{reviews.length > 0 ? ` (${reviews.length})` : ''}
+      </h2>
+      <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+        {reviews.length === 0 ? (
+          <p className="px-4 py-5 text-sm text-slate-600 text-center">No reviews awaiting moderation.</p>
+        ) : (
+          <table className="w-full text-sm">
+            <tbody>
+              {reviews.map(r => (
+                <tr key={r.id} className="border-b border-slate-800/60 last:border-0 align-top">
+                  <td className="px-4 py-3">
+                    <div className="text-slate-200 font-medium">{r.entry_name}</div>
+                    <div className="text-xs text-slate-500 mt-0.5">
+                      {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)} · acct #{r.account_id}
+                    </div>
+                    {r.comment && <div className="text-xs text-slate-400 mt-1">{r.comment}</div>}
+                  </td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <div className="inline-flex items-center gap-1.5 text-xs">
+                      <button onClick={() => reviewAct(r.id, 'approve')} disabled={busy === r.id}
+                        className="px-2 py-1 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 disabled:opacity-50">
+                        Approve
+                      </button>
+                      <button onClick={() => reviewAct(r.id, 'reject')} disabled={busy === r.id}
+                        className="px-2 py-1 rounded border border-slate-700 text-slate-400 hover:text-slate-200 disabled:opacity-50">
+                        Reject
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
     </div>
   );

@@ -114,3 +114,38 @@ async def reject_entry(
     if not ok:
         raise HTTPException(status_code=404, detail="Entry not found")
     return {"ok": True}
+
+
+@router.get("/reviews")
+async def list_reviews(
+    status: str = Query("pending", pattern=r"^(pending|approved|rejected)$"),
+    user: dict = Depends(require_system_owner),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Moderation queue — reviews with the shop name and the bare
+    suggesting-account id (audit only)."""
+    return {"reviews": await tenant_db.list_reviews_moderation(status=status)}
+
+
+@router.post("/reviews/{review_id}/approve")
+async def approve_review(
+    review_id: int,
+    user: dict = Depends(require_system_owner),
+    tenant_db=Depends(get_tenant_db),
+):
+    ok = await tenant_db.set_review_status(review_id, "approved")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return {"ok": True}
+
+
+@router.post("/reviews/{review_id}/reject")
+async def reject_review(
+    review_id: int,
+    user: dict = Depends(require_system_owner),
+    tenant_db=Depends(get_tenant_db),
+):
+    ok = await tenant_db.set_review_status(review_id, "rejected")
+    if not ok:
+        raise HTTPException(status_code=404, detail="Review not found")
+    return {"ok": True}

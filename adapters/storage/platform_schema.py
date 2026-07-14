@@ -20,6 +20,11 @@ async def create_tables(conn) -> None:
             name                TEXT    NOT NULL,
             slug                TEXT    NOT NULL UNIQUE,
             tier                TEXT    NOT NULL DEFAULT 'free',
+            -- Give-to-get consent for anonymized market intel (Phase
+            -- D): 1 = this account contributes its (anonymized) price
+            -- points AND may view market ranges.  Default OFF —
+            -- explicit opt-in only.
+            share_market_data   INTEGER NOT NULL DEFAULT 0,
             is_active           INTEGER NOT NULL DEFAULT 1,
             bot_token_encrypted TEXT,
             bot_username        TEXT    NOT NULL DEFAULT '',
@@ -196,6 +201,47 @@ async def create_tables(conn) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_vendor_directory_status
             ON vendor_directory(status);
+
+        -- Anonymous vendor reviews: rating+comment per (shop, account),
+        -- moderated (pending → approved/rejected) on system.4truck.us.
+        -- account_id is attribution for uniqueness + operator audit
+        -- ONLY — account-facing reads never expose it, and approved
+        -- reviews display with no attribution at all.
+        CREATE TABLE IF NOT EXISTS vendor_reviews (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            entry_id    INTEGER NOT NULL,
+            account_id  INTEGER NOT NULL,
+            rating      INTEGER NOT NULL,
+            comment     TEXT    NOT NULL DEFAULT '',
+            status      TEXT    NOT NULL DEFAULT 'pending',
+            created_at  TEXT    NOT NULL,
+            updated_at  TEXT    NOT NULL DEFAULT '',
+            UNIQUE(entry_id, account_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_vendor_reviews_entry
+            ON vendor_reviews(entry_id, status);
+
+        -- Anonymized market-price rollups (Phase D).  Rebuilt nightly
+        -- from SHARING accounts only; a row exists ONLY when >= 3
+        -- distinct companies contributed (below that an "aggregate"
+        -- would be someone's actual invoice).  p25/p75 = the "typical
+        -- range" endpoints; raw points are never stored here.
+        CREATE TABLE IF NOT EXISTS market_price_rollups (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            entry_id       INTEGER NOT NULL,
+            dim_type       TEXT    NOT NULL,   -- 'service_task' | 'part'
+            dim_key        TEXT    NOT NULL,
+            dim_label      TEXT    NOT NULL DEFAULT '',
+            companies      INTEGER NOT NULL,
+            invoices       INTEGER NOT NULL,
+            p25            REAL    NOT NULL,
+            p75            REAL    NOT NULL,
+            window_months  INTEGER NOT NULL DEFAULT 12,
+            computed_at    TEXT    NOT NULL,
+            UNIQUE(entry_id, dim_type, dim_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_market_rollups_entry
+            ON market_price_rollups(entry_id);
 
         CREATE TABLE IF NOT EXISTS ai_conversations (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,

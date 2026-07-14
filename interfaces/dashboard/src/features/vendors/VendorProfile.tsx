@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Store, ArrowLeft, Merge, Globe, Link2, Link2Off, Send } from 'lucide-react';
+import { Store, ArrowLeft, Merge, Globe, Link2, Link2Off, Send, Star, TrendingUp } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/DataGrid';
 import { PageHeader, ErrorState, TableSkeleton } from '../../components/shell';
@@ -21,10 +21,11 @@ import {
 } from '../../components/ui/select';
 import { Button } from '../../components/ui/button';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
+import { TASK_TYPE_OPTIONS } from '../maintenance/badges';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { toneClasses, type Tone } from '../../lib/status';
-import type { Vendor, WorkOrder, AnyColumn, DirectoryEntry } from '../../types';
+import type { Vendor, WorkOrder, AnyColumn, DirectoryEntry, MarketRollupRow } from '../../types';
 
 const PAYMENT_TONE: Record<string, Tone> = {
   unpaid: 'warn', paid: 'ok', partial: 'warn', void: 'neutral',
@@ -86,6 +87,37 @@ export default function VendorProfile() {
   const unlink = () => dirAction(
     () => apiJSON(`/vendors/${vendorId}/link-directory`, { method: 'DELETE' }),
     'Unlinked');
+  // Rate dialog (anonymous stars/comment, moderated platform-side).
+  const [rateOpen, setRateOpen] = useState(false);
+  const [rateStars, setRateStars] = useState(5);
+  const [rateComment, setRateComment] = useState('');
+  const submitReview = () => dirAction(async () => {
+    await apiJSON(`/vendors/directory/${data!.directory!.id}/review`, {
+      method: 'POST', body: { rating: rateStars, comment: rateComment },
+    });
+    setRateOpen(false);
+  }, 'Review submitted — pending moderation');
+  // Market intelligence (Phase D): anonymized typical price ranges
+  // for the linked directory shop.  Triple-gated server-side (flag +
+  // access + give-to-get); the reason tells us which pitch to show.
+  const canManageAccount = has('can_manage_account');
+  const dirId = data?.directory?.id;
+  const { data: market } = useQuery<{ available: boolean; reason: string; rows: MarketRollupRow[] }>({
+    queryKey: ['vendor-market', dirId],
+    queryFn: () => apiJSON(`/vendors/directory/${dirId}/market`),
+    enabled: !!dirId,
+  });
+  const enableSharing = () => dirAction(async () => {
+    await apiJSON('/vendors/market-sharing', { method: 'PUT', body: { enabled: true } });
+    qc.invalidateQueries({ queryKey: ['vendor-market'] });
+  }, 'Market data sharing enabled');
+  const marketLabel = (r: MarketRollupRow): string => {
+    if (r.dim_type === 'part') return r.dim_label || r.dim_key;
+    const opt = TASK_TYPE_OPTIONS.find(o => o.value === r.dim_key);
+    return opt?.label ?? r.dim_key.replace(/^custom_/, '').replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, (c: string) => c.toUpperCase());
+  };
+
   // Roster for the merge target picker.
   const { data: allData } = useQuery<{ vendors: Vendor[] }>({
     queryKey: ['vendors'],
@@ -98,7 +130,7 @@ export default function VendorProfile() {
   );
 
   const vendor = data?.vendor;
-  const workOrders = data?.work_orders ?? [];
+  const workOrders = useMemo(() => data?.work_orders ?? [], [data]);
   const totals = useMemo(() => ({
     count: workOrders.length,
     spent: workOrders.reduce((a, w) => a + (w.total_cost ?? 0), 0),
@@ -227,16 +259,37 @@ export default function VendorProfile() {
                 <div className="min-w-0">
                   <p className="text-sm text-foreground">
                     In global directory as <span className="font-medium">{data.directory.name}</span>
+                    {(data.directory.rating_count ?? 0) > 0 && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <Star size={12} className="text-warn" />
+                        <span className="tabular-nums">{data.directory.rating_avg}</span>
+                        <span>({data.directory.rating_count})</span>
+                      </span>
+                    )}
                   </p>
                   {data.directory.services && (
                     <p className="text-xs text-muted-foreground mt-0.5">{data.directory.services}</p>
                   )}
+                  {data.directory.my_review?.status === 'pending' && (
+                    <p className="text-xs text-muted-foreground mt-0.5">Your review is pending moderation.</p>
+                  )}
                 </div>
                 {canWrite && (
-                  <button type="button" onClick={unlink} disabled={dirBusy}
-                    className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition">
-                    <Link2Off size={13} /> Unlink
-                  </button>
+                  <span className="ml-auto inline-flex items-center gap-2">
+                    <button type="button" onClick={() => {
+                      setRateStars(data.directory?.my_review?.rating ?? 5);
+                      setRateComment(data.directory?.my_review?.comment ?? '');
+                      setRateOpen(true);
+                    }} disabled={dirBusy}
+                      title="Anonymous rating — displayed with no company attribution, after platform moderation."
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-foreground transition">
+                      <Star size={13} /> {data.directory.my_review ? 'Edit review' : 'Rate this shop'}
+                    </button>
+                    <button type="button" onClick={unlink} disabled={dirBusy}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition">
+                      <Link2Off size={13} /> Unlink
+                    </button>
+                  </span>
                 )}
               </>
             ) : (
@@ -258,6 +311,52 @@ export default function VendorProfile() {
               </>
             )}
           </div>
+
+          {/* Market ranges (Phase D) — renders only when the platform
+              flag is live.  'not_sharing' shows the give-to-get pitch;
+              'disabled' renders nothing at all. */}
+          {data?.directory && market && market.reason !== 'disabled' && (
+            <div className="bg-card border border-border rounded-lg p-3 mb-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1.5">
+                <TrendingUp size={13} /> Market price ranges
+              </p>
+              {market.available ? (
+                market.rows.length === 0 ? (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Not enough data yet — ranges appear once 3+ companies have shared invoices for this shop.
+                  </p>
+                ) : (
+                  <div className="mt-2 flex flex-col gap-1.5">
+                    {market.rows.map((r) => (
+                      <p key={`${r.dim_type}:${r.dim_key}`} className="text-sm">
+                        <span className="text-foreground">{marketLabel(r)}</span>
+                        <span className="mx-2 tabular-nums font-medium text-foreground">
+                          ${r.p25.toLocaleString()} – ${r.p75.toLocaleString()}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          typical · {r.invoices} invoices from {r.companies} companies · last {r.window_months} months · prices vary by volume and situation
+                        </span>
+                      </p>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <div className="mt-2 flex flex-wrap items-center gap-3">
+                  <p className="text-xs text-muted-foreground max-w-md">
+                    See what other fleets typically pay at this shop. Available to accounts
+                    that share their own <em>anonymized</em> price data — your company name and
+                    invoices are never shown to anyone.
+                  </p>
+                  {canManageAccount && (
+                    <button type="button" onClick={enableSharing} disabled={dirBusy}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition">
+                      Enable sharing
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {workOrders.length === 0 ? (
             <p className="text-sm text-muted-foreground">No work orders linked to this vendor yet.</p>
@@ -306,6 +405,45 @@ export default function VendorProfile() {
               </p>
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rate dialog — anonymous, moderated.  Verified-usage enforced
+          server-side (only shops your work orders actually used). */}
+      <Dialog open={rateOpen} onOpenChange={(o) => { if (!o) setRateOpen(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Rate {data?.directory?.name}</DialogTitle>
+            <DialogDescription>
+              Shared anonymously with other fleets after moderation — your
+              company is never shown, and none of your invoice data travels
+              with it.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-1" role="radiogroup" aria-label="Rating">
+            {[1, 2, 3, 4, 5].map(n => (
+              <button key={n} type="button" role="radio" aria-checked={rateStars === n}
+                onClick={() => setRateStars(n)}
+                className="p-1"
+                aria-label={`${n} star${n > 1 ? 's' : ''}`}>
+                <Star size={22}
+                  className={n <= rateStars ? 'text-warn fill-warn' : 'text-muted-foreground'} />
+              </button>
+            ))}
+          </div>
+          <textarea
+            rows={3}
+            value={rateComment}
+            onChange={(e) => setRateComment(e.target.value)}
+            placeholder="Optional — what should other fleets know about this shop?"
+            className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+          />
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setRateOpen(false)}>Cancel</Button>
+            <Button onClick={submitReview} disabled={dirBusy}>
+              {dirBusy ? 'Submitting…' : 'Submit review'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

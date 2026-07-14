@@ -21,10 +21,22 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from interfaces.api.deps import get_current_user, get_tenant_db
+from interfaces.api.deps import get_current_user, get_tenant_db, require_permission
 from capabilities.permissions.roles import can_for_account, Role
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
+
+
+def _market_intel_enabled() -> bool:
+    """Dark-launch flag for Phase D market intelligence.
+
+    Deliberate TWIN of ``market_intel_enabled`` in
+    capabilities/platform/vendor_directory/jobs.py — the features
+    layer may not import from the platform sub-family (audience layer
+    boundary, enforced by test_layer_boundaries), so both sides read
+    the same env var independently.  Keep name + truthy set in sync."""
+    import os
+    return os.getenv("MARKET_INTEL_ENABLED", "0").strip() in ("1", "true", "TRUE", "yes")
 
 
 async def _vendor_access(user: dict) -> bool:
@@ -76,6 +88,48 @@ async def search_directory(
     return {"entries": await tenant_db.search_directory_active(q)}
 
 
+# NOTE: single-segment literal routes — declared BEFORE /{vendor_id}
+# so the int param cannot capture them.
+class MarketSharingBody(BaseModel):
+    enabled: bool
+
+
+@router.get("/market-sharing")
+async def get_market_sharing(
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Give-to-get consent state for this account + whether the
+    feature is live at all (flag)."""
+    if not await _vendor_access(user):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    return {
+        "available": _market_intel_enabled(),
+        "enabled": await tenant_db.get_market_sharing(user["account_id"]),
+    }
+
+
+@router.put("/market-sharing")
+async def set_market_sharing(
+    body: MarketSharingBody,
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Flip the account's give-to-get consent.  can_manage_account —
+    sharing (anonymized) business data is an account-owner decision,
+    not a fleet-manager one."""
+    if not _market_intel_enabled():
+        raise HTTPException(status_code=404, detail="Market intelligence is not enabled")
+    await tenant_db.set_market_sharing(user["account_id"], body.enabled)
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "market_sharing_toggle",
+        target_type="account", target_id=str(user["account_id"]),
+        details="enabled" if body.enabled else "disabled",
+    )
+    return {"ok": True, "enabled": body.enabled}
+
+
 @router.get("/{vendor_id}")
 async def get_vendor(
     vendor_id: int,
@@ -99,6 +153,13 @@ async def get_vendor(
             directory = {k: entry[k] for k in
                          ("id", "name", "address", "phone", "email",
                           "website", "services")}
+            # Community signal (approved-only, fully anonymized) + the
+            # caller's own review so the UI can show its pending state.
+            directory.update(await tenant_db.review_aggregate_for_entry(entry["id"]))
+            directory["reviews"] = await tenant_db.approved_reviews_for_entry(entry["id"])
+            directory["my_review"] = await tenant_db.get_my_vendor_review(
+                user["account_id"], entry["id"],
+            )
     return {"vendor": vendor, "work_orders": work_orders, "directory": directory}
 
 
@@ -260,3 +321,73 @@ async def unlink_directory(
     if not ok:
         raise HTTPException(status_code=404, detail="Vendor not found")
     return {"ok": True}
+
+
+class ReviewBody(BaseModel):
+    rating: int = Field(..., ge=1, le=5)
+    comment: str = Field("", max_length=1000)
+
+
+@router.post("/directory/{entry_id}/review")
+async def review_directory_entry(
+    entry_id: int,
+    body: ReviewBody,
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Rate a directory shop (anonymous stars + optional comment).
+
+    Verified-usage gate: only accounts whose work orders actually link
+    to this shop may review it.  One review per account per shop —
+    resubmitting edits it and sends it back through moderation.  The
+    review is displayed with NO attribution; account_id exists solely
+    for uniqueness + operator audit."""
+    if not await _vendor_access(user):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if not await tenant_db.review_eligible(user["account_id"], entry_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Reviews are limited to shops your work orders actually used.",
+        )
+    review = await tenant_db.upsert_vendor_review(
+        user["account_id"], entry_id, body.rating, body.comment,
+    )
+    if not review:
+        raise HTTPException(status_code=404, detail="Directory entry not found or not active")
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "vendor_review_submit",
+        target_type="vendor_directory", target_id=str(entry_id),
+        details=f"{body.rating}★",
+    )
+    return {"status": review["status"]}
+
+
+# ── Market intelligence (Phase D — dark until MARKET_INTEL_ENABLED) ──
+
+
+
+
+@router.get("/directory/{entry_id}/market")
+async def market_for_entry(
+    entry_id: int,
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Anonymized typical price ranges for a directory shop.
+
+    Triple gate: platform flag ON, caller has vendor access, AND the
+    caller's account shares its own data (give-to-get).  The payload
+    is the published rollup shape only — counts + p25/p75, nothing
+    joinable back to any account."""
+    if not await _vendor_access(user):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if not _market_intel_enabled():
+        return {"available": False, "reason": "disabled", "rows": []}
+    if not await tenant_db.get_market_sharing(user["account_id"]):
+        return {"available": False, "reason": "not_sharing", "rows": []}
+    return {
+        "available": True,
+        "reason": "",
+        "rows": await tenant_db.market_rollups_for_entry(entry_id),
+    }

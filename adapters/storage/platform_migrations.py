@@ -15,6 +15,8 @@ async def run_all(conn) -> None:
     """Execute every platform migration in order."""
     await migrate_email_unique_per_account(conn)
     await migrate_vendor_directory(conn)
+    await migrate_vendor_reviews(conn)
+    await migrate_market_intel(conn)
     await migrate_add_bot_columns(conn)
     await migrate_rename_fleet_manager_role(conn)
     await migrate_knowledge_base_to_platform(conn)
@@ -3354,6 +3356,82 @@ async def migrate_vendor_directory(conn) -> None:
         logger.info("Platform migration: vendor_directory ready")
     except Exception as e:
         logger.error("vendor_directory migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_vendor_reviews(conn) -> None:
+    """Vendor reviews table (Phase C2 — anonymous stars/comments with
+    operator moderation).  Platform-owned like vendor_directory; the
+    UNIQUE(entry_id, account_id) makes reviews an upsert (one voice
+    per account per shop; edits re-enter the moderation queue)."""
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS vendor_reviews (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                entry_id    INTEGER NOT NULL,
+                account_id  INTEGER NOT NULL,
+                rating      INTEGER NOT NULL,
+                comment     TEXT    NOT NULL DEFAULT '',
+                status      TEXT    NOT NULL DEFAULT 'pending',
+                created_at  TEXT    NOT NULL,
+                updated_at  TEXT    NOT NULL DEFAULT '',
+                UNIQUE(entry_id, account_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_vendor_reviews_entry
+                ON vendor_reviews(entry_id, status);
+        """)
+        await conn.commit()
+        logger.info("Platform migration: vendor_reviews ready")
+    except Exception as e:
+        logger.error("vendor_reviews migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_market_intel(conn) -> None:
+    """Phase D market intel: accounts.share_market_data (give-to-get
+    consent, default OFF) + the anonymized rollup table.  Rollups are
+    derived data (nightly full rebuild), so no backfill."""
+    try:
+        await conn.execute(
+            "ALTER TABLE accounts ADD COLUMN share_market_data INTEGER NOT NULL DEFAULT 0"
+        )
+        await conn.commit()
+        logger.info("Platform migration: accounts.share_market_data added")
+    except Exception as e:
+        logger.info("accounts.share_market_data likely exists — %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS market_price_rollups (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                entry_id       INTEGER NOT NULL,
+                dim_type       TEXT    NOT NULL,
+                dim_key        TEXT    NOT NULL,
+                dim_label      TEXT    NOT NULL DEFAULT '',
+                companies      INTEGER NOT NULL,
+                invoices       INTEGER NOT NULL,
+                p25            REAL    NOT NULL,
+                p75            REAL    NOT NULL,
+                window_months  INTEGER NOT NULL DEFAULT 12,
+                computed_at    TEXT    NOT NULL,
+                UNIQUE(entry_id, dim_type, dim_key)
+            );
+            CREATE INDEX IF NOT EXISTS idx_market_rollups_entry
+                ON market_price_rollups(entry_id);
+        """)
+        await conn.commit()
+        logger.info("Platform migration: market_price_rollups ready")
+    except Exception as e:
+        logger.error("market_price_rollups migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

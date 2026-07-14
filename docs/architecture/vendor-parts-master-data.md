@@ -2,8 +2,12 @@
 
 **Status:** Phases A–B SHIPPED 2026-07-13 · Phase C1 (directory core:
 platform table, operator curation on system.4truck.us, suggestion
-queue, account linking) SHIPPED 2026-07-13 · C2 (map POI layer +
-anonymous reviews/moderation) and D designed, not scheduled
+queue, account linking) SHIPPED 2026-07-13 · C2-reviews (anonymous
+stars/comments + operator moderation) SHIPPED 2026-07-13 · C2-map (POI
+layer) parked pending live-map POI prep · D BUILT DARK 2026-07-13
+behind MARKET_INTEL_ENABLED (toggle + nightly rollup job + triple-gated
+reads + profile UI all shipped; flag stays OFF until the legal review —
+open question #3 — clears)
 **Decided:** 2026-07-13 (owner + Claude session; Phase A schema shape confirmed by
 fable-advisor consult)
 **Feature family:** Work Orders / Maintenance Ops (per-account layers) +

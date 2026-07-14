@@ -50,6 +50,7 @@ from .work_orders import WorkOrdersMixin
 from .vendors import VendorsMixin
 from .parts_catalog import PartsCatalogMixin
 from .vendor_directory import VendorDirectoryMixin
+from .market_intel import MarketIntelMixin
 from .fuel import FuelMixin
 from .alerts import AlertsMixin
 from .settings import SettingsMixin
@@ -110,6 +111,7 @@ class Database(
     VendorsMixin,
     PartsCatalogMixin,
     VendorDirectoryMixin,
+    MarketIntelMixin,
     FuelMixin,
     AlertsMixin,
     SettingsMixin,

@@ -89,6 +89,7 @@ _JOB_META = {
     # ── Accounts & system ──
     "account_lifecycle_housekeeping": ("Accounts & system", "Hard-purge expired accounts + send deletion warnings"),
     "scheduler_jobs_snapshot":        ("Accounts & system", "Snapshot scheduled jobs for the operator console"),
+    "market_rollups":                 ("Accounts & system", "Rebuild anonymized vendor market-price rollups (dark until MARKET_INTEL_ENABLED)"),
 }
 
 
@@ -168,6 +169,16 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # samsara-sync jobs use.  Minute offsets are spread out (10/15/20/25)
     # so all four don't race to acquire the single-writer DB lock at the
     # top of the hour.
+    # Market intel (Phase D): nightly rollup rebuild at 04:40 UTC —
+    # after the 04:10 account purge, before morning traffic.  No-op
+    # while MARKET_INTEL_ENABLED is unset (dark launch).
+    from capabilities.platform.vendor_directory.jobs import job_market_rollups
+    scheduler.add_job(
+        job_market_rollups, "cron",
+        hour=4, minute=40, args=[app], id="market_rollups",
+        max_instances=1, coalesce=True,
+    )
+
     scheduler.add_job(
         job_pti_spawn_weekly, "cron",
         minute=10, args=[app], id="pti_spawn_weekly",

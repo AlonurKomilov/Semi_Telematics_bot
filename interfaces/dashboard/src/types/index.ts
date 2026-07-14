@@ -1541,6 +1541,26 @@ export interface DirectoryEntry {
   email: string;
   website: string;
   services: string;
+  /** Approved-only community signal (anonymous). */
+  rating_avg?: number | null;
+  rating_count?: number;
+  reviews?: Array<{ rating: number; comment: string; month: string }>;
+  /** The caller account's own review (any status) — lets the UI show
+   *  "your review is pending review". */
+  my_review?: { rating: number; comment: string; status: string } | null;
+}
+
+/** Anonymized market rollup row (Phase D — published shape only). */
+export interface MarketRollupRow {
+  dim_type: 'service_task' | 'part';
+  dim_key: string;
+  dim_label: string;
+  companies: number;
+  invoices: number;
+  p25: number;
+  p75: number;
+  window_months: number;
+  computed_at: string;
 }
 
 export interface WorkOrderCostRow {

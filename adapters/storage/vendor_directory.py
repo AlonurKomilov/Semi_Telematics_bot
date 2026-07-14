@@ -132,3 +132,109 @@ class VendorDirectoryMixin:
         )
         await self._db.commit()
         return cur.rowcount > 0
+
+    # ── Reviews (Phase C2 — anonymous stars/comments, moderated) ──
+
+    async def review_eligible(self, account_id: int, entry_id: int) -> bool:
+        """'Verified usage' gate: the account may review a shop only if
+        at least one of its work orders links to a vendor that links to
+        this directory entry.  Keeps reviews grounded in real visits
+        and blocks drive-by spam."""
+        cur = await self._db.execute(
+            "SELECT 1 FROM work_orders w "
+            "JOIN vendors v ON v.id = w.vendor_id AND v.account_id = w.account_id "
+            "WHERE w.account_id = ? AND v.global_vendor_id = ? LIMIT 1",
+            (account_id, entry_id),
+        )
+        return (await cur.fetchone()) is not None
+
+    async def upsert_vendor_review(
+        self, account_id: int, entry_id: int, rating: int, comment: str = "",
+    ) -> Optional[dict]:
+        """One review per (shop, account); resubmitting UPDATES it and
+        sends it back through moderation (status resets to pending) so
+        an approved review can't be silently edited into something
+        else.  Entry must be active."""
+        entry = await self.get_directory_entry(entry_id)
+        if not entry or entry.get("status") != "active":
+            return None
+        rating = max(1, min(5, int(rating)))
+        now = self._now()
+        await self._db.execute(
+            "INSERT INTO vendor_reviews (entry_id, account_id, rating, "
+            " comment, status, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, 'pending', ?, ?) "
+            "ON CONFLICT (entry_id, account_id) DO UPDATE SET "
+            " rating = excluded.rating, comment = excluded.comment, "
+            " status = 'pending', updated_at = excluded.updated_at",
+            (entry_id, account_id, rating, comment.strip(), now, now),
+        )
+        await self._db.commit()
+        cur = await self._db.execute(
+            "SELECT * FROM vendor_reviews WHERE entry_id = ? AND account_id = ?",
+            (entry_id, account_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def get_my_vendor_review(
+        self, account_id: int, entry_id: int,
+    ) -> Optional[dict]:
+        cur = await self._db.execute(
+            "SELECT id, rating, comment, status, updated_at "
+            "FROM vendor_reviews WHERE entry_id = ? AND account_id = ?",
+            (entry_id, account_id),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def approved_reviews_for_entry(
+        self, entry_id: int, limit: int = 5,
+    ) -> list[dict]:
+        """ANONYMIZED approved reviews — rating, comment, month.  No
+        account attribution of any kind leaves this method."""
+        cur = await self._db.execute(
+            "SELECT rating, comment, created_at FROM vendor_reviews "
+            "WHERE entry_id = ? AND status = 'approved' "
+            "ORDER BY updated_at DESC "
+            f"LIMIT {int(limit)}",
+            (entry_id,),
+        )
+        return [
+            {"rating": r["rating"], "comment": r["comment"],
+             "month": str(r["created_at"])[:7]}
+            for r in (dict(x) for x in await cur.fetchall())
+        ]
+
+    async def review_aggregate_for_entry(self, entry_id: int) -> dict:
+        """Approved-only average + count."""
+        cur = await self._db.execute(
+            "SELECT COUNT(*) AS n, AVG(rating) AS avg_rating "
+            "FROM vendor_reviews WHERE entry_id = ? AND status = 'approved'",
+            (entry_id,),
+        )
+        row = dict(await cur.fetchone())
+        n = int(row.get("n") or 0)
+        avg = round(float(row["avg_rating"]), 1) if n else None
+        return {"rating_count": n, "rating_avg": avg}
+
+    async def list_reviews_moderation(
+        self, status: str = "pending",
+    ) -> list[dict]:
+        """Operator queue: reviews + shop name + bare account id (audit)."""
+        cur = await self._db.execute(
+            "SELECT r.*, d.name AS entry_name "
+            "FROM vendor_reviews r "
+            "JOIN vendor_directory d ON d.id = r.entry_id "
+            "WHERE r.status = ? ORDER BY r.updated_at ASC",
+            (status,),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def set_review_status(self, review_id: int, status: str) -> bool:
+        cur = await self._db.execute(
+            "UPDATE vendor_reviews SET status = ?, updated_at = ? WHERE id = ?",
+            (status, self._now(), review_id),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
