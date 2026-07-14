@@ -39,13 +39,15 @@ export function Tip({ label, side, followCursor = true, children }: TipProps) {
     <Tooltip trackCursorAxis={followCursor ? 'both' : 'none'}>
       <TooltipTrigger render={children} />
       <TooltipContent
-        side={side ?? (followCursor ? 'bottom' : 'top')}
-        sideOffset={followCursor ? 16 : 4}
-        // Below-RIGHT of the pointer (align start = bubble's left edge at
-        // the cursor, growing right) — the OS/editor placement, so the
-        // pointer never sits on top of the bubble.
+        // Native-tooltip geometry: the bubble's TOP-LEFT corner sits just
+        // right of the cursor tip and slightly below it — the WHOLE bubble
+        // is right of the pointer (side="right" = to the right; align
+        // "start" = top edge at cursor level; alignOffset pushes it under
+        // the cursor tip).  Never centered under the pointer.
+        side={side ?? (followCursor ? 'right' : 'top')}
+        sideOffset={followCursor ? 12 : 4}
         align={followCursor ? 'start' : 'center'}
-        alignOffset={followCursor ? 8 : 0}
+        alignOffset={followCursor ? 14 : 0}
         showArrow={!followCursor}
       >
         {label}
