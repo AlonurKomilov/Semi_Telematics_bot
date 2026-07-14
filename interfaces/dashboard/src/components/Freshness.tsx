@@ -16,7 +16,7 @@ import type { ReactNode } from 'react';
 import {
   Tooltip, TooltipTrigger, TooltipContent, TooltipProvider,
 } from './ui/tooltip';
-import { formatRelative, formatDate } from '../utils/datetime';
+import { formatAgoShort } from '../utils/datetime';
 import { useTimezone } from '../hooks/useTimezone';
 import { useNow } from '../hooks/useNow';
 import { toneText } from '../lib/status';
@@ -40,7 +40,9 @@ export function Freshness({ ts, children }: FreshnessProps) {
   if (Number.isNaN(t)) return <>{children}</>;
 
   const age = now.getTime() - t;
-  const rel = formatRelative(ts, { timeZone: tz });
+  // "35s ago" / "2m ago" / "4d ago", then "Jul 14" (+year if not this
+  // year) — past a month, WHEN beats how-long-ago.
+  const rel = formatAgoShort(ts, { timeZone: tz });
 
   return (
     <TooltipProvider>
@@ -59,9 +61,7 @@ export function Freshness({ ts, children }: FreshnessProps) {
             />
           )}
         </TooltipTrigger>
-        <TooltipContent>
-          updated {rel} — {formatDate(ts, { timeZone: tz })}
-        </TooltipContent>
+        <TooltipContent>Up {rel}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

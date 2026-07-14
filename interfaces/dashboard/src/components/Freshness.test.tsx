@@ -54,4 +54,15 @@ describe('Freshness thresholds', () => {
     expect(document.querySelector('[aria-label="updated 3d ago"]')).toBeTruthy();
     expect(screen.getByText(/· 3d ago/)).toBeTruthy();
   });
+
+  it('months-old reading: calendar date, no year within the current year', () => {
+    render(<Freshness ts={iso(60 * 24 * 60)}>88%</Freshness>);
+    // 60 days before Jul 14, 2026 = May 15, 2026 (same year → no year)
+    expect(screen.getByText(/· May 15$/)).toBeTruthy();
+  });
+
+  it('previous-year reading: calendar date with year', () => {
+    render(<Freshness ts={'2025-06-26T20:03:22Z'}>Anaheim</Freshness>);
+    expect(screen.getByText(/· Jun 26, 2025/)).toBeTruthy();
+  });
 });

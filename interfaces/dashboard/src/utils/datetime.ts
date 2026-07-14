@@ -126,3 +126,36 @@ export function formatRelative(
   if (days < 30)     return `${days}d ago`;
   return formatDay(d, opts);
 }
+
+/** Ultra-compact age for freshness cues — "35s ago" / "2m ago" / "5h ago" /
+ *  "4d ago", then a calendar date once it's a month old: "Jul 14" within
+ *  the current year, "Jul 14, 2026" for older years.  The date form drops
+ *  the relative wording entirely — "how long ago" stops being useful past
+ *  ~a month; "when" is the honest answer. */
+export function formatAgoShort(
+  value: string | number | Date | null | undefined,
+  opts: FormatDateOptions = {},
+): string {
+  const d = _toDate(value);
+  if (!d) return '—';
+  const sec = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (sec < 60)      return `${Math.max(sec, 0)}s ago`;
+  const min = Math.floor(sec / 60);
+  if (min < 60)      return `${min}m ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24)       return `${hr}h ago`;
+  const days = Math.floor(hr / 24);
+  if (days < 30)     return `${days}d ago`;
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  const intl: Intl.DateTimeFormatOptions = {
+    month: 'short', day: 'numeric',
+    year: sameYear ? undefined : 'numeric',
+    timeZone: opts.timeZone,
+  };
+  try {
+    return new Intl.DateTimeFormat(undefined, intl).format(d);
+  } catch {
+    const { timeZone: _ignored, ...rest } = intl;
+    return new Intl.DateTimeFormat(undefined, rest).format(d);
+  }
+}
