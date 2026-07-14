@@ -23,17 +23,17 @@ interface TipProps {
   label?: ReactNode;
   /** Bubble placement relative to the child (default "top"). */
   side?: 'top' | 'bottom' | 'left' | 'right';
-  /** Anchor the bubble to the MOUSE CURSOR instead of the element —
-   *  the VS Code file-tree feel.  Use on WIDE targets (table cells,
-   *  full-width text rows) where an element-centered bubble can open
-   *  far from where the user is actually pointing.  Icon buttons and
-   *  small values read better element-anchored (default). */
+  /** Anchor the bubble to the MOUSE CURSOR (just below it) — the
+   *  editor/VS Code feel and the family DEFAULT: the bubble appears
+   *  where the user is actually pointing, never across the component.
+   *  Pass false for element-anchored placement (e.g. when a design
+   *  needs the bubble pinned to the control). */
   followCursor?: boolean;
   /** A single element the tooltip attaches to. */
   children: ReactElement;
 }
 
-export function Tip({ label, side, followCursor = false, children }: TipProps) {
+export function Tip({ label, side, followCursor = true, children }: TipProps) {
   if (label == null || label === '') return children;
   return (
     <Tooltip trackCursorAxis={followCursor ? 'both' : 'none'}>
