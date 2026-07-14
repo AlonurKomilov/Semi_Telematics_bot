@@ -879,6 +879,14 @@ class SamsaraClient:
 
         Unlike get_vehicles_overview(), this searches ALL vehicles (including
         those without a gateway) so direct truck lookups always work.
+
+        Samsara orgs accumulate DUPLICATE records for one physical truck
+        (same name, often same VIN) when a gateway is swapped or a vehicle
+        is re-provisioned — the relic keeps its last GPS fix forever.  When
+        several records share the name, prefer the one with a gateway, then
+        the freshest location, so the detail can't show a months-old relic
+        while the fleet list (which filters inactive records) shows the
+        live truck.
         """
         vehicles_raw = await self.get_vehicles()
         # Same batched fetch as the overview (faults + fuel + DEF in one
@@ -886,12 +894,20 @@ class SamsaraClient:
         faults_by_id, loc_by_id, fuel_by_id, def_by_id = await self._fetch_enrichment_maps()
 
         truck_name_lower = vehicle_name.strip().lower()
-        for v in vehicles_raw:
+        candidates = [
+            v for v in vehicles_raw
+            if v.get("name", "?").lower() == truck_name_lower
+            and not _SKIP_NAME_RE.search(v.get("name", "?"))
+        ]
+        if candidates:
+            # (has gateway, latest GPS ISO timestamp) — ISO strings compare
+            # chronologically, '' sorts last via the empty-string default.
+            def _rank(v: dict) -> tuple:
+                loc_time = loc_by_id.get(v["id"], {}).get("time") or ""
+                return (1 if v.get("gateway") else 0, loc_time)
+            best = max(candidates, key=_rank)
+            v = best
             name = v.get("name", "?")
-            if name.lower() != truck_name_lower:
-                continue
-            if _SKIP_NAME_RE.search(name):
-                continue
 
             vid = v["id"]
             loc = loc_by_id.get(vid, {})
@@ -2346,6 +2362,18 @@ class MultiCompanyClient:
                 if client and client._org_id:
                     vehicle["_org_id"] = client._org_id
                 matches.append(vehicle)
+        # Best record first: a truck re-provisioned across companies leaves
+        # relic records behind (same name/VIN, dead GPS).  Consumers that
+        # take matches[0] (the detail page) must get the record with a
+        # gateway and the freshest fix — same preference the per-company
+        # lookup applies within one org.
+        matches.sort(
+            key=lambda v: (
+                1 if v.get("has_gateway") else 0,
+                v.get("location", {}).get("time") or "",
+            ),
+            reverse=True,
+        )
         return matches
 
     # ── engine hours ─────────────────────────────────────────────
