@@ -84,10 +84,10 @@ if (_isApply) {
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
           {/* Tooltips open after a short hover intent (no bubble spam while
-              the mouse is just passing); once one is open, moving to a
-              neighbouring target shows its tooltip instantly (400ms warm
-              group) — the VS Code feel. */}
-          <TooltipProvider delay={600}>
+              the mouse is just passing).  timeout={0} disables the
+              warm-group so EVERY tooltip waits the same delay — no
+              instant pop when moving between neighbouring targets. */}
+          <TooltipProvider delay={600} timeout={0}>
             <BrowserRouter basename={import.meta.env.VITE_ROUTER_BASE ?? ''}>
               <AuthProvider>
                 <RoleViewProvider>

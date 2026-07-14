@@ -40,7 +40,12 @@ export function Tip({ label, side, followCursor = true, children }: TipProps) {
       <TooltipTrigger render={children} />
       <TooltipContent
         side={side ?? (followCursor ? 'bottom' : 'top')}
-        sideOffset={followCursor ? 14 : 4}
+        sideOffset={followCursor ? 16 : 4}
+        // Below-RIGHT of the pointer (align start = bubble's left edge at
+        // the cursor, growing right) — the OS/editor placement, so the
+        // pointer never sits on top of the bubble.
+        align={followCursor ? 'start' : 'center'}
+        alignOffset={followCursor ? 8 : 0}
         showArrow={!followCursor}
       >
         {label}
