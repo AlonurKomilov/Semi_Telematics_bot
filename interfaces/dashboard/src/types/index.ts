@@ -155,6 +155,11 @@ export interface Vehicle {
   faults?: Fault[];
   fault_codes?: Fault[];
   location?: VehicleLocation;
+  /** Raw Samsara fuel reading — ``time`` is the reading's own clock
+   *  (a fuel sensor can be days staler than GPS on the same truck). */
+  fuel?: { value?: number | null; time?: string };
+  /** Raw Samsara DEF reading (already scaled to percent). */
+  def_level?: { value?: number | null; time?: string };
   /** Current OBD odometer in miles (warehouse-sourced).  Null when the
    *  vehicle has no CAN bus gateway or hasn't reported yet. */
   odometer_miles?: number | null;
@@ -184,6 +189,8 @@ export interface VehicleLocation {
   reverseGeo?: {
     formattedLocation?: string;
   };
+  /** ISO timestamp of the GPS fix — freshness of address/speed/coords. */
+  time?: string;
 }
 
 export interface VehiclesResponse {

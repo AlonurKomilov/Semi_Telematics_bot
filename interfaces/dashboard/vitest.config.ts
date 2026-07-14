@@ -10,6 +10,11 @@ import react from '@vitejs/plugin-react';
  */
 export default defineConfig({
   plugins: [react()],
+  // Mirror the Vite build's "@/" alias so tests can import components
+  // that use it (e.g. ui/tooltip -> "@/lib/utils").
+  resolve: {
+    alias: { '@': new URL('./src', import.meta.url).pathname },
+  },
   test: {
     environment: 'jsdom',
     globals: false,
