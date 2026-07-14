@@ -120,7 +120,29 @@ class VendorsMixin:
             (account_id, nkey),
         )
         row = await cur.fetchone()
-        return dict(row) if row else None
+        if not row:
+            return None
+        vendor = dict(row)
+        # Enrich-on-save: an EXISTING vendor learns contact info it
+        # doesn't have yet from whatever the caller carries (work-order
+        # form fields, Datatruck sync).  Only EMPTY fields fill — a
+        # value someone deliberately set is never overwritten, and
+        # work-order snapshots stay untouched either way.
+        fills = {
+            k: v for k, v in
+            (("address", address), ("phone", phone), ("email", email))
+            if v and not (vendor.get(k) or "").strip()
+        }
+        if fills:
+            fills["updated_at"] = now
+            set_clause = ", ".join(f"{k} = ?" for k in fills)
+            await self._db.execute(
+                f"UPDATE vendors SET {set_clause} WHERE id = ? AND account_id = ?",
+                [*fills.values(), vendor["id"], account_id],
+            )
+            await self._db.commit()
+            vendor.update(fills)
+        return vendor
 
     async def update_vendor(
         self, vendor_id: int, account_id: int, **kwargs,

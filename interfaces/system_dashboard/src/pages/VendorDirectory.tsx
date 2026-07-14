@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
+import { Fragment, useEffect, useState, useCallback } from 'react';
+import { MapPin } from 'lucide-react';
 import { apiJSON, ApiError } from '../api/client';
 
 // Global vendor directory curation — the platform-owned identity list
@@ -31,7 +32,15 @@ interface DirEntry {
   status: 'pending' | 'active' | 'rejected';
   source: string;
   suggested_by_account: number | null;
+  lat: number | null;
+  lng: number | null;
   created_at: string;
+}
+
+interface GeoSuggestion {
+  lat: number;
+  lng: number;
+  label: string;
 }
 
 const STATUS_BADGE: Record<DirEntry['status'], string> = {
@@ -56,6 +65,16 @@ export default function VendorDirectoryPage() {
   const [newAddress, setNewAddress] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [reviews, setReviews] = useState<PendingReview[]>([]);
+
+  // Location editor (one entry at a time): geocode SUGGESTS, the
+  // operator confirms — nothing is stored until Save.
+  const [geoOpen, setGeoOpen] = useState<number | null>(null);
+  const [geoLat, setGeoLat] = useState('');
+  const [geoLng, setGeoLng] = useState('');
+  const [geoQuery, setGeoQuery] = useState('');
+  const [geoSug, setGeoSug] = useState<GeoSuggestion[]>([]);
+  const [geoBusy, setGeoBusy] = useState(false);
+  const [geoErr, setGeoErr] = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -103,6 +122,61 @@ export default function VendorDirectoryPage() {
 
   const reviewAct = (id: number, verb: 'approve' | 'reject') =>
     act(id, () => apiJSON(`/system/vendor-directory/reviews/${id}/${verb}`, { method: 'POST' }));
+
+  const openGeo = (e: DirEntry) => {
+    setGeoOpen(e.id);
+    setGeoLat(e.lat != null ? String(e.lat) : '');
+    setGeoLng(e.lng != null ? String(e.lng) : '');
+    setGeoQuery([e.name, e.address].filter(Boolean).join(', '));
+    setGeoSug([]);
+    setGeoErr('');
+  };
+
+  const closeGeo = () => {
+    setGeoOpen(null);
+    setGeoSug([]);
+    setGeoErr('');
+  };
+
+  const geocode = async () => {
+    if (geoQuery.trim().length < 3) return;
+    setGeoBusy(true);
+    setGeoErr('');
+    setGeoSug([]);
+    try {
+      const r = await apiJSON<{ results: GeoSuggestion[] }>(
+        `/system/vendor-directory/geocode?q=${encodeURIComponent(geoQuery.trim())}`,
+      );
+      setGeoSug(r.results);
+      if (r.results.length === 0) setGeoErr('No matches — refine the address or enter coordinates manually.');
+    } catch (e) {
+      setGeoErr(e instanceof Error ? e.message : 'Geocoding failed');
+    } finally {
+      setGeoBusy(false);
+    }
+  };
+
+  // Parsed coordinates for validation + the pin preview.
+  const latNum = geoLat.trim() === '' ? null : Number(geoLat);
+  const lngNum = geoLng.trim() === '' ? null : Number(geoLng);
+  const geoValid =
+    latNum != null && lngNum != null &&
+    Number.isFinite(latNum) && Number.isFinite(lngNum) &&
+    Math.abs(latNum) <= 90 && Math.abs(lngNum) <= 180;
+  const geoEmpty = geoLat.trim() === '' && geoLng.trim() === '';
+
+  const saveGeo = (id: number) =>
+    act(id, async () => {
+      if (!geoValid && !geoEmpty) {
+        setGeoErr('Enter both coordinates (lat −90…90, lng −180…180) or clear both.');
+        return;
+      }
+      await apiJSON(`/system/vendor-directory/${id}/geo`, {
+        method: 'PUT',
+        body: geoEmpty ? { lat: null, lng: null } : { lat: latNum, lng: lngNum },
+      });
+      closeGeo();
+    });
 
   const shown = filter === 'all' ? entries : entries.filter(e => e.status === filter);
   const pendingCount = entries.filter(e => e.status === 'pending').length;
@@ -172,7 +246,8 @@ export default function VendorDirectoryPage() {
           </thead>
           <tbody>
             {shown.map(e => (
-              <tr key={e.id} className="border-b border-slate-800/60 last:border-0 align-top">
+              <Fragment key={e.id}>
+              <tr className="border-b border-slate-800/60 last:border-0 align-top">
                 <td className="px-4 py-3">
                   {editing === e.id ? (
                     <div className="flex flex-col gap-1.5">
@@ -201,6 +276,12 @@ export default function VendorDirectoryPage() {
                     <>
                       <div className="text-slate-300">{e.address || '—'}</div>
                       <div className="text-slate-500 mt-0.5">{e.phone || ''}</div>
+                      <div className={`mt-1 inline-flex items-center gap-1 ${e.lat != null ? 'text-emerald-400' : 'text-slate-600'}`}>
+                        <MapPin size={12} />
+                        {e.lat != null && e.lng != null
+                          ? `${e.lat.toFixed(5)}, ${e.lng.toFixed(5)}`
+                          : 'No map location'}
+                      </div>
                     </>
                   )}
                 </td>
@@ -251,11 +332,90 @@ export default function VendorDirectoryPage() {
                           className="px-2 py-1 rounded border border-slate-700 text-slate-400 hover:text-slate-200">
                           Edit
                         </button>
+                        <button onClick={() => (geoOpen === e.id ? closeGeo() : openGeo(e))}
+                          className={`px-2 py-1 rounded border inline-flex items-center gap-1 ${
+                            geoOpen === e.id
+                              ? 'bg-slate-200 text-slate-900 border-slate-200 font-medium'
+                              : 'border-slate-700 text-slate-400 hover:text-slate-200'
+                          }`}>
+                          <MapPin size={12} /> Location
+                        </button>
                       </>
                     )}
                   </div>
                 </td>
               </tr>
+              {geoOpen === e.id && (
+                <tr className="border-b border-slate-800/60 last:border-0 bg-slate-950/50">
+                  <td colSpan={5} className="px-4 py-3">
+                    <div className="flex flex-wrap gap-4">
+                      <div className="flex-1 min-w-72 max-w-xl">
+                        {/* Geocode: server proxies Nominatim; results are
+                            suggestions only — Save is the confirm step. */}
+                        <div className="flex items-center gap-2">
+                          <input className={inputCls} placeholder="Address to geocode"
+                            value={geoQuery} onChange={ev => setGeoQuery(ev.target.value)}
+                            onKeyDown={ev => { if (ev.key === 'Enter') geocode(); }} />
+                          <button onClick={geocode} disabled={geoBusy || geoQuery.trim().length < 3}
+                            className="px-2.5 py-1 rounded bg-slate-200 text-slate-900 text-xs font-medium hover:bg-white disabled:opacity-50 whitespace-nowrap">
+                            {geoBusy ? 'Searching…' : 'Find coordinates'}
+                          </button>
+                        </div>
+                        {geoErr && <div className="mt-2 text-xs text-amber-400">{geoErr}</div>}
+                        {geoSug.length > 0 && (
+                          <ul className="mt-2 flex flex-col gap-1">
+                            {geoSug.map((s, i) => (
+                              <li key={i} className="flex items-start gap-2 text-xs">
+                                <button
+                                  onClick={() => { setGeoLat(String(s.lat)); setGeoLng(String(s.lng)); }}
+                                  className="shrink-0 px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25">
+                                  Use
+                                </button>
+                                <span className="text-slate-400 pt-0.5">{s.label}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <div className="mt-3 flex items-center gap-2">
+                          <input className={`${inputCls} max-w-36`} placeholder="Latitude"
+                            value={geoLat} onChange={ev => setGeoLat(ev.target.value)} />
+                          <input className={`${inputCls} max-w-36`} placeholder="Longitude"
+                            value={geoLng} onChange={ev => setGeoLng(ev.target.value)} />
+                          <button onClick={() => saveGeo(e.id)}
+                            disabled={busy === e.id || (!geoValid && !geoEmpty)}
+                            className="px-2.5 py-1 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 text-xs hover:bg-emerald-500/25 disabled:opacity-50">
+                            {geoEmpty ? 'Clear location' : 'Save location'}
+                          </button>
+                          <button onClick={closeGeo}
+                            className="px-2.5 py-1 rounded border border-slate-700 text-slate-400 text-xs hover:text-slate-200">
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                      {geoValid && (
+                        <div className="w-80 shrink-0">
+                          {/* Zero-dependency pin preview: OSM's embed page
+                              with a marker at the chosen point. */}
+                          <iframe
+                            title="Pin preview"
+                            className="w-full h-52 rounded border border-slate-800"
+                            src={`https://www.openstreetmap.org/export/embed.html?bbox=${
+                              `${(lngNum! - 0.008).toFixed(5)}%2C${(latNum! - 0.004).toFixed(5)}%2C${(lngNum! + 0.008).toFixed(5)}%2C${(latNum! + 0.004).toFixed(5)}`
+                            }&layer=mapnik&marker=${latNum!.toFixed(6)}%2C${lngNum!.toFixed(6)}`}
+                          />
+                          <a
+                            className="mt-1 inline-block text-[11px] text-slate-400 underline hover:text-slate-200"
+                            href={`https://www.openstreetmap.org/?mlat=${latNum!.toFixed(6)}&mlon=${lngNum!.toFixed(6)}#map=16/${latNum!.toFixed(6)}/${lngNum!.toFixed(6)}`}
+                            target="_blank" rel="noreferrer">
+                            Verify on OpenStreetMap ↗
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
             {shown.length === 0 && !loading && (
               <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-600 text-sm">

@@ -46,7 +46,8 @@ router = APIRouter(prefix="/map", tags=["map"])
 # ── POI Overlay Layers ────────────────────────────────────────────────────────
 #
 # To ADD a new POI layer:
-#   1. Add an entry to POI_OVERPASS_QUERIES below.
+#   1. Add an entry to POI_OVERPASS_QUERIES below — or, for a DB-backed
+#      layer, a source branch in map_pois() (see vendor_directory).
 #   2. Add the matching entry to poiLayers.ts in the dashboard config.
 #   Nothing else changes — the endpoint and the hook handle the rest.
 #
@@ -283,6 +284,37 @@ async def map_pois(
     cs, cw, cn, ce = clipped
     bbox = _bbox_to_str(cs, cw, cn, ce)
     s, w, n, e = cs, cw, cn, ce
+
+    if poi_type == "vendor_directory":
+        # Platform-curated repair-shop directory (identity fields only —
+        # never any account's transactions).  Platform-GLOBAL data, so
+        # the tenant-agnostic cache key below is correct as-is.
+        bbox_key = _round_bbox(bbox)
+        cache_key = (poi_type, bbox_key)
+        cached = _poi_cache.get(cache_key)
+        if cached is not None:
+            return {"type": "FeatureCollection", "features": cached}
+        tenant = await get_tenant_db(user["account_id"])
+        rows = await tenant.directory_entries_in_bbox(s, w, n, e)
+        features = [
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point",
+                             "coordinates": [r["lng"], r["lat"]]},
+                "properties": {
+                    "entry_id": r["id"],
+                    "name": r["name"],
+                    "address": r.get("address") or "",
+                    "phone": r.get("phone") or "",
+                    "website": r.get("website") or "",
+                    "services": r.get("services") or "",
+                    "_directory": True,
+                },
+            }
+            for r in rows
+        ]
+        _poi_cache[cache_key] = features
+        return {"type": "FeatureCollection", "features": features}
 
     if poi_type.startswith("custom_"):
         try:

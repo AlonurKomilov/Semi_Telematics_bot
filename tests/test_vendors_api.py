@@ -104,3 +104,51 @@ async def test_owner_can_read(seeded):
     async with AsyncClient(transport=transport, base_url="http://t") as c:
         r = await c.get("/api/vendors", headers=_h(seeded["token_owner"]))
         assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_suggest_requires_address_then_succeeds(seeded):
+    """Quality gate: name-only vendors can't be suggested (422 with a
+    clear message); after the user completes the address (the dialog's
+    write-back PUT), the same suggestion goes through."""
+    transport = ASGITransport(app=seeded["app"])
+    vid = seeded["vendor"]["id"]
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.post(f"/api/vendors/{vid}/suggest-to-directory",
+                         headers=_h(seeded["token_fleet"]))
+        assert r.status_code == 422
+        assert "address" in r.json()["detail"].lower()
+
+        r = await c.put(f"/api/vendors/{vid}", headers=_h(seeded["token_fleet"]),
+                        json={"address": "42 Gate Rd, Springfield, IL"})
+        assert r.status_code == 200
+
+        r = await c.post(f"/api/vendors/{vid}/suggest-to-directory",
+                         headers=_h(seeded["token_fleet"]))
+        assert r.status_code == 200
+        assert r.json()["status"] == "pending"
+
+
+@pytest.mark.asyncio
+async def test_directory_browse_endpoint(seeded):
+    """Browse lists active entries with the caller's link flag; drivers
+    stay locked out like the rest of the feature."""
+    transport = ASGITransport(app=seeded["app"])
+    db = seeded["db"]
+    acct = seeded["acct"]
+    e = await db.create_directory_entry(
+        "Browse API Shop", address="9 Public Way", status="active",
+    )
+    await db.link_vendor_to_directory(acct.id, seeded["vendor"]["id"], e["id"])
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.get("/api/vendors/directory/browse",
+                        headers=_h(seeded["token_fleet"]))
+        assert r.status_code == 200
+        mine = [x for x in r.json()["entries"] if x["id"] == e["id"]]
+        assert len(mine) == 1
+        assert mine[0]["linked_vendor_id"] == seeded["vendor"]["id"]
+        assert "suggested_by_account" not in mine[0]
+
+        r = await c.get("/api/vendors/directory/browse",
+                        headers=_h(seeded["token_driver"]))
+        assert r.status_code == 403

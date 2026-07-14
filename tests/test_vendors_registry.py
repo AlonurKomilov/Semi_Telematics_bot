@@ -97,3 +97,28 @@ async def test_projection_links_vendor_and_survives_resync(db):
     # Rollups on the list read.
     assert vendors[0]["work_order_count"] == 1
     assert vendors[0]["total_spent"] == 500.0
+
+
+@pytest.mark.asyncio
+async def test_resolve_enriches_empty_fields_only(db):
+    """Enrich-on-save: an existing vendor LEARNS contact info it lacks
+    from later saves (WO forms, sync) — but never overwrites a value
+    someone already set."""
+    a = 15
+    v = await db.resolve_or_create_vendor(a, "Learn Shop")
+    assert v["address"] == "" and v["phone"] == ""
+
+    # Later WO save carries address + phone → empty fields fill.
+    v2 = await db.resolve_or_create_vendor(
+        a, "learn shop", address="9 Oak St", phone="555-77",
+    )
+    assert v2["id"] == v["id"]
+    assert v2["address"] == "9 Oak St"
+    assert v2["phone"] == "555-77"
+
+    # A DIFFERENT address later does NOT overwrite the learned one.
+    v3 = await db.resolve_or_create_vendor(
+        a, "Learn Shop", address="1 Elm Ave", email="ls@x.com",
+    )
+    assert v3["address"] == "9 Oak St"      # kept
+    assert v3["email"] == "ls@x.com"        # was empty → filled

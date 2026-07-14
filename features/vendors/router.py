@@ -88,6 +88,21 @@ async def search_directory(
     return {"entries": await tenant_db.search_directory_active(q)}
 
 
+@router.get("/directory/browse")
+async def browse_directory(
+    q: str = "",
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """The public directory as a browsable list: identity fields, the
+    anonymous rating aggregate, and whether one of the CALLER's vendors
+    links to each entry.  Nothing account-attributable beyond the
+    caller's own link status."""
+    if not await _vendor_access(user):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    return {"entries": await tenant_db.browse_directory(user["account_id"], q)}
+
+
 # NOTE: single-segment literal routes — declared BEFORE /{vendor_id}
 # so the int param cannot capture them.
 class MarketSharingBody(BaseModel):
@@ -264,6 +279,14 @@ async def suggest_to_directory(
     vendor = await tenant_db.get_vendor(vendor_id, user["account_id"])
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
+    # Quality gate: a name-only suggestion gives the reviewing operator
+    # nothing to verify against the real world.  The dashboard collects
+    # the address in the suggestion dialog before calling this.
+    if not (vendor.get("address") or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Add the shop's address before suggesting it to the directory.",
+        )
     entry = await tenant_db.create_directory_entry(
         vendor["name"], address=vendor["address"], phone=vendor["phone"],
         email=vendor["email"],

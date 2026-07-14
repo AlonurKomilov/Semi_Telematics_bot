@@ -183,6 +183,9 @@ async def create_tables(conn) -> None:
         -- fields only — never any account's transaction data.
         -- status: pending (suggested, awaiting operator review) |
         -- active | rejected.
+        -- lat/lng: operator-confirmed coordinates (geocode suggest +
+        -- pin confirm on system.4truck.us).  Nullable — entries
+        -- without coordinates simply never appear on map layers.
         CREATE TABLE IF NOT EXISTS vendor_directory (
             id                   INTEGER PRIMARY KEY AUTOINCREMENT,
             name                 TEXT    NOT NULL,
@@ -196,6 +199,8 @@ async def create_tables(conn) -> None:
             status               TEXT    NOT NULL DEFAULT 'pending',
             source               TEXT    NOT NULL DEFAULT 'operator',
             suggested_by_account INTEGER,
+            lat                  DOUBLE PRECISION,
+            lng                  DOUBLE PRECISION,
             created_at           TEXT    NOT NULL,
             updated_at           TEXT    NOT NULL DEFAULT ''
         );

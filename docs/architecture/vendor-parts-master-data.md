@@ -3,11 +3,13 @@
 **Status:** Phases A–B SHIPPED 2026-07-13 · Phase C1 (directory core:
 platform table, operator curation on system.4truck.us, suggestion
 queue, account linking) SHIPPED 2026-07-13 · C2-reviews (anonymous
-stars/comments + operator moderation) SHIPPED 2026-07-13 · C2-map (POI
-layer) parked pending live-map POI prep · D BUILT DARK 2026-07-13
-behind MARKET_INTEL_ENABLED (toggle + nightly rollup job + triple-gated
-reads + profile UI all shipped; flag stays OFF until the legal review —
-open question #3 — clears)
+stars/comments + operator moderation) SHIPPED 2026-07-13 · **C2-map
+SHIPPED 2026-07-14** (prep + layer — see §5b: geo columns, operator
+geocode/pin flow, popup contract, and the live-map "Repair Shops"
+layer itself; miniapp port deliberately deferred) · D BUILT DARK
+2026-07-13 behind MARKET_INTEL_ENABLED (toggle + nightly rollup job +
+triple-gated reads + profile UI all shipped; flag stays OFF until the
+legal review — open question #3 — clears)
 **Decided:** 2026-07-13 (owner + Claude session; Phase A schema shape confirmed by
 fable-advisor consult)
 **Feature family:** Work Orders / Maintenance Ops (per-account layers) +
@@ -170,6 +172,70 @@ Platform-owned identity layer ("Google Maps for truck repair shops"):
 - **Reviews/stars:** account users rate directory vendors; displayed
   anonymously ("a fleet from Illinois · 12 trucks"). Moderation queue on the
   operator console. (**Open question #2:** review/dispute policy.)
+
+## 5b. C2-map prep (shipped 2026-07-14) + remaining build
+
+Prep that landed ahead of the map layer, per the live-map architecture
+audit:
+
+- **Geo columns:** `vendor_directory.lat/lng` (nullable REAL, platform
+  migration `migrate_vendor_directory_geo`).  Set ONLY via
+  `set_directory_geo()` — the generic entry update never touches
+  coordinates.  Entries without coordinates never appear on map layers.
+- **Operator geocode/pin flow** (system.4truck.us → Vendor Directory →
+  Location): server proxies Nominatim (`GET
+  /system/vendor-directory/geocode`, operator-gated, 1h cache, results
+  are suggestions only) → operator picks/adjusts → confirms via `PUT
+  /system/vendor-directory/{id}/geo` (both-or-null validation).  The
+  pin preview is a dependency-free OSM embed iframe.
+- **Generic popup contract:** `PoiLayerDef.popup?(feature, def)` in
+  `config/poiLayers.ts`; the engine (`usePoiLayers.renderLayer`)
+  dispatches `def.popup ?? defaultOsmPopup`.  DB-backed layers supply
+  their own popup — never add layer-specific branches in the engine.
+
+C2-map layer (SHIPPED 2026-07-14, same session as prep):
+
+1. `directory_entries_in_bbox()` on VendorDirectoryMixin — ACTIVE +
+   lat/lng NOT NULL + bbox predicate, identity fields only.
+   features/location calls the storage method on the shared Database;
+   it does NOT import capabilities.platform modules (layer boundary
+   verified by test_layer_boundaries).
+2. `vendor_directory` source branch in `map_pois()`
+   (features/location/pois.py) — platform-global data, tenant-agnostic
+   TTL cache key correct as-is.  Freshness: server cache 5 min +
+   client localStorage up to 2 h → a newly geocoded shop can take up
+   to ~2 h to appear for a client that recently viewed the area.
+3. `POI_LAYERS` entry "Repair Shops" under the new "Services" group
+   (lucide Wrench, green #16a34a) with `vendorDirectoryPopup` —
+   identity-only v1 (name, service badges, address, phone, website;
+   HTML-escaped, http(s)-only links).  Stars/usage counts stay behind
+   the manager-gated vendor endpoints; widening them to all map users
+   is a separate product decision.
+4. Miniapp (driver) map has NO POI system — porting the layer there is
+   a deliberate later step, not part of the dashboard build.
+
+## 5c. Directory UX + data-quality pipeline (shipped 2026-07-14)
+
+Closed the gaps from the end-to-end flow audit (user vendor → suggest →
+operator verify → public):
+
+- **Vendor edit dialog** on the profile page (backend PUT existed, UI
+  didn't — registry records were uneditable by accident).
+- **Enrich-on-save**: `resolve_or_create_vendor` fills an existing
+  vendor's EMPTY contact fields from later work-order saves / Datatruck
+  sync (was `ON CONFLICT DO NOTHING` → info discarded forever).  Never
+  overwrites set values; WO snapshots untouched.
+- **Suggestion quality gate**: suggest-to-directory 422s without an
+  address; the dashboard collects address/phone/email in a completion
+  dialog (write-back PUT then suggest) so operators receive verifiable
+  suggestions, not name-only stubs.
+- **On-link enrichment**: linking copies the operator-verified entry's
+  identity into the vendor's empty fields (global quality flows down).
+- **Directory browse tab** on the Vendors page (Team-Management surface
+  -tab pattern): active entries + anonymous rating aggregate + the
+  caller's own link status (`GET /vendors/directory/browse`,
+  `browse_directory()`fetches only the caller's link — nothing else
+  account-specific).
 
 ## 6. Phase D — Anonymized market intelligence (designed, not scheduled)
 

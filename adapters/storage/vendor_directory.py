@@ -99,6 +99,26 @@ class VendorDirectoryMixin:
         await self._db.commit()
         return cur.rowcount > 0
 
+    async def set_directory_geo(
+        self, entry_id: int, lat: Optional[float], lng: Optional[float],
+    ) -> bool:
+        """Set (or clear — both None) an entry's coordinates.  The only
+        writer of geo is the operator geocode/pin-confirm flow; generic
+        field updates never touch coordinates.  Partial pairs and
+        out-of-range values are rejected."""
+        if (lat is None) != (lng is None):
+            return False
+        if lat is not None and lng is not None:
+            if not (-90.0 <= float(lat) <= 90.0 and -180.0 <= float(lng) <= 180.0):
+                return False
+        cur = await self._db.execute(
+            "UPDATE vendor_directory SET lat = ?, lng = ?, updated_at = ? "
+            "WHERE id = ?",
+            (lat, lng, self._now(), entry_id),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
     # ── Account-side ─────────────────────────────────────────────
 
     async def search_directory_active(self, q: str, limit: int = 20) -> list[dict]:
@@ -107,7 +127,8 @@ class VendorDirectoryMixin:
         casing/whitespace don't matter."""
         needle = f"%{vendor_name_key(q)}%" if q else "%"
         cur = await self._db.execute(
-            "SELECT id, name, address, phone, email, website, services "
+            "SELECT id, name, address, phone, email, website, services, "
+            "       lat, lng "
             "FROM vendor_directory "
             "WHERE status = 'active' AND name_key LIKE ? "
             "ORDER BY name ASC "
@@ -116,11 +137,77 @@ class VendorDirectoryMixin:
         )
         return [dict(r) for r in await cur.fetchall()]
 
+    async def browse_directory(
+        self, account_id: int, q: str = "", limit: int = 200,
+    ) -> list[dict]:
+        """Account-facing directory BROWSE: active entries with the
+        anonymous rating aggregate and this account's link status.
+        Identity + community signal only — the caller's own link is the
+        single account-specific fact, and it's the caller's own."""
+        needle = f"%{vendor_name_key(q)}%" if q else "%"
+        cur = await self._db.execute(
+            "SELECT d.id, d.name, d.address, d.phone, d.email, d.website, "
+            "       d.services, d.lat, d.lng, "
+            "       (SELECT COUNT(*) FROM vendor_reviews r "
+            "         WHERE r.entry_id = d.id AND r.status = 'approved') AS rating_count, "
+            "       (SELECT AVG(r.rating) FROM vendor_reviews r "
+            "         WHERE r.entry_id = d.id AND r.status = 'approved') AS rating_avg, "
+            "       (SELECT v.id FROM vendors v "
+            "         WHERE v.account_id = ? AND v.global_vendor_id = d.id "
+            "         ORDER BY v.id LIMIT 1) AS linked_vendor_id, "
+            "       (SELECT v.name FROM vendors v "
+            "         WHERE v.account_id = ? AND v.global_vendor_id = d.id "
+            "         ORDER BY v.id LIMIT 1) AS linked_vendor_name "
+            "FROM vendor_directory d "
+            "WHERE d.status = 'active' AND d.name_key LIKE ? "
+            "ORDER BY d.name ASC "
+            f"LIMIT {int(limit)}",
+            (account_id, account_id, needle),
+        )
+        out = []
+        for r in (dict(x) for x in await cur.fetchall()):
+            r["rating_avg"] = (
+                round(float(r["rating_avg"]), 1)
+                if r.get("rating_avg") is not None else None
+            )
+            out.append(r)
+        return out
+
+    async def directory_entries_in_bbox(
+        self,
+        south: float,
+        west: float,
+        north: float,
+        east: float,
+        limit: int = 500,
+    ) -> list[dict]:
+        """ACTIVE, geocoded entries inside a map viewport — the data
+        source for the live-map POI layer.  Identity fields only (same
+        exposure rule as search_directory_active); entries without
+        operator-confirmed coordinates never appear."""
+        cur = await self._db.execute(
+            "SELECT id, name, address, phone, website, services, lat, lng "
+            "FROM vendor_directory "
+            "WHERE status = 'active' "
+            "  AND lat IS NOT NULL AND lng IS NOT NULL "
+            "  AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ? "
+            "ORDER BY name ASC "
+            f"LIMIT {int(limit)}",
+            (south, north, west, east),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
     async def link_vendor_to_directory(
         self, account_id: int, vendor_id: int, entry_id: Optional[int],
     ) -> bool:
         """Set (or clear, entry_id=None) the account vendor's global
-        link.  Only ACTIVE entries are linkable."""
+        link.  Only ACTIVE entries are linkable.
+
+        Linking also ENRICHES the private vendor record: the curated
+        entry's identity fields fill the vendor's EMPTY address/phone/
+        email (operator-verified data flowing down for free).  Fields
+        the account already set are never overwritten."""
+        entry: Optional[dict] = None
         if entry_id is not None:
             entry = await self.get_directory_entry(entry_id)
             if not entry or entry["status"] != "active":
@@ -131,6 +218,26 @@ class VendorDirectoryMixin:
             (entry_id, self._now(), vendor_id, account_id),
         )
         await self._db.commit()
+        if cur.rowcount > 0 and entry:
+            vcur = await self._db.execute(
+                "SELECT address, phone, email FROM vendors "
+                "WHERE id = ? AND account_id = ?",
+                (vendor_id, account_id),
+            )
+            vrow = await vcur.fetchone()
+            if vrow:
+                v = dict(vrow)
+                fills = {
+                    k: (entry.get(k) or "") for k in ("address", "phone", "email")
+                    if (entry.get(k) or "").strip() and not (v.get(k) or "").strip()
+                }
+                if fills:
+                    set_clause = ", ".join(f"{k} = ?" for k in fills)
+                    await self._db.execute(
+                        f"UPDATE vendors SET {set_clause} WHERE id = ? AND account_id = ?",
+                        [*fills.values(), vendor_id, account_id],
+                    )
+                    await self._db.commit()
         return cur.rowcount > 0
 
     # ── Reviews (Phase C2 — anonymous stars/comments, moderated) ──

@@ -8,14 +8,62 @@ feature router (active entries, identity fields only) — never here.
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
+import aiohttp
+from cachetools import TTLCache
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from interfaces.api.deps import get_tenant_db, require_system_owner
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/system/vendor-directory", tags=["system"])
+
+# ── Geocoding (Nominatim proxy) ───────────────────────────────────────
+#
+# Operator-triggered only (require_system_owner) so call volume is a
+# handful per curation session — far inside Nominatim's 1 req/s usage
+# policy.  The cache absorbs repeat lookups of the same address, and
+# results are SUGGESTIONS: nothing is stored until the operator
+# confirms the pin (PUT /{id}/geo).
+
+_NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+_NOMINATIM_UA = "4truck-system-dashboard/1.0 (+https://4truck.us)"
+_geocode_cache: TTLCache = TTLCache(maxsize=200, ttl=3600)
+
+
+async def _nominatim_search(q: str) -> list[dict]:
+    """Address → up to 5 coordinate suggestions.  Split out so tests
+    can stub the network hop."""
+    session = aiohttp.ClientSession()
+    try:
+        async with session.get(
+            _NOMINATIM_URL,
+            params={
+                "q": q,
+                "format": "jsonv2",
+                "limit": 5,
+                "countrycodes": "us",
+            },
+            headers={"User-Agent": _NOMINATIM_UA},
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as resp:
+            resp.raise_for_status()
+            raw = await resp.json()
+    finally:
+        await session.close()
+    return [
+        {
+            "lat": float(r["lat"]),
+            "lng": float(r["lon"]),
+            "label": str(r.get("display_name") or ""),
+        }
+        for r in raw
+        if r.get("lat") is not None and r.get("lon") is not None
+    ]
 
 
 class DirectoryCreate(BaseModel):
@@ -84,6 +132,55 @@ async def update_entry(
             status_code=409,
             detail="Another directory entry already has this name.",
         )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    return {"ok": True}
+
+
+class GeoUpdate(BaseModel):
+    """Both set, or both null to clear."""
+    lat: Optional[float] = Field(None, ge=-90, le=90)
+    lng: Optional[float] = Field(None, ge=-180, le=180)
+
+
+@router.get("/geocode")
+async def geocode_address(
+    q: str = Query(..., min_length=3, max_length=300),
+    user: dict = Depends(require_system_owner),
+):
+    """Coordinate SUGGESTIONS for an address — operator picks/adjusts
+    and confirms via PUT /{id}/geo; nothing is stored here."""
+    key = q.strip().lower()
+    cached = _geocode_cache.get(key)
+    if cached is not None:
+        return {"results": cached}
+    try:
+        results = await _nominatim_search(q.strip())
+    except Exception as exc:
+        logger.warning("Nominatim geocode failed for %r: %s", q, exc)
+        raise HTTPException(
+            status_code=502,
+            detail="Geocoding service unavailable — try again "
+                   "or enter coordinates manually.",
+        )
+    _geocode_cache[key] = results
+    return {"results": results}
+
+
+@router.put("/{entry_id}/geo")
+async def set_entry_geo(
+    entry_id: int,
+    body: GeoUpdate,
+    user: dict = Depends(require_system_owner),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Operator-confirmed coordinates (or clear with both null).  The
+    single writer of directory geo — generic PUT never touches it."""
+    if (body.lat is None) != (body.lng is None):
+        raise HTTPException(
+            status_code=422, detail="lat and lng must be set together",
+        )
+    ok = await tenant_db.set_directory_geo(entry_id, body.lat, body.lng)
     if not ok:
         raise HTTPException(status_code=404, detail="Entry not found")
     return {"ok": True}

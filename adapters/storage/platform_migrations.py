@@ -15,6 +15,7 @@ async def run_all(conn) -> None:
     """Execute every platform migration in order."""
     await migrate_email_unique_per_account(conn)
     await migrate_vendor_directory(conn)
+    await migrate_vendor_directory_geo(conn)
     await migrate_vendor_reviews(conn)
     await migrate_market_intel(conn)
     await migrate_add_bot_columns(conn)
@@ -3346,6 +3347,8 @@ async def migrate_vendor_directory(conn) -> None:
                 status               TEXT    NOT NULL DEFAULT 'pending',
                 source               TEXT    NOT NULL DEFAULT 'operator',
                 suggested_by_account INTEGER,
+                lat                  DOUBLE PRECISION,
+                lng                  DOUBLE PRECISION,
                 created_at           TEXT    NOT NULL,
                 updated_at           TEXT    NOT NULL DEFAULT ''
             );
@@ -3356,6 +3359,36 @@ async def migrate_vendor_directory(conn) -> None:
         logger.info("Platform migration: vendor_directory ready")
     except Exception as e:
         logger.error("vendor_directory migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_vendor_directory_geo(conn) -> None:
+    """Coordinates for directory entries (C2 map-layer prerequisite).
+    Nullable — set only through the operator geocode/pin-confirm flow;
+    entries without coordinates never appear on map layers.  IF NOT
+    EXISTS makes this a clean no-op on fresh DBs (whose CREATE TABLE
+    already carries the columns) without swallowing real errors.
+
+    DOUBLE PRECISION, not REAL: Postgres REAL is float4 and mangles
+    coordinates (-87.65 → -87.6500015…).  The ALTER TYPE pass repairs
+    any dev DB that briefly ran the pre-release REAL version."""
+    try:
+        for col in ("lat", "lng"):
+            await conn.execute(
+                "ALTER TABLE vendor_directory "
+                f"ADD COLUMN IF NOT EXISTS {col} DOUBLE PRECISION"
+            )
+            await conn.execute(
+                "ALTER TABLE vendor_directory "
+                f"ALTER COLUMN {col} TYPE DOUBLE PRECISION"
+            )
+        await conn.commit()
+        logger.info("Platform migration: vendor_directory geo columns ready")
+    except Exception as e:
+        logger.error("vendor_directory geo migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:
