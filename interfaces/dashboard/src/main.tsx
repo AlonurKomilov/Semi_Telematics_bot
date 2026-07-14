@@ -83,7 +83,11 @@ if (_isApply) {
     <React.StrictMode>
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
-          <TooltipProvider>
+          {/* Tooltips open after a short hover intent (no bubble spam while
+              the mouse is just passing); once one is open, moving to a
+              neighbouring target shows its tooltip instantly (400ms warm
+              group) — the VS Code feel. */}
+          <TooltipProvider delay={600}>
             <BrowserRouter basename={import.meta.env.VITE_ROUTER_BASE ?? ''}>
               <AuthProvider>
                 <RoleViewProvider>

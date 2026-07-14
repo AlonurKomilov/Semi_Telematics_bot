@@ -2281,7 +2281,7 @@ export default function DataGrid({
                       <span className="shrink-0 font-medium text-foreground">
                         {col?.label || f.id}
                       </span>
-                      <Tip label={describeFilter(f.id, f.value)}>
+                      <Tip label={describeFilter(f.id, f.value)} followCursor>
                       <span className="flex-1 truncate text-muted-foreground">
                         {describeFilter(f.id, f.value)}
                       </span>

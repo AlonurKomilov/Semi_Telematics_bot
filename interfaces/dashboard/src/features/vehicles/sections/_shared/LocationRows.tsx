@@ -51,7 +51,7 @@ export function LocationRows({
         <span className="text-muted-foreground flex-shrink-0">Address</span>
         <Freshness ts={ts}>
           {address && mapsHref ? (
-            <Tip label="Open in Google Maps">
+            <Tip label="Open in Google Maps" followCursor>
             <a
               href={mapsHref}
               target="_blank"

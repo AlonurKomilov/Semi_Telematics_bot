@@ -116,7 +116,7 @@ const ALL_COLUMNS: AnyColumn[] = [
       const full = String(v ?? '');
       const { street } = parseAddress(full);
       return full
-        ? <Tip label={full}><span>{street || full}</span></Tip>
+        ? <Tip label={full} followCursor><span>{street || full}</span></Tip>
         : <span className="text-muted-foreground">—</span>;
     },
   },
