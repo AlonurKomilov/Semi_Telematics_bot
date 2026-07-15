@@ -1268,7 +1268,12 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                 </div>
               </div>
             ) : (
-              <div className="max-w-[82%] group">
+              /* Assistant messages render FLAT on the chat background —
+                 no bubble/card — per the assistant-UI convention (only
+                 the USER is a speech bubble; the answer reads as the
+                 page).  Full width: tables/artifacts need it, especially
+                 in the 420px panel. */
+              <div className="w-full group">
                 {/* Process log — the ordered timeline of what produced
                     this answer (thinking → tool call → result → …),
                     collapsed by default.  Falls back to the flat
@@ -1363,7 +1368,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   );
                 })()}
                 <div
-                  className="rounded-2xl px-4 py-3 text-sm bg-card border border-border text-foreground rounded-bl-none ai-response shadow-sm"
+                  className="text-sm text-foreground ai-response"
                   dangerouslySetInnerHTML={{ __html: formatAIResponse(msg.text) }}
                 />
                 {/* Native artifacts (tables/charts) the model produced —
@@ -1480,12 +1485,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
 
         {loading && (
           <div className="flex justify-start">
-            {/* Live progress card — renders the REAL process as it happens,
+            {/* Live progress — renders the REAL process as it happens,
                 in true event order (thinking → tool → thinking → …), using
                 the SAME visual language as the finished "N steps" timeline.
-                Canned phrases appear only in the first seconds before any
-                real event has arrived. */}
-            <div className="bg-muted rounded-xl px-4 py-3 text-sm rounded-bl-sm max-w-[82%] min-w-[260px]">
+                FLAT like the finished answer (assistant side never gets a
+                bubble); canned phrases appear only in the first seconds
+                before any real event has arrived. */}
+            <div className="w-full text-sm">
               <div className="flex items-center justify-between gap-4 mb-2">
                 <span className="inline-flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
                   <Loader2 size={12} className="animate-spin text-primary" aria-hidden />
