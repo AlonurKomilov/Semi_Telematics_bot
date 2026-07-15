@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { HelpCircle, type LucideIcon } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { InfoTip } from '../tooltip';
 
 interface PageHeaderProps {
   title: string;
@@ -34,33 +35,32 @@ export default function PageHeader({
               </span>
             )}
             <h1 className="text-2xl font-bold text-foreground truncate">{title}</h1>
+            {/* Page description lives behind ⓘ — one hover away instead of a
+                permanent line under every title (product decision: the
+                title + content should orient; the sentence is reference).
+                Converts all pages at once since every page uses this shell. */}
+            {description && <InfoTip size={16} label={description} />}
           </div>
-          {(description || helpHref) && (
+          {helpHref && (
             <p className="text-sm text-muted-foreground mt-1.5 max-w-2xl">
-              {description}
-              {helpHref && (
-                <>
-                  {description ? ' ' : ''}
-                  {isExternal ? (
-                    <a
-                      href={helpHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-primary hover:underline"
-                    >
-                      <HelpCircle size={12} />
-                      {helpLabel}
-                    </a>
-                  ) : (
-                    <Link
-                      to={helpHref}
-                      className="inline-flex items-center gap-1 text-primary hover:underline"
-                    >
-                      <HelpCircle size={12} />
-                      {helpLabel}
-                    </Link>
-                  )}
-                </>
+              {isExternal ? (
+                <a
+                  href={helpHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  <HelpCircle size={12} />
+                  {helpLabel}
+                </a>
+              ) : (
+                <Link
+                  to={helpHref}
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                >
+                  <HelpCircle size={12} />
+                  {helpLabel}
+                </Link>
               )}
             </p>
           )}
