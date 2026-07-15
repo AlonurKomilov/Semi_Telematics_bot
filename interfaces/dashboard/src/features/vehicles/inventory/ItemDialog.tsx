@@ -171,6 +171,9 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
   const [status, setStatus] = useState(item.status);
   const [note, setNote] = useState('');
   const [transferTo, setTransferTo] = useState('');
+  // History shows the LATEST 5 by default — an old item can carry dozens
+  // of events, and a wall of history buries the actions above it.
+  const [showAllEvents, setShowAllEvents] = useState(false);
   const [err, setErr] = useState('');
   const { label: catLabel, Icon } = categoryMeta(item.category);
   const { data: fleet, isLoading: fleetLoading } = useFleetList(canManage);
@@ -264,7 +267,7 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
                 </span>
                 <input
                   value={note} onChange={(e) => setNote(e.target.value)}
-                  placeholder="Why? (recommended when reporting damaged or missing)"
+                  placeholder="Optional note…"
                   className={`mt-1 ${inputCls}`}
                 />
               </label>
@@ -285,10 +288,12 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
 
           <div className="border-t border-border pt-3">
             <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-              History
+              History{(eventsData?.events?.length ?? 0) > 0 && (
+                <span className="ml-1.5 normal-case tracking-normal text-muted-foreground/70">({eventsData?.events?.length})</span>
+              )}
             </div>
             <ul className="space-y-2 max-h-48 overflow-y-auto pr-1">
-              {(eventsData?.events ?? []).map((e) => (
+              {(showAllEvents ? (eventsData?.events ?? []) : (eventsData?.events ?? []).slice(0, 5)).map((e) => (
                 <li key={e.id} className="text-xs text-muted-foreground">
                   <div className="flex items-baseline gap-1.5 flex-wrap">
                     <span className="text-foreground font-medium">
@@ -315,6 +320,17 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
                 <li className="text-xs text-muted-foreground/60 italic">No events yet.</li>
               )}
             </ul>
+            {(eventsData?.events?.length ?? 0) > 5 && (
+              <button
+                type="button"
+                onClick={() => setShowAllEvents((v) => !v)}
+                className="mt-2 text-2xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showAllEvents
+                  ? 'Show less'
+                  : `Show ${(eventsData?.events?.length ?? 0) - 5} more`}
+              </button>
+            )}
           </div>
         </div>
       </DialogContent>
