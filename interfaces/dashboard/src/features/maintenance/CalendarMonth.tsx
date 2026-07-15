@@ -347,7 +347,7 @@ export function CalendarMonth({
                             {(task.task_type || '').replace(/_/g, ' ')}
                           </span>
                           {task.status === 'overdue' && (
-                            <span className={`text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded ${toneClasses('danger')}`}>
+                            <span className={`text-3xs uppercase tracking-wide px-1.5 py-0.5 rounded-md ${toneClasses('danger')}`}>
                               Overdue
                             </span>
                           )}

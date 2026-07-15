@@ -30,7 +30,7 @@ const OBSTRUCTION_TONE: Record<string, Tone> = {
 
 function StatusBadge({ status }: { status: string }) {
   const cls = toneClasses(STATUS_TONE[status] ?? 'neutral');
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>{status}</span>;
+  return <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${cls}`}>{status}</span>;
 }
 
 // Capitalise an enum code for the filter dropdown — matches the

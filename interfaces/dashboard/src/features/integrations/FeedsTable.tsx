@@ -123,7 +123,7 @@ export default function FeedsTable({
         <span className="shrink-0 text-xs text-muted-foreground">{r.freshness}</span>
         {r.badge && (
           <span
-            className={`${toneClasses(r.badge.tone)} shrink-0 max-w-44 truncate rounded px-1.5 py-0.5 text-2xs`}
+            className={`${toneClasses(r.badge.tone)} shrink-0 max-w-44 truncate rounded-md px-1.5 py-0.5 text-2xs`}
             title={r.badge.title}
           >
             {r.badge.text}
@@ -154,7 +154,7 @@ export default function FeedsTable({
       </div>
       {r.note && (
         <p
-          className={`${toneClasses('warn')} mt-1.5 rounded px-2 py-1 text-2xs`}
+          className={`${toneClasses('warn')} mt-1.5 rounded-md px-2 py-1 text-2xs`}
           title={r.note.title}
         >
           {r.note.text}

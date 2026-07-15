@@ -62,7 +62,7 @@ function StatusChip({ row }: { row: PTIInspectionRow }) {
       row.review_status === 'rejected' ? 'danger' :
                                          'warn'   // needs_service / revision_required
     );
-    return <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${cls}`}>{label}</span>;
+    return <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${cls}`}>{label}</span>;
   }
   const wf = WORKFLOW_STATUS_LABELS[row.status] ?? row.status;
   const cls = toneClasses(
@@ -70,7 +70,7 @@ function StatusChip({ row }: { row: PTIInspectionRow }) {
     row.status === 'revision_required' ? 'warn' :
                                          'neutral'
   );
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${cls}`}>{wf}</span>;
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${cls}`}>{wf}</span>;
 }
 
 
@@ -81,7 +81,7 @@ function DefectsCell({ row }: { row: PTIInspectionRow }) {
     return <span className="text-muted-foreground">0</span>;
   }
   const oosBadge = row.has_oos_defect ? (
-    <span className={`ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded border text-3xs font-medium ${toneClasses('danger')}`}>
+    <span className={`ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded-md border text-3xs font-medium ${toneClasses('danger')}`}>
       OOS
     </span>
   ) : null;

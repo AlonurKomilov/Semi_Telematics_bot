@@ -68,7 +68,7 @@ export default function CarrierDirectory() {
         <span className="inline-flex items-center gap-2">
           <span className="font-medium text-foreground">{String(v || '')}</span>
           {Boolean(row.intake_review_pending) && (
-            <span className={`rounded-full border px-2 py-0.5 text-2xs font-medium ${toneClasses('info')}`}>
+            <span className={`rounded-md border px-2 py-0.5 text-2xs font-medium ${toneClasses('info')}`}>
               Carrier updated
             </span>
           )}

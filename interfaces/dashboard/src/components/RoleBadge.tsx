@@ -83,7 +83,7 @@ export default function RoleBadge({ role, label }: { role: string; label?: strin
   const text = label ?? (ROLE_LABEL[role.toLowerCase()] ?? role);
   return (
     <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${toneClasses(roleTone(role))}`}
+      className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium border ${toneClasses(roleTone(role))}`}
     >
       {text}
     </span>

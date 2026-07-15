@@ -58,7 +58,7 @@ function SeverityBadge({ severity }: { severity: string }) {
   // ``caution`` isn't in the shared status map (it's a fault-report
   // specific step between ok and warning); treat it as attention/warn.
   const tone = severity === 'caution' ? 'warn' : statusTone(severity);
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${toneClasses(tone)}`}>{severity}</span>;
+  return <span className={`px-2 py-0.5 rounded-md text-xs font-medium capitalize ${toneClasses(tone)}`}>{severity}</span>;
 }
 
 function FuelBadge({ pct }: { pct: number | null }) {

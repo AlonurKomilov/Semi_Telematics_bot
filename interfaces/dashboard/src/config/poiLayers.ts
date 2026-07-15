@@ -28,6 +28,7 @@ import {
   Scale,
   ShowerHead,
   SquareParking,
+  Store,
   TrafficCone,
   Wrench,
   type LucideIcon,
@@ -167,9 +168,16 @@ export function vendorDirectoryPopup(f: PoiFeature): string {
   const siteHtml = /^https?:\/\//i.test(site)
     ? `<div style="margin-top:4px"><a href="${esc(site)}" target="_blank" rel="noreferrer" style="color:${POPUP_LINK};font-size:10px">${esc(site.replace(/^https?:\/\//i, ''))}</a></div>`
     : '';
+  const chain = String(p.chain ?? '').trim();
+  // Present only on the my_vendors layer: the caller's own vendor name.
+  const mine = String(p.my_vendor_name ?? '').trim();
+  const mineHtml = mine
+    ? `<div style="margin-top:4px;font-size:10px;color:${POPUP.badgeText}"><span style="background:${POPUP.badgeBg};padding:2px 6px;border-radius:10px">Your vendor · ${esc(mine)}</span></div>`
+    : '';
   return `<div style="min-width:160px;max-width:240px">`
     + `<div style="font-weight:600;font-size:13px">${esc(p.name)}</div>`
-    + `<div style="color:${POPUP.muted};font-size:11px">Repair shop · 4truck directory</div>`
+    + `<div style="color:${POPUP.muted};font-size:11px">${chain ? `${esc(chain)} · ` : ''}Repair shop · 4truck directory</div>`
+    + mineHtml
     + badges
     + metaHtml
     + siteHtml
@@ -353,6 +361,19 @@ export const POI_LAYERS: PoiLayerDef[] = [
     label: 'Repair Shops',
     color: '#16a34a',
     icon: Wrench,
+    defaultOn: false,
+    group: 'services',
+    popup: vendorDirectoryPopup,
+  },
+  {
+    // THIS account's shops: directory entries auto-linked from the
+    // account's own vendors (service recorded → identity approved →
+    // linked, no user ceremony).  Identity + own-vendor name only —
+    // never spend.  Blue to stand apart from the green public layer.
+    id: 'my_vendors',
+    label: 'My Vendors',
+    color: '#2563eb',
+    icon: Store,
     defaultOn: false,
     group: 'services',
     popup: vendorDirectoryPopup,

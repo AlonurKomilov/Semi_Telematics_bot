@@ -147,7 +147,7 @@ export default function AlertsResults() {
                   alert has fired multiple times without being cleared. */}
               {(a.occurrence_count ?? 1) > 1 && (
                 <span
-                  className={`ml-2 inline-block px-2 py-0.5 rounded-full text-xs font-bold ${toneClasses('warn')}`}
+                  className={`ml-2 inline-block px-2 py-0.5 rounded-md text-xs font-bold ${toneClasses('warn')}`}
                   title={t('alerts.total_occurrences')}
                 >
                   × {a.occurrence_count}
@@ -352,17 +352,17 @@ export default function AlertsResults() {
               </span>
               <span className="text-xs text-muted-foreground">({as_.length})</span>
               {counts.critical > 0 && (
-                <span className={`px-1.5 py-0.5 rounded-full border text-2xs font-medium ${toneClasses('danger')}`}>
+                <span className={`px-1.5 py-0.5 rounded-md border text-2xs font-medium ${toneClasses('danger')}`}>
                   {counts.critical} critical
                 </span>
               )}
               {counts.warning > 0 && (
-                <span className={`px-1.5 py-0.5 rounded-full border text-2xs font-medium ${toneClasses('warn')}`}>
+                <span className={`px-1.5 py-0.5 rounded-md border text-2xs font-medium ${toneClasses('warn')}`}>
                   {counts.warning} warning
                 </span>
               )}
               {counts.info > 0 && (
-                <span className={`px-1.5 py-0.5 rounded-full border text-2xs font-medium ${toneClasses('info')}`}>
+                <span className={`px-1.5 py-0.5 rounded-md border text-2xs font-medium ${toneClasses('info')}`}>
                   {counts.info} info
                 </span>
               )}

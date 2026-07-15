@@ -30,7 +30,7 @@ function Pill({ value }: { value: unknown }) {
   const v = String(value || '');
   if (!v) return <span className="text-muted-foreground">—</span>;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium capitalize ${statusClasses(v)}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium capitalize ${statusClasses(v)}`}>
       {v.replace('_', '-')}
     </span>
   );
@@ -50,7 +50,7 @@ function SourceCell({ value }: { value: unknown }) {
   const v = String(value || '');
   if (!v || v === 'manual') return <span className="text-muted-foreground">—</span>;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium capitalize ${statusClasses('connected')}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium capitalize ${statusClasses('connected')}`}>
       {v}
     </span>
   );
@@ -88,7 +88,7 @@ const COLUMNS: AnyColumn[] = [
       const st = String((row as { settlement_status?: string }).settlement_status || '');
       return (
         <span
-          className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${statusClasses('completed')}`}
+          className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${statusClasses('completed')}`}
           title={st ? `Settlement ${ref} · ${st}` : `Settlement ${ref}`}
         >
           {ref}

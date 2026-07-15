@@ -84,7 +84,7 @@ export default function InventoryCard({ vehicleName, company }: VehicleSectionPr
                     </span>
                     <span className="text-2xs text-muted-foreground">{catLabel}</span>
                   </span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs border shrink-0 ${statusClasses(item.status)}`}>
+                  <span className={`px-2 py-0.5 rounded-md text-xs border shrink-0 ${statusClasses(item.status)}`}>
                     {STATUS_LABELS[item.status] ?? item.status}
                   </span>
                   {item.last_verified_at ? (

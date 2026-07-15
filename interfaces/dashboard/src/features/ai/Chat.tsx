@@ -1209,7 +1209,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         {messages.length === 0 && !loading && (
           <div className="text-center text-muted-foreground mt-16">
             <Bot size={40} className="mx-auto mb-3 text-primary/40" />
-            <p className="text-lg font-medium">{t('chat.title')}</p>
+            <p className="text-lg font-semibold">{t('chat.title')}</p>
             <p className="text-sm mt-1">
               {isDriverView
                 ? t('chat.ask_driver')
@@ -1779,7 +1779,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
               {plusOpen && (
                 <div
                   role="menu"
-                  className="absolute left-0 bottom-full mb-1 z-50 w-60 rounded-lg border border-border bg-card p-1 shadow-xl"
+                  className="absolute left-0 bottom-full mb-1 z-50 w-64 rounded-lg border border-border bg-card p-1 shadow-xl"
                 >
                   {SLASH_COMMANDS.map((c) => (
                     <button

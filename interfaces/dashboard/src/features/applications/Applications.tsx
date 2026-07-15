@@ -178,7 +178,7 @@ function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onC
           <Input placeholder="Safety / compliance email *" value={legal.compliance_email} onChange={(e) => setL('compliance_email', e.target.value)} />
         </div>
         {(!phone || !legal.legal_address || !legal.compliance_email) && (
-          <p className={`mt-2 rounded px-2 py-1 text-2xs ${toneClasses('warn')}`}>
+          <p className={`mt-2 rounded-md px-2 py-1 text-2xs ${toneClasses('warn')}`}>
             Add the carrier's <b>phone, mailing address &amp; email</b> — the §391.23 consent document is incomplete without them.
           </p>
         )}
@@ -565,7 +565,7 @@ export default function Applications() {
                     {l.is_active !== 1 ? 'revoked' : expired ? 'expired' : 'active'}
                   </span>
                   {(l.company_name || l.company_code) && (
-                    <span className={`rounded px-1.5 py-0.5 text-2xs ${toneClasses('info')}`}
+                    <span className={`rounded-md px-1.5 py-0.5 text-2xs ${toneClasses('info')}`}
                       title="This link brands the application form for this carrier">
                       {l.company_name || l.company_code}
                     </span>
@@ -697,7 +697,7 @@ export default function Applications() {
                     <span>
                       {r.first_name} {r.last_name}
                       {r.duplicate && (
-                        <span className={`ml-1.5 rounded px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}
+                        <span className={`ml-1.5 rounded-md px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}
                           title="Another application in this account shares an SSN, email, or phone">
                           re-applicant
                         </span>
@@ -751,7 +751,7 @@ export default function Applications() {
                   return s ? s.charAt(0).toUpperCase() + s.slice(1) : '(none)';
                 },
                 render: (v) => (
-                  <span className={`px-2 py-0.5 rounded text-xs capitalize ${statusClasses(String(v))}`}>
+                  <span className={`px-2 py-0.5 rounded-md text-xs capitalize ${statusClasses(String(v))}`}>
                     {String(v)}
                   </span>
                 ),
@@ -949,7 +949,7 @@ function ApplicationsBoard({ rows, loading, onMove, onOpen }: {
             onDrop={(e) => { e.preventDefault(); setOverCol(null); if (droppable && dragId != null) onMove(dragId, key); setDragId(null); }}
             className={`flex w-56 shrink-0 flex-col rounded-lg border ${isOver ? 'border-primary bg-primary/5' : 'border-border bg-muted/30'}`}>
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
-              <span className={`rounded px-2 py-0.5 text-xs font-medium capitalize ${statusClasses(key)}`}>{key}</span>
+              <span className={`rounded-md px-2 py-0.5 text-xs font-medium capitalize ${statusClasses(key)}`}>{key}</span>
               <span className="text-2xs text-muted-foreground">{items.length}</span>
             </div>
             <div className="flex min-h-16 flex-col gap-2 p-2">
@@ -968,7 +968,7 @@ function ApplicationsBoard({ rows, loading, onMove, onOpen }: {
                   </p>
                   <div className="flex items-center justify-between">
                     <p className="text-2xs text-muted-foreground tabular-nums">{r.submitted_at?.slice(0, 10) || '—'}</p>
-                    {r.duplicate && <span className={`rounded px-1 py-0.5 text-3xs ${toneClasses('warn')}`}>re-applicant</span>}
+                    {r.duplicate && <span className={`rounded-md px-1 py-0.5 text-3xs ${toneClasses('warn')}`}>re-applicant</span>}
                   </div>
                 </div>
               ))}
@@ -1092,7 +1092,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
                 <Download size={14} /> Packet
               </button>
             )}
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1"><X size={18} /></button>
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
           </div>
         </div>
 
@@ -1120,7 +1120,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
             <div className="flex flex-wrap items-center gap-2">
               {STATUSES.map((s) => (
                 <button key={s} onClick={() => setStatus(s)} disabled={busy}
-                  className={`px-2.5 py-1 rounded text-xs capitalize disabled:opacity-50 ${app.status === s ? statusClasses(s) : 'text-muted-foreground border border-border hover:bg-muted'}`}>
+                  className={`px-2.5 py-1 rounded-md text-xs capitalize disabled:opacity-50 ${app.status === s ? statusClasses(s) : 'text-muted-foreground border border-border hover:bg-muted'}`}>
                   {s}
                 </button>
               ))}
@@ -1363,9 +1363,9 @@ function VerificationsPanel({ appId }: { appId: number }) {
                 {r.mc ? <span className="ml-1.5 font-mono">MC {r.mc}</span> : null}
                 {r.phone ? <span className="ml-1.5">· {r.phone}</span> : null}
               </span>
-              {r.contact_ok === 'later' && <span className={`rounded px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>driver: after interview</span>}
-              {r.contact_ok === 'no' && <span className={`rounded px-1.5 py-0.5 text-2xs ${toneClasses('danger')}`}>driver: do not contact</span>}
-              <span className={`ml-auto rounded px-1.5 py-0.5 text-2xs ${toneClasses(tone)}`}>{statusLabel}</span>
+              {r.contact_ok === 'later' && <span className={`rounded-md px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>driver: after interview</span>}
+              {r.contact_ok === 'no' && <span className={`rounded-md px-1.5 py-0.5 text-2xs ${toneClasses('danger')}`}>driver: do not contact</span>}
+              <span className={`ml-auto rounded-md px-1.5 py-0.5 text-2xs ${toneClasses(tone)}`}>{statusLabel}</span>
             </div>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Input placeholder="safety@employer.com" value={emails[r.employer_index] ?? ''}

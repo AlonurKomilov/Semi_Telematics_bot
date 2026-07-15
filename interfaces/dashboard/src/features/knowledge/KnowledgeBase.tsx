@@ -1102,7 +1102,7 @@ function ArticleSection({
   return (
     <section className="space-y-3">
       {title && (
-        <h3 className="text-xs uppercase tracking-wide text-muted-foreground font-semibold inline-flex items-center gap-1.5">
+        <h3 className="text-xs uppercase tracking-wide text-muted-foreground font-medium inline-flex items-center gap-1.5">
           {title === 'Pinned' || title.length < 12
             ? <Pin size={12} />
             : null}
@@ -1191,11 +1191,11 @@ function ArticleCard({
             </span>
             {a.visibility === 'public' ? (
               a.approved ? (
-                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${toneClasses('ok')}`}>
+                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md ${toneClasses('ok')}`}>
                   {t('knowledge.chip_public')}{a.target_role && a.target_role !== 'all' ? ` · ${a.target_role}` : ''}
                 </span>
               ) : (
-                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded ${toneClasses('warn')}`}>
+                <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md ${toneClasses('warn')}`}>
                   {t('knowledge.chip_pending')}
                 </span>
               )
@@ -1332,7 +1332,7 @@ function ExpandedArticleBody({
             return (
               <span
                 key={`${i}-${cleaned}`}
-                className="px-2 py-0.5 bg-muted border border-border rounded-full text-xs text-muted-foreground"
+                className="px-2 py-0.5 bg-muted border border-border rounded-md text-xs text-muted-foreground"
               >
                 #{cleaned}
               </span>
@@ -1383,7 +1383,7 @@ function ExpandedArticleBody({
           </span>
           <button
             onClick={() => onApprove(a.id)}
-            className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded transition-colors ${toneClasses('ok')}`}
+            className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-md transition-colors ${toneClasses('ok')}`}
           >
             <Check size={12} />
             {t('knowledge.btn_approve')}

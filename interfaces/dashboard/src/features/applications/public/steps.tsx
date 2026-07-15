@@ -888,7 +888,7 @@ function DisclosureBody({ blocks }: { blocks: Block[] }) {
   return (
     <div className="flex flex-col gap-2.5 text-xs leading-relaxed text-muted-foreground">
       {blocks.map((b, i) => {
-        if (b.kind === 'h') return <p key={i} className="text-xs font-semibold uppercase tracking-wide text-foreground">{b.text}</p>;
+        if (b.kind === 'h') return <p key={i} className="text-xs font-medium uppercase tracking-wide text-foreground">{b.text}</p>;
         if (b.kind === 'p') return <p key={i}>{b.text}</p>;
         if (b.kind === 'note') return <p key={i} className="rounded bg-muted/50 p-2 text-2xs italic">{b.text}</p>;
         if (b.kind === 'ul') return <ul key={i} className="ml-4 list-disc space-y-1">{b.items.map((it, j) => <li key={j}>{it}</li>)}</ul>;

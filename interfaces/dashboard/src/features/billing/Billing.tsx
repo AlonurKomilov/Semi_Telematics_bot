@@ -238,7 +238,7 @@ function SummaryCard({ summary }: { summary: BillingSummary }) {
             summary.status === 'canceled' || summary.status === 'unpaid' ? toneClasses('danger') :
             toneClasses('neutral')
           }`}>{summary.status.replace('_', ' ')}</span>
-          <span className={`px-3 py-1 rounded-full text-xs font-semibold border ${tierBadge(summary.tier)}`}>
+          <span className={`px-3 py-1 rounded-md text-xs font-semibold border ${tierBadge(summary.tier)}`}>
             {summary.tier.toUpperCase()}
           </span>
         </div>
@@ -342,7 +342,7 @@ function AiUsageCard({ ai }: { ai: AiUsage }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {typeRows.length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">By Type</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">By Type</p>
             <div className="space-y-1.5">
               {typeRows.map(([label, s]) => (
                 <div key={label} className="flex justify-between text-sm">
@@ -357,7 +357,7 @@ function AiUsageCard({ ai }: { ai: AiUsage }) {
         )}
         {Object.keys(ai.by_model).length > 0 && (
           <div>
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">By Model</p>
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">By Model</p>
             <div className="space-y-1.5">
               {Object.entries(ai.by_model)
                 .sort((a, b) => b[1].tokens - a[1].tokens)
@@ -390,11 +390,11 @@ function PlanCard({ name, price, included, extraPer, features, current, onUpgrad
       current ? 'border-primary ring-1 ring-primary/30' : 'border-border'
     }`}>
       {current && (
-        <span className="text-xs bg-primary/15 text-primary border border-primary/30 rounded-full px-2 py-0.5 self-start mb-2">
+        <span className="text-xs bg-primary/15 text-primary border border-primary/30 rounded-md px-2 py-0.5 self-start mb-2">
           Current Plan
         </span>
       )}
-      <h3 className="text-lg font-bold text-foreground mb-1 capitalize">{name}</h3>
+      <h3 className="text-base font-semibold text-foreground mb-1 capitalize">{name}</h3>
       <p className="text-2xl font-bold text-ok mb-1">
         {price}<span className="text-sm text-muted-foreground font-normal">/mo</span>
       </p>
@@ -694,7 +694,7 @@ export default function Billing() {
       )}
 
       {/* Plans */}
-      <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3 mt-6">
+      <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3 mt-6">
         Available Plans
       </h2>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">

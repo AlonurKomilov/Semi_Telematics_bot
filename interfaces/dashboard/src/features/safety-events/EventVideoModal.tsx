@@ -148,7 +148,7 @@ export default function EventVideoModal({
               aria-label="Close"
               className="p-1 rounded hover:bg-white/10 transition-colors"
             >
-              <X size={18} />
+              <X size={16} />
             </button>
           </div>
         </div>
@@ -207,11 +207,11 @@ export default function EventVideoModal({
 
         {/* Footer strip — event type pill + meta chips + Download */}
         <div className="px-4 py-3 bg-card/80 border-t border-border flex flex-wrap items-center gap-3">
-          <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-primary/15 text-primary">
+          <span className="px-2 py-0.5 rounded-md text-xs font-semibold bg-primary/15 text-primary">
             {eventTitle}
           </span>
           {event.severity && (
-            <span className={`px-2 py-0.5 rounded-full text-xs font-medium border capitalize ${toneClasses('warn')}`}>
+            <span className={`px-2 py-0.5 rounded-md text-xs font-medium border capitalize ${toneClasses('warn')}`}>
               {event.severity}
             </span>
           )}

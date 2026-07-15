@@ -78,7 +78,7 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
       <div className="flex items-start gap-2">
         <span className="text-2xs font-medium text-foreground">{a.summary}</span>
         {a.risk && a.risk !== 'low' && (
-          <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-3xs font-medium ${toneClasses('warn')}`}>
+          <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-3xs font-medium ${toneClasses('warn')}`}>
             <ShieldAlert size={12} aria-hidden /> {a.risk}
           </span>
         )}

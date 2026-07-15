@@ -717,7 +717,7 @@ export default function Permissions() {
                         </button>
                       )}
                       {!on && (
-                        <span className={`text-2xs px-1.5 py-0.5 rounded normal-case tracking-normal ${toneClasses('warn')}`}>
+                        <span className={`text-2xs px-1.5 py-0.5 rounded-md normal-case tracking-normal ${toneClasses('warn')}`}>
                           module off — features hidden from every sidebar
                         </span>
                       )}
@@ -746,7 +746,7 @@ export default function Permissions() {
                     every other role shows a dash.  This is what makes the
                     Owner two-column split truthful. */}
                 <tr className="bg-muted/30 border-t border-border">
-                  <td colSpan={1 + columns.length} className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <td colSpan={1 + columns.length} className="px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                     Owner powers <span className="normal-case font-normal text-2xs text-muted-foreground/70">— primary-owner only · not editable</span>
                   </td>
                 </tr>
@@ -789,7 +789,7 @@ export default function Permissions() {
             <div className="flex items-center gap-2 mb-1">
               <Smartphone size={16} className="text-primary shrink-0" />
               <span className="text-base font-semibold text-foreground">Driver — self-service</span>
-              <span className={`text-2xs px-1.5 py-0.5 rounded normal-case tracking-normal ${toneClasses('info')}`}>mobile app</span>
+              <span className={`text-2xs px-1.5 py-0.5 rounded-md normal-case tracking-normal ${toneClasses('info')}`}>mobile app</span>
             </div>
             <p className="text-2xs text-muted-foreground mb-3">
               Drivers don&apos;t manage anything and use the Telegram <span className="font-medium text-foreground/80">mini app</span> only, so they sit apart from the matrix above. Tick what a driver sees of their <span className="font-medium text-foreground/80">own truck</span> and <span className="font-medium text-foreground/80">own records</span> — changes reach every driver&apos;s app on next load. The <span className="font-medium text-foreground/80">Alerts</span> inbox and <span className="font-medium text-foreground/80">AI assistant</span> come automatically with the Vehicle grant.
@@ -830,7 +830,7 @@ export default function Permissions() {
           <div className="mt-4 rounded-lg border border-border bg-card p-4">
             <div className="flex items-center gap-2 mb-1">
               <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">System Services</span>
-              <span className={`text-2xs px-1.5 py-0.5 rounded normal-case tracking-normal ${toneClasses('ok')}`}>always on</span>
+              <span className={`text-2xs px-1.5 py-0.5 rounded-md normal-case tracking-normal ${toneClasses('ok')}`}>always on</span>
             </div>
             <p className="text-2xs text-muted-foreground mb-3">
               Infrastructure services — not granted here. Each one follows the role&apos;s feature permissions automatically: disable a feature and its slice stops, but the service itself never stops.
@@ -903,7 +903,7 @@ export default function Permissions() {
             <div className="px-5 py-3 overflow-y-auto space-y-3">
               {moduleChanges.length > 0 && (
                 <div>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">Department modules</div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">Department modules</div>
                   {moduleChanges.map((m) => (
                     <div key={m.id} className="text-sm flex items-center justify-between py-0.5">
                       <span>{m.title}</span>
@@ -914,7 +914,7 @@ export default function Permissions() {
               )}
               {[...new Set(changes.map((c) => c.key))].map((key) => (
                 <div key={key}>
-                  <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-1">{changes.find((c) => c.key === key)?.roleLabel ?? key}</div>
+                  <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-1">{changes.find((c) => c.key === key)?.roleLabel ?? key}</div>
                   <ul className="space-y-0.5">
                     {changes.filter((c) => c.key === key).map((c) => (
                       <li key={c.label} className="flex items-center gap-2 text-sm">
@@ -947,7 +947,7 @@ function FragmentGroup({ title, control, children, colSpan }: { title: string; c
   return (
     <>
       <tr className="bg-muted/50 border-t-2 border-border">
-        <td colSpan={colSpan} className="px-3 py-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <td colSpan={colSpan} className="px-3 py-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
           <div className="flex items-center gap-2">
             <span>{title}</span>
             {control}

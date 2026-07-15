@@ -32,7 +32,7 @@ const CLASS_TONE: Record<string, Tone> = {
 
 function ClassBadge({ cls }: { cls: string }) {
   const c = toneClasses(CLASS_TONE[cls] ?? 'neutral');
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase ${c}`}>{cls}</span>;
+  return <span className={`px-2 py-0.5 rounded-md text-xs font-medium uppercase ${c}`}>{cls}</span>;
 }
 
 // Alert level → tone.  ``breakdown`` is a distinct categorical state
@@ -43,7 +43,7 @@ function AlertBadge({ level }: { level: string }) {
     return <span className="px-2 py-0.5 rounded-full text-xs font-medium uppercase bg-purple-500/15 text-purple-700 dark:text-purple-400">{level}</span>;
   }
   const tone: Tone = level === 'critical' ? 'danger' : level === 'warning' ? 'warn' : 'neutral';
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium uppercase ${toneClasses(tone)}`}>{level}</span>;
+  return <span className={`px-2 py-0.5 rounded-md text-xs font-medium uppercase ${toneClasses(tone)}`}>{level}</span>;
 }
 
 function formatDuration(hours: number): string {

@@ -115,6 +115,14 @@ Every badge/chip uses one treatment: a **15% tinted fill + solid text +
 30% border**, in one hue. Each tone exposes three tokens for this:
 `text-<tone>` (solid), `bg-<tone>-bg` (fill), `border-<tone>-bd` (border).
 
+**Geometry is part of the recipe too** — the reference is
+[`StatusBadge`](src/components/StatusBadge.tsx): **`rounded-md · px-2
+py-0.5 · text-xs font-medium`**. One corner shape everywhere; a status
+pill is never `rounded-full` on one page and square-ish on another.
+(Dense table cells may drop to `text-2xs`, keeping the rest.)  Close ✕
+icons follow the same two-step idea: `12` inside chips/tags, `16` in
+modal/panel headers.
+
 > The `-bg`/`-bd` tokens pre-bake the alpha (via `color-mix` in
 > [index.css](src/index.css)) so the recipe is one short class set.
 > `bg-ok/15` etc. **also** work — the `/<alpha>` modifier is enabled on

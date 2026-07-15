@@ -42,7 +42,7 @@ export default function AlertStrip({ items }: AlertStripProps) {
                 <Icon size={18} />
               </span>
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
+                <p className="text-xs font-medium uppercase tracking-wide opacity-80">
                   Needs attention
                 </p>
                 <p className="text-sm font-medium truncate">

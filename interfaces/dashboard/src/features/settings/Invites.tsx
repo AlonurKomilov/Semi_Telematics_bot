@@ -107,7 +107,7 @@ function StatusBadge({ invite }: { invite: InviteInfo }) {
   // map at lib/status.ts already maps to 'info', so the pill stays
   // info-blue across the dashboard's theme picker rather than
   // re-colouring with the primary brand colour.
-  const cls = 'px-2 py-0.5 rounded-full text-xs border';
+  const cls = 'px-2 py-0.5 rounded-md text-xs border';
   const status = inviteStatus(invite);
   const tone =
     status === 'used' ? toneClasses('ok')
@@ -821,7 +821,7 @@ export function InvitesPanel() {
             {badgeFor && (
               <Tip label={inv.email_bounce_reason || badgeFor.label}>
                 <span
-                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium ${toneClasses(badgeFor.tone)}`}
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-2xs font-medium ${toneClasses(badgeFor.tone)}`}
                 >
                   <badgeFor.icon size={12} />
                   {badgeFor.label}
@@ -1094,7 +1094,7 @@ export function InvitesPanel() {
                     })}
                   </p>
                   {duplicateMember && (
-                    <div className={`mt-2 rounded border px-2 py-1.5 text-2xs ${toneClasses('warn')}`}>
+                    <div className={`mt-2 rounded-md border px-2 py-1.5 text-2xs ${toneClasses('warn')}`}>
                       <div className="font-medium">
                         {t('forms.recipient_email_duplicate_title', {
                           defaultValue: 'Already a member: {{name}} ({{role}})',

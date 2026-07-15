@@ -79,7 +79,7 @@ export function AIReviewRollup({ inspection: ins }: Props) {
           {disagreements.map((d, i) => (
             <div
               key={i}
-              className={`text-xs rounded border px-2 py-1.5 ${toneClasses('danger')}`}
+              className={`text-xs rounded-md border px-2 py-1.5 ${toneClasses('danger')}`}
             >
               <span className="font-medium">
                 {t('inspections.ai.disagreement', { item: d.label })}

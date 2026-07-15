@@ -76,7 +76,7 @@ function scoreVar(score: number): string {
 function ScoreBadge({ score, tierLabel }: { score: number; tierLabel: string }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold border ${toneClasses(scoreTone(score))}`}
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold border ${toneClasses(scoreTone(score))}`}
     >
       <span>{score}</span>
       <span className="opacity-70">·</span>
@@ -563,7 +563,7 @@ function makeColumns(
             const pct = p.cap ? Math.round((p.subtotal / p.cap) * 100) : 0;
             return (
               <span key={k}
-                className={`text-3xs font-mono tabular-nums px-1.5 py-0.5 rounded border ${toneClasses(scoreTone(pct))}`}
+                className={`text-3xs font-mono tabular-nums px-1.5 py-0.5 rounded-md border ${toneClasses(scoreTone(pct))}`}
                 title={`${k}: ${p.subtotal}/${p.cap} (${pct}%)`}>
                 {abbr} {pct}
               </span>
@@ -1032,7 +1032,7 @@ function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
             aria-label={t('common.close')}
             className="text-muted-foreground hover:text-foreground p-1"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 

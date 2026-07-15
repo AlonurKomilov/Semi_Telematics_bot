@@ -102,7 +102,7 @@ function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresen
         <Sparkles size={12} /> AI theme
       </button>
       {surfaceContrastWeak(brand.surface_color) && (
-        <span className={`rounded px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>Surface is mid-tone — text may be low-contrast</span>
+        <span className={`rounded-md px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>Surface is mid-tone — text may be low-contrast</span>
       )}
       <Button size="sm" onClick={onSave} disabled={saving}>{saving ? '…' : 'Save'}</Button>
     </div>

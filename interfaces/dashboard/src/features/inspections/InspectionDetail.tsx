@@ -189,7 +189,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
               aria-label="Close"
               className="text-muted-foreground hover:text-foreground p-1"
             >
-              <X size={18} />
+              <X size={16} />
             </button>
           </div>
         </div>
@@ -223,7 +223,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
                 <p className="text-xl font-bold tabular-nums">
                   {ins.defects_count}
                   {ins.has_oos_defect ? (
-                    <span className={`ml-2 text-xs font-medium px-1.5 py-0.5 rounded border ${toneClasses('danger')}`}>
+                    <span className={`ml-2 text-xs font-medium px-1.5 py-0.5 rounded-md border ${toneClasses('danger')}`}>
                       OOS
                     </span>
                   ) : null}

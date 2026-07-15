@@ -28,7 +28,7 @@ interface HeroChipProps {
 export default function HeroChip({ label, value, tone = 'neutral', title }: HeroChipProps) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-2xs border rounded ${toneClasses(CHIP_TONE[tone])}`}
+      className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-2xs border rounded-md ${toneClasses(CHIP_TONE[tone])}`}
       title={title}
     >
       <span className="opacity-70">{label}</span>

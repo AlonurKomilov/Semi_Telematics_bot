@@ -163,7 +163,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
       {open && (
         <ul
           role="listbox"
-          className="absolute left-0 mt-1 w-60 bg-card border border-border rounded-lg shadow-xl text-sm z-50"
+          className="absolute left-0 mt-1 w-64 bg-card border border-border rounded-lg shadow-xl text-sm z-50"
         >
           <li className="px-3 py-1.5 text-3xs uppercase tracking-wider text-muted-foreground/60 border-b border-border">
             View dashboard as…
@@ -195,7 +195,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
                   {/* Flyout — flush to the right so hover bridges without a gap. */}
                   <ul
                     role="menu"
-                    className="invisible group-hover/sub:visible absolute left-full top-0 z-50 w-40 overflow-hidden rounded-lg border border-border bg-card shadow-xl"
+                    className="invisible group-hover/sub:visible absolute left-full top-0 z-50 w-44 overflow-hidden rounded-lg border border-border bg-card shadow-xl"
                   >
                     {([[v.tier?.senior ?? 'Manager', true], [v.tier?.base ?? 'Employee', false]] as const).map(([label, wantManager]) => {
                       const tierActive = isActive && previewAsManager === wantManager;

@@ -115,7 +115,7 @@ export default function VehicleHealth({ vehicleName, company }: VehicleSectionPr
           {healthAlerts.map((a, i) => (
             <span
               key={i}
-              className={`inline-block text-xs rounded px-2 py-0.5 mr-1 mb-1 ${toneClasses('danger')}`}
+              className={`inline-block text-xs rounded-md px-2 py-0.5 mr-1 mb-1 ${toneClasses('danger')}`}
             >
               {a}
             </span>

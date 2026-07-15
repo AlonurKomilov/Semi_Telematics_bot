@@ -119,7 +119,7 @@ function DrawerHeader({ alert, onClose }: {
         className="text-muted-foreground hover:text-foreground p-1 -m-1"
         aria-label={t('alerts.drillin.close')}
       >
-        <X size={18} />
+        <X size={16} />
       </button>
     </header>
   );

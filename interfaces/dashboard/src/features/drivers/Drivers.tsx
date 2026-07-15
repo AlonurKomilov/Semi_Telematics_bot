@@ -80,7 +80,7 @@ function ExpirationChip({ iso }: { iso: string | null }) {
   if (d <= 30) cls = toneClasses('danger');
   else if (d <= 90) cls = toneClasses('warn');
   return (
-    <span className={`px-2 py-0.5 rounded-full text-2xs border ${cls} tabular-nums`}>
+    <span className={`px-2 py-0.5 rounded-md text-2xs border ${cls} tabular-nums`}>
       {iso} {d < 0 ? `(${-d}d ago)` : `(${d}d)`}
     </span>
   );
@@ -146,8 +146,8 @@ const driverColumns: AnyColumn[] = [
     filterLabel: (row) => (row as unknown as DriverProfile).termination_date ? 'Terminated' : 'Active',
     render: (v) =>
       v
-        ? <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground border border-border">Terminated</span>
-        : <span className={`px-2 py-0.5 rounded-full text-xs border ${toneClasses('ok')}`}>Active</span>,
+        ? <span className="px-2 py-0.5 rounded-md text-xs bg-muted text-muted-foreground border border-border">Terminated</span>
+        : <span className={`px-2 py-0.5 rounded-md text-xs border ${toneClasses('ok')}`}>Active</span>,
   },
 ];
 
@@ -441,7 +441,7 @@ function DriverDrawer({
                 ) : (
                   <span
                     title="No Telegram linked yet — invite the driver via Telegram or share the bot deep-link"
-                    className={`inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded border ${toneClasses('warn')}`}
+                    className={`inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded-md border ${toneClasses('warn')}`}
                   >
                     Not linked
                   </span>
@@ -1232,7 +1232,7 @@ function SamsaraIdentityCard({ samsaraDriverId }: { samsaraDriverId: string | nu
     return (
       <span
         title="This Samsara driver ID is not in the fleet roster — possibly stale or wrong."
-        className={`inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded border ${toneClasses('warn')}`}
+        className={`inline-flex items-center gap-1 text-3xs px-1.5 py-0.5 rounded-md border ${toneClasses('warn')}`}
       >
         <AlertTriangle size={12} />
         ID {samsaraDriverId} — not in Samsara

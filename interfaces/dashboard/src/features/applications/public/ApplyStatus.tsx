@@ -102,7 +102,7 @@ export default function ApplyStatus() {
             <div className="mt-4 rounded-md border border-border p-4">
               <div className="flex items-center gap-2">
                 <CheckCircle2 size={18} className="text-muted-foreground" />
-                <span className={`rounded px-2 py-0.5 text-xs font-medium capitalize ${statusClasses(result.status)}`}>
+                <span className={`rounded-md px-2 py-0.5 text-xs font-medium capitalize ${statusClasses(result.status)}`}>
                   {view?.label ?? result.status}
                 </span>
               </div>

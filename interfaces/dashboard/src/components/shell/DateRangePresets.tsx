@@ -216,7 +216,7 @@ export default function DateRangePresets({
       {open && !showCal && (
         <ul
           role="listbox"
-          className="absolute right-0 top-full mt-1 w-48 max-h-80 overflow-y-auto bg-card border border-border rounded-md shadow-xl z-50 py-1"
+          className="absolute right-0 top-full mt-1 w-44 max-h-80 overflow-y-auto bg-card border border-border rounded-md shadow-xl z-50 py-1"
         >
           {options.map((opt) => {
             const active = opt.days === value;
@@ -249,7 +249,7 @@ export default function DateRangePresets({
       )}
 
       {open && showCal && (
-        <div className="absolute right-0 top-full mt-1 w-72 bg-card border border-border rounded-md shadow-xl z-50 p-3">
+        <div className="absolute right-0 top-full mt-1 w-80 bg-card border border-border rounded-md shadow-xl z-50 p-3">
           <div className="flex items-center justify-between mb-2">
             <button
               onClick={monthBack}

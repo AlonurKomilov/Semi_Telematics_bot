@@ -159,7 +159,7 @@ function ScheduleEditor({
           {initial.reportTypeLocked ? 'Edit schedule' : 'New schedule'}
         </h3>
         <button onClick={onCancel} className="text-muted-foreground hover:text-foreground">
-          <X size={18} />
+          <X size={16} />
         </button>
       </div>
 

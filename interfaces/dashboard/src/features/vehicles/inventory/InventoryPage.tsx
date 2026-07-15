@@ -106,7 +106,7 @@ const COLUMNS: AnyColumn[] = [
       return STATUS_LABELS[s] ?? s;
     },
     render: (v) => (
-      <span className={`px-2 py-0.5 rounded-full text-xs border ${statusClasses(String(v ?? ''))}`}>
+      <span className={`px-2 py-0.5 rounded-md text-xs border ${statusClasses(String(v ?? ''))}`}>
         {STATUS_LABELS[String(v)] ?? String(v ?? '')}
       </span>
     ),

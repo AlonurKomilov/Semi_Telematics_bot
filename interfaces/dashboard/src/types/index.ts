@@ -1443,6 +1443,9 @@ export interface WorkOrder {
   vendor_name: string;
   vendor_address: string;
   vendor_phone: string;
+  /** Registry-only contact captured on the form — never stored on the
+   *  work-order row itself (email isn't invoice truth). */
+  vendor_email?: string;
   service_date: string | null;
   odometer_at_service: number | null;
   engine_hours_at_service: number | null;
@@ -1564,6 +1567,8 @@ export interface DirectoryEntry {
    *  system console; entries without them never appear on map layers. */
   lat?: number | null;
   lng?: number | null;
+  /** Multi-location brand family ("TA / Petro"); '' = independent. */
+  chain?: string;
   /** Directory BROWSE only: the caller's own vendor linked to this
    *  entry (their one account-specific fact — nobody else's). */
   linked_vendor_id?: number | null;

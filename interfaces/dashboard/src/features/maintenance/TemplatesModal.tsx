@@ -147,7 +147,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
             </p>
           </div>
           <button onClick={onClose} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1">
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 

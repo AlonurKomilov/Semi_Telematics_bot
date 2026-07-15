@@ -277,7 +277,7 @@ export default function Settings() {
           {botConfig?.has_bot ? (
             <div>
               <div className="flex items-center gap-3 mb-4">
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border ${
                   botConfig.is_running !== false
                     ? toneClasses('ok')
                     : toneClasses('warn')

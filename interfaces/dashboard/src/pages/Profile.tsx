@@ -525,7 +525,7 @@ function SignInMethods() {
                     'profile.signin_verify_hint',
                     "We sent a verification link.  Until you click it, this email can't be used to sign in.",
                   )}
-                  className={`text-3xs uppercase tracking-wider px-1.5 py-0.5 rounded border font-semibold ${toneClasses('warn')}`}
+                  className={`text-3xs uppercase tracking-wider px-1.5 py-0.5 rounded-md border font-semibold ${toneClasses('warn')}`}
                 >
                   {t('profile.signin_unverified_chip', 'Unverified')}
                 </span>

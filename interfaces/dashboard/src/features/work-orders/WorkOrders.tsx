@@ -51,7 +51,7 @@ function PriorityCell({ value }: { value: unknown }) {
   const v = String(value || '').toLowerCase();
   if (!v) return <span className="text-muted-foreground">—</span>;
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses(PRIORITY_TONE[v] ?? 'neutral')}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses(PRIORITY_TONE[v] ?? 'neutral')}`}>
       {PRIORITY_LABEL[v] ?? v}
     </span>
   );
@@ -61,7 +61,7 @@ function Pill({ value, palette }: { value: unknown; palette: Record<string, Tone
   const v = String(value || '').toLowerCase();
   const cls = toneClasses(palette[v] ?? 'neutral');
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium capitalize ${cls}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium capitalize ${cls}`}>
       {v || '—'}
     </span>
   );
@@ -86,7 +86,7 @@ function SourceCell({ value }: { value: unknown }) {
   if (v === 'manual') return <span className="text-muted-foreground">—</span>;
   const label = v.charAt(0).toUpperCase() + v.slice(1);
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses('info')}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses('info')}`}>
       {label}
     </span>
   );

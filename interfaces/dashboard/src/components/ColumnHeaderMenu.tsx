@@ -137,7 +137,7 @@ export default function ColumnHeaderMenu({
                       sideOffset={4}
                       className="z-50 outline-none"
                     >
-                      <MenuPrimitive.Popup className="min-w-40 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+                      <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
                         <MenuItem
                           icon={<ArrowUp size={14} />}
                           label="Ascending"
@@ -200,7 +200,7 @@ export default function ColumnHeaderMenu({
                     sideOffset={4}
                     className="z-50 outline-none"
                   >
-                    <MenuPrimitive.Popup className="min-w-40 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+                    <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
                       <MenuItem
                         icon={<ArrowLeftToLine size={14} />}
                         label="Pin to Left"

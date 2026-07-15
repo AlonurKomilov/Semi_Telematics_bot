@@ -37,6 +37,7 @@ const blankWorkOrder = (): Partial<WorkOrder> => ({
   vendor_name: '',
   vendor_address: '',
   vendor_phone: '',
+  vendor_email: '',
   vendor_id: null,
   service_date: '',
   odometer_at_service: null,
@@ -807,7 +808,10 @@ export default function WorkOrderForm() {
       {/* ── Vendor block ───────────────────────────────────────── */}
       <section className="bg-card border border-border rounded-xl p-5 mb-5">
         <h3 className="text-sm font-semibold mb-3">{t('work_orders_page.section_vendor')}</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Contact fields feed the vendor REGISTRY (and, once complete,
+            the public-directory review queue) — filling them here is
+            what makes the shop usable across reports and the map. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
           <Field label={t('work_orders_page.field_vendor_name')}>
             {/* Registry-first picker: choosing a vendor links vendor_id
                 + auto-fills contact; free-typing a new name still saves
@@ -822,6 +826,7 @@ export default function WorkOrderForm() {
                   ...(vendor ? {
                     vendor_phone: prev.vendor_phone || vendor.phone,
                     vendor_address: prev.vendor_address || vendor.address,
+                    vendor_email: prev.vendor_email || vendor.email,
                   } : {}),
                 }));
               }}
@@ -833,6 +838,15 @@ export default function WorkOrderForm() {
               value={wo.vendor_phone || ''}
               onChange={e => setField('vendor_phone', e.target.value)}
               placeholder={t('work_orders_page.ph_vendor_phone')}
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
+            />
+          </Field>
+          <Field label={t('work_orders_page.field_vendor_email', { defaultValue: 'Vendor Email' })}>
+            <input
+              type="email"
+              value={wo.vendor_email || ''}
+              onChange={e => setField('vendor_email', e.target.value)}
+              placeholder={t('work_orders_page.ph_vendor_email', { defaultValue: 'shop@example.com' })}
               className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
             />
           </Field>

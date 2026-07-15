@@ -109,7 +109,7 @@ export function VehicleInspectionsCard({ vehicleName }: Props) {
                     {r.has_oos_defect ? ' · OOS' : ''}
                   </p>
                 </div>
-                <span className={`text-2xs font-medium px-2 py-0.5 rounded border whitespace-nowrap ${toneClasses(STATUS_TONE[r.status])}`}>
+                <span className={`text-2xs font-medium px-2 py-0.5 rounded-md border whitespace-nowrap ${toneClasses(STATUS_TONE[r.status])}`}>
                   {STATUS_LABEL[r.status]}
                 </span>
               </Link>

@@ -264,7 +264,7 @@ export default function Vehicles() {
               <span>{String(v ?? '')}</span>
               {inv && inv.attention > 0 && (
                 <Tip label={`Inventory: ${inv.attention} item${inv.attention === 1 ? '' : 's'} need attention`}>
-                  <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-2xs border ${toneClasses('danger')}`}>
+                  <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-2xs border ${toneClasses('danger')}`}>
                     <PackageX size={12} />
                     {inv.attention}
                   </span>

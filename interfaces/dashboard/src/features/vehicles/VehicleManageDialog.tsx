@@ -269,7 +269,7 @@ export default function VehicleManageDialog({
               vehicle an integration already reports.  Offer to pull its
               details and edit it rather than create a duplicate (409). */}
           {existingMatch && (
-            <div className={`${toneClasses('info')} rounded px-2.5 py-2 text-2xs flex items-center justify-between gap-2`}>
+            <div className={`${toneClasses('info')} rounded-md px-2.5 py-2 text-2xs flex items-center justify-between gap-2`}>
               <span>
                 Unit <span className="font-medium">{existingMatch.name}</span> is
                 already in your vehicles

@@ -32,7 +32,7 @@ export default function SingleCredentialPanel({
       title="Credentials"
       headerRight={
         <span
-          className={`${toneClasses(hasCredentials ? 'ok' : 'warn')} rounded px-1.5 py-0.5 text-2xs`}
+          className={`${toneClasses(hasCredentials ? 'ok' : 'warn')} rounded-md px-1.5 py-0.5 text-2xs`}
         >
           {hasCredentials ? 'configured' : 'not set'}
         </span>

@@ -1764,7 +1764,7 @@ export default function DataGrid({
                 />
                 <MenuPrimitive.Portal>
                   <MenuPrimitive.Positioner align="end" sideOffset={4} className="z-50 outline-none">
-                    <MenuPrimitive.Popup className="min-w-52 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+                    <MenuPrimitive.Popup className="min-w-56 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
                       {(() => {
                         const pageCount = flattenLeaves(table.getRowModel().rows).length;
                         const allCount = table.getFilteredRowModel().rows.length;

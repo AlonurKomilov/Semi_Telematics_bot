@@ -62,7 +62,7 @@ function EventIcon({ type, size = 14 }: { type: string; size?: number }) {
 
 function SeverityBadge({ severity }: { severity: string }) {
   const cls = toneClasses(SEVERITY_TONE[severity] ?? 'neutral');
-  return <span className={`px-2 py-0.5 rounded-full text-xs font-medium capitalize ${cls}`}>{severity}</span>;
+  return <span className={`px-2 py-0.5 rounded-md text-xs font-medium capitalize ${cls}`}>{severity}</span>;
 }
 
 // Strip Samsara's accusatory suffix words from a behavior label so the

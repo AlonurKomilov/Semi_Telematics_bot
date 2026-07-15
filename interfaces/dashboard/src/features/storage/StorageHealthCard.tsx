@@ -177,7 +177,7 @@ function BackendPill({ backend }: { backend: string }) {
   };
   const p = palette[backend] ?? palette.disk;
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border ${p.cls}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium border ${p.cls}`}>
       {p.icon}
       {p.label}
     </span>

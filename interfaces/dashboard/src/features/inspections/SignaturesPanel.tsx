@@ -109,7 +109,7 @@ export function SignaturesPanel({ inspection: ins, onSigned }: Props) {
 
   return (
     <div className="px-5 py-4 border-b border-border space-y-3">
-      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
         {t('inspections.signature.section_title')}
       </p>
       <div className="flex flex-col sm:flex-row gap-3">

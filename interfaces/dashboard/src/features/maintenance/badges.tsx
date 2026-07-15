@@ -20,7 +20,7 @@ export function PriorityBadge({ value }: { value: unknown }) {
   // raw text.
   const known = (PRIORITY_OPTIONS as readonly string[]).includes(v) ? v : 'medium';
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium capitalize ${toneClasses(statusTone(known))}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium capitalize ${toneClasses(statusTone(known))}`}>
       {v}
     </span>
   );
@@ -231,7 +231,7 @@ export function DueDateChip({
   // Closed ticket → frozen pill, no urgency arithmetic.
   if (isClosed(status)) {
     return (
-      <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses('neutral')}`}>
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses('neutral')}`}>
         {dateStr}
       </span>
     );
@@ -274,7 +274,7 @@ export function DueDateChip({
       : 'bg-ok';
     return (
       <div className="flex flex-col gap-1.5 min-w-[140px]">
-        <span className={`inline-flex items-center self-start px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses(tone)}`}>
+        <span className={`inline-flex items-center self-start px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses(tone)}`}>
           {dateStr}{suffix}
         </span>
         <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
@@ -288,7 +288,7 @@ export function DueDateChip({
   }
 
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses(tone)}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses(tone)}`}>
       {dateStr}{suffix}
     </span>
   );

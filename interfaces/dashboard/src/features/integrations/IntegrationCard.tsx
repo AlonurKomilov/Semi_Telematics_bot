@@ -363,7 +363,7 @@ export default function IntegrationCard({
       {/* Health-error banner stays visible even when collapsed — it's
           a problem the operator needs to see at a glance. */}
       {isErrored && integration?.last_health_error && (
-        <div className={`mt-3 flex items-start gap-2 text-xs border rounded px-2.5 py-2 ${toneClasses('danger')}`}>
+        <div className={`mt-3 flex items-start gap-2 text-xs border rounded-md px-2.5 py-2 ${toneClasses('danger')}`}>
           <AlertTriangle size={14} className="flex-shrink-0 mt-0.5" />
           <span className="break-words">{integration.last_health_error}</span>
         </div>
@@ -711,14 +711,14 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
   }
   if (error) {
     return (
-      <div className={`${toneClasses('danger')} mb-3 rounded px-2 py-1 text-2xs`}>
+      <div className={`${toneClasses('danger')} mb-3 rounded-md px-2 py-1 text-2xs`}>
         Couldn't load companies: {error instanceof Error ? error.message : 'unknown'}
       </div>
     );
   }
   if (companies.length === 0) {
     return (
-      <div className={`${toneClasses('info')} mb-3 rounded px-2 py-1.5 text-2xs`}>
+      <div className={`${toneClasses('info')} mb-3 rounded-md px-2 py-1.5 text-2xs`}>
         No companies yet.{' '}
         <Link to="/companies" className="underline font-medium">
           Add one on the Companies page
@@ -849,7 +849,7 @@ function ConnectedCompanies({ providerId }: { providerId: string }) {
             </span>
           )}
           {missingKeys > 0 && (
-            <span className={`${toneClasses('warn')} text-2xs px-1.5 py-0.5 rounded`}>
+            <span className={`${toneClasses('warn')} text-2xs px-1.5 py-0.5 rounded-md`}>
               {missingKeys} need a key
             </span>
           )}
@@ -946,7 +946,7 @@ function CompanyKeyRow({
             {/* Per-company /me probe result.  Title tooltip carries
                 the full message when the badge gets ellipsised. */}
             <span
-              className={`${toneClasses(healthTone)} text-2xs px-1.5 py-0.5 rounded max-w-44 truncate`}
+              className={`${toneClasses(healthTone)} text-2xs px-1.5 py-0.5 rounded-md max-w-44 truncate`}
               title={
                 company.health
                   ? `${company.health.ok ? 'reachable' : 'failed'} — ${company.health.message}`
