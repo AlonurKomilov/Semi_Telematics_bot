@@ -52,7 +52,7 @@ _ITEM_COLS = (
 )
 
 
-def _row_to_dict(row) -> dict:
+def _row_to_dict(row) -> dict | None:
     return dict(row) if row is not None else None
 
 
@@ -229,7 +229,8 @@ class VehicleInventoryMixin(_MixinBase):
         notes: str | None = None, category: str | None = None,
         actor_user_id: int | None = None, driver_user_id: int | None = None,
     ) -> bool:
-        sets, params = [], []
+        sets: list[str] = []
+        params: list[Any] = []
         for col, val, cap in (
             ("label", label, 120), ("identifier", identifier, 120),
             ("notes", notes, 1000), ("category", category, 40),

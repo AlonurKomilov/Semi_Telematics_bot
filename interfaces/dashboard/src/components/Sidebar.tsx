@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { Tip } from './tooltip';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -107,15 +108,16 @@ export default function Sidebar() {
       {collapsed ? (
         <div className="flex flex-col items-center gap-1 px-1 py-2 shrink-0">
           <PersonaSelector compact />
-          <button
-            type="button"
-            onClick={() => setCollapsed((c) => !c)}
-            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
-            aria-label="Expand sidebar"
-            title="Expand sidebar"
-          >
-            <PanelLeftOpen size={16} />
-          </button>
+          <Tip label="Expand sidebar">
+            <button
+              type="button"
+              onClick={() => setCollapsed((c) => !c)}
+              className="p-1.5 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
+              aria-label="Expand sidebar"
+            >
+              <PanelLeftOpen size={16} />
+            </button>
+          </Tip>
         </div>
       ) : (
         <div className="h-12 flex items-center px-3 gap-2 shrink-0">
@@ -123,15 +125,16 @@ export default function Sidebar() {
           <div className="ml-auto">
             <PersonaSelector />
           </div>
-          <button
-            type="button"
-            onClick={() => setCollapsed((c) => !c)}
-            className="p-1.5 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
-            aria-label="Collapse sidebar"
-            title="Collapse sidebar"
-          >
-            <PanelLeftClose size={16} />
-          </button>
+          <Tip label="Collapse sidebar">
+            <button
+              type="button"
+              onClick={() => setCollapsed((c) => !c)}
+              className="p-1.5 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
+              aria-label="Collapse sidebar"
+            >
+              <PanelLeftClose size={16} />
+            </button>
+          </Tip>
         </div>
       )}
 

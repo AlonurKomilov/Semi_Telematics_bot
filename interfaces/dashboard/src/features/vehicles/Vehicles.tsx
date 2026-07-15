@@ -244,7 +244,9 @@ export default function Vehicles() {
   // Shown ONLY when something needs attention (missing/damaged/…): zero
   // noise when every truck's inventory is healthy.
   const { data: invAlerts } = useInventoryAlerts(true);
-  const invByVehicle = invAlerts?.by_vehicle ?? {};
+  // Memoized: a fresh `{}` fallback each render would change the columns
+  // memo's deps every time, rebuilding the whole column set per render.
+  const invByVehicle = useMemo(() => invAlerts?.by_vehicle ?? {}, [invAlerts]);
 
   const columns = useMemo(() => {
     const extras = PERSONA_EXTRA_COLUMNS[persona] ?? PERSONA_EXTRA_COLUMNS.owner ?? [];
