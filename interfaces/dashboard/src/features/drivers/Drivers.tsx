@@ -9,6 +9,7 @@ import {
 import { apiJSON, apiFetch } from '../../api/client';
 import { buildSignupInviteUrl, useSignupBase } from '../../lib/inviteUrl';
 import { Button } from '../../components/ui/button';
+import { InfoTip } from '../../components/tooltip';
 import { toneClasses, toneText } from '../../lib/status';
 import DataGrid from '../../components/DataGrid';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
@@ -582,8 +583,9 @@ function IntegrationsTab({
           onChange={(sid) => saveSamsara(sid)}
           currentUserId={userId}
         />
-        <p className="text-2xs text-muted-foreground mt-1">
-          Binds this driver to their Samsara identity — powers HOS, coaching, and driver-pay self-service.{savingSamsara ? ' Saving…' : ''}
+        <p className="text-2xs text-muted-foreground mt-1 inline-flex items-center gap-1">
+          <InfoTip size={12} label="Binds this driver to their Samsara identity — powers HOS, coaching, and driver-pay self-service." />
+          Samsara identity link{savingSamsara ? ' — saving…' : ''}
         </p>
       </Section>
 

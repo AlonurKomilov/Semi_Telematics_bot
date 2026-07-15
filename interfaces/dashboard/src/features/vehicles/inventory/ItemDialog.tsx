@@ -18,7 +18,7 @@ import { Button } from '../../../components/ui/button';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../../components/ui/select';
-import { Tip } from '../../../components/tooltip';
+import { Tip, InfoTip } from '../../../components/tooltip';
 import { statusClasses, toneClasses } from '../../../lib/status';
 import { formatDate, formatAgoShort } from '../../../utils/datetime';
 import { useTimezone } from '../../../hooks/useTimezone';
@@ -123,12 +123,11 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
               placeholder="e.g. Samsara CM32, EFS card…" className={`mt-1 ${inputCls}`} />
           </label>
           <label className="block">
-            <span className={labelCls}>Identifier</span>
+            <span className={`${labelCls} inline-flex items-center gap-1`}>
+              Identifier <InfoTip size={12} label="The serial number, card last-4 or transponder № — what proves THIS unit is the one that went missing or was damaged." />
+            </span>
             <input value={identifier} onChange={(e) => setIdentifier(e.target.value)}
               placeholder="serial · card last-4 · transponder №" className={`mt-1 ${inputCls}`} />
-            <span className="text-2xs text-muted-foreground/70 mt-1 block">
-              What proves THIS unit is the one that went missing.
-            </span>
           </label>
           <label className="block">
             <span className={labelCls}>Notes <span className="font-normal">(optional)</span></span>
@@ -260,8 +259,8 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
                   and lands in the permanent trail — placed beside the
                   action buttons it annotates. */}
               <label className="block">
-                <span className={labelCls}>
-                  Note <span className="font-normal text-muted-foreground/70">— saved to the history with your next action</span>
+                <span className={`${labelCls} inline-flex items-center gap-1`}>
+                  Note <InfoTip size={12} label="Saved to the permanent history together with your next action (status change, transfer, verify or remove)." />
                 </span>
                 <input
                   value={note} onChange={(e) => setNote(e.target.value)}

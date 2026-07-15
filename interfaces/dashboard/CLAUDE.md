@@ -53,6 +53,16 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
 - **Compose primitives.** Build from [`src/components/ui/`](src/components/ui/)
   and [`src/components/shell/`](src/components/shell/) — don't re-implement
   buttons, badges, dialogs, empty/error/loading states.
+- **Learn-once field explanations = `<InfoTip>`, not always-visible text.**
+  Helper text a user reads twice and then scrolls past ("saved to the
+  history with your next action") collapses behind the muted ⓘ from
+  [`components/tooltip/InfoTip`](src/components/tooltip/InfoTip.tsx) next
+  to the field label. Keep VISIBLE: page descriptions (`PageHeader
+  description` — first-time orientation), dynamic/state feedback ("No
+  odometer telemetry…", "Saving…"), and one-time-user forms (the public
+  apply form — its users never get a second visit, so visible help is
+  correct there). Icon semantics: ⓘ = explanation · (?) = how-to ·
+  (!) = warnings ONLY. Migrate legacy helper texts as you touch files.
 - **Hover-info = the tooltip family, never native `title=`.**
   [`components/tooltip/`](src/components/tooltip/) is the SSOT (same idea as
   DataGrid for tables): `<Tip label="…">` for plain hover labels,
