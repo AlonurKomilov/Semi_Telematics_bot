@@ -190,7 +190,11 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
 
         <div className="space-y-4">
           <div className="text-sm text-muted-foreground space-y-1">
-            <div>{catLabel}{item.identifier && <> · <span className="font-mono text-xs text-foreground">{item.identifier}</span></>}</div>
+            <div>
+              {catLabel}
+              {item.identifier && <> · <span className="font-mono text-xs text-foreground">{item.identifier}</span></>}
+              <> · Vehicle <span className="text-foreground">{vehicleName}</span></>
+            </div>
             {item.notes && <div className="text-xs">{item.notes}</div>}
           </div>
 

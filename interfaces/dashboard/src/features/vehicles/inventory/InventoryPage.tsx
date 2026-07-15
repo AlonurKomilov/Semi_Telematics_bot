@@ -9,13 +9,13 @@
  */
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Boxes, Plus } from 'lucide-react';
 import { apiJSON } from '../../../api/client';
 import DataGrid from '../../../components/DataGrid';
 import { Button } from '../../../components/ui/button';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';
-import { AddItemDialog } from './ItemDialog';
+import { AddItemDialog, ItemDialog } from './ItemDialog';
 import { PageHeader, CardSkeleton, ErrorState } from '../../../components/shell';
 import { Freshness } from '../../../components/tooltip';
 import { statusClasses } from '../../../lib/status';
@@ -68,7 +68,26 @@ const COLUMNS: AnyColumn[] = [
         ? <span className="font-mono text-xs">{String(v)}</span>
         : <span className="text-muted-foreground text-xs">—</span>,
   },
-  { key: 'unit_number', label: 'Truck', sortable: true },
+  {
+    key: 'unit_number',
+    label: 'Vehicle',
+    sortable: true,
+    // The row itself opens the item dialog (manage in place); this cell
+    // is the jump to the truck's page.
+    render: (v, row) => {
+      const r = row as unknown as FleetItem;
+      const qs = r.company_code ? `?company=${encodeURIComponent(r.company_code)}` : '';
+      return (
+        <Link
+          to={`/vehicles/${encodeURIComponent(String(v ?? ''))}${qs}`}
+          onClick={(e) => e.stopPropagation()}
+          className="text-primary hover:underline"
+        >
+          {String(v ?? '')}
+        </Link>
+      );
+    },
+  },
   {
     key: 'company_code',
     label: 'Company',
@@ -108,10 +127,10 @@ const COLUMNS: AnyColumn[] = [
 ];
 
 export default function InventoryPage() {
-  const navigate = useNavigate();
   const { has } = useViewPermissions();
   const canManage = has('can_manage_vehicles');
   const [addOpen, setAddOpen] = useState(false);
+  const [selected, setSelected] = useState<FleetItem | null>(null);
   const { data, isLoading, error } = useQuery<FleetInventoryResponse>({
     queryKey: ['vehicle-inventory-fleet'],
     queryFn: () => apiJSON('/vehicles/inventory/all'),
@@ -141,6 +160,16 @@ export default function InventoryPage() {
           onClose={() => setAddOpen(false)}
         />
       )}
+      {selected && (
+        <ItemDialog
+          vehicleName={selected.unit_number}
+          company={selected.company_code || undefined}
+          item={selected}
+          statuses={data?.statuses ?? []}
+          canManage={canManage}
+          onClose={() => setSelected(null)}
+        />
+      )}
       {isLoading ? (
         <CardSkeleton />
       ) : error ? (
@@ -151,11 +180,10 @@ export default function InventoryPage() {
           columns={COLUMNS}
           data={rows}
           searchKey={['label', 'identifier', 'unit_number']}
-          onRowClick={(row) => {
-            const r = row as unknown as FleetItem;
-            const qs = r.company_code ? `?company=${encodeURIComponent(r.company_code)}` : '';
-            navigate(`/vehicles/${encodeURIComponent(r.unit_number)}${qs}`);
-          }}
+          // Row click manages the item right here — the same dialog the
+          // truck card opens (verify / status / transfer / remove /
+          // history); the Vehicle cell link jumps to the truck instead.
+          onRowClick={(row) => setSelected(row as unknown as FleetItem)}
         />
       )}
     </div>
