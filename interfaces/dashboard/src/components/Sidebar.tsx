@@ -68,6 +68,12 @@ export default function Sidebar() {
     if (!inSettingsArea) setSettingsOpen(false);
   }, [location.pathname, inSettingsArea]);
 
+  // Item-level children (Settings-style nesting for regular entries,
+  // e.g. Vehicles ▸ Inventory).  Manual toggles live here; an item
+  // auto-opens while the route is inside its own or a child's area so
+  // the active pill is never hidden.
+  const [openItems, setOpenItems] = useState<Record<string, boolean>>({});
+
   const filterItems = (items: NavItem[]) =>
     items.filter((item) => {
       if (item.path === '/driver-pay') return user?.payroll_enabled !== false;
@@ -139,7 +145,12 @@ export default function Sidebar() {
           readable in both collapsed and expanded modes. */}
       <nav className="flex-1 overflow-y-auto py-2 scrollbar-thin">
         {navConfig.map((group, gi) => {
-          const items = filterItems(group.items);
+          // Collapsed icon rail has no nesting — flatten children so
+          // every destination stays one click away.
+          const baseItems = collapsed
+            ? group.items.flatMap((i) => [i, ...(i.children ?? [])])
+            : group.items;
+          const items = filterItems(baseItems);
           if (items.length === 0) return null;
           // The Settings feature renders as one parent row that expands to
           // its permitted components.  While a child route is active the
@@ -234,6 +245,62 @@ export default function Sidebar() {
               {items.map((item) => {
                 const Icon = item.icon;
                 const label = t(item.labelKey);
+                const kids = collapsed ? [] : filterItems(item.children ?? []);
+                if (kids.length) {
+                  // Parent with indented children — same look and rules as
+                  // the Settings expander: the row navigates, the chevron
+                  // toggles, the area auto-opens while a child is active.
+                  const inArea = location.pathname === item.path
+                    || location.pathname.startsWith(item.path + '/');
+                  const childActive = kids.some((k) =>
+                    location.pathname === k.path || location.pathname.startsWith(k.path + '/'));
+                  const open = openItems[item.path] ?? (inArea || childActive);
+                  const parentActive = inArea && !childActive;
+                  return (
+                    <div key={item.path}>
+                      <NavLink
+                        to={item.path}
+                        className={`flex items-center gap-3 pl-3 pr-1 mx-2 my-0.5 rounded-md py-1.5 text-sm transition-colors ${
+                          parentActive
+                            ? 'bg-primary/15 text-primary'
+                            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                        }`}
+                      >
+                        <Icon size={16} className="shrink-0" />
+                        <span className="flex-1">{label}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpenItems((m) => ({ ...m, [item.path]: !open })); }}
+                          disabled={childActive && open}
+                          aria-expanded={open}
+                          aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
+                          className="p-1 rounded text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-60"
+                        >
+                          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                        </button>
+                      </NavLink>
+                      {open && kids.map((k) => {
+                        const KIcon = k.icon;
+                        return (
+                          <NavLink
+                            key={k.path}
+                            to={k.path}
+                            className={({ isActive }) =>
+                              `flex items-center gap-3 pl-9 pr-3 mx-2 my-0.5 rounded-md py-1.5 text-sm transition-colors ${
+                                isActive
+                                  ? 'bg-primary/15 text-primary'
+                                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                              }`
+                            }
+                          >
+                            <KIcon size={14} className="shrink-0" />
+                            {t(k.labelKey)}
+                          </NavLink>
+                        );
+                      })}
+                    </div>
+                  );
+                }
                 return (
                   <NavLink
                     key={item.path}

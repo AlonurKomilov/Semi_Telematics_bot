@@ -25,6 +25,9 @@ export interface NavItem {
   path: string;
   icon: LucideIcon;
   permission: string | string[] | null;
+  /** Indented sub-entries (Settings-style) — folded from catalog
+   *  entries whose ``parentId`` points at this item's feature. */
+  children?: NavItem[];
 }
 export interface NavGroup {
   titleKey: string | null;
@@ -116,9 +119,21 @@ export function generateNav(
 
   const groups: NavGroup[] = [];
   for (const g of NAV_GROUP_ORDER) {
-    const items = FEATURE_CATALOG.filter((f) => f.navGroup === g.key && inScope(f)).map(
-      (f) => ({ labelKey: f.labelKey, path: f.path, icon: f.icon, permission: f.permission }),
-    );
+    const inGroup = FEATURE_CATALOG.filter((f) => f.navGroup === g.key && inScope(f));
+    const byId = new Map(inGroup.map((f) => [f.id, f]));
+    const itemOf = (f: (typeof inGroup)[number]): NavItem =>
+      ({ labelKey: f.labelKey, path: f.path, icon: f.icon, permission: f.permission });
+    // Children fold under their parent when the parent is visible for
+    // this persona; an orphaned child stays a flat entry (a grant must
+    // never become unreachable because its parent was filtered out).
+    const items: NavItem[] = inGroup
+      .filter((f) => !(f.parentId && byId.has(f.parentId)))
+      .map((f) => {
+        const item = itemOf(f);
+        const kids = inGroup.filter((c) => c.parentId === f.id).map(itemOf);
+        if (kids.length) item.children = kids;
+        return item;
+      });
     if (items.length) {
       let parentItem: NavItem | undefined;
       let rest = items;

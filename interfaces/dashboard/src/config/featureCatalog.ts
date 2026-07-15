@@ -79,6 +79,11 @@ export interface CatalogFeature {
    *  NOT appear as their own sidebar item (e.g. Invites is a tab inside
    *  Team Management). */
   navHidden?: boolean;
+  /** Nest this entry under another catalog entry in the sidebar
+   *  (Settings-style indented child).  The parent renders a chevron;
+   *  if the parent isn't visible for the persona, the child falls back
+   *  to a flat entry so a grant never becomes unreachable. */
+  parentId?: string;
 }
 
 // Reusable permission groups (kept in sync with capabilities/iam/permissions.py).
@@ -108,7 +113,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // lives in every truck; search by serial, filter missing/damaged).
   // Sits directly under Vehicles in the sidebar — a destination, unlike
   // the per-truck card (which is a detail-page section).
-  { id: 'vehicle_inventory', labelKey: 'nav.vehicle_inventory', path: '/vehicles/inventory', icon: Boxes, modules: ['fleet', 'account'], tier: 'shared', permission: ['can_vehicle_all', 'can_vehicle_vehicle'], navGroup: 'operations' },
+  { id: 'vehicle_inventory', labelKey: 'nav.vehicle_inventory', path: '/vehicles/inventory', icon: Boxes, modules: ['fleet', 'account'], tier: 'shared', permission: ['can_vehicle_all', 'can_vehicle_vehicle'], navGroup: 'operations', parentId: 'vehicles' },
 
   // ── FLEET (vehicle ops) ───────────────────────────────────────────
   { id: 'maintenance', labelKey: 'nav.maintenance', path: '/maintenance', icon: Wrench,         modules: ['fleet'], tier: 'role', permission: ['can_maintenance_all', 'can_maintenance_vehicle'], navGroup: 'operations' },

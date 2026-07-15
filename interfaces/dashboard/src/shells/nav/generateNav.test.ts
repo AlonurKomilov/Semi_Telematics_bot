@@ -62,3 +62,29 @@ describe('generateNav — the matrix is the source of truth for the sidebar', ()
     expect(nav).not.toContain('/maintenance');
   });
 });
+
+describe('generateNav — item-level children (Settings-style nesting)', () => {
+  it('Inventory folds under Vehicles as a child, not a flat sibling', () => {
+    const nav = generateNav('fleet', grants(
+      'can_vehicle_all', 'can_location_map', 'can_maintenance_all',
+    ), undefined);
+    const flat = nav.flatMap((g) => g.items);
+    const vehicles = flat.find((i) => i.path === '/vehicles');
+    expect(vehicles).toBeDefined();
+    expect(vehicles?.children?.map((c) => c.path)).toContain('/vehicles/inventory');
+    // …and it is NOT duplicated as a top-level entry
+    expect(flat.map((i) => i.path)).not.toContain('/vehicles/inventory');
+  });
+
+  it('an orphaned child falls back to a flat entry (grant never unreachable)', () => {
+    // Hypothetical persona state where the child is granted but the parent
+    // filtered out cannot occur for vehicles/inventory (same flags), so we
+    // assert the folding rule structurally: every child path present in the
+    // catalog appears EITHER nested or flat — never lost.
+    const nav = generateNav('owner', grants(
+      'can_vehicle_all', 'can_location_map',
+    ), undefined);
+    const all = nav.flatMap((g) => g.items.flatMap((i) => [i, ...(i.children ?? [])]));
+    expect(all.map((i) => i.path)).toContain('/vehicles/inventory');
+  });
+});
