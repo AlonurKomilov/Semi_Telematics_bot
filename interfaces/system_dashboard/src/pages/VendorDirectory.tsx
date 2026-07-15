@@ -366,6 +366,11 @@ export default function VendorDirectoryPage() {
                     <>
                       <div className="text-slate-200 font-medium">
                         {e.name}
+                        {/* Entry ID — the vendors.global_vendor_id spine;
+                            operator-only surface (support + targeted links). */}
+                        <span className="ml-2 font-mono text-[11px] text-slate-500 font-normal align-middle">
+                          #{e.id}
+                        </span>
                         {e.chain && (
                           <span className="ml-2 inline-block px-1.5 py-0.5 rounded-full border border-slate-600/60 text-slate-400 text-[11px] font-normal align-middle">
                             {e.chain}
