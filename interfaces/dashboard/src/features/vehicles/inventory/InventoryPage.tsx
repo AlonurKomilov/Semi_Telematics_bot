@@ -7,12 +7,15 @@
  * jumps to the truck's detail page, where the per-truck card owns all
  * actions — this page is a read/locate surface, not a second editor.
  */
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Boxes } from 'lucide-react';
+import { Boxes, Plus } from 'lucide-react';
 import { apiJSON } from '../../../api/client';
 import DataGrid from '../../../components/DataGrid';
+import { Button } from '../../../components/ui/button';
+import { useViewPermissions } from '../../../hooks/useViewPermissions';
+import { AddItemDialog } from './ItemDialog';
 import { PageHeader, CardSkeleton, ErrorState } from '../../../components/shell';
 import { Freshness } from '../../../components/tooltip';
 import { statusClasses } from '../../../lib/status';
@@ -106,6 +109,9 @@ const COLUMNS: AnyColumn[] = [
 
 export default function InventoryPage() {
   const navigate = useNavigate();
+  const { has } = useViewPermissions();
+  const canManage = has('can_manage_vehicles');
+  const [addOpen, setAddOpen] = useState(false);
   const { data, isLoading, error } = useQuery<FleetInventoryResponse>({
     queryKey: ['vehicle-inventory-fleet'],
     queryFn: () => apiJSON('/vehicles/inventory/all'),
@@ -122,8 +128,19 @@ export default function InventoryPage() {
       <PageHeader
         icon={Boxes}
         title="Inventory"
-        description="Every tracked item across the fleet — search by serial or card number, filter missing/damaged. Click a row to open its truck, where items are managed."
+        description="Every tracked item across the fleet — search by serial or card number, filter missing/damaged. Click a row to open its truck."
+        actions={canManage ? (
+          <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
+            <Plus size={14} /> Add item
+          </Button>
+        ) : undefined}
       />
+      {canManage && addOpen && (
+        <AddItemDialog
+          categories={data?.categories ?? []}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
       {isLoading ? (
         <CardSkeleton />
       ) : error ? (

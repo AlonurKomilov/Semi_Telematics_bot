@@ -82,6 +82,7 @@ export function useInventoryMutations(vehicleName: string, company?: string) {
     void qc.invalidateQueries({ queryKey: ['vehicle-inventory', vehicleName, company ?? ''] });
     void qc.invalidateQueries({ queryKey: ['vehicle-inventory-alerts'] });
     void qc.invalidateQueries({ queryKey: ['vehicle-inventory-events'] });
+    void qc.invalidateQueries({ queryKey: ['vehicle-inventory-fleet'] });
   };
 
   const add = useMutation({

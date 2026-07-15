@@ -26,12 +26,17 @@ const inputCls =
 // ── Add ──────────────────────────────────────────────────────────
 
 export function AddItemDialog({ vehicleName, company, categories, onClose }: {
-  vehicleName: string;
+  /** Fixed truck context (vehicle detail card).  Omit on the fleet-wide
+   *  page — the dialog then asks for the truck number, validated
+   *  server-side against the registry (404 → inline error). */
+  vehicleName?: string;
   company?: string;
   categories: string[];
   onClose: () => void;
 }) {
-  const { add } = useInventoryMutations(vehicleName, company);
+  const [truck, setTruck] = useState('');
+  const targetTruck = vehicleName ?? truck.trim();
+  const { add } = useInventoryMutations(targetTruck, company);
   const [category, setCategory] = useState(categories[0] ?? 'other');
   const [label, setLabel] = useState('');
   const [identifier, setIdentifier] = useState('');
@@ -53,6 +58,13 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
       <DialogContent>
         <DialogHeader><DialogTitle>Add inventory item</DialogTitle></DialogHeader>
         <div className="space-y-3">
+          {vehicleName == null && (
+            <label className="block">
+              <span className="text-xs font-medium text-muted-foreground">Truck №</span>
+              <input value={truck} onChange={(e) => setTruck(e.target.value)}
+                placeholder="which truck this item lives in" className={`mt-1 ${inputCls}`} />
+            </label>
+          )}
           <label className="block">
             <span className="text-xs font-medium text-muted-foreground">Category</span>
             <Select value={category} onValueChange={setCategory} items={items}>
@@ -80,7 +92,7 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} disabled={add.isPending || !label.trim()}>
+          <Button onClick={submit} disabled={add.isPending || !label.trim() || !targetTruck}>
             {add.isPending ? 'Adding…' : 'Add item'}
           </Button>
         </DialogFooter>
