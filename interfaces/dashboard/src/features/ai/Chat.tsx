@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 import { Bot, ArrowUp, Square, Trash2, Copy, Check, RefreshCw, Sparkles, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, Lightbulb, Loader2, ThumbsUp, ThumbsDown, Eye, History, SquarePen, Plus, type LucideIcon } from 'lucide-react';
 import { Tip } from '../../components/tooltip';
+import { Button } from '../../components/ui/button';
 import { toneClasses, toneText } from '../../lib/status';
 import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
 import { useShellConfig } from '../../hooks/useShellConfig';
@@ -1071,35 +1072,36 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
 
   const threadControls = (
     <>
-      {/* New chat — icon-only; destructive-tinted confirm while a long run
-          could be discarded (its tooltip flips too). */}
+      {/* New chat — ghost icon-button (the topbar's flat convention: these
+          sit on chrome, so no fill/border of their own).  The two-step
+          confirm borrows the destructive variant's soft tint. */}
       <Tip label={newChatConfirm ? t('chat.confirm_discard') : t('chat.new_chat')}>
-        <button
+        <Button
+          variant={newChatConfirm ? 'destructive' : 'ghost'}
+          size="icon"
           onClick={newChat}
           disabled={messages.length === 0 && conversationId === null && !loading}
           aria-label={newChatConfirm ? t('chat.confirm_discard') : t('chat.new_chat')}
-          className={`flex size-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-default ${
-            newChatConfirm
-              ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
-              : 'bg-muted hover:bg-muted/80 text-muted-foreground border-border'
-          }`}
+          className="shrink-0 text-muted-foreground"
         >
           <SquarePen size={16} aria-hidden />
-        </button>
+        </Button>
       </Tip>
 
       {/* History — previous chats with per-chat export / delete. */}
       <div className="relative" ref={historyRef}>
         <Tip label={t('chat.history')}>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => { setHistoryOpen(!historyOpen); setDeleteConfirmId(null); if (!historyOpen) void loadConversations(); }}
             aria-haspopup="listbox"
             aria-expanded={historyOpen}
             aria-label={t('chat.history')}
-            className="flex size-8 items-center justify-center rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground border border-border transition-colors"
+            className="shrink-0 text-muted-foreground"
           >
             <History size={16} aria-hidden />
-          </button>
+          </Button>
         </Tip>
         {historyOpen && (
           <div className="absolute right-0 top-full mt-1 z-50 w-80 rounded-lg border border-border bg-card shadow-xl max-h-96 overflow-y-auto">

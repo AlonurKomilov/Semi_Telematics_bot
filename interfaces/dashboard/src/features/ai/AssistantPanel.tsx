@@ -20,6 +20,7 @@ import {
 } from './AssistantContext';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { Tip } from '../../components/tooltip';
+import { Button } from '../../components/ui/button';
 
 // Lazy so the chat body (+ its DataGrid / recharts / formatAI deps) is a
 // separate chunk loaded on FIRST panel open — not baked into the main
@@ -172,13 +173,15 @@ export default function AssistantPanel() {
               {/* Docked <Chat> portals its New-chat / History controls here. */}
               <div ref={setHeaderSlot} className="flex items-center gap-1" />
               <Tip label="Close (⌘J)">
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon"
                   onClick={closePanel}
-                  className="flex size-8 items-center justify-center rounded-lg text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                  className="shrink-0 text-muted-foreground"
                   aria-label="Close assistant"
                 >
-                  <X size={18} />
-                </button>
+                  <X size={16} />
+                </Button>
               </Tip>
             </div>
           </div>
