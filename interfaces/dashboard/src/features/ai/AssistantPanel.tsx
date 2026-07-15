@@ -164,9 +164,14 @@ export default function AssistantPanel() {
           />
         </div>
         <div className="flex h-full flex-col">
-          <div className="flex items-center justify-between px-4 py-2.5 flex-shrink-0">
+          {/* h-12 + px-4 mirrors the shells' topbar exactly (every shell:
+              `h-12 bg-sidebar … px-3 lg:px-4`).  The panel is fixed to the
+              viewport top like the topbar, so any other height leaves this
+              row's controls sitting a few px off the topbar's — the two
+              read as one continuous bar across the split. */}
+          <div className="flex h-12 items-center justify-between px-4 flex-shrink-0">
             <span className="flex items-center gap-2 text-sm font-semibold">
-              <Bot size={18} className="text-primary" aria-hidden />
+              <Bot size={16} className="text-primary" aria-hidden />
               Assistant
             </span>
             <div className="flex items-center gap-1">
