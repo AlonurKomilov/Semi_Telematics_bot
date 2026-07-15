@@ -316,7 +316,16 @@
     "ask_driver": "Posez n’importe quelle question sur votre camion attribué.",
     "model_default": "par défaut",
     "model_active": "actif",
-    "thinking": "Réflexion…"
+    "thinking": "Réflexion…",
+    "running": "En cours",
+    "send": "Envoyer",
+    "stop_generating": "Arrêter la génération",
+    "commands": "Commandes",
+    "slash_commands": "Commandes slash",
+    "awaiting_reply": "En attente de votre réponse",
+    "suggestions": "Suggestions",
+    "placeholder_ask": "Posez une question sur {{subject}}…",
+    "placeholder_commands": "Tapez / pour les commandes"
   },
   "pages": {
     "overview_title": "Mon tableau de bord",

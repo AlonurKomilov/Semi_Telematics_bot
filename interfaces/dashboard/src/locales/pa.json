@@ -316,7 +316,16 @@
     "ask_driver": "ਆਪਣੇ ਨਿਰਧਾਰਿਤ ਟਰੱਕ ਬਾਰੇ ਕੁਝ ਵੀ ਪੁੱਛੋ।",
     "model_default": "ਡਿਫੌਲਟ",
     "model_active": "ਸਰਗਰਮ",
-    "thinking": "ਸੋਚ ਰਿਹਾ…"
+    "thinking": "ਸੋਚ ਰਿਹਾ…",
+    "running": "ਚੱਲ ਰਿਹਾ",
+    "send": "ਭੇਜੋ",
+    "stop_generating": "ਤਿਆਰ ਕਰਨਾ ਰੋਕੋ",
+    "commands": "ਕਮਾਂਡ",
+    "slash_commands": "ਸਲੈਸ਼ ਕਮਾਂਡ",
+    "awaiting_reply": "ਤੁਹਾਡੇ ਜਵਾਬ ਦੀ ਉਡੀਕ",
+    "suggestions": "ਸੁਝਾਅ",
+    "placeholder_ask": "{{subject}} ਬਾਰੇ ਪੁੱਛੋ…",
+    "placeholder_commands": "ਕਮਾਂਡਾਂ ਲਈ / ਟਾਈਪ ਕਰੋ"
   },
   "pages": {
     "overview_title": "ਮੇਰਾ ਡੈਸ਼ਬੋਰਡ",

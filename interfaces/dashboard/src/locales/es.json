@@ -316,7 +316,16 @@
     "ask_driver": "Pregunte cualquier cosa sobre su camión asignado.",
     "model_default": "por defecto",
     "model_active": "activo",
-    "thinking": "Pensando…"
+    "thinking": "Pensando…",
+    "running": "Ejecutando",
+    "send": "Enviar",
+    "stop_generating": "Detener generación",
+    "commands": "Comandos",
+    "slash_commands": "Comandos de barra",
+    "awaiting_reply": "Esperando tu respuesta",
+    "suggestions": "Sugerencias",
+    "placeholder_ask": "Pregunta sobre {{subject}}…",
+    "placeholder_commands": "Escribe / para ver comandos"
   },
   "pages": {
     "overview_title": "Mi panel",

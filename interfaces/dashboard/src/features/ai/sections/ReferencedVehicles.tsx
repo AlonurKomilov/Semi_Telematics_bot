@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Truck } from 'lucide-react';
 import { toneClasses, type Tone } from '../../../lib/status';
+import { Tip } from '../../../components/tooltip';
 
 /**
  * Renders the vehicles referenced by an AI answer as clickable, severity-
@@ -126,16 +127,16 @@ export function ReferencedVehicles({ toolResults }: { toolResults: unknown }) {
       </div>
       <div className="flex flex-wrap gap-1.5">
         {refs.map((r) => (
-          <button
-            key={r.vehicle}
-            onClick={() => open(r)}
-            title={r.note ? `${r.vehicle} — ${r.note}` : `Open ${r.vehicle}`}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-2xs font-medium cursor-pointer transition-opacity hover:opacity-80 ${toneClasses(r.tone)}`}
-          >
-            <Truck size={12} aria-hidden />
-            <span>{r.vehicle}</span>
-            {r.note && <span className="opacity-70">· {r.note}</span>}
-          </button>
+          <Tip key={r.vehicle} label={r.note ? `${r.vehicle} — ${r.note}` : `Open ${r.vehicle}`}>
+            <button
+              onClick={() => open(r)}
+              className={`inline-flex items-center gap-1 px-2 py-1 rounded-md border text-2xs font-medium cursor-pointer transition-opacity hover:opacity-80 ${toneClasses(r.tone)}`}
+            >
+              <Truck size={12} aria-hidden />
+              <span>{r.vehicle}</span>
+              {r.note && <span className="opacity-70">· {r.note}</span>}
+            </button>
+          </Tip>
         ))}
       </div>
     </div>

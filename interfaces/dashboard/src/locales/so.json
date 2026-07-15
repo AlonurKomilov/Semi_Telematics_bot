@@ -316,7 +316,16 @@
     "ask_driver": "Wax kasta waydii gaarigaaga la xidhiidha.",
     "model_default": "default",
     "model_active": "firfircoon",
-    "thinking": "Fakirayaa…"
+    "thinking": "Fakirayaa…",
+    "running": "Socda",
+    "send": "Dir",
+    "stop_generating": "Jooji abuurista",
+    "commands": "Amarro",
+    "slash_commands": "Amarrada slash",
+    "awaiting_reply": "Sugitaanka jawaabtaada",
+    "suggestions": "Soo jeedinno",
+    "placeholder_ask": "Wax ka weydii {{subject}}…",
+    "placeholder_commands": "Ku qor / amarrada"
   },
   "pages": {
     "overview_title": "Dashboardkayga",

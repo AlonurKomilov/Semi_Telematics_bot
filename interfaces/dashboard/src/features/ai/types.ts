@@ -52,6 +52,11 @@ export interface AIProcessStep {
   label?: string;
   /** Tool steps: wall-clock the step took, ms (server-measured). */
   elapsed_ms?: number;
+  /** Client-only: wall-clock start of a LIVE step (Date.now()), used by the
+   *  in-progress timeline for the active step's ticking timer and to stamp a
+   *  step's client duration as it closes. Never persisted — the finished
+   *  timeline uses the server's authoritative `elapsed_ms`. */
+  startedAt?: number;
   args?: string;
   /** Truncated JSON digest of the tool's result. */
   result?: string;

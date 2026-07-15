@@ -316,7 +316,16 @@
     "ask_driver": "ስለ የተመደበልዎት ትራክ ማንኛውንም ነገር ይጠይቁ።",
     "model_default": "ነባሪ",
     "model_active": "ንቁ",
-    "thinking": "በማሰብ ላይ…"
+    "thinking": "በማሰብ ላይ…",
+    "running": "በሂደት ላይ",
+    "send": "ላክ",
+    "stop_generating": "ማመንጨትን አቁም",
+    "commands": "ትዕዛዞች",
+    "slash_commands": "የስላሽ ትዕዛዞች",
+    "awaiting_reply": "መልስዎን በመጠበቅ ላይ",
+    "suggestions": "ጥቆማዎች",
+    "placeholder_ask": "ስለ {{subject}} ይጠይቁ…",
+    "placeholder_commands": "ለትዕዛዞች / ይተይቡ"
   },
   "pages": {
     "overview_title": "የእኔ ዳሽቦርድ",

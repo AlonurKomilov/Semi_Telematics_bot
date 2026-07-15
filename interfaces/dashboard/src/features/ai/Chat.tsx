@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
-import { Bot, Send, Square, Trash2, Copy, Check, RefreshCw, Sparkles, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, Lightbulb, Loader2, ThumbsUp, ThumbsDown, Eye, History, SquarePen, type LucideIcon } from 'lucide-react';
+import { Bot, ArrowUp, Square, Trash2, Copy, Check, RefreshCw, Sparkles, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, Lightbulb, Loader2, ThumbsUp, ThumbsDown, Eye, History, SquarePen, Plus, type LucideIcon } from 'lucide-react';
+import { Tip } from '../../components/tooltip';
+import { toneClasses, toneText } from '../../lib/status';
 import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import type { AIChatMessage, AIConversation, AIConversationsResponse, AIConversationMessagesResponse, AIProcessStep, AISummaryResponse, AIUsage, AITierChoice, AITierOption, AITierResponse } from '../../types';
@@ -140,6 +143,22 @@ function getChatTopics(view?: string): string {
   }
 }
 
+/** Append a LIVE step, first stamping the currently-last step's
+ *  client-measured duration (it just closed because a new one is starting).
+ *  Live view only — the finished timeline uses the server's `elapsed_ms`. */
+function closeAndAppend(prev: AIProcessStep[], next: AIProcessStep): AIProcessStep[] {
+  const now = Date.now();
+  const closed = prev.length
+    ? [...prev.slice(0, -1), stampElapsed(prev[prev.length - 1], now)]
+    : prev;
+  return [...closed, { ...next, startedAt: now }];
+}
+/** Stamp a step's client duration from its `startedAt` (idempotent). */
+function stampElapsed(step: AIProcessStep, now: number): AIProcessStep {
+  if (step.elapsed_ms != null || step.startedAt == null) return step;
+  return { ...step, elapsed_ms: Math.max(0, now - step.startedAt) };
+}
+
 /** Split thinking steps into paragraph-level steps so the timeline reads
  *  as discrete thoughts — one dot per thought — instead of one flat text
  *  wall.  Tool steps pass through unchanged.  Purely a display transform;
@@ -188,14 +207,21 @@ function ToolStepLink({ toolName }: { toolName?: string }) {
   return (
     <button
       onClick={() => { navigate(link.path); closePanel(); }}
-      className="mt-1 inline-flex items-center gap-1 rounded-md border border-border bg-muted/50 px-1.5 py-0.5 text-3xs font-medium text-muted-foreground hover:text-foreground hover:border-ring transition-colors"
-      title={t(link.labelKey)}
+      className="mt-1.5 inline-flex items-center gap-1.5 rounded-md border border-border bg-muted/50 px-2 py-1 text-2xs font-medium text-muted-foreground hover:text-foreground hover:border-ring hover:bg-muted transition-colors"
     >
-      <ArrowUpRight size={11} aria-hidden />
+      <ArrowUpRight size={12} aria-hidden />
       {t('chat.open_feature', { feature: t(link.labelKey) })}
     </button>
   );
 }
+
+/** Monotonic run id for launcher-chip status ownership.  MODULE-level on
+ *  purpose: closing the panel UNMOUNTS <Chat> while its request keeps
+ *  streaming (by design — hiding never cancels), so an instance ref would
+ *  reset to 0 on reopen and the abandoned run's late events would stomp the
+ *  new run's status.  Module scope outlives the remount; at most one <Chat>
+ *  is mounted at a time (the panel is suppressed on /ai/*). */
+let runSeq = 0;
 
 /** Compact elapsed label for a step (e.g. "12s", "4m 3s"). */
 function stepDuration(ms?: number): string | null {
@@ -230,7 +256,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   // Copilot wiring: what the user is looking at (attached to each request)
   // and the panel's prefill bus (a queued question to send on open).
   const pageContext = useCurrentPageContext();
-  const { consumePrefill } = useAssistant();
+  const { consumePrefill, setRunState, headerSlot } = useAssistant();
 
   // ── Chat state ───────────────────────────────────────────────
   const [messages, setMessages] = useState<LocalMessage[]>([]);
@@ -320,6 +346,43 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     );
     return () => clearInterval(id);
   }, [loading]);
+  /** Composer status strip: wall-clock start of the current run (ref — read
+   *  at completion inside the send() closure where state would be stale) and
+   *  a short-lived "Done · Xs" flash after a successful run.  null = no
+   *  flash showing. */
+  const runStartRef = useRef<number | null>(null);
+  const [doneFlash, setDoneFlash] = useState<number | null>(null);
+  const doneFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    return () => { if (doneFlashTimer.current) clearTimeout(doneFlashTimer.current); };
+  }, []);
+  /** Idle strip: whether the follow-up suggestion chips are expanded.
+   *  Collapsed by default (compact-first — the count badge advertises
+   *  them) and re-collapses whenever a new answer brings new chips. */
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
+  useEffect(() => { setSuggestionsOpen(false); }, [suggestions]);
+  /** "+" quick-actions menu in the composer toolbar — carries the slash
+   *  commands today; the future attach/upload actions slot in here. */
+  const [plusOpen, setPlusOpen] = useState(false);
+  const plusRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!plusOpen) return;
+    function onClick(e: MouseEvent) {
+      if (plusRef.current && !plusRef.current.contains(e.target as Node)) setPlusOpen(false);
+    }
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [plusOpen]);
+  /** Composer placeholder alternates between the primary ask and the "/"
+   *  hint while the field is idle+empty (two short phrases beat one long
+   *  one); it holds on the ask once focused, so it's stable to type against. */
+  const [phIdx, setPhIdx] = useState(0);
+  const [inputFocused, setInputFocused] = useState(false);
+  useEffect(() => {
+    if (inputFocused) { setPhIdx(0); return; }
+    const id = setInterval(() => setPhIdx((i) => (i + 1) % 2), 4000);
+    return () => clearInterval(id);
+  }, [inputFocused]);
 
   // ── Model state ──────────────────────────────────────────────
   // ``currentModel`` resolves the tier into a model name so per-reply
@@ -493,6 +556,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     setLiveSteps([]);
     setStreamingText('');
     setLastFailed(null);
+    // Status strip: start this run's clock, clear any lingering Done flash.
+    runStartRef.current = Date.now();
+    if (doneFlashTimer.current) clearTimeout(doneFlashTimer.current);
+    setDoneFlash(null);
+    // Publish to the launcher chip (visible while the panel is hidden).
+    const myRun = ++runSeq;
+    setRunState('running', t('chat.working'));
 
     // Cancel any in-flight request
     abortRef.current?.abort();
@@ -520,17 +590,20 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         (event) => {
           if (event.type === 'tool') {
             setToolActivity((prev) => [...prev, event.label]);
-            setLiveSteps((prev) => [...prev, { type: 'tool', name: event.name, label: event.label }]);
+            // Closes (and client-times) the prior step, starts this tool's clock.
+            setLiveSteps((prev) => closeAndAppend(prev, { type: 'tool', name: event.name, label: event.label }));
+            if (runSeq === myRun) setRunState('running', t('chat.running'));
           } else if (event.type === 'thinking') {
             liveReasoning += event.text;
+            if (runSeq === myRun) setRunState('running', t('chat.thinking_live'));
             // Coalesce consecutive thinking chunks into one growing step —
-            // Gemini streams token-sized fragments.
+            // Gemini streams token-sized fragments (keep its startedAt).
             setLiveSteps((prev) => {
               const last = prev[prev.length - 1];
               if (last?.type === 'thinking') {
                 return [...prev.slice(0, -1), { ...last, text: (last.text || '') + event.text }];
               }
-              return [...prev, { type: 'thinking', text: event.text }];
+              return closeAndAppend(prev, { type: 'thinking', text: event.text });
             });
           } else if (event.type === 'delta') {
             setStreamingText((prev) => prev + event.text);
@@ -566,6 +639,19 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
       }
       setMessages((prev) => [...prev, aiMsg]);
       setSuggestions(finalSuggestions);
+      // Status strip: flash "Done · Xs" for a few seconds after a successful
+      // run (aborts and errors skip this — they have their own signals).
+      if (runStartRef.current != null) {
+        setDoneFlash(Date.now() - runStartRef.current);
+        doneFlashTimer.current = setTimeout(() => setDoneFlash(null), 4000);
+      }
+      // Launcher chip mirrors the flash, then rests.
+      if (runSeq === myRun) {
+        setRunState('done', t('chat.done_step'));
+        setTimeout(() => {
+          if (runSeq === myRun) setRunState('idle');
+        }, 4000);
+      }
       // Adopt the thread the backend answered in (created lazily for a
       // new chat / a stale id) and refresh the History panel's list so
       // the thread title + activity time stay current.
@@ -573,6 +659,8 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
       setIsNewChat(false);
       void loadConversations();
     } catch (e) {
+      // Chip rests on any failure/abort (guarded — a superseding run owns it).
+      if (runSeq === myRun) setRunState('idle');
       if (e instanceof Error && e.name === 'AbortError') return;
       const msg = e instanceof Error ? e.message : 'Failed to get response';
       if (msg.includes('429') || msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many')) {
@@ -604,12 +692,21 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     setError('');
     setToolActivity([]);
     setLoading(true);
+    const myRun = ++runSeq;
+    setRunState('running', t('chat.working'));
     try {
       const data = await apiJSONAI<AISummaryResponse>('/ai/summary', { method: 'POST' });
       const aiMsg: LocalMessage = { role: 'model', text: data.summary, timestamp: new Date() };
       setMessages((prev) => [...prev, aiMsg]);
       setSuggestions(data.suggestions || []);
+      if (runSeq === myRun) {
+        setRunState('done', t('chat.done_step'));
+        setTimeout(() => {
+          if (runSeq === myRun) setRunState('idle');
+        }, 4000);
+      }
     } catch (e) {
+      if (runSeq === myRun) setRunState('idle');
       setError(e instanceof Error ? e.message : 'Failed to generate briefing');
     } finally {
       setLoading(false);
@@ -959,209 +1056,151 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     return -1;
   })();
 
+  // Trust badge + thread controls are extracted so the DOCKED panel can
+  // portal the controls into its chrome header (beside ✕), while the
+  // full-page view renders them inline.  Rendered in exactly one place per
+  // variant, so the historyRef / dropdown live in a single subtree.
+  const trustBadge = scope?.restricted ? (
+    <Tip label="Your access is limited to these vehicles — answers cover only them.">
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-medium bg-muted text-muted-foreground border border-border whitespace-nowrap">
+        <Eye size={12} aria-hidden />
+        Answering for your {scope.vehicle_count ?? 0} vehicle{scope.vehicle_count === 1 ? '' : 's'}
+      </span>
+    </Tip>
+  ) : null;
+
+  const threadControls = (
+    <>
+      {/* New chat — icon-only; destructive-tinted confirm while a long run
+          could be discarded (its tooltip flips too). */}
+      <Tip label={newChatConfirm ? t('chat.confirm_discard') : t('chat.new_chat')}>
+        <button
+          onClick={newChat}
+          disabled={messages.length === 0 && conversationId === null && !loading}
+          aria-label={newChatConfirm ? t('chat.confirm_discard') : t('chat.new_chat')}
+          className={`flex size-8 items-center justify-center rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-default ${
+            newChatConfirm
+              ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
+              : 'bg-muted hover:bg-muted/80 text-muted-foreground border-border'
+          }`}
+        >
+          <SquarePen size={16} aria-hidden />
+        </button>
+      </Tip>
+
+      {/* History — previous chats with per-chat export / delete. */}
+      <div className="relative" ref={historyRef}>
+        <Tip label={t('chat.history')}>
+          <button
+            onClick={() => { setHistoryOpen(!historyOpen); setDeleteConfirmId(null); if (!historyOpen) void loadConversations(); }}
+            aria-haspopup="listbox"
+            aria-expanded={historyOpen}
+            aria-label={t('chat.history')}
+            className="flex size-8 items-center justify-center rounded-lg bg-muted hover:bg-muted/80 text-muted-foreground border border-border transition-colors"
+          >
+            <History size={16} aria-hidden />
+          </button>
+        </Tip>
+        {historyOpen && (
+          <div className="absolute right-0 top-full mt-1 z-50 w-80 rounded-lg border border-border bg-card shadow-xl max-h-96 overflow-y-auto">
+            {conversations.length === 0 ? (
+              <div className="px-3 py-4 text-xs text-muted-foreground text-center">
+                {t('chat.no_previous_chats')}
+              </div>
+            ) : (
+              conversations.map((conv) => (
+                <div
+                  key={conv.id}
+                  className={`group/conv flex items-center gap-2 px-3 py-2 transition-colors cursor-pointer ${
+                    conv.id === conversationId
+                      ? 'bg-primary/10'
+                      : 'hover:bg-muted'
+                  }`}
+                  onClick={() => void openConversation(conv)}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className={`text-sm truncate ${conv.id === conversationId ? 'text-primary font-medium' : 'text-foreground'}`}>
+                      {conv.title}
+                    </div>
+                    <div className="text-3xs text-muted-foreground">
+                      {formatDate(new Date(conv.updated_at), { timeZone: tz })}
+                      {' · '}
+                      {conv.message_count} {t('chat.messages_count')}
+                    </div>
+                  </div>
+                  {deleteConfirmId === conv.id ? (
+                    /* Armed: explicit Delete / Cancel — two distinct
+                       targets, never "press the same icon twice". */
+                    <div
+                      className="flex items-center gap-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        onClick={() => void deleteConversation(conv)}
+                        className="px-2 py-1 rounded-md text-2xs font-medium bg-destructive/15 text-destructive hover:bg-destructive/25 transition-colors"
+                      >
+                        {t('chat.delete_yes')}
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirmId(null)}
+                        className="px-2 py-1 rounded-md text-2xs text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        {t('chat.cancel')}
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <Tip label={t('chat.export_conversation')}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); void exportConversation(conv); }}
+                          aria-label={t('chat.export_conversation')}
+                          className="opacity-0 group-hover/conv:opacity-100 p-1 rounded text-muted-foreground hover:text-foreground transition-opacity"
+                        >
+                          <Download size={14} />
+                        </button>
+                      </Tip>
+                      <Tip label={t('chat.delete_chat')}>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); armDelete(conv.id); }}
+                          aria-label={t('chat.delete_chat')}
+                          className="opacity-0 group-hover/conv:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-opacity"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </Tip>
+                    </>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+    </>
+  );
+
   return (
     <div className={`flex flex-col ${variant === 'panel' ? 'h-full' : 'h-[calc(100vh-6rem)]'}`}>
-      {/* ── Header ────────────────────────────────────────────── */}
-      <div className={`flex items-center justify-between flex-shrink-0 ${variant === 'panel' ? 'mb-2' : 'mb-4'}`}>
-        <div className="flex items-center gap-3 min-w-0">
-          {/* The panel provides its own "Assistant" title bar, so the
-              full-page-only h1 would be redundant there. */}
-          {variant !== 'panel' && (
+      {/* ── Header ──────────────────────────────────────────────
+          Panel mode: the New-chat / History controls PORTAL into the panel's
+          chrome header (beside ✕, below) so the chat area keeps the full
+          height; only a slim trust badge stays here.  Full page: inline
+          header with title + badge + controls. */}
+      {variant === 'panel' ? (
+        trustBadge && <div className="mb-2 flex-shrink-0">{trustBadge}</div>
+      ) : (
+        <div className="flex items-center justify-between flex-shrink-0 mb-4">
+          <div className="flex items-center gap-3 min-w-0">
             <h1 className="text-xl font-semibold flex items-center gap-2">
               <Bot size={20} className="text-primary" />
               AI Assistant
             </h1>
-          )}
-          {/* Trust badge: only for restricted (company/vehicle-scoped) users —
-              surfaces the Vehicle Access scope so they understand answers cover
-              a subset, not the whole account. */}
-          {scope?.restricted && (
-            <span
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-2xs font-medium bg-muted text-muted-foreground border border-border whitespace-nowrap"
-              title="Your access is limited to these vehicles — answers cover only them."
-            >
-              <Eye size={12} aria-hidden />
-              Answering for your {scope.vehicle_count ?? 0} vehicle{scope.vehicle_count === 1 ? '' : 's'}
-            </span>
-          )}
-        </div>
-
-        {/* Right-side controls: tier picker + export + clear */}
-        <div className="flex items-center gap-2">
-          {/* Tier picker — single button collapsing to a dropdown that
-              shows the three tiers (Fast / Thinking / Reasoning).
-              Icons come from lucide-react (design.md §7), sized to
-              the standard 14px step that pairs with text-sm body.
-              The resolved model name is intentionally NOT shown here —
-              it appears under each AI response bubble instead, where
-              it's tied to the message that produced it. */}
-          {tiers.length > 0 && (() => {
-            const active = tiers.find((t) => t.name === currentTier) ?? tiers[0];
-            const ActiveIcon = TIER_ICONS[active.name];
-            return (
-              <div className="relative" ref={modelRef}>
-                <button
-                  onClick={() => setTierOpen(!tierOpen)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors bg-muted border-border hover:border-ring text-foreground/80 cursor-pointer"
-                  aria-haspopup="listbox"
-                  aria-expanded={tierOpen}
-                  title={active.description}
-                >
-                  <ActiveIcon size={14} aria-hidden />
-                  <span>{active.label}</span>
-                  <ChevronDown
-                    size={12}
-                    className={`transition-transform shrink-0 ${tierOpen ? 'rotate-180' : ''}`}
-                  />
-                </button>
-                {tierOpen && (
-                  <div
-                    role="listbox"
-                    className="absolute right-0 top-full mt-1 z-50 w-64 rounded-lg border border-border bg-card shadow-xl"
-                  >
-                    {tiers.map((tier) => {
-                      const Icon = TIER_ICONS[tier.name];
-                      const isActive = tier.name === currentTier;
-                      return (
-                        <button
-                          key={tier.name}
-                          onClick={() => switchTier(tier.name)}
-                          disabled={tierSwitching || isActive}
-                          role="option"
-                          aria-selected={isActive}
-                          className={`w-full text-left px-3 py-2 text-sm transition-colors ${
-                            isActive
-                              ? 'bg-primary/15 text-primary'
-                              : 'text-foreground/80 hover:bg-muted'
-                          } disabled:cursor-default`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Icon size={16} aria-hidden className="shrink-0" />
-                            <span className="font-medium">{tier.label}</span>
-                            {tier.model_count > 0 && (
-                              <span className="ml-auto text-3xs text-muted-foreground">
-                                {tier.model_count} models
-                              </span>
-                            )}
-                          </div>
-                          {tier.description && (
-                            <span className="text-3xs text-muted-foreground block mt-0.5 ml-6">
-                              {tier.description}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-
-          {/* Separator */}
-          <div className="w-px h-5 bg-border" />
-
-          {/* New chat — start a fresh thread (created lazily on first send) */}
-          <button
-            onClick={newChat}
-            disabled={messages.length === 0 && conversationId === null && !loading}
-            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors disabled:opacity-50 disabled:cursor-default ${
-              newChatConfirm
-                ? 'bg-destructive/15 text-destructive border-destructive/30 hover:bg-destructive/25'
-                : 'bg-muted hover:bg-muted/80 text-muted-foreground border-border'
-            }`}
-            title={newChatConfirm ? t('chat.confirm_discard') : t('chat.new_chat')}
-          >
-            <SquarePen size={14} />
-            {newChatConfirm ? t('chat.confirm_discard') : t('chat.new_chat')}
-          </button>
-
-          {/* History — previous chats with per-chat export / delete,
-              the standard AI-chat threads panel. */}
-          <div className="relative" ref={historyRef}>
-            <button
-              onClick={() => { setHistoryOpen(!historyOpen); setDeleteConfirmId(null); if (!historyOpen) void loadConversations(); }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg transition-colors bg-muted hover:bg-muted/80 text-muted-foreground border border-border"
-              aria-haspopup="listbox"
-              aria-expanded={historyOpen}
-              title={t('chat.history')}
-            >
-              <History size={14} />
-              {t('chat.history')}
-            </button>
-            {historyOpen && (
-              <div className="absolute right-0 top-full mt-1 z-50 w-80 rounded-lg border border-border bg-card shadow-xl max-h-96 overflow-y-auto">
-                {conversations.length === 0 ? (
-                  <div className="px-3 py-4 text-xs text-muted-foreground text-center">
-                    {t('chat.no_previous_chats')}
-                  </div>
-                ) : (
-                  conversations.map((conv) => (
-                    <div
-                      key={conv.id}
-                      className={`group/conv flex items-center gap-2 px-3 py-2 transition-colors cursor-pointer ${
-                        conv.id === conversationId
-                          ? 'bg-primary/10'
-                          : 'hover:bg-muted'
-                      }`}
-                      onClick={() => void openConversation(conv)}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className={`text-sm truncate ${conv.id === conversationId ? 'text-primary font-medium' : 'text-foreground'}`}>
-                          {conv.title}
-                        </div>
-                        <div className="text-3xs text-muted-foreground">
-                          {formatDate(new Date(conv.updated_at), { timeZone: tz })}
-                          {' · '}
-                          {conv.message_count} {t('chat.messages_count')}
-                        </div>
-                      </div>
-                      {deleteConfirmId === conv.id ? (
-                        /* Armed: explicit Delete / Cancel — two distinct
-                           targets, never "press the same icon twice". */
-                        <div
-                          className="flex items-center gap-1"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            onClick={() => void deleteConversation(conv)}
-                            className="px-2 py-1 rounded-md text-2xs font-medium bg-destructive/15 text-destructive hover:bg-destructive/25 transition-colors"
-                          >
-                            {t('chat.delete_yes')}
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirmId(null)}
-                            className="px-2 py-1 rounded-md text-2xs text-muted-foreground hover:text-foreground transition-colors"
-                          >
-                            {t('chat.cancel')}
-                          </button>
-                        </div>
-                      ) : (
-                        <>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); void exportConversation(conv); }}
-                            className="opacity-0 group-hover/conv:opacity-100 p-1 rounded text-muted-foreground hover:text-foreground transition-opacity"
-                            title={t('chat.export_conversation')}
-                          >
-                            <Download size={14} />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); armDelete(conv.id); }}
-                            className="opacity-0 group-hover/conv:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-opacity"
-                            title={t('chat.delete_chat')}
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
+            {trustBadge}
           </div>
+          <div className="flex items-center gap-1">{threadControls}</div>
         </div>
-      </div>
+      )}
+      {variant === 'panel' && headerSlot && createPortal(threadControls, headerSlot)}
 
       {/* Messages area */}
       <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
@@ -1177,14 +1216,15 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
             {/* Primary action: the operations briefing.  Lives here (and as the
                 /briefing command) instead of a separate tab. */}
             <div className="mt-6 flex flex-col items-center gap-3">
-              <button
-                onClick={runBriefing}
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors"
-                title={`Generate your ${briefingLabel.toLowerCase()} — or type /briefing`}
-              >
-                <Sparkles size={16} aria-hidden />
-                {briefingLabel}
-              </button>
+              <Tip label={`Generate your ${briefingLabel.toLowerCase()} — or type /briefing`}>
+                <button
+                  onClick={runBriefing}
+                  className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/15 transition-colors"
+                >
+                  <Sparkles size={16} aria-hidden />
+                  {briefingLabel}
+                </button>
+              </Tip>
               <div className="flex flex-wrap justify-center gap-2">
                 {suggestedQuestions.map((q) => (
                   <button
@@ -1211,13 +1251,15 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   {msg.text}
                 </div>
                 <div className="flex items-center justify-end gap-2 mt-1">
-                  <button
-                    onClick={() => editMessage(msg.text)}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-                    title={t('chat.edit_message')}
-                  >
-                    <Pencil size={12} />
-                  </button>
+                  <Tip label={t('chat.edit_message')}>
+                    <button
+                      onClick={() => editMessage(msg.text)}
+                      aria-label={t('chat.edit_message')}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                  </Tip>
                   <p className="text-3xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
                     {formatTime(msg.timestamp, { timeZone: tz, intl: { hour: '2-digit', minute: '2-digit' } })}
                   </p>
@@ -1360,60 +1402,68 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       they have visual confirmation. */}
                   {i === lastAiIdx && (
                     <>
-                      <button
-                        onClick={() => voteOnMessage(i, 'up')}
-                        disabled={loading}
-                        className={`opacity-0 group-hover:opacity-100 transition-opacity ml-auto disabled:cursor-not-allowed ${
-                          feedbackByIdx[i] === 'up'
-                            ? 'opacity-100 text-primary'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                        title={t('chat.feedback_good')}
-                        aria-pressed={feedbackByIdx[i] === 'up'}
-                      >
-                        <ThumbsUp
-                          size={12}
-                          className={feedbackByIdx[i] === 'up' ? 'fill-current' : ''}
-                        />
-                      </button>
-                      <button
-                        onClick={() => voteOnMessage(i, 'down')}
-                        disabled={loading}
-                        className={`opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-not-allowed ${
-                          feedbackByIdx[i] === 'down'
-                            ? 'opacity-100 text-warn'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                        title={t('chat.feedback_bad')}
-                        aria-pressed={feedbackByIdx[i] === 'down'}
-                      >
-                        <ThumbsDown
-                          size={12}
-                          className={feedbackByIdx[i] === 'down' ? 'fill-current' : ''}
-                        />
-                      </button>
-                      <button
-                        onClick={() => regenerateMessage(i)}
-                        disabled={regeneratingIdx !== null || loading}
-                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-                        title={t('chat.regenerate')}
-                      >
-                        <RefreshCw
-                          size={12}
-                          className={regeneratingIdx === i ? 'animate-spin' : ''}
-                        />
-                      </button>
+                      <Tip label={t('chat.feedback_good')}>
+                        <button
+                          onClick={() => voteOnMessage(i, 'up')}
+                          disabled={loading}
+                          aria-label={t('chat.feedback_good')}
+                          className={`opacity-0 group-hover:opacity-100 transition-opacity ml-auto disabled:cursor-not-allowed ${
+                            feedbackByIdx[i] === 'up'
+                              ? 'opacity-100 text-primary'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                          aria-pressed={feedbackByIdx[i] === 'up'}
+                        >
+                          <ThumbsUp
+                            size={12}
+                            className={feedbackByIdx[i] === 'up' ? 'fill-current' : ''}
+                          />
+                        </button>
+                      </Tip>
+                      <Tip label={t('chat.feedback_bad')}>
+                        <button
+                          onClick={() => voteOnMessage(i, 'down')}
+                          disabled={loading}
+                          aria-label={t('chat.feedback_bad')}
+                          className={`opacity-0 group-hover:opacity-100 transition-opacity disabled:cursor-not-allowed ${
+                            feedbackByIdx[i] === 'down'
+                              ? 'opacity-100 text-warn'
+                              : 'text-muted-foreground hover:text-foreground'
+                          }`}
+                          aria-pressed={feedbackByIdx[i] === 'down'}
+                        >
+                          <ThumbsDown
+                            size={12}
+                            className={feedbackByIdx[i] === 'down' ? 'fill-current' : ''}
+                          />
+                        </button>
+                      </Tip>
+                      <Tip label={t('chat.regenerate')}>
+                        <button
+                          onClick={() => regenerateMessage(i)}
+                          disabled={regeneratingIdx !== null || loading}
+                          aria-label={t('chat.regenerate')}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                        >
+                          <RefreshCw
+                            size={12}
+                            className={regeneratingIdx === i ? 'animate-spin' : ''}
+                          />
+                        </button>
+                      </Tip>
                     </>
                   )}
-                  <button
-                    onClick={() => copyMessage(msg.text, i)}
-                    className={`opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ${i === lastAiIdx ? '' : 'ml-auto'}`}
-                    title={t('chat.copy_response')}
-                  >
-                    {copiedIdx === i
-                      ? <Check size={12} className="text-ok" />
-                      : <Copy size={12} />}
-                  </button>
+                  <Tip label={t('chat.copy_response')}>
+                    <button
+                      onClick={() => copyMessage(msg.text, i)}
+                      aria-label={t('chat.copy_response')}
+                      className={`opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground ${i === lastAiIdx ? '' : 'ml-auto'}`}
+                    >
+                      {copiedIdx === i
+                        ? <Check size={12} className="text-ok" />
+                        : <Copy size={12} />}
+                    </button>
+                  </Tip>
                 </div>
                 {dislikeFormFor === i && (
                   <DislikeReasonForm
@@ -1477,9 +1527,19 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                         );
                       }
                       return isActiveTool ? (
+                        // Active tool = tinted running card with a live per-step
+                        // timer ticking from its client startedAt (the elapsedSec
+                        // interval re-renders us each second).
                         <TimelineRow key={si} marker={ACTIVE_BEACON} last>
-                          <div className="text-xs font-medium text-foreground animate-pulse">
-                            {step.label}…
+                          <div className="flex items-center justify-between gap-2 rounded-md bg-primary/5 px-2 py-1">
+                            <span className="text-xs font-medium text-foreground">
+                              {step.label}…
+                            </span>
+                            {step.startedAt != null && (
+                              <span className="shrink-0 text-3xs font-medium text-primary/70 tabular-nums">
+                                {t('chat.running')} · {stepDuration(Date.now() - step.startedAt) ?? '0s'}
+                              </span>
+                            )}
                           </div>
                         </TimelineRow>
                       ) : (
@@ -1488,8 +1548,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           marker={<Check size={12} className="text-primary/70" />}
                           last={false}
                         >
-                          <div className="text-2xs font-medium text-muted-foreground">
-                            {step.label}
+                          <div className="flex items-center gap-2 text-2xs font-medium text-muted-foreground">
+                            <span>{step.label}</span>
+                            {stepDuration(step.elapsed_ms) && (
+                              <span className="text-3xs text-muted-foreground/50 tabular-nums">
+                                {stepDuration(step.elapsed_ms)}
+                              </span>
+                            )}
                           </div>
                           <ToolStepLink toolName={step.name} />
                         </TimelineRow>
@@ -1532,22 +1597,6 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         <div ref={bottomRef} />
       </div>
 
-      {/* Follow-up suggestions */}
-      {suggestions.length > 0 && !loading && (
-        <div className="flex flex-wrap gap-1.5 mt-2 pt-2 border-t border-border flex-shrink-0">
-          {suggestions.map((s, i) => (
-            <button
-              key={i}
-              onClick={() => send(s)}
-              disabled={loading}
-              className="px-3 py-1.5 text-xs rounded-full bg-muted hover:bg-primary/10 hover:text-primary hover:border-primary/30 text-foreground/70 border border-border transition-colors disabled:opacity-50"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
-
       {/* Slash-command menu — appears when the input starts with "/" */}
       {slashMatches.length > 0 && !loading && (
         <div className="flex flex-col gap-0.5 mt-2 rounded-lg border border-border bg-card p-1 shadow-sm flex-shrink-0">
@@ -1565,42 +1614,282 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         </div>
       )}
 
-      {/* Input */}
-      <div className="flex gap-2 mt-3 flex-shrink-0">
-        <textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => {
-            setInput(e.target.value);
-            e.target.style.height = 'auto';
-            e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder={`Ask about ${chatSubject}…  (or type / for commands)`}
-          rows={1}
-          style={{ maxHeight: '120px' }}
-          className="flex-1 bg-card text-foreground rounded-xl px-4 py-3 text-sm border border-border focus:border-ring focus:ring-2 focus:ring-ring/20 focus:outline-none resize-none transition-colors placeholder:text-muted-foreground/50"
-          disabled={loading}
-        />
-        {loading ? (
-          <button
-            onClick={stopGeneration}
-            className="px-4 py-3 rounded-lg bg-muted hover:bg-muted/80 text-foreground font-medium text-sm transition-colors border border-border flex items-center gap-1.5 shrink-0"
-            title="Stop generating"
-          >
-            <Square size={14} className="fill-current" />
-            Stop
-          </button>
-        ) : (
-          <button
-            onClick={() => submit(input)}
-            disabled={!input.trim()}
-            className="px-4 py-3 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0"
-          >
-            <Send size={14} />
-            Send
-          </button>
-        )}
+      {/* Composer — STACKED (modern assistant layout): the field spans the
+          full width on top; a toolbar row sits beneath it (slash-commands on
+          the left, send/stop on the right).  Stays editable while a reply
+          streams — Enter is still blocked by submit()'s loading guard — so the
+          user can keep drafting their next question. */}
+      <div className="mt-3 flex-shrink-0">
+        {/* Status strip — a tinted WRAPPER around the composer (one connected
+            card, like the reference design — never a floating bar with a gap).
+            The header row sits inside the wrapper, above the input card.
+            Three states, all via theme tokens (multi-theme safe):
+              • Running   — current step + ticking elapsed (primary tint)
+              • Done · Xs — brief success stamp after a run (ok tone)
+              • Waiting for your reply — persistent idle state that CARRIES
+                the follow-up suggestions, collapsed behind a count badge
+                (compact-first: 6 chips ≈ 3 rows in the panel otherwise).
+            With no suggestions the wrapper leaves after the Done flash —
+            a bare "waiting" banner with nothing to offer is noise. */}
+        {(() => {
+          const stripState = loading
+            ? 'running'
+            : suggestions.length > 0
+              ? 'idle'
+              : doneFlash != null ? 'done' : null;
+          const wrapClass = stripState === 'running'
+            ? 'rounded-xl border border-primary/20 bg-primary/5 p-1'
+            : stripState === 'idle'
+              ? 'rounded-xl border border-border bg-muted/40 p-1'
+              : stripState === 'done'
+                ? `rounded-xl border p-1 ${toneClasses('ok')}`
+                : '';
+          return (
+            <div className={wrapClass}>
+              {stripState === 'running' && (
+                <div
+                  role="status"
+                  className="flex items-center gap-1.5 px-2 py-1 text-2xs font-medium text-primary"
+                >
+                  <Sparkles size={12} className="animate-pulse shrink-0" aria-hidden />
+                  <span className="truncate">
+                    {t('chat.running')}
+                    {(() => {
+                      const lastLive = liveSteps[liveSteps.length - 1];
+                      const stepLabel = lastLive?.type === 'tool'
+                        ? lastLive.label
+                        : liveSteps.length > 0 ? t('chat.thinking_live') : null;
+                      return stepLabel ? ` · ${stepLabel}` : '';
+                    })()}
+                  </span>
+                  {elapsedSec > 0 && (
+                    <span className="ml-auto shrink-0 tabular-nums opacity-70">{elapsedSec}s</span>
+                  )}
+                </div>
+              )}
+              {stripState === 'idle' && (
+                <>
+                  <div className="flex items-center gap-1.5 px-2 py-1 text-2xs font-medium text-muted-foreground">
+                    {doneFlash != null ? (
+                      // Fresh answer: success stamp first, swaps to the idle
+                      // label when the flash timer clears doneFlash.
+                      <span className={`inline-flex items-center gap-1.5 ${toneText('ok')}`} role="status">
+                        <Check size={12} className="shrink-0" aria-hidden />
+                        {t('chat.done_step')}
+                        {stepDuration(doneFlash) && (
+                          <span className="tabular-nums opacity-70">{stepDuration(doneFlash)}</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5">
+                        <Bot size={12} className="shrink-0" aria-hidden />
+                        {t('chat.awaiting_reply')}
+                      </span>
+                    )}
+                    <Tip label={t('chat.suggestions')}>
+                      <button
+                        onClick={() => setSuggestionsOpen((v) => !v)}
+                        aria-expanded={suggestionsOpen}
+                        aria-label={t('chat.suggestions')}
+                        className="ml-auto inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors"
+                      >
+                        <Lightbulb size={12} aria-hidden />
+                        <span className="tabular-nums">{suggestions.length}</span>
+                        <ChevronDown
+                          size={12}
+                          className={`transition-transform ${suggestionsOpen ? 'rotate-180' : ''}`}
+                          aria-hidden
+                        />
+                      </button>
+                    </Tip>
+                  </div>
+                  {suggestionsOpen && (
+                    <div className="flex flex-wrap gap-1.5 px-2 pb-1.5">
+                      {suggestions.map((s, i) => (
+                        <button
+                          key={i}
+                          onClick={() => send(s)}
+                          className="px-2.5 py-1 text-2xs rounded-full bg-card hover:bg-primary/10 hover:text-primary hover:border-primary/30 text-foreground/70 border border-border transition-colors"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+              {stripState === 'done' && (
+                <div
+                  role="status"
+                  className="flex items-center gap-1.5 px-2 py-1 text-2xs font-medium"
+                >
+                  <Check size={12} className="shrink-0" aria-hidden />
+                  <span>{t('chat.done_step')}</span>
+                  {stepDuration(doneFlash ?? undefined) && (
+                    <span className="ml-auto shrink-0 tabular-nums opacity-70">
+                      {stepDuration(doneFlash ?? undefined)}
+                    </span>
+                  )}
+                </div>
+              )}
+              <div className={`${stripState ? 'rounded-lg' : 'rounded-xl'} border border-border bg-card px-3 pt-2.5 pb-2 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20`}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => {
+              setInput(e.target.value);
+              e.target.style.height = 'auto';
+              e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+            }}
+            onKeyDown={handleKeyDown}
+            onFocus={() => setInputFocused(true)}
+            onBlur={() => setInputFocused(false)}
+            placeholder={phIdx === 0
+              ? t('chat.placeholder_ask', { subject: chatSubject })
+              : t('chat.placeholder_commands')}
+            rows={1}
+            style={{ maxHeight: '120px' }}
+            className="w-full bg-transparent text-foreground text-sm resize-none focus:outline-none placeholder:text-muted-foreground/50"
+          />
+          {/* Toolbar — slash-commands (icon-only) on the left; the model
+              picker + send/stop grouped on the right, next to the input. */}
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            {/* "+" quick actions — the future attach/upload affordance;
+                today it carries the slash commands (also reachable by
+                typing "/", per the placeholder hint). */}
+            <div className="relative" ref={plusRef}>
+              <Tip label={t('chat.commands')}>
+                <button
+                  type="button"
+                  onClick={() => setPlusOpen((v) => !v)}
+                  aria-haspopup="menu"
+                  aria-expanded={plusOpen}
+                  aria-label={t('chat.commands')}
+                  className="flex size-8 items-center justify-center rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
+                >
+                  <Plus
+                    size={16}
+                    aria-hidden
+                    className={`transition-transform ${plusOpen ? 'rotate-45' : ''}`}
+                  />
+                </button>
+              </Tip>
+              {plusOpen && (
+                <div
+                  role="menu"
+                  className="absolute left-0 bottom-full mb-1 z-50 w-60 rounded-lg border border-border bg-card p-1 shadow-xl"
+                >
+                  {SLASH_COMMANDS.map((c) => (
+                    <button
+                      key={c.name}
+                      role="menuitem"
+                      onClick={() => { setPlusOpen(false); setInput(''); c.run(); }}
+                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-sm rounded-md text-left text-foreground/80 hover:bg-muted transition-colors"
+                    >
+                      <Sparkles size={14} className="text-primary shrink-0" aria-hidden />
+                      <span className="font-medium">{c.label}</span>
+                      <span className="ml-auto text-3xs text-muted-foreground font-mono">/{c.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              {/* Model (tier) picker — moved here from the header; opens
+                  UPWARD since it sits at the bottom of the panel. */}
+              {tiers.length > 0 && (() => {
+                const active = tiers.find((t) => t.name === currentTier) ?? tiers[0];
+                const ActiveIcon = TIER_ICONS[active.name];
+                return (
+                  <div className="relative" ref={modelRef}>
+                    <Tip label={active.description}>
+                      <button
+                        onClick={() => setTierOpen(!tierOpen)}
+                        aria-haspopup="listbox"
+                        aria-expanded={tierOpen}
+                        className="flex items-center gap-1 rounded-md px-2 py-1.5 text-2xs font-medium text-muted-foreground/80 hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                      >
+                        <ActiveIcon size={14} aria-hidden />
+                        <span>{active.label}</span>
+                        <ChevronDown
+                          size={12}
+                          className={`transition-transform shrink-0 ${tierOpen ? 'rotate-180' : ''}`}
+                        />
+                      </button>
+                    </Tip>
+                    {tierOpen && (
+                      <div
+                        role="listbox"
+                        className="absolute right-0 bottom-full mb-1 z-50 w-64 rounded-lg border border-border bg-card shadow-xl"
+                      >
+                        {tiers.map((tier) => {
+                          const Icon = TIER_ICONS[tier.name];
+                          const isActive = tier.name === currentTier;
+                          return (
+                            <button
+                              key={tier.name}
+                              onClick={() => switchTier(tier.name)}
+                              disabled={tierSwitching || isActive}
+                              role="option"
+                              aria-selected={isActive}
+                              className={`w-full text-left px-3 py-2 text-sm transition-colors ${
+                                isActive
+                                  ? 'bg-primary/15 text-primary'
+                                  : 'text-foreground/80 hover:bg-muted'
+                              } disabled:cursor-default`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <Icon size={16} aria-hidden className="shrink-0" />
+                                <span className="font-medium">{tier.label}</span>
+                                {tier.model_count > 0 && (
+                                  <span className="ml-auto text-3xs text-muted-foreground">
+                                    {tier.model_count} models
+                                  </span>
+                                )}
+                              </div>
+                              {tier.description && (
+                                <span className="text-3xs text-muted-foreground block mt-0.5 ml-6">
+                                  {tier.description}
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {loading ? (
+                <Tip label={t('chat.stop_generating')}>
+                  <button
+                    onClick={stopGeneration}
+                    aria-label={t('chat.stop_generating')}
+                    className="flex size-9 shrink-0 items-center justify-center rounded-full border border-border bg-muted text-foreground hover:bg-muted/80 transition-colors"
+                  >
+                    <Square size={14} className="fill-current" />
+                  </button>
+                </Tip>
+              ) : (
+                <Tip label={t('chat.send')}>
+                  <button
+                    onClick={() => submit(input)}
+                    disabled={!input.trim()}
+                    aria-label={t('chat.send')}
+                    className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <ArrowUp size={16} />
+                  </button>
+                </Tip>
+              )}
+                </div>
+              </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

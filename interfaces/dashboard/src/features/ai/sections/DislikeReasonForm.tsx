@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
+import { Tip } from '../../../components/tooltip';
 import { apiJSON } from '../../../api/client';
 
 // "Why was this bad?" follow-up that opens after a thumbs-down click.
@@ -84,14 +85,15 @@ export function DislikeReasonForm({ onSkip, onSubmitted }: Props) {
         <span className="text-xs font-medium text-foreground/80">
           {t('chat.dislike_form.title')}
         </span>
-        <button
-          onClick={onSkip}
-          className="text-muted-foreground hover:text-foreground"
-          aria-label={t('chat.dislike_form.close')}
-          title={t('chat.dislike_form.close')}
-        >
-          <X size={14} />
-        </button>
+        <Tip label={t('chat.dislike_form.close')}>
+          <button
+            onClick={onSkip}
+            className="text-muted-foreground hover:text-foreground"
+            aria-label={t('chat.dislike_form.close')}
+          >
+            <X size={14} />
+          </button>
+        </Tip>
       </div>
 
       <div className="flex flex-wrap gap-1.5 mb-2">

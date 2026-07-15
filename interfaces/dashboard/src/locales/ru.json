@@ -316,7 +316,16 @@
     "ask_driver": "Спросите что-нибудь о вашем грузовике.",
     "model_default": "по умолчанию",
     "model_active": "активна",
-    "thinking": "Думаю…"
+    "thinking": "Думаю…",
+    "running": "Выполняется",
+    "send": "Отправить",
+    "stop_generating": "Остановить генерацию",
+    "commands": "Команды",
+    "slash_commands": "Слэш-команды",
+    "awaiting_reply": "Ждём вашего ответа",
+    "suggestions": "Подсказки",
+    "placeholder_ask": "Спросите о {{subject}}…",
+    "placeholder_commands": "Введите / для команд"
   },
   "pages": {
     "overview_title": "Моя панель",
