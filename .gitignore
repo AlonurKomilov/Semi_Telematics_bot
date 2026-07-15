@@ -64,7 +64,7 @@ docs/*
 !docs/grafana/
 # Architecture decision docs — SSOT plans, must travel with the repo.
 !docs/architecture/
-# UX psychology audit reports (written by the ux-psychology-audit skill
-# in .claude/skills/ — tracked so parallel-session reports can be
-# aggregated later).
-!docs/ux-audits/
+# UX psychology audit reports stay LOCAL-ONLY (docs/* already ignores
+# them): they are point-in-time working papers, not source.  The
+# ux-psychology-audit skill still writes them here and aggregates them
+# across sessions from disk — they just never enter git.

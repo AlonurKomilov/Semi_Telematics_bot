@@ -138,7 +138,7 @@ Rules for the report:
 
 ## Step 5 — Save the report
 
-Write the report to `docs/ux-audits/<YYYY-MM-DD>-<short-scope-slug>.md` (e.g. `docs/ux-audits/2026-07-06-carrier-intake.md`) in addition to summarizing it in chat. This directory is git-tracked (a `.gitignore` exception exists for it) — saved reports are the input that makes Aggregation mode possible across sessions, and the "Not yet audited" list is what lets a later Mode B session continue where this one stopped. If a report for the same date+scope exists, add a `-2` suffix rather than overwriting.
+Write the report to `docs/ux-audits/<YYYY-MM-DD>-<short-scope-slug>.md` (e.g. `docs/ux-audits/2026-07-06-carrier-intake.md`) in addition to summarizing it in chat. This directory is LOCAL-ONLY (gitignored — reports are point-in-time working papers, not source; never commit them). Saved files on disk are the input that makes Aggregation mode possible across sessions, and the "Not yet audited" list is what lets a later Mode B session continue where this one stopped. If a report for the same date+scope exists, add a `-2` suffix rather than overwriting.
 
 ## Aggregation mode
 
