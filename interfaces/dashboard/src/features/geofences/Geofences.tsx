@@ -8,6 +8,7 @@ import { useLeafletMap } from '../../hooks/useLeafletMap';
 import { usePoiLayers } from '../../hooks/usePoiLayers';
 import PoiLayerPanel from '@/features/live-map/PoiLayerPanel';
 import { PageHeader, EmptyState } from '../../components/shell';
+import { Button } from '../../components/ui/button';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import type { GeofenceFeature, GeofencesResponse } from '../../types';
 import type L from 'leaflet';
@@ -374,13 +375,10 @@ export default function Geofences() {
           }
           actions={
             canManage && panelMode !== 'add' ? (
-              <button
-                onClick={openAddPanel}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
-              >
-                <Plus size={14} />
+              <Button onClick={openAddPanel}>
+                <Plus size={16} className="mr-1.5" />
                 Add zone
-              </button>
+              </Button>
             ) : null
           }
         />
@@ -388,8 +386,8 @@ export default function Geofences() {
 
       {/* Map-pick tip banner (shown inside map area so map stays visible) */}
       {pickingFromMap && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[400] bg-amber-500 text-white text-sm font-medium px-5 py-2 rounded-full shadow-lg flex items-center gap-3 pointer-events-auto">
-          📍 Click anywhere on the map to set zone center
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[400] bg-warn text-white text-sm font-medium px-4 py-2 rounded-lg shadow-lg flex items-center gap-3 pointer-events-auto">
+          <MapPin size={16} aria-hidden /> Click anywhere on the map to set zone center
           <button onClick={cancelMapPick} className="underline text-white/80 hover:text-white text-xs">Cancel</button>
         </div>
       )}
@@ -676,13 +674,10 @@ export default function Geofences() {
               }
               action={
                 canManage ? (
-                  <button
-                    onClick={openAddPanel}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-xs font-medium hover:bg-primary/90 transition"
-                  >
-                    <Plus size={14} />
+                  <Button onClick={openAddPanel}>
+                    <Plus size={16} className="mr-1.5" />
                     Add zone
-                  </button>
+                  </Button>
                 ) : undefined
               }
             />
