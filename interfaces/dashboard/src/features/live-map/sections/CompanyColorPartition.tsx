@@ -40,6 +40,7 @@ export default function CompanyColorPartition({
   leafletMap,
   isReady,
   vehicles,
+  companyColorsOn,
 }: LiveMapSectionProps) {
   const { has } = useViewPermissions();
   const hasMultiCompanyScope =
@@ -49,6 +50,8 @@ export default function CompanyColorPartition({
   useEffect(() => {
     if (!isReady || !leafletMap.current) return;
     if (!hasMultiCompanyScope) return;
+    // User toggled off → previous run's cleanup removed the dots.
+    if (!companyColorsOn) return;
 
     const Leaf = window.L as typeof L;
 
@@ -109,7 +112,7 @@ export default function CompanyColorPartition({
     layerRef.current = group;
 
     return clear;
-  }, [isReady, hasMultiCompanyScope, vehicles, leafletMap]);
+  }, [isReady, hasMultiCompanyScope, companyColorsOn, vehicles, leafletMap]);
 
   return null;
 }

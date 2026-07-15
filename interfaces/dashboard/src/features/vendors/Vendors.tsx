@@ -13,11 +13,18 @@
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { Globe, MapPin, Star, Store } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+import { Globe, MapPin, Plus, Star, Store } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/DataGrid';
 import { PageHeader, EmptyState, ErrorState, TableSkeleton } from '../../components/shell';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle,
+} from '../../components/ui/dialog';
+import { Button } from '../../components/ui/button';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { Vendor, DirectoryEntry, AnyColumn } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
@@ -55,7 +62,22 @@ const vendorColumns = (tz: string): AnyColumn[] => [
 ];
 
 const directoryColumns: AnyColumn[] = [
-  { key: 'name', label: 'Shop', sortable: true },
+  {
+    key: 'name', label: 'Shop', sortable: true,
+    render: (v, row) => {
+      const r = row as unknown as DirectoryEntry;
+      return (
+        <span className="inline-flex items-center gap-2">
+          <span>{String(v)}</span>
+          {r.chain && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full border border-border text-2xs text-muted-foreground">
+              {r.chain}
+            </span>
+          )}
+        </span>
+      );
+    },
+  },
   {
     key: 'services', label: 'Services', sortable: false,
     render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>),
@@ -99,10 +121,40 @@ const directoryColumns: AnyColumn[] = [
   },
 ];
 
+const EMPTY_FORM = { name: '', phone: '', email: '', address: '', notes: '' };
+
 export default function Vendors() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const tz = useTimezone();
+  const { has } = useViewPermissions();
+  const canWrite = has('can_work_orders_all');
   const [tab, setTab] = useState<'mine' | 'directory'>('mine');
+
+  // Manual create — vendors also appear automatically from work-order
+  // saves and Datatruck sync, but a shop you PLAN to use deserves a
+  // record before its first invoice.  Idempotent server-side (an
+  // existing name returns that vendor).
+  const [addOpen, setAddOpen] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [addForm, setAddForm] = useState(EMPTY_FORM);
+
+  const createVendor = async () => {
+    if (!addForm.name.trim()) return;
+    setAddBusy(true);
+    try {
+      const v = await apiJSON<Vendor>('/vendors', { method: 'POST', body: addForm });
+      toast.success('Vendor created');
+      qc.invalidateQueries({ queryKey: ['vendors'] });
+      setAddOpen(false);
+      setAddForm(EMPTY_FORM);
+      navigate(`/vendors/${v.id}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Create failed');
+    } finally {
+      setAddBusy(false);
+    }
+  };
 
   const { data, isLoading, error } = useQuery<{ vendors: Vendor[] }>({
     queryKey: ['vendors'],
@@ -125,6 +177,16 @@ export default function Vendors() {
         icon={Store}
         title="Vendors"
         description="Every repair shop your fleet uses — one record per vendor, with spend history rolled up from work orders."
+        actions={canWrite ? (
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground hover:bg-primary/90 rounded-md text-xs font-medium transition"
+          >
+            <Plus size={14} />
+            Add vendor
+          </button>
+        ) : undefined}
       />
 
       <div role="tablist" aria-label="Vendor sections" className="flex gap-1 mb-4 border-b border-border">
@@ -188,7 +250,7 @@ export default function Vendors() {
             tableId="vendor-directory-browse"
             columns={directoryColumns}
             data={entries as unknown as Record<string, unknown>[]}
-            searchKey={['name', 'address', 'services', 'phone']}
+            searchKey={['name', 'address', 'services', 'phone', 'chain']}
             searchPlaceholder="Search the directory…"
             onRowClick={(row) => {
               const e = row as unknown as DirectoryEntry;
@@ -197,6 +259,53 @@ export default function Vendors() {
           />
         )
       )}
+
+      {/* Add-vendor dialog — same field set as the profile Edit dialog. */}
+      <Dialog open={addOpen} onOpenChange={(o) => { if (!o) setAddOpen(false); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add vendor</DialogTitle>
+            <DialogDescription>
+              Create a shop record before its first invoice — work orders and
+              synced invoices under this name will link to it automatically.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2.5">
+            {([
+              ['name', 'Name (required)', 'Shop name'],
+              ['phone', 'Phone', '555-1234'],
+              ['email', 'Email', 'shop@example.com'],
+              ['address', 'Address', 'Street, City, State'],
+            ] as const).map(([key, label, ph]) => (
+              <label key={key} className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">{label}</span>
+                <input
+                  type="text"
+                  value={addForm[key]}
+                  onChange={(e) => setAddForm((f) => ({ ...f, [key]: e.target.value }))}
+                  placeholder={ph}
+                  className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+                />
+              </label>
+            ))}
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-muted-foreground">Notes</span>
+              <textarea
+                rows={2}
+                value={addForm.notes}
+                onChange={(e) => setAddForm((f) => ({ ...f, notes: e.target.value }))}
+                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+              />
+            </label>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button onClick={createVendor} disabled={addBusy || !addForm.name.trim()}>
+              {addBusy ? 'Creating…' : 'Create vendor'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

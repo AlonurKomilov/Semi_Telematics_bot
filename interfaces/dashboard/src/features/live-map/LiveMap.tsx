@@ -15,6 +15,7 @@ import { PageLayoutHost } from '../../features/_lib/PageLayoutHost';
 import { LIVE_MAP_SECTIONS } from '../../features/live-map/registry';
 import PoiIcon from '../../features/live-map/PoiIcon';
 import { Tip } from '../../components/tooltip';
+import { useUserPreference } from '../../hooks/useUserPreference';
 import { LIVE_MAP_LAYOUTS } from '../../features/live-map/layouts';
 
 const REFRESH_MS      = 30_000;   // full data refresh (fuel, DEF, status)
@@ -241,8 +242,20 @@ export default function LiveMap() {
   // sees where incidents cluster; any persona can still flip it via
   // the side-panel checkbox.  The actual layer lifecycle lives in
   // SafetyEventOverlay — this page just owns the toggle state.
-  const { isSafetyView } = useShellConfig();
+  const { isSafetyView, persona } = useShellConfig();
   const [heatOn, setHeatOn] = useState(isSafetyView);
+
+  // Persona-mounted overlay comfort toggles (persisted per user, ON by
+  // default).  Checkbox visibility follows LIVE_MAP_LAYOUTS — the same
+  // registry that decides whether the overlay mounts at all, so no
+  // persona literals here and no toggle for a layer you never get.
+  const personaLayout = LIVE_MAP_LAYOUTS[persona] ?? [];
+  const { value: utilHeatOn, setValue: setUtilHeatOn } =
+    useUserPreference<boolean>('livemap.overlay.utilheat', true);
+  const { value: companyColorsOn, setValue: setCompanyColorsOn } =
+    useUserPreference<boolean>('livemap.overlay.companycolors', true);
+  const showUtilToggle = personaLayout.includes('utilisation_heatmap');
+  const showCompanyToggle = personaLayout.includes('company_color_partition');
 
   // ── Map initialization + polling ──────────────────────────────────────────
 
@@ -671,6 +684,8 @@ export default function LiveMap() {
             vehicles,
             selected,
             heatOn,
+            utilHeatOn,
+            companyColorsOn,
           }}
         />
       </div>
@@ -709,6 +724,29 @@ export default function LiveMap() {
             />
             Show 30-day safety heat
           </label>
+          {/* Persona-mounted overlay comfort toggles — remembered per user. */}
+          {showUtilToggle && (
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={utilHeatOn}
+                onChange={(e) => setUtilHeatOn(e.target.checked)}
+                className="accent-primary"
+              />
+              Show utilisation heat (30-day)
+            </label>
+          )}
+          {showCompanyToggle && (
+            <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={companyColorsOn}
+                onChange={(e) => setCompanyColorsOn(e.target.checked)}
+                className="accent-primary"
+              />
+              Show company color dots
+            </label>
+          )}
         </div>
 
         {selected ? (

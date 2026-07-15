@@ -34,6 +34,8 @@ interface DirEntry {
   suggested_by_account: number | null;
   lat: number | null;
   lng: number | null;
+  /** Multi-location brand family ("TA / Petro"); '' = independent. */
+  chain: string;
   created_at: string;
 }
 
@@ -64,7 +66,16 @@ export default function VendorDirectoryPage() {
   const [newName, setNewName] = useState('');
   const [newAddress, setNewAddress] = useState('');
   const [newPhone, setNewPhone] = useState('');
+  const [newChain, setNewChain] = useState('');
   const [reviews, setReviews] = useState<PendingReview[]>([]);
+  // Scale helpers: the directory grows to hundreds of chain locations.
+  const [search, setSearch] = useState('');
+  const [shownCount, setShownCount] = useState(100);
+  // Bulk import (spreadsheet paste, TAB-separated).
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importBusy, setImportBusy] = useState(false);
+  const [importResult, setImportResult] = useState('');
 
   // Location editor (one entry at a time): geocode SUGGESTS, the
   // operator confirms — nothing is stored until Save.
@@ -115,10 +126,14 @@ export default function VendorDirectoryPage() {
       if (!newName.trim()) return;
       await apiJSON('/system/vendor-directory', {
         method: 'POST',
-        body: { name: newName, address: newAddress, phone: newPhone },
+        body: { name: newName, address: newAddress, phone: newPhone, chain: newChain },
       });
-      setNewName(''); setNewAddress(''); setNewPhone('');
+      setNewName(''); setNewAddress(''); setNewPhone(''); setNewChain('');
     });
+
+  // Distinct existing chain labels — offered as datalist suggestions so
+  // one brand doesn't fork into "TA/Petro" vs "TA / Petro" spellings.
+  const chainOptions = [...new Set(entries.map(e => e.chain).filter(Boolean))].sort();
 
   const reviewAct = (id: number, verb: 'approve' | 'reject') =>
     act(id, () => apiJSON(`/system/vendor-directory/reviews/${id}/${verb}`, { method: 'POST' }));
@@ -178,7 +193,43 @@ export default function VendorDirectoryPage() {
       closeGeo();
     });
 
-  const shown = filter === 'all' ? entries : entries.filter(e => e.status === filter);
+  const runImport = async () => {
+    // One row per line, TAB-separated (paste straight from a
+    // spreadsheet): name  chain  address  lat  lng  phone  services
+    const rows = importText.split('\n').map(l => l.trim()).filter(Boolean).map(l => {
+      const c = l.split('\t').map(x => x.trim());
+      const num = (v: string) => (v && !isNaN(Number(v)) ? Number(v) : null);
+      return {
+        name: c[0] ?? '', chain: c[1] ?? '', address: c[2] ?? '',
+        lat: num(c[3] ?? ''), lng: num(c[4] ?? ''),
+        phone: c[5] ?? '', services: c[6] ?? '',
+      };
+    }).filter(r => r.name);
+    if (!rows.length) { setImportResult('No valid rows — paste TAB-separated lines.'); return; }
+    setImportBusy(true);
+    setImportResult('');
+    try {
+      const r = await apiJSON<{ created: number; skipped: number; vendors_adopted: number }>(
+        '/system/vendor-directory/import', { method: 'POST', body: { entries: rows } });
+      setImportResult(`Imported ${r.created} · skipped ${r.skipped} (existing) · ${r.vendors_adopted} account vendors auto-linked`);
+      setImportText('');
+      load();
+    } catch (e) {
+      setImportResult(e instanceof Error ? e.message : 'Import failed');
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const q = search.trim().toLowerCase();
+  const searched = q
+    ? entries.filter(e =>
+        e.name.toLowerCase().includes(q) ||
+        (e.chain || '').toLowerCase().includes(q) ||
+        (e.address || '').toLowerCase().includes(q))
+    : entries;
+  const filtered = filter === 'all' ? searched : searched.filter(e => e.status === filter);
+  const shown = filtered.slice(0, shownCount);
   const pendingCount = entries.filter(e => e.status === 'pending').length;
 
   return (
@@ -206,6 +257,11 @@ export default function VendorDirectoryPage() {
           onChange={e => setNewAddress(e.target.value)} />
         <input className={`${inputCls} max-w-40`} placeholder="Phone" value={newPhone}
           onChange={e => setNewPhone(e.target.value)} />
+        <input className={`${inputCls} max-w-44`} placeholder="Chain (e.g. TA / Petro)" value={newChain}
+          onChange={e => setNewChain(e.target.value)} list="chain-options" />
+        <datalist id="chain-options">
+          {chainOptions.map(c => <option key={c} value={c} />)}
+        </datalist>
         <button
           onClick={create}
           disabled={!newName.trim() || busy === -1}
@@ -214,6 +270,52 @@ export default function VendorDirectoryPage() {
           Add active entry
         </button>
       </div>
+
+      {/* Search + bulk import (scales to hundreds of chain locations) */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          className={`${inputCls} max-w-72`}
+          placeholder="Search name / chain / address…"
+          value={search}
+          onChange={e => { setSearch(e.target.value); setShownCount(100); }}
+        />
+        <button
+          onClick={() => setImportOpen(o => !o)}
+          className={`px-2.5 py-1 rounded border text-xs ${importOpen
+            ? 'bg-slate-200 text-slate-900 border-slate-200 font-medium'
+            : 'border-slate-700 text-slate-400 hover:text-slate-200'}`}
+        >
+          Import…
+        </button>
+      </div>
+
+      {importOpen && (
+        <div className="mb-4 bg-slate-900 border border-slate-800 rounded-lg px-4 py-3">
+          <p className="text-xs text-slate-500 mb-2">
+            Paste TAB-separated rows (straight from a spreadsheet), one location per line:
+            <span className="text-slate-400"> name ⇥ chain ⇥ address ⇥ lat ⇥ lng ⇥ phone ⇥ services</span>.
+            Entries are created active + geocoded; matching account vendors link automatically;
+            existing names are skipped.
+          </p>
+          <textarea
+            rows={6}
+            className={`${inputCls} font-mono text-xs`}
+            placeholder={"TA Truck Service #016 – Tuscaloosa, AL\tTA / Petro\t1014 US-82, Tuscaloosa, AL\t33.209\t-87.601\t205-556-5951\tTruck repair, Tires"}
+            value={importText}
+            onChange={e => setImportText(e.target.value)}
+          />
+          <div className="mt-2 flex items-center gap-3">
+            <button
+              onClick={runImport}
+              disabled={importBusy || !importText.trim()}
+              className="px-3 py-1 rounded bg-slate-200 text-slate-900 text-sm font-medium hover:bg-white disabled:opacity-50"
+            >
+              {importBusy ? 'Importing…' : 'Import rows'}
+            </button>
+            {importResult && <span className="text-xs text-slate-400">{importResult}</span>}
+          </div>
+        </div>
+      )}
 
       {/* Status filter */}
       <div className="mb-3 flex items-center gap-1.5 text-xs">
@@ -256,10 +358,20 @@ export default function VendorDirectoryPage() {
                       <input className={inputCls} placeholder="Services (comma-separated)"
                         value={String(draft.services ?? e.services)}
                         onChange={ev => setDraft(d => ({ ...d, services: ev.target.value }))} />
+                      <input className={inputCls} placeholder="Chain (e.g. TA / Petro; empty = independent)"
+                        value={String(draft.chain ?? e.chain)} list="chain-options"
+                        onChange={ev => setDraft(d => ({ ...d, chain: ev.target.value }))} />
                     </div>
                   ) : (
                     <>
-                      <div className="text-slate-200 font-medium">{e.name}</div>
+                      <div className="text-slate-200 font-medium">
+                        {e.name}
+                        {e.chain && (
+                          <span className="ml-2 inline-block px-1.5 py-0.5 rounded-full border border-slate-600/60 text-slate-400 text-[11px] font-normal align-middle">
+                            {e.chain}
+                          </span>
+                        )}
+                      </div>
                       {e.services && <div className="text-xs text-slate-500 mt-0.5">{e.services}</div>}
                     </>
                   )}
@@ -425,6 +537,16 @@ export default function VendorDirectoryPage() {
           </tbody>
         </table>
       </div>
+      {filtered.length > shownCount && (
+        <div className="mt-2 text-center">
+          <button
+            onClick={() => setShownCount(c => c + 200)}
+            className="px-3 py-1 rounded border border-slate-700 text-slate-400 text-xs hover:text-slate-200"
+          >
+            Show more ({filtered.length - shownCount} hidden)
+          </button>
+        </div>
+      )}
 
       {/* Review moderation queue — anonymous stars/comments submitted
           by accounts with verified usage.  The account id shown is

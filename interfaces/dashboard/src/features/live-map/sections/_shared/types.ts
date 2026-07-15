@@ -30,4 +30,16 @@ export interface LiveMapSectionProps {
    * SafetyEventOverlay reads it from here.  Other sections ignore.
    */
   heatOn: boolean;
+  /**
+   * Utilisation-heatmap toggle (the blue 30-day density layer on
+   * Owner/Admin maps).  Persisted per user; defaults ON.  Only
+   * UtilisationHeatmap reads it.
+   */
+  utilHeatOn: boolean;
+  /**
+   * Company-colour-dot toggle (per-company dots on Owner/Admin/
+   * Accounting maps).  Persisted per user; defaults ON.  Only
+   * CompanyColorPartition reads it.
+   */
+  companyColorsOn: boolean;
 }

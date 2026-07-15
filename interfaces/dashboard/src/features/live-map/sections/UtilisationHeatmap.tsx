@@ -28,6 +28,7 @@ const POLL_INTERVAL_MS = 10 * 60_000;  // 10 min — utilisation moves slowly
 export default function UtilisationHeatmap({
   leafletMap,
   isReady,
+  utilHeatOn,
 }: LiveMapSectionProps) {
   const { has } = useViewPermissions();
   const hasAccess = has('can_vehicle_all');
@@ -36,6 +37,9 @@ export default function UtilisationHeatmap({
   useEffect(() => {
     if (!isReady || !leafletMap.current) return;
     if (!hasAccess) return;
+    // User toggled off → previous run's cleanup already removed the
+    // layer; just don't redraw.
+    if (!utilHeatOn) return;
     const LHeat = window.L as unknown as {
       heatLayer?: (
         points: Array<[number, number, number]>,
@@ -91,7 +95,7 @@ export default function UtilisationHeatmap({
       clearInterval(timer);
       clearHeat();
     };
-  }, [isReady, hasAccess, leafletMap]);
+  }, [isReady, hasAccess, utilHeatOn, leafletMap]);
 
   return null;
 }

@@ -26,6 +26,7 @@ import {
   Icon24TruckOutline,
   Icon24LockOutline,
   Icon24GlobeOutline,
+  Icon24HammerOutline,
 } from '@vkontakte/icons';
 import type { ComponentType } from 'react';
 
@@ -152,6 +153,48 @@ function createIcon(status: string, heading?: number | null): L.DivIcon {
   return icon;
 }
 
+// ── Repair-shop POI layer (platform vendor directory) ──────────────
+// Identity-only public data served by /api/map/pois?type=vendor_directory
+// — the same source as the dashboard live-map "Repair Shops" layer.
+
+interface ShopFeature {
+  geometry: { coordinates: [number, number] };
+  properties: { name?: string; address?: string; phone?: string; services?: string; chain?: string };
+}
+
+function escHtml(v: unknown): string {
+  return String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// lucide "wrench" path, white on the directory-green dot — matches the
+// dashboard layer so a shop looks identical on both maps.
+const SHOP_ICON = L.divIcon({
+  className: '',
+  html: `<div style="width:22px;height:22px;border-radius:50%;background:#16a34a;
+    border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);
+    display:flex;align-items:center;justify-content:center;">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff"
+      stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+    </svg></div>`,
+  iconSize: [22, 22],
+  iconAnchor: [11, 11],
+});
+
+function shopPopupHtml(p: ShopFeature['properties']): string {
+  const services = String(p.services ?? '').split(',').map(s => s.trim()).filter(Boolean);
+  const chain = String(p.chain ?? '').trim();
+  return `<div style="min-width:150px;max-width:220px">
+    <div style="font-weight:600;font-size:13px">${escHtml(p.name)}</div>
+    <div style="opacity:.65;font-size:11px">${chain ? `${escHtml(chain)} · ` : ''}Repair shop · 4truck directory</div>
+    ${services.length ? `<div style="font-size:11px;margin-top:3px">${services.map(escHtml).join(' · ')}</div>` : ''}
+    ${p.address ? `<div style="opacity:.65;font-size:10px;margin-top:3px">${escHtml(p.address)}</div>` : ''}
+    ${p.phone ? `<div style="opacity:.65;font-size:10px;margin-top:2px">${escHtml(p.phone)}</div>` : ''}
+  </div>`;
+}
+
 function truncate(s: string, max: number) {
   return s.length > max ? s.slice(0, max) + '…' : s;
 }
@@ -201,6 +244,11 @@ export function MapPage({ active, userPerms, onNavigate }: Props) {
   const [routeActive, setRouteActive] = useState(false);
   const [routeLoading, setRouteLoading] = useState(false);
 
+  // Repair-shops POI layer (off by default; refetches on pan while on).
+  const [shopsOn, setShopsOn] = useState(false);
+  const shopsLayerRef = useRef<L.LayerGroup | null>(null);
+  const shopsMoveHandlerRef = useRef<(() => void) | null>(null);
+
   // ── Map initialization (once on mount) ───────────────────────────
 
   useEffect(() => {
@@ -248,6 +296,8 @@ export function MapPage({ active, userPerms, onNavigate }: Props) {
       clusterRef.current = null;
       geofenceRef.current = null;
       markersRef.current = {};
+      shopsLayerRef.current = null;
+      shopsMoveHandlerRef.current = null;
     };
   }, []);
 
@@ -358,6 +408,56 @@ export function MapPage({ active, userPerms, onNavigate }: Props) {
       console.error('Failed to load geofences:', e);
     }
   }
+
+  async function loadShops(map: L.Map, layer: L.LayerGroup) {
+    try {
+      const b = map.getBounds();
+      const bbox = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()]
+        .map(v => v.toFixed(4)).join(',');
+      const data = await apiJSON<{ features: ShopFeature[] }>(
+        `/api/map/pois?type=vendor_directory&bbox=${bbox}`,
+      );
+      layer.clearLayers();
+      (data.features ?? []).forEach(f => {
+        const [lng, lat] = f.geometry.coordinates;
+        L.marker([lat, lng], { icon: SHOP_ICON })
+          .bindPopup(shopPopupHtml(f.properties))
+          .addTo(layer);
+      });
+    } catch (e) {
+      console.error('Failed to load repair shops:', e);
+    }
+  }
+
+  /** Toggle the repair-shops directory layer on/off. */
+  const toggleShops = useCallback(() => {
+    haptics.selection();
+    const map = mapRef.current;
+    if (!map) return;
+    if (shopsOn) {
+      if (shopsMoveHandlerRef.current) {
+        map.off('moveend', shopsMoveHandlerRef.current);
+        shopsMoveHandlerRef.current = null;
+      }
+      shopsLayerRef.current?.remove();
+      shopsLayerRef.current = null;
+      setShopsOn(false);
+      return;
+    }
+    const layer = L.layerGroup().addTo(map);
+    shopsLayerRef.current = layer;
+    loadShops(map, layer);
+    // Debounced refetch as the driver pans — bbox-scoped like the
+    // dashboard layer; the server's POI cache absorbs repeats.
+    let t: ReturnType<typeof setTimeout> | null = null;
+    const onMove = () => {
+      if (t) clearTimeout(t);
+      t = setTimeout(() => { if (shopsLayerRef.current) loadShops(map, layer); }, 500);
+    };
+    map.on('moveend', onMove);
+    shopsMoveHandlerRef.current = onMove;
+    setShopsOn(true);
+  }, [shopsOn]);
 
   const flyToVehicle = useCallback(() => {
     haptics.medium();
@@ -522,6 +622,15 @@ export function MapPage({ active, userPerms, onNavigate }: Props) {
               )}
             </button>
           )}
+
+          {/* Repair shops (platform directory POI layer) */}
+          <button
+            className={`map-fab${shopsOn ? ' map-fab--active' : ''}`}
+            onClick={toggleShops}
+            aria-label={shopsOn ? 'Hide repair shops' : 'Show repair shops'}
+          >
+            <Icon24HammerOutline />
+          </button>
 
           {/* Fly-to / fit-fleet */}
           {vehicleCount > 0 && (

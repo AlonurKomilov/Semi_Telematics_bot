@@ -8,7 +8,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Store, ArrowLeft, Merge, Globe, Link2, Link2Off, Pencil, Send, Star, TrendingUp } from 'lucide-react';
+import { Store, ArrowLeft, Merge, Globe, Link2Off, Pencil, Star, TrendingUp } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/DataGrid';
 import { PageHeader, ErrorState, TableSkeleton } from '../../components/shell';
@@ -20,6 +20,7 @@ import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../components/ui/select';
 import { Button } from '../../components/ui/button';
+import { Tip } from '../../components/tooltip';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { TASK_TYPE_OPTIONS } from '../maintenance/badges';
 import { useTimezone } from '../../hooks/useTimezone';
@@ -55,57 +56,26 @@ export default function VendorProfile() {
 
   const { data, isLoading, error } = useQuery<{
     vendor: Vendor; work_orders: WorkOrder[]; directory: DirectoryEntry | null;
+    directory_status: 'linked' | 'pending' | 'collecting';
   }>({
     queryKey: ['vendor', vendorId],
     queryFn: () => apiJSON(`/vendors/${vendorId}`),
     enabled: Number.isFinite(vendorId),
   });
-  // Global-directory link state + actions (Phase C).
-  const [linkOpen, setLinkOpen] = useState(false);
-  const [dirQuery, setDirQuery] = useState('');
+  // Directory pipeline is AUTOMATIC (service recorded -> identity
+  // reviewed -> linked); the page only displays state + a corrective
+  // Unlink.  dirBusy still serializes the remaining actions.
   const [dirBusy, setDirBusy] = useState(false);
-  const { data: dirResults } = useQuery<{ entries: DirectoryEntry[] }>({
-    queryKey: ['directory-search', dirQuery],
-    queryFn: () => apiJSON(`/vendors/directory/search?q=${encodeURIComponent(dirQuery)}`),
-    enabled: linkOpen,
-  });
   const dirAction = async (fn: () => Promise<unknown>, okMsg: string) => {
     setDirBusy(true);
     try {
       await fn();
       toast.success(okMsg);
       qc.invalidateQueries({ queryKey: ['vendor', vendorId] });
-      setLinkOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Action failed');
     } finally { setDirBusy(false); }
   };
-  // Suggestion completion dialog: the user completes the shop's
-  // identity BEFORE it goes to platform review (a name-only suggestion
-  // gives the reviewer nothing to verify).  Fields write back to the
-  // vendor record too — same data, one source of truth.
-  const [suggestOpen, setSuggestOpen] = useState(false);
-  const [sugForm, setSugForm] = useState({ address: '', phone: '', email: '' });
-  const openSuggest = () => {
-    setSugForm({
-      address: vendor?.address ?? '',
-      phone: vendor?.phone ?? '',
-      email: vendor?.email ?? '',
-    });
-    setSuggestOpen(true);
-  };
-  const submitSuggestion = () => dirAction(async () => {
-    await apiJSON(`/vendors/${vendorId}`, { method: 'PUT', body: sugForm });
-    const r = await apiJSON<{ status: string; linked: boolean }>(
-      `/vendors/${vendorId}/suggest-to-directory`, { method: 'POST' });
-    setSuggestOpen(false);
-    if (r.status === 'pending') {
-      toast.info('Suggested — pending platform review.');
-    }
-  }, 'Sent to the global directory');
-  const linkTo = (entryId: number) => dirAction(
-    () => apiJSON(`/vendors/${vendorId}/link-directory/${entryId}`, { method: 'POST' }),
-    'Linked to directory');
   const unlink = () => dirAction(
     () => apiJSON(`/vendors/${vendorId}/link-directory`, { method: 'DELETE' }),
     'Unlinked');
@@ -266,15 +236,16 @@ export default function VendorProfile() {
               </button>
             )}
             {canWrite && others.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setMergeOpen(true)}
-                title="Fold this vendor into another (fixes typo-duplicates); its work orders move over."
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded-md text-xs font-medium text-foreground transition"
-              >
-                <Merge size={14} />
-                Merge into…
-              </button>
+              <Tip label="Fold this vendor into another (fixes typo-duplicates); its work orders move over.">
+                <button
+                  type="button"
+                  onClick={() => setMergeOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded-md text-xs font-medium text-foreground transition"
+                >
+                  <Merge size={14} />
+                  Merge into…
+                </button>
+              </Tip>
             )}
           </div>
         }
@@ -337,15 +308,16 @@ export default function VendorProfile() {
                 </div>
                 {canWrite && (
                   <span className="ml-auto inline-flex items-center gap-2">
+                    <Tip label="Anonymous rating — displayed with no company attribution, after platform moderation.">
                     <button type="button" onClick={() => {
                       setRateStars(data.directory?.my_review?.rating ?? 5);
                       setRateComment(data.directory?.my_review?.comment ?? '');
                       setRateOpen(true);
                     }} disabled={dirBusy}
-                      title="Anonymous rating — displayed with no company attribution, after platform moderation."
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-foreground transition">
                       <Star size={14} /> {data.directory.my_review ? 'Edit review' : 'Rate this shop'}
                     </button>
+                    </Tip>
                     <button type="button" onClick={unlink} disabled={dirBusy}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition">
                       <Link2Off size={14} /> Unlink
@@ -353,23 +325,21 @@ export default function VendorProfile() {
                   </span>
                 )}
               </>
+            ) : data?.directory_status === 'pending' ? (
+              // Identity already flowed to the platform review queue
+              // automatically — nothing for the user to do.
+              <p className="text-sm text-muted-foreground">
+                Sent for directory review — this shop appears publicly (and on
+                the map) once the platform verifies it. Only its name and
+                contact info were shared, never your invoices.
+              </p>
             ) : (
-              <>
-                <p className="text-sm text-muted-foreground">Not linked to the global directory.</p>
-                {canWrite && (
-                  <span className="ml-auto inline-flex items-center gap-2">
-                    <button type="button" onClick={() => setLinkOpen(true)} disabled={dirBusy}
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-foreground transition">
-                      <Link2 size={14} /> Link to directory…
-                    </button>
-                    <button type="button" onClick={openSuggest} disabled={dirBusy}
-                      title="Share only this shop's name and contact info for platform review — never your invoices or spend."
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-foreground transition">
-                      <Send size={14} /> Suggest to directory
-                    </button>
-                  </span>
-                )}
-              </>
+              // 'collecting' — the pipeline starts once an address exists.
+              <p className="text-sm text-muted-foreground">
+                Joins the global directory automatically once it has an
+                address — add one via Edit, or it fills in from your next
+                work order.
+              </p>
             )}
           </div>
 
@@ -482,95 +452,6 @@ export default function VendorProfile() {
         </DialogContent>
       </Dialog>
 
-      {/* Suggestion dialog — complete the shop's identity before it
-          goes to platform review.  Address is required: it's what the
-          reviewer verifies against the real world. */}
-      <Dialog open={suggestOpen} onOpenChange={(o) => { if (!o) setSuggestOpen(false); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Suggest “{vendor?.name}” to the directory</DialogTitle>
-            <DialogDescription>
-              Only the shop's name and contact info go to platform review —
-              never your invoices or spend. These fields also update your own
-              vendor record.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-2.5">
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">Address (required)</span>
-              <input
-                type="text"
-                value={sugForm.address}
-                onChange={(e) => setSugForm((f) => ({ ...f, address: e.target.value }))}
-                placeholder="Street, City, State"
-                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">Phone</span>
-              <input
-                type="text"
-                value={sugForm.phone}
-                onChange={(e) => setSugForm((f) => ({ ...f, phone: e.target.value }))}
-                placeholder="555-1234"
-                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
-              />
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">Email</span>
-              <input
-                type="text"
-                value={sugForm.email}
-                onChange={(e) => setSugForm((f) => ({ ...f, email: e.target.value }))}
-                placeholder="shop@example.com"
-                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
-              />
-            </label>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="ghost" onClick={() => setSuggestOpen(false)}>Cancel</Button>
-            <Button onClick={submitSuggestion} disabled={dirBusy || !sugForm.address.trim()}>
-              {dirBusy ? 'Sending…' : 'Send for review'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Directory link dialog: search ACTIVE global entries. */}
-      <Dialog open={linkOpen} onOpenChange={(o) => { if (!o) setLinkOpen(false); }}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Link to the global directory</DialogTitle>
-            <DialogDescription>
-              Connect this vendor to its shared identity. Linking shares
-              nothing about your account — it only tells the platform these
-              are the same shop.
-            </DialogDescription>
-          </DialogHeader>
-          <input
-            type="text"
-            value={dirQuery}
-            onChange={(e) => setDirQuery(e.target.value)}
-            placeholder="Search the directory…"
-            className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
-          />
-          <div className="max-h-56 overflow-y-auto flex flex-col gap-1">
-            {(dirResults?.entries ?? []).map((e) => (
-              <button key={e.id} type="button" onClick={() => linkTo(e.id)} disabled={dirBusy}
-                className="text-left px-3 py-2 rounded-md border border-border hover:bg-accent transition">
-                <p className="text-sm text-foreground">{e.name}</p>
-                <p className="text-xs text-muted-foreground">{[e.address, e.phone].filter(Boolean).join(' · ') || '—'}</p>
-              </button>
-            ))}
-            {(dirResults?.entries ?? []).length === 0 && (
-              <p className="text-xs text-muted-foreground px-1 py-2">
-                No matching directory entries — use “Suggest to directory” instead.
-              </p>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Rate dialog — anonymous, moderated.  Verified-usage enforced
           server-side (only shops your work orders actually used). */}
       <Dialog open={rateOpen} onOpenChange={(o) => { if (!o) setRateOpen(false); }}>
@@ -589,7 +470,7 @@ export default function VendorProfile() {
                 onClick={() => setRateStars(n)}
                 className="p-1"
                 aria-label={`${n} star${n > 1 ? 's' : ''}`}>
-                <Star size={22}
+                <Star size={20}
                   className={n <= rateStars ? 'text-warn fill-warn' : 'text-muted-foreground'} />
               </button>
             ))}
