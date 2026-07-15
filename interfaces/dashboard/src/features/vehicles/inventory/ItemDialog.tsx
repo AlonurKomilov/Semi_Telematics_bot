@@ -213,20 +213,6 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
 
           {canManage && (
             <div className="space-y-4 border-t border-border pt-4">
-              {/* ONE note field, stated plainly: it rides whichever action
-                  the operator takes below (status / transfer / remove) and
-                  lands in the permanent trail. */}
-              <label className="block">
-                <span className={labelCls}>
-                  Note <span className="font-normal text-muted-foreground/70">— saved to the history with your next action</span>
-                </span>
-                <input
-                  value={note} onChange={(e) => setNote(e.target.value)}
-                  placeholder="Why? (recommended when reporting damaged or missing)"
-                  className={`mt-1 ${inputCls}`}
-                />
-              </label>
-
               <div className="flex items-end gap-2">
                 <label className="flex-1 min-w-0">
                   <span className={labelCls}>Status</span>
@@ -268,6 +254,21 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
                   <ArrowRightLeft size={14} /> Transfer
                 </Button>
               </div>
+
+              {/* ONE note field, stated plainly: it rides whichever action
+                  the operator takes (status / transfer / verify / remove)
+                  and lands in the permanent trail — placed beside the
+                  action buttons it annotates. */}
+              <label className="block">
+                <span className={labelCls}>
+                  Note <span className="font-normal text-muted-foreground/70">— saved to the history with your next action</span>
+                </span>
+                <input
+                  value={note} onChange={(e) => setNote(e.target.value)}
+                  placeholder="Why? (recommended when reporting damaged or missing)"
+                  className={`mt-1 ${inputCls}`}
+                />
+              </label>
 
               <div className="flex items-center justify-between gap-2 pt-1">
                 <Button variant="outline" size="sm" disabled={busy}
