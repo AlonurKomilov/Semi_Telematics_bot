@@ -217,6 +217,7 @@ class WorkOrdersMixin:
                 _vend = await self.resolve_or_create_vendor(
                     account_id, vendor_name,
                     address=vendor_address, phone=vendor_phone,
+                    email=str(r.get("vendor_email") or ""),
                 ) if vendor_name else None
                 vendor_id = _vend["id"] if _vend else None
                 payment_method = str(r.get("payment_method") or "")

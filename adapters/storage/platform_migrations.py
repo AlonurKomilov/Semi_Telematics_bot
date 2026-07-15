@@ -16,6 +16,7 @@ async def run_all(conn) -> None:
     await migrate_email_unique_per_account(conn)
     await migrate_vendor_directory(conn)
     await migrate_vendor_directory_geo(conn)
+    await migrate_vendor_directory_chain(conn)
     await migrate_vendor_reviews(conn)
     await migrate_market_intel(conn)
     await migrate_add_bot_columns(conn)
@@ -3349,6 +3350,7 @@ async def migrate_vendor_directory(conn) -> None:
                 suggested_by_account INTEGER,
                 lat                  DOUBLE PRECISION,
                 lng                  DOUBLE PRECISION,
+                chain                TEXT    NOT NULL DEFAULT '',
                 created_at           TEXT    NOT NULL,
                 updated_at           TEXT    NOT NULL DEFAULT ''
             );
@@ -3389,6 +3391,27 @@ async def migrate_vendor_directory_geo(conn) -> None:
         logger.info("Platform migration: vendor_directory geo columns ready")
     except Exception as e:
         logger.error("vendor_directory geo migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_vendor_directory_chain(conn) -> None:
+    """Chain label for multi-location brands (foundation slice of chain
+    support — docs/architecture/vendor-parts-master-data.md §5d).  One
+    directory entry per LOCATION; ``chain`` groups a brand's locations
+    ('' = independent shop).  Grouping UI / market-intel pooling /
+    bulk import build on this later."""
+    try:
+        await conn.execute(
+            "ALTER TABLE vendor_directory "
+            "ADD COLUMN IF NOT EXISTS chain TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.commit()
+        logger.info("Platform migration: vendor_directory.chain ready")
+    except Exception as e:
+        logger.error("vendor_directory chain migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

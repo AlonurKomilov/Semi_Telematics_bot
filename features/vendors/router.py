@@ -160,6 +160,14 @@ async def get_vendor(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
     work_orders = await tenant_db.vendor_work_orders(vendor_id, user["account_id"])
+    # Auto-pipeline state for the profile banner: linked | pending
+    # (identity sits in the platform review queue) | collecting (no
+    # address yet — the pipeline starts once identity is complete).
+    directory_status = "collecting"
+    if vendor.get("global_vendor_id"):
+        directory_status = "linked"
+    elif (vendor.get("address") or "").strip():
+        directory_status = "pending"
     # Linked global-directory identity (identity fields only).
     directory = None
     if vendor.get("global_vendor_id"):
@@ -175,7 +183,8 @@ async def get_vendor(
             directory["my_review"] = await tenant_db.get_my_vendor_review(
                 user["account_id"], entry["id"],
             )
-    return {"vendor": vendor, "work_orders": work_orders, "directory": directory}
+    return {"vendor": vendor, "work_orders": work_orders,
+            "directory": directory, "directory_status": directory_status}
 
 
 @router.post("")

@@ -142,6 +142,10 @@ class VendorsMixin:
             )
             await self._db.commit()
             vendor.update(fills)
+        # Auto pipeline: identity flows to the platform review queue the
+        # moment it's complete enough (address present); links itself
+        # when the directory already knows this shop.  Idempotent.
+        await self.autosuggest_vendor(account_id, vendor)
         return vendor
 
     async def update_vendor(
@@ -166,6 +170,12 @@ class VendorsMixin:
             [*updates.values(), vendor_id, account_id],
         )
         await self._db.commit()
+        if cur.rowcount > 0:
+            # Edits can complete the identity (user adds the address in
+            # the Edit dialog) — feed the auto pipeline.  Idempotent.
+            vendor = await self.get_vendor(vendor_id, account_id)
+            if vendor:
+                await self.autosuggest_vendor(account_id, vendor)
         return cur.rowcount > 0
 
     async def merge_vendors(

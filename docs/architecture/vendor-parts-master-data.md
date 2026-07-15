@@ -211,8 +211,11 @@ C2-map layer (SHIPPED 2026-07-14, same session as prep):
    HTML-escaped, http(s)-only links).  Stars/usage counts stay behind
    the manager-gated vendor endpoints; widening them to all map users
    is a separate product decision.
-4. Miniapp (driver) map has NO POI system — porting the layer there is
-   a deliberate later step, not part of the dashboard build.
+4. Miniapp port SHIPPED 2026-07-14: a "repair shops" FAB on the driver
+   map (Telegram-native @vkontakte hammer icon) toggles the same
+   /map/pois?type=vendor_directory layer — bbox-scoped fetch, debounced
+   refetch on pan, identity-only popup, marker styling identical to the
+   dashboard layer.
 
 ## 5c. Directory UX + data-quality pipeline (shipped 2026-07-14)
 
@@ -236,6 +239,78 @@ operator verify → public):
   caller's own link status (`GET /vendors/directory/browse`,
   `browse_directory()`fetches only the caller's link — nothing else
   account-specific).
+
+## 5c-bis. AUTO pipeline (SHIPPED 2026-07-15 — supersedes the manual
+## Link/Suggest ceremony from §5c)
+
+Owner decision: the directory collects itself; users never click
+"Suggest" or "Link".  The flow is fully automatic:
+
+1. Truck gets service → vendor exists (WO save / Datatruck sync — as
+   before).
+2. The moment a vendor's identity is complete enough to verify
+   (non-empty address — arriving via enrich-on-save or the Edit
+   dialog), ``autosuggest_vendor`` feeds name/address/phone/email into
+   the platform review queue.  Identity only; idempotent on the global
+   name_key; rejected tombstones still block re-spam.
+3. Operator approves (+ geocodes) on system.4truck.us →
+   ``adopt_matching_vendors`` links EVERY account's unlinked vendors
+   with that name_key and fills their empty contact fields.
+4. New accounts that start using an already-approved shop auto-link at
+   vendor-resolve time.
+
+UI: the vendor profile shows pipeline STATE only (linked / sent for
+review / waiting for an address); Unlink remains as the correction
+valve.  The manual suggest endpoint + address gate still exist for API
+compat but have no UI.
+
+Map: two Services layers — "Repair Shops" (public directory, green) and
+"My Vendors" (the caller's auto-linked shops, blue, own-vendor name in
+the popup; ``my_vendors`` branch in pois.py with an ACCOUNT-SCOPED
+cache key — the tenant-cache rule applies to this one).
+
+Known trade-off (accepted): cross-account auto-link matches on the
+exact normalized name.  Generic names ("Joe's Truck Repair") could
+collide across different physical shops; operator naming discipline
+(numbered/city-qualified names, §5d) keeps this rare, and Unlink +
+operator entry-rename are the correction paths.
+
+## 5d. Chain support (foundation SHIPPED 2026-07-15; rest triggered)
+
+Multi-location brands (TA/Petro, Love's, Speedco…) are **one directory
+entry per LOCATION** — forced by the single geo pin and the global
+UNIQUE name_key, and matching how the chains name themselves (official
+site numbers: "TA Tuscaloosa #0016"; Datatruck invoices carry them,
+e.g. "Petro Ontario #0026").  Canonical entry name:
+`<Brand> #<number> – <City>, <ST>`.
+
+**Foundation (shipped):** `vendor_directory.chain` label ('' =
+independent), operator-set only (create row + edit on system.4truck.us,
+datalist of existing labels to prevent spelling forks); rides every
+account-facing read; shown as a badge in the Directory tab and in both
+map popups (dashboard + miniapp).  Suggestions never carry a chain —
+classifying brands is operator curation.
+
+**Deferred pieces — build when their trigger fires:**
+1. Directory-tab grouping + live-map chain filter chips — when the
+   directory holds ~20+ chain locations.
+2. Market-intel CHAIN pooling (rollup cells keyed on chain, meeting the
+   ≥3-companies rule across a brand's locations) — when Phase D's flag
+   goes live.
+3. Operator bulk "Import chain locations" — SHIPPED 2026-07-15 (the
+   trigger fired early: a payload audit proved Datatruck sends vendor
+   NAME ONLY — 233 vendors, zero addresses — so user-side data can
+   never feed the queue; curation must flow top-down).
+   ``import_directory_entries`` storage + POST
+   /system/vendor-directory/import (≤2000 rows) + console UI
+   (spreadsheet TAB-paste; entries born active+geocoded+chain-labelled;
+   matching vendors adopt immediately; existing names skip).  Console
+   also gained search + show-more paging for the larger directory.
+   Initial seed: OSM/Overpass brand extracts (Love's, TA/Petro,
+   Speedco, Blue Beacon, Southern Tire Mart) imported through the real
+   pipeline.  OSM is start-point data — operators refine names/
+   addresses per §2's verify-before-public rule; Overture remains the
+   richer future source.
 
 ## 6. Phase D — Anonymized market intelligence (designed, not scheduled)
 

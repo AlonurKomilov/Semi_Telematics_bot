@@ -308,6 +308,42 @@ async def map_pois(
                     "phone": r.get("phone") or "",
                     "website": r.get("website") or "",
                     "services": r.get("services") or "",
+                    "chain": r.get("chain") or "",
+                    "_directory": True,
+                },
+            }
+            for r in rows
+        ]
+        _poi_cache[cache_key] = features
+        return {"type": "FeatureCollection", "features": features}
+
+    if poi_type == "my_vendors":
+        # THIS account's shops (auto-linked directory entries).  Per-
+        # tenant data → the cache key MUST carry the account id (the
+        # shared-key rule above applies only to platform-global layers).
+        bbox_key = _round_bbox(bbox)
+        cache_key = (f"my_vendors_{user['account_id']}", bbox_key)
+        cached = _poi_cache.get(cache_key)
+        if cached is not None:
+            return {"type": "FeatureCollection", "features": cached}
+        tenant = await get_tenant_db(user["account_id"])
+        rows = await tenant.my_vendor_entries_in_bbox(
+            user["account_id"], s, w, n, e,
+        )
+        features = [
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point",
+                             "coordinates": [r["lng"], r["lat"]]},
+                "properties": {
+                    "entry_id": r["id"],
+                    "name": r["name"],
+                    "address": r.get("address") or "",
+                    "phone": r.get("phone") or "",
+                    "website": r.get("website") or "",
+                    "services": r.get("services") or "",
+                    "chain": r.get("chain") or "",
+                    "my_vendor_name": r.get("my_vendor_name") or "",
                     "_directory": True,
                 },
             }

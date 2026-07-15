@@ -67,6 +67,9 @@ class WorkOrderCreate(BaseModel):
     vendor_name: str = ""
     vendor_address: str = ""
     vendor_phone: str = ""
+    # Contact for the vendor REGISTRY only (enrich-on-save) — work
+    # orders keep no email snapshot (not invoice truth).
+    vendor_email: str = ""
     # Registry link (features/vendors).  Snapshot fields above stay the
     # invoice truth; this id is the analytical spine.
     vendor_id: Optional[int] = None
@@ -100,6 +103,7 @@ class WorkOrderUpdate(BaseModel):
     vendor_name: Optional[str] = None
     vendor_address: Optional[str] = None
     vendor_phone: Optional[str] = None
+    vendor_email: Optional[str] = None
     vendor_id: Optional[int] = None
     service_date: Optional[str] = None
     odometer_at_service: Optional[float] = Field(None, ge=0)
@@ -239,6 +243,9 @@ async def create_work_order(
     /invoice flow (which creates a draft on their behalf)."""
     internal_uid = await resolve_user_id(user)
     payload = body.model_dump()
+    # Registry-only contact: popped BEFORE **payload (work_orders has
+    # no email column) and fed to enrich-on-save below.
+    vendor_email = payload.pop("vendor_email", "") or ""
     # Vendor registry auto-link: a free-typed vendor name (no id from
     # the picker) resolves-or-creates its registry row so every saved
     # WO is linked.  Snapshot fields still store exactly what was
@@ -248,6 +255,7 @@ async def create_work_order(
             user["account_id"], payload["vendor_name"],
             address=payload.get("vendor_address") or "",
             phone=payload.get("vendor_phone") or "",
+            email=vendor_email,
         )
         if _v:
             payload["vendor_id"] = _v["id"]
@@ -344,6 +352,7 @@ async def update_work_order(
     """Update mutable fields on a work order."""
     await _require_visible_work_order(work_order_id, user, tenant_db)
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
+    vendor_email = updates.pop("vendor_email", "") or ""
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
     # Same auto-link on rename: a changed vendor_name without an
@@ -353,6 +362,7 @@ async def update_work_order(
             user["account_id"], updates["vendor_name"],
             address=updates.get("vendor_address") or "",
             phone=updates.get("vendor_phone") or "",
+            email=vendor_email,
         )
         if _v:
             updates["vendor_id"] = _v["id"]

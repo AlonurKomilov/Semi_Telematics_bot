@@ -200,3 +200,151 @@ async def test_browse_directory_aggregate_and_link_flag(db):
     rows = await db.browse_directory(other, q="browse shop")
     row = [x for x in rows if x["id"] == e["id"]][0]
     assert row["linked_vendor_id"] == ov["id"]
+
+
+@pytest.mark.asyncio
+async def test_chain_label_flow(db):
+    """Chain-support foundation (§5d): the label rides create/update and
+    every account-facing read; suggestions never carry one (accounts
+    don't classify chains — operators do)."""
+    a = 48
+    e = await db.create_directory_entry(
+        "TA Truck Service #016 - Tuscaloosa, AL", address="1014 US-82",
+        status="active", chain="TA / Petro",
+    )
+    assert e["chain"] == "TA / Petro"
+    await db.set_directory_geo(e["id"], 33.20, -87.60)
+
+    # Account-facing reads all carry it.
+    hit = (await db.search_directory_active("ta truck service #016"))[0]
+    assert hit["chain"] == "TA / Petro"
+    rows = await db.browse_directory(a, q="ta truck service #016")
+    assert rows[0]["chain"] == "TA / Petro"
+    bbox = await db.directory_entries_in_bbox(33.0, -88.0, 34.0, -87.0)
+    mine = [r for r in bbox if r["id"] == e["id"]]
+    assert mine[0]["chain"] == "TA / Petro"
+
+    # Operator can edit/clear it via the generic update.
+    assert await db.update_directory_entry(e["id"], chain="") is True
+    row = await db.get_directory_entry(e["id"])
+    assert row["chain"] == ""
+
+    # Account suggestions are chain-less by default.
+    s = await db.create_directory_entry(
+        "Chainless Suggestion Shop", address="9 A St",
+        status="pending", source="suggestion", suggested_by_account=a,
+    )
+    assert s["chain"] == ""
+
+
+@pytest.mark.asyncio
+async def test_auto_pipeline_suggest_and_adopt(db):
+    """The no-ceremony pipeline: a vendor save with a complete identity
+    auto-feeds the review queue; operator approval auto-links every
+    account's matching vendors and fills their empty contact fields."""
+    a1, a2 = 51, 52
+    # Account 1's WO save carries an address → auto-suggestion appears.
+    v1 = await db.resolve_or_create_vendor(
+        a1, "Auto Flow Repair", address="5 Pipeline Rd", phone="555-a1",
+    )
+    entry = [e for e in await db.list_vendor_directory(status="pending")
+             if e["name"] == "Auto Flow Repair"]
+    assert len(entry) == 1
+    assert entry[0]["source"] == "suggestion"
+    # Not linked yet — the entry is still pending review.
+    assert (await db.get_vendor(v1["id"], a1))["global_vendor_id"] is None
+
+    # Account 2 uses the same shop, name-only (no address) — vendor
+    # created, but nothing flows (identity incomplete).
+    v2 = await db.resolve_or_create_vendor(a2, "auto flow repair")
+    assert (await db.get_vendor(v2["id"], a2))["global_vendor_id"] is None
+
+    # Operator approves → BOTH accounts' vendors adopt the identity.
+    eid = entry[0]["id"]
+    assert await db.update_directory_entry(eid, status="active") is True
+    adopted = await db.adopt_matching_vendors(eid)
+    assert adopted == 2
+    r1 = await db.get_vendor(v1["id"], a1)
+    r2 = await db.get_vendor(v2["id"], a2)
+    assert r1["global_vendor_id"] == eid
+    assert r2["global_vendor_id"] == eid
+    # Curated identity filled account 2's empty fields; account 1's
+    # own phone stayed.
+    assert r2["address"] == "5 Pipeline Rd"
+    assert r1["phone"] == "555-a1"
+
+    # A THIRD account starts using the shop later — resolve auto-links
+    # immediately because the entry is already active.
+    v3 = await db.resolve_or_create_vendor(
+        a1 + 100, "AUTO FLOW REPAIR", address="5 Pipeline Rd",
+    )
+    r3 = await db.get_vendor(v3["id"], a1 + 100)
+    assert r3["global_vendor_id"] == eid
+
+
+@pytest.mark.asyncio
+async def test_autosuggest_needs_address(db):
+    """Name-only vendors never reach the review queue — the pipeline
+    waits until enrichment or an edit completes the identity."""
+    a = 53
+    await db.resolve_or_create_vendor(a, "Incomplete Shop", phone="555-x")
+    pend = [e for e in await db.list_vendor_directory(status="pending")
+            if e["name"] == "Incomplete Shop"]
+    assert pend == []
+    # Address arrives on a later save → NOW it flows.
+    await db.resolve_or_create_vendor(a, "Incomplete Shop", address="7 Late St")
+    pend = [e for e in await db.list_vendor_directory(status="pending")
+            if e["name"] == "Incomplete Shop"]
+    assert len(pend) == 1
+
+
+@pytest.mark.asyncio
+async def test_my_vendor_entries_in_bbox(db):
+    """'My Vendors' map source: only the CALLER's linked, geocoded
+    shops — with the caller's own vendor name attached."""
+    a, other = 54, 55
+    e = await db.create_directory_entry(
+        "My Map Shop", address="1 Pin Way", status="active",
+    )
+    await db.set_directory_geo(e["id"], 39.10, -84.51)
+    v = await db.resolve_or_create_vendor(a, "My Map Shop Local")
+    await db.link_vendor_to_directory(a, v["id"], e["id"])
+
+    rows = await db.my_vendor_entries_in_bbox(a, 38.0, -85.0, 40.0, -84.0)
+    mine = [r for r in rows if r["id"] == e["id"]]
+    assert len(mine) == 1
+    assert mine[0]["my_vendor_name"] == "My Map Shop Local"
+
+    # The other account has no link → empty for them.
+    rows = await db.my_vendor_entries_in_bbox(other, 38.0, -85.0, 40.0, -84.0)
+    assert [r for r in rows if r["id"] == e["id"]] == []
+
+
+@pytest.mark.asyncio
+async def test_import_directory_entries(db):
+    """Operator bulk import: born active + geocoded + chain-labelled,
+    matching vendors adopt immediately, existing names skip."""
+    a = 56
+    v = await db.resolve_or_create_vendor(a, "Import Adopt Shop #9")
+    res = await db.import_directory_entries([
+        {"name": "Import Adopt Shop #9", "chain": "TestChain",
+         "address": "1 I St", "lat": 40.0, "lng": -90.0, "services": "Tires"},
+        {"name": "Import Plain Shop"},
+        {"name": ""},
+    ])
+    assert res["created"] == 2
+    assert res["skipped"] == 1
+
+    # Re-import of an existing name (any casing) skips, never overwrites.
+    res2 = await db.import_directory_entries([{"name": "import adopt shop #9"}])
+    assert res2["created"] == 0 and res2["skipped"] == 1
+
+    row = [e for e in await db.list_vendor_directory(status="active")
+           if e["name"] == "Import Adopt Shop #9"][0]
+    assert row["chain"] == "TestChain"
+    assert row["lat"] == pytest.approx(40.0)
+
+    # The name-matched vendor auto-linked and inherited the address.
+    rv = await db.get_vendor(v["id"], a)
+    assert rv["global_vendor_id"] == row["id"]
+    assert rv["address"] == "1 I St"

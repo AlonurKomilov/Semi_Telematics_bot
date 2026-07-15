@@ -186,6 +186,9 @@ async def create_tables(conn) -> None:
         -- lat/lng: operator-confirmed coordinates (geocode suggest +
         -- pin confirm on system.4truck.us).  Nullable — entries
         -- without coordinates simply never appear on map layers.
+        -- chain: family label for multi-location brands ("TA / Petro",
+        -- "Love's Truck Care") — one entry PER LOCATION (numbered
+        -- names), the chain field groups them.  '' = independent shop.
         CREATE TABLE IF NOT EXISTS vendor_directory (
             id                   INTEGER PRIMARY KEY AUTOINCREMENT,
             name                 TEXT    NOT NULL,
@@ -201,6 +204,7 @@ async def create_tables(conn) -> None:
             suggested_by_account INTEGER,
             lat                  DOUBLE PRECISION,
             lng                  DOUBLE PRECISION,
+            chain                TEXT    NOT NULL DEFAULT '',
             created_at           TEXT    NOT NULL,
             updated_at           TEXT    NOT NULL DEFAULT ''
         );

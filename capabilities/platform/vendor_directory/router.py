@@ -74,6 +74,9 @@ class DirectoryCreate(BaseModel):
     website: str = Field("", max_length=300)
     services: str = Field("", max_length=500)
     notes: str = ""
+    # Family label for multi-location brands ("TA / Petro") — one entry
+    # per LOCATION (numbered name), chain groups them.  '' = independent.
+    chain: str = Field("", max_length=80)
 
 
 class DirectoryUpdate(BaseModel):
@@ -84,6 +87,7 @@ class DirectoryUpdate(BaseModel):
     website: Optional[str] = Field(None, max_length=300)
     services: Optional[str] = Field(None, max_length=500)
     notes: Optional[str] = None
+    chain: Optional[str] = Field(None, max_length=80)
 
 
 @router.get("")
@@ -108,10 +112,13 @@ async def create_entry(
         body.name, address=body.address, phone=body.phone,
         email=body.email, website=body.website,
         services=body.services, notes=body.notes,
-        status="active", source="operator",
+        status="active", source="operator", chain=body.chain,
     )
     if not entry:
         raise HTTPException(status_code=422, detail="Name is empty")
+    # Operator-added shops adopt matching account vendors immediately.
+    if entry.get("status") == "active":
+        await tenant_db.adopt_matching_vendors(entry["id"])
     return entry
 
 
@@ -135,6 +142,36 @@ async def update_entry(
     if not ok:
         raise HTTPException(status_code=404, detail="Entry not found")
     return {"ok": True}
+
+
+class ImportRow(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    chain: str = Field("", max_length=80)
+    address: str = Field("", max_length=300)
+    phone: str = Field("", max_length=50)
+    website: str = Field("", max_length=300)
+    services: str = Field("", max_length=500)
+    lat: Optional[float] = Field(None, ge=-90, le=90)
+    lng: Optional[float] = Field(None, ge=-180, le=180)
+
+
+class ImportBody(BaseModel):
+    entries: list[ImportRow] = Field(..., min_length=1, max_length=2000)
+
+
+@router.post("/import")
+async def import_entries(
+    body: ImportBody,
+    user: dict = Depends(require_system_owner),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Bulk curation: chain location lists (official directories,
+    Overture/OSM extracts) land as ACTIVE, geocoded, chain-labelled
+    entries; matching account vendors adopt immediately.  Existing
+    names are skipped, never overwritten."""
+    rows = [r.model_dump() for r in body.entries]
+    result = await tenant_db.import_directory_entries(rows)
+    return result
 
 
 class GeoUpdate(BaseModel):
@@ -192,11 +229,14 @@ async def approve_entry(
     user: dict = Depends(require_system_owner),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Suggestion → live directory identity."""
+    """Suggestion → live directory identity.  Approval fans out: every
+    account's unlinked vendor with the same normalized name auto-links
+    and inherits the curated contact fields (empty fields only)."""
     ok = await tenant_db.update_directory_entry(entry_id, status="active")
     if not ok:
         raise HTTPException(status_code=404, detail="Entry not found")
-    return {"ok": True}
+    adopted = await tenant_db.adopt_matching_vendors(entry_id)
+    return {"ok": True, "vendors_linked": adopted}
 
 
 @router.post("/{entry_id}/reject")

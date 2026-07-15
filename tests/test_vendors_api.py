@@ -152,3 +152,26 @@ async def test_directory_browse_endpoint(seeded):
         r = await c.get("/api/vendors/directory/browse",
                         headers=_h(seeded["token_driver"]))
         assert r.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_wo_create_passes_vendor_email_to_registry(seeded):
+    """vendor_email on the WO form is registry-only: it enriches the
+    vendor record and never breaks the WO insert (no email column on
+    work_orders)."""
+    transport = ASGITransport(app=seeded["app"])
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.post("/api/work-orders", headers=_h(seeded["token_fleet"]),
+                         json={
+                             "vehicle_name": "T-1",
+                             "vendor_name": "Email Capture Shop",
+                             "vendor_address": "12 Mail Rd",
+                             "vendor_phone": "555-77",
+                             "vendor_email": "shop@mail.test",
+                         })
+        assert r.status_code == 200, r.text
+        vendors = (await c.get("/api/vendors",
+                               headers=_h(seeded["token_fleet"]))).json()["vendors"]
+        v = [x for x in vendors if x["name"] == "Email Capture Shop"][0]
+        assert v["email"] == "shop@mail.test"
+        assert v["address"] == "12 Mail Rd"

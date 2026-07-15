@@ -407,6 +407,14 @@ def _norm_work_order(rec: dict[str, Any]) -> dict[str, Any]:
             if isinstance(_vendor, dict)
             else _as_text(_first(rec, "vendor_phone", "contact_number", "phone"))
         ),
+        # Future-proofing: as of 2026-07 Datatruck sends ``vendor`` as a
+        # bare name string (payload audit — no contact keys anywhere).
+        # If they ever ship a vendor object, the email flows through to
+        # the registry's enrich-on-save automatically.
+        "vendor_email":   (
+            _as_text(_vendor, "email", "contact_email")
+            if isinstance(_vendor, dict) else ""
+        ),
         "payment_method": _as_text(_first(
             rec, "payment_type", "payment_method", "paymentType",
         )),

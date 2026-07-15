@@ -53,6 +53,7 @@ class VendorDirectoryMixin:
         status: str = "active",
         source: str = "operator",
         suggested_by_account: Optional[int] = None,
+        chain: str = "",
     ) -> Optional[dict]:
         """Idempotent on the GLOBAL name_key: a duplicate name returns
         the existing entry (operators + concurrent suggestions can't
@@ -64,11 +65,12 @@ class VendorDirectoryMixin:
         await self._db.execute(
             "INSERT INTO vendor_directory (name, name_key, address, phone, "
             " email, website, services, notes, status, source, "
-            " suggested_by_account, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            " suggested_by_account, chain, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (name_key) DO NOTHING",
             (name.strip(), nkey, address, phone, email, website, services,
-             notes, status, source, suggested_by_account, now, now),
+             notes, status, source, suggested_by_account,
+             chain.strip(), now, now),
         )
         await self._db.commit()
         cur = await self._db.execute(
@@ -80,7 +82,7 @@ class VendorDirectoryMixin:
     async def update_directory_entry(self, entry_id: int, **kwargs) -> bool:
         allowed = {
             "name", "address", "phone", "email", "website",
-            "services", "notes", "status",
+            "services", "notes", "status", "chain",
         }
         updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
         if not updates:
@@ -119,6 +121,108 @@ class VendorDirectoryMixin:
         await self._db.commit()
         return cur.rowcount > 0
 
+    async def import_directory_entries(self, rows: list[dict]) -> dict:
+        """Operator bulk import (chains, curated lists).  Each row:
+        name (required), chain, address, phone, website, services,
+        lat, lng.  Entries are born ACTIVE (this is operator curation,
+        not a suggestion), geocoded when coordinates are provided, and
+        every account's matching vendors are adopted immediately.
+        Idempotent on the global name_key — existing names are skipped
+        and reported, never overwritten."""
+        created = skipped = adopted = 0
+        skipped_names: list[str] = []
+        for row in rows:
+            name = str(row.get("name") or "").strip()
+            if not name:
+                skipped += 1
+                continue
+            nkey = vendor_name_key(name)
+            cur = await self._db.execute(
+                "SELECT id FROM vendor_directory WHERE name_key = ?", (nkey,),
+            )
+            if await cur.fetchone():
+                skipped += 1
+                skipped_names.append(name)
+                continue
+            entry = await self.create_directory_entry(
+                name,
+                address=str(row.get("address") or ""),
+                phone=str(row.get("phone") or ""),
+                website=str(row.get("website") or ""),
+                services=str(row.get("services") or ""),
+                status="active", source="operator",
+                chain=str(row.get("chain") or ""),
+            )
+            if not entry:
+                skipped += 1
+                continue
+            created += 1
+            lat, lng = row.get("lat"), row.get("lng")
+            if lat is not None and lng is not None:
+                await self.set_directory_geo(entry["id"], float(lat), float(lng))
+            adopted += await self.adopt_matching_vendors(entry["id"])
+        return {
+            "created": created, "skipped": skipped,
+            "vendors_adopted": adopted,
+            "skipped_names": skipped_names[:50],
+        }
+
+    # ── Auto pipeline (no user ceremony) ─────────────────────────
+    #
+    # The directory collects itself: every account vendor whose
+    # identity is complete enough to verify (non-empty address) is
+    # auto-suggested to the operator queue; when the operator approves
+    # an entry, every account's matching vendors auto-link.  Identity
+    # fields only ever travel; suggested_by_account stays operator-
+    # audit-only.  Users never click "suggest" or "link".
+
+    async def autosuggest_vendor(self, account_id: int, vendor: dict) -> None:
+        """Feed a vendor's IDENTITY into the directory pipeline.
+
+        No-ops unless the vendor has an address (nothing to verify
+        otherwise) and isn't linked yet.  Idempotent: the global
+        name_key dedup returns the existing entry (pending, rejected
+        tombstone, or active); when it's already ACTIVE we auto-link —
+        which also back-fills the vendor's empty contact fields."""
+        if vendor.get("global_vendor_id"):
+            return
+        if not (vendor.get("address") or "").strip():
+            return
+        entry = await self.create_directory_entry(
+            vendor["name"],
+            address=vendor.get("address") or "",
+            phone=vendor.get("phone") or "",
+            email=vendor.get("email") or "",
+            status="pending", source="suggestion",
+            suggested_by_account=account_id,
+        )
+        if entry and entry.get("status") == "active":
+            await self.link_vendor_to_directory(
+                account_id, vendor["id"], entry["id"],
+            )
+
+    async def adopt_matching_vendors(self, entry_id: int) -> int:
+        """Approve-time fan-out: link every account's unlinked vendor
+        whose normalized name matches this ACTIVE entry, and fill their
+        empty contact fields from the curated identity.  Returns the
+        number of vendors linked."""
+        entry = await self.get_directory_entry(entry_id)
+        if not entry or entry.get("status") != "active":
+            return 0
+        now = self._now()
+        cur = await self._db.execute(
+            "UPDATE vendors SET global_vendor_id = ?, "
+            " address = CASE WHEN TRIM(address) = '' THEN ? ELSE address END, "
+            " phone   = CASE WHEN TRIM(phone)   = '' THEN ? ELSE phone   END, "
+            " email   = CASE WHEN TRIM(email)   = '' THEN ? ELSE email   END, "
+            " updated_at = ? "
+            "WHERE name_key = ? AND global_vendor_id IS NULL",
+            (entry_id, entry.get("address") or "", entry.get("phone") or "",
+             entry.get("email") or "", now, entry["name_key"]),
+        )
+        await self._db.commit()
+        return cur.rowcount
+
     # ── Account-side ─────────────────────────────────────────────
 
     async def search_directory_active(self, q: str, limit: int = 20) -> list[dict]:
@@ -128,7 +232,7 @@ class VendorDirectoryMixin:
         needle = f"%{vendor_name_key(q)}%" if q else "%"
         cur = await self._db.execute(
             "SELECT id, name, address, phone, email, website, services, "
-            "       lat, lng "
+            "       lat, lng, chain "
             "FROM vendor_directory "
             "WHERE status = 'active' AND name_key LIKE ? "
             "ORDER BY name ASC "
@@ -138,7 +242,7 @@ class VendorDirectoryMixin:
         return [dict(r) for r in await cur.fetchall()]
 
     async def browse_directory(
-        self, account_id: int, q: str = "", limit: int = 200,
+        self, account_id: int, q: str = "", limit: int = 2000,
     ) -> list[dict]:
         """Account-facing directory BROWSE: active entries with the
         anonymous rating aggregate and this account's link status.
@@ -147,7 +251,7 @@ class VendorDirectoryMixin:
         needle = f"%{vendor_name_key(q)}%" if q else "%"
         cur = await self._db.execute(
             "SELECT d.id, d.name, d.address, d.phone, d.email, d.website, "
-            "       d.services, d.lat, d.lng, "
+            "       d.services, d.lat, d.lng, d.chain, "
             "       (SELECT COUNT(*) FROM vendor_reviews r "
             "         WHERE r.entry_id = d.id AND r.status = 'approved') AS rating_count, "
             "       (SELECT AVG(r.rating) FROM vendor_reviews r "
@@ -173,6 +277,34 @@ class VendorDirectoryMixin:
             out.append(r)
         return out
 
+    async def my_vendor_entries_in_bbox(
+        self,
+        account_id: int,
+        south: float,
+        west: float,
+        north: float,
+        east: float,
+        limit: int = 500,
+    ) -> list[dict]:
+        """THIS account's shops on the map: geocoded ACTIVE directory
+        entries that one of the caller's vendors links to (links happen
+        automatically — service recorded → identity approved → linked).
+        Identity + the caller's own vendor name; never spend."""
+        cur = await self._db.execute(
+            "SELECT d.id, d.name, d.address, d.phone, d.website, "
+            "       d.services, d.lat, d.lng, d.chain, "
+            "       v.name AS my_vendor_name, v.id AS my_vendor_id "
+            "FROM vendors v "
+            "JOIN vendor_directory d ON d.id = v.global_vendor_id "
+            "WHERE v.account_id = ? AND d.status = 'active' "
+            "  AND d.lat IS NOT NULL AND d.lng IS NOT NULL "
+            "  AND d.lat BETWEEN ? AND ? AND d.lng BETWEEN ? AND ? "
+            "ORDER BY d.name ASC "
+            f"LIMIT {int(limit)}",
+            (account_id, south, north, west, east),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
     async def directory_entries_in_bbox(
         self,
         south: float,
@@ -186,7 +318,7 @@ class VendorDirectoryMixin:
         exposure rule as search_directory_active); entries without
         operator-confirmed coordinates never appear."""
         cur = await self._db.execute(
-            "SELECT id, name, address, phone, website, services, lat, lng "
+            "SELECT id, name, address, phone, website, services, lat, lng, chain "
             "FROM vendor_directory "
             "WHERE status = 'active' "
             "  AND lat IS NOT NULL AND lng IS NOT NULL "
