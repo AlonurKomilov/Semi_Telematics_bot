@@ -71,3 +71,26 @@ def test_blank_responses_are_never_cached():
     assert _cache_get("k-space") is None
     _cache_put("k-real", "answer")
     assert _cache_get("k-real") == "answer"
+
+
+async def test_quota_cooldown_benches_model(monkeypatch):
+    """A 429-benched model is skipped by tier picks for the cooldown
+    window, so the next turn stages the tier's fallback (with tools)
+    instead of re-paying doomed round-trips every message."""
+    from capabilities.ai import models as M
+    chain = M.get_tier_chain('fast')
+    assert len(chain) >= 2
+    # Probe says everything is available — isolate the cooldown effect.
+    monkeypatch.setattr(
+        'capabilities.ai.probing.probe_model_availability',
+        lambda force=False: {m: ['us-central1'] for m in chain},
+    )
+    M._quota_cooldown.clear()
+    assert await M.pick_model_for_tier('fast') == chain[0]
+    M.report_quota_exhausted(chain[0], seconds=60)
+    assert await M.pick_model_for_tier('fast') == chain[1]
+    # Expiry restores the head.
+    import time
+    M._quota_cooldown[chain[0]] = time.monotonic() - 1
+    assert await M.pick_model_for_tier('fast') == chain[0]
+    M._quota_cooldown.clear()

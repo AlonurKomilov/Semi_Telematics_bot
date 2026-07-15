@@ -1870,14 +1870,20 @@ async def ask_agent(question: str, vehicle_context: dict,
         except Exception as e:
             last_exc = e
             err_str = str(e).lower()
-            if ('429' in err_str or 'resource exhausted' in err_str) and attempt < max_retries:
-                wait = 2 ** attempt
-                logger.warning(
-                    f"Agent rate limited (attempt {attempt+1}/{max_retries+1}), "
-                    f"retrying in {wait}s"
-                )
-                await asyncio.sleep(wait)
-                continue
+            if '429' in err_str or 'resource exhausted' in err_str:
+                # ONE quick same-model retry covers per-second blips.  A
+                # second 429 means the quota WINDOW is exhausted — more
+                # same-model retries with exponential sleeps just stack
+                # dead seconds onto the turn (and, pre-first-byte, walk
+                # the SSE into nginx's 504).  Bench the model so the
+                # next turn stages the tier's fallback with tools, and
+                # fall back now for this one.
+                if attempt < 1:
+                    logger.warning("Agent rate limited — one quick retry in 1s")
+                    await asyncio.sleep(1)
+                    continue
+                from capabilities.ai.models import report_quota_exhausted
+                report_quota_exhausted(cur_model_name)
             logger.warning(f"Agent mode failed, falling back: {e}")
             text, usage = await ask_ai(question, vehicle_context, user_id=user_id,
                                    account_id=account_id, language=language,

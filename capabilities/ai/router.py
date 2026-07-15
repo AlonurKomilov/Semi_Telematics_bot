@@ -431,6 +431,12 @@ async def ai_chat_stream(
 
     async def _event_stream():
         try:
+            # First byte IMMEDIATELY: nginx's proxy_read_timeout counts
+            # silence, and a turn that opens with quota retries/backoff
+            # (or a slow context build) could emit nothing for 60s+ —
+            # the mystery 504s.  The client ignores unknown event types,
+            # so a ping is free insurance.
+            yield 'data: {"type": "ping"}\n\n'
             async for event in ai.ask_agent_stream(
                 body.message, snapshot,
                 samsara_client=samsara,

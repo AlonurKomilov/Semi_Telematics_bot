@@ -994,6 +994,12 @@ async def generate(prompt: str, system: str = ASSISTANT_SYSTEM,
     else:
         failed_model = get_current_model_name()
 
+    # Bench the quota-exhausted model so tier staging skips it for the
+    # cooldown window — the next turns go straight to the fallback WITH
+    # tools instead of re-paying the 429 round-trips every message.
+    from capabilities.ai.models import report_quota_exhausted
+    report_quota_exhausted(failed_model)
+
     user_parts: list[str] = []
     if context_data:
         if isinstance(context_data, dict):

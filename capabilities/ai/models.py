@@ -551,8 +551,41 @@ async def resolve_tier(account_id: int | None,
     return DEFAULT_TIER
 
 
+# ── Quota cooldown ───────────────────────────────────────────────
+# A model that just answered 429 RESOURCE_EXHAUSTED will keep 429ing for
+# the rest of its quota window — re-trying it at the head of every turn
+# taxes each message with doomed round-trips + backoff sleeps (the
+# "Fast got slow" symptom) and feeds the very quota pressure that broke
+# it.  Reporting a cooldown makes ``pick_model_for_tier`` step over the
+# model for a short window so the NEXT turn stages the tier's fallback
+# directly — with tools, via the normal agent loop.  Process-local by
+# design (like the probe cache): each worker learns within one turn.
+
+_quota_cooldown: dict[str, float] = {}   # model → monotonic deadline
+_QUOTA_COOLDOWN_S = 90.0
+
+
+def report_quota_exhausted(model_name: str,
+                           seconds: float = _QUOTA_COOLDOWN_S) -> None:
+    """Mark a model quota-exhausted for ``seconds`` (tier picks skip it)."""
+    import time as _t
+    _quota_cooldown[model_name] = _t.monotonic() + seconds
+    logger.warning("Quota cooldown: %s benched for %.0fs", model_name, seconds)
+
+
+def _quota_cooled(model_name: str) -> bool:
+    import time as _t
+    dl = _quota_cooldown.get(model_name)
+    if dl is None:
+        return False
+    if _t.monotonic() >= dl:
+        _quota_cooldown.pop(model_name, None)
+        return False
+    return True
+
+
 async def pick_model_for_tier(tier: str) -> str:
-    """Pick the first probe-available model in a tier.
+    """Pick the first probe-available, non-quota-cooled model in a tier.
 
     Falls back to the static first entry when the live probe hasn't
     run yet (cold start) — the probe's result is the more accurate
@@ -565,10 +598,13 @@ async def pick_model_for_tier(tier: str) -> str:
         from capabilities.ai.probing import probe_model_availability
         availability = probe_model_availability()
         for m in chain:
-            if availability.get(m):
+            if availability.get(m) and not _quota_cooled(m):
                 return m
     except Exception as e:
         logger.debug("Probe lookup failed; using static head: %s", e)
+    for m in chain:
+        if not _quota_cooled(m):
+            return m
     return chain[0]
 
 
