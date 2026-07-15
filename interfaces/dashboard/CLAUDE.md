@@ -64,6 +64,9 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   "Saving…") and one-time-user forms (the public apply form — its users
   never get a second visit, so visible help is correct there). Icon
   semantics: ⓘ = explanation · (?) = how-to · (!) = warnings ONLY.
+  Behavior split: InfoTip is a TOGGLETIP — opens on CLICK, anchored to
+  the ⓘ itself, closes on outside-click/Esc (works on touch; sentences
+  survive mouse drift). Tip/Freshness stay hover + cursor-anchored.
   Migrate legacy helper texts as you touch files.
 - **Hover-info = the tooltip family, never native `title=`.**
   [`components/tooltip/`](src/components/tooltip/) is the SSOT (same idea as
