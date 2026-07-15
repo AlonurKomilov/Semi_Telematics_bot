@@ -4,7 +4,10 @@
  * trail: who did what, and which driver had the truck at that moment).
  */
 import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ArrowRightLeft, Check, Trash2 } from 'lucide-react';
+import { apiJSON } from '../../../api/client';
+import { VehiclePicker, type VehicleSummary } from '../../maintenance/pickers';
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '../../../components/ui/dialog';
@@ -35,8 +38,31 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
   onClose: () => void;
 }) {
   const [truck, setTruck] = useState('');
+  const [pickedCompany, setPickedCompany] = useState<string | undefined>(undefined);
   const targetTruck = vehicleName ?? truck.trim();
-  const { add } = useInventoryMutations(targetTruck, company);
+  const { add } = useInventoryMutations(targetTruck, company ?? pickedCompany);
+
+  // Fleet list for the picker (fleet-page mode only).  Shares the
+  // maintenance picker's cache key so the list is fetched once per
+  // session no matter which form opens it first; walks all pages
+  // (backend caps page_size at 200).
+  const { data: fleetData, isLoading: fleetLoading } = useQuery({
+    queryKey: ['maintenance-vehicles'],
+    queryFn: async () => {
+      const all: VehicleSummary[] = [];
+      let page = 1;
+      while (true) {
+        const res = await apiJSON<{ vehicles: VehicleSummary[]; total_pages: number }>(
+          `/vehicles?page_size=200&page=${page}`,
+        );
+        all.push(...(res.vehicles ?? []));
+        if (page >= (res.total_pages ?? 1)) break;
+        page++;
+      }
+      return { vehicles: all };
+    },
+    enabled: vehicleName == null,
+  });
   const [category, setCategory] = useState(categories[0] ?? 'other');
   const [label, setLabel] = useState('');
   const [identifier, setIdentifier] = useState('');
@@ -60,9 +86,18 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
         <div className="space-y-3">
           {vehicleName == null && (
             <label className="block">
-              <span className="text-xs font-medium text-muted-foreground">Truck №</span>
-              <input value={truck} onChange={(e) => setTruck(e.target.value)}
-                placeholder="which truck this item lives in" className={`mt-1 ${inputCls}`} />
+              <span className="text-xs font-medium text-muted-foreground">Vehicle</span>
+              <div className="mt-1">
+                <VehiclePicker
+                  value={truck}
+                  onChange={(name, v) => {
+                    setTruck(name);
+                    setPickedCompany(v?.company || undefined);
+                  }}
+                  vehicles={fleetData?.vehicles ?? []}
+                  loading={fleetLoading}
+                />
+              </div>
             </label>
           )}
           <label className="block">
