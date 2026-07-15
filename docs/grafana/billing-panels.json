@@ -1,0 +1,133 @@
+{
+  "comment": "Grafana panel definitions for the billing Prometheus metrics. Import via Grafana → Dashboards → New → Import → paste this JSON, then attach each panel to your operator dashboard. The panels assume the standard ``prometheus`` datasource; replace the datasource uid in your environment if it differs.",
+  "panels": [
+    {
+      "title": "Stripe webhook events (per minute)",
+      "type": "timeseries",
+      "description": "Volume of inbound webhook events broken down by Stripe event_type and our dispatch outcome. A healthy line shows a tight cluster of 'processed' with occasional 'duplicate' (Stripe retries); spikes in 'error' or 'invalid_signature' are red flags.",
+      "targets": [
+        {
+          "expr": "sum by (event_type, result) (rate(billing_webhook_events_total[1m]))",
+          "legendFormat": "{{event_type}} · {{result}}"
+        }
+      ],
+      "options": {
+        "legend": {"displayMode": "table", "placement": "right"}
+      }
+    },
+    {
+      "title": "Webhook errors — alert eligible",
+      "type": "stat",
+      "description": "Rolling 5-minute count of webhook handler errors. Anything > 0 should page the on-call: a real Stripe event blew up during dispatch and our DB state may now disagree with Stripe's.",
+      "targets": [
+        {
+          "expr": "sum(increase(billing_webhook_events_total{result=\"error\"}[5m]))",
+          "legendFormat": "errors / 5m"
+        }
+      ],
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {"color": "green", "value": null},
+          {"color": "red",   "value": 1}
+        ]
+      }
+    },
+    {
+      "title": "Invalid webhook signatures",
+      "type": "stat",
+      "description": "Rolling 5-minute count of signature-verification failures. > 1 means either STRIPE_WEBHOOK_SECRET drift between Stripe Dashboard and .env, OR someone hitting /billing/webhook directly without the secret.",
+      "targets": [
+        {
+          "expr": "sum(increase(billing_webhook_events_total{result=\"invalid_signature\"}[5m]))",
+          "legendFormat": "invalid sig / 5m"
+        }
+      ],
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {"color": "green", "value": null},
+          {"color": "yellow", "value": 1},
+          {"color": "red",    "value": 5}
+        ]
+      }
+    },
+    {
+      "title": "Extras quantity sync outcomes",
+      "type": "timeseries",
+      "description": "Per-minute rate of sync_billing_quantity calls grouped by result. Most ticks should be 'noop' (active-vehicle count unchanged). 'patched' is healthy — Stripe was updated. 'stripe_error' is the alarm: Stripe API failed and the customer's next invoice will be wrong.",
+      "targets": [
+        {
+          "expr": "sum by (result) (rate(billing_sync_quantity_total[1m]))",
+          "legendFormat": "{{result}}"
+        }
+      ]
+    },
+    {
+      "title": "Stripe sync errors (sustained)",
+      "type": "stat",
+      "description": "15-minute count of sync_billing_quantity Stripe API failures. Sustained > 0 across multiple intervals means the activity → Stripe path is broken; the billing-period close will reflect a stale qty.",
+      "targets": [
+        {
+          "expr": "sum(increase(billing_sync_quantity_total{result=\"stripe_error\"}[15m]))",
+          "legendFormat": "stripe errors / 15m"
+        }
+      ],
+      "thresholds": {
+        "mode": "absolute",
+        "steps": [
+          {"color": "green", "value": null},
+          {"color": "red",   "value": 1}
+        ]
+      }
+    },
+    {
+      "title": "Billing notifications dispatched",
+      "type": "timeseries",
+      "description": "Telegram-recipient reach per notification kind (checkout_complete, payment_failed, payment_recovered, comp_*). The value is the cumulative count of Owner/Admin admins reached — zero increments on a known-billed event mean either no admins exist for that account or the per-account bot isn't registered.",
+      "targets": [
+        {
+          "expr": "sum by (kind) (rate(billing_notifications_total[5m]))",
+          "legendFormat": "{{kind}}"
+        }
+      ]
+    },
+    {
+      "title": "Comp lifecycle — daily sweep",
+      "type": "timeseries",
+      "description": "Daily ticks from run_comp_expiry_sweep. 'checked' = active accounts scanned; 'expired' = comps flipped off on this run; 'reminder_sent' = expiring-soon Telegram pings (7/3/1-day buckets). 'expired' counts the accounts that just lost comp coverage — confirm finance + support are aware.",
+      "targets": [
+        {
+          "expr": "sum by (action) (rate(billing_comp_sweep_total[1d]))",
+          "legendFormat": "{{action}}"
+        }
+      ]
+    }
+  ],
+  "alert_recommendations": [
+    {
+      "name": "billing-webhook-error-rate",
+      "expr": "rate(billing_webhook_events_total{result=\"error\"}[5m]) > 0",
+      "for": "5m",
+      "severity": "page",
+      "summary": "Stripe webhook handler crashed on a real event",
+      "runbook": "docs/runbooks/billing-rollout.md#monitoring"
+    },
+    {
+      "name": "billing-invalid-signature-burst",
+      "expr": "rate(billing_webhook_events_total{result=\"invalid_signature\"}[5m]) > 1",
+      "for": "5m",
+      "severity": "warn",
+      "summary": "Multiple webhook signature failures — secret drift or probing",
+      "runbook": "docs/runbooks/billing-rollout.md#monitoring"
+    },
+    {
+      "name": "billing-sync-stripe-error-sustained",
+      "expr": "rate(billing_sync_quantity_total{result=\"stripe_error\"}[15m]) > 0",
+      "for": "30m",
+      "severity": "page",
+      "summary": "Active-vehicle qty no longer syncing to Stripe — next invoice will be wrong",
+      "runbook": "docs/runbooks/billing-rollout.md#monitoring"
+    }
+  ]
+}
