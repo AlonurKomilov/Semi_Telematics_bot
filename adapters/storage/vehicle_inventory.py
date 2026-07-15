@@ -139,6 +139,24 @@ class VehicleInventoryMixin(_MixinBase):
             for r in rows
         }
 
+    async def list_account_inventory(self, account_id: int) -> list[dict]:
+        """Every active item across the fleet, joined with its truck's
+        unit number + company — the fleet-wide Inventory page's read.
+        One query; company scoping is applied by the caller (router)
+        against the user's allowed codes."""
+        rows = await self.read_all(
+            f"""
+            SELECT i.{_ITEM_COLS.replace(', ', ', i.')},
+                   v.unit_number, v.company_code, v.vehicle_type
+              FROM vehicle_inventory_items i
+              JOIN vehicles v ON v.id = i.vehicle_id
+             WHERE i.account_id = ? AND i.is_active = 1
+             ORDER BY v.unit_number, i.category, i.label
+            """,
+            (account_id,),
+        )
+        return [dict(r) for r in rows]
+
     async def get_assigned_driver_for_truck(
         self, account_id: int, truck_num: str,
     ) -> int | None:

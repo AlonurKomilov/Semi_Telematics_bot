@@ -161,6 +161,25 @@ async def inventory_alerts(
     }
 
 
+@router.get("/inventory/all")
+async def inventory_all(
+    user: dict = Depends(_VIEW),
+    tenant=Depends(get_tenant_db),
+):
+    """Every active item across the fleet (joined with truck unit +
+    company) — the fleet-wide Inventory page.  Company-restricted users
+    see only their companies' trucks."""
+    rows = await tenant.list_account_inventory(int(user["account_id"]))
+    allowed = await get_user_company_codes(user)
+    if allowed:
+        rows = [r for r in rows if not r["company_code"] or r["company_code"] in allowed]
+    return {
+        "items": rows,
+        "categories": list(INVENTORY_CATEGORIES),
+        "statuses": list(INVENTORY_STATUSES),
+    }
+
+
 # ── item routes ──────────────────────────────────────────────────
 
 class PatchItemBody(BaseModel):

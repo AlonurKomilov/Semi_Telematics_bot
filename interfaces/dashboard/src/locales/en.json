@@ -208,7 +208,8 @@
     "storage": "Storage",
     "audit_log": "Audit Log",
     "knowledge_base": "Knowledge Base",
-    "settings": "Settings"
+    "settings": "Settings",
+    "vehicle_inventory": "Inventory"
   },
   "scorecards": {
     "page_title": "Scorecards",
@@ -583,6 +584,7 @@
     "new_chat": "New chat",
     "thought_process": "Thought process",
     "steps": "steps",
+    "running": "Running",
     "working": "Working…",
     "thinking_live": "Thinking",
     "done_step": "Done",
@@ -619,7 +621,15 @@
     "ask_driver": "Ask anything about your assigned truck.",
     "model_default": "default",
     "model_active": "active",
-    "thinking": "Thinking…"
+    "thinking": "Thinking…",
+    "send": "Send",
+    "stop_generating": "Stop generating",
+    "commands": "Commands",
+    "slash_commands": "Slash commands",
+    "awaiting_reply": "Waiting for your reply",
+    "suggestions": "Suggestions",
+    "placeholder_ask": "Ask about {{subject}}…",
+    "placeholder_commands": "Type / for commands"
   },
   "pages": {
     "overview_title": "My Dashboard",

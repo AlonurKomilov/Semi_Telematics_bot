@@ -2,7 +2,7 @@
 - Framework version: 1
 - Scope mode: A session — Vehicle Inventory component (InventoryCard + Add/Item dialogs, fleet-list attention badge, `features/vehicles/inventory/`)
 - Date: 2026-07-14 | Auditor session: vehicle-inventory
-- Surfaces audited: 3 | Not yet audited: Phase-2 hooks (PTI auto-verify, damaged→work-order, missing-item alert)
+- Surfaces audited: 4 | Not yet audited: Phase-2 hooks (PTI auto-verify, damaged→work-order, missing-item alert)
 
 ## Summary table
 | Surface | User moment | P1 Defaults | P2 Goal | P3 Recip. | P4 IKEA | P5 Loss | P6 Contrast |
@@ -27,6 +27,16 @@
 ### Fleet-list attention badge
 - **[P1 Smart Defaults — APPLIED]** Shown ONLY when attention > 0 — zero noise on healthy fleets (the same only-when-it-matters rule as the Freshness dot). `Impact: — · Effort: —`
 - **[P5/P6 — APPLIED]** A danger-tone count next to the unit number makes a truck with missing gear visually distinct in the list where dispatch decisions happen. `Impact: — · Effort: —`
+
+### Fleet-wide Inventory page (same-day addendum)
+Sidebar entry under Vehicles → /vehicles/inventory: DataGrid of every item
+across the fleet (search by identifier/truck; category/company/status
+filters; verification Freshness). Read/locate surface only — row click
+jumps to the truck, where the card owns all actions (single editing home,
+no dual-write surface: an IKEA/consistency decision). P1 APPLIED (filters
+by cardinality per house rules); P5 APPLIED (missing/damaged one filter
+away, fleet-wide); P6 APPLIED (tone chips make trouble rows pop in the
+grid). No dark patterns.
 
 ## Top 3 actions (highest impact first)
 1. Phase 2: PTI "inventory present" template item → auto-verify on passed inspection (turns weekly driver walk-arounds into free verifications). `Impact: high · Effort: M`

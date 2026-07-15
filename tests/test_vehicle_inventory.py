@@ -206,3 +206,37 @@ class TestInventoryGates:
                 "category": "spaceship", "label": "X",
             })
             assert r.status_code == 400
+
+
+class TestFleetWideInventory:
+    async def test_all_items_joined_with_truck_and_company_scoped(self, api):
+        app, db = api
+        acct = await db.create_account("Fleet Inv Co")
+        fleet = await db.create_user(800007, acct.id, role=Role.FLEET)
+        co_a = await db.add_company(acct.id, "AAA", display_name="Alpha Carrier")
+        await db.add_company(acct.id, "BBB", display_name="Beta Carrier")
+        va = await db.add_vehicle(acct.id, unit_number="201", company_code="AAA")
+        vb = await db.add_vehicle(acct.id, unit_number="202", company_code="BBB")
+        hf = _headers(fleet, acct, "fleet")
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            for unit, comp in (("201", "AAA"), ("202", "BBB")):
+                r = await c.post(f"/api/vehicles/{unit}/inventory", headers=hf, json={
+                    "category": "eld", "label": f"VG-{unit}", "company": comp,
+                })
+                assert r.status_code == 200, r.text
+
+            # Unrestricted user sees both, rows joined with unit + company
+            r = await c.get("/api/vehicles/inventory/all", headers=hf)
+            assert r.status_code == 200, r.text
+            items = r.json()["items"]
+            assert {(i["unit_number"], i["company_code"]) for i in items} == {
+                ("201", "AAA"), ("202", "BBB"),
+            }
+
+            # Restrict the user to company AAA → only 201's item remains
+            await db.set_user_companies(fleet.id, acct.id, [co_a.id])
+            r = await c.get("/api/vehicles/inventory/all", headers=hf)
+            items = r.json()["items"]
+            assert [i["unit_number"] for i in items] == ["201"]
+        assert va and vb
