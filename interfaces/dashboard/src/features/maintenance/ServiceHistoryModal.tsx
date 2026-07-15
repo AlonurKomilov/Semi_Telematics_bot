@@ -82,7 +82,7 @@ export function ServiceHistoryModal({
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-start pt-12" onClick={onClose}>
       <div
-        className="w-[640px] max-h-[80vh] bg-card border border-border rounded-xl p-6 overflow-y-auto shadow-2xl"
+        className="w-full max-w-2xl max-h-[80vh] bg-card border border-border rounded-xl p-6 overflow-y-auto shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">

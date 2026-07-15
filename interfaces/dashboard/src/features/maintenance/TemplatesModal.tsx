@@ -136,7 +136,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
       onClick={onClose}
     >
       <div
-        className="w-[560px] max-h-[80vh] bg-card border border-border rounded-xl p-6 overflow-y-auto shadow-2xl"
+        className="w-full max-w-xl max-h-[80vh] bg-card border border-border rounded-xl p-6 overflow-y-auto shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-start justify-between mb-4">

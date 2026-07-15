@@ -121,7 +121,7 @@ function AddItemDialog({
       onClick={onClose}
     >
       <div
-        className="w-[460px] max-w-full bg-card border border-border rounded-xl p-5 shadow-2xl space-y-3"
+        className="w-full max-w-lg bg-card border border-border rounded-xl p-5 shadow-2xl space-y-3"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">

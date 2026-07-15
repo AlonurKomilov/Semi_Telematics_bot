@@ -238,7 +238,7 @@ export default function Cameras() {
       {detail && (
         <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={() => setDetail(null)}>
           <div
-            className="w-[480px] bg-card border-l border-border p-6 overflow-y-auto"
+            className="w-full max-w-lg bg-card border-l border-border p-6 overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">

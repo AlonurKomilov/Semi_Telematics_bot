@@ -380,7 +380,7 @@ export default function Drivers() {
 
       {selectedId != null && (
         <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={close}>
-          <div className="w-[520px] bg-card border-l border-border overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="w-full max-w-lg bg-card border-l border-border overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             {detailLoading && !detail ? (
               <div className="p-6"><TableSkeleton rows={6} cols={2} /></div>
             ) : detail ? (

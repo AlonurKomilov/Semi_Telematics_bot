@@ -1013,7 +1013,7 @@ function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
         role="dialog"
         aria-modal="true"
         aria-label={`Scorecard detail for ${card.subject_name || card.driver_name}`}
-        className="w-[420px] bg-card border-l border-border p-6 overflow-y-auto"
+        className="w-full max-w-md bg-card border-l border-border p-6 overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">

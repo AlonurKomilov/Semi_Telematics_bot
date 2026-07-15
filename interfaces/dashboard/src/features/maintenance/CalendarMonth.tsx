@@ -302,7 +302,7 @@ export function CalendarMonth({
           onClick={() => setDayDetail(null)}
         >
           <div
-            className="w-[480px] max-h-[70vh] bg-card border border-border rounded-xl p-5 shadow-2xl overflow-y-auto"
+            className="w-full max-w-lg max-h-[70vh] bg-card border border-border rounded-xl p-5 shadow-2xl overflow-y-auto"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-start justify-between mb-3">

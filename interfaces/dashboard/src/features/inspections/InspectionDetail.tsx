@@ -151,7 +151,7 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={onClose}>
       <div
-        className="w-[560px] max-w-full bg-card border-l border-border overflow-y-auto"
+        className="w-full max-w-xl bg-card border-l border-border overflow-y-auto"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}

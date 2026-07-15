@@ -1808,7 +1808,7 @@ export default function Tasks() {
 
       {selected && (
         <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={() => setSelected(null)}>
-          <div className="w-96 bg-card border-l border-border p-6 overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-md bg-card border-l border-border p-6 overflow-y-auto" onClick={e => e.stopPropagation()}>
             {/* Header: vehicle + task type for disambiguation when
                 multiple tabs/drawers are juggled. History sits as a
                 clear chip rather than a faint inline link. */}

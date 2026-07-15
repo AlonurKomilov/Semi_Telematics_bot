@@ -288,6 +288,12 @@ picks a step, never invents a value.
   form) · `max-w-xl` (M · standard form) · `max-w-2xl` (L · wide editor).
   Legacy `w-[480px]`-style dialogs migrate to the nearest step as you
   touch them (same convention as the `title=` migration).
+- **Right-docked form drawers** (`border-l` slide-overs): always
+  `w-full max-w-md` (S) · `max-w-lg` (M) · `max-w-xl` (L). The `w-full`
+  is load-bearing — a fixed `w-[520px]` drawer overflows a phone
+  viewport; `w-full` + the cap degrades to full-screen on mobile.
+  (The assistant panel is chrome, not a form drawer — it has its own
+  resizable width.)
 
 ### Layering — the z-index ladder
 
