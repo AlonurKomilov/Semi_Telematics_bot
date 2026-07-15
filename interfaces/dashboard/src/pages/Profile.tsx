@@ -1034,7 +1034,7 @@ function ActiveSessions() {
                   onClick={() => revoke(s)}
                   disabled={isBusy || terminating}
                   title="Sign out this device"
-                  className="shrink-0 p-1.5 rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  className="shrink-0 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-40 disabled:cursor-not-allowed transition"
                 >
                   <X size={16} />
                 </button>

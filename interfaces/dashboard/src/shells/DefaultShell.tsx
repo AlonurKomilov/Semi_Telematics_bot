@@ -91,7 +91,7 @@ export default function DefaultShell() {
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setMobileSidebarOpen((o) => !o)}
-              className="lg:hidden p-1.5 rounded hover:bg-muted text-muted-foreground"
+              className="lg:hidden inline-flex size-8 items-center justify-center rounded-md hover:bg-muted text-muted-foreground"
               aria-label="Toggle navigation"
             >
               {mobileSidebarOpen ? <X size={18} /> : <Menu size={18} />}
@@ -118,7 +118,7 @@ export default function DefaultShell() {
             </button>
             <button
               onClick={() => setPaletteOpen(true)}
-              className="md:hidden p-1.5 rounded hover:bg-muted text-muted-foreground"
+              className="md:hidden inline-flex size-8 items-center justify-center rounded-md hover:bg-muted text-muted-foreground"
               aria-label="Open search"
             >
               <Search size={18} />

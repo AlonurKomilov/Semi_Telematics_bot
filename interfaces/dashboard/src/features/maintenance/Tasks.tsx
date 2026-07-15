@@ -1311,7 +1311,7 @@ export default function Tasks() {
                 aria-pressed={viewMode === 'list'}
                 aria-label="List view"
                 title="List view"
-                className={`p-1.5 rounded ${viewMode === 'list'
+                className={`inline-flex size-7 items-center justify-center rounded ${viewMode === 'list'
                   ? 'bg-card text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'}`}
               >
@@ -1323,7 +1323,7 @@ export default function Tasks() {
                 aria-pressed={viewMode === 'calendar'}
                 aria-label="Calendar view"
                 title="Calendar view"
-                className={`p-1.5 rounded ${viewMode === 'calendar'
+                className={`inline-flex size-7 items-center justify-center rounded ${viewMode === 'calendar'
                   ? 'bg-card text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'}`}
               >

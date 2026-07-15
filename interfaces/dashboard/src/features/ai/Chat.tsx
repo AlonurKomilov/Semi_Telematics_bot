@@ -1156,7 +1156,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                         <button
                           onClick={(e) => { e.stopPropagation(); void exportConversation(conv); }}
                           aria-label={t('chat.export_conversation')}
-                          className="opacity-0 group-hover/conv:opacity-100 p-1 rounded text-muted-foreground hover:text-foreground transition-opacity"
+                          className="opacity-0 group-hover/conv:opacity-100 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground transition-opacity"
                         >
                           <Download size={14} />
                         </button>
@@ -1165,7 +1165,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                         <button
                           onClick={(e) => { e.stopPropagation(); armDelete(conv.id); }}
                           aria-label={t('chat.delete_chat')}
-                          className="opacity-0 group-hover/conv:opacity-100 p-1 rounded text-muted-foreground hover:text-destructive transition-opacity"
+                          className="opacity-0 group-hover/conv:opacity-100 inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:text-destructive transition-opacity"
                         >
                           <Trash2 size={14} />
                         </button>

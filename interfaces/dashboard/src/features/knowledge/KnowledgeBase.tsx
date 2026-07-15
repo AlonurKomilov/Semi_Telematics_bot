@@ -1245,7 +1245,7 @@ function ArticleCard({
               ? t('knowledge.bookmark_remove_title', 'Remove from my bookmarks')
               : t('knowledge.bookmark_add_title', 'Bookmark for myself')
           }
-          className={`shrink-0 p-1.5 rounded transition-colors ${
+          className={`shrink-0 inline-flex size-7 items-center justify-center rounded-md transition-colors ${
             bookmarked
               ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
               : 'text-muted-foreground hover:text-foreground hover:bg-muted'

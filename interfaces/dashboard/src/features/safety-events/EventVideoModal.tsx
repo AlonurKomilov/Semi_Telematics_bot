@@ -146,7 +146,7 @@ export default function EventVideoModal({
             <button
               onClick={onClose}
               aria-label="Close"
-              className="p-1 rounded hover:bg-white/10 transition-colors"
+              className="inline-flex size-8 items-center justify-center rounded-md hover:bg-white/10 transition-colors"
             >
               <X size={16} />
             </button>

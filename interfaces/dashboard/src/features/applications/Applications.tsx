@@ -589,26 +589,26 @@ export default function Applications() {
                   <div className="ml-auto flex items-center gap-1">
                     {live && (
                       <button onClick={() => copyLink(l)} title="Copy link"
-                        className="text-muted-foreground hover:text-foreground p-1 rounded hover:bg-muted">
+                        className="text-muted-foreground hover:text-foreground inline-flex size-7 items-center justify-center rounded-md hover:bg-muted">
                         {copied === l.id ? <Check size={14} className="text-ok" /> : <Copy size={14} />}
                       </button>
                     )}
                     {l.is_active === 1 && (
                       <button onClick={() => setEditingLink(editingLink === l.id ? null : l.id)}
                         title="Edit link (label, source, carrier, expiry)"
-                        className={`p-1 rounded hover:bg-muted ${editingLink === l.id ? 'text-foreground bg-muted' : 'text-muted-foreground hover:text-foreground'}`}>
+                        className={`inline-flex size-7 items-center justify-center rounded-md hover:bg-muted ${editingLink === l.id ? 'text-foreground bg-muted' : 'text-muted-foreground hover:text-foreground'}`}>
                         <Pencil size={14} />
                       </button>
                     )}
                     {live && (
                       <button onClick={() => revokeLink(l.id)} title="Revoke"
-                        className="text-muted-foreground hover:text-destructive p-1 rounded hover:bg-muted">
+                        className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded-md hover:bg-muted">
                         <Ban size={14} />
                       </button>
                     )}
                     {!live && (
                       <button onClick={() => deleteLink(l.id)} title="Delete link permanently"
-                        className="text-muted-foreground hover:text-destructive p-1 rounded hover:bg-muted">
+                        className="text-muted-foreground hover:text-destructive inline-flex size-7 items-center justify-center rounded-md hover:bg-muted">
                         <Trash2 size={14} />
                       </button>
                     )}

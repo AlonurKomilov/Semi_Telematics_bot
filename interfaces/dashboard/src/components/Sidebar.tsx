@@ -112,7 +112,7 @@ export default function Sidebar() {
             <button
               type="button"
               onClick={() => setCollapsed((c) => !c)}
-              className="p-1.5 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
+              className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
               aria-label="Expand sidebar"
             >
               <PanelLeftOpen size={16} />
@@ -129,7 +129,7 @@ export default function Sidebar() {
             <button
               type="button"
               onClick={() => setCollapsed((c) => !c)}
-              className="p-1.5 rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
+              className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
               aria-label="Collapse sidebar"
             >
               <PanelLeftClose size={16} />
@@ -173,7 +173,7 @@ export default function Sidebar() {
                 disabled={groupActive && open}
                 aria-expanded={open}
                 aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
-                className="p-1 rounded text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-60"
+                className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-60"
               >
                 {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </button>
@@ -277,7 +277,7 @@ export default function Sidebar() {
                           disabled={childActive && open}
                           aria-expanded={open}
                           aria-label={open ? `Collapse ${label}` : `Expand ${label}`}
-                          className="p-1 rounded text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-60"
+                          className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:text-foreground shrink-0 disabled:opacity-60"
                         >
                           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                         </button>

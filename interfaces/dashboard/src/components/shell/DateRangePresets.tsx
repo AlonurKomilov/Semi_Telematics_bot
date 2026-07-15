@@ -253,7 +253,7 @@ export default function DateRangePresets({
           <div className="flex items-center justify-between mb-2">
             <button
               onClick={monthBack}
-              className="p-1 rounded hover:bg-muted text-muted-foreground"
+              className="inline-flex size-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground"
               aria-label="Previous month"
             >
               <ChevronLeft size={14} />
@@ -261,7 +261,7 @@ export default function DateRangePresets({
             <p className="text-xs text-muted-foreground">Pick a start date</p>
             <button
               onClick={monthFwd}
-              className="p-1 rounded hover:bg-muted text-muted-foreground"
+              className="inline-flex size-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground"
               aria-label="Next month"
             >
               <ChevronRight size={14} />

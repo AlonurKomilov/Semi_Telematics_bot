@@ -4,6 +4,7 @@ import { WO_PREFILL_STATE_KEY, type WorkOrderPrefill } from './createFrom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Tip } from '../../components/tooltip';
 import {
   FileText, Save, ArrowLeft, Trash2, Plus, Paperclip,
   Receipt, X, Link as LinkIcon, Image as ImageIcon, Loader2,
@@ -532,15 +533,16 @@ export default function WorkOrderForm() {
                   />
                 </td>
                 <td className="py-1.5 px-2 text-right">
-                  <button
-                    type="button"
-                    onClick={() => removePart(idx)}
-                    className="text-muted-foreground hover:text-destructive p-1"
-                    title={t('work_orders_page.remove_part')}
-                    aria-label={t('work_orders_page.remove_part')}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <Tip label={t('work_orders_page.remove_part')}>
+                    <button
+                      type="button"
+                      onClick={() => removePart(idx)}
+                      className="text-muted-foreground hover:text-destructive p-1"
+                      aria-label={t('work_orders_page.remove_part')}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </Tip>
                 </td>
               </tr>
             ))}
@@ -927,15 +929,16 @@ export default function WorkOrderForm() {
                       <Plus size={12} />
                       {t('work_orders_page.add_part')}
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => removeTaskGroup(gv)}
-                      title={t('work_orders_page.remove_task_group')}
-                      aria-label={t('work_orders_page.remove_task_group')}
-                      className="text-muted-foreground hover:text-destructive p-1"
-                    >
-                      <X size={14} />
-                    </button>
+                    <Tip label={t('work_orders_page.remove_task_group')}>
+                      <button
+                        type="button"
+                        onClick={() => removeTaskGroup(gv)}
+                        aria-label={t('work_orders_page.remove_task_group')}
+                        className="text-muted-foreground hover:text-destructive p-1"
+                      >
+                        <X size={14} />
+                      </button>
+                    </Tip>
                   </span>
                 </div>
                 {renderPartsTable(entriesFor(gv))}
@@ -1245,15 +1248,16 @@ function AttachmentRow({
       >
         {t('work_orders_page.download')}
       </button>
-      <button
-        type="button"
-        onClick={onDelete}
-        className="text-muted-foreground hover:text-destructive p-1"
-        title={t('work_orders_page.delete_attachment')}
-        aria-label={t('work_orders_page.delete_attachment')}
-      >
-        <X size={14} />
-      </button>
+      <Tip label={t('work_orders_page.delete_attachment')}>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="text-muted-foreground hover:text-destructive p-1"
+          aria-label={t('work_orders_page.delete_attachment')}
+        >
+          <X size={14} />
+        </button>
+      </Tip>
     </li>
   );
 }
