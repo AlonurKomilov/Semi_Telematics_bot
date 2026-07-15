@@ -231,7 +231,7 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
                 <div className="flex-1 flex items-center gap-1.5">
                   <input
                     value={transferTo} onChange={(e) => setTransferTo(e.target.value)}
-                    placeholder="Truck №" aria-label="Transfer to truck"
+                    placeholder="Vehicle №" aria-label="Transfer to vehicle"
                     className={`${inputCls} py-1.5 text-xs`}
                   />
                   <Button variant="outline" size="sm" disabled={busy || !transferTo.trim()}
