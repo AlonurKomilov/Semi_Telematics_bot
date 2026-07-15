@@ -138,7 +138,7 @@ function Header({ compact, brand, token, logoUrl, bannerUrl }: {
         <div className="flex items-center gap-2 text-primary">
           {logoSrc
             ? <img src={logoSrc} alt={brand?.name || 'Carrier'} className="h-7 w-auto max-w-40 object-contain" />
-            : <Truck size={22} style={accent ? { color: accent } : undefined} />}
+            : <Truck size={24} style={accent ? { color: accent } : undefined} />}
           <span className="text-base font-semibold text-foreground" style={headingStyle}>
             {brand?.name ? `${brand.name} · Driver Application` : 'Driver Application'}
           </span>

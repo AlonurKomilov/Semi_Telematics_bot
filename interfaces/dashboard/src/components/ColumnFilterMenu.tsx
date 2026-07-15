@@ -213,7 +213,7 @@ function SelectFilter({
                             : 'border-border',
                         )}
                       >
-                        {sel && <Check size={10} className="text-primary-foreground" aria-hidden="true" />}
+                        {sel && <Check size={12} className="text-primary-foreground" aria-hidden="true" />}
                       </span>
                       <span className="flex-1 truncate text-foreground">
                         {opt.label || <em className="text-muted-foreground">(empty)</em>}

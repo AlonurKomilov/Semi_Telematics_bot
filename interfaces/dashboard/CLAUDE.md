@@ -43,6 +43,13 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
 - **Icons = lucide-react at a standard size.** `12 · 14 · 16 · 18 · 20 · 24`
   (via `size={16}` or `size-4`), coloured by a token. No off-step sizes
   (`size={11}`/`{13}`/`{22}`), no second icon set, no emoji as UI icons.
+- **Sizes & layers = scales too (design.md §7).** Controls on
+  `h-7 · h-8 · h-9` (`size-7/8/9` icon-buttons); menus `w-44/56/64`, list
+  panels `w-80`; new dialogs `max-w-lg/xl/2xl`. Z-index ladder: `0–20`
+  content · `30` sticky · `40` panels · `50` menus/dialogs/toasts ·
+  `z-[60]` above-dialog (palette/lightbox) · `z-[100]` maintenance blocker
+  only. Arbitrary `z-[N]` otherwise banned — ESLint warns; map components
+  matching Leaflet pane values are the commented exception.
 - **Compose primitives.** Build from [`src/components/ui/`](src/components/ui/)
   and [`src/components/shell/`](src/components/shell/) — don't re-implement
   buttons, badges, dialogs, empty/error/loading states.

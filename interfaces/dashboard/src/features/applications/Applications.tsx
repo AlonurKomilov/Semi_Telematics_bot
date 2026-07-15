@@ -165,7 +165,7 @@ function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onC
           </p>
           <a href={`/applications/preview/${company.id}`} target="_blank" rel="noopener noreferrer"
             className="mt-2 inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
-            <ExternalLink size={13} /> Logo, hero photo &amp; theme colours — edit live in Preview
+            <ExternalLink size={12} /> Logo, hero photo &amp; theme colours — edit live in Preview
           </a>
         </div>
       </div>
@@ -229,7 +229,7 @@ function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onC
       <div className="mt-3 flex items-center justify-between">
         <a href={`/applications/preview/${company.id}`} target="_blank" rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
-          <ExternalLink size={13} /> Preview application
+          <ExternalLink size={12} /> Preview application
         </a>
         <Button size="sm" onClick={saveBrand} disabled={busy || !dirty}>{busy ? '…' : 'Save'}</Button>
       </div>
@@ -642,11 +642,11 @@ export default function Applications() {
           <div className="inline-flex rounded-md border border-border p-0.5">
             <button onClick={() => setView('table')}
               className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === 'table' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>
-              <List size={13} /> Table
+              <List size={12} /> Table
             </button>
             <button onClick={() => setView('board')}
               className={`inline-flex items-center gap-1 rounded px-2 py-1 text-xs ${view === 'board' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted'}`}>
-              <LayoutGrid size={13} /> Board
+              <LayoutGrid size={12} /> Board
             </button>
           </div>
         </div>
@@ -1145,7 +1145,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
                     <button key={key} type="button" onClick={() => toggleCheck(key, !done)}
                       className="flex w-full items-center gap-2 text-left text-sm">
                       <span className={`flex size-4 shrink-0 items-center justify-center rounded border ${done ? 'border-ok bg-ok-bg' : 'border-border'}`}>
-                        {done && <Check size={11} className="text-ok" />}
+                        {done && <Check size={12} className="text-ok" />}
                       </span>
                       <span className="text-foreground">{label}</span>
                       {required && <span className="text-2xs text-muted-foreground">required</span>}
@@ -1154,7 +1154,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
                 })}
               </div>
               <p className="mt-1.5 flex items-center gap-1 text-2xs text-muted-foreground">
-                <ShieldCheck size={11} /> All required checks must be complete before approving.
+                <ShieldCheck size={12} /> All required checks must be complete before approving.
               </p>
             </Section>
 
@@ -1575,7 +1575,7 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
               <span className="text-sm font-medium">Notifications</span>
               {unread > 0 && (
                 <button onClick={markAll} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-                  <CheckCheck size={13} /> Mark all read
+                  <CheckCheck size={12} /> Mark all read
                 </button>
               )}
             </div>

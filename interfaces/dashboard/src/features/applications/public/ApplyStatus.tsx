@@ -61,7 +61,7 @@ export default function ApplyStatus() {
       <header className="border-b border-border bg-card">
         <div className="mx-auto max-w-5xl px-4 py-5 sm:px-6">
           <div className="flex items-center gap-2 text-primary">
-            <Truck size={22} />
+            <Truck size={24} />
             <span className="text-base font-semibold text-foreground">Application Status</span>
           </div>
         </div>
@@ -86,7 +86,7 @@ export default function ApplyStatus() {
             </label>
             <button type="submit" disabled={loading || !reference.trim() || !email.trim()}
               className="mt-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-60">
-              <Search size={15} /> {loading ? 'Checking…' : 'Check status'}
+              <Search size={14} /> {loading ? 'Checking…' : 'Check status'}
             </button>
           </div>
 

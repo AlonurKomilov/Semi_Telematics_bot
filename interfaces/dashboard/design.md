@@ -261,6 +261,45 @@ scaffolding: `PageHeader`, `KpiCard`, `EmptyState`, `ErrorState`,
 `LoadingSkeleton`, `FilterBar`, `Breadcrumb`, toasts. Use these for
 headers/empty/error/loading states — don't roll your own.
 
+### Control & overlay sizing
+
+Sizes are scales, exactly like colours are tokens — a control or overlay
+picks a step, never invents a value.
+
+- **Control heights** come from the Button primitive's ladder and apply to
+  every interactive control (hand-rolled included):
+  `h-7` (sm / dense toolbars) · **`h-8` (default)** · `h-9` (lg / hero
+  actions). Square icon-buttons are the same steps: `size-7 · size-8 ·
+  size-9`. `h-6` is reserved for micro-chips inside dense rows; `h-10+`
+  for hero search fields only. If your control isn't on the ladder, use
+  the Button primitive instead of styling a new one.
+- **Menus & popovers**: `w-44` (compact action menu) · `w-56` (standard
+  menu) · `w-64` (menu with descriptions) · `w-80` (list panel — history,
+  notifications). Don't invent in-between widths.
+- **Dialogs**: pick a `max-w-*` step — `max-w-lg` (S · confirm/simple
+  form) · `max-w-xl` (M · standard form) · `max-w-2xl` (L · wide editor).
+  Legacy `w-[480px]`-style dialogs migrate to the nearest step as you
+  touch them (same convention as the `title=` migration).
+
+### Layering — the z-index ladder
+
+One ladder, low to high. A new `z-` value outside it is a stacking bug
+waiting to happen (tooltip under modal, dropdown under panel):
+
+| Layer | Value | What lives here |
+|---|---|---|
+| Content | `z-0 · z-10 · z-20` | within-page stacking (pinned cells, hover chrome) |
+| Sticky chrome | `z-30` | sticky table headers, filter bars |
+| App panels | `z-40` | slide-overs (assistant panel), drawers, launcher |
+| Floating UI | `z-50` | menus, popovers, dialogs, tooltips, toasts |
+| Above-dialog | `z-[60]` | command palette, media lightbox — the ONE sanctioned arbitrary |
+| App blocker | `z-[100]` | the maintenance overlay only — beats everything |
+
+**Maps are exempt where they must match Leaflet's internal pane values**
+(`z-[400]`/`z-[500]`/`z-[650]`/`z-[1000]` etc. inside `live-map`/
+`geofences` components) — those numbers are Leaflet's, not ours; keep
+them next to a comment saying so.
+
 ### Icons
 
 - **Library:** [`lucide-react`](https://lucide.dev) only. Don't add a
@@ -329,6 +368,13 @@ This doc governs `dashboard` only.
   — mono is for machine identifiers (IDs/IPs/hashes/code) only.
 - ❌ No hardcoded radius (`rounded-[10px]`, `rounded-4xl`).
 - ❌ No re-implemented primitives — use `ui/*` and `shell/*`.
+- ❌ No off-ladder control heights — interactive controls sit on
+  `h-7 · h-8 · h-9` (`size-7/8/9` for icon-buttons); menus/popovers on
+  `w-44 · w-56 · w-64 · w-80`; new dialogs on `max-w-lg/xl/2xl` (§7).
+- ❌ No z-index outside the §7 ladder (`0–20` content · `30` sticky ·
+  `40` panels · `50` floating UI · `z-[60]` above-dialog · `z-[100]`
+  maintenance blocker). Map components matching Leaflet pane values are
+  the documented exception — comment them.
 - ❌ No **inherited** text colour on a surface — declare `text-foreground`
   / the matching `*-foreground`. `bg-<x>` and `text-<x>-foreground` travel
   together (see §2 "Declare colour"). A control with a `bg`/`placeholder`

@@ -130,7 +130,7 @@ export function Check_({ checked, onChange, children }: {
       <span className={`mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border ${
         checked ? 'border-primary bg-primary text-primary-foreground' : 'border-border'
       }`}>
-        {checked && <Check size={13} />}
+        {checked && <Check size={12} />}
       </span>
       <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="sr-only" />
       <span className="text-foreground">{children}</span>

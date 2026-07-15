@@ -190,7 +190,7 @@ export function PersonaSelector({ compact = false }: { compact?: boolean }) {
                   >
                     <span className="flex-1">{v.label}</span>
                     {isActive && <Check size={14} className="opacity-80" />}
-                    <ChevronRight size={13} className="opacity-50" />
+                    <ChevronRight size={14} className="opacity-50" />
                   </button>
                   {/* Flyout — flush to the right so hover bridges without a gap. */}
                   <ul

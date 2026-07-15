@@ -64,6 +64,24 @@ export default [
         // component props legitimately named "title" are not tooltips.
         selector: "JSXOpeningElement[name.name=/^[a-z]/] > JSXAttribute[name.name='title']",
         message: 'Use <Tip label="…"> from components/tooltip instead of the native title= tooltip (unthemed, delayed, no touch support).',
+      }, {
+        // Icon sizes are a scale (design.md §7): 12 · 14 · 16 · 18 · 20 · 24.
+        // Off-step values fragment the visual rhythm one pixel at a time.
+        // (Numeric equality — esquery regex only matches string values.)
+        selector: "JSXAttribute[name.name='size'] JSXExpressionContainer > Literal:matches([value=10],[value=11],[value=13],[value=15],[value=17],[value=19],[value=21],[value=22],[value=23])",
+        message: 'Off-step icon size — use the design.md §7 scale: 12 · 14 · 16 · 18 · 20 · 24.',
+      }, {
+        // Z-index is a ladder (design.md §7): 0–20 content · 30 sticky ·
+        // 40 panels · 50 floating UI · z-[60] above-dialog · z-[100]
+        // maintenance blocker.  Arbitrary values outside the ladder cause
+        // stacking bugs.  Leaflet-pane-matching values (400/500/650/1000/
+        // 2000/2100) are allowed for map components — keep them commented.
+        selector: "JSXAttribute[name.name='className'] Literal[value=/z-\\[(?!60\\]|100\\]|400\\]|500\\]|650\\]|1000\\]|2000\\]|2100\\])/]",
+        message: 'Arbitrary z-index outside the design.md §7 ladder (0–20/30/40/50, z-[60] above-dialog, z-[100] blocker; Leaflet pane values for maps).',
+      }, {
+        // Same z-ladder rule for template-literal classNames.
+        selector: "JSXAttribute[name.name='className'] TemplateElement[value.raw=/z-\\[(?!60\\]|100\\]|400\\]|500\\]|650\\]|1000\\]|2000\\]|2100\\])/]",
+        message: 'Arbitrary z-index outside the design.md §7 ladder (0–20/30/40/50, z-[60] above-dialog, z-[100] blocker; Leaflet pane values for maps).',
       }],
 
       // tsc owns these:

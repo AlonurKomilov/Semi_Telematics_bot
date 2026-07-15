@@ -177,8 +177,8 @@ function CdlFastFill({ token, data, set, setIfEmpty }: {
             onChange={(e) => { onPick(e.target.files?.[0]); e.currentTarget.value = ''; }} />
           <span className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground hover:bg-primary/90">
             {busy
-              ? <><Loader2 size={15} className="animate-spin" /> Reading…</>
-              : <><Camera size={15} /> {hasDoc ? 'Retake photo' : 'Add photo'}</>}
+              ? <><Loader2 size={14} className="animate-spin" /> Reading…</>
+              : <><Camera size={14} /> {hasDoc ? 'Retake photo' : 'Add photo'}</>}
           </span>
         </label>
       </div>
@@ -420,7 +420,7 @@ const Step3: StepDef = {
           </div>
           {ocrBusy && (
             <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-              <Loader2 size={13} className="animate-spin" /> Reading your license…
+              <Loader2 size={12} className="animate-spin" /> Reading your license…
             </p>
           )}
           {ocrOk && !ocrBusy && (

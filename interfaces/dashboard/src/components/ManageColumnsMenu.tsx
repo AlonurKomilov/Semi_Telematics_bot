@@ -91,7 +91,7 @@ export default function ManageColumnsMenu({
                           : 'border-border',
                       )}
                     >
-                      {visible && <Check size={10} className="text-primary-foreground" aria-hidden="true" />}
+                      {visible && <Check size={12} className="text-primary-foreground" aria-hidden="true" />}
                     </span>
                     <span className="flex-1 truncate text-foreground">{opt.label}</span>
                   </button>

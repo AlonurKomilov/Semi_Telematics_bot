@@ -32,6 +32,7 @@ import { Button } from '../../components/ui/button';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import type { AnyColumn } from '../../types';
 import { toneClasses, toneText, statusClasses } from '../../lib/status';
+import { Tip } from '../../components/tooltip';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 
@@ -818,13 +819,14 @@ export function InvitesPanel() {
               </span>
             )}
             {badgeFor && (
-              <span
-                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium ${toneClasses(badgeFor.tone)}`}
-                title={inv.email_bounce_reason || badgeFor.label}
-              >
-                <badgeFor.icon size={10} />
-                {badgeFor.label}
-              </span>
+              <Tip label={inv.email_bounce_reason || badgeFor.label}>
+                <span
+                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-2xs font-medium ${toneClasses(badgeFor.tone)}`}
+                >
+                  <badgeFor.icon size={12} />
+                  {badgeFor.label}
+                </span>
+              </Tip>
             )}
             {canCopy && (
               <DropdownMenu>
@@ -841,7 +843,7 @@ export function InvitesPanel() {
                           ? t('actions.copied', { defaultValue: 'Copied' })
                           : t('actions.copy', { defaultValue: 'Copy' })}
                       </span>
-                      <ChevronDown size={10} className="ml-0.5 opacity-60" aria-hidden="true" />
+                      <ChevronDown size={12} className="ml-0.5 opacity-60" aria-hidden="true" />
                     </button>
                   )}
                 />

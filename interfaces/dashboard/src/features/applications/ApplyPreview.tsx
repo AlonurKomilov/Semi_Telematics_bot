@@ -99,7 +99,7 @@ function PreviewThemeBar({ brand, saving, device, logoUrl, bannerUrl, logoPresen
         className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs transition-colors ${
           aiOpen ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border bg-muted text-foreground hover:bg-muted/70'
         }`}>
-        <Sparkles size={13} /> AI theme
+        <Sparkles size={12} /> AI theme
       </button>
       {surfaceContrastWeak(brand.surface_color) && (
         <span className={`rounded px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>Surface is mid-tone — text may be low-contrast</span>
@@ -376,7 +376,7 @@ export default function ApplyPreview() {
         <div className="fixed bottom-20 left-1/2 z-50 w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 rounded-lg border border-border bg-card p-4 text-foreground shadow-xl">
           <div className="flex items-center justify-between">
             <p className="flex items-center gap-1.5 text-sm font-medium">
-              <Sparkles size={15} className="text-primary" /> AI theme
+              <Sparkles size={14} className="text-primary" /> AI theme
             </p>
             <button type="button" onClick={() => setAiOpen(false)}
               className="text-xs text-muted-foreground hover:text-foreground">Close</button>
