@@ -2,12 +2,15 @@
  * Inventory dialogs — Add (category/label/identifier/notes) and the item
  * detail (status actions, verify, transfer, remove + the accountability
  * trail: who did what, and which driver had the truck at that moment).
+ *
+ * Both use the shared Vehicle picker for anything that names a vehicle:
+ * free text can't disambiguate duplicate unit numbers across companies
+ * (103 G1 vs 103 OSY), and the item would land on the wrong truck.
  */
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRightLeft, Check, Trash2 } from 'lucide-react';
 import { apiJSON } from '../../../api/client';
-import { VehiclePicker, type VehicleSummary } from '../../maintenance/pickers';
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '../../../components/ui/dialog';
@@ -15,43 +18,29 @@ import { Button } from '../../../components/ui/button';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../../components/ui/select';
-import { statusClasses } from '../../../lib/status';
-import { toneClasses } from '../../../lib/status';
-import { formatDate } from '../../../utils/datetime';
+import { Tip } from '../../../components/tooltip';
+import { statusClasses, toneClasses } from '../../../lib/status';
+import { formatDate, formatAgoShort } from '../../../utils/datetime';
 import { useTimezone } from '../../../hooks/useTimezone';
+import { VehiclePicker, type VehicleSummary } from '../../maintenance/pickers';
 import { useInventoryEvents, useInventoryMutations } from './useInventory';
 import type { InventoryItem } from './useInventory';
 import { categoryMeta, STATUS_LABELS } from './categories';
 
 const inputCls =
   'w-full px-3 py-2 rounded-lg border border-border bg-background text-foreground text-sm';
+const labelCls = 'text-xs font-medium text-muted-foreground';
 
-// ── Add ──────────────────────────────────────────────────────────
-
-export function AddItemDialog({ vehicleName, company, categories, onClose }: {
-  /** Fixed truck context (vehicle detail card).  Omit on the fleet-wide
-   *  page — the dialog then asks for the truck number, validated
-   *  server-side against the registry (404 → inline error). */
-  vehicleName?: string;
-  company?: string;
-  categories: string[];
-  onClose: () => void;
-}) {
-  const [truck, setTruck] = useState('');
-  const [pickedCompany, setPickedCompany] = useState<string | undefined>(undefined);
-  const targetTruck = vehicleName ?? truck.trim();
-  const { add } = useInventoryMutations(targetTruck, company ?? pickedCompany);
-
-  // Fleet list for the picker (fleet-page mode only).  Shares the
-  // maintenance picker's cache key so the list is fetched once per
-  // session no matter which form opens it first; walks all pages
-  // (backend caps page_size at 200).
-  const { data: fleetData, isLoading: fleetLoading } = useQuery({
+/** Fleet list for the Vehicle pickers.  Shares the maintenance picker's
+ *  cache key, so the list is fetched once per session regardless of which
+ *  form opens first; walks all pages (backend caps page_size at 200). */
+function useFleetList(enabled: boolean) {
+  return useQuery({
     queryKey: ['maintenance-vehicles'],
     queryFn: async () => {
       const all: VehicleSummary[] = [];
       let page = 1;
-      while (true) {
+      for (;;) {
         const res = await apiJSON<{ vehicles: VehicleSummary[]; total_pages: number }>(
           `/vehicles?page_size=200&page=${page}`,
         );
@@ -61,47 +50,66 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
       }
       return { vehicles: all };
     },
-    enabled: vehicleName == null,
+    enabled,
   });
+}
+
+// ── Add ──────────────────────────────────────────────────────────
+
+export function AddItemDialog({ vehicleName, company, categories, onClose }: {
+  /** Fixed vehicle context (the vehicle-detail card).  Omit on the
+   *  fleet-wide page — the dialog then shows the Vehicle picker. */
+  vehicleName?: string;
+  company?: string;
+  categories: string[];
+  onClose: () => void;
+}) {
+  const [pickedName, setPickedName] = useState('');
+  const [pickedCompany, setPickedCompany] = useState<string | undefined>(undefined);
+  const targetVehicle = vehicleName ?? pickedName.trim();
+  const { add } = useInventoryMutations(targetVehicle, company ?? pickedCompany);
   const [category, setCategory] = useState(categories[0] ?? 'other');
   const [label, setLabel] = useState('');
   const [identifier, setIdentifier] = useState('');
   const [notes, setNotes] = useState('');
   const [err, setErr] = useState('');
+  const { data: fleet, isLoading: fleetLoading } = useFleetList(vehicleName == null);
 
   const items = categories.map((c) => ({ value: c, label: categoryMeta(c).label }));
 
   const submit = async () => {
     setErr('');
     try {
-      await add.mutateAsync({ category, label: label.trim(), identifier: identifier.trim(), notes: notes.trim() });
+      await add.mutateAsync({
+        category,
+        label: label.trim(),
+        identifier: identifier.trim(),
+        notes: notes.trim(),
+      });
       onClose();
-    } catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+    } catch (e) { setErr(e instanceof Error ? e.message : 'Could not add the item'); }
   };
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-w-lg">
         <DialogHeader><DialogTitle>Add inventory item</DialogTitle></DialogHeader>
         <div className="space-y-3">
           {vehicleName == null && (
-            <label className="block">
-              <span className="text-xs font-medium text-muted-foreground">Vehicle</span>
+            <div>
+              <span className={labelCls}>Vehicle</span>
               <div className="mt-1">
                 <VehiclePicker
-                  value={truck}
-                  onChange={(name, v) => {
-                    setTruck(name);
-                    setPickedCompany(v?.company || undefined);
-                  }}
-                  vehicles={fleetData?.vehicles ?? []}
+                  value={pickedName}
+                  onChange={(name, v) => { setPickedName(name); setPickedCompany(v?.company || undefined); }}
+                  vehicles={fleet?.vehicles ?? []}
                   loading={fleetLoading}
                 />
               </div>
-            </label>
+            </div>
           )}
           <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">Category</span>
+            <span className={labelCls}>Category</span>
             <Select value={category} onValueChange={setCategory} items={items}>
               <SelectTrigger className="w-full mt-1" aria-label="Category"><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -110,24 +118,27 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
             </Select>
           </label>
           <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">Label</span>
+            <span className={labelCls}>Label</span>
             <input value={label} onChange={(e) => setLabel(e.target.value)}
               placeholder="e.g. Samsara CM32, EFS card…" className={`mt-1 ${inputCls}`} />
           </label>
           <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">Identifier (serial / last-4 / transponder №)</span>
+            <span className={labelCls}>Identifier</span>
             <input value={identifier} onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="what makes THIS unit provable" className={`mt-1 ${inputCls}`} />
+              placeholder="serial · card last-4 · transponder №" className={`mt-1 ${inputCls}`} />
+            <span className="text-2xs text-muted-foreground/70 mt-1 block">
+              What proves THIS unit is the one that went missing.
+            </span>
           </label>
           <label className="block">
-            <span className="text-xs font-medium text-muted-foreground">Notes (optional)</span>
+            <span className={labelCls}>Notes <span className="font-normal">(optional)</span></span>
             <input value={notes} onChange={(e) => setNotes(e.target.value)} className={`mt-1 ${inputCls}`} />
           </label>
           {err && <p className={`text-sm rounded-md px-3 py-2 ${toneClasses('danger')}`}>{err}</p>}
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
-          <Button onClick={submit} disabled={add.isPending || !label.trim() || !targetTruck}>
+          <Button onClick={submit} disabled={add.isPending || !label.trim() || !targetVehicle}>
             {add.isPending ? 'Adding…' : 'Add item'}
           </Button>
         </DialogFooter>
@@ -163,6 +174,7 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
   const [transferTo, setTransferTo] = useState('');
   const [err, setErr] = useState('');
   const { label: catLabel, Icon } = categoryMeta(item.category);
+  const { data: fleet, isLoading: fleetLoading } = useFleetList(canManage);
 
   const statusItems = statuses.map((s) => ({ value: s, label: STATUS_LABELS[s] ?? s }));
   const busy = patch.isPending || verify.isPending || transfer.isPending || remove.isPending;
@@ -170,7 +182,7 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
   const run = async (fn: () => Promise<unknown>, close = false) => {
     setErr('');
     try { await fn(); if (close) onClose(); }
-    catch (e) { setErr(e instanceof Error ? e.message : 'Failed'); }
+    catch (e) { setErr(e instanceof Error ? e.message : 'Action failed'); }
   };
 
   return (
@@ -178,10 +190,10 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            <span className="inline-flex items-center gap-2">
-              <Icon size={18} className="text-muted-foreground" />
-              {item.label}
-              <span className={`px-2 py-0.5 rounded-full text-xs border ${statusClasses(item.status)}`}>
+            <span className="inline-flex items-center gap-2 min-w-0">
+              <Icon size={18} className="text-muted-foreground shrink-0" />
+              <span className="truncate">{item.label}</span>
+              <span className={`px-2 py-0.5 rounded-md text-xs border shrink-0 ${statusClasses(item.status)}`}>
                 {STATUS_LABELS[item.status] ?? item.status}
               </span>
             </span>
@@ -189,20 +201,35 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="text-sm text-muted-foreground space-y-1">
-            <div>
-              {catLabel}
-              {item.identifier && <> · <span className="font-mono text-xs text-foreground">{item.identifier}</span></>}
-              <> · Vehicle <span className="text-foreground">{vehicleName}</span></>
-            </div>
-            {item.notes && <div className="text-xs">{item.notes}</div>}
+          {/* Identity line — category · identifier · which vehicle it's on. */}
+          <div className="text-sm text-muted-foreground">
+            <span>{catLabel}</span>
+            {item.identifier && (
+              <> · <span className="font-mono text-xs text-foreground">{item.identifier}</span></>
+            )}
+            <> · on vehicle <span className="text-foreground font-medium">{vehicleName}</span></>
+            {item.notes && <div className="text-xs mt-1">{item.notes}</div>}
           </div>
 
           {canManage && (
-            <div className="space-y-3 border-t border-border pt-3">
+            <div className="space-y-4 border-t border-border pt-4">
+              {/* ONE note field, stated plainly: it rides whichever action
+                  the operator takes below (status / transfer / remove) and
+                  lands in the permanent trail. */}
+              <label className="block">
+                <span className={labelCls}>
+                  Note <span className="font-normal text-muted-foreground/70">— saved to the history with your next action</span>
+                </span>
+                <input
+                  value={note} onChange={(e) => setNote(e.target.value)}
+                  placeholder="Why? (recommended when reporting damaged or missing)"
+                  className={`mt-1 ${inputCls}`}
+                />
+              </label>
+
               <div className="flex items-end gap-2">
-                <label className="flex-1">
-                  <span className="text-xs font-medium text-muted-foreground">Status</span>
+                <label className="flex-1 min-w-0">
+                  <span className={labelCls}>Status</span>
                   <Select value={status} onValueChange={setStatus} items={statusItems}>
                     <SelectTrigger className="w-full mt-1" aria-label="Status"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -218,28 +245,36 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
                   Apply
                 </Button>
               </div>
-              <input
-                value={note} onChange={(e) => setNote(e.target.value)}
-                placeholder="Reason / note for the trail (recommended for damaged & missing)"
-                className={inputCls}
-              />
-              <div className="flex items-center gap-2">
+
+              <div className="flex items-end gap-2">
+                <div className="flex-1 min-w-0">
+                  <span className={labelCls}>Transfer to</span>
+                  <div className="mt-1">
+                    <VehiclePicker
+                      value={transferTo}
+                      onChange={(name) => setTransferTo(name)}
+                      vehicles={(fleet?.vehicles ?? []).filter((v) => v.name !== vehicleName)}
+                      loading={fleetLoading}
+                    />
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  disabled={busy || !transferTo.trim()}
+                  onClick={() => run(() => transfer.mutateAsync({
+                    itemId: item.id, toVehicleName: transferTo.trim(), note,
+                  }), true)}
+                >
+                  <ArrowRightLeft size={14} /> Transfer
+                </Button>
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-1">
                 <Button variant="outline" size="sm" disabled={busy}
                   onClick={() => run(() => verify.mutateAsync(item.id), true)}>
                   <Check size={14} /> Verify present
                 </Button>
-                <div className="flex-1 flex items-center gap-1.5">
-                  <input
-                    value={transferTo} onChange={(e) => setTransferTo(e.target.value)}
-                    placeholder="Vehicle №" aria-label="Transfer to vehicle"
-                    className={`${inputCls} py-1.5 text-xs`}
-                  />
-                  <Button variant="outline" size="sm" disabled={busy || !transferTo.trim()}
-                    onClick={() => run(() => transfer.mutateAsync({ itemId: item.id, toVehicleName: transferTo.trim(), note }), true)}>
-                    <ArrowRightLeft size={14} /> Transfer
-                  </Button>
-                </div>
-                <Button variant="ghost" size="sm" disabled={busy}
+                <Button variant="destructive" size="sm" disabled={busy}
                   onClick={() => run(() => remove.mutateAsync({ itemId: item.id, note }), true)}>
                   <Trash2 size={14} /> Remove
                 </Button>
@@ -249,17 +284,31 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
           )}
 
           <div className="border-t border-border pt-3">
-            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">History</div>
-            <ul className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+            <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+              History
+            </div>
+            <ul className="space-y-2 max-h-48 overflow-y-auto pr-1">
               {(eventsData?.events ?? []).map((e) => (
                 <li key={e.id} className="text-xs text-muted-foreground">
-                  <span className="text-foreground">{EVENT_LABEL[e.event_type] ?? e.event_type}</span>
-                  {e.from_status && e.to_status && <> — {STATUS_LABELS[e.from_status] ?? e.from_status} → {STATUS_LABELS[e.to_status] ?? e.to_status}</>}
-                  {e.event_type === 'transferred' && <> — truck {e.from_vehicle_id} → {e.to_vehicle_id}</>}
-                  <span className="text-muted-foreground/70"> · {formatDate(e.created_at, { timeZone: tz })}</span>
-                  {e.actor_name && <> · by {e.actor_name}</>}
-                  {e.driver_name && <> · driver: <span className="text-foreground">{e.driver_name}</span></>}
-                  {e.note && <div className="text-2xs text-muted-foreground/80 pl-3">“{e.note}”</div>}
+                  <div className="flex items-baseline gap-1.5 flex-wrap">
+                    <span className="text-foreground font-medium">
+                      {EVENT_LABEL[e.event_type] ?? e.event_type}
+                    </span>
+                    {e.from_status && e.to_status && (
+                      <span>
+                        {STATUS_LABELS[e.from_status] ?? e.from_status} → {STATUS_LABELS[e.to_status] ?? e.to_status}
+                      </span>
+                    )}
+                    {/* Exact timestamp on hover; the age is what's scannable. */}
+                    <Tip label={formatDate(e.created_at, { timeZone: tz })}>
+                      <span className="text-muted-foreground/70">{formatAgoShort(e.created_at, { timeZone: tz })}</span>
+                    </Tip>
+                  </div>
+                  <div className="text-2xs text-muted-foreground/80">
+                    {e.actor_name && <>by {e.actor_name}</>}
+                    {e.driver_name && <> · driver at the time: <span className="text-foreground">{e.driver_name}</span></>}
+                  </div>
+                  {e.note && <div className="text-2xs text-muted-foreground/80 italic mt-0.5">“{e.note}”</div>}
                 </li>
               ))}
               {(eventsData?.events ?? []).length === 0 && (

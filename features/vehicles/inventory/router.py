@@ -307,7 +307,14 @@ async def item_events(
     for uid in ids:
         u = await platform_db.get_user(int(uid))
         if u is not None:
-            names[int(uid)] = getattr(u, "full_name", "") or getattr(u, "username", "") or f"user {uid}"
+            # ``display_name`` is the User model's name field (there is no
+            # full_name/username); fall back to email, then a stable ref —
+            # never a bare "user 3", which reads as a bug to an operator.
+            names[int(uid)] = (
+                (u.display_name or "").strip()
+                or (u.email or "").strip()
+                or f"#{uid}"
+            )
     for e in events:
         e["actor_name"] = names.get(e.get("actor_user_id") or 0, "")
         e["driver_name"] = names.get(e.get("driver_user_id") or 0, "")
