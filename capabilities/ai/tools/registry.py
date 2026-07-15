@@ -183,7 +183,20 @@ async def get_cached_vertex_tools(
         return hit
     from google.genai import types as _gtypes
     tool_defs = await filter_tools_for_role(role, account_id, scoped)
-    func_decls = [_gtypes.FunctionDeclaration(**td) for td in tool_defs]
+    # PROJECT the API fields — never splat the whole schema dict.  Tool
+    # schemas carry registry metadata (``writes`` / ``risk`` / ``scope``)
+    # on top of the API shape, and FunctionDeclaration is a pydantic
+    # model with extra="forbid": splatting made ONE metadata key break
+    # every Gemini-tier request at tool-build time (the Anthropic/OpenAI
+    # converters below always projected, which is why only Gemini died).
+    func_decls = [
+        _gtypes.FunctionDeclaration(
+            name=td["name"],
+            description=td["description"],
+            parameters=td.get("parameters", {"type": "object", "properties": {}}),
+        )
+        for td in tool_defs
+    ]
     result = [_gtypes.Tool(function_declarations=func_decls)]
     _cached_tools[key] = (_time.monotonic() + _TOOLS_CACHE_TTL_S, result)
     return result

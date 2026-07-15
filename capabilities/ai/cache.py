@@ -53,7 +53,15 @@ def _cache_get(key: str) -> str | None:
 
 
 def _cache_put(key: str, text: str):
-    """Store a response in the cache."""
+    """Store a response in the cache.
+
+    Blank responses are never cached: a failed/empty generation must not
+    poison the key — within the TTL every retry of the same question
+    would silently serve the same empty answer with no model attempt,
+    no telemetry row, and no error event ("No response received").
+    """
+    if not text or not text.strip():
+        return
     if len(_response_cache) >= _CACHE_MAX:
         oldest_key = min(_response_cache, key=lambda k: _response_cache[k][0])
         _response_cache.pop(oldest_key, None)
