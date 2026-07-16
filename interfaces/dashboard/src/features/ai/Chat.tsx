@@ -175,19 +175,25 @@ function stampElapsed(step: AIProcessStep, now: number): AIProcessStep {
  *  live step is still streaming it stays open (that's the progress
  *  feedback); it folds when the next step starts unless the user
  *  explicitly opened it. */
-function ThinkingStep({ text, live = false }: { text: string; live?: boolean }) {
+function ThinkingStep({ text, label, live = false }: {
+  text: string;
+  /** Collapsed-row caption — the MODE, not the content ("Reasoning" /
+   *  "Thinking").  A content preview reads as a duplicate the moment the
+   *  step expands (the full text starts with the same sentence). */
+  label: string;
+  live?: boolean;
+}) {
   const [choice, setChoice] = useState<boolean | null>(null);
   const open = choice ?? live;
   const clean = (text || '').replace(/\*\*/g, '').trim();
-  const preview = clean.split('\n')[0];
   return (
     <div className="min-w-0">
       <button
         onClick={() => setChoice(!open)}
         aria-expanded={open}
-        className="flex w-full items-center gap-1 text-left text-2xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+        className="flex items-center gap-1 text-left text-2xs font-medium text-muted-foreground hover:text-foreground transition-colors"
       >
-        <span className="truncate">{preview || '…'}</span>
+        <span>{label}</span>
         <ChevronDown
           size={12}
           className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
@@ -1351,7 +1357,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           {exploded.map((step, si) => (
                             step.type === 'thinking' ? (
                               <TimelineRow key={si} marker={THINKING_DOT} last={false}>
-                                <ThinkingStep text={step.text || ''} />
+                                {/* Label = the tier that produced THIS answer
+                                    (frozen on the message), so the step reads
+                                    "Reasoning ⌄" / "Thinking ⌄". */}
+                                <ThinkingStep
+                                  text={step.text || ''}
+                                  label={msg.modelTier || t('chat.thinking_live')}
+                                />
                               </TimelineRow>
                             ) : (
                               <TimelineRow
@@ -1552,6 +1564,11 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           <TimelineRow key={si} marker={THINKING_DOT} last={false}>
                             <ThinkingStep
                               text={step.text || ''}
+                              label={
+                                (currentTier !== 'auto'
+                                  && tiers.find((x) => x.name === currentTier)?.label)
+                                || t('chat.thinking_live')
+                              }
                               live={si === exploded.length - 1}
                             />
                           </TimelineRow>
