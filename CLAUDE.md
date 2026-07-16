@@ -39,6 +39,20 @@ design problem, escalate that one question to `fable-advisor`.
 - Prefer finishing in the current session over spawning agents for work
   you can do directly.
 
+# Naming rules
+
+- **Role words never go into shared identifiers.** Persona words
+  (`fleet`, `safety`, `dispatch`, `hr`, `accounting`…) are live role
+  identifiers here (role strings, subdomains, shells); role-flavored UI
+  text is GENERATED per active view. Shared/wire data — API keys,
+  schema fields, type names — is named after the domain noun
+  (`vehicles`, not `fleet`; Vehicle is the parent of truck and
+  trailer). Persona words are correct only in genuinely per-role
+  artifacts (`FleetShell`, `SafetyHero`). Full rule + the wire-key
+  rename recipe (deprecated same-object alias + alias==primary test):
+  [docs/architecture/PERSONA.md](docs/architecture/PERSONA.md)
+  §"Naming: role words vs domain nouns".
+
 # Project rituals
 
 - **After building or modifying any user-facing feature** (dashboard page,

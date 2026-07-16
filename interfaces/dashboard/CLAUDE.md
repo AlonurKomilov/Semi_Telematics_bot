@@ -53,6 +53,15 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
 - **Compose primitives.** Build from [`src/components/ui/`](src/components/ui/)
   and [`src/components/shell/`](src/components/shell/) — don't re-implement
   buttons, badges, dialogs, empty/error/loading states.
+- **Role words never in shared identifiers or shared copy.** Persona
+  words (`fleet`, `safety`, …) are live role identifiers (subdomains,
+  shells); role-flavored text ("Fleet Overview") is GENERATED from the
+  active view. Shared data/props/types use the domain noun (`vehicles`,
+  not `fleet` — e.g. `stats.vehicles ?? stats.fleet`, `VehicleStats`).
+  Persona words belong only in per-role artifacts (`FleetHero`,
+  `SafetyShell`). Full rule:
+  [docs/architecture/PERSONA.md](../../docs/architecture/PERSONA.md)
+  §"Naming: role words vs domain nouns".
 - **Learn-once field explanations = `<InfoTip>`, not always-visible text.**
   Helper text a user reads twice and then scrolls past ("saved to the
   history with your next action") collapses behind the muted ⓘ from

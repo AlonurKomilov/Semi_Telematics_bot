@@ -215,11 +215,44 @@ These aren't critical-path work — the Live Map already differentiates
 strongly between personas via the map overlays.  Side-panel
 differentiation is a polish phase for when there's bandwidth.
 
+## Naming: role words vs domain nouns
+
+Role words (`fleet`, `safety`, `dispatch`, `hr`, `accounting`…) are
+LIVE identifiers in this codebase — role strings, subdomains
+(`fleet.4truck.us`), shells (`FleetShell`).  Every role-flavored word a
+user sees ("Fleet Overview" vs "Safety Overview") is **generated from
+the active view** by the persona system, never hardcoded.
+
+Therefore:
+
+- **Shared / wire data is named after the DOMAIN NOUN, never a
+  persona.**  A key like `fleet.trucks` reads as "Fleet-role data" and
+  makes the next developer ask "does Accounting get this?".  The
+  correct name was `vehicles.trucks` — Vehicle is the role-neutral
+  parent of truck and trailer.  (Real incident, 2026-07-16: the
+  `/overview/stats` block shipped as `fleet.*` and was renamed.)
+- **Persona words are correct ONLY in genuinely per-role artifacts** —
+  `FleetHero.tsx`, `SafetyShell`, `LIVE_MAP_LAYOUTS` keys — things that
+  exist once per role by design.
+- **Renaming a wire key?** Ship the old key as a deprecated
+  SAME-OBJECT alias plus a test asserting `alias == primary`, so stale
+  SPA bundles survive the rollout.  Worked example:
+  `/overview/stats` serves `vehicles` with a `fleet` alias
+  (`features/overview/router.py`), pinned by
+  `tests/test_overview_stats_persona_filter.py`; consumers read
+  `stats.vehicles ?? stats.fleet`.  Delete the alias (and the
+  fallbacks) once no pre-rename bundle is live.
+
+The sibling rule for AI tool descriptions: tools are called by every
+role the permission gate allows, so their "USE THIS" examples must be
+phrased role-neutrally too (no "my fleet" / "fleet efficiency").
+
 ## Anti-patterns to avoid
 
+- **Don't hardcode a persona word into a wire key, schema field, or
+  shared identifier.** See "Naming: role words vs domain nouns" above.
 - **Don't reach into the bot for config UX.** Persona-group setup,
-  account settings, etc. live on the dashboard.  See
-  [feedback_config_belongs_on_dashboard_not_bot](../../home/abcdev/.claude/projects/-home-abcdev-projects-Semi-Telematics-bot/memory/feedback_config_belongs_on_dashboard_not_bot.md).
+  account settings, etc. live on the dashboard.
 - **Don't read `useShellConfig` inside a section.** Sections are
   persona-agnostic.  If your section needs persona info, the page
   wrapper must resolve it via `personaConfig.ts` and pass it down
