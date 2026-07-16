@@ -331,7 +331,9 @@
     "attach_not_csv": "Seuls les fichiers CSV peuvent être joints pour le moment.",
     "attach_too_large": "Ce fichier est trop volumineux (max ~1,4 Mo de texte).",
     "attach_limit": "3 fichiers joints au maximum.",
-    "attach_read_failed": "Impossible de lire ce fichier — réessayez."
+    "attach_read_failed": "Impossible de lire ce fichier — réessayez.",
+    "placeholder_attached": "Demandez-moi d'importer ou d'analyser le fichier joint…",
+    "attach_evicted": "{{name}} a été retiré pour rester sous la limite de taille des pièces jointes."
   },
   "pages": {
     "overview_title": "Mon tableau de bord",

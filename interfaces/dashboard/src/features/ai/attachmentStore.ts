@@ -62,28 +62,32 @@ export function loadPendingAttachments(): PendingAttachment[] {
 }
 
 /**
- * Add a file. Returns the new list, or an error string the composer
- * shows verbatim-keyed (the caller translates): 'too_large' | 'limit'.
- * Oldest-first eviction only for the TOTAL budget — a single over-cap
- * file is refused, never truncated (mirrors the backend's law).
+ * Add a file. Returns the new list (plus the names of any files evicted
+ * to fit the total budget — the composer tells the user, never a silent
+ * loss), or an error key the caller translates: 'too_large' | 'limit'.
+ * A single over-cap file is refused, never truncated (mirrors the
+ * backend's law).
  */
 export function addPendingAttachment(
   current: PendingAttachment[], name: string, content: string,
-): { list: PendingAttachment[] } | { error: 'too_large' | 'limit' } {
+): { list: PendingAttachment[]; evicted: string[] } | { error: 'too_large' | 'limit' } {
   if (content.length > MAX_ATTACHMENT_CHARS) return { error: 'too_large' };
   // Re-attaching the same name replaces it (the natural "fixed the sheet,
   // attached again" loop).
   let list = current.filter((a) => a.name !== name);
   if (list.length >= MAX_ATTACHMENTS) return { error: 'limit' };
   list = [...list, { name: name.slice(0, 120), content, t: Date.now() }];
+  const evicted: string[] = [];
   while (
     list.length > 1
     && list.reduce((n, a) => n + a.content.length, 0) > MAX_TOTAL_CHARS
   ) {
-    list = [...list].sort((a, b) => a.t - b.t).slice(1);
+    list = [...list].sort((a, b) => a.t - b.t);
+    evicted.push(list[0].name);
+    list = list.slice(1);
   }
   persist(list);
-  return { list };
+  return { list, evicted };
 }
 
 export function removePendingAttachment(

@@ -152,7 +152,12 @@ async def propose_import(
             + " ".join(str(s) for s in skipped[:8])
         )
 
-    preview = build_import_preview(target, rows, skipped)
+    # Title names the user's file — the preview is visibly THEIR data,
+    # and multi-file sessions stay unambiguous.
+    preview = build_import_preview(
+        target, rows, skipped,
+        title=f"Import preview — {target.name} · {name}",
+    )
     n = len(rows)
     if not summary:
         # target.description doubles as the plural noun ("inventory

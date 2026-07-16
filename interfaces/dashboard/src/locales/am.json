@@ -331,7 +331,9 @@
     "attach_not_csv": "ለአሁን CSV ፋይሎች ብቻ ማያያዝ ይቻላል።",
     "attach_too_large": "ፋይሉ በጣም ትልቅ ነው (ከፍተኛ ~1.4 MB ጽሑፍ)።",
     "attach_limit": "ቢበዛ 3 ፋይሎች ማያያዝ ይቻላል።",
-    "attach_read_failed": "ፋይሉን ማንበብ አልተቻለም — እንደገና ይሞክሩ።"
+    "attach_read_failed": "ፋይሉን ማንበብ አልተቻለም — እንደገና ይሞክሩ።",
+    "placeholder_attached": "የተያያዘውን ፋይል እንዳስገባ ወይም እንድተነትን ጠይቁኝ…",
+    "attach_evicted": "በአባሪ መጠን ገደብ ውስጥ ለመቆየት {{name}} ተወግዷል።"
   },
   "pages": {
     "overview_title": "የእኔ ዳሽቦርድ",

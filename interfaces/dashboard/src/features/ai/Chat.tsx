@@ -426,6 +426,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         flashAttachError(t(res.error === 'too_large' ? 'chat.attach_too_large' : 'chat.attach_limit'));
       } else {
         setAttachments(res.list);
+        // A budget eviction is a real loss — say it, never a vanishing chip.
+        if (res.evicted.length > 0) {
+          flashAttachError(t('chat.attach_evicted', { name: res.evicted.join(', ') }));
+        }
       }
     };
     reader.onerror = () => flashAttachError(t('chat.attach_read_failed'));
@@ -1839,9 +1843,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
             onKeyDown={handleKeyDown}
             onFocus={() => setInputFocused(true)}
             onBlur={() => setInputFocused(false)}
-            placeholder={phIdx === 0
-              ? t('chat.placeholder_ask', { subject: chatSubject })
-              : t('chat.placeholder_commands')}
+            placeholder={attachments.length > 0
+              // With a file attached, hold the hint on the next step of the
+              // import flow instead of the generic ask/commands rotation.
+              ? t('chat.placeholder_attached')
+              : phIdx === 0
+                ? t('chat.placeholder_ask', { subject: chatSubject })
+                : t('chat.placeholder_commands')}
             rows={1}
             style={{ maxHeight: '120px' }}
             className="w-full bg-transparent text-foreground text-sm resize-none focus:outline-none placeholder:text-muted-foreground/50"

@@ -331,7 +331,9 @@
     "attach_not_csv": "Por ahora solo se pueden adjuntar archivos CSV.",
     "attach_too_large": "El archivo es demasiado grande (máx. ~1.4 MB de texto).",
     "attach_limit": "Se pueden adjuntar 3 archivos como máximo.",
-    "attach_read_failed": "No se pudo leer el archivo — inténtalo de nuevo."
+    "attach_read_failed": "No se pudo leer el archivo — inténtalo de nuevo.",
+    "placeholder_attached": "Pídeme importar o analizar el archivo adjunto…",
+    "attach_evicted": "Se quitó {{name}} para no superar el límite de tamaño de adjuntos."
   },
   "pages": {
     "overview_title": "Mi panel",

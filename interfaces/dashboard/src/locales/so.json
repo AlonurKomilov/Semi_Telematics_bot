@@ -331,7 +331,9 @@
     "attach_not_csv": "Hadda waxaa la lifaaqi karaa kaliya faylasha CSV.",
     "attach_too_large": "Faylku aad buu u weyn yahay (ugu badnaan ~1.4 MB oo qoraal ah).",
     "attach_limit": "Ugu badnaan 3 fayl ayaa la lifaaqi karaa.",
-    "attach_read_failed": "Faylka lama akhriyi karin — mar kale isku day."
+    "attach_read_failed": "Faylka lama akhriyi karin — mar kale isku day.",
+    "placeholder_attached": "I weydii inaan soo dejiyo ama falanqeeyo faylka lifaaqan…",
+    "attach_evicted": "{{name}} waa la saaray si loogu hoos jiro xadka cabbirka lifaaqa."
   },
   "pages": {
     "overview_title": "Dashboardkayga",
