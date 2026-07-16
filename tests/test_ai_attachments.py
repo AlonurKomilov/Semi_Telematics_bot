@@ -322,6 +322,104 @@ def test_attachment_prompt_line():
     assert "read_attachment" in line
 
 
+# ── Phase C1: universal import framework (preview + propose glue) ────
+
+def _target(**over):
+    async def _build(records, account_id, user_context, db):
+        rows = [dict(r) for r in records if r.get("vehicle") != "999"]
+        skip = [f"row {r['_source_row']}: no vehicle '999'"
+                for r in records if r.get("vehicle") == "999"]
+        return rows, skip
+
+    async def _exec(rows, account_id, user_context, db):
+        return {"imported": len(rows)}
+
+    kw = dict(name="_c1_target", description="test rows",
+              fields={"vehicle": "unit", "item": "what", "status": "state"},
+              build_rows=_build, executor=_exec,
+              permission="can_manage_vehicles")
+    kw.update(over)
+    return ImportTarget(**kw)
+
+
+def test_build_import_preview_shape():
+    from capabilities.ai.attachments import PREVIEW_MAX_ROWS, build_import_preview
+
+    rows = [{"vehicle": f"v{i}", "item": "Fire extinguisher",
+             "status": "installed", "extra_col": "x", "_source_row": i + 2}
+            for i in range(PREVIEW_MAX_ROWS + 10)]
+    art = build_import_preview(_target(), rows, ["row 4: bad"])
+    assert art["type"] == "import_preview"
+    assert art["target"] == "_c1_target"
+    # Vocabulary order first, then adapter extras; _source_row stays server-side.
+    assert [c["key"] for c in art["columns"]] == [
+        "vehicle", "item", "status", "extra_col"]
+    assert art["totals"] == {"total": PREVIEW_MAX_ROWS + 10,
+                             "shown": PREVIEW_MAX_ROWS, "skipped": 1}
+    assert len(art["rows"]) == PREVIEW_MAX_ROWS
+    assert "_source_row" not in art["rows"][0]
+    assert art["skipped"] == ["row 4: bad"]
+    assert art["skipped_truncated"] is False
+
+
+async def test_propose_import_full_pipeline(monkeypatch):
+    """The C1 contract end-to-end: grid → mapping → build_rows →
+    preview artifact + proposal whose STAGED rows are the very rows the
+    preview showed (no re-derivation gap)."""
+    import capabilities.ai.attachments as A
+    from capabilities.ai.tools.attachments_tool import propose_import
+
+    monkeypatch.setattr(A, "_IMPORT_TARGETS", {})
+    A.register_import_target(_target())
+    grid = parse_csv_grid(MATRIX_CSV.replace("130,", "999,"))  # one bad unit
+
+    out = await propose_import(
+        tool="import_test_rows", target_name="_c1_target",
+        tool_args={"mapping": MAPPING, "_attachments": {"inv.csv": grid}},
+        account_id=1, db=None,
+    )
+    assert out["ok"] and out["proposed"]
+    preview, card = out["artifacts"]
+    assert preview["type"] == "import_preview"          # preview BEFORE the card
+    assert card["type"] == "action_proposal" and card["tool"] == "import_test_rows"
+    # 4 good units × 2 melt columns; the 999 unit's 2 records skipped.
+    assert preview["totals"] == {"total": 8, "shown": 8, "skipped": 2}
+    assert all("999" in s for s in preview["skipped"])
+    # Staged rows == exactly what build_rows returned (and what preview shows).
+    assert len(card["staged"]) == 8
+    assert {r["vehicle"] for r in card["staged"]} == {"22", "96", "103 OSY", "110"}
+    assert card["payload"]["attachment"] == "inv.csv"
+    assert card["payload"]["count"] == 8
+
+
+async def test_propose_import_error_paths(monkeypatch):
+    import capabilities.ai.attachments as A
+    from capabilities.ai.tools.attachments_tool import propose_import
+
+    monkeypatch.setattr(A, "_IMPORT_TARGETS", {})
+    A.register_import_target(_target())
+    grid = parse_csv_grid(MATRIX_CSV)
+
+    out = await propose_import(tool="t", target_name="missing",
+                               tool_args={}, account_id=1, db=None)
+    assert not out["ok"] and "Unknown import target" in out["error"]
+
+    out = await propose_import(tool="t", target_name="_c1_target",
+                               tool_args={}, account_id=1, db=None)
+    assert "No attachment" in out["error"]
+
+    out = await propose_import(
+        tool="t", target_name="_c1_target",
+        tool_args={"_attachments": {"a.csv": grid}}, account_id=1, db=None)
+    assert "mapping" in out["error"]                     # spec required
+
+    out = await propose_import(
+        tool="t", target_name="_c1_target",
+        tool_args={"attachment": "nope.csv", "_attachments": {"a.csv": grid}},
+        account_id=1, db=None)
+    assert "a.csv" in out["error"]                       # lists what IS there
+
+
 def test_read_attachment_is_registered_for_all_roles():
     """No TOOL_PERMISSIONS row on purpose: the real gate ran at parse time,
     so the tool is advertised everywhere and is a no-op without grids."""

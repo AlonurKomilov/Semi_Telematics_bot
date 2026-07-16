@@ -37,8 +37,32 @@ export interface ChartArtifact extends BaseArtifact {
   series: { key: string; label?: string }[];
 }
 
-export type Artifact = TableArtifact | ChartArtifact | BaseArtifact;
+/**
+ * A staged-import preview — the shared shape EVERY import target's
+ * propose step emits (built server-side by `build_import_preview`).
+ * Rows here are a bounded display sample; the full staged rows live on
+ * the proposal server-side and are what the executor writes.
+ */
+export interface ImportPreviewArtifact extends BaseArtifact {
+  type: 'import_preview';
+  /** ImportTarget name (e.g. 'inventory'). */
+  target?: string;
+  columns: { key: string; label: string }[];
+  rows: Record<string, unknown>[];
+  totals: { total: number; shown: number; skipped: number };
+  /** Human-readable per-row skip reasons (bounded server-side). */
+  skipped: string[];
+  skipped_truncated?: boolean;
+}
+
+export type Artifact =
+  | TableArtifact
+  | ChartArtifact
+  | ImportPreviewArtifact
+  | BaseArtifact;
 
 /** Narrowing helpers for renderers. */
 export const isTable = (a: Artifact): a is TableArtifact => a.type === 'table';
 export const isChart = (a: Artifact): a is ChartArtifact => a.type === 'chart';
+export const isImportPreview = (a: Artifact): a is ImportPreviewArtifact =>
+  a.type === 'import_preview';

@@ -13,6 +13,7 @@
 import './TableArtifact';        // registers 'table'
 import './ChartArtifact';        // registers 'chart'
 import './ActionProposalCard';   // registers 'action_proposal' (write-action approve card)
+import './ImportPreviewArtifact'; // registers 'import_preview' (shared staged-import preview)
 
 export { renderArtifact, registerArtifact, hasArtifactRenderer } from './registry';
-export type { Artifact, TableArtifact, ChartArtifact } from './types';
+export type { Artifact, TableArtifact, ChartArtifact, ImportPreviewArtifact } from './types';

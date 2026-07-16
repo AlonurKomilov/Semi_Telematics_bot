@@ -49,6 +49,11 @@ MAX_CONTENT_CHARS = 1_400_000   # per attachment; fits the 2MB body cap
 SAMPLE_ROWS = 20
 SAMPLE_CELL_CHARS = 80
 
+# The bounded preview the USER sees on the import_preview artifact (the
+# full staged rows still travel to the executor — this only caps display).
+PREVIEW_MAX_ROWS = 50
+PREVIEW_MAX_SKIPPED = 20
+
 
 class AttachmentError(ValueError):
     """User-facing attachment problem (bad encoding, over caps, …)."""
@@ -248,6 +253,42 @@ def get_import_target(name: str) -> ImportTarget | None:
 
 def list_import_targets() -> list[ImportTarget]:
     return list(_IMPORT_TARGETS.values())
+
+
+def build_import_preview(
+    target: ImportTarget, rows: list[dict], skipped: list[str],
+    *, title: str = "",
+) -> dict:
+    """Build the shared ``import_preview`` artifact for a staged import.
+
+    One shape for EVERY import target: bounded rows (display cap only —
+    the un-truncated staged rows still reach the executor), totals, and
+    the skip report.  Column order follows the target's field vocabulary
+    first, then any extra keys the adapter added; ``_``-prefixed keys
+    (``_source_row``) stay server-side.
+    """
+    cols = [k for k in target.fields if any(k in r for r in rows)]
+    for r in rows:
+        for k in r:
+            if not k.startswith("_") and k not in cols:
+                cols.append(k)
+    shown = rows[:PREVIEW_MAX_ROWS]
+    return {
+        "type": "import_preview",
+        "title": title or f"Import preview — {target.name}",
+        "target": target.name,
+        "columns": [
+            {"key": k, "label": k.replace("_", " ").title()} for k in cols
+        ],
+        "rows": [{k: r.get(k, "") for k in cols} for r in shown],
+        "totals": {
+            "total": len(rows),
+            "shown": len(shown),
+            "skipped": len(skipped),
+        },
+        "skipped": [str(s)[:200] for s in skipped[:PREVIEW_MAX_SKIPPED]],
+        "skipped_truncated": len(skipped) > PREVIEW_MAX_SKIPPED,
+    }
 
 
 # ── Request-scope helpers ─────────────────────────────────────────────
