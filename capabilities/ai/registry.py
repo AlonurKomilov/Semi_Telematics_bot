@@ -149,6 +149,24 @@ MODEL_REGISTRY: dict[str, dict] = {
         "locations": ["global"],
         "max_output_tokens": 8192,
     },
+    "grok-4.1-fast": {
+        "display": "Grok 4.1 Fast",
+        "description": "xAI Grok 4.1 Fast (non-reasoning) — low latency, strong tool-calling",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "xai/grok-4.1-fast-non-reasoning",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
+    "gemma-4-26b": {
+        "display": "Gemma 4 26B",
+        "description": "Google Gemma 4 26B A4B IT — open model, 140+ languages, native function calling",
+        "category": "maas",
+        "api_type": "openai_compat",
+        "maas_model_id": "google/gemma-4-26b-a4b-it-maas",
+        "locations": ["global"],
+        "max_output_tokens": 8192,
+    },
     "gpt-oss-20b": {
         "display": "GPT OSS 20B",
         "description": "OpenAI open-source 20B — fast & cheap",
@@ -293,6 +311,10 @@ MODEL_PRICING: dict[str, dict[str, float]] = {
     "glm-4.7":                     {"input": 0.14, "output": 0.55},
     "gpt-oss-120b":                {"input": 0.30, "output": 0.50},
     "gpt-oss-20b":                 {"input": 0.10, "output": 0.30},
+    # Estimates from provider list prices — verify on the Vertex AI
+    # pricing page before relying on them for billing analytics.
+    "grok-4.1-fast":               {"input": 0.20, "output": 0.50},
+    "gemma-4-26b":                 {"input": 0.11, "output": 0.37},
     "llama-4-scout":               {"input": 0.14, "output": 0.27},
     "llama-4-maverick":            {"input": 0.30, "output": 0.50},
     "llama-3.3":                   {"input": 0.20, "output": 0.20},
@@ -454,9 +476,15 @@ TIER_FOR_CATEGORY: dict[str, str] = {
 TIER_FALLBACK_CHAINS: dict[str, list[str]] = {
     TIER_FAST: [
         "gemini-2.5-flash",
+        # Non-Gemini #2 on purpose: when the Gemini flash family hits a
+        # project quota storm (429 RESOURCE_EXHAUSTED benches the head),
+        # the tier fails over to a DIFFERENT provider's quota pool with
+        # tool-calling intact instead of the next Gemini in the same pool.
+        "grok-4.1-fast",
         "gemini-3.5-flash",
         "gemini-3.1-flash-lite-preview",
         "gpt-oss-20b",
+        "gemma-4-26b",
         "llama-4-scout",
         "llama-3.3",
     ],
