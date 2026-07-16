@@ -245,7 +245,7 @@ export default function Vendors() {
           <EmptyState
             icon={Globe}
             title="The public directory is just getting started"
-            description="Platform-verified repair shops appear here as they're approved. Suggest shops you trust from any vendor's page — only the shop's name and contact travel, never your invoices."
+            description="Platform-verified repair shops appear here as they're approved. Your vendors join automatically once they have an address — only a shop's name and contact travel, never your invoices."
           />
         ) : (
           <DataGrid

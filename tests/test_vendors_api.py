@@ -107,26 +107,68 @@ async def test_owner_can_read(seeded):
 
 
 @pytest.mark.asyncio
-async def test_suggest_requires_address_then_succeeds(seeded):
-    """Quality gate: name-only vendors can't be suggested (422 with a
-    clear message); after the user completes the address (the dialog's
-    write-back PUT), the same suggestion goes through."""
+async def test_auto_pipeline_contributes_on_address_complete(seeded):
+    """The directory pipeline is fully automatic: a name-only vendor
+    contributes nothing (nothing to verify), and the moment the user
+    completes the address via the ordinary edit PUT, the identity flows
+    to the operator review queue — no manual suggest endpoint exists."""
     transport = ASGITransport(app=seeded["app"])
+    db = seeded["db"]
     vid = seeded["vendor"]["id"]
-    async with AsyncClient(transport=transport, base_url="http://t") as c:
-        r = await c.post(f"/api/vendors/{vid}/suggest-to-directory",
-                         headers=_h(seeded["token_fleet"]))
-        assert r.status_code == 422
-        assert "address" in r.json()["detail"].lower()
+    nkey = seeded["vendor"]["name_key"]
 
+    async def queue_row():
+        cur = await db._db.execute(
+            "SELECT status, suggested_by_account FROM vendor_directory "
+            "WHERE name_key = ?", (nkey,),
+        )
+        return await cur.fetchone()
+
+    assert await queue_row() is None  # name-only → not contributed
+
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
         r = await c.put(f"/api/vendors/{vid}", headers=_h(seeded["token_fleet"]),
                         json={"address": "42 Gate Rd, Springfield, IL"})
         assert r.status_code == 200
 
+        # The manual suggest/link endpoints are gone by design.
         r = await c.post(f"/api/vendors/{vid}/suggest-to-directory",
                          headers=_h(seeded["token_fleet"]))
-        assert r.status_code == 200
-        assert r.json()["status"] == "pending"
+        assert r.status_code in (404, 405)
+
+    row = await queue_row()
+    assert row is not None
+    assert dict(row)["status"] == "pending"
+    assert dict(row)["suggested_by_account"] == seeded["acct"].id
+
+
+@pytest.mark.asyncio
+async def test_merge_carries_directory_link_to_survivor(seeded):
+    """Merge is the dedup tool for correct reporting — the directory
+    link must survive it.  If only the loser was linked, the winner
+    inherits the link; an existing winner link is never overwritten."""
+    db = seeded["db"]
+    acct = seeded["acct"]
+    entry = await db.create_directory_entry(
+        "Merge Link Shop", address="1 Survivor Way", status="active",
+    )
+    loser = await db.resolve_or_create_vendor(acct.id, "Merge Link Shop TYPO")
+    winner = await db.resolve_or_create_vendor(acct.id, "Merge Link Shop Real")
+    await db.link_vendor_to_directory(acct.id, loser["id"], entry["id"])
+
+    assert await db.merge_vendors(acct.id, loser["id"], winner["id"])
+    survivor = await db.get_vendor(winner["id"], acct.id)
+    assert survivor["global_vendor_id"] == entry["id"]
+
+    # A winner that is already linked keeps its own link.
+    other = await db.create_directory_entry(
+        "Merge Other Shop", address="2 Keeper Rd", status="active",
+    )
+    loser2 = await db.resolve_or_create_vendor(acct.id, "Second Typo Shop")
+    await db.link_vendor_to_directory(acct.id, loser2["id"], other["id"])
+    assert await db.merge_vendors(acct.id, loser2["id"], winner["id"])
+    survivor = await db.get_vendor(winner["id"], acct.id)
+    assert survivor["global_vendor_id"] == entry["id"]
 
 
 @pytest.mark.asyncio

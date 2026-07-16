@@ -306,73 +306,11 @@ async def merge_vendors(
     return {"ok": True}
 
 
-@router.post("/{vendor_id}/suggest-to-directory")
-async def suggest_to_directory(
-    vendor_id: int,
-    user: dict = Depends(get_current_user),
-    tenant_db=Depends(get_tenant_db),
-):
-    """Contribute this vendor's IDENTITY (name/contact only — never any
-    transaction data) to the global directory as a pending suggestion
-    for operator review.  If an entry with the same normalized name
-    already exists, that identity comes back instead of a duplicate —
-    and when it's already active we auto-link this vendor to it."""
-    if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    vendor = await tenant_db.get_vendor(vendor_id, user["account_id"])
-    if not vendor:
-        raise HTTPException(status_code=404, detail="Vendor not found")
-    # Quality gate: a name-only suggestion gives the reviewing operator
-    # nothing to verify against the real world.  The dashboard collects
-    # the address in the suggestion dialog before calling this.
-    if not (vendor.get("address") or "").strip():
-        raise HTTPException(
-            status_code=422,
-            detail="Add the shop's address before suggesting it to the directory.",
-        )
-    entry = await tenant_db.create_directory_entry(
-        vendor["name"], address=vendor["address"], phone=vendor["phone"],
-        email=vendor["email"],
-        status="pending", source="suggestion",
-        suggested_by_account=user["account_id"],
-    )
-    if not entry:
-        raise HTTPException(status_code=422, detail="Vendor name is empty")
-    linked = False
-    if entry["status"] == "active":
-        linked = await tenant_db.link_vendor_to_directory(
-            user["account_id"], vendor_id, entry["id"],
-        )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "vendor_directory_suggest",
-        target_type="vendor", target_id=str(vendor_id),
-        details=entry["name"],
-    )
-    # Identity-only response: status tells the user "pending review"
-    # vs "already in the directory (and now linked)".
-    return {"status": entry["status"], "linked": linked}
-
-
-@router.post("/{vendor_id}/link-directory/{entry_id}")
-async def link_directory(
-    vendor_id: int,
-    entry_id: int,
-    user: dict = Depends(get_current_user),
-    tenant_db=Depends(get_tenant_db),
-):
-    if not await _vendor_access(user):
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-    if not await tenant_db.get_vendor(vendor_id, user["account_id"]):
-        raise HTTPException(status_code=404, detail="Vendor not found")
-    ok = await tenant_db.link_vendor_to_directory(
-        user["account_id"], vendor_id, entry_id,
-    )
-    if not ok:
-        raise HTTPException(status_code=404, detail="Directory entry not found or not active")
-    return {"ok": True}
-
-
+# Directory contribution and linking are fully AUTOMATIC (autosuggest
+# on address-complete saves, adopt-on-approve fan-out) — there are no
+# manual suggest/link endpoints by design.  The one user-side control
+# that remains is the escape hatch below: unlink, for when the
+# name-match connected two genuinely different shops.
 @router.delete("/{vendor_id}/link-directory")
 async def unlink_directory(
     vendor_id: int,

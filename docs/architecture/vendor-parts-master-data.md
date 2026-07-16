@@ -261,8 +261,17 @@ Owner decision: the directory collects itself; users never click
 
 UI: the vendor profile shows pipeline STATE only (linked / sent for
 review / waiting for an address); Unlink remains as the correction
-valve.  The manual suggest endpoint + address gate still exist for API
-compat but have no UI.
+valve.
+
+**Manual endpoints REMOVED (2026-07-16):** `POST /{id}/suggest-to-
+directory` and `POST /{id}/link-directory/{entry}` are gone — they had
+no UI callers, and the suggest path even bypassed the account's
+share_vendor_identities consent (auto-only closes that hole).  The one
+surviving user-side control is `DELETE /{id}/link-directory` (Unlink).
+Merge (`/{loser}/merge-into/{winner}`) stays an account-side DEDUP tool
+and now carries the loser's directory link to an unlinked survivor —
+merging a typo-duplicate no longer silently drops enrichment/review
+eligibility.
 
 Map: two Services layers — "Repair Shops" (public directory, green) and
 "My Vendors" (the caller's auto-linked shops, blue, own-vendor name in

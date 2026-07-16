@@ -282,9 +282,10 @@ export default function VendorProfile() {
             </div>
           </div>
 
-          {/* Global directory link (Phase C): identity handshake only —
-              linking shares nothing; suggesting shares ONLY the shop's
-              name/contact for operator review. */}
+          {/* Global directory status: the pipeline is fully automatic
+              (contribute-on-address-complete, link-on-approve); only the
+              shop's name/contact ever travel.  The sole manual control
+              here is Unlink — the wrong-auto-match escape hatch. */}
           <div className="bg-card border border-border rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3">
             <Globe size={16} className="text-muted-foreground shrink-0" />
             {data?.directory ? (

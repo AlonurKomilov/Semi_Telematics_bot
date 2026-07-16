@@ -192,6 +192,15 @@ class VendorsMixin:
         if not loser or not winner:
             return False
         now = self._now()
+        # The directory link survives the merge: if only the loser was
+        # linked, the survivor inherits it (deleting the loser row would
+        # otherwise silently drop enrichment + review eligibility).
+        if loser.get("global_vendor_id") and not winner.get("global_vendor_id"):
+            await self._db.execute(
+                "UPDATE vendors SET global_vendor_id = ?, updated_at = ? "
+                "WHERE id = ? AND account_id = ?",
+                (loser["global_vendor_id"], now, winner_id, account_id),
+            )
         await self._db.execute(
             "UPDATE work_orders SET vendor_id = ? "
             "WHERE account_id = ? AND vendor_id = ?",
