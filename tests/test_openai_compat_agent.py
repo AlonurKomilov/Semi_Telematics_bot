@@ -215,3 +215,21 @@ def test_current_datetime_line_anchors_now():
     assert "20" in line  # a year is present
     # Invalid tz falls back to UTC instead of raising.
     assert "UTC" in current_datetime_line("Not/AZone")
+
+
+def test_extract_text_tool_calls_rescues_tools_block():
+    """qwen/GLM-style models sometimes emit the tool call as TEXT —
+    <tools>{"name": …}</tools> — instead of the native channel; the raw
+    JSON block became the user-visible answer and the tool never ran."""
+    from capabilities.ai.intelligence import _extract_text_tool_calls
+    text = ('<tools>\n{"name": "get_fuel_cost_summary", "arguments": '
+            '{"start_date": "2026-07-01", "end_date": "2026-07-16"}}\n</tools>')
+    calls = _extract_text_tool_calls(text)
+    assert len(calls) == 1
+    assert calls[0]["function"]["name"] == "get_fuel_cost_summary"
+    import json as _json
+    assert _json.loads(calls[0]["function"]["arguments"])["start_date"] == "2026-07-01"
+    # <tool_call> variant + garbage tolerance
+    assert _extract_text_tool_calls('<tool_call>{"name": "x", "arguments": {}}</tool_call>')
+    assert _extract_text_tool_calls("no tools here") == []
+    assert _extract_text_tool_calls("<tools>not json</tools>") == []

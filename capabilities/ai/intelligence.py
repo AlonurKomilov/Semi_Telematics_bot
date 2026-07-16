@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from types import SimpleNamespace
 
 from capabilities.ai.cache import _cache_key, _cache_get, _cache_put, _snapshot_hash
@@ -967,6 +968,39 @@ async def _run_anthropic_agent(
 _DEFAULT_TOOL_ROUNDS_OPENAI = 4
 
 
+def _extract_text_tool_calls(text: str) -> list[dict]:
+    """Rescue tool calls a model emitted as TEXT instead of the native
+    tool_calls channel.
+
+    Recognized wrappers: ``<tools>…</tools>``, ``<tool_call>…</tool_call>``
+    (one JSON object per block, ``{"name": …, "arguments": {…}}``).  Some
+    MaaS chat templates (qwen/GLM thinking variants) fall back to this
+    textual form — without the rescue the raw JSON block becomes the
+    user-visible answer and the tool never runs.  Returns OpenAI-shaped
+    tool_calls entries, or [] when nothing parseable is found.
+    """
+    calls: list[dict] = []
+    for m in re.finditer(
+        r"<(tools|tool_call)>\s*(\{.*?\})\s*</\1>", text or "", flags=re.DOTALL
+    ):
+        try:
+            obj = json.loads(m.group(2))
+        except (TypeError, ValueError):
+            continue
+        name = obj.get("name")
+        if not name or not isinstance(name, str):
+            continue
+        args = obj.get("arguments")
+        if not isinstance(args, dict):
+            args = {}
+        calls.append({
+            "id": f"rescued_{len(calls)}",
+            "type": "function",
+            "function": {"name": name, "arguments": json.dumps(args)},
+        })
+    return calls
+
+
 def _clean_tool_arguments(args: str) -> str:
     """Reduce streamed tool-call ``arguments`` to valid JSON.
 
@@ -1411,8 +1445,24 @@ async def _run_openai_compat_agent(
         msg = (data.get("choices") or [{}])[0].get("message", {}) or {}
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
-            final_text = text
-            break
+            # Text-embedded tool-call rescue: some MaaS models (qwen/GLM
+            # variants) emit the call as TEXT — `<tools>{"name": …,
+            # "arguments": {…}}</tools>` (or <tool_call>) — instead of the
+            # native tool_calls channel.  Without this, the raw JSON block
+            # became the user-visible "answer" and the tool never ran.
+            rescued = _extract_text_tool_calls(text)
+            if rescued:
+                logger.info(
+                    "Rescued %d text-embedded tool call(s) from %s",
+                    len(rescued), model_name,
+                )
+                # Re-shape into the assistant echo the API expects.
+                msg = {"role": "assistant", "content": None,
+                       "tool_calls": rescued}
+                tool_calls = rescued
+            else:
+                final_text = text
+                break
 
         # Append the assistant message (the API requires the tool_calls
         # echoed back) WITHOUT ``reasoning_content`` — DeepSeek-style

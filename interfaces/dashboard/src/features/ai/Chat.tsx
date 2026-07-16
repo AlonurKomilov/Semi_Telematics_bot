@@ -341,8 +341,6 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   const historyRef = useRef<HTMLDivElement>(null);
 
   // ── Streaming state ──────────────────────────────────────────
-  /** Tool labels shown while streaming (e.g. "Checking fault codes") */
-  const [toolActivity, setToolActivity] = useState<string[]>([]);
   /** Live answer text as it streams in (token-by-token), when the backend
    *  emits `delta` events.  Empty on the non-streaming path — the answer then
    *  arrives whole in the `done` event, exactly as before. */
@@ -353,7 +351,6 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   const [lastFailed, setLastFailed] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   /** Cycling index for pre-tool thinking phrases */
-  const [thinkIdx, setThinkIdx] = useState(0);
   /** REAL process steps building live from the event stream, in true
    *  order (thinking → tool → thinking → …) — the live bubble renders
    *  these, so the user watches the actual process instead of canned
@@ -529,20 +526,17 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading, liveSteps, streamingText]);
 
-  // Cycle through thinking phrases before first tool fires
-  const THINK_PHRASES = [
-    'Reading your question…',
-    'Figuring out what data I need…',
-    'Preparing the right query…',
-    'Connecting to telematics…',
-  ];
-  useEffect(() => {
-    if (!loading || toolActivity.length > 0) return;
-    setThinkIdx(0);
-    const t = setInterval(() => setThinkIdx((i) => (i + 1) % THINK_PHRASES.length), 1800);
-    return () => clearInterval(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, toolActivity.length]);
+  /** Live status label: the CURRENT step's identity, not canned filler —
+   *  the picker's tier while thinking ("Reasoning…"), the tool label while
+   *  a tool runs.  Canned rotating phrases pretended to be steps; the real
+   *  timeline covers that ground now. */
+  const liveTierLabel = (currentTier !== 'auto'
+    && tiers.find((x) => x.name === currentTier)?.label)
+    || t('chat.thinking_live');
+  const lastLiveStep = liveSteps[liveSteps.length - 1];
+  const liveStatusLabel = lastLiveStep?.type === 'tool'
+    ? (lastLiveStep.label || t('chat.running'))
+    : liveTierLabel;
 
   // Close tier dropdown when clicking anywhere outside it.
   useEffect(() => {
@@ -583,7 +577,6 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     setSuggestions([]);
     setLoading(true);
     setError('');
-    setToolActivity([]);
     setLiveSteps([]);
     setStreamingText('');
     setLastFailed(null);
@@ -620,7 +613,6 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         text.trim(),
         (event) => {
           if (event.type === 'tool') {
-            setToolActivity((prev) => [...prev, event.label]);
             // Closes (and client-times) the prior step, starts this tool's clock.
             setLiveSteps((prev) => closeAndAppend(prev, { type: 'tool', name: event.name, label: event.label }));
             if (runSeq === myRun) setRunState('running', t('chat.running'));
@@ -702,7 +694,6 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
       setLastFailed(text.trim());
     } finally {
       setLoading(false);
-      setToolActivity([]);
       setLiveSteps([]);
       setStreamingText('');
         inputRef.current?.focus();
@@ -721,7 +712,6 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     setInput('');
     setSuggestions([]);
     setError('');
-    setToolActivity([]);
     setLoading(true);
     const myRun = ++runSeq;
     setRunState('running', t('chat.working'));
@@ -777,7 +767,6 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   function stopGeneration() {
     abortRef.current?.abort();
     setLoading(false);
-    setToolActivity([]);
     setLiveSteps([]);
     setStreamingText('');
   }
@@ -848,7 +837,6 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     setSuggestions([]);
     setError('');
     setLastFailed(null);
-    setToolActivity([]);
     setLiveSteps([]);
     setConversationId(null);
     setIsNewChat(true);
@@ -1529,11 +1517,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
               <div className="flex items-center justify-between gap-4 mb-2">
                 <span className="inline-flex items-center gap-1.5 text-2xs font-medium text-muted-foreground">
                   <Loader2 size={12} className="animate-spin text-primary" aria-hidden />
-                  <span>
-                    {liveSteps.length > 0
-                      ? `${liveSteps.length} ${t('chat.steps')}`
-                      : t('chat.working')}
-                  </span>
+                  <span>{liveStatusLabel}…</span>
                 </span>
                 {elapsedSec > 0 && (
                   <span className="text-3xs text-muted-foreground/60 tabular-nums">
@@ -1614,9 +1598,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     {!lastIsTool && (
                       <TimelineRow marker={ACTIVE_BEACON} last>
                         <div className="text-xs font-medium text-foreground animate-pulse">
-                          {exploded.length === 0
-                            ? THINK_PHRASES[thinkIdx]
-                            : `${t('chat.thinking_live')}…`}
+                          {`${liveTierLabel}…`}
                         </div>
                       </TimelineRow>
                     )}
@@ -1706,7 +1688,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       const lastLive = liveSteps[liveSteps.length - 1];
                       const stepLabel = lastLive?.type === 'tool'
                         ? lastLive.label
-                        : liveSteps.length > 0 ? t('chat.thinking_live') : null;
+                        : liveSteps.length > 0 ? liveTierLabel : null;
                       return stepLabel ? ` · ${stepLabel}` : '';
                     })()}
                   </span>
