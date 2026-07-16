@@ -222,10 +222,8 @@ export default function WorkOrders() {
   // bucket is just the full set.
   const buckets = useMemo(() => {
     const draft = workOrders.filter(w => w.status === 'draft');
-    const submitted = workOrders.filter(w => w.status === 'submitted');
-    const paid = workOrders.filter(w => w.status === 'paid');
     const unpaid = workOrders.filter(w => w.payment_status === 'unpaid' && w.status !== 'void');
-    return { draft, submitted, paid, unpaid };
+    return { draft, unpaid };
   }, [workOrders]);
 
   // Total spent across visible rows — useful management at-a-glance.

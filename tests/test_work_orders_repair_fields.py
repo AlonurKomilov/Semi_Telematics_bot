@@ -50,3 +50,40 @@ async def test_repair_fields_default_blank_then_updatable(db):
     assert wo["complaint"] == "Routine PM due"
     assert wo["cause"] == ""          # left untouched
     assert wo["correction"] == "Oil + filter change"
+
+
+@pytest.mark.asyncio
+async def test_migration_154_folds_status_paid_into_payment_status(db):
+    """status carries lifecycle only; the legacy status='paid' rows
+    become submitted with payment_status promoted — unless payment
+    already carries a more specific money state (money truth wins).
+    Idempotent: a second run changes nothing."""
+    from adapters.storage.migrations import (
+        migrate_work_orders_status_lifecycle_only as mig,
+    )
+    a = 71
+    legacy_unpaid = await db.add_work_order(
+        a, "ACME", "T301", "Legacy Shop", status="paid",
+        payment_status="unpaid", total_cost=100,
+    )
+    legacy_partial = await db.add_work_order(
+        a, "ACME", "T302", "Legacy Shop", status="paid",
+        payment_status="partial", total_cost=200,
+    )
+    untouched = await db.add_work_order(
+        a, "ACME", "T303", "Legacy Shop", status="submitted",
+        payment_status="unpaid", total_cost=300,
+    )
+
+    await mig(db._db)
+    r1 = await db.get_work_order(legacy_unpaid, a)
+    r2 = await db.get_work_order(legacy_partial, a)
+    r3 = await db.get_work_order(untouched, a)
+    assert (r1["status"], r1["payment_status"]) == ("submitted", "paid")
+    assert (r2["status"], r2["payment_status"]) == ("submitted", "partial")
+    assert (r3["status"], r3["payment_status"]) == ("submitted", "unpaid")
+
+    # Second run: no-op.
+    await mig(db._db)
+    r1b = await db.get_work_order(legacy_unpaid, a)
+    assert (r1b["status"], r1b["payment_status"]) == ("submitted", "paid")

@@ -27,9 +27,14 @@ import type { WorkOrder } from '../../types';
 import { WO_PREFILL_STATE_KEY, type WorkOrderPrefill } from './createFrom';
 
 // A work order is still "open" (worth warning about) while it's a
-// draft or submitted — a paid/void one is a closed ticket for a past
-// instance of the same problem and shouldn't block a fresh repair.
+// draft or submitted AND not yet settled — a paid/void one is a closed
+// ticket for a past instance of the same problem and shouldn't block a
+// fresh repair.  (status carries lifecycle only since migration 154;
+// money truth is payment_status.)
 const OPEN_STATUSES = new Set(['draft', 'submitted']);
+const isOpenWorkOrder = (w: { status?: string; payment_status?: string }) =>
+  OPEN_STATUSES.has(String(w.status ?? '')) &&
+  !['paid', 'void'].includes(String(w.payment_status ?? ''));
 
 const norm = (s: string | undefined) => (s ?? '').trim().toLowerCase();
 
@@ -53,7 +58,7 @@ export function useWorkOrderBridge() {
       );
       const wantComplaint = norm(prefill.complaint);
       const match = (res.work_orders ?? []).find(
-        (w) => OPEN_STATUSES.has(String(w.status)) && norm(w.complaint) === wantComplaint,
+        (w) => isOpenWorkOrder(w) && norm(w.complaint) === wantComplaint,
       );
       if (match) { setPending({ prefill, existing: match }); return; }
       goCreate(prefill);

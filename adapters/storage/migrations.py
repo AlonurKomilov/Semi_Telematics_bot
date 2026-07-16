@@ -6664,3 +6664,31 @@ async def migrate_work_order_labor(conn) -> None:
         logger.info("Migration 153: RLS enabled on work_order_labor")
     except Exception as e:
         logger.warning("Migration 153: work_order_labor RLS skipped (%s)", e)
+
+
+@_register("154_work_orders_status_lifecycle_only")
+async def migrate_work_orders_status_lifecycle_only(conn) -> None:
+    """status carries LIFECYCLE only (draft|submitted|void); money truth
+    lives solely in payment_status.
+
+    The legacy status='paid' duplicated payment_status='paid' — two
+    sources of money truth.  Backfill: such rows become submitted, and
+    payment_status is promoted to 'paid' unless it already carries a
+    more specific money state (partial/void — money truth wins).
+    Data-only by design (no CHECK constraint this release; the Pydantic
+    patterns are the write-side gate) and idempotent: after the first
+    run no status='paid' rows remain.
+    """
+    await conn.execute(
+        """
+        UPDATE work_orders
+        SET payment_status = CASE
+                WHEN payment_status IN ('', 'unpaid') THEN 'paid'
+                ELSE payment_status
+            END,
+            status = 'submitted'
+        WHERE status = 'paid'
+        """
+    )
+    await conn.commit()
+    logger.info("Migration 154: work_orders.status narrowed to lifecycle-only")

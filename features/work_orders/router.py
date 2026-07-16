@@ -83,7 +83,7 @@ class WorkOrderCreate(BaseModel):
     invoice_number: str = ""
     payment_method: str = ""
     payment_status: str = Field("unpaid", pattern=r"^(unpaid|paid|partial|void)$")
-    status: str = Field("draft", pattern=r"^(draft|submitted|paid|void)$")
+    status: str = Field("draft", pattern=r"^(draft|submitted|void)$")
     # Reason-for-repair class (VMRS-style): planned upkeep vs unplanned
     # firefighting.  '' = unclassified.
     repair_priority: str = Field("", pattern=r"^(scheduled|non_scheduled|emergency|)$")
@@ -115,7 +115,7 @@ class WorkOrderUpdate(BaseModel):
     invoice_number: Optional[str] = None
     payment_method: Optional[str] = None
     payment_status: Optional[str] = Field(None, pattern=r"^(unpaid|paid|partial|void)$")
-    status: Optional[str] = Field(None, pattern=r"^(draft|submitted|paid|void)$")
+    status: Optional[str] = Field(None, pattern=r"^(draft|submitted|void)$")
     repair_priority: Optional[str] = Field(None, pattern=r"^(scheduled|non_scheduled|emergency|)$")
     complaint: Optional[str] = None
     cause: Optional[str] = None

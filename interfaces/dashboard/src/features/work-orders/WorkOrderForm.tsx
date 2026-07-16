@@ -800,7 +800,9 @@ export default function WorkOrderForm() {
     { value: 'truck', label: t('work_orders_page.vehicle_type_truck') },
     { value: 'trailer', label: t('work_orders_page.vehicle_type_trailer') },
   ];
-  const statusItems = ['draft', 'submitted', 'paid', 'void'].map((s) => ({ value: s, label: s }));
+  // Lifecycle only — money state lives in payment_status (the old
+  // status='paid' was folded away by migration 154).
+  const statusItems = ['draft', 'submitted', 'void'].map((s) => ({ value: s, label: s }));
   // Reason-for-repair class.  '' = unclassified (the honest default for
   // rows created before this field, or when the operator hasn't tagged it).
   const priorityItems = [

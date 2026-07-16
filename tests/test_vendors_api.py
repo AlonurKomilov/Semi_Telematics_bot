@@ -268,3 +268,26 @@ async def test_vehicle_history_includes_work_orders_manager_only(seeded):
         r = await c.get("/api/maintenance/history/T-1",
                         headers=_h(seeded["token_driver"]))
         assert r.status_code in (403, 404)
+
+
+@pytest.mark.asyncio
+async def test_status_paid_rejected_by_api(seeded):
+    """Post-migration-154 contract: status is lifecycle-only — the API
+    rejects the legacy status='paid' on create AND update (clean 422
+    break per advisor decision; money state goes in payment_status)."""
+    transport = ASGITransport(app=seeded["app"])
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.post("/api/work-orders", headers=_h(seeded["token_fleet"]),
+                         json={"vehicle_name": "T-1", "status": "paid"})
+        assert r.status_code == 422
+        vid = seeded["vendor"]["id"]
+        _ = vid
+        r = await c.post("/api/work-orders", headers=_h(seeded["token_fleet"]),
+                         json={"vehicle_name": "T-1", "status": "submitted",
+                               "payment_status": "paid"})
+        assert r.status_code == 200
+        wo_id = r.json()["id"]
+        r = await c.put(f"/api/work-orders/{wo_id}",
+                        headers=_h(seeded["token_fleet"]),
+                        json={"status": "paid"})
+        assert r.status_code == 422
