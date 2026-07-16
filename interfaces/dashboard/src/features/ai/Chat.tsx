@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
-import { Bot, ArrowUp, Square, Trash2, Copy, Check, RefreshCw, Sparkles, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, Lightbulb, Loader2, ThumbsUp, ThumbsDown, Eye, History, SquarePen, Plus, type LucideIcon } from 'lucide-react';
+import { Bot, ArrowUp, Square, Trash2, Copy, Check, RefreshCw, Sparkles, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, Lightbulb, Loader2, ThumbsUp, ThumbsDown, Eye, History, SquarePen, Plus, Paperclip, X, type LucideIcon } from 'lucide-react';
 import { Tip } from '../../components/tooltip';
 import { Button } from '../../components/ui/button';
 import { toneClasses, toneText } from '../../lib/status';
@@ -15,6 +15,7 @@ import { formatDate, formatTime } from '../../utils/datetime';
 import { DislikeReasonForm } from './sections/DislikeReasonForm';
 import { ReferencedVehicles } from './sections/ReferencedVehicles';
 import { thoughtKey, saveThought, getThought, deleteThoughtsForConversation } from './thoughtStore';
+import { loadPendingAttachments, addPendingAttachment, removePendingAttachment, type PendingAttachment } from './attachmentStore';
 import { useAssistant } from './AssistantContext';
 import { useCurrentPageContext } from './PageContext';
 import { toolDeepLink } from './toolLinks';
@@ -389,8 +390,8 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
    *  them) and re-collapses whenever a new answer brings new chips. */
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   useEffect(() => { setSuggestionsOpen(false); }, [suggestions]);
-  /** "+" quick-actions menu in the composer toolbar — carries the slash
-   *  commands today; the future attach/upload actions slot in here. */
+  /** "+" quick-actions menu in the composer toolbar — attach a
+   *  spreadsheet (the AI import flow) + the slash commands. */
   const [plusOpen, setPlusOpen] = useState(false);
   const plusRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -401,6 +402,35 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, [plusOpen]);
+  /** Pending attachments — DEVICE-LOCAL by policy (attachmentStore): the
+   *  file text rides inline on every send while the chip is attached
+   *  (each turn parses transiently server-side, so a follow-up like
+   *  "now import it" still has the grid), and is removed only by ✕. */
+  const [attachments, setAttachments] = useState<PendingAttachment[]>(() => loadPendingAttachments());
+  const [attachError, setAttachError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const attachErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function flashAttachError(msg: string) {
+    setAttachError(msg);
+    if (attachErrorTimer.current) clearTimeout(attachErrorTimer.current);
+    attachErrorTimer.current = setTimeout(() => setAttachError(''), 5000);
+  }
+  useEffect(() => () => { if (attachErrorTimer.current) clearTimeout(attachErrorTimer.current); }, []);
+  function onAttachFile(file: File) {
+    const isCsv = /\.csv$/i.test(file.name) || file.type === 'text/csv';
+    if (!isCsv) { flashAttachError(t('chat.attach_not_csv')); return; }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const res = addPendingAttachment(attachments, file.name, String(reader.result ?? ''));
+      if ('error' in res) {
+        flashAttachError(t(res.error === 'too_large' ? 'chat.attach_too_large' : 'chat.attach_limit'));
+      } else {
+        setAttachments(res.list);
+      }
+    };
+    reader.onerror = () => flashAttachError(t('chat.attach_read_failed'));
+    reader.readAsText(file);
+  }
   /** Composer placeholder alternates between the primary ask and the "/"
    *  hint while the field is idle+empty (two short phrases beat one long
    *  one); it holds on the ask once focused, so it's stable to type against. */
@@ -646,7 +676,14 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           }
         },
         abort.signal,
-        { conversationId, newConversation: isNewChat, pageContext },
+        {
+          conversationId, newConversation: isNewChat, pageContext,
+          // Device-held file text, re-sent while the chip is attached —
+          // the server parses per turn and stores nothing (import spine).
+          attachments: attachments.length > 0
+            ? attachments.map(({ name, content }) => ({ name, content }))
+            : undefined,
+        },
       );
 
       if (!finalReply) throw new Error('No response received');
@@ -1763,6 +1800,34 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                 </div>
               )}
               <div className={`${stripState ? 'rounded-lg' : 'rounded-xl'} border border-border bg-card px-3 pt-2.5 pb-2 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20`}>
+          {/* Attachment chips — the device-held file(s) riding with each
+              send until removed.  name · size · ✕ per the import spine. */}
+          {(attachments.length > 0 || attachError) && (
+            <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+              {attachments.map((a) => (
+                <span
+                  key={a.name}
+                  className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-0.5 text-xs text-foreground"
+                >
+                  <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="max-w-40 truncate">{a.name}</span>
+                  <span className="text-3xs text-muted-foreground tabular-nums">
+                    {Math.max(1, Math.round(a.content.length / 1024))} KB
+                  </span>
+                  <button
+                    onClick={() => setAttachments(removePendingAttachment(attachments, a.name))}
+                    aria-label={t('chat.attach_remove')}
+                    className="ml-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <X size={12} aria-hidden />
+                  </button>
+                </span>
+              ))}
+              {attachError && (
+                <span className="text-3xs text-destructive" role="alert">{attachError}</span>
+              )}
+            </div>
+          )}
           <textarea
             ref={inputRef}
             value={input}
@@ -1784,9 +1849,9 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           {/* Toolbar — slash-commands (icon-only) on the left; the model
               picker + send/stop grouped on the right, next to the input. */}
           <div className="mt-1.5 flex items-center justify-between gap-2">
-            {/* "+" quick actions — the future attach/upload affordance;
-                today it carries the slash commands (also reachable by
-                typing "/", per the placeholder hint). */}
+            {/* "+" quick actions — attach a CSV for the AI import flow,
+                plus the slash commands (also reachable by typing "/",
+                per the placeholder hint). */}
             <div className="relative" ref={plusRef}>
               <Tip label={t('chat.commands')}>
                 <button
@@ -1804,11 +1869,31 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   />
                 </button>
               </Tip>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,text/csv"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) onAttachFile(f);
+                  e.target.value = '';   // same file re-attachable after ✕
+                }}
+              />
               {plusOpen && (
                 <div
                   role="menu"
                   className="absolute left-0 bottom-full mb-1 z-50 w-64 rounded-lg border border-border bg-card p-1 shadow-xl"
                 >
+                  <button
+                    role="menuitem"
+                    onClick={() => { setPlusOpen(false); fileInputRef.current?.click(); }}
+                    className="flex w-full items-center gap-2 px-2.5 py-1.5 text-sm rounded-md text-left text-foreground/80 hover:bg-muted transition-colors"
+                  >
+                    <Paperclip size={14} className="text-primary shrink-0" aria-hidden />
+                    <span className="font-medium">{t('chat.attach_csv')}</span>
+                  </button>
+                  <div className="my-1 border-t border-border" role="separator" />
                   {SLASH_COMMANDS.map((c) => (
                     <button
                       key={c.name}

@@ -325,7 +325,13 @@
     "awaiting_reply": "Esperando tu respuesta",
     "suggestions": "Sugerencias",
     "placeholder_ask": "Pregunta sobre {{subject}}…",
-    "placeholder_commands": "Escribe / para ver comandos"
+    "placeholder_commands": "Escribe / para ver comandos",
+    "attach_csv": "Adjuntar hoja de cálculo (CSV)",
+    "attach_remove": "Quitar adjunto",
+    "attach_not_csv": "Por ahora solo se pueden adjuntar archivos CSV.",
+    "attach_too_large": "El archivo es demasiado grande (máx. ~1.4 MB de texto).",
+    "attach_limit": "Se pueden adjuntar 3 archivos como máximo.",
+    "attach_read_failed": "No se pudo leer el archivo — inténtalo de nuevo."
   },
   "pages": {
     "overview_title": "Mi panel",

@@ -325,7 +325,13 @@
     "awaiting_reply": "En attente de votre réponse",
     "suggestions": "Suggestions",
     "placeholder_ask": "Posez une question sur {{subject}}…",
-    "placeholder_commands": "Tapez / pour les commandes"
+    "placeholder_commands": "Tapez / pour les commandes",
+    "attach_csv": "Joindre une feuille de calcul (CSV)",
+    "attach_remove": "Retirer la pièce jointe",
+    "attach_not_csv": "Seuls les fichiers CSV peuvent être joints pour le moment.",
+    "attach_too_large": "Ce fichier est trop volumineux (max ~1,4 Mo de texte).",
+    "attach_limit": "3 fichiers joints au maximum.",
+    "attach_read_failed": "Impossible de lire ce fichier — réessayez."
   },
   "pages": {
     "overview_title": "Mon tableau de bord",

@@ -246,6 +246,10 @@ export async function apiStreamChat(
     /** What the user is viewing — a PROMPT HINT for the model (the
      *  backend still authorizes tools/scope from the JWT, never this). */
     pageContext?: unknown;
+    /** Device-held file text riding inline for THIS message (imports).
+     *  There is no upload endpoint by design — the server parses these
+     *  transiently and persists nothing until the user approves. */
+    attachments?: { name: string; content: string }[];
   },
 ): Promise<void> {
   const token = getToken();
@@ -263,6 +267,7 @@ export async function apiStreamChat(
       conversation_id: opts?.conversationId ?? null,
       new_conversation: opts?.newConversation ?? false,
       page_context: opts?.pageContext ?? null,
+      attachments: opts?.attachments?.length ? opts.attachments : null,
     }),
     signal,
     credentials: 'include',

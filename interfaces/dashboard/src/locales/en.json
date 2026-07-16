@@ -629,7 +629,13 @@
     "awaiting_reply": "Waiting for your reply",
     "suggestions": "Suggestions",
     "placeholder_ask": "Ask about {{subject}}…",
-    "placeholder_commands": "Type / for commands"
+    "placeholder_commands": "Type / for commands",
+    "attach_csv": "Attach spreadsheet (CSV)",
+    "attach_remove": "Remove attachment",
+    "attach_not_csv": "Only CSV files can be attached for now.",
+    "attach_too_large": "That file is too large (max ~1.4 MB of text).",
+    "attach_limit": "At most 3 files can be attached.",
+    "attach_read_failed": "Couldn't read that file — try again."
   },
   "pages": {
     "overview_title": "My Dashboard",

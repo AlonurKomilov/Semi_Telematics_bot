@@ -325,7 +325,13 @@
     "awaiting_reply": "መልስዎን በመጠበቅ ላይ",
     "suggestions": "ጥቆማዎች",
     "placeholder_ask": "ስለ {{subject}} ይጠይቁ…",
-    "placeholder_commands": "ለትዕዛዞች / ይተይቡ"
+    "placeholder_commands": "ለትዕዛዞች / ይተይቡ",
+    "attach_csv": "ሠንጠረዥ አያይዝ (CSV)",
+    "attach_remove": "አባሪውን አስወግድ",
+    "attach_not_csv": "ለአሁን CSV ፋይሎች ብቻ ማያያዝ ይቻላል።",
+    "attach_too_large": "ፋይሉ በጣም ትልቅ ነው (ከፍተኛ ~1.4 MB ጽሑፍ)።",
+    "attach_limit": "ቢበዛ 3 ፋይሎች ማያያዝ ይቻላል።",
+    "attach_read_failed": "ፋይሉን ማንበብ አልተቻለም — እንደገና ይሞክሩ።"
   },
   "pages": {
     "overview_title": "የእኔ ዳሽቦርድ",

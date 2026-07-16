@@ -325,7 +325,13 @@
     "awaiting_reply": "ਤੁਹਾਡੇ ਜਵਾਬ ਦੀ ਉਡੀਕ",
     "suggestions": "ਸੁਝਾਅ",
     "placeholder_ask": "{{subject}} ਬਾਰੇ ਪੁੱਛੋ…",
-    "placeholder_commands": "ਕਮਾਂਡਾਂ ਲਈ / ਟਾਈਪ ਕਰੋ"
+    "placeholder_commands": "ਕਮਾਂਡਾਂ ਲਈ / ਟਾਈਪ ਕਰੋ",
+    "attach_csv": "ਸਪ੍ਰੈਡਸ਼ੀਟ ਨੱਥੀ ਕਰੋ (CSV)",
+    "attach_remove": "ਨੱਥੀ ਹਟਾਓ",
+    "attach_not_csv": "ਫ਼ਿਲਹਾਲ ਸਿਰਫ਼ CSV ਫ਼ਾਈਲਾਂ ਨੱਥੀ ਕੀਤੀਆਂ ਜਾ ਸਕਦੀਆਂ ਹਨ।",
+    "attach_too_large": "ਫ਼ਾਈਲ ਬਹੁਤ ਵੱਡੀ ਹੈ (ਵੱਧੋ-ਵੱਧ ~1.4 MB ਟੈਕਸਟ)।",
+    "attach_limit": "ਵੱਧੋ-ਵੱਧ 3 ਫ਼ਾਈਲਾਂ ਨੱਥੀ ਕੀਤੀਆਂ ਜਾ ਸਕਦੀਆਂ ਹਨ।",
+    "attach_read_failed": "ਫ਼ਾਈਲ ਪੜ੍ਹੀ ਨਹੀਂ ਜਾ ਸਕੀ — ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।"
   },
   "pages": {
     "overview_title": "ਮੇਰਾ ਡੈਸ਼ਬੋਰਡ",
