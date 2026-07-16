@@ -4,11 +4,35 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { FileText, Plus, Paperclip, Receipt, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import DataGrid from '../../components/DataGrid';
+import DataGrid, { type DataGridSegment } from '../../components/DataGrid';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
 } from '../../components/shell';
 import type { WorkOrder, WorkOrdersResponse, AnyColumn } from '../../types';
+
+// Payment lifecycle tabs (B3 phase 1).  Evidence from live data: every
+// WO is status='submitted' — the ONE dominant lifecycle dimension is
+// payment.  First tab = the working set (money still owed, incl.
+// partial; bot-drafts are born unpaid so they land here too).  Void
+// stays out of the working tabs and is reachable via [All] + the
+// Status column filter.
+const WO_SEGMENTS: DataGridSegment[] = [
+  {
+    key: 'unpaid',
+    label: 'Unpaid',
+    match: (r) =>
+      ['unpaid', 'partial'].includes(String(r.payment_status ?? '')) &&
+      String(r.status ?? '') !== 'void',
+  },
+  {
+    key: 'paid',
+    label: 'Paid',
+    match: (r) =>
+      String(r.payment_status ?? '') === 'paid' &&
+      String(r.status ?? '') !== 'void',
+  },
+  { key: 'all', label: 'All', showCount: false },
+];
 import { toneClasses, type Tone } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
@@ -312,6 +336,7 @@ export default function WorkOrders() {
       ) : (
         <DataGrid
           tableId="work-orders"
+          segments={WO_SEGMENTS}
           columns={makeColumns(tz)}
           data={workOrders as unknown as Record<string, unknown>[]}
           searchKey={['vendor_name', 'vehicle_name', 'invoice_number', 'company_code', 'complaint', 'cause', 'correction']}
