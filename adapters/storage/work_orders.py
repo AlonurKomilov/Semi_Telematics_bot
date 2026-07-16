@@ -728,7 +728,7 @@ class WorkOrdersMixin:
             "FROM work_order_labor l "
             "JOIN work_orders w ON w.id = l.work_order_id "
             "     AND w.account_id = l.account_id "
-            "WHERE l.account_id = ? AND w.service_date IS NOT NULL"
+            "WHERE l.account_id = ? AND w.service_date IS NOT NULL AND w.status != 'void' AND w.payment_status != 'void'"
         )
         params: list = [account_id]
         if since:
@@ -877,7 +877,7 @@ class WorkOrdersMixin:
             "SELECT vehicle_name, COUNT(*) AS work_order_count, "
             "       SUM(total_cost) AS total_spent "
             "FROM work_orders "
-            "WHERE account_id = ? AND service_date IS NOT NULL"
+            "WHERE account_id = ? AND service_date IS NOT NULL AND status != 'void' AND payment_status != 'void'"
         )
         params: list = [account_id]
         if since:
@@ -901,7 +901,7 @@ class WorkOrdersMixin:
             "       SUM(w.total_cost) AS total_spent "
             "FROM work_orders w "
             "JOIN maintenance_tasks m ON m.work_order_id = w.id "
-            "WHERE w.account_id = ? AND w.service_date IS NOT NULL"
+            "WHERE w.account_id = ? AND w.service_date IS NOT NULL AND w.status != 'void' AND w.payment_status != 'void'"
         )
         params: list = [account_id]
         if since:
@@ -934,7 +934,7 @@ class WorkOrdersMixin:
             "       SUM(p.total_cost) AS total_spent "
             "FROM work_order_parts p "
             "JOIN work_orders w ON w.id = p.work_order_id "
-            "WHERE w.account_id = ? AND w.service_date IS NOT NULL"
+            "WHERE w.account_id = ? AND w.service_date IS NOT NULL AND w.status != 'void' AND w.payment_status != 'void'"
         )
         params: list = [account_id]
         if since:
@@ -997,7 +997,7 @@ class WorkOrdersMixin:
             "JOIN work_orders w ON w.id = p.work_order_id "
             "LEFT JOIN parts_catalog c "
             "     ON c.id = p.part_id AND c.account_id = w.account_id "
-            "WHERE w.account_id = ? AND w.service_date IS NOT NULL "
+            "WHERE w.account_id = ? AND w.service_date IS NOT NULL AND w.status != 'void' AND w.payment_status != 'void' "
             "  AND p.part_name <> ''"
         )
         params: list = [account_id]
@@ -1035,7 +1035,7 @@ class WorkOrdersMixin:
             "       COUNT(*) AS work_order_count, "
             "       SUM(total_cost) AS total_spent "
             "FROM work_orders "
-            "WHERE account_id = ? AND service_date IS NOT NULL"
+            "WHERE account_id = ? AND service_date IS NOT NULL AND status != 'void' AND payment_status != 'void'"
         )
         params: list = [account_id]
         if since:
@@ -1074,7 +1074,7 @@ class WorkOrdersMixin:
             "  COUNT(*)                     AS work_order_count, "
             "  COUNT(DISTINCT NULLIF(vendor_name, '')) AS vendor_count "
             "FROM work_orders "
-            "WHERE account_id = ? AND service_date IS NOT NULL"
+            "WHERE account_id = ? AND service_date IS NOT NULL AND status != 'void' AND payment_status != 'void'"
         )
         params: list = [account_id]
         if since:
@@ -1137,7 +1137,7 @@ class WorkOrdersMixin:
             "FROM work_orders w "
             "LEFT JOIN vendors v "
             "     ON v.id = w.vendor_id AND v.account_id = w.account_id "
-            "WHERE w.account_id = ? AND w.service_date IS NOT NULL "
+            "WHERE w.account_id = ? AND w.service_date IS NOT NULL AND w.status != 'void' AND w.payment_status != 'void' "
             "  AND w.vendor_name != ''"
         )
         params: list = [account_id]

@@ -119,3 +119,46 @@ async def test_labor_lines_recompute_and_report(db):
     row = await db.get_work_order(wo, a)
     assert row["labor_cost"] == pytest.approx(75.0)
     assert await db.list_work_order_labor(wo, a) == []
+
+
+@pytest.mark.asyncio
+async def test_void_work_orders_excluded_from_cost_reports(db):
+    """Void invoices (either lifecycle or payment void) must not leak
+    into any cost aggregate — parts, labor, or per-part usage."""
+    a = 72
+    ok = await db.add_work_order(
+        a, "ACME", "T400", "Void Test Shop", status="submitted",
+        service_date="2026-07-05", total_cost=100,
+    )
+    await db.add_work_order_part(
+        ok, part_name="Void Filter", total_cost=100, service_task="brakes",
+    )
+    await db.add_work_order_labor(
+        ok, a, description="Real labor", total_cost=50, service_task="brakes",
+    )
+
+    voided = await db.add_work_order(
+        a, "ACME", "T401", "Void Test Shop", status="void",
+        service_date="2026-07-06", total_cost=999,
+    )
+    await db.add_work_order_part(
+        voided, part_name="Void Filter", total_cost=999, service_task="brakes",
+    )
+    await db.add_work_order_labor(
+        voided, a, description="Ghost labor", total_cost=999, service_task="brakes",
+    )
+    pay_voided = await db.add_work_order(
+        a, "ACME", "T402", "Void Test Shop", status="submitted",
+        payment_status="void", service_date="2026-07-07", total_cost=500,
+    )
+    await db.add_work_order_part(
+        pay_voided, part_name="Void Filter", total_cost=500, service_task="brakes",
+    )
+
+    by_task = {r["service_task"]: r for r in await db.cost_by_service_task(a)}
+    assert by_task["brakes"]["total_spent"] == 100
+    assert by_task["brakes"]["labor_spent"] == pytest.approx(50.0)
+
+    parts = [p for p in await db.cost_by_part(a)
+             if str(p.get("part_name", "")).lower() == "void filter"]
+    assert parts and parts[0]["total_spent"] == 100
