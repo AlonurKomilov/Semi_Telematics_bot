@@ -32,27 +32,55 @@ export const APEX_DOMAIN =
 
 /**
  * Explicit sign-out marker — set by ``AuthContext.logout`` right before
- * it clears the token, consumed by ``App``'s unauth bounce.
+ * it clears the token, checked by ``App``'s unauth bounce.
  *
  * Why: once the token is cleared, any in-flight request 401s, the user
- * state nulls, and App's bounce fires ``apex/login?return_to=<page>``
- * — racing (and cancelling) the logout POST.  When this flag is set,
- * the bounce goes to the CLEAN apex ``/login`` instead, so a
- * deliberate sign-out can never be re-forwarded back to the page it
- * came from.  sessionStorage is per-tab, which is exactly right: only
- * the tab where the user clicked "Sign out" gets the clean landing.
+ * state nulls, and App's bounce navigates away — BEFORE the server has
+ * processed the logout POST.  The apex then still sees a live cookie,
+ * auto-forwards back to the dashboard, which by now rejects… a visible
+ * multi-hop loop between domains until the revoke lands.  While this
+ * marker is active the bounce makes NO navigation at all: ``logout()``
+ * owns the single navigation, which it performs strictly AFTER the
+ * server confirmed the session is dead — so the apex probe can never
+ * race the revoke.
+ *
+ * The marker is a TIMESTAMP with a short validity window (not a
+ * consumed boolean): the bounce may fire several times during one
+ * sign-out and must stand down every time, yet a stale flag from a
+ * dead sign-out attempt must never suppress a legitimate bounce later
+ * (that would strand the tab on a spinner).  sessionStorage is
+ * per-tab, which is exactly right: only the sign-out tab stands down.
  */
-export const EXPLICIT_SIGNOUT_KEY = 'explicit_signout';
+export const EXPLICIT_SIGNOUT_KEY = 'explicit_signout_at';
+const SIGNOUT_WINDOW_MS = 15_000;
 
-/** True (and clears the flag) if this tab is mid-explicit-sign-out. */
-export function consumeExplicitSignout(): boolean {
+export function markExplicitSignout(): void {
   try {
-    if (sessionStorage.getItem(EXPLICIT_SIGNOUT_KEY) === '1') {
-      sessionStorage.removeItem(EXPLICIT_SIGNOUT_KEY);
-      return true;
-    }
+    sessionStorage.setItem(EXPLICIT_SIGNOUT_KEY, String(Date.now()));
   } catch { /* private mode */ }
-  return false;
+}
+
+export function clearExplicitSignout(): void {
+  try {
+    sessionStorage.removeItem(EXPLICIT_SIGNOUT_KEY);
+  } catch { /* private mode */ }
+}
+
+/** True while this tab is inside the sign-out window; expired flags
+ *  are cleaned up and ignored. */
+export function explicitSignoutActive(now: number = Date.now()): boolean {
+  try {
+    const raw = sessionStorage.getItem(EXPLICIT_SIGNOUT_KEY);
+    if (!raw) return false;
+    const ts = Number(raw);
+    if (!Number.isFinite(ts) || now - ts > SIGNOUT_WINDOW_MS) {
+      sessionStorage.removeItem(EXPLICIT_SIGNOUT_KEY);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function isSafeReturnTo(raw: string | null | undefined, apex: string = APEX_DOMAIN): boolean {

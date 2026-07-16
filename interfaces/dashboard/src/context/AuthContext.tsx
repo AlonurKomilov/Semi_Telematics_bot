@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { apiJSON, getToken, setToken, clearToken, isTokenPersistent } from '../api/client';
-import { isSafeReturnTo, APEX_DOMAIN as SAFE_APEX_DOMAIN, EXPLICIT_SIGNOUT_KEY } from '../lib/safeReturnTo';
+import { isSafeReturnTo, APEX_DOMAIN as SAFE_APEX_DOMAIN, markExplicitSignout, clearExplicitSignout } from '../lib/safeReturnTo';
 import i18n from '../i18n';
 import type { User, TelegramLoginData, AuthResponse } from '../types';
 
@@ -280,26 +280,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     //
     // Avoiding setUser is NOT enough by itself: once clearToken()
     // drops the Bearer, any in-flight/polling request 401s, the 401
-    // handler nulls the user, and App.tsx bounces anyway.  Two guards
-    // close the remaining race:
-    //   1. The EXPLICIT_SIGNOUT flag below — App.tsx's bounce sees it
-    //      and goes to the clean apex /login (no return_to).
-    //   2. ``keepalive: true`` on the logout POST — the racing
-    //      ``location.replace`` would otherwise CANCEL this request,
-    //      leaving the shared ``.4truck.us`` cookie alive server-side;
-    //      the apex then sees a live session and re-forwards to
-    //      return_to → dash rejects → bounce → … the login↔dash loop.
-    try {
-      sessionStorage.setItem(EXPLICIT_SIGNOUT_KEY, '1');
-    } catch { /* private mode — the keepalive guard still applies */ }
+    // handler nulls the user, and App.tsx bounces anyway.  The guards:
+    //   1. markExplicitSignout() — while active, App.tsx's bounce makes
+    //      NO navigation at all.  THIS function owns the one and only
+    //      navigation, performed strictly AFTER the server confirmed
+    //      the revoke.  Navigating any earlier lets the apex probe
+    //      /user/me against a still-live cookie and forward the user
+    //      back — the visible multi-hop domain loop.
+    //   2. ``keepalive: true`` — even if something does navigate, the
+    //      logout POST completes rather than being cancelled with it.
+    //   3. A 5s abort bound so a hung server can't hold the spinner —
+    //      with keepalive the revoke still lands after the abort; the
+    //      degraded path at worst shows the old short loop once.
+    markExplicitSignout();
     clearToken();
     try {
       await fetch('/api/auth/logout', {
         method: 'POST', credentials: 'include', keepalive: true,
+        signal: AbortSignal.timeout(5000),
       });
     } catch {
-      /* server unreachable — cookie expires on its own TTL */
+      /* server unreachable/slow — cookie expires on its own TTL */
     }
+    clearExplicitSignout();
     if (typeof window !== 'undefined') {
       const host = window.location.hostname.toLowerCase();
       if (host === APEX_DOMAIN) {

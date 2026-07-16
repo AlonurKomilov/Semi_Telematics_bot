@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
-import { isSafeReturnTo, APEX_DOMAIN, consumeExplicitSignout } from './lib/safeReturnTo';
+import { isSafeReturnTo, APEX_DOMAIN, explicitSignoutActive } from './lib/safeReturnTo';
 import AppRouter from './router';
 import PendingInviteBanner from './components/PendingInviteBanner';
 import Login from './pages/Login';
@@ -114,12 +114,15 @@ async function hardLogoutOnLoop(): Promise<void> {
 }
 
 function bounceToApexLogin(): void {
-  // Deliberate sign-out (AuthContext.logout set the flag): land on the
-  // CLEAN apex login.  A ``return_to`` here would let the apex forward
-  // the user straight back to the page they just signed out from —
-  // the engine of the sign-out → login → dash bounce loop.
-  if (consumeExplicitSignout()) {
-    window.location.replace(`https://${APEX_DOMAIN}/login`);
+  // Deliberate sign-out in progress (AuthContext.logout marked it):
+  // make NO navigation — logout() performs the one and only navigation
+  // AFTER the server confirmed the session is revoked.  Navigating
+  // here (even to a clean /login) would race the revoke: the apex
+  // probes /user/me, still sees the live cookie, forwards back to the
+  // dashboard, which by then rejects — the visible multi-hop loop
+  // between domains.  The tab shows App's spinner for the sub-second
+  // (worst case ~5s) the logout POST takes.
+  if (explicitSignoutActive()) {
     return;
   }
   if (recordBounceAndCheckLoop()) {

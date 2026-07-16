@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { isSafeReturnTo, consumeExplicitSignout, EXPLICIT_SIGNOUT_KEY } from './safeReturnTo';
+import {
+  isSafeReturnTo, markExplicitSignout, clearExplicitSignout,
+  explicitSignoutActive, EXPLICIT_SIGNOUT_KEY,
+} from './safeReturnTo';
 
 /**
  * Regression guard for the open-redirect vulnerability in the
@@ -79,14 +82,27 @@ describe('isSafeReturnTo — rejects open-redirect payloads', () => {
   });
 });
 
-describe('consumeExplicitSignout', () => {
-  it('is one-shot: true only while the flag is set, and clears it', () => {
-    sessionStorage.removeItem(EXPLICIT_SIGNOUT_KEY);
-    expect(consumeExplicitSignout()).toBe(false);
-    sessionStorage.setItem(EXPLICIT_SIGNOUT_KEY, '1');
-    expect(consumeExplicitSignout()).toBe(true);
-    // consumed — a later unauth bounce must behave normally again
-    expect(consumeExplicitSignout()).toBe(false);
+describe('explicitSignoutActive', () => {
+  it('stays active for repeated checks inside the window (the bounce may fire several times)', () => {
+    clearExplicitSignout();
+    expect(explicitSignoutActive()).toBe(false);
+    markExplicitSignout();
+    expect(explicitSignoutActive()).toBe(true);
+    expect(explicitSignoutActive()).toBe(true);   // NOT one-shot
+    clearExplicitSignout();
+    expect(explicitSignoutActive()).toBe(false);
+  });
+
+  it('expires: a stale flag from a dead sign-out never suppresses a later bounce', () => {
+    markExplicitSignout();
+    const later = Date.now() + 16_000;            // past the 15s window
+    expect(explicitSignoutActive(later)).toBe(false);
+    // and the stale flag was cleaned up
     expect(sessionStorage.getItem(EXPLICIT_SIGNOUT_KEY)).toBeNull();
+  });
+
+  it('treats garbage values as inactive', () => {
+    sessionStorage.setItem(EXPLICIT_SIGNOUT_KEY, 'not-a-number');
+    expect(explicitSignoutActive()).toBe(false);
   });
 });
