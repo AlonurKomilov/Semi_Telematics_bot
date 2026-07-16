@@ -247,8 +247,7 @@ platform_schema.py (the known boot-crash rule).
 PHASE A — transient attachment pipeline
   NEW  capabilities/ai/attachments.py            parser (CSV→grid, caps) +
                                                  apply_mapping engine +
-                                                 ImportTarget registry +
-                                                 read_attachment tool def
+                                                 ImportTarget registry
   MOD  capabilities/ai/router.py                 ChatRequest.attachments
                                                  [{name, content}] + transient
                                                  parse → user_context
@@ -269,9 +268,27 @@ PHASE A — transient attachment pipeline
                                                  registry
 
 PHASE B — the read tool
-  MOD  capabilities/ai/tools/__init__.py         import attachments module so
+  NEW  capabilities/ai/tools/attachments_tool.py read_attachment tool def
+                                                 (in tools/, NOT in the engine
+                                                 module — attachments.py must
+                                                 stay importable by feature
+                                                 adapters without dragging in
+                                                 the tools hub / cycle risk)
+  MOD  capabilities/ai/tools/registry.py         execute_tool injects request
+                                                 grids as tool_args
+                                                 ["_attachments"] for schemas
+                                                 declaring uses_attachments
+                                                 (the _scope_vehicles pattern;
+                                                 model-supplied key stripped)
+  MOD  capabilities/ai/tools/__init__.py         import attachments_tool so
                                                  @register_tool runs
-  MOD  capabilities/permissions/roles.py         (read_attachment needs no
+  MOD  capabilities/ai/intelligence.py           3 agent loops pass
+                                                 attachment_grids; profile
+                                                 builders append the
+                                                 attachment presence hint;
+                                                 _TOOL_LABELS entry
+  MOD  capabilities/ai/attachments.py            attachment_prompt_line()
+  ---  capabilities/permissions/roles.py         (read_attachment needs no
                                                  perm row — request-scoped
                                                  data, gated at parse)
 

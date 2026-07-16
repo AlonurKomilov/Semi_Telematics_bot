@@ -345,7 +345,8 @@ async def execute_tool(tool_name: str, tool_args: dict,
                        samsara_client,
                        account_id: int | None = None,
                        db=None,
-                       scope_vehicles: list | None = None) -> dict:
+                       scope_vehicles: list | None = None,
+                       attachment_grids: dict | None = None) -> dict:
     """Execute a registered tool by name. Returns result dict.
 
     Every return is passed through :func:`_stamp_ok`, so the result always
@@ -358,6 +359,12 @@ async def execute_tool(tool_name: str, tool_args: dict,
     ``tool_args["_scope_vehicles"]`` so the tool filters its results to those
     vehicles — letting a company/vehicle-restricted user get *their own*
     account-wide rollups instead of being blocked outright.
+
+    ``attachment_grids`` is the request's transiently-parsed attachments
+    (``{name: grid}``).  Injected as ``tool_args["_attachments"]`` ONLY for
+    tools whose registered schema declares ``uses_attachments`` — the same
+    server-side-channel pattern as ``_scope_vehicles``, so the model can
+    never supply grids itself.
     """
     handler = get_tool_handler(tool_name)
     if not handler:
@@ -366,6 +373,13 @@ async def execute_tool(tool_name: str, tool_args: dict,
         from capabilities.permissions.roles import SCOPE_AWARE_TOOLS
         if tool_name in SCOPE_AWARE_TOOLS:
             tool_args = {**tool_args, "_scope_vehicles": list(scope_vehicles)}
+    if "_attachments" in tool_args:
+        # Server-injected channel — a model-supplied value is never honored.
+        tool_args = {k: v for k, v in tool_args.items() if k != "_attachments"}
+    if attachment_grids:
+        schema = get_tool_schema(tool_name)
+        if schema and schema.get("uses_attachments"):
+            tool_args = {**tool_args, "_attachments": attachment_grids}
     try:
         return _stamp_ok(await handler(tool_args, samsara_client,
                                        account_id=account_id, db=db))

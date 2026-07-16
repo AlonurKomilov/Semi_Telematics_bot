@@ -244,3 +244,92 @@ async def test_staged_payload_defaults_empty(pg_db):
     pid = await pg_db.create_action_proposal(acct, uid, "t", "s", "{}")
     got = await pg_db.get_action_proposal(pid, acct, uid)
     assert got["staged_payload"] == ""
+
+
+# ── Phase B: read_attachment tool + request-scope injection ──────────
+
+GRIDS = {"inv.csv": parse_csv_grid(MATRIX_CSV),
+         "other.csv": [["h"], ["v"]]}
+
+
+async def test_read_attachment_default_and_named():
+    from capabilities.ai.tools.attachments_tool import read_attachment
+
+    out = await read_attachment({"_attachments": GRIDS}, None)
+    assert out["name"] == "inv.csv"                      # first attachment
+    # 7 = header + 5 data rows + the blank separator row (parser keeps it;
+    # the melt engine is what skips it).
+    assert out["row_count"] == 7 and out["col_count"] == 4
+    assert out["attachments_available"] == ["inv.csv", "other.csv"]
+    assert out["sample_rows"][0] == ["Units", "Fire extinguisher",
+                                     "Emergency Triangle", "Notes"]
+    assert "INDEX" in out["note"]                        # untrusted-data framing
+
+    named = await read_attachment(
+        {"name": "other.csv", "_attachments": GRIDS}, None)
+    assert named["name"] == "other.csv" and named["row_count"] == 2
+
+
+async def test_read_attachment_errors():
+    from capabilities.ai.tools.attachments_tool import read_attachment
+
+    none = await read_attachment({}, None)
+    assert "No attachment" in none["error"]
+    miss = await read_attachment(
+        {"name": "nope.csv", "_attachments": GRIDS}, None)
+    assert "inv.csv" in miss["error"]                    # lists what IS there
+
+
+async def test_execute_tool_injects_grids_only_for_declared_tools():
+    """The _scope_vehicles pattern: grids are a server-side channel, injected
+    only for schemas declaring ``uses_attachments`` — and a model-supplied
+    ``_attachments`` arg is stripped, never honored."""
+    from capabilities.ai.tools import registry as R
+
+    seen: dict = {}
+
+    async def _spy(tool_args, samsara_client, account_id=None, db=None):
+        seen.update(tool_args)
+        return {"ok": True}
+
+    R._TOOL_REGISTRY["_att_spy"] = {
+        "schema": {"name": "_att_spy", "uses_attachments": True}, "handler": _spy}
+    R._TOOL_REGISTRY["_plain_spy"] = {
+        "schema": {"name": "_plain_spy"}, "handler": _spy}
+    try:
+        await R.execute_tool("_att_spy", {}, None, attachment_grids=GRIDS)
+        assert seen["_attachments"] == GRIDS
+
+        seen.clear()
+        await R.execute_tool("_plain_spy", {}, None, attachment_grids=GRIDS)
+        assert "_attachments" not in seen                # undeclared tool: no grids
+
+        seen.clear()   # model-supplied channel value is stripped
+        await R.execute_tool("_plain_spy", {"_attachments": {"x": []}}, None)
+        assert "_attachments" not in seen
+    finally:
+        R._TOOL_REGISTRY.pop("_att_spy", None)
+        R._TOOL_REGISTRY.pop("_plain_spy", None)
+
+
+def test_attachment_prompt_line():
+    from capabilities.ai.attachments import attachment_prompt_line
+
+    assert attachment_prompt_line(None) == ""
+    assert attachment_prompt_line({}) == ""
+    line = attachment_prompt_line({"_attachment_grids": GRIDS})
+    assert "inv.csv (7 rows × 4 cols)" in line
+    assert "read_attachment" in line
+
+
+def test_read_attachment_is_registered_for_all_roles():
+    """No TOOL_PERMISSIONS row on purpose: the real gate ran at parse time,
+    so the tool is advertised everywhere and is a no-op without grids."""
+    import capabilities.ai.tools  # noqa: F401 — hub import registers tools
+    from capabilities.ai.tools.registry import get_tool_schema
+    from capabilities.permissions.roles import TOOL_PERMISSIONS
+
+    schema = get_tool_schema("read_attachment")
+    assert schema and schema.get("uses_attachments") is True
+    assert not schema.get("writes")
+    assert "read_attachment" not in TOOL_PERMISSIONS

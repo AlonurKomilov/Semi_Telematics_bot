@@ -46,6 +46,7 @@ _STREAM_TOKENS = os.getenv("AI_STREAM_TOKENS", "").strip().lower() in ("1", "tru
 
 # Human-readable labels for tool calls sent to streaming clients
 _TOOL_LABELS: dict[str, str] = {
+    "read_attachment":        "Reading attached file",
     "get_vehicle_faults":     "Checking fault codes",
     "get_vehicle_detail":     "Reading vehicle info",
     "get_vehicle_location":   "Getting location",
@@ -478,6 +479,12 @@ def _build_agent_user_prompt(
         # questions (see current_datetime_line's docstring).
         from capabilities.ai.usage import current_datetime_line
         profile_lines.append(current_datetime_line(uc.get("timezone")))
+        # Surface this message's attachments so the model inspects them
+        # via read_attachment instead of guessing at the file's contents.
+        from capabilities.ai.attachments import attachment_prompt_line
+        _att_hint = attachment_prompt_line(uc)
+        if _att_hint:
+            profile_lines.append(_att_hint)
         if uc.get("role") == "driver" and (uc.get("vehicle_nums") or uc.get("vehicle_num")):
             trucks = uc.get("vehicle_nums") or [uc["vehicle_num"]]
             trucks_str = ", ".join(trucks)
@@ -936,6 +943,7 @@ async def _run_anthropic_agent(
                     tool_name, tool_args, samsara_client,
                     account_id=account_id, db=db,
                     scope_vehicles=_scoped_vehicle_set(user_context, user_role),
+                    attachment_grids=(user_context or {}).get("_attachment_grids"),
                 )
             except Exception as e:
                 result = {"error": f"Tool execution failed: {e}"}
@@ -1505,6 +1513,7 @@ async def _run_openai_compat_agent(
                     tool_name, tool_args, samsara_client,
                     account_id=account_id, db=db,
                     scope_vehicles=_scoped_vehicle_set(user_context, user_role),
+                    attachment_grids=(user_context or {}).get("_attachment_grids"),
                 )
             except Exception as e:
                 result = {"error": f"Tool execution failed: {e}"}
@@ -1799,6 +1808,12 @@ async def ask_agent(question: str, vehicle_context: dict,
         # questions (see current_datetime_line's docstring).
         from capabilities.ai.usage import current_datetime_line
         profile_lines.append(current_datetime_line(uc.get("timezone")))
+        # Surface this message's attachments so the model inspects them
+        # via read_attachment instead of guessing at the file's contents.
+        from capabilities.ai.attachments import attachment_prompt_line
+        _att_hint = attachment_prompt_line(uc)
+        if _att_hint:
+            profile_lines.append(_att_hint)
         # Dynamic permission guidance from ROLE_PERMISSIONS (with per-account override)
         if uc.get("role"):
             from capabilities.permissions.roles import build_role_guidance_for_account
@@ -1947,6 +1962,7 @@ async def ask_agent(question: str, vehicle_context: dict,
                         tool_name, tool_args, samsara_client,
                         account_id=account_id, db=db,
                         scope_vehicles=_scoped_vehicle_set(user_context, user_role),
+                        attachment_grids=(user_context or {}).get("_attachment_grids"),
                     )
                     tool_results.append({"tool": tool_name, "args": tool_args, "data": result})
 

@@ -26,6 +26,9 @@ from capabilities.ai.tools.registry import (                              # noqa
 # normal app-startup order so the feature ``ai_tool`` imports below resolve.
 import capabilities.alerting  # noqa: F401,E402
 
+# Generic (feature-agnostic) tools live in this package.
+from capabilities.ai.tools import attachments_tool as _attachments_tool     # noqa: F401,E402
+
 # Import feature ``ai_tool`` modules so their @register_tool decorators run.
 # Every tool definition lives in its feature (features/<x>/ai_tool.py); this
 # package keeps only the mechanism (registry + scope helper) and this hub.

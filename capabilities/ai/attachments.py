@@ -252,6 +252,28 @@ def list_import_targets() -> list[ImportTarget]:
 
 # ── Request-scope helpers ─────────────────────────────────────────────
 
+def attachment_prompt_line(user_context: dict | None) -> str:
+    """Profile-line hint that THIS message carries attachments.
+
+    Injected next to the datetime anchor in the agent prompt builders so
+    the model reaches for ``read_attachment`` instead of guessing at (or
+    hallucinating) the file's contents.  Empty string when the request
+    has no parsed grids — callers append conditionally.
+    """
+    grids = (user_context or {}).get("_attachment_grids") or {}
+    if not grids:
+        return ""
+    shapes = ", ".join(
+        f"{name} ({len(g)} rows × {max((len(r) for r in g), default=0)} cols)"
+        for name, g in grids.items()
+    )
+    return (
+        f"- Attached files on THIS message: {shapes}. "
+        "Call read_attachment FIRST to inspect the layout before answering "
+        "about the file or proposing any action based on it."
+    )
+
+
 async def parse_attachments_for_request(
     attachments: list, role: str | None, account_id: int | None,
 ) -> dict[str, list[list[str]]]:
