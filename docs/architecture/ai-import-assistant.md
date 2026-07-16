@@ -189,14 +189,13 @@ Verdict: *"Build it exactly as sketched — the mapping-not-data split is
 the correct trust boundary: the model emits intent, the server owns
 data, the human approves visible output."* The binding tightenings:
 
-1. **Storage** (option a confirmed): `ai_attachments` mirrors
-   `ai_action_proposals` (uuid PK, (account_id,user_id) + 404-on-
-   mismatch, encrypted payload, expires_at, retention target). PLUS:
-   rows are **write-once immutable**; store the raw bytes' `sha256` and
-   plaintext `row_count/col_count`; cap ~20 live attachments per user.
-   The EXECUTOR must verify the attachment belongs to the proposal's
-   exact (account_id, user_id), and attachment-expired-at-approve is a
-   clean 409 with a human message.
+1. **Storage** — SUPERSEDED (owner directive, see §3 and §8): the
+   advisor's option-a `ai_attachments` server table was replaced by
+   device-held files + transient per-turn parsing; **no attachment
+   storage exists server-side**.  What survived from this point: the
+   integrity intent (now met more strongly by the staged rows — the
+   executor writes exactly what the preview showed) and the clean-409
+   rule (a proposal with unreadable staged data 409s at approve).
 2. **Mapping split** confirmed, three tightenings: (i) mapping_spec
    addresses **column indices**, never header names (duplicate/blank
    headers break name addressing); (ii) the proposal payload stores

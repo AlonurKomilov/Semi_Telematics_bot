@@ -41,7 +41,12 @@ MAX_COLS = 64
 MAX_CELL_CHARS = 500
 MAX_RECORDS = 1000          # normalized records per import
 MAX_ATTACHMENTS = 3         # per request
-MAX_CONTENT_CHARS = 1_400_000   # per attachment; fits the 2MB body cap
+# Per-attachment cap in UTF-8 BYTES — the outer boundary (the 2MB
+# request-body middleware) counts bytes, and non-Latin sheets are
+# 2+ bytes/char, so a char-count cap here would let a request sail
+# past this check only to hit the blunt 413.  The dashboard's
+# attachmentStore enforces the same byte caps client-side first.
+MAX_CONTENT_BYTES = 1_400_000
 
 # The bounded sample the MODEL may see (prompt-injection blast-radius
 # control: a poisoned cell can at worst suggest a bad mapping, which the
@@ -71,9 +76,9 @@ def parse_csv_grid(content: str, *, name: str = "attachment") -> list[list[str]]
     """
     if content.startswith("﻿"):
         content = content[1:]
-    if len(content) > MAX_CONTENT_CHARS:
+    if len(content.encode("utf-8")) > MAX_CONTENT_BYTES:
         raise AttachmentError(
-            f"{name}: file too large (>{MAX_CONTENT_CHARS // 1000}k characters)."
+            f"{name}: file too large (max {MAX_CONTENT_BYTES / 1_000_000:.1f} MB)."
         )
     # Quoted fields may legally contain newlines — a real CSV reader is
     # mandatory (naive splitlines inflates row counts).

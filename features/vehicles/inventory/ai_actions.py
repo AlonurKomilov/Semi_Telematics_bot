@@ -311,16 +311,30 @@ async def _execute_import_inventory(payload, account_id, user_context, db):
     actor = int((user_context or {}).get("user_id") or 0) or None
     vehicles = await db.list_vehicles(int(account_id))
     active = {v.id: v for v in vehicles}
+
+    def _vid_of(r: dict) -> int:
+        try:
+            return int(r.get("_vehicle_id"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            return -1
+
+    # Prefetch the per-vehicle driver snapshots BEFORE opening the
+    # transaction — reads go through their own pool connections, and
+    # holding the transaction's pinned connection while acquiring more
+    # is avoidable pool pressure on a large import.
     driver_by_vid: dict[int, int | None] = {}
+    for vid in {_vid_of(r) for r in rows}:
+        v = active.get(vid)
+        if v is not None:
+            driver_by_vid[vid] = await db.get_assigned_driver_for_truck(
+                int(account_id), v.unit_number,
+            )
 
     imported = 0
     skipped: list[str] = []
     async with db.transaction():
         for r in rows:
-            try:
-                vid = int(r.get("_vehicle_id"))
-            except (TypeError, ValueError):
-                vid = -1
+            vid = _vid_of(r)
             v = active.get(vid)
             where = str(r.get("vehicle") or f"row {r.get('_source_row', '?')}")
             if v is None:
@@ -333,10 +347,6 @@ async def _execute_import_inventory(payload, account_id, user_context, db):
             if status is None or not item:
                 skipped.append(f"{where}: invalid staged row")
                 continue
-            if vid not in driver_by_vid:
-                driver_by_vid[vid] = await db.get_assigned_driver_for_truck(
-                    int(account_id), v.unit_number,
-                )
             await db.add_inventory_item(
                 int(account_id), vid,
                 category=_clean_category(r.get("category", "")),

@@ -407,6 +407,11 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
    *  (each turn parses transiently server-side, so a follow-up like
    *  "now import it" still has the grid), and is removed only by ✕. */
   const [attachments, setAttachments] = useState<PendingAttachment[]>(() => loadPendingAttachments());
+  // Live mirror for async FileReader callbacks — two overlapping attaches
+  // would otherwise compute against the render-time array and silently
+  // drop the first file (reviewer W1).
+  const attachmentsRef = useRef(attachments);
+  useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
   const [attachError, setAttachError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -421,10 +426,11 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     if (!isCsv) { flashAttachError(t('chat.attach_not_csv')); return; }
     const reader = new FileReader();
     reader.onload = () => {
-      const res = addPendingAttachment(attachments, file.name, String(reader.result ?? ''));
+      const res = addPendingAttachment(attachmentsRef.current, file.name, String(reader.result ?? ''));
       if ('error' in res) {
         flashAttachError(t(res.error === 'too_large' ? 'chat.attach_too_large' : 'chat.attach_limit'));
       } else {
+        attachmentsRef.current = res.list;   // close the race before React re-renders
         setAttachments(res.list);
         // A budget eviction is a real loss — say it, never a vanishing chip.
         if (res.evicted.length > 0) {
@@ -1816,10 +1822,14 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden />
                   <span className="max-w-40 truncate">{a.name}</span>
                   <span className="text-3xs text-muted-foreground tabular-nums">
-                    {Math.max(1, Math.round(a.content.length / 1024))} KB
+                    {Math.max(1, Math.round(a.size / 1024))} KB
                   </span>
                   <button
-                    onClick={() => setAttachments(removePendingAttachment(attachments, a.name))}
+                    onClick={() => {
+                      const next = removePendingAttachment(attachmentsRef.current, a.name);
+                      attachmentsRef.current = next;
+                      setAttachments(next);
+                    }}
                     aria-label={t('chat.attach_remove')}
                     className="ml-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
                   >

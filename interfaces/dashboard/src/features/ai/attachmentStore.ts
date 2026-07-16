@@ -13,21 +13,32 @@
  * failure degrades to "not attached" rather than breaking the chat.
  */
 
-/** Mirrors the backend's per-attachment cap (MAX_CONTENT_CHARS). */
-export const MAX_ATTACHMENT_CHARS = 1_400_000;
+/** Per-attachment cap in UTF-8 BYTES — bytes, not chars, because the
+ *  real outer boundary (the API's 2MB body middleware) counts bytes,
+ *  and non-Latin text is 2+ bytes/char.  Mirrors the backend's cap. */
+export const MAX_ATTACHMENT_BYTES = 1_400_000;
 /** Mirrors the backend's per-request cap (MAX_ATTACHMENTS). */
 export const MAX_ATTACHMENTS = 3;
-// Total store budget — localStorage's ~5MB origin quota is shared with
-// the thought store (2.5MB), so pending attachments get a slice of the
-// rest.  One max-size file always fits; a second/third evicts oldest.
-const MAX_TOTAL_CHARS = 2_000_000;
+// Total budget in UTF-8 bytes — sized so the whole attachment set plus
+// JSON overhead always clears the 2MB request-body ceiling with the
+// friendly per-file errors firing first, never the blunt 413.  Also
+// keeps localStorage happy (the ~5MB origin quota is shared with the
+// thought store's 2.5MB).
+const MAX_TOTAL_BYTES = 1_800_000;
 
 const STORE_KEY = '4truck:ai-attachments:v1';
+
+/** UTF-8 byte length of a JS string. */
+function byteLen(s: string): number {
+  return new TextEncoder().encode(s).length;
+}
 
 export interface PendingAttachment {
   name: string;
   /** Raw file text (CSV). */
   content: string;
+  /** UTF-8 byte size, measured at attach time (chip label + budgets). */
+  size: number;
   /** Attached-at epoch ms — eviction order. */
   t: number;
 }
@@ -38,10 +49,13 @@ function load(): PendingAttachment[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter(
-      (a): a is PendingAttachment =>
-        !!a && typeof a.name === 'string' && typeof a.content === 'string',
-    );
+    return parsed
+      .filter(
+        (a): a is PendingAttachment =>
+          !!a && typeof a.name === 'string' && typeof a.content === 'string',
+      )
+      // Entries persisted before `size` existed get measured on load.
+      .map((a) => (typeof a.size === 'number' ? a : { ...a, size: byteLen(a.content) }));
   } catch {
     return [];
   }
@@ -71,16 +85,17 @@ export function loadPendingAttachments(): PendingAttachment[] {
 export function addPendingAttachment(
   current: PendingAttachment[], name: string, content: string,
 ): { list: PendingAttachment[]; evicted: string[] } | { error: 'too_large' | 'limit' } {
-  if (content.length > MAX_ATTACHMENT_CHARS) return { error: 'too_large' };
+  const size = byteLen(content);
+  if (size > MAX_ATTACHMENT_BYTES) return { error: 'too_large' };
   // Re-attaching the same name replaces it (the natural "fixed the sheet,
   // attached again" loop).
   let list = current.filter((a) => a.name !== name);
   if (list.length >= MAX_ATTACHMENTS) return { error: 'limit' };
-  list = [...list, { name: name.slice(0, 120), content, t: Date.now() }];
+  list = [...list, { name: name.slice(0, 120), content, size, t: Date.now() }];
   const evicted: string[] = [];
   while (
     list.length > 1
-    && list.reduce((n, a) => n + a.content.length, 0) > MAX_TOTAL_CHARS
+    && list.reduce((n, a) => n + a.size, 0) > MAX_TOTAL_BYTES
   ) {
     list = [...list].sort((a, b) => a.t - b.t);
     evicted.push(list[0].name);

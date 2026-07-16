@@ -141,8 +141,11 @@ async def propose_import(
         )
 
     # Minimal request context for domain resolution — build_rows shares
-    # the executor's (rows, account_id, user_context, db) shape, and at
-    # propose time the request scope is what we have.
+    # the executor's (rows, account_id, user_context, db) shape.  For an
+    # account_unscoped import tool this key is always None (the gate
+    # blocks scoped callers before the tool runs); it's forwarded so a
+    # FUTURE resource_ids-scoped import target gets its injected scope
+    # without a framework change.
     ctx = {"_scope_vehicles": tool_args.get("_scope_vehicles")}
     rows, skipped = await target.build_rows(records, account_id, ctx, db)
     skipped = [*problems, *skipped]
