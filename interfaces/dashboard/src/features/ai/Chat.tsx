@@ -160,24 +160,13 @@ function stampElapsed(step: AIProcessStep, now: number): AIProcessStep {
   return { ...step, elapsed_ms: Math.max(0, now - step.startedAt) };
 }
 
-/** Split thinking steps into paragraph-level steps so the timeline reads
- *  as discrete thoughts — one dot per thought — instead of one flat text
- *  wall.  Tool steps pass through unchanged.  Purely a display transform;
- *  the stored process keeps the raw chunks. */
-function explodeProcess(steps: AIProcessStep[]): AIProcessStep[] {
-  const out: AIProcessStep[] = [];
-  for (const s of steps) {
-    if (s.type === 'thinking') {
-      for (const para of (s.text || '').split(/\n\s*\n/)) {
-        const text = para.trim();
-        if (text) out.push({ type: 'thinking', text });
-      }
-    } else {
-      out.push(s);
-    }
-  }
-  return out;
-}
+/** A step is a LOGICAL unit — one contiguous Thinking block, one Tool
+ *  call — never a paragraph.  The timeline used to explode thinking text
+ *  on blank lines ("one dot per thought"), which read fine for Gemini's
+ *  short streamed fragments but turned a reasoning model's long
+ *  chain-of-thought into a "211 steps" wall for a one-tool answer.  The
+ *  backend already coalesces consecutive thinking chunks into one entry,
+ *  so the process array IS the logical step list — render it directly. */
 
 /** One row of the dot-and-line process timeline: marker column (dot /
  *  check / beacon) with a connector line down to the next row, content
@@ -1282,14 +1271,14 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     ("Reasoning" / "Thinking") or a tier icon — those
                     belong to the picker and the footer label. */}
                 {(msg.process || msg.reasoning) && (() => {
-                  // Paragraph-exploded steps: each discrete thought gets its
-                  // own dot on the rule, tools keep their check markers —
-                  // one visual language for "what happened", never a flat
-                  // text wall.  Legacy messages without a process array
-                  // explode their flat reasoning the same way.
-                  const exploded = explodeProcess(
-                    msg.process ?? [{ type: 'thinking', text: msg.reasoning || '' }],
-                  );
+                  // Logical steps only: one row per contiguous thinking
+                  // block / tool call (see the note above TimelineRow) —
+                  // "4 steps" means think → tool → think → done, not 200
+                  // paragraphs of one chain-of-thought.  Legacy messages
+                  // without a process array render their flat reasoning
+                  // as a single thinking step.
+                  const exploded: AIProcessStep[] =
+                    msg.process ?? [{ type: 'thinking', text: msg.reasoning || '' }];
                   return (
                     <div className="mb-1">
                       <button
@@ -1497,7 +1486,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   <Loader2 size={12} className="animate-spin text-primary" aria-hidden />
                   <span>
                     {liveSteps.length > 0
-                      ? `${explodeProcess(liveSteps).length} ${t('chat.steps')}`
+                      ? `${liveSteps.length} ${t('chat.steps')}`
                       : t('chat.working')}
                   </span>
                 </span>
@@ -1517,7 +1506,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
               ) : (() => {
                 // Same dot-and-line timeline as the finished view, one
                 // paragraph-thought per dot, building in real time.
-                const exploded = explodeProcess(liveSteps);
+                const exploded = liveSteps;
                 const lastIsTool = exploded.length > 0
                   && exploded[exploded.length - 1].type === 'tool';
                 return (

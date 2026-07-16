@@ -275,3 +275,23 @@ async def log_ai_usage(
         )
     except Exception as e:
         logger.debug("AI usage logging failed: %s", e)
+
+
+def current_datetime_line(tz_name: str | None) -> str:
+    """One prompt line anchoring the model in the CALLER's "now".
+
+    Without it, every date-relative question ("this month", "last week",
+    "overdue since…") sends reasoning models into long can't-know-the-date
+    spirals — hundreds of wasted thinking tokens per turn — and the
+    answers guess a wrong month from training data.  Falls back to UTC
+    when the timezone is missing/invalid.
+    """
+    from datetime import datetime, timezone as _tz
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo(tz_name)) if tz_name else datetime.now(_tz.utc)
+        label = tz_name or "UTC"
+    except Exception:
+        now = datetime.now(_tz.utc)
+        label = "UTC"
+    return f"- Current date/time: {now.strftime('%A, %Y-%m-%d %H:%M')} ({label})"

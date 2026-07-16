@@ -283,6 +283,15 @@ def _parse_openai_compat_reply(data: dict) -> tuple[str, dict | None, str]:
             inline = m.group(1).strip()
             reasoning = f"{reasoning}\n\n{inline}".strip() if reasoning else inline
             text = re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL)
+        elif "</think>" in text:
+            # R1 sometimes opens the reasoning IMPLICITLY (no <think>) and
+            # only emits the closing tag at the boundary — without this
+            # branch the whole monologue plus a literal "</think>" leaked
+            # into the user-visible answer.
+            head, _, tail = text.partition("</think>")
+            head = head.strip()
+            reasoning = f"{reasoning}\n\n{head}".strip() if reasoning else head
+            text = tail
     if "usage" in data:
         u = data["usage"]
         prompt = u.get("prompt_tokens", 0)
@@ -722,6 +731,10 @@ async def _generate_impl(prompt: str, system: str = ASSISTANT_SYSTEM,
             profile_lines.append(f"- Assigned vehicle: {uc['vehicle_num']}")
         if uc.get("timezone"):
             profile_lines.append(f"- Timezone: {uc['timezone']}")
+        # Anchor "now" — kills the date-guessing spirals on date-relative
+        # questions (see current_datetime_line's docstring).
+        from capabilities.ai.usage import current_datetime_line
+        profile_lines.append(current_datetime_line(uc.get("timezone")))
         # Dynamic permission guidance from ROLE_PERMISSIONS
         if uc.get("role"):
             from capabilities.permissions.roles import build_role_guidance

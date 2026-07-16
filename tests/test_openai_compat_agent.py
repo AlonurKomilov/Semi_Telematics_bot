@@ -183,3 +183,35 @@ async def test_endpoint_rejection_falls_back_to_chat_only(_agent_env, monkeypatc
 
     assert result["text"] == "snapshot-only answer"
     assert result["tool_results"] == []
+
+
+def test_parse_reply_strips_orphan_think_close():
+    """R1 sometimes opens reasoning IMPLICITLY and only emits the closing
+    </think> at the boundary — the monologue plus a literal '</think>'
+    leaked into the visible answer.  The head must move to reasoning."""
+    from capabilities.ai.generation import _parse_openai_compat_reply
+    data = {"choices": [{"message": {
+        "content": "We ponder deeply.\nMore pondering.\n</think>\nThe answer is 42.",
+    }}]}
+    text, usage, reasoning = _parse_openai_compat_reply(data)
+    assert text == "The answer is 42."
+    assert "ponder" in reasoning and "</think>" not in text
+
+
+def test_parse_reply_paired_think_still_works():
+    from capabilities.ai.generation import _parse_openai_compat_reply
+    data = {"choices": [{"message": {
+        "content": "<think>hmm</think>Final.",
+        "reasoning_content": "",
+    }}]}
+    text, _, reasoning = _parse_openai_compat_reply(data)
+    assert text == "Final." and reasoning == "hmm"
+
+
+def test_current_datetime_line_anchors_now():
+    from capabilities.ai.usage import current_datetime_line
+    line = current_datetime_line("America/New_York")
+    assert line.startswith("- Current date/time: ") and "America/New_York" in line
+    assert "20" in line  # a year is present
+    # Invalid tz falls back to UTC instead of raising.
+    assert "UTC" in current_datetime_line("Not/AZone")

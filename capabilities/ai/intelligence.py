@@ -473,6 +473,10 @@ def _build_agent_user_prompt(
             profile_lines.append(f"- Assigned vehicle: {uc['vehicle_num']}")
         if uc.get("timezone"):
             profile_lines.append(f"- Timezone: {uc['timezone']}")
+        # Anchor "now" — kills the date-guessing spirals on date-relative
+        # questions (see current_datetime_line's docstring).
+        from capabilities.ai.usage import current_datetime_line
+        profile_lines.append(current_datetime_line(uc.get("timezone")))
         if uc.get("role") == "driver" and (uc.get("vehicle_nums") or uc.get("vehicle_num")):
             trucks = uc.get("vehicle_nums") or [uc["vehicle_num"]]
             trucks_str = ", ".join(trucks)
@@ -1677,6 +1681,10 @@ async def ask_agent(question: str, vehicle_context: dict,
             profile_lines.append(f"- Assigned vehicle: {uc['vehicle_num']}")
         if uc.get("timezone"):
             profile_lines.append(f"- Timezone: {uc['timezone']}")
+        # Anchor "now" — kills the date-guessing spirals on date-relative
+        # questions (see current_datetime_line's docstring).
+        from capabilities.ai.usage import current_datetime_line
+        profile_lines.append(current_datetime_line(uc.get("timezone")))
         # Dynamic permission guidance from ROLE_PERMISSIONS (with per-account override)
         if uc.get("role"):
             from capabilities.permissions.roles import build_role_guidance_for_account
