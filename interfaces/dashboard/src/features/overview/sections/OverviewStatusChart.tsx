@@ -16,10 +16,14 @@ const FleetStatusChart = lazy(() => import('@/features/overview/FleetStatusChart
 
 export default function OverviewStatusChart({ stats }: OverviewSectionProps) {
   const f = stats.fleet || {};
-  const total = f.total ?? 0;
-  const moving = f.moving ?? 0;
-  const idle = f.idle ?? 0;
-  const stopped = f.stopped ?? 0;
+  // The donut charts motion states, which only tracked TRUCKS have —
+  // the header count and percentages must use the same denominator or
+  // the slices visibly don't sum to the label.
+  const trucks = f.trucks ?? f;
+  const total = trucks.total ?? 0;
+  const moving = trucks.moving ?? 0;
+  const idle = trucks.idle ?? 0;
+  const stopped = trucks.stopped ?? 0;
   const movingPct = total > 0 ? Math.round((moving / total) * 100) : 0;
 
   if (moving === 0 && idle === 0 && stopped === 0) return null;
@@ -39,7 +43,7 @@ export default function OverviewStatusChart({ stats }: OverviewSectionProps) {
                 : `${moving} of ${total} trucks moving (${movingPct}%).`}
           </p>
         </div>
-        <p className="text-xs text-muted-foreground">{total} vehicles</p>
+        <p className="text-xs text-muted-foreground">{total} trucks</p>
       </div>
       <Suspense
         fallback={<div className="h-[220px] bg-muted/40 rounded animate-pulse" />}

@@ -25,12 +25,15 @@ export default function DispatchHero() {
     );
   }
   const { fleet, pending_alerts, unsafe_parking, unknown_parking, low_fuel } = data;
+  // Dispatch routes powered units — motion chips read the TRUCK bucket
+  // (falls back to the flat counts on a pre-split API response).
+  const trucks = fleet.trucks ?? fleet;
   return (
     <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto scrollbar-thin">
-      <HeroChip label="On the road" value={fleet.moving} tone="positive" title="Vehicles currently moving" />
-      <HeroChip label="Idle" value={fleet.idle} tone="warning" title="Engine on but stationary" />
-      <HeroChip label="Stopped" value={fleet.stopped} tone="neutral" />
-      <HeroChip label="Total" value={fleet.total} tone="info" />
+      <HeroChip label="On the road" value={trucks.moving} tone="positive" title="Trucks currently moving" />
+      <HeroChip label="Idle" value={trucks.idle} tone="warning" title="Engine on but stationary" />
+      <HeroChip label="Stopped" value={trucks.stopped} tone="neutral" />
+      <HeroChip label="Trucks" value={trucks.total} tone="info" />
       {pending_alerts !== undefined && pending_alerts > 0 && (
         <HeroChip label="Pending alerts" value={pending_alerts} tone="critical" title="Alerts awaiting acknowledgement" />
       )}

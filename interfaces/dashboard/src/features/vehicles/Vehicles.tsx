@@ -6,7 +6,7 @@ import { Pencil, Plus, Truck } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/DataGrid';
 import StatusBadge from '../../components/StatusBadge';
-import { Freshness, Tip } from '../../components/tooltip';
+import { Freshness, InfoTip, Tip } from '../../components/tooltip';
 import { useInventoryAlerts } from './inventory/useInventory';
 import { PackageX } from 'lucide-react';
 import { toneClasses } from '../../lib/status';
@@ -36,8 +36,8 @@ const TYPE_LABEL: Record<string, string> = {
 // about their own vehicle only; dispatch lives in the live view).
 const UTILIZATION_PERSONAS = new Set(['owner', 'admin', 'fleet', 'accounting']);
 
-type StatusFilter = 'all' | 'moving' | 'idle' | 'stopped';
-const STATUS_OPTIONS: readonly StatusFilter[] = ['all', 'moving', 'idle', 'stopped'] as const;
+type StatusFilter = 'all' | 'moving' | 'idle' | 'stopped' | 'no_telemetry';
+const STATUS_OPTIONS: readonly StatusFilter[] = ['all', 'moving', 'idle', 'stopped', 'no_telemetry'] as const;
 
 // Parse a full address into street / city / state parts.  The three
 // Location-group columns share this heuristic so they always agree on
@@ -91,7 +91,7 @@ const ALL_COLUMNS: AnyColumn[] = [
     filterable: true,
     filterValue: (row) => String((row as Vehicle).status ?? ''),
     filterLabel: (row) => {
-      const s = String((row as Vehicle).status ?? '').toLowerCase();
+      const s = String((row as Vehicle).status ?? '').toLowerCase().replace(/_/g, ' ');
       return s ? s.charAt(0).toUpperCase() + s.slice(1) : '(none)';
     },
     // Row-level freshness rides the Status badge — `time` is the
@@ -315,7 +315,10 @@ export default function Vehicles() {
     queryFn: () => {
       const params = new URLSearchParams();
       if (statusFilter !== 'all') params.set('status', statusFilter);
-      params.set('page_size', '200');
+      // 500 matches the route's le= cap.  The whole registry (trucks +
+      // trailers) rides one page; beyond 500 vehicles this fetch must
+      // walk total_pages instead (useFleetList already shows the shape).
+      params.set('page_size', '500');
       return apiJSON<VehiclesResponse>(`/vehicles?${params}`);
     },
     placeholderData: (prev) => prev,
@@ -327,10 +330,16 @@ export default function Vehicles() {
   const error =
     queryError instanceof Error ? queryError.message : queryError ? String(queryError) : '';
 
-  const counts: Record<string, number> = { moving: 0, idle: 0, stopped: 0 };
+  const counts: Record<string, number> = { moving: 0, idle: 0, stopped: 0, no_telemetry: 0 };
   vehicles.forEach((v) => {
     if (v.status && counts[v.status] !== undefined) counts[v.status]++;
   });
+  // Registry-only rows (trailers, manual trucks) exist only once the
+  // registry overlay is live — hide the chip entirely for fleets where
+  // everything reports, instead of a permanent "No Telemetry 0".
+  const statusOptions = counts.no_telemetry > 0 || statusFilter === 'no_telemetry'
+    ? STATUS_OPTIONS
+    : STATUS_OPTIONS.filter((s) => s !== 'no_telemetry');
 
   // Same warehouse-first pattern as the rest of the fleet — when the
   // warehouse is cold the list falls back to live Samsara, which on a
@@ -366,15 +375,25 @@ export default function Vehicles() {
 
       {UTILIZATION_PERSONAS.has(persona) && <UtilizationSummary />}
 
-      <div className="mb-4">
+      <div className="mb-4 flex items-center gap-2">
         <FilterChips
-          options={STATUS_OPTIONS}
+          options={statusOptions}
           value={statusFilter}
           onChange={setStatusFilter}
+          labelFor={(s) => s.replace(/_/g, ' ')}
           countFor={(s) =>
             s === 'all' ? totalCount : counts[s] ?? 0
           }
         />
+        {statusOptions.includes('no_telemetry') && (
+          // Learn-once explainer: +86 "no telemetry" rows appearing for
+          // the first time must read as "the whole registry now shows",
+          // not as a telematics outage.
+          <InfoTip
+            size={14}
+            label="Vehicles without a telematics device — trailers and manually added trucks. They're listed so the fleet count is complete; motion status applies only to reporting vehicles."
+          />
+        )}
       </div>
 
       {stage === 'timeout' && vehicles.length === 0 ? (

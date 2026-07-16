@@ -15,10 +15,17 @@ import type { OverviewSectionProps } from './_shared/types';
 export default function OverviewStatusGrid({ stats, navigate, has }: OverviewSectionProps) {
   const f = stats.fleet || {};
   const total = f.total ?? 0;
-  const moving = f.moving ?? 0;
-  const idle = f.idle ?? 0;
-  const stopped = f.stopped ?? 0;
-  const movingPct = total > 0 ? Math.round((moving / total) * 100) : 0;
+  // Motion tiles read the TRUCK bucket — trailers (and no-telematics
+  // trucks) don't have a motion state, so percentages are computed
+  // against tracked trucks, not the whole registry.
+  const trucks = f.trucks ?? f;
+  const truckTotal = trucks.total ?? 0;
+  const moving = trucks.moving ?? 0;
+  const idle = trucks.idle ?? 0;
+  const stopped = trucks.stopped ?? 0;
+  const trailerTotal = f.trailers?.total ?? 0;
+  const pctOfTrucks = (n: number) =>
+    truckTotal > 0 ? `${Math.round((n / truckTotal) * 100)}% of trucks` : undefined;
 
   // 4-up status row is the original visual order; suppressing the
   // section when zero is intentional — a brand-new tenant with no
@@ -35,7 +42,13 @@ export default function OverviewStatusGrid({ stats, navigate, has }: OverviewSec
         label="Total vehicles"
         value={total}
         icon={Truck}
-        hint={total > 0 ? `${movingPct}% currently moving` : undefined}
+        hint={
+          trailerTotal > 0
+            ? `${truckTotal} trucks · ${trailerTotal} trailers`
+            : truckTotal > 0
+              ? `${Math.round((moving / truckTotal) * 100)}% currently moving`
+              : undefined
+        }
         onClick={vehiclesHref ? () => navigate(vehiclesHref) : undefined}
       />
       <KpiCard
@@ -43,21 +56,24 @@ export default function OverviewStatusGrid({ stats, navigate, has }: OverviewSec
         value={moving}
         tone="positive"
         icon={Activity}
-        hint={total > 0 ? `${movingPct}% of total` : undefined}
+        hint={pctOfTrucks(moving)}
       />
       <KpiCard
         label="Idle"
         value={idle}
         tone="warning"
         icon={CircleDot}
-        hint={total > 0 ? `${Math.round((idle / total) * 100)}% of total` : undefined}
+        hint={pctOfTrucks(idle)}
       />
       <KpiCard
         label="Stopped"
         value={stopped}
-        tone="critical"
+        // Default (muted), not critical: majority-stopped is the NORMAL
+        // overnight state — a red tile every morning trains alarm fatigue
+        // and devalues real red signals (faults, unsafe parking).
+        tone="default"
         icon={CircleSlash}
-        hint={total > 0 ? `${Math.round((stopped / total) * 100)}% of total` : undefined}
+        hint={pctOfTrucks(stopped)}
       />
     </div>
   );

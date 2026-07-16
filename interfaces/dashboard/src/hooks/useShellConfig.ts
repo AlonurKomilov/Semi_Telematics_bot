@@ -68,12 +68,14 @@ export function useShellConfig() {
     activeView === 'fleet' ? 'your fleet' :
     'your operation';
 
-  // Persona-neutral collective noun used by AISummaryCard headlines —
-  // "fleet" reads wrong for safety/dispatch, "vehicles" is neutral.
+  // Persona-neutral collective noun used by AISummaryCard headlines.
+  // "trucks", not "vehicles": the movement stats behind those headlines
+  // count the truck bucket only (trailers have no motion state), so the
+  // noun must match the denominator.
   const aiSubjectAll =
     activeView === 'dispatcher' ? 'trucks dispatched' :
     activeView === 'safety' ? 'trucks under watch' :
-    'vehicles';
+    'trucks';
 
   // Hint shown when nothing critical is open; nudges the persona toward
   // their natural slack-time activity.

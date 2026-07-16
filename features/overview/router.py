@@ -198,20 +198,34 @@ async def overview_stats(
             "fleet": {"total": 1 if my_truck else 0, "moving": 0, "idle": 0, "stopped": 0},
         }
 
-    total = len(overview)
-    moving = idle = stopped = 0
+    # Per-type buckets: motion states only mean something for tracked
+    # units — a registry vehicle with no telematics (most trailers,
+    # some trucks) counts as "no_signal", never as "stopped".
+    def _blank() -> dict:
+        return {"total": 0, "moving": 0, "idle": 0, "stopped": 0, "no_signal": 0}
+
+    trucks, trailers = _blank(), _blank()
     for v in overview:
-        s = classify_vehicle_status(v)
-        if s == "moving":
-            moving += 1
-        elif s == "idle":
-            idle += 1
+        bucket = trailers if v.get("vehicle_type") == "trailer" else trucks
+        bucket["total"] += 1
+        if v.get("_no_telemetry"):
+            bucket["no_signal"] += 1
         else:
-            stopped += 1
+            bucket[classify_vehicle_status(v)] += 1
 
     result: dict = {
         "role": role,
-        "fleet": {"total": total, "moving": moving, "idle": idle, "stopped": stopped},
+        # Top-level moving/idle/stopped are TRACKED counts (no_signal
+        # split out) so "stopped" means engine-off, not "no data".
+        "fleet": {
+            "total": trucks["total"] + trailers["total"],
+            "moving": trucks["moving"] + trailers["moving"],
+            "idle": trucks["idle"] + trailers["idle"],
+            "stopped": trucks["stopped"] + trailers["stopped"],
+            "no_signal": trucks["no_signal"] + trailers["no_signal"],
+            "trucks": trucks,
+            "trailers": trailers,
+        },
     }
 
     if can(role, "can_faults"):

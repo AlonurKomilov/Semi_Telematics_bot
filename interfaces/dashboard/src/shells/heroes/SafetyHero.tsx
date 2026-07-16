@@ -5,7 +5,7 @@
  * — NOT faults (Fleet) or unsafe parking (Dispatch).  The chip set
  * keeps only what a safety manager actually triages:
  *
- *   Open alerts (safety-scoped via X-View-As) · Fleet total · Moving
+ *   Open alerts (safety-scoped via X-View-As) · Trucks · Moving
  *
  * The fleet status chips give the safety manager fleet-wide context
  * without crossing into Fleet's workspace.  Faults / unsafe-parking
@@ -38,8 +38,13 @@ export default function SafetyHero() {
           title="Alerts awaiting acknowledgement"
         />
       )}
-      <HeroChip label="Fleet total" value={fleet.total} tone="info" />
-      <HeroChip label="Moving" value={fleet.moving} tone="neutral" />
+      <HeroChip
+        label="Trucks" value={(fleet.trucks ?? fleet).total} tone="info"
+        title={fleet.trailers && fleet.trailers.total > 0
+          ? `Fleet total ${fleet.total} incl. ${fleet.trailers.total} trailers`
+          : undefined}
+      />
+      <HeroChip label="Moving" value={(fleet.trucks ?? fleet).moving} tone="neutral" />
     </div>
   );
 }

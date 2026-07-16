@@ -250,11 +250,25 @@ export interface FaultsResponse {
 
 // ── Dashboard Stats ──────────────────────────────────────────
 
+/** One per-type bucket of the fleet counts.  Motion states count
+ *  TRACKED units only — a registry vehicle with no telematics (most
+ *  trailers, some trucks) is `no_signal`, never "stopped". */
+export interface FleetTypeStats {
+  total: number;
+  moving: number;
+  idle: number;
+  stopped: number;
+  no_signal: number;
+}
+
 export interface FleetStats {
   total?: number;
   moving?: number;
   idle?: number;
   stopped?: number;
+  no_signal?: number;
+  trucks?: FleetTypeStats;
+  trailers?: FleetTypeStats;
 }
 
 export interface DashboardStats {

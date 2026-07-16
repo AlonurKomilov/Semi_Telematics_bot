@@ -23,10 +23,13 @@ function buildNarrative(
 ): string[] {
   const lines: string[] = [];
   const f = stats.fleet || {};
-  const total = f.total ?? 0;
-  const moving = f.moving ?? 0;
-  const stopped = f.stopped ?? 0;
-  const idle = f.idle ?? 0;
+  // Percentages run against the TRUCK bucket — trailers can't move, and
+  // counting them read a healthy fleet as "only 16% moving".
+  const trucks = f.trucks ?? f;
+  const total = trucks.total ?? 0;
+  const moving = trucks.moving ?? 0;
+  const stopped = trucks.stopped ?? 0;
+  const idle = trucks.idle ?? 0;
 
   const movingPct = total > 0 ? Math.round((moving / total) * 100) : 0;
 

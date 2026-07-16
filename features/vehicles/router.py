@@ -21,6 +21,8 @@ URL structure:
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
@@ -51,6 +53,8 @@ import infra.cache as _redis
 # Collapses burst polls from concurrent driver sessions without making
 # GPS positions feel stale.
 _FLEET_CACHE_TTL = 30
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/vehicles", tags=["vehicles"])
 
@@ -202,8 +206,11 @@ def _normalize_detail(v: dict) -> dict:
     fuel_pct = _extract_fuel(v)
     def_pct = _extract_def(v)
     dtcs = _extract_dtcs(v)
-    status = classify_vehicle_status(v)
-    engine_state = _derive_engine_state(status)
+    # Same marker handling as _simplify: a registry vehicle with no
+    # telematics is "no_telemetry", never mis-read as "stopped".
+    no_telemetry = bool(v.get("_no_telemetry"))
+    status = "no_telemetry" if no_telemetry else classify_vehicle_status(v)
+    engine_state = "" if no_telemetry else _derive_engine_state(status)
     address = (
         loc.get("reverseGeo", {}).get("formattedLocation")
         or loc.get("address")
@@ -240,11 +247,15 @@ def _normalize_detail(v: dict) -> dict:
 async def vehicles_list(
     company: str | None = Query(None),
     search: str | None = Query(None, description="Search by vehicle name"),
-    status: str | None = Query(None, description="Filter: moving, idle, stopped"),
+    status: str | None = Query(None, description="Filter: moving, idle, stopped, no_telemetry"),
     sort: str | None = Query(None, description="Sort field: name, fuel_percent, fault_count, status"),
     order: str = Query("asc", description="Sort order: asc or desc"),
     page: int = Query(1, ge=1, description="Page number"),
-    page_size: int = Query(50, ge=1, le=200, description="Items per page"),
+    # le=500: the registry overlay folds trailers + manual vehicles into
+    # this list, so a ~100-truck carrier already sits near the old 200
+    # cap.  The dashboard fetches one page; past 500 real vehicles the
+    # page must switch to walking total_pages (the useFleetList pattern).
+    page_size: int = Query(50, ge=1, le=500, description="Items per page"),
     user: dict = Depends(require_permission_any("can_faults", "can_vehicle_vehicle")),
 ):
     """Vehicle list with location and engine state — supports filtering, sorting, pagination."""
@@ -269,6 +280,28 @@ async def vehicles_list(
     vehicles = await _wh_reader.get_current_vehicles(
         user["account_id"], company=company, samsara_fallback=_live_cached,
     )
+    # Registry overlay (SSOT) — the same merge the service-level read
+    # applies: every active registry vehicle appears, trailers and
+    # no-telematics trucks as explicit no_telemetry rows instead of
+    # silently missing from the list.  The merge is idempotent, so the
+    # cold-start fallback path (whose cached list is already merged)
+    # stays correct.
+    tenant_reg = await _get_tenant_db(user["account_id"])
+    if tenant_reg is not None:
+        try:
+            registry = await tenant_reg.list_vehicles(
+                user["account_id"], company_code=company,
+            )
+        except Exception:
+            # Degrade to live-only rather than 500 — but LOUDLY, or ops
+            # can't tell "no trailers registered" from "overlay broken".
+            logger.warning(
+                "registry overlay failed for acct=%s — vehicle list is live-only",
+                user["account_id"], exc_info=True,
+            )
+            registry = []
+        if registry:
+            vehicles = _wh_reader.merge_registry_with_live(registry, vehicles)
     vehicles = filter_by_allowed_companies(vehicles, allowed)
     vehicles = await filter_by_assigned_trucks(vehicles, user)
 
@@ -323,7 +356,7 @@ async def vehicles_list(
         q = search.lower()
         result = [v for v in result if q in v["name"].lower()]
 
-    if status and status in ("moving", "idle", "stopped"):
+    if status and status in ("moving", "idle", "stopped", "no_telemetry"):
         result = [v for v in result if v["status"] == status]
 
     if sort and sort in ("name", "fuel_percent", "fault_count", "status", "company"):
@@ -507,6 +540,29 @@ async def vehicle_detail(
     matches = await _svc_vehicle_detail(user["account_id"], vehicle_name, company=company)
     matches = filter_by_allowed_companies(matches, allowed)
     matches = await filter_by_assigned_trucks(matches, user)
+    if not matches:
+        # Registry fallback — trailers and manual vehicles exist only
+        # in the registry (SSOT), so a row click on them must not land
+        # on "Vehicle not found".  merge_registry_with_live([v], [])
+        # synthesizes the same no-telemetry overview row the list uses.
+        tenant_reg = await _get_tenant_db(user["account_id"])
+        if tenant_reg is not None:
+            try:
+                registry = await tenant_reg.list_vehicles(
+                    user["account_id"], company_code=company,
+                )
+            except Exception:
+                logger.warning(
+                    "registry fallback failed for acct=%s vehicle=%s",
+                    user["account_id"], vehicle_name, exc_info=True,
+                )
+                registry = []
+            needle = vehicle_name.lower()
+            reg_matches = _wh_reader.merge_registry_with_live(
+                [v for v in registry if v.unit_number.lower() == needle], [],
+            )
+            reg_matches = filter_by_allowed_companies(reg_matches, allowed)
+            matches = await filter_by_assigned_trucks(reg_matches, user)
     if not matches:
         return {"error": "Vehicle not found", "vehicles": []}
 
