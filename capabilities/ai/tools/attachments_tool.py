@@ -154,9 +154,16 @@ async def propose_import(
 
     preview = build_import_preview(target, rows, skipped)
     n = len(rows)
+    if not summary:
+        # target.description doubles as the plural noun ("inventory
+        # items"); the card carries exact counts INCLUDING skips — the
+        # user approves what they can verify (fable-advisor §5.3).
+        summary = f"Import {n} {target.description or 'rows into ' + target.name}"
+        if skipped:
+            summary += f" — {len(skipped)} skipped"
     return tool_propose(
         tool,
-        summary or f"Import {n} rows into {target.name}",
+        summary,
         # Propose-time metadata for the card/audit trail; the executor
         # writes from the staged rows, never from this.
         payload={

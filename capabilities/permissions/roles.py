@@ -125,6 +125,7 @@ class FeatureSet:
     can_maintenance_vehicle: bool = False   # maintenance scheduler (assigned vehicle)
     can_work_orders_all: bool = False   # shop-invoice work orders (all trucks)
     can_work_orders_vehicle: bool = False   # shop-invoice work orders (assigned vehicle)
+    can_parts: bool = False             # parts catalog + per-part analytics (feature-owned gate; the WO editor's autocomplete read is shared — see features/parts)
     can_cost_reports: bool = False      # /cost-reports executive rollups (split off can_maintenance_all)
     can_scorecard_all: bool = False     # scorecards for all subjects (driver or vehicle)
     can_scorecard_vehicle: bool = False     # scorecards for the assigned vehicle(s) only
@@ -200,6 +201,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_parking_all=True, can_parking_vehicle=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
+        can_parts=True,
         can_cost_reports=True,
         can_scorecard_all=True, can_scorecard_vehicle=True,
         can_location_map=True, can_location_vehicle=True,
@@ -232,6 +234,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_geofence_all=True, can_geofence_vehicle=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
+        can_parts=True,
         can_cost_reports=True,
         can_scorecard_all=True, can_scorecard_vehicle=True,
         can_location_map=True, can_location_vehicle=True,
@@ -263,6 +266,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_geofence_all=True, can_geofence_vehicle=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
+        can_parts=True,
         can_cost_reports=True,
         can_scorecard_all=True, can_scorecard_vehicle=True,
         can_location_map=True, can_location_vehicle=True,
@@ -506,8 +510,9 @@ TIER_GRANTS: dict[Role, RoleTier] = {
     Role.ACCOUNTING: RoleTier(
         senior_label="Manager", base_label="Employee",
         # The accounting lead can review the shop invoices / maintenance
-        # records behind the cost numbers.
-        grants=frozenset({"can_work_orders_all", "can_maintenance_all"}),
+        # records behind the cost numbers (parts analytics included).
+        grants=frozenset({"can_work_orders_all", "can_maintenance_all",
+                          "can_parts"}),
     ),
 }
 
@@ -1106,6 +1111,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_maintenance_vehicle": "maintenance (assigned vehicle)",
     "can_work_orders_all": "work orders (all trucks)",
     "can_work_orders_vehicle": "work orders (assigned vehicle)",
+    "can_parts": "parts catalog & analytics",
     "can_parking_all": "parking events (all trucks)",
     "can_parking_vehicle": "parking events (assigned vehicle)",
     "can_cameras": "dashcam cameras",
@@ -1399,6 +1405,7 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     # the SAME flag is re-checked at the approve endpoint before the write.
     "create_maintenance_task":  ["can_maintenance_all"],                         # owner/admin/fleet/hr — mirrors POST /maintenance/tasks
     "acknowledge_alerts":       ["can_alerts_all", "can_alerts_vehicle"],        # owner/admin/fleet/safety/driver(own)
+    "import_inventory_items":   ["can_manage_vehicles"],                         # owner/admin/fleet/hr — mirrors POST /vehicles/{v}/inventory; also gates attachment parsing
 }
 
 # Tools that are account-wide — driver must NOT call these even if permitted
@@ -1416,6 +1423,10 @@ ACCOUNT_WIDE_TOOLS: frozenset[str] = frozenset({
     # below, so the gate ALLOWS + injects _scope_vehicles and the tool filters
     # the ids to the caller's own vehicles.
     "acknowledge_alerts",
+    # Bulk import across arbitrary vehicles (scope: account_unscoped) — no
+    # single vehicle to gate on, so scoped callers are blocked outright.
+    # Deliberately NOT in SCOPE_AWARE_TOOLS (the guard test enforces this).
+    "import_inventory_items",
 })
 
 # Account-wide tools that have been taught to FILTER their results to a
