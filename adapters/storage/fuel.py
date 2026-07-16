@@ -43,6 +43,25 @@ class FuelMixin:
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
+    async def get_fuel_entry_stats(self, account_id: int) -> dict:
+        """Account-wide fuel-entry existence stats: total entry count and
+        the first/last entry dates.  One cheap aggregate — lets an empty
+        WINDOW answer distinguish "nothing in that period (data exists,
+        newest on X)" from "this account has never recorded fuel data",
+        which need completely different user guidance."""
+        cur = await self._db.execute(
+            "SELECT COUNT(*) AS n, MIN(date) AS first_date, MAX(date) AS last_date"
+            " FROM fuel_entries WHERE account_id = ?",
+            (account_id,),
+        )
+        row = await cur.fetchone()
+        d = dict(row) if row else {}
+        return {
+            "count": int(d.get("n") or 0),
+            "first_date": d.get("first_date") or "",
+            "last_date": d.get("last_date") or "",
+        }
+
     async def get_fuel_summary(
         self, account_id: int,
         start_date: Optional[str] = None,

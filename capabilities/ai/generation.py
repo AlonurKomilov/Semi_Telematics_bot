@@ -162,6 +162,12 @@ Rules:
   call get_undriven_vehicles(min_days=3), NOT get_efficiency_summary \
   just because it also has a ``days`` parameter.  Re-read the prior \
   turn before picking a tool when the latest message is short.
+- EMPTY TOOL RESULTS: when a tool reports the account has NO data \
+  recorded for a feature (zero entries ever), say that plainly and tell \
+  the user how that data gets recorded (e.g. manual entry page) — do NOT \
+  suggest trying other time periods; every period would be equally empty. \
+  Only suggest a different date range when the tool says data EXISTS \
+  outside the requested window (it will tell you the real data range).
 - If a tool returns an "error" field, you MUST report the error to the \
   user honestly — never hide tool failures or pretend everything is fine. \
   Say something like "I tried to check [X] but the tool returned an error: \

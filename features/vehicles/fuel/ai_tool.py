@@ -79,7 +79,27 @@ async def get_vehicle_fuel_costs(tool_args: dict, samsara_client,
         entries = [e for e in entries if (e.get("date") or "") >= cutoff]
     if not entries:
         period = f" in the last {days} days" if days else ""
-        return {"vehicle": vehicle, "result": f"No fuel entries recorded for this vehicle{period}."}
+        stats = await db.get_fuel_entry_stats(account_id)
+        if stats["count"] == 0:
+            return {
+                "vehicle": vehicle,
+                "result": (
+                    "This account has NEVER recorded any fuel entries (for any "
+                    "vehicle) — fuel costs are manual entries (Costs → Fuel "
+                    "Costs → Add entry). Do not suggest other time periods; "
+                    "tell the user how entries get recorded."
+                ),
+                "entries_total": 0,
+            }
+        return {
+            "vehicle": vehicle,
+            "result": (
+                f"No fuel entries recorded for this vehicle{period}. The "
+                f"account has {stats['count']} entries for other vehicles/"
+                f"periods, spanning {stats['first_date']} to {stats['last_date']}."
+            ),
+            "entries_total": stats["count"],
+        }
     total_gal = sum(e.get("gallons", 0) for e in entries)
     total_cost = sum(e.get("total_cost", 0) for e in entries)
     return {
@@ -134,7 +154,40 @@ async def get_fuel_cost_summary(tool_args: dict, samsara_client,
     summary = await db.get_fuel_summary(account_id, start_date=start_date, end_date=end_date)
     summary = filter_to_scope(summary, tool_args, key="vehicle_name")
     if not summary:
-        return {"result": "No fuel entries recorded for this account."}
+        # Empty answers need to say WHICH kind of empty (the model can't
+        # guess, and "try another period" is wrong advice when the account
+        # has never recorded anything):
+        #   • zero entries EVER → say so + how data gets recorded, and
+        #     tell the model not to suggest other periods.
+        #   • entries exist but none in the requested window → echo the
+        #     window and the real data range so the model can point at it.
+        stats = await db.get_fuel_entry_stats(account_id)
+        window = (
+            f" between {start_date or 'the beginning'} and {end_date or 'now'}"
+            if (start_date or end_date) else ""
+        )
+        if stats["count"] == 0:
+            return {
+                "result": (
+                    "This account has NEVER recorded any fuel entries — the "
+                    "fuel-costs feature is fed by manual entries (Costs → "
+                    "Fuel Costs → Add entry, or ask an admin). There is no "
+                    "data for ANY time period, so do not suggest querying "
+                    "other dates; instead tell the user how entries get "
+                    "recorded."
+                ),
+                "entries_total": 0,
+            }
+        return {
+            "result": (
+                f"No fuel entries{window}. The account does have "
+                f"{stats['count']} entries recorded overall, spanning "
+                f"{stats['first_date']} to {stats['last_date']} — the user "
+                f"may want that range instead."
+            ),
+            "entries_total": stats["count"],
+            "data_range": {"first": stats["first_date"], "last": stats["last_date"]},
+        }
     result_items = []
     for s in summary[:20]:
         first_odo = s.get("first_odo") or 0
