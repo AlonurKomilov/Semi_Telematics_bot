@@ -140,6 +140,10 @@ const PERM_GROUPS: PermGroup[] = [
     flags: [
       { allKey: 'can_maintenance_all', vehicleKey: 'can_maintenance_vehicle', label: 'Maintenance', scoped: true },
       { allKey: 'can_work_orders_all', vehicleKey: 'can_work_orders_vehicle', label: 'Work Orders', scoped: true },
+      // Vendors rides can_work_orders_all (same audience, one matrix
+      // row governs both); Parts is feature-owned — its list still
+      // serves the WO editor's autocomplete for can_work_orders_all.
+      { key: 'can_parts', label: 'Parts', description: 'Parts catalog + per-part analytics (recurrence, price per vendor)' },
       { allKey: 'can_inspections_all', vehicleKey: 'can_inspections_vehicle', label: 'PTI Inspections', scoped: true },
     ],
   },

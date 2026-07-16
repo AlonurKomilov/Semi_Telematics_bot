@@ -1618,6 +1618,61 @@ export interface DirectoryEntry {
   my_review?: { rating: number; comment: string; status: string } | null;
 }
 
+/** Parts-catalog record (features/parts) with the list endpoint's
+ *  usage rollups. */
+export interface CatalogPart {
+  id: number;
+  account_id: number;
+  name: string;
+  name_key: string;
+  part_number: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  usage_count?: number;
+  total_spent?: number;
+}
+
+/** The part drill-down payload (GET /parts/{id}) — void invoices and
+ *  drafts never count, same rule as every cost report. */
+export interface PartAnalytics {
+  part: CatalogPart;
+  by_vehicle: Array<{
+    vehicle_name: string;
+    usage_count: number;
+    work_order_count: number;
+    total_quantity: number;
+    total_spent: number;
+    first_date: string | null;
+    last_date: string | null;
+    visit_days: number;
+    /** Mean gap between distinct service days; null under 2 visits. */
+    avg_interval_days: number | null;
+  }>;
+  by_vendor: Array<{
+    vendor_name: string;
+    vendor_id: number | null;
+    purchases: number;
+    total_quantity: number;
+    total_spent: number;
+    avg_unit_price: number | null;
+    min_unit_price: number | null;
+    max_unit_price: number | null;
+    last_date: string | null;
+  }>;
+  purchases: Array<{
+    work_order_id: number;
+    service_date: string;
+    vehicle_name: string;
+    vendor_name: string;
+    quantity: number;
+    unit_cost: number;
+    total_cost: number;
+    service_task: string;
+    effective_unit_price: number | null;
+  }>;
+}
+
 /** Anonymized market rollup row (Phase D — published shape only). */
 export interface MarketRollupRow {
   dim_type: 'service_task' | 'part';

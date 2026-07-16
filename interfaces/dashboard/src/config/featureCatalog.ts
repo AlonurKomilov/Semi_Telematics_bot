@@ -36,7 +36,7 @@ import {
   IdCard, GraduationCap, Link, UserPlus,
   Fuel, DollarSign, CreditCard,
   Users, Building2, Shield, Cloud, ClipboardList, Settings as SettingsIcon,
-  Plug, Store,
+  Plug, Store, Cog,
   type LucideIcon, Boxes } from 'lucide-react';
 
 export type Module =
@@ -119,6 +119,9 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'maintenance', labelKey: 'nav.maintenance', path: '/maintenance', icon: Wrench,         modules: ['fleet'], tier: 'role', permission: ['can_maintenance_all', 'can_maintenance_vehicle'], navGroup: 'operations' },
   { id: 'work_orders', labelKey: 'nav.work_orders', path: '/work-orders', icon: Receipt,        modules: ['fleet'], tier: 'role', permission: ['can_work_orders_all', 'can_work_orders_vehicle'], navGroup: 'operations' },
   { id: 'vendors', labelKey: 'nav.vendors', path: '/vendors', icon: Store,             modules: ['fleet'], tier: 'role', permission: 'can_work_orders_all', navGroup: 'operations' },
+  // Parts — master data + per-part analytics (recurrence, price per
+  // vendor).  Graduated from a Work Orders component; feature-owned gate.
+  { id: 'parts', labelKey: 'nav.parts', path: '/parts', icon: Cog,                      modules: ['fleet'], tier: 'role', permission: 'can_parts', navGroup: 'operations' },
   { id: 'inspections', labelKey: 'nav.inspections', path: '/inspections', icon: ClipboardCheck, modules: ['fleet'], tier: 'role', permission: ['can_inspections_all', 'can_inspections_vehicle'], navGroup: 'operations' },
   // Geofences: zones serve both fleet (sites/yards) and dispatch
   // (routing boundaries) — surfaced when EITHER department is on.

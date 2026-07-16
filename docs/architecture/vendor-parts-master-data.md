@@ -43,6 +43,17 @@ data to another.
 - **Parts catalog = component of Work Orders** in Phase B (its only surface
   is the parts-editor autocomplete + reports).  It graduates to its own
   feature folder only if/when it grows a standalone management screen.
+  **GRADUATED 2026-07-16** (owner decision): `features/parts/` +
+  `src/features/parts/` with the standalone Parts page + per-part
+  drill-down (recurrence per vehicle w/ mean-gap early warning, price
+  per vendor, purchase history + trend).  Feature-owned permission
+  `can_parts` (owner/admin/fleet + accounting senior tier) — NOT
+  can_work_orders_all; the one shared read is `GET /parts` (list),
+  which also accepts can_work_orders_all because it feeds the WO
+  editor's autocomplete.  Wire moved `/work-orders/parts-catalog…` →
+  `/parts…` with the old URLs as deprecated same-handler aliases
+  (alias==primary test-pinned; the alias router registers BEFORE the
+  WO router so `/{work_order_id}` can't capture "parts-catalog").
 - **Global directory (C/D) = platform sub-family**:
   `capabilities/platform/vendor_directory/` — system-owner domain like
   Billing; curated on system.4truck.us; guarded by test_layer_boundaries.

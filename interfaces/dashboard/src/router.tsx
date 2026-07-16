@@ -90,6 +90,8 @@ const Kpi              = lazyWithReload(() => import('./features/kpi/Kpi'));
 const WorkOrderForm    = lazyWithReload(() => import('./features/work-orders/WorkOrderForm'));
 const Vendors          = lazyWithReload(() => import('./features/vendors/Vendors'));
 const VendorProfile    = lazyWithReload(() => import('./features/vendors/VendorProfile'));
+const Parts            = lazyWithReload(() => import('./features/parts/Parts'));
+const PartDetail       = lazyWithReload(() => import('./features/parts/PartDetail'));
 const CostReports      = lazyWithReload(() => import('./features/reports/CostReports'));
 // Inspections page hosts both the submissions list AND the template
 // editor (as tabs) — the editor is fleet's tool, not a separate admin
@@ -242,6 +244,8 @@ export default function AppRouter() {
             read it (their WO visibility is per-truck). */}
         <Route path="vendors"             element={L(<P perm="can_work_orders_all"><Vendors /></P>)} />
         <Route path="vendors/:id"         element={L(<P perm="can_work_orders_all"><VendorProfile /></P>)} />
+        <Route path="parts"               element={L(<P perm="can_parts"><Parts /></P>)} />
+        <Route path="parts/:id"           element={L(<P perm="can_parts"><PartDetail /></P>)} />
         <Route path="work-orders/new"     element={L(<P perm="can_maintenance_all"><WorkOrderForm /></P>)} />
         <Route path="work-orders/:id"     element={L(<P perm={['can_maintenance_all', 'can_maintenance_vehicle']}><WorkOrderForm /></P>)} />
         {/* Cost Reports route lives under /reports/* (see above) since

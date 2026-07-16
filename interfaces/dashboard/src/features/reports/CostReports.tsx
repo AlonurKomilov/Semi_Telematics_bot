@@ -584,6 +584,13 @@ export default function Reports() {
                   data={partRows as unknown as Record<string, unknown>[]}
                   enableToolbar={false}
                   enablePagination={false}
+                  onRowClick={(row) => {
+                    // Drill into the part profile (recurrence per
+                    // vehicle, price per vendor) when the line is
+                    // catalog-linked.
+                    const pid = (row as { part_id?: number | null }).part_id;
+                    if (pid != null) navigate(`/parts/${pid}`);
+                  }}
                 />
               )}
             </ChartCard>

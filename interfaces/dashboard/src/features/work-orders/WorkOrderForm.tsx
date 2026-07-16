@@ -196,7 +196,7 @@ export default function WorkOrderForm() {
   // from whatever name is saved, picked or free-typed).
   const { data: catalogData } = useQuery<{ parts: Array<{ id: number; name: string }> }>({
     queryKey: ['parts-catalog'],
-    queryFn: () => apiJSON('/work-orders/parts-catalog'),
+    queryFn: () => apiJSON('/parts'),
     staleTime: 60_000,
   });
   const catalogParts = catalogData?.parts ?? [];

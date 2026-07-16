@@ -52,6 +52,7 @@ from features.events import router as events_routes
 from features.costs import router as costs_routes
 from features.maintenance import router as maintenance_routes
 from features.work_orders import router as work_orders_routes
+from features.parts import router as parts_routes
 from features.vendors import router as vendors_routes
 from capabilities.platform.vendor_directory import router as vendor_directory_routes
 from features.loads import router as loads_routes
@@ -413,7 +414,12 @@ def create_api() -> FastAPI:
         app.include_router(carrier_directory_routes.router, prefix=prefix)
         app.include_router(permissions_routes.router, prefix=prefix)
         app.include_router(maintenance_routes.router, prefix=prefix)
+        # parts legacy aliases FIRST: /work-orders/parts-catalog must
+        # register before the WO router's /{work_order_id} int param
+        # captures "parts-catalog" as an id.
+        app.include_router(parts_routes.legacy_router, prefix=prefix)
         app.include_router(work_orders_routes.router, prefix=prefix)
+        app.include_router(parts_routes.router, prefix=prefix)
         app.include_router(vendors_routes.router, prefix=prefix)
         app.include_router(vendor_directory_routes.router, prefix=prefix)
         app.include_router(inspections_routes.router, prefix=prefix)

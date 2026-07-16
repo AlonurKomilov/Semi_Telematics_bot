@@ -272,41 +272,10 @@ async def create_work_order(
     return {"id": wo_id, "status": "created"}
 
 
-# NOTE: declared BEFORE the /{work_order_id} routes — "parts-catalog" is a
-# single path segment and would otherwise be captured by the int param.
-@router.get("/parts-catalog")
-async def list_parts_catalog(
-    user: dict = Depends(require_permission("can_work_orders_all")),
-    tenant_db=Depends(get_tenant_db),
-):
-    """Per-account parts catalog with usage rollups — feeds the parts
-    editor's autocomplete.  Manager-gated like the rest of the parts
-    write surface (usage totals aggregate the whole account)."""
-    return {"parts": await tenant_db.list_parts_catalog(user["account_id"])}
-
-
-@router.post("/parts-catalog/{loser_id}/merge-into/{winner_id}")
-async def merge_parts_catalog(
-    loser_id: int,
-    winner_id: int,
-    user: dict = Depends(require_permission("can_work_orders_all")),
-    tenant_db=Depends(get_tenant_db),
-):
-    """Fold a duplicate catalog part into the canonical one (same
-    contract as vendor merge: repoint lines, alias the loser's key so
-    re-syncs resolve to the survivor, delete the loser)."""
-    if loser_id == winner_id:
-        raise HTTPException(status_code=422, detail="Cannot merge a part into itself")
-    ok = await tenant_db.merge_catalog_parts(user["account_id"], loser_id, winner_id)
-    if not ok:
-        raise HTTPException(status_code=404, detail="Catalog part not found")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "part_catalog_merge",
-        target_type="part", target_id=str(winner_id),
-        details=f"merged #{loser_id} into #{winner_id}",
-    )
-    return {"ok": True}
+# Parts master data GRADUATED to features/parts (own /parts prefix +
+# can_parts gate).  The old /work-orders/parts-catalog URLs live on
+# there as deprecated aliases; this router only CONSUMES parts via
+# ``resolve_or_create_part`` on line saves.
 
 
 @router.get("/{work_order_id}")
