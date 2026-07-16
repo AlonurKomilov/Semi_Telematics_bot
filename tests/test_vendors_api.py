@@ -238,3 +238,33 @@ async def test_market_not_sharing_exposes_count_only(seeded, monkeypatch):
         assert body["available_count"] == 2
         assert body["rows"] == []
         assert "p25" not in str(body)
+
+
+@pytest.mark.asyncio
+async def test_vehicle_history_includes_work_orders_manager_only(seeded):
+    """Tier-2 B2 (lives here for the app harness): completed shop
+    invoices join /maintenance/history/{vehicle}; drafts stay out;
+    drivers never receive the money-bearing work_orders array."""
+    db = seeded["db"]
+    acct = seeded["acct"]
+    await db.add_work_order(
+        acct.id, "VC", "T-1", "History Shop",
+        service_date="2026-07-03", total_cost=250.0, status="submitted",
+    )
+    transport = ASGITransport(app=seeded["app"])
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.get("/api/maintenance/history/T-1",
+                        headers=_h(seeded["token_fleet"]))
+        assert r.status_code == 200, r.text
+        body = r.json()
+        wos = body.get("work_orders") or []
+        mine = [w for w in wos if w["vendor_name"] == "History Shop"]
+        assert len(mine) == 1
+        assert mine[0]["total_cost"] == 250.0
+        # The seeded DRAFT work order stays out of history.
+        assert all(w["vendor_name"] != "Gate Test Repair" for w in wos)
+
+        # Driver: no assigned trucks → safe-deny 404 (and never money).
+        r = await c.get("/api/maintenance/history/T-1",
+                        headers=_h(seeded["token_driver"]))
+        assert r.status_code in (403, 404)

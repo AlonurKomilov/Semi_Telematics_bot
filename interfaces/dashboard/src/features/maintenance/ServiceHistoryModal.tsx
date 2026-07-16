@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
-import { X } from 'lucide-react';
+import { Check, FileText, Receipt, X } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { apiJSON } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
@@ -35,9 +35,24 @@ function buildMonthlySeries(tasks: MaintenanceTask[]): Array<{ label: string; co
   return months.map(m => ({ label: m.label, count: buckets.get(m.key) ?? 0 }));
 }
 
+/** Slim invoice row merged into the vehicle timeline (Tier-2 B2).
+ *  Present only for callers with can_work_orders_all. */
+interface HistoryWorkOrder {
+  id: number;
+  service_date: string | null;
+  vendor_name: string;
+  invoice_number: string;
+  repair_priority: string;
+  payment_status: string;
+  labor_cost: number;
+  parts_cost: number;
+  total_cost: number;
+}
+
 interface ServiceHistoryResponse {
   vehicle_name: string;
   tasks: MaintenanceTask[];
+  work_orders?: HistoryWorkOrder[];
   summary: {
     total_completed: number;
     total_cancelled: number;
@@ -79,6 +94,34 @@ export function ServiceHistoryModal({
     );
   }, [data]);
 
+  // Tier-2 B2 — one chronological timeline: completed tasks + shop
+  // invoices.  WOs already linked from a task are deduped (the task
+  // card carries the link); the rest render as standalone invoice
+  // cards.  Standalone-WO spend joins the Total Spend stat.
+  const { entries, standaloneWoCents } = useMemo(() => {
+    const tasks = (data?.tasks ?? []).map(t => ({
+      kind: 'task' as const,
+      date: t.completed_at || t.created_at || '',
+      task: t,
+      wo: undefined as HistoryWorkOrder | undefined,
+    }));
+    const linked = new Set(
+      (data?.tasks ?? []).map(t => t.work_order_id).filter(Boolean),
+    );
+    const wos = (data?.work_orders ?? [])
+      .filter(w => !linked.has(w.id))
+      .map(w => ({
+        kind: 'wo' as const,
+        date: w.service_date || '',
+        task: undefined as MaintenanceTask | undefined,
+        wo: w,
+      }));
+    const merged = [...tasks, ...wos].sort((a, b) => (b.date > a.date ? 1 : -1));
+    const cents = wos.reduce((s2, e) => s2 + Math.round((e.wo?.total_cost ?? 0) * 100), 0);
+    return { entries: merged, standaloneWoCents: cents };
+  }, [data]);
+  const spendCents = totalCostCents + standaloneWoCents;
+
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-start pt-12" onClick={onClose}>
       <div
@@ -116,8 +159,8 @@ export function ServiceHistoryModal({
               <div className="bg-muted rounded-lg p-3">
                 <p className="text-xs text-muted-foreground">Total Spend</p>
                 <p className="text-xl font-bold tabular-nums">
-                  {totalCostCents > 0
-                    ? `$${(totalCostCents / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                  {spendCents > 0
+                    ? `$${(spendCents / 100).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
                     : '—'}
                 </p>
               </div>
@@ -189,11 +232,45 @@ export function ServiceHistoryModal({
               </div>
             )}
 
-            {data.tasks.length === 0 ? (
+            {entries.length === 0 ? (
               <p className="text-sm text-muted-foreground">No completed services yet.</p>
             ) : (
               <ul className="space-y-2">
-                {data.tasks.map(task => (
+                {entries.map(entry => entry.kind === 'wo' && entry.wo ? (
+                  <li
+                    key={`wo-${entry.wo.id}`}
+                    className="flex items-start gap-3 p-3 bg-muted/40 border border-border rounded-lg"
+                  >
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 text-sm">
+                        <span className="inline-flex items-center gap-1.5 text-foreground font-medium">
+                          <Receipt size={14} className="text-muted-foreground" />
+                          Work order{entry.wo.invoice_number ? ` · Inv ${entry.wo.invoice_number}` : ''}
+                        </span>
+                        <StatusBadge status={entry.wo.payment_status} />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {entry.date ? formatDate(entry.date, { timeZone: tz }) : '—'}
+                        {entry.wo.vendor_name && <> · {entry.wo.vendor_name}</>}
+                        {entry.wo.total_cost > 0 && (
+                          <> · ${Number(entry.wo.total_cost).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                            {entry.wo.labor_cost > 0 || entry.wo.parts_cost > 0
+                              ? ` (parts $${Number(entry.wo.parts_cost).toLocaleString(undefined, { maximumFractionDigits: 0 })} · labor $${Number(entry.wo.labor_cost).toLocaleString(undefined, { maximumFractionDigits: 0 })})`
+                              : ''}
+                          </>
+                        )}
+                      </p>
+                      <a
+                        href={`/work-orders/${entry.wo.id}`}
+                        className="text-xs mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-muted hover:bg-muted/80 border border-border rounded text-foreground"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        <FileText size={12} />
+                        Open work order #{entry.wo.id}
+                      </a>
+                    </div>
+                  </li>
+                ) : entry.task ? ((task => (
                   <li
                     key={task.id}
                     className="flex items-start gap-3 p-3 bg-muted/40 border border-border rounded-lg"
@@ -222,7 +299,7 @@ export function ServiceHistoryModal({
                       </p>
                       {task.attested_at && (
                         <p className="text-xs mt-1 inline-flex items-center gap-1 text-ok">
-                          <span aria-hidden>✓</span>
+                          <Check size={12} aria-hidden />
                           Attested by{' '}
                           <span className="font-medium">
                             {task.attested_by_name || `user ${task.attested_by}`}
@@ -236,13 +313,13 @@ export function ServiceHistoryModal({
                           className="text-xs mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 bg-muted hover:bg-muted/80 border border-border rounded text-foreground"
                           onClick={e => e.stopPropagation()}
                         >
-                          <span aria-hidden>📄</span>
+                          <FileText size={12} aria-hidden />
                           Work Order #{task.work_order_id}
                         </a>
                       )}
                     </div>
                   </li>
-                ))}
+                ))(entry.task)) : null)}
               </ul>
             )}
           </>

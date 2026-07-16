@@ -1139,9 +1139,34 @@ async def get_service_history(
     name_map = await _build_user_name_map(user["account_id"], platform_db)
     enriched = [_enrich_task(t, name_map) for t in closed]
 
+    # Tier-2 B2: completed shop invoices join the vehicle's history.
+    # Manager-gated like the Work Orders pages themselves — drivers
+    # keep the tasks-only view (WO rows carry invoice money).
+    work_orders: list[dict] = []
+    if can(user["role"], "can_work_orders_all"):
+        wos = await tenant_db.list_work_orders(
+            user["account_id"], vehicle_name=vehicle_name,
+        )
+        work_orders = [
+            {
+                "id": w["id"],
+                "service_date": w.get("service_date"),
+                "vendor_name": w.get("vendor_name") or "",
+                "invoice_number": w.get("invoice_number") or "",
+                "repair_priority": w.get("repair_priority") or "",
+                "payment_status": w.get("payment_status") or "",
+                "labor_cost": w.get("labor_cost") or 0,
+                "parts_cost": w.get("parts_cost") or 0,
+                "total_cost": w.get("total_cost") or 0,
+            }
+            for w in wos
+            if w.get("status") not in ("draft", "void") and w.get("service_date")
+        ]
+
     return {
         "vehicle_name": vehicle_name,
         "tasks": enriched,
+        "work_orders": work_orders,
         "summary": {
             "total_completed": sum(1 for t in closed if t.get("status") in ("completed", "done")),
             "total_cancelled": sum(1 for t in closed if t.get("status") == "cancelled"),
