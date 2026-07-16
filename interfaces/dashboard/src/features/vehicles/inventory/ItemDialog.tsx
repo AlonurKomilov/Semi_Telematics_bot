@@ -122,12 +122,15 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
             <input value={label} onChange={(e) => setLabel(e.target.value)}
               placeholder="e.g. Samsara CM32, EFS card…" className={`mt-1 ${inputCls}`} />
           </label>
-          <label className="block">
+          {/* col-reverse: input FIRST in DOM so the implicit label keeps
+              targeting it — an InfoTip <button> before the input would
+              steal the association (label click toggles the tip). */}
+          <label className="flex flex-col-reverse">
+            <input value={identifier} onChange={(e) => setIdentifier(e.target.value)}
+              placeholder="serial · card last-4 · transponder №" className={`mt-1 ${inputCls}`} />
             <span className={`${labelCls} inline-flex items-center gap-1`}>
               Identifier <InfoTip size={12} label="The serial number, card last-4 or transponder № — what proves THIS unit is the one that went missing or was damaged." />
             </span>
-            <input value={identifier} onChange={(e) => setIdentifier(e.target.value)}
-              placeholder="serial · card last-4 · transponder №" className={`mt-1 ${inputCls}`} />
           </label>
           <label className="block">
             <span className={labelCls}>Notes <span className="font-normal">(optional)</span></span>
@@ -261,15 +264,18 @@ export function ItemDialog({ vehicleName, company, item, statuses, canManage, on
                   the operator takes (status / transfer / verify / remove)
                   and lands in the permanent trail — placed beside the
                   action buttons it annotates. */}
-              <label className="block">
-                <span className={`${labelCls} inline-flex items-center gap-1`}>
-                  Note <InfoTip size={12} label="Saved to the permanent history together with your next action (status change, transfer, verify or remove)." />
-                </span>
+              {/* col-reverse: input FIRST in DOM so the implicit label
+                  keeps targeting it — an InfoTip <button> before the
+                  input would steal the association. */}
+              <label className="flex flex-col-reverse">
                 <input
                   value={note} onChange={(e) => setNote(e.target.value)}
                   placeholder="Optional note…"
                   className={`mt-1 ${inputCls}`}
                 />
+                <span className={`${labelCls} inline-flex items-center gap-1`}>
+                  Note <InfoTip size={12} label="Saved to the permanent history together with your next action (status change, transfer, verify or remove)." />
+                </span>
               </label>
 
               <div className="flex items-center justify-between gap-2 pt-1">

@@ -4,7 +4,7 @@ import { WO_PREFILL_STATE_KEY, type WorkOrderPrefill } from './createFrom';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Tip } from '../../components/tooltip';
+import { InfoTip, Tip } from '../../components/tooltip';
 import {
   FileText, Save, ArrowLeft, Trash2, Plus, Paperclip,
   Receipt, X, Link as LinkIcon, Image as ImageIcon, Loader2,
@@ -22,6 +22,7 @@ import type {
 } from '../../types';
 import { VehiclePicker, type VehicleSummary } from '../maintenance/pickers';
 import { VendorPicker } from '../vendors/VendorPicker';
+import { DIRECTORY_DISCLOSURE } from '../vendors/directoryCopy';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay, todayInTimeZone } from '../../utils/datetime';
 
@@ -852,7 +853,7 @@ export default function WorkOrderForm() {
               className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
             />
           </Field>
-          <Field label={t('work_orders_page.field_vendor_address')}>
+          <Field label={t('work_orders_page.field_vendor_address')} tip={DIRECTORY_DISCLOSURE}>
             <input
               type="text"
               value={wo.vendor_address || ''}
@@ -1149,15 +1150,33 @@ export default function WorkOrderForm() {
 
 // ── Small subcomponents ────────────────────────────────────────
 
-function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
+function Field({ label, required, tip, children }: { label: string; required?: boolean; tip?: React.ReactNode; children: React.ReactNode }) {
   // Wrap children inside <label> so the input/select/textarea is
   // implicitly associated — screen readers announce the label when the
   // field receives focus, and clicking the text focuses the control.
+  const caption = (
+    <span className="block text-xs text-muted-foreground mb-1">
+      {label}{required && <span className="text-destructive ml-0.5">*</span>}
+      {tip && <span className="ml-1 inline-flex align-middle"><InfoTip size={12} label={tip} /></span>}
+    </span>
+  );
+  // With a tip, the InfoTip <button> must not precede the control in
+  // DOM order — the implicit label targets its FIRST labelable
+  // descendant, and a button before the input steals that association
+  // (clicking the label text would toggle the tip, not focus the
+  // field).  col-reverse keeps the control first while rendering the
+  // caption on top.
+  if (tip) {
+    return (
+      <label className="flex flex-col-reverse">
+        {children}
+        {caption}
+      </label>
+    );
+  }
   return (
     <label className="block">
-      <span className="block text-xs text-muted-foreground mb-1">
-        {label}{required && <span className="text-destructive ml-0.5">*</span>}
-      </span>
+      {caption}
       {children}
     </label>
   );

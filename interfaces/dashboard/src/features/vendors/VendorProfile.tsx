@@ -20,7 +20,8 @@ import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../components/ui/select';
 import { Button } from '../../components/ui/button';
-import { Tip } from '../../components/tooltip';
+import { InfoTip, Tip } from '../../components/tooltip';
+import { DIRECTORY_DISCLOSURE } from './directoryCopy';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { TASK_TYPE_OPTIONS } from '../maintenance/badges';
 import { useTimezone } from '../../hooks/useTimezone';
@@ -422,8 +423,11 @@ export default function VendorProfile() {
               ['email', 'Email', 'shop@example.com'],
               ['address', 'Address', 'Street, City, State'],
             ] as const).map(([key, label, ph]) => (
-              <label key={key} className="flex flex-col gap-1">
-                <span className="text-xs text-muted-foreground">{label}</span>
+              // col-reverse: the input stays FIRST in DOM order so the
+              // implicit label keeps targeting it (an InfoTip <button>
+              // before the input would steal the association — clicking
+              // the label text would toggle the tip, not focus the field).
+              <label key={key} className="flex flex-col-reverse gap-1">
                 <input
                   type="text"
                   value={editForm[key]}
@@ -431,6 +435,10 @@ export default function VendorProfile() {
                   placeholder={ph}
                   className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
                 />
+                <span className="text-xs text-muted-foreground inline-flex items-center gap-1">
+                  {label}
+                  {key === 'address' && <InfoTip size={12} label={DIRECTORY_DISCLOSURE} />}
+                </span>
               </label>
             ))}
             <label className="flex flex-col gap-1">
