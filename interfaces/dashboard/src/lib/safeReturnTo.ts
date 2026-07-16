@@ -30,6 +30,31 @@
 export const APEX_DOMAIN =
   (import.meta.env.VITE_APEX_DOMAIN as string | undefined) ?? '4truck.us';
 
+/**
+ * Explicit sign-out marker — set by ``AuthContext.logout`` right before
+ * it clears the token, consumed by ``App``'s unauth bounce.
+ *
+ * Why: once the token is cleared, any in-flight request 401s, the user
+ * state nulls, and App's bounce fires ``apex/login?return_to=<page>``
+ * — racing (and cancelling) the logout POST.  When this flag is set,
+ * the bounce goes to the CLEAN apex ``/login`` instead, so a
+ * deliberate sign-out can never be re-forwarded back to the page it
+ * came from.  sessionStorage is per-tab, which is exactly right: only
+ * the tab where the user clicked "Sign out" gets the clean landing.
+ */
+export const EXPLICIT_SIGNOUT_KEY = 'explicit_signout';
+
+/** True (and clears the flag) if this tab is mid-explicit-sign-out. */
+export function consumeExplicitSignout(): boolean {
+  try {
+    if (sessionStorage.getItem(EXPLICIT_SIGNOUT_KEY) === '1') {
+      sessionStorage.removeItem(EXPLICIT_SIGNOUT_KEY);
+      return true;
+    }
+  } catch { /* private mode */ }
+  return false;
+}
+
 export function isSafeReturnTo(raw: string | null | undefined, apex: string = APEX_DOMAIN): boolean {
   if (!raw) return false;
   if (!raw.startsWith('https://')) return false;

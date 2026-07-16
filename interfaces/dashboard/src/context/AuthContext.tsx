@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
 import { apiJSON, getToken, setToken, clearToken, isTokenPersistent } from '../api/client';
-import { isSafeReturnTo, APEX_DOMAIN as SAFE_APEX_DOMAIN } from '../lib/safeReturnTo';
+import { isSafeReturnTo, APEX_DOMAIN as SAFE_APEX_DOMAIN, EXPLICIT_SIGNOUT_KEY } from '../lib/safeReturnTo';
 import i18n from '../i18n';
 import type { User, TelegramLoginData, AuthResponse } from '../types';
 
@@ -278,13 +278,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // freshly-logged-in Safety user to whichever persona host they
     // logged out from.
     //
-    // The navigation tear-down handles state cleanup; we don't need
-    // setUser.  Clear localStorage so any in-flight request stops
-    // sending the Bearer header, then await the server-side cookie
-    // clear, then navigate.
+    // Avoiding setUser is NOT enough by itself: once clearToken()
+    // drops the Bearer, any in-flight/polling request 401s, the 401
+    // handler nulls the user, and App.tsx bounces anyway.  Two guards
+    // close the remaining race:
+    //   1. The EXPLICIT_SIGNOUT flag below — App.tsx's bounce sees it
+    //      and goes to the clean apex /login (no return_to).
+    //   2. ``keepalive: true`` on the logout POST — the racing
+    //      ``location.replace`` would otherwise CANCEL this request,
+    //      leaving the shared ``.4truck.us`` cookie alive server-side;
+    //      the apex then sees a live session and re-forwards to
+    //      return_to → dash rejects → bounce → … the login↔dash loop.
+    try {
+      sessionStorage.setItem(EXPLICIT_SIGNOUT_KEY, '1');
+    } catch { /* private mode — the keepalive guard still applies */ }
     clearToken();
     try {
-      await apiJSON('/auth/logout', { method: 'POST' });
+      await fetch('/api/auth/logout', {
+        method: 'POST', credentials: 'include', keepalive: true,
+      });
     } catch {
       /* server unreachable — cookie expires on its own TTL */
     }

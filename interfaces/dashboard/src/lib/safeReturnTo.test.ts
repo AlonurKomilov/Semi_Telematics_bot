@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isSafeReturnTo } from './safeReturnTo';
+import { isSafeReturnTo, consumeExplicitSignout, EXPLICIT_SIGNOUT_KEY } from './safeReturnTo';
 
 /**
  * Regression guard for the open-redirect vulnerability in the
@@ -76,5 +76,17 @@ describe('isSafeReturnTo — rejects open-redirect payloads', () => {
   it('host matching is case-insensitive', () => {
     expect(isSafeReturnTo('https://DASH.4TRUCK.US/', APEX)).toBe(true);
     expect(isSafeReturnTo('https://4truck.us.ATTACKER.com/', APEX)).toBe(false);
+  });
+});
+
+describe('consumeExplicitSignout', () => {
+  it('is one-shot: true only while the flag is set, and clears it', () => {
+    sessionStorage.removeItem(EXPLICIT_SIGNOUT_KEY);
+    expect(consumeExplicitSignout()).toBe(false);
+    sessionStorage.setItem(EXPLICIT_SIGNOUT_KEY, '1');
+    expect(consumeExplicitSignout()).toBe(true);
+    // consumed — a later unauth bounce must behave normally again
+    expect(consumeExplicitSignout()).toBe(false);
+    expect(sessionStorage.getItem(EXPLICIT_SIGNOUT_KEY)).toBeNull();
   });
 });

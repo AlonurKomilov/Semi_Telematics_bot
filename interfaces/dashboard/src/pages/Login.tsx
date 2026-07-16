@@ -231,6 +231,10 @@ export default function Login() {
     script.setAttribute('data-telegram-login', botUsername);
     script.setAttribute('data-size', 'large');
     script.setAttribute('data-radius', '8');
+    // No userpic tile: the avatar renders INSIDE Telegram's iframe on
+    // its own dark rounded square, which we can't theme — on the light
+    // login card it reads as a black glitch next to the button.
+    script.setAttribute('data-userpic', 'false');
     script.setAttribute('data-onauth', '__onTelegramAuth(user)');
     script.setAttribute('data-request-access', 'write');
     el.appendChild(script);

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
-import { isSafeReturnTo, APEX_DOMAIN } from './lib/safeReturnTo';
+import { isSafeReturnTo, APEX_DOMAIN, consumeExplicitSignout } from './lib/safeReturnTo';
 import AppRouter from './router';
 import PendingInviteBanner from './components/PendingInviteBanner';
 import Login from './pages/Login';
@@ -103,13 +103,25 @@ async function hardLogoutOnLoop(): Promise<void> {
   try {
     localStorage.removeItem('access_token');
     sessionStorage.removeItem('access_token');
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    // keepalive: the location.replace below must not cancel this POST —
+    // if it does, the shared cookie survives and the loop resumes.
+    await fetch('/api/auth/logout', {
+      method: 'POST', credentials: 'include', keepalive: true,
+    });
   } catch { /* best-effort */ }
   clearBounceCounter();
   window.location.replace(`https://${APEX_DOMAIN}/login`);
 }
 
 function bounceToApexLogin(): void {
+  // Deliberate sign-out (AuthContext.logout set the flag): land on the
+  // CLEAN apex login.  A ``return_to`` here would let the apex forward
+  // the user straight back to the page they just signed out from —
+  // the engine of the sign-out → login → dash bounce loop.
+  if (consumeExplicitSignout()) {
+    window.location.replace(`https://${APEX_DOMAIN}/login`);
+    return;
+  }
   if (recordBounceAndCheckLoop()) {
     void hardLogoutOnLoop();
     return;
