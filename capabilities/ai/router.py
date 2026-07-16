@@ -65,6 +65,18 @@ def _safe_error_message(exc: Exception, max_len: int = 200) -> str:
 
 # ── Request / Response models ────────────────────────────────────
 
+class ChatAttachment(BaseModel):
+    """A device-held file's text, riding inline for THIS turn only.
+
+    The file itself stays on the user's device (browser storage); the
+    server parses this transiently and persists nothing (see
+    docs/architecture/ai-import-assistant.md).  Caps mirror the
+    attachments module; the 2MB body middleware is the outer ceiling.
+    """
+    name: str = Field(..., min_length=1, max_length=120)
+    content: str = Field(..., min_length=1, max_length=1_400_000)
+
+
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     # Thread targeting (dashboard History panel).  ``conversation_id``
@@ -79,6 +91,9 @@ class ChatRequest(BaseModel):
     # vehicle scope are still authorized from the JWT, never from this.
     # Same trust boundary as the X-View-As persona preview.
     page_context: dict | None = None
+    # Transient CSV attachments (imports).  Streaming path only — the
+    # non-streaming path suppresses writes, so it rejects these too.
+    attachments: list[ChatAttachment] | None = Field(default=None, max_length=3)
 
 
 class DiagnoseRequest(BaseModel):
@@ -230,7 +245,13 @@ async def ai_chat(
     # both of which live only on the STREAMING path (dashboard).  This
     # non-streaming endpoint is used by the Telegram miniapp, which has
     # neither — so suppress write tools here to avoid proposing an action
-    # the user could never approve.  (Reads are unaffected.)
+    # the user could never approve.  (Reads are unaffected.)  Attachments
+    # exist purely to feed imports (writes), so they're rejected here too.
+    if body.attachments:
+        raise HTTPException(
+            status_code=400,
+            detail="Attachments aren't supported on this surface — use the dashboard assistant.",
+        )
     if user_context is not None:
         user_context["suppress_writes"] = True
 
@@ -390,6 +411,27 @@ async def ai_chat_stream(
     # Copilot page context — same prompt hint as the non-streaming path.
     if user_context is not None and body.page_context:
         user_context["page_context"] = body.page_context
+    # Transient attachments: parse the device-held file text into grids
+    # that live ONLY in this request's scope (nothing persists — see
+    # docs/architecture/ai-import-assistant.md).  Gated inside the
+    # helper to callers holding at least one write-tool permission.
+    if body.attachments:
+        from capabilities.ai.attachments import (
+            AttachmentError, parse_attachments_for_request,
+        )
+        if user_context is not None and user_context.get("preview_active"):
+            raise HTTPException(
+                status_code=400,
+                detail="Attachments are disabled while previewing another role.",
+            )
+        try:
+            grids = await parse_attachments_for_request(
+                body.attachments, user.get("role"), account_id,
+            )
+        except AttachmentError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        if user_context is not None and grids:
+            user_context["_attachment_grids"] = grids
 
     try:
         # Implicit-satisfaction markers (timing + phrase).  Same as
@@ -466,16 +508,24 @@ async def ai_chat_stream(
                                 and _a.get("type") == "action_proposal"
                                 and not _a.get("proposal_id")):
                             try:
+                                _staged = _a.get("staged")
                                 _pid = await platform_db.create_action_proposal(
                                     account_id, uid, _a.get("tool", ""),
                                     _a.get("summary", ""),
                                     json.dumps(_a.get("payload") or {}, default=str),
                                     risk=str(_a.get("risk", "low")),
+                                    staged_payload_json=(
+                                        json.dumps(_staged, default=str)
+                                        if _staged is not None else ""
+                                    ),
                                 )
                                 _a["proposal_id"] = _pid
                             except Exception:
                                 _a["error"] = "Could not create the action."
+                            # Server-only fields never reach the client —
+                            # it approves by id, nothing else.
                             _a.pop("payload", None)
+                            _a.pop("staged", None)
                     # Attach the data-scope descriptor so the client can show a
                     # "Answering for your N vehicles" trust badge for restricted
                     # users (and nothing for unrestricted ones) — plus the

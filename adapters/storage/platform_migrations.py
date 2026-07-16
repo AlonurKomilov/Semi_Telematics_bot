@@ -187,6 +187,8 @@ async def run_all(conn) -> None:
     # AI write-action proposals (copilot "hands") — the propose→approve
     # →execute spine's server-stored proposal table.
     await migrate_ai_action_proposals(conn)
+    # Bulk actions (AI imports): staged rows column on proposals.
+    await migrate_ai_proposal_staged_payload(conn)
 
 
 async def migrate_ai_action_proposals(conn) -> None:
@@ -219,6 +221,27 @@ async def migrate_ai_action_proposals(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.error("ai_action_proposals migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_ai_proposal_staged_payload(conn) -> None:
+    """Add ``staged_payload`` to ``ai_action_proposals``.
+
+    Bulk actions (AI imports) stage the server-derived rows the user
+    approves; the executor writes FROM these rows.  Encrypted like the
+    other proposal fields, deliberately NOT length-truncated like
+    ``payload``.  Idempotent via ADD COLUMN IF NOT EXISTS."""
+    try:
+        await conn.execute(
+            "ALTER TABLE ai_action_proposals"
+            " ADD COLUMN IF NOT EXISTS staged_payload TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.error("ai_action_proposals staged_payload migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

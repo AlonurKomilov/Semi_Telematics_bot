@@ -86,7 +86,8 @@ def get_action_executor(name: str) -> Callable[..., Coroutine] | None:
 
 def tool_propose(
     tool: str, summary: str, payload: dict, *, risk: str = "low",
-    consequence: str = "",
+    consequence: str = "", staged: list | dict | None = None,
+    artifacts_extra: list | None = None,
 ) -> dict:
     """Build a write tool's PROPOSE-mode result.
 
@@ -101,19 +102,31 @@ def tool_propose(
     "This clears the selected alerts") — display-only, so it rides on the
     artifact and is never persisted.  A new write tool supplies its own
     line here; the generic card needs no change to show it.
+
+    ``staged`` carries a BULK action's server-derived rows (imports) —
+    the exact data the user approves.  Server-side only: the router
+    persists it to the proposal's un-truncated ``staged_payload`` and
+    strips it from the client copy alongside ``payload``.
+
+    ``artifacts_extra`` prepends additional display artifacts (e.g. an
+    ``import_preview`` table) BEFORE the action card in the same result.
     """
     return {
         "ok": True,
         "proposed": True,
         "summary": summary,
-        "artifacts": [{
-            "type": "action_proposal",
-            "tool": tool,
-            "summary": summary,
-            "payload": payload,   # stripped from the client copy by the router
-            "risk": risk,
-            "consequence": consequence,
-        }],
+        "artifacts": [
+            *(artifacts_extra or []),
+            {
+                "type": "action_proposal",
+                "tool": tool,
+                "summary": summary,
+                "payload": payload,   # stripped from the client copy by the router
+                "risk": risk,
+                "consequence": consequence,
+                **({"staged": staged} if staged is not None else {}),
+            },
+        ],
     }
 
 

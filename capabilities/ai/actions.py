@@ -89,6 +89,19 @@ async def execute_approved_action(
     # approved them, not the 0/"auto-resolved" sentinel.  Never trust an
     # id that rode in from the client.
     exec_context = {**(user_context or {}), "user_id": uid}
+    # Bulk actions (imports): the server-derived rows the user approved,
+    # staged un-truncated on the proposal.  Ride the context like the
+    # other server-side channels (_db pattern) — executor signatures
+    # stay stable.
+    staged_raw = prop.get("staged_payload") or ""
+    if staged_raw:
+        try:
+            exec_context["_staged_rows"] = json.loads(staged_raw)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=409,
+                detail="This proposal's staged data is unreadable — ask again.",
+            )
 
     # ── Re-authorize on the REAL role (never the preview) ──
     from capabilities.ai.intelligence import _check_tool_permission

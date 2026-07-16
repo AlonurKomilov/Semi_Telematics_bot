@@ -283,6 +283,10 @@ async def create_tables(conn) -> None:
             risk        TEXT    NOT NULL DEFAULT 'low',
             status      TEXT    NOT NULL DEFAULT 'pending',  -- pending|executing|consumed|declined|failed
             result      TEXT    NOT NULL DEFAULT '',  -- JSON result after execute (encrypted)
+            -- Bulk actions (imports): the server-derived rows the user
+            -- approves, encrypted, deliberately NOT length-truncated
+            -- like payload — the executor writes FROM these rows.
+            staged_payload TEXT NOT NULL DEFAULT '',
             created_at  TEXT    NOT NULL,
             expires_at  TEXT    NOT NULL
         );

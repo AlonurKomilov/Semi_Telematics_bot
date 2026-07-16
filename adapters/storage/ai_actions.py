@@ -51,9 +51,15 @@ class AIActionProposalsMixin(_MixinBase):
     async def create_action_proposal(
         self, account_id: int, user_id: int, tool: str,
         summary: str, payload_json: str, risk: str = "low",
-        *, ttl_minutes: int = 15,
+        *, ttl_minutes: int = 15, staged_payload_json: str = "",
     ) -> str:
-        """Persist a proposal; returns its uuid id.  Encrypted at rest."""
+        """Persist a proposal; returns its uuid id.  Encrypted at rest.
+
+        ``staged_payload_json`` carries a bulk action's server-derived
+        rows (the exact data the user approves).  Unlike ``payload`` it
+        is NOT length-truncated — the executor writes FROM these rows,
+        and a silently-shortened import would corrupt the write.
+        """
         import uuid
         from datetime import datetime, timedelta, timezone
         from infra.crypto import encrypt
@@ -64,11 +70,13 @@ class AIActionProposalsMixin(_MixinBase):
         await self._db.execute(
             """INSERT INTO ai_action_proposals
                (id, account_id, user_id, tool, summary, payload, risk,
-                status, result, created_at, expires_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', '', ?, ?)""",
+                status, result, staged_payload, created_at, expires_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', '', ?, ?, ?)""",
             (pid, account_id, user_id, tool,
              encrypt(summary[:2000]), encrypt(payload_json[:8000]),
-             risk, now.isoformat(), expires),
+             risk,
+             encrypt(staged_payload_json) if staged_payload_json else "",
+             now.isoformat(), expires),
         )
         await self._db.commit()
         return pid
@@ -79,7 +87,7 @@ class AIActionProposalsMixin(_MixinBase):
         """Fetch a proposal, scoped to its owner.  None on any mismatch."""
         cur = await self._db.execute(
             """SELECT id, tool, summary, payload, risk, status, result,
-                      created_at, expires_at
+                      created_at, expires_at, staged_payload
                  FROM ai_action_proposals
                 WHERE id = ? AND account_id = ? AND user_id = ?""",
             (proposal_id, account_id, user_id),
@@ -92,6 +100,7 @@ class AIActionProposalsMixin(_MixinBase):
             "summary": _dec(r[2]), "payload": _dec(r[3]),
             "risk": r[4], "status": r[5], "result": _dec(r[6]),
             "created_at": r[7], "expires_at": r[8],
+            "staged_payload": _dec(r[9]),
         }
 
     async def claim_action_proposal(
