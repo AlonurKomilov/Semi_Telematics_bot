@@ -252,7 +252,13 @@ export interface FaultsResponse {
 
 /** One per-type bucket of the fleet counts.  Motion states count
  *  TRACKED units only — a registry vehicle with no telematics (most
- *  trailers, some trucks) is `no_signal`, never "stopped". */
+ *  trailers, some trucks) is `no_signal`, never "stopped".
+ *
+ *  NAMING: "fleet" here is the industry noun — the account's whole
+ *  vehicle collection ("fleet utilization", "fleet size") — NOT the
+ *  Fleet persona.  /overview/stats serves this same object to EVERY
+ *  role (Owner, Accounting, Safety, Dispatch, HR…); only sibling
+ *  fields like `faults`/`low_fuel` are permission-gated. */
 export interface FleetTypeStats {
   total: number;
   moving: number;

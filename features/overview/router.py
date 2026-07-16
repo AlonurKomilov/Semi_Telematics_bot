@@ -215,6 +215,9 @@ async def overview_stats(
 
     result: dict = {
         "role": role,
+        # "fleet" = the account's vehicle collection (industry noun),
+        # NOT the Fleet persona — this block is returned identically to
+        # every role; only the fields below it are permission-gated.
         # Top-level moving/idle/stopped are TRACKED counts (no_signal
         # split out) so "stopped" means engine-off, not "no data".
         "fleet": {
