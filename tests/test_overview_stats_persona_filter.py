@@ -241,7 +241,9 @@ async def test_persona_filter_does_not_change_fleet_counts(overview_app):
 
     Note: under strict binding, Owner OMITS pending_alerts entirely
     (no operational types) while Safety has it.  The shared invariant
-    is that the ``fleet`` substructure (vehicle counts) is identical."""
+    is that the ``vehicles`` substructure (vehicle counts) is
+    identical — the block is ROLE-NEUTRAL by contract, every role gets
+    the same counts."""
     s = overview_app
     safety_r = await s["client"].get(
         "/api/overview/stats", headers=_hdr(s["tokens"]["safety"]),
@@ -249,4 +251,9 @@ async def test_persona_filter_does_not_change_fleet_counts(overview_app):
     owner_r = await s["client"].get(
         "/api/overview/stats", headers=_hdr(s["tokens"]["owner"]),
     )
-    assert safety_r.json().get("fleet") == owner_r.json().get("fleet")
+    assert safety_r.json().get("vehicles") == owner_r.json().get("vehicles")
+    assert safety_r.json().get("vehicles") is not None
+    # "fleet" is the deprecated alias of "vehicles" (pre-rename SPA
+    # bundles) — must stay byte-identical until removed.
+    assert safety_r.json().get("fleet") == safety_r.json().get("vehicles")
+    assert owner_r.json().get("fleet") == owner_r.json().get("vehicles")

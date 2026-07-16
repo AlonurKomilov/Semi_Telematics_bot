@@ -27,7 +27,10 @@ export default function SafetyHero() {
       </div>
     );
   }
-  const { fleet, pending_alerts } = data;
+  const { pending_alerts } = data;
+  // Role-neutral key with legacy-alias fallback (pre-rename API).
+  const vehicles = data.vehicles ?? data.fleet ?? {};
+  const trucks = vehicles.trucks ?? vehicles;
   return (
     <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto scrollbar-thin">
       {pending_alerts !== undefined && (
@@ -39,12 +42,12 @@ export default function SafetyHero() {
         />
       )}
       <HeroChip
-        label="Trucks" value={(fleet.trucks ?? fleet).total} tone="info"
-        title={fleet.trailers && fleet.trailers.total > 0
-          ? `Fleet total ${fleet.total} incl. ${fleet.trailers.total} trailers`
+        label="Trucks" value={trucks.total} tone="info"
+        title={vehicles.trailers && vehicles.trailers.total > 0
+          ? `${vehicles.total} vehicles incl. ${vehicles.trailers.total} trailers`
           : undefined}
       />
-      <HeroChip label="Moving" value={(fleet.trucks ?? fleet).moving} tone="neutral" />
+      <HeroChip label="Moving" value={trucks.moving} tone="neutral" />
     </div>
   );
 }

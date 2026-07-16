@@ -11,10 +11,10 @@ import { OnboardingBanner } from '../../../components/shell';
 import type { OverviewSectionProps } from './_shared/types';
 
 export default function OverviewOnboarding({ stats }: OverviewSectionProps) {
-  const fleetTotal = stats.fleet?.total ?? 0;
+  const vehicleTotal = (stats.vehicles ?? stats.fleet)?.total ?? 0;
   return (
     <OnboardingBanner
-      vehicleCount={fleetTotal}
+      vehicleCount={vehicleTotal}
       userCount={1 /* TODO: wire real count when /admin/users is preloaded */}
     />
   );

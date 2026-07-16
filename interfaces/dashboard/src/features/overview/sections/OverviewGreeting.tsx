@@ -10,14 +10,15 @@ import { Greeting } from '../../../components/shell';
 import type { OverviewSectionProps } from './_shared/types';
 
 export default function OverviewGreeting({ stats, greetingName }: OverviewSectionProps) {
-  const fleet = stats.fleet ?? {};
-  const total = fleet.total ?? 0;
+  // Role-neutral key with legacy-alias fallback (pre-rename API).
+  const vehicles = stats.vehicles ?? stats.fleet ?? {};
+  const total = vehicles.total ?? 0;
   // Moving % is computed against TRUCKS — trailers can't move on their
   // own, and counting them made a healthy fleet read as 16% moving.
-  const trucks = fleet.trucks ?? fleet;
+  const trucks = vehicles.trucks ?? vehicles;
   const truckTotal = trucks.total ?? 0;
   const movingPct = truckTotal > 0 ? Math.round(((trucks.moving ?? 0) / truckTotal) * 100) : 0;
-  const trailerTotal = fleet.trailers?.total ?? 0;
+  const trailerTotal = vehicles.trailers?.total ?? 0;
 
   const context =
     total > 0

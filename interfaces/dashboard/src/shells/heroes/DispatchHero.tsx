@@ -24,10 +24,12 @@ export default function DispatchHero() {
       </div>
     );
   }
-  const { fleet, pending_alerts, unsafe_parking, unknown_parking, low_fuel } = data;
+  const { pending_alerts, unsafe_parking, unknown_parking, low_fuel } = data;
+  // Role-neutral key with legacy-alias fallback (pre-rename API).
+  const vehicles = data.vehicles ?? data.fleet ?? {};
   // Dispatch routes powered units — motion chips read the TRUCK bucket
   // (falls back to the flat counts on a pre-split API response).
-  const trucks = fleet.trucks ?? fleet;
+  const trucks = vehicles.trucks ?? vehicles;
   return (
     <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto scrollbar-thin">
       <HeroChip label="On the road" value={trucks.moving} tone="positive" title="Trucks currently moving" />

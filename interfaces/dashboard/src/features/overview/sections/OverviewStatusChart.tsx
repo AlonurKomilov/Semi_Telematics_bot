@@ -15,7 +15,8 @@ import type { OverviewSectionProps } from './_shared/types';
 const FleetStatusChart = lazy(() => import('@/features/overview/FleetStatusChart'));
 
 export default function OverviewStatusChart({ stats }: OverviewSectionProps) {
-  const f = stats.fleet || {};
+  // Role-neutral key with legacy-alias fallback (pre-rename API).
+  const f = stats.vehicles ?? stats.fleet ?? {};
   // The donut charts motion states, which only tracked TRUCKS have —
   // the header count and percentages must use the same denominator or
   // the slices visibly don't sum to the label.

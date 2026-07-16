@@ -11,7 +11,7 @@ import { AISummaryCard } from '../../../components/shell';
 import type { OverviewSectionProps } from './_shared/types';
 
 export default function OverviewAISummary({ stats }: OverviewSectionProps) {
-  const total = stats.fleet?.total ?? 0;
+  const total = (stats.vehicles ?? stats.fleet)?.total ?? 0;
   if (total <= 0) return null;
   return <AISummaryCard stats={stats} />;
 }

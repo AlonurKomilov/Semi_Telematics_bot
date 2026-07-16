@@ -13,7 +13,8 @@ import { KpiCard } from '../../../components/shell';
 import type { OverviewSectionProps } from './_shared/types';
 
 export default function OverviewStatusGrid({ stats, navigate, has }: OverviewSectionProps) {
-  const f = stats.fleet || {};
+  // Role-neutral key with legacy-alias fallback (pre-rename API).
+  const f = stats.vehicles ?? stats.fleet ?? {};
   const total = f.total ?? 0;
   // Motion tiles read the TRUCK bucket — trailers (and no-telematics
   // trucks) don't have a motion state, so percentages are computed

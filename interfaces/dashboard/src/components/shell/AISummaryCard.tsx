@@ -22,7 +22,8 @@ function buildNarrative(
   restingHint: string,
 ): string[] {
   const lines: string[] = [];
-  const f = stats.fleet || {};
+  // Role-neutral key with legacy-alias fallback (pre-rename API).
+  const f = stats.vehicles ?? stats.fleet ?? {};
   // Percentages run against the TRUCK bucket — trailers can't move, and
   // counting them read a healthy fleet as "only 16% moving".
   const trucks = f.trucks ?? f;

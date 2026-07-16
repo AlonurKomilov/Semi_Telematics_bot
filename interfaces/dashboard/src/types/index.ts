@@ -250,16 +250,10 @@ export interface FaultsResponse {
 
 // ── Dashboard Stats ──────────────────────────────────────────
 
-/** One per-type bucket of the fleet counts.  Motion states count
+/** One per-type bucket of the vehicle counts.  Motion states count
  *  TRACKED units only — a registry vehicle with no telematics (most
- *  trailers, some trucks) is `no_signal`, never "stopped".
- *
- *  NAMING: "fleet" here is the industry noun — the account's whole
- *  vehicle collection ("fleet utilization", "fleet size") — NOT the
- *  Fleet persona.  /overview/stats serves this same object to EVERY
- *  role (Owner, Accounting, Safety, Dispatch, HR…); only sibling
- *  fields like `faults`/`low_fuel` are permission-gated. */
-export interface FleetTypeStats {
+ *  trailers, some trucks) is `no_signal`, never "stopped". */
+export interface VehicleTypeStats {
   total: number;
   moving: number;
   idle: number;
@@ -267,19 +261,29 @@ export interface FleetTypeStats {
   no_signal: number;
 }
 
-export interface FleetStats {
+/** ROLE-NEUTRAL by design: Vehicle is the parent of truck and trailer.
+ *  Deliberately NOT named "fleet" — in this codebase "fleet" is a ROLE
+ *  (fleet.4truck.us, FleetShell); role-flavored UI words ("Fleet
+ *  Overview" vs "Safety Overview") are generated from the active view,
+ *  never hardcoded.  /overview/stats serves this same object to EVERY
+ *  role; only sibling fields like `faults`/`low_fuel` are
+ *  permission-gated. */
+export interface VehicleStats {
   total?: number;
   moving?: number;
   idle?: number;
   stopped?: number;
   no_signal?: number;
-  trucks?: FleetTypeStats;
-  trailers?: FleetTypeStats;
+  trucks?: VehicleTypeStats;
+  trailers?: VehicleTypeStats;
 }
 
 export interface DashboardStats {
   role?: string;
-  fleet: FleetStats;
+  vehicles?: VehicleStats;
+  /** Deprecated alias of `vehicles` (pre-rename API); read via
+   *  `stats.vehicles ?? stats.fleet` until the alias is removed. */
+  fleet?: VehicleStats;
   faults?: number;
   low_fuel?: number;
   pending_alerts?: number;

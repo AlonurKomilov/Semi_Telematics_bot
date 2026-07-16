@@ -164,6 +164,12 @@ async def overview_stats(
             needles = [t.lower() for t in trucks]
             my_alerts = [a for a in pending_alerts if any(n in (a.get("vehicle_name") or "").lower() for n in needles)]
 
+        # "vehicles" is the wire key ("fleet" = deprecated alias, same
+        # object — remove once no pre-rename SPA bundle is live); see
+        # the naming note on the main branch below.
+        driver_vehicles = {
+            "total": 1 if my_truck else 0, "moving": 0, "idle": 0, "stopped": 0,
+        }
         return {
             "role": "driver",
             "truck_num": truck_num,
@@ -195,7 +201,8 @@ async def overview_stats(
                 "company": my_truck.get("_org", "") if my_truck else "",
             },
             "my_alerts": len(my_alerts),
-            "fleet": {"total": 1 if my_truck else 0, "moving": 0, "idle": 0, "stopped": 0},
+            "vehicles": driver_vehicles,
+            "fleet": driver_vehicles,
         }
 
     # Per-type buckets: motion states only mean something for tracked
@@ -213,22 +220,30 @@ async def overview_stats(
         else:
             bucket[classify_vehicle_status(v)] += 1
 
+    # ROLE-NEUTRAL wire key: "vehicles" (Vehicle is the parent of truck
+    # and trailer).  Deliberately NOT "fleet" — in this codebase "fleet"
+    # is a ROLE name (fleet.4truck.us, FleetShell, the persona strings),
+    # and role-flavored words in the UI ("Fleet Overview" vs "Safety
+    # Overview") are GENERATED from the active view, never hardcoded.
+    # This block is returned identically to every role; only the fields
+    # after it are permission-gated.  Top-level moving/idle/stopped are
+    # TRACKED counts (no_signal split out) so "stopped" means
+    # engine-off, not "no data".
+    vehicles_block = {
+        "total": trucks["total"] + trailers["total"],
+        "moving": trucks["moving"] + trailers["moving"],
+        "idle": trucks["idle"] + trailers["idle"],
+        "stopped": trucks["stopped"] + trailers["stopped"],
+        "no_signal": trucks["no_signal"] + trailers["no_signal"],
+        "trucks": trucks,
+        "trailers": trailers,
+    }
     result: dict = {
         "role": role,
-        # "fleet" = the account's vehicle collection (industry noun),
-        # NOT the Fleet persona — this block is returned identically to
-        # every role; only the fields below it are permission-gated.
-        # Top-level moving/idle/stopped are TRACKED counts (no_signal
-        # split out) so "stopped" means engine-off, not "no data".
-        "fleet": {
-            "total": trucks["total"] + trailers["total"],
-            "moving": trucks["moving"] + trailers["moving"],
-            "idle": trucks["idle"] + trailers["idle"],
-            "stopped": trucks["stopped"] + trailers["stopped"],
-            "no_signal": trucks["no_signal"] + trailers["no_signal"],
-            "trucks": trucks,
-            "trailers": trailers,
-        },
+        "vehicles": vehicles_block,
+        # Deprecated alias (same object) — keeps any pre-rename SPA
+        # bundle alive during rollout; remove after clients migrate.
+        "fleet": vehicles_block,
     }
 
     if can(role, "can_faults"):

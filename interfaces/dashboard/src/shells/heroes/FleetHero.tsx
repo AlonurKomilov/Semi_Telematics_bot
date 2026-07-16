@@ -34,9 +34,11 @@ export default function FleetHero() {
       </div>
     );
   }
-  const { fleet, faults, maintenance_due } = data;
-  const trucks = fleet.trucks;
-  const trailers = fleet.trailers;
+  const { faults, maintenance_due } = data;
+  // Role-neutral key with legacy-alias fallback (pre-rename API).
+  const vehicles = data.vehicles ?? data.fleet ?? {};
+  const trucks = vehicles.trucks;
+  const trailers = vehicles.trailers;
   return (
     <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto scrollbar-thin">
       {trucks ? (
@@ -63,10 +65,10 @@ export default function FleetHero() {
       ) : (
         // Pre-split API response (stale cache during deploy) — old chips.
         <>
-          <HeroChip label="Total" value={fleet.total} tone="info" />
-          <HeroChip label="Moving" value={fleet.moving} tone="positive" />
-          <HeroChip label="Idle" value={fleet.idle} tone="warning" />
-          <HeroChip label="Stopped" value={fleet.stopped} tone="neutral" />
+          <HeroChip label="Total" value={vehicles.total} tone="info" />
+          <HeroChip label="Moving" value={vehicles.moving} tone="positive" />
+          <HeroChip label="Idle" value={vehicles.idle} tone="warning" />
+          <HeroChip label="Stopped" value={vehicles.stopped} tone="neutral" />
         </>
       )}
       {faults !== undefined && faults > 0 && (
