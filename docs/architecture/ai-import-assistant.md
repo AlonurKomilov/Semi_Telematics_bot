@@ -372,3 +372,51 @@ bot/miniapp surfaces (`suppress_writes` already excludes them).
 - Scope guard: new tool declares `account_unscoped` (existing CI test
   enforces the frozenset pairing).
 - Upload endpoint: size/extension/row-cap rejections; rate limit.
+
+## 8. As built (2026-07-16)
+
+Shipped in five commits — 029681b (A) · 6768aaa (B) · 19df9ec (C1) ·
+47b6bdf (C2) · c04d89e (D) · 1d3525a (UX polish).  Deltas from the plan
+above, all recorded at the section they amend:
+
+- **No upload endpoint / no server file at all** (the §3 revision won):
+  attachments ride `ChatRequest.attachments` inline; the upload-endpoint
+  test row and rate-limit row in §7 are moot.  The §5.2 grid-sha256 +
+  re-derive-on-execute guard is also moot — the executor writes the
+  proposal's **staged rows** (encrypted, un-truncated
+  `ai_action_proposals.staged_payload`), the very rows the preview
+  showed; there is no re-derivation to drift.
+- **read_attachment lives in `capabilities/ai/tools/attachments_tool.py`**,
+  not in the engine module — attachments.py stays importable by feature
+  adapters without dragging in the tools hub (cycle risk).  The same
+  module carries `propose_import()`, the generic propose-side any future
+  import calls; grids reach tools via `execute_tool(attachment_grids=)`
+  → `tool_args["_attachments"]` for `uses_attachments` schemas only
+  (the `_scope_vehicles` server-channel pattern; a model-supplied key is
+  stripped).
+- **Attachment parse gate** tightened from "any writes:True permission"
+  (vacuous — always-on derived flags give every role a write tool) to
+  "holds a registered ImportTarget's permission", fail-closed when none
+  are registered.
+- **Resolution as specced** (§5.5): exact-match-first then
+  company-suffix parse, exactly-one-or-skip, leading zeros preserved;
+  execute re-resolves against the live registry and skips vanished
+  units.  Status vocabulary is strict at build_rows (unmapped status =
+  skip, never a defaulted "installed"); category soft-defaults to
+  `other`.
+- **One transaction** via `Database.transaction()` (the pool-proxy's
+  `commit()` is a no-op inside it, so the storage mixin is reused
+  unchanged); all-or-nothing verified by a fault-injection test.
+- **Frontend**: pending attachments persist device-locally
+  (`attachmentStore.ts`, thoughtStore quota discipline) and re-send on
+  every message while the chip is attached — a follow-up turn ("now
+  import it") still has the grid, since grids are request-scoped by
+  design.  Composer holds an attached-state placeholder; store eviction
+  is announced, never silent; preview titles carry the file name.
+- **Tests**: `tests/test_ai_attachments.py` (21) +
+  `tests/test_ai_inventory_import.py` (8); the §7 "foreign-account
+  attachment → 404" row became structurally impossible (no stored
+  attachments to cross accounts).
+
+Still open (v2 candidates): `.xlsx`, other-feature adapters, a
+post-import deep link to the Inventory page from the done-state card.
