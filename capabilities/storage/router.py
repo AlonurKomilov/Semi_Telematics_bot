@@ -766,7 +766,8 @@ def _prepare_company_folders(creds, root_folder_id: str, companies) -> None:
     from features.work_orders.storage import sanitize_company_folder
 
     svc = build("drive", "v3", credentials=creds, cache_discovery=False)
-    subdirs = ("work-orders", "camera-images", "parking-maps", "drivers")
+    subdirs = ("work-orders", "camera-images", "parking-maps", "drivers",
+               "branding", "applications")
 
     for co in companies:
         try:

@@ -113,9 +113,24 @@ async def submit_application(
     reference = service.gen_reference()
 
     # 3. Files — magic-byte validation, then store under generated keys.
+    # Company-branded links nest under the company's folder — the same
+    # ``{COMPANY}/...`` tree work orders / camera images / parking maps
+    # use, on disk AND in the customer's Drive.  Generic links (no
+    # company) fall back to the account-level ``applications/`` root.
     from adapters.storage.object_store import get_object_store_for_account
+    from features.work_orders.storage import sanitize_company_folder
     store = await get_object_store_for_account(account_id, platform_db)
-    bucket = f"applications/{reference}"
+    company_folder = ""
+    if link.get("company_id"):
+        _co = await platform_db.get_company_in_account(account_id, link["company_id"])
+        if _co:
+            company_folder = sanitize_company_folder(
+                _co.display_name or getattr(_co, "code", "") or ""
+            )
+    bucket = (
+        f"{company_folder}/applications/{reference}"
+        if company_folder else f"applications/{reference}"
+    )
     docs: dict[str, str] = {}
 
     file_slots = {
@@ -736,9 +751,14 @@ async def upload_company_logo(
     if not ok or mime not in _LOGO_MIME_EXT:
         raise HTTPException(status_code=422, detail="Logo must be a JPG, PNG, or WEBP image under 2 MB")
     from adapters.storage.object_store import get_object_store_for_account
+    from features.work_orders.storage import sanitize_company_folder
     store = await get_object_store_for_account(user["account_id"], platform_db)
+    # Brand assets live IN the company's folder ({COMPANY}/branding/) —
+    # a logo belongs to exactly one company.  The row id stays in the
+    # FILENAME so two companies with the same display name can't collide.
+    folder = sanitize_company_folder(co.display_name or getattr(co, "code", "") or "")
     try:
-        oid = store.put(f"company-logos/{company_id}", f"logo.{_LOGO_MIME_EXT[mime]}", raw)
+        oid = store.put(f"{folder}/branding", f"logo-{company_id}.{_LOGO_MIME_EXT[mime]}", raw)
     except Exception:
         logger.exception("recruiter company logo store failed company=%s", company_id)
         raise HTTPException(status_code=500, detail="Could not store the logo.")
@@ -798,9 +818,11 @@ async def upload_company_banner(
     if not ok or mime not in _LOGO_MIME_EXT:
         raise HTTPException(status_code=422, detail="Photo must be a JPG, PNG, or WEBP image under 4 MB")
     from adapters.storage.object_store import get_object_store_for_account
+    from features.work_orders.storage import sanitize_company_folder
     store = await get_object_store_for_account(user["account_id"], platform_db)
+    folder = sanitize_company_folder(co.display_name or getattr(co, "code", "") or "")
     try:
-        oid = store.put(f"company-banners/{company_id}", f"banner.{_LOGO_MIME_EXT[mime]}", raw)
+        oid = store.put(f"{folder}/branding", f"banner-{company_id}.{_LOGO_MIME_EXT[mime]}", raw)
     except Exception:
         logger.exception("recruiter company banner store failed company=%s", company_id)
         raise HTTPException(status_code=500, detail="Could not store the photo.")
