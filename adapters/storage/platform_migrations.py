@@ -17,6 +17,7 @@ async def run_all(conn) -> None:
     await migrate_vendor_directory(conn)
     await migrate_vendor_directory_geo(conn)
     await migrate_vendor_directory_chain(conn)
+    await migrate_vendor_identity_sharing(conn)
     await migrate_vendor_reviews(conn)
     await migrate_market_intel(conn)
     await migrate_add_bot_columns(conn)
@@ -3412,6 +3413,28 @@ async def migrate_vendor_directory_chain(conn) -> None:
         logger.info("Platform migration: vendor_directory.chain ready")
     except Exception as e:
         logger.error("vendor_directory chain migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_vendor_identity_sharing(conn) -> None:
+    """Consent visibility for the automatic directory pipeline (UX
+    audit 2026-07-16): accounts.share_vendor_identities — default ON
+    (owner decision; the pipeline shares IDENTITY fields only), but
+    now inspectable and owner-editable in Settings.  OFF stops
+    autosuggest_vendor from feeding the review queue."""
+    try:
+        await conn.execute(
+            "ALTER TABLE accounts "
+            "ADD COLUMN IF NOT EXISTS share_vendor_identities "
+            "INTEGER NOT NULL DEFAULT 1"
+        )
+        await conn.commit()
+        logger.info("Platform migration: accounts.share_vendor_identities ready")
+    except Exception as e:
+        logger.error("share_vendor_identities migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

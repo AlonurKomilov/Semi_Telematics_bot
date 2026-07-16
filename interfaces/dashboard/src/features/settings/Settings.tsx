@@ -45,6 +45,28 @@ export default function Settings() {
   const [accountTzSuccess, setAccountTzSuccess] = useState('');
   const canManageAccount = !!authUser?.permissions?.can_manage_account;
 
+  // Vendor-directory contribution consent (UX audit 2026-07-16): the
+  // auto-pipeline default (ON) becomes inspectable + owner-editable.
+  const [dirSharing, setDirSharing] = useState<boolean | null>(null);
+  const [dirSharingSaving, setDirSharingSaving] = useState(false);
+  useEffect(() => {
+    if (!canManageAccount) return;
+    apiJSON<{ enabled: boolean }>('/vendors/identity-sharing')
+      .then(r => setDirSharing(r.enabled))
+      .catch(() => setDirSharing(null));
+  }, [canManageAccount]);
+  const toggleDirSharing = async (enabled: boolean) => {
+    setDirSharingSaving(true);
+    try {
+      await apiJSON('/vendors/identity-sharing', { method: 'PUT', body: { enabled } });
+      setDirSharing(enabled);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update directory sharing');
+    } finally {
+      setDirSharingSaving(false);
+    }
+  };
+
 
   // Track editable settings
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -234,6 +256,32 @@ export default function Settings() {
               {accountTzSaving ? 'Saving…' : 'Save'}
             </button>
           </div>
+        </section>
+      )}
+
+      {/* Vendor directory contribution — consent visibility for the
+          automatic pipeline.  Copy mirrors DIRECTORY_DISCLOSURE so the
+          promise is identical everywhere it appears. */}
+      {canManageAccount && dirSharing !== null && (
+        <section className="bg-card border border-border rounded-xl p-5">
+          <h2 className="text-lg font-semibold mb-1">Vendor Directory</h2>
+          <p className="text-xs text-muted-foreground mb-3 max-w-xl">
+            When a shop's address completes its record, its name and contact
+            info are sent to the shared 4truck directory for review — never
+            your invoices or spend. Verified shops become visible to all
+            companies (and on the map). Turning this off keeps your shops
+            private; browsing and using the public directory still works.
+          </p>
+          <label className="inline-flex items-center gap-2.5 text-sm text-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={dirSharing}
+              disabled={dirSharingSaving}
+              onChange={(e) => toggleDirSharing(e.target.checked)}
+              className="accent-primary"
+            />
+            Contribute vendor identities to the public directory
+          </label>
         </section>
       )}
 

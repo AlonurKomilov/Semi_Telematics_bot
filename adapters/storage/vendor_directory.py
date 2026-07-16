@@ -176,10 +176,29 @@ class VendorDirectoryMixin:
     # fields only ever travel; suggested_by_account stays operator-
     # audit-only.  Users never click "suggest" or "link".
 
+    async def get_identity_sharing(self, account_id: int) -> bool:
+        """Account-level consent for contributing vendor IDENTITIES to
+        the public directory (default ON — inspectable in Settings)."""
+        cur = await self._db.execute(
+            "SELECT share_vendor_identities FROM accounts WHERE id = ?",
+            (account_id,),
+        )
+        row = await cur.fetchone()
+        return bool(dict(row)["share_vendor_identities"]) if row else True
+
+    async def set_identity_sharing(self, account_id: int, enabled: bool) -> bool:
+        cur = await self._db.execute(
+            "UPDATE accounts SET share_vendor_identities = ? WHERE id = ?",
+            (1 if enabled else 0, account_id),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
     async def autosuggest_vendor(self, account_id: int, vendor: dict) -> None:
         """Feed a vendor's IDENTITY into the directory pipeline.
 
-        No-ops unless the vendor has an address (nothing to verify
+        No-ops unless the account consents (share_vendor_identities,
+        default ON), the vendor has an address (nothing to verify
         otherwise) and isn't linked yet.  Idempotent: the global
         name_key dedup returns the existing entry (pending, rejected
         tombstone, or active); when it's already ACTIVE we auto-link —
@@ -187,6 +206,23 @@ class VendorDirectoryMixin:
         if vendor.get("global_vendor_id"):
             return
         if not (vendor.get("address") or "").strip():
+            return
+        if not await self.get_identity_sharing(account_id):
+            # Consent OFF stops CONTRIBUTION (nothing enters the review
+            # queue) — but linking to an entry that is ALREADY public is
+            # pure consumption and stays on: the account keeps receiving
+            # directory value without sharing anything.
+            nkey = vendor_name_key(vendor["name"])
+            cur = await self._db.execute(
+                "SELECT id FROM vendor_directory "
+                "WHERE name_key = ? AND status = 'active'",
+                (nkey,),
+            )
+            row = await cur.fetchone()
+            if row:
+                await self.link_vendor_to_directory(
+                    account_id, vendor["id"], dict(row)["id"],
+                )
             return
         entry = await self.create_directory_entry(
             vendor["name"],

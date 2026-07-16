@@ -109,6 +109,37 @@ class MarketSharingBody(BaseModel):
     enabled: bool
 
 
+@router.get("/identity-sharing")
+async def get_identity_sharing(
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Directory-contribution consent state (default ON)."""
+    if not await _vendor_access(user):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    return {"enabled": await tenant_db.get_identity_sharing(user["account_id"])}
+
+
+@router.put("/identity-sharing")
+async def set_identity_sharing(
+    body: MarketSharingBody,
+    user: dict = Depends(require_permission("can_manage_account")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Flip directory contribution.  can_manage_account — deciding
+    whether shop identities leave the account is an owner call.  OFF
+    stops the auto-pipeline's contribution; consuming the public
+    directory (browse/map/linking) is unaffected."""
+    await tenant_db.set_identity_sharing(user["account_id"], body.enabled)
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "vendor_identity_sharing",
+        target_type="account", target_id=str(user["account_id"]),
+        details="on" if body.enabled else "off",
+    )
+    return {"ok": True, "enabled": body.enabled}
+
+
 @router.get("/market-sharing")
 async def get_market_sharing(
     user: dict = Depends(get_current_user),
@@ -160,12 +191,15 @@ async def get_vendor(
     if not vendor:
         raise HTTPException(status_code=404, detail="Vendor not found")
     work_orders = await tenant_db.vendor_work_orders(vendor_id, user["account_id"])
-    # Auto-pipeline state for the profile banner: linked | pending
-    # (identity sits in the platform review queue) | collecting (no
-    # address yet — the pipeline starts once identity is complete).
+    # Auto-pipeline state for the profile banner: linked | private
+    # (account turned contribution off) | pending (identity sits in
+    # the platform review queue) | collecting (no address yet — the
+    # pipeline starts once identity is complete).
     directory_status = "collecting"
     if vendor.get("global_vendor_id"):
         directory_status = "linked"
+    elif not await tenant_db.get_identity_sharing(user["account_id"]):
+        directory_status = "private"
     elif (vendor.get("address") or "").strip():
         directory_status = "pending"
     # Linked global-directory identity (identity fields only).
@@ -417,7 +451,15 @@ async def market_for_entry(
     if not _market_intel_enabled():
         return {"available": False, "reason": "disabled", "rows": []}
     if not await tenant_db.get_market_sharing(user["account_id"]):
-        return {"available": False, "reason": "not_sharing", "rows": []}
+        # Reciprocity, honestly: tell the account HOW MANY ranges exist
+        # for this shop (count only — values are never serialized here,
+        # and cells only exist at >=3 contributing companies).
+        return {
+            "available": False, "reason": "not_sharing", "rows": [],
+            "available_count": len(
+                await tenant_db.market_rollups_for_entry(entry_id)
+            ),
+        }
     return {
         "available": True,
         "reason": "",

@@ -175,3 +175,66 @@ async def test_wo_create_passes_vendor_email_to_registry(seeded):
         v = [x for x in vendors if x["name"] == "Email Capture Shop"][0]
         assert v["email"] == "shop@mail.test"
         assert v["address"] == "12 Mail Rd"
+
+
+@pytest.mark.asyncio
+async def test_identity_sharing_endpoints_and_private_status(seeded, monkeypatch):
+    """PUT is owner-only (can_manage_account); OFF surfaces as the
+    'private' banner state on unlinked vendors."""
+    transport = ASGITransport(app=seeded["app"])
+    vid = seeded["vendor"]["id"]
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.get("/api/vendors/identity-sharing", headers=_h(seeded["token_fleet"]))
+        assert r.status_code == 200 and r.json()["enabled"] is True
+
+        # Fleet manager cannot flip account-level consent.
+        r = await c.put("/api/vendors/identity-sharing",
+                        headers=_h(seeded["token_fleet"]), json={"enabled": False})
+        assert r.status_code == 403
+
+        r = await c.put("/api/vendors/identity-sharing",
+                        headers=_h(seeded["token_owner"]), json={"enabled": False})
+        assert r.status_code == 200
+
+        r = await c.get(f"/api/vendors/{vid}", headers=_h(seeded["token_fleet"]))
+        assert r.json()["directory_status"] == "private"
+
+        # Restore ON; with an address present the state becomes pending.
+        await c.put("/api/vendors/identity-sharing",
+                    headers=_h(seeded["token_owner"]), json={"enabled": True})
+        await c.put(f"/api/vendors/{vid}", headers=_h(seeded["token_fleet"]),
+                    json={"address": "77 Consent St"})
+        r = await c.get(f"/api/vendors/{vid}", headers=_h(seeded["token_fleet"]))
+        assert r.json()["directory_status"] in ("pending", "linked")
+
+
+@pytest.mark.asyncio
+async def test_market_not_sharing_exposes_count_only(seeded, monkeypatch):
+    """Give-to-get pitch shows the REAL number of unlockable ranges —
+    and provably no price values — before consent."""
+    monkeypatch.setenv("MARKET_INTEL_ENABLED", "1")
+    db = seeded["db"]
+    acct = seeded["acct"]
+    e = await db.create_directory_entry(
+        "Count Shop", address="9 Range Rd", status="active",
+    )
+    # Two rollup cells exist for this entry (written directly — the
+    # nightly job's output shape).
+    now = "2026-07-16T00:00:00"
+    for dim in ("brakes", "oil"):
+        await db._db.execute(
+            "INSERT INTO market_price_rollups (entry_id, dim_type, dim_key, "
+            " dim_label, companies, invoices, p25, p75, window_months, computed_at) "
+            "VALUES (?, 'service_task', ?, '', 3, 9, 100.0, 200.0, 12, ?)",
+            (e["id"], dim, now),
+        )
+    await db._db.commit()
+    transport = ASGITransport(app=seeded["app"])
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.get(f"/api/vendors/directory/{e['id']}/market",
+                        headers=_h(seeded["token_fleet"]))
+        body = r.json()
+        assert body["reason"] == "not_sharing"
+        assert body["available_count"] == 2
+        assert body["rows"] == []
+        assert "p25" not in str(body)

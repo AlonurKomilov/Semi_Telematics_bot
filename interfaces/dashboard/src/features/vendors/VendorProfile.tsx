@@ -57,7 +57,7 @@ export default function VendorProfile() {
 
   const { data, isLoading, error } = useQuery<{
     vendor: Vendor; work_orders: WorkOrder[]; directory: DirectoryEntry | null;
-    directory_status: 'linked' | 'pending' | 'collecting';
+    directory_status: 'linked' | 'private' | 'pending' | 'collecting';
   }>({
     queryKey: ['vendor', vendorId],
     queryFn: () => apiJSON(`/vendors/${vendorId}`),
@@ -95,7 +95,7 @@ export default function VendorProfile() {
   // access + give-to-get); the reason tells us which pitch to show.
   const canManageAccount = has('can_manage_account');
   const dirId = data?.directory?.id;
-  const { data: market } = useQuery<{ available: boolean; reason: string; rows: MarketRollupRow[] }>({
+  const { data: market } = useQuery<{ available: boolean; reason: string; rows: MarketRollupRow[]; available_count?: number }>({
     queryKey: ['vendor-market', dirId],
     queryFn: () => apiJSON(`/vendors/directory/${dirId}/market`),
     enabled: !!dirId,
@@ -326,6 +326,13 @@ export default function VendorProfile() {
                   </span>
                 )}
               </>
+            ) : data?.directory_status === 'private' ? (
+              // Account turned directory contribution OFF in Settings —
+              // the shop stays private; consuming the directory still works.
+              <p className="text-sm text-muted-foreground">
+                Directory contribution is turned off in Settings — this shop
+                stays private to your account.
+              </p>
             ) : data?.directory_status === 'pending' ? (
               // Identity already flowed to the platform review queue
               // automatically — nothing for the user to do.
@@ -375,9 +382,22 @@ export default function VendorProfile() {
               ) : (
                 <div className="mt-2 flex flex-wrap items-center gap-3">
                   <p className="text-xs text-muted-foreground max-w-md">
-                    See what other fleets typically pay at this shop. Available to accounts
-                    that share their own <em>anonymized</em> price data — your company name and
-                    invoices are never shown to anyone.
+                    {(market.available_count ?? 0) > 0 ? (
+                      <>
+                        <span className="text-foreground font-medium">
+                          {market.available_count} typical price range{(market.available_count ?? 0) > 1 ? 's' : ''} exist{(market.available_count ?? 0) === 1 ? 's' : ''} for this shop
+                        </span>
+                        {' '}— enable sharing to see them. Available to accounts that share
+                        their own <em>anonymized</em> price data — your company name and
+                        invoices are never shown to anyone.
+                      </>
+                    ) : (
+                      <>
+                        See what other fleets typically pay at this shop. Available to accounts
+                        that share their own <em>anonymized</em> price data — your company name and
+                        invoices are never shown to anyone.
+                      </>
+                    )}
                   </p>
                   {canManageAccount && (
                     <button type="button" onClick={enableSharing} disabled={dirBusy}

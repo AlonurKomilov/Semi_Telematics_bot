@@ -348,3 +348,41 @@ async def test_import_directory_entries(db):
     rv = await db.get_vendor(v["id"], a)
     assert rv["global_vendor_id"] == row["id"]
     assert rv["address"] == "1 I St"
+
+
+@pytest.mark.asyncio
+async def test_identity_sharing_off_stops_contribution_not_consumption(db):
+    """Consent toggle semantics: OFF means nothing enters the review
+    queue — but linking to an ALREADY-public entry still works (pure
+    consumption), and flipping back ON resumes contribution."""
+    acct = await db.create_account("Consent Co")
+    a = acct.id
+    assert await db.get_identity_sharing(a) is True   # default ON
+
+    await db.set_identity_sharing(a, False)
+    # Address-complete vendor → NO suggestion while OFF.
+    await db.resolve_or_create_vendor(
+        a, "Private Flow Shop", address="1 Quiet Rd",
+    )
+    pend = [e for e in await db.list_vendor_directory(status="pending")
+            if e["name"] == "Private Flow Shop"]
+    assert pend == []
+
+    # But an already-ACTIVE public entry still auto-links (consumption).
+    pub = await db.create_directory_entry(
+        "Public Known Shop", address="2 Open Ave", status="active",
+    )
+    v = await db.resolve_or_create_vendor(
+        a, "Public Known Shop", address="2 Open Ave",
+    )
+    row = await db.get_vendor(v["id"], a)
+    assert row["global_vendor_id"] == pub["id"]
+
+    # Back ON → contribution resumes.
+    await db.set_identity_sharing(a, True)
+    await db.resolve_or_create_vendor(
+        a, "Private Flow Shop", address="1 Quiet Rd", phone="555-r",
+    )
+    pend = [e for e in await db.list_vendor_directory(status="pending")
+            if e["name"] == "Private Flow Shop"]
+    assert len(pend) == 1
