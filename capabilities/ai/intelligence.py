@@ -1108,6 +1108,52 @@ def _consume_openai_stream(lines, on_thinking=None) -> tuple[dict, dict | None]:
     return message, usage
 
 
+async def _quota_cascade(question: str, vehicle_context: dict, samsara_client,
+                         *, user_id, account_id, db, language, user_context,
+                         event_callback, failed_model: str, depth: int) -> dict:
+    """Fail over WITHIN the tier, tools intact.
+
+    A quota-exhausted model used to drop the turn to the tool-less
+    chat fallback — the model then answered from the snapshot alone
+    ("fuel cost data is not available in the fleet snapshot") even
+    though the tier's next model could have called the tool.  Bench the
+    dead model, stage the tier's next pick (pick_model_for_tier skips
+    benched models), and RE-ENTER the agent loop so the answer keeps
+    its tools.  Bounded depth; the chat-only fallback remains the last
+    resort when the whole chain is quota-dead.
+    """
+    from capabilities.ai.models import (
+        report_quota_exhausted, pick_model_for_tier, switch_user_model_async,
+    )
+    from capabilities.ai.registry import MODEL_REGISTRY, get_model_tier
+    report_quota_exhausted(failed_model)
+    tier = get_model_tier(failed_model)
+    if depth < 2 and user_id is not None and tier:
+        nxt = await pick_model_for_tier(tier)
+        if nxt and nxt != failed_model and nxt in MODEL_REGISTRY:
+            try:
+                await switch_user_model_async(
+                    user_id, nxt, MODEL_REGISTRY[nxt]["locations"][0],
+                )
+                logger.warning(
+                    "Quota cascade: %s → %s (tier %s, tools intact)",
+                    failed_model, nxt, tier,
+                )
+                return await ask_agent(
+                    question, vehicle_context, samsara_client,
+                    user_id=user_id, account_id=account_id, db=db,
+                    language=language, user_context=user_context,
+                    event_callback=event_callback,
+                    _cascade_depth=depth + 1,
+                )
+            except Exception as e:
+                logger.warning("Quota cascade restage failed: %s", e)
+    text, usage = await ask_ai(question, vehicle_context, user_id=user_id,
+                               account_id=account_id, language=language,
+                               user_context=user_context)
+    return {"text": text, "tool_results": [], "usage": usage}
+
+
 async def _run_openai_compat_agent(
     question: str,
     vehicle_context: dict,
@@ -1120,6 +1166,7 @@ async def _run_openai_compat_agent(
     language: str,
     user_context: dict | None,
     event_callback,
+    _cascade_depth: int = 0,
 ) -> dict:
     """Function-calling loop for OpenAI-compat MaaS models (DeepSeek,
     Qwen, Kimi, Grok, gpt-oss) — makes the Reasoning tier a first-class
@@ -1315,6 +1362,18 @@ async def _run_openai_compat_agent(
                 usage=None,
                 prompt_category=_prompt_category,
             )
+            _err_s = str(e).lower()
+            if '429' in _err_s or 'resource exhausted' in _err_s:
+                # Quota-dead model: fail over WITHIN the tier with tools
+                # intact instead of degrading to the snapshot-only chat
+                # answer (see _quota_cascade).
+                return await _quota_cascade(
+                    question, vehicle_context, samsara_client,
+                    user_id=user_id, account_id=account_id, db=db,
+                    language=language, user_context=user_context,
+                    event_callback=event_callback,
+                    failed_model=model_name, depth=_cascade_depth,
+                )
             logger.warning(
                 "OpenAI-compat agent call failed (round %d), falling back: %s",
                 _round, e,
@@ -1503,8 +1562,12 @@ async def ask_agent(question: str, vehicle_context: dict,
                     db=None,
                     language: str = "en",
                     user_context: dict | None = None,
-                    event_callback=None) -> dict:
-    """Agent-mode: AI can call Samsara tools to answer questions."""
+                    event_callback=None,
+                    _cascade_depth: int = 0) -> dict:
+    """Agent-mode: AI can call Samsara tools to answer questions.
+
+    ``_cascade_depth`` is internal — the quota cascade re-enters this
+    function staged on the tier's next model (see _quota_cascade)."""
     import asyncio
 
     try:
@@ -1557,6 +1620,7 @@ async def ask_agent(question: str, vehicle_context: dict,
             user_id=user_id, account_id=account_id, db=db,
             language=language, user_context=user_context,
             event_callback=event_callback,
+            _cascade_depth=_cascade_depth,
         )
 
     # mistral_raw (and opted-out models) → no FC support; chat-only.
@@ -1883,15 +1947,19 @@ async def ask_agent(question: str, vehicle_context: dict,
                 # second 429 means the quota WINDOW is exhausted — more
                 # same-model retries with exponential sleeps just stack
                 # dead seconds onto the turn (and, pre-first-byte, walk
-                # the SSE into nginx's 504).  Bench the model so the
-                # next turn stages the tier's fallback with tools, and
-                # fall back now for this one.
+                # the SSE into nginx's 504).  Fail over WITHIN the tier
+                # with tools intact (benches this model on the way).
                 if attempt < 1:
                     logger.warning("Agent rate limited — one quick retry in 1s")
                     await asyncio.sleep(1)
                     continue
-                from capabilities.ai.models import report_quota_exhausted
-                report_quota_exhausted(cur_model_name)
+                return await _quota_cascade(
+                    question, vehicle_context, samsara_client,
+                    user_id=user_id, account_id=account_id, db=db,
+                    language=language, user_context=user_context,
+                    event_callback=event_callback,
+                    failed_model=cur_model_name, depth=_cascade_depth,
+                )
             logger.warning(f"Agent mode failed, falling back: {e}")
             text, usage = await ask_ai(question, vehicle_context, user_id=user_id,
                                    account_id=account_id, language=language,

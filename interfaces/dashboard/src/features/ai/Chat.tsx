@@ -168,6 +168,41 @@ function stampElapsed(step: AIProcessStep, now: number): AIProcessStep {
  *  backend already coalesces consecutive thinking chunks into one entry,
  *  so the process array IS the logical step list — render it directly. */
 
+/** A thinking step, COLLAPSED to a one-line preview by default — the
+ *  timeline reads as a step list (Thinking → Tool → …) and each step
+ *  expands on demand.  A reasoning model's step can be an essay; inlining
+ *  it whole buried the structure the timeline exists to show.  While a
+ *  live step is still streaming it stays open (that's the progress
+ *  feedback); it folds when the next step starts unless the user
+ *  explicitly opened it. */
+function ThinkingStep({ text, live = false }: { text: string; live?: boolean }) {
+  const [choice, setChoice] = useState<boolean | null>(null);
+  const open = choice ?? live;
+  const clean = (text || '').replace(/\*\*/g, '').trim();
+  const preview = clean.split('\n')[0];
+  return (
+    <div className="min-w-0">
+      <button
+        onClick={() => setChoice(!open)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-1 text-left text-2xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <span className="truncate">{preview || '…'}</span>
+        <ChevronDown
+          size={12}
+          className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+          aria-hidden
+        />
+      </button>
+      {open && (
+        <div className="mt-0.5 text-2xs text-muted-foreground/80 whitespace-pre-wrap leading-relaxed">
+          {clean}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** One row of the dot-and-line process timeline: marker column (dot /
  *  check / beacon) with a connector line down to the next row, content
  *  beside it. */
@@ -1316,9 +1351,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                           {exploded.map((step, si) => (
                             step.type === 'thinking' ? (
                               <TimelineRow key={si} marker={THINKING_DOT} last={false}>
-                                <div className="text-2xs text-muted-foreground/80 whitespace-pre-wrap leading-relaxed">
-                                  {(step.text || '').replace(/\*\*/g, '')}
-                                </div>
+                                <ThinkingStep text={step.text || ''} />
                               </TimelineRow>
                             ) : (
                               <TimelineRow
@@ -1517,9 +1550,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       if (step.type === 'thinking') {
                         return (
                           <TimelineRow key={si} marker={THINKING_DOT} last={false}>
-                            <div className="text-2xs text-muted-foreground/80 whitespace-pre-wrap leading-relaxed">
-                              {(step.text || '').replace(/\*\*/g, '')}
-                            </div>
+                            <ThinkingStep
+                              text={step.text || ''}
+                              live={si === exploded.length - 1}
+                            />
                           </TimelineRow>
                         );
                       }
