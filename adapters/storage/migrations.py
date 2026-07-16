@@ -6608,3 +6608,59 @@ async def migrate_vehicle_inventory(conn) -> None:
             logger.info("Migration 152: RLS enabled on %s", tbl)
         except Exception as e:
             logger.warning("Migration 152: %s RLS skipped (%s)", tbl, e)
+
+
+@_register("153_work_order_labor")
+async def migrate_work_order_labor(conn) -> None:
+    """Labor as optional line items (Work Orders Tier-2 B1).
+
+    One row per labor charge on an invoice — description, hours × rate
+    (or a flat total), tagged with the same ``service_task`` vocabulary
+    as part lines so cost reports can split labor per kind of work.
+
+    Ships WITH ``account_id`` + RLS from birth (work_order_parts
+    predates that rule — its shape is deliberately NOT copied).  When a
+    work order has labor lines, ``work_orders.labor_cost`` becomes the
+    derived sum (recomputed server-side on every line change); with no
+    lines the manual scalar keeps working exactly as before.
+    """
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS work_order_labor (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id    INTEGER NOT NULL,
+            work_order_id INTEGER NOT NULL,
+            service_task  TEXT    NOT NULL DEFAULT '',
+            description   TEXT    NOT NULL DEFAULT '',
+            hours         REAL    NOT NULL DEFAULT 0,
+            rate          REAL    NOT NULL DEFAULT 0,
+            total_cost    REAL    NOT NULL DEFAULT 0,
+            created_at    TEXT    NOT NULL DEFAULT ''
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_work_order_labor_wo "
+        "ON work_order_labor(account_id, work_order_id)"
+    )
+    await conn.commit()
+    logger.info("Migration 153: work_order_labor created")
+
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 153: ENABLE_RLS not set; RLS skipped")
+        return
+    try:
+        await conn.execute("ALTER TABLE work_order_labor ENABLE ROW LEVEL SECURITY")
+        await conn.execute("ALTER TABLE work_order_labor FORCE ROW LEVEL SECURITY")
+        await conn.execute("DROP POLICY IF EXISTS tenant_isolation ON work_order_labor")
+        await conn.execute(
+            """
+            CREATE POLICY tenant_isolation ON work_order_labor
+            USING       (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+            """
+        )
+        logger.info("Migration 153: RLS enabled on work_order_labor")
+    except Exception as e:
+        logger.warning("Migration 153: work_order_labor RLS skipped (%s)", e)

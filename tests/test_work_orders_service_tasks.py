@@ -60,3 +60,62 @@ async def test_service_task_round_trip_and_aggregations(db):
     assert top["work_order_count"] == 2
     assert top["total_quantity"] == 6
     assert top["total_spent"] == 310
+
+
+@pytest.mark.asyncio
+async def test_labor_lines_recompute_and_report(db):
+    """Tier-2 B1 contracts: labor lines derive labor_cost + total_cost
+    server-side; hours×rate fills a missing flat total; the per-task
+    report gains additive labor_spent (parts total_spent unchanged);
+    deleting the last line leaves the derived value as the new manual
+    scalar instead of zeroing a real invoice amount."""
+    a = 61
+    wo = await db.add_work_order(
+        a, "ACME", "T200", "Labor Shop", service_date="2026-07-02",
+        labor_cost=50.0, parts_cost=0.0, tax_amount=10.0, total_cost=60.0,
+    )
+    await db.add_work_order_part(
+        wo, part_name="Brake pads", total_cost=200, service_task="brakes",
+    )
+
+    # Line 1: hours × rate → total auto-computed (2.5h × $120 = $300).
+    l1 = await db.add_work_order_labor(
+        wo, a, description="Brake job labor", hours=2.5, rate=120.0,
+        service_task="brakes",
+    )
+    # Line 2: flat total, different task.
+    await db.add_work_order_labor(
+        wo, a, description="Diag fee", total_cost=75.0,
+        service_task="custom_diagnostic",
+    )
+
+    row = await db.get_work_order(wo, a)
+    assert row["labor_cost"] == pytest.approx(375.0)     # 300 + 75 (manual 50 replaced)
+    # total = labor 375 + parts_cost column + tax 10 (parts_cost scalar
+    # is the form's job; here it was saved as 0).
+    assert row["total_cost"] == pytest.approx(385.0)
+
+    lines = await db.list_work_order_labor(wo, a)
+    assert [l["total_cost"] for l in lines] == [300.0, 75.0]
+
+    # Per-task report: parts spend unchanged, labor merged additively —
+    # including a labor-only task bucket.
+    by_task = {r["service_task"]: r for r in await db.cost_by_service_task(a)}
+    assert by_task["brakes"]["total_spent"] == 200
+    assert by_task["brakes"]["labor_spent"] == pytest.approx(300.0)
+    assert by_task["custom_diagnostic"]["total_spent"] == 0
+    assert by_task["custom_diagnostic"]["labor_spent"] == pytest.approx(75.0)
+
+    # Cross-account scoping: another account can't delete the line.
+    assert await db.delete_work_order_labor(l1, a + 1) is False
+    # Delete one line → recompute.
+    assert await db.delete_work_order_labor(l1, a) is True
+    row = await db.get_work_order(wo, a)
+    assert row["labor_cost"] == pytest.approx(75.0)
+
+    # Delete the LAST line → derived value stays (no zeroing).
+    lines = await db.list_work_order_labor(wo, a)
+    assert await db.delete_work_order_labor(lines[0]["id"], a) is True
+    row = await db.get_work_order(wo, a)
+    assert row["labor_cost"] == pytest.approx(75.0)
+    assert await db.list_work_order_labor(wo, a) == []

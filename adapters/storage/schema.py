@@ -816,6 +816,25 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_vehicles_type
             ON vehicles(account_id, vehicle_type);
 
+        -- Labor line items on work orders (Tier-2 B1): description,
+        -- hours × rate (or flat total), tagged with the parts'
+        -- service_task vocabulary.  Has account_id + RLS from birth —
+        -- deliberately NOT copying work_order_parts' legacy shape.
+        -- Lines present → work_orders.labor_cost is the derived sum.
+        CREATE TABLE IF NOT EXISTS work_order_labor (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id    INTEGER NOT NULL,
+            work_order_id INTEGER NOT NULL,
+            service_task  TEXT    NOT NULL DEFAULT '',
+            description   TEXT    NOT NULL DEFAULT '',
+            hours         REAL    NOT NULL DEFAULT 0,
+            rate          REAL    NOT NULL DEFAULT 0,
+            total_cost    REAL    NOT NULL DEFAULT 0,
+            created_at    TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_work_order_labor_wo
+            ON work_order_labor(account_id, work_order_id);
+
         -- Onboard inventory: what physically lives in each truck
         -- (dashcam / fuel card / toll transponder / ELD / tablet / other)
         -- + the immutable accountability event trail.

@@ -1525,9 +1525,21 @@ export interface WorkOrdersResponse {
   count: number;
 }
 
+export interface WorkOrderLaborLine {
+  id: number;
+  work_order_id?: number;
+  service_task: string;
+  description: string;
+  hours: number;
+  rate: number;
+  total_cost: number;
+}
+
 export interface WorkOrderDetail {
   work_order: WorkOrder;
   parts: WorkOrderPart[];
+  /** Itemized labor lines (Tier-2 B1); labor_cost is their sum when present. */
+  labor?: WorkOrderLaborLine[];
   attachments: WorkOrderAttachment[];
   linked_tasks: MaintenanceTask[];
 }
@@ -1601,6 +1613,8 @@ export interface WorkOrderCostRow {
   /** Service-task slug (per-service-task report); 'untagged' bucket
    *  keeps unclassified spend visible. */
   service_task?: string;
+  /** Itemized labor merged per task (Tier-2 B1); total_spent stays parts. */
+  labor_spent?: number;
   /** Part-level fields (per-part report). */
   part_name?: string;
   usage_count?: number;

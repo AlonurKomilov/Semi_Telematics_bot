@@ -18,6 +18,7 @@ import type { ReportsLayoutOutletContext } from './ReportsLayout';
 import { chartColor } from '../../lib/status';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import DataGrid from '../../components/DataGrid';
+import { Tip } from '../../components/tooltip';
 
 // Backend response envelopes for each /reports/* endpoint.
 interface ReportResponse {
@@ -189,7 +190,10 @@ export default function Reports() {
     };
     return (perType.data?.rows ?? [])
       .slice()
-      .sort((a, b) => b.total_spent - a.total_spent)
+      // Combined parts+labor drives the ordering; the donut slice
+      // itself stays PARTS spend (the report's documented meaning).
+      .sort((a, b) =>
+        (b.total_spent + (b.labor_spent ?? 0)) - (a.total_spent + (a.labor_spent ?? 0)))
       .map(r => ({ ...r, label: labelOf(String(r.service_task ?? '')) }));
   }, [perType.data]);
 
@@ -280,15 +284,16 @@ export default function Reports() {
             {periodItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <button
-          type="button"
-          onClick={exportCsv}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
-          title={t('cost_reports.export_csv_title')}
-        >
-          <Download size={14} />
-          {t('cost_reports.export_csv')}
-        </button>
+        <Tip label={t('cost_reports.export_csv_title')}>
+          <button
+            type="button"
+            onClick={exportCsv}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
+          >
+            <Download size={14} />
+            {t('cost_reports.export_csv')}
+          </button>
+        </Tip>
       </div>,
     );
     return () => outletCtx.setActions(null);
@@ -440,7 +445,17 @@ export default function Reports() {
                       ))}
                     </Pie>
                     <Tooltip
-                      formatter={(value) => [moneyDetail(Number(value)), 'Total']}
+                      formatter={(value, _name, entry) => {
+                        const labor = Number(
+                          (entry?.payload as { labor_spent?: number } | undefined)?.labor_spent ?? 0,
+                        );
+                        return [
+                          labor > 0
+                            ? `${moneyDetail(Number(value))} parts · ${moneyDetail(labor)} labor`
+                            : moneyDetail(Number(value)),
+                          'Spend',
+                        ];
+                      }}
                       itemStyle={{ color: 'var(--foreground)' }}
                       contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
                     />

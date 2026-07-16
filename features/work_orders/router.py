@@ -321,6 +321,9 @@ async def get_work_order(
     detail view."""
     wo = await _require_visible_work_order(work_order_id, user, tenant_db)
     parts = await tenant_db.list_work_order_parts(work_order_id)
+    labor = await tenant_db.list_work_order_labor(
+        work_order_id, user["account_id"],
+    )
     attachments = await tenant_db.list_work_order_attachments(work_order_id)
     tasks = await tenant_db.list_tasks_for_work_order(
         work_order_id, account_id=user["account_id"],
@@ -337,6 +340,7 @@ async def get_work_order(
     return {
         "work_order": wo,
         "parts": parts,
+        "labor": labor,
         "attachments": attachments,
         "linked_tasks": tasks,
     }
@@ -456,6 +460,45 @@ async def delete_part(
 ):
     await _require_visible_work_order(work_order_id, user, tenant_db)
     ok = await tenant_db.delete_work_order_part(part_id)
+    return {"ok": ok}
+
+
+# ── Labor lines (Tier-2 B1) ──────────────────────────────────────────────────
+
+
+class LaborCreate(BaseModel):
+    description: str = Field(..., min_length=1, max_length=300)
+    hours: float = Field(0.0, ge=0)
+    rate: float = Field(0.0, ge=0)
+    total_cost: float = Field(0.0, ge=0)
+    service_task: str = Field("", max_length=100)
+
+
+@router.post("/{work_order_id}/labor")
+async def add_labor(
+    work_order_id: int,
+    body: LaborCreate,
+    user: dict = Depends(require_permission("can_work_orders_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Add an itemized labor charge.  The parent's labor_cost (and
+    total_cost) recompute server-side — lines are the derived truth
+    whenever any exist."""
+    await _require_visible_work_order(work_order_id, user, tenant_db)
+    lid = await tenant_db.add_work_order_labor(
+        work_order_id, user["account_id"], **body.model_dump(),
+    )
+    return {"id": lid}
+
+
+@router.delete("/{work_order_id}/labor/{line_id}")
+async def delete_labor(
+    work_order_id: int, line_id: int,
+    user: dict = Depends(require_permission("can_work_orders_all")),
+    tenant_db=Depends(get_tenant_db),
+):
+    await _require_visible_work_order(work_order_id, user, tenant_db)
+    ok = await tenant_db.delete_work_order_labor(line_id, user["account_id"])
     return {"ok": ok}
 
 

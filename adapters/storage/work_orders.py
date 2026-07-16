@@ -619,6 +619,131 @@ class WorkOrdersMixin:
         await self._db.commit()
         return cur.rowcount > 0
 
+    # ── Labor lines (Tier-2 B1) ──────────────────────────────────────────────
+    #
+    # Optional itemized labor.  Unlike parts (whose costs the form
+    # computes client-side into parts_cost), labor lines RECOMPUTE the
+    # parent's labor_cost + total_cost server-side on every change:
+    # lines present → labor_cost is derived truth; no lines → the
+    # manual scalar behaves exactly as before.
+
+    async def _recompute_labor_cost(
+        self, work_order_id: int, account_id: int,
+    ) -> None:
+        cur = await self._db.execute(
+            "SELECT COUNT(*) AS n, COALESCE(SUM(total_cost), 0) AS s "
+            "FROM work_order_labor "
+            "WHERE work_order_id = ? AND account_id = ?",
+            (work_order_id, account_id),
+        )
+        row = dict(await cur.fetchone())
+        if int(row["n"]) == 0:
+            return  # last line deleted → leave the scalar as the user set it
+        labor = round(float(row["s"]), 2)
+        # Total recomputed in Python — Postgres ROUND(double, int)
+        # doesn't exist, and this keeps the SQL dialect-free.
+        wcur = await self._db.execute(
+            "SELECT parts_cost, tax_amount FROM work_orders "
+            "WHERE id = ? AND account_id = ?",
+            (work_order_id, account_id),
+        )
+        wrow = await wcur.fetchone()
+        if not wrow:
+            return
+        w = dict(wrow)
+        total = round(
+            labor + float(w["parts_cost"] or 0) + float(w["tax_amount"] or 0), 2,
+        )
+        await self._db.execute(
+            "UPDATE work_orders SET labor_cost = ?, total_cost = ? "
+            "WHERE id = ? AND account_id = ?",
+            (labor, total, work_order_id, account_id),
+        )
+        await self._db.commit()
+
+    async def add_work_order_labor(
+        self, work_order_id: int, account_id: int,
+        *,
+        description: str,
+        hours: float = 0.0,
+        rate: float = 0.0,
+        total_cost: float = 0.0,
+        service_task: str = "",
+    ) -> int:
+        """Add a labor line.  ``total_cost`` falls back to hours×rate
+        when not supplied explicitly (flat-rate invoices send it)."""
+        if not total_cost and hours and rate:
+            total_cost = round(hours * rate, 2)
+        cur = await self._db.execute(
+            """INSERT INTO work_order_labor
+               (account_id, work_order_id, service_task, description,
+                hours, rate, total_cost, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, work_order_id, service_task, description,
+             hours, rate, total_cost, self._now()),
+        )
+        await self._db.commit()
+        await self._recompute_labor_cost(work_order_id, account_id)
+        return cur.lastrowid
+
+    async def list_work_order_labor(
+        self, work_order_id: int, account_id: int,
+    ) -> list[dict]:
+        cur = await self._db.execute(
+            "SELECT * FROM work_order_labor "
+            "WHERE work_order_id = ? AND account_id = ? ORDER BY id",
+            (work_order_id, account_id),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def delete_work_order_labor(
+        self, line_id: int, account_id: int,
+    ) -> bool:
+        cur = await self._db.execute(
+            "SELECT work_order_id FROM work_order_labor "
+            "WHERE id = ? AND account_id = ?",
+            (line_id, account_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return False
+        wo_id = dict(row)["work_order_id"]
+        await self._db.execute(
+            "DELETE FROM work_order_labor WHERE id = ? AND account_id = ?",
+            (line_id, account_id),
+        )
+        await self._db.commit()
+        await self._recompute_labor_cost(wo_id, account_id)
+        return True
+
+    async def labor_by_service_task(
+        self, account_id: int, since: Optional[str] = None,
+    ) -> dict[str, float]:
+        """Labor spend per service_task — merged into the per-task cost
+        report so each kind of work shows parts AND labor."""
+        q = (
+            "SELECT CASE WHEN l.service_task = '' THEN 'untagged' "
+            "            ELSE l.service_task END AS service_task, "
+            "       SUM(l.total_cost) AS labor_spent "
+            "FROM work_order_labor l "
+            "JOIN work_orders w ON w.id = l.work_order_id "
+            "     AND w.account_id = l.account_id "
+            "WHERE l.account_id = ? AND w.service_date IS NOT NULL"
+        )
+        params: list = [account_id]
+        if since:
+            q += " AND w.service_date >= ?"
+            params.append(since)
+        q += (
+            " GROUP BY CASE WHEN l.service_task = '' THEN 'untagged' "
+            "               ELSE l.service_task END"
+        )
+        cur = await self._db.execute(q, params)
+        return {
+            str(r["service_task"]): float(r["labor_spent"] or 0)
+            for r in (dict(x) for x in await cur.fetchall())
+        }
+
     # ── Attachments ──────────────────────────────────────────────────────────
 
     async def add_work_order_attachment(
@@ -795,9 +920,12 @@ class WorkOrdersMixin:
         sums whole work orders through the maintenance-task link), so a
         mixed invoice ("oil change + brake job") splits correctly per
         task.  '' rows are returned as ``untagged`` so unclassified
-        spend stays visible instead of silently vanishing.  Labor / tax
-        aren't part lines and are deliberately excluded — this report
-        answers "parts spend by kind of work".
+        spend stays visible instead of silently vanishing.
+
+        ``total_spent`` remains PARTS spend (the original contract);
+        itemized labor (work_order_labor, Tier-2 B1) merges in as the
+        additive ``labor_spent`` key — so each kind of work shows its
+        parts AND labor split.  Tax stays out entirely.
         """
         q = (
             "SELECT CASE WHEN p.service_task = '' THEN 'untagged' "
@@ -818,7 +946,24 @@ class WorkOrdersMixin:
             " ORDER BY total_spent DESC"
         )
         cur = await self._db.execute(q, params)
-        return [dict(r) for r in await cur.fetchall()]
+        rows = [dict(r) for r in await cur.fetchall()]
+        labor = await self.labor_by_service_task(account_id, since)
+        by_task = {str(r["service_task"]): r for r in rows}
+        for task, amount in labor.items():
+            row = by_task.get(task)
+            if row is None:
+                row = {"service_task": task, "work_order_count": 0,
+                       "total_spent": 0}
+                rows.append(row)
+                by_task[task] = row
+            row["labor_spent"] = round(amount, 2)
+        for r in rows:
+            r.setdefault("labor_spent", 0)
+        rows.sort(
+            key=lambda r: float(r["total_spent"] or 0) + float(r["labor_spent"] or 0),
+            reverse=True,
+        )
+        return rows
 
     async def cost_by_part(
         self, account_id: int, since: Optional[str] = None,
