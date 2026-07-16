@@ -127,8 +127,8 @@ interface DraftLabor {
   service_task: string;
 }
 
-const blankLabor = (): DraftLabor => ({
-  description: '', hours: 0, rate: 0, total_cost: 0, service_task: '',
+const blankLabor = (serviceTask = ''): DraftLabor => ({
+  description: '', hours: 0, rate: 0, total_cost: 0, service_task: serviceTask,
 });
 
 // ── Component ────────────────────────────────────────────────────
@@ -375,9 +375,10 @@ export default function WorkOrderForm() {
     setWo(detail.work_order);
     setParts(detail.parts.map(p => ({ service_task: '', ...p })));
     // Seed the task groups from the loaded parts, first-seen order.
-    setTaskGroups(Array.from(new Set(
-      detail.parts.map(p => (p as { service_task?: string }).service_task || '').filter(Boolean),
-    )));
+    setTaskGroups(Array.from(new Set([
+      ...detail.parts.map(p => (p as { service_task?: string }).service_task || ''),
+      ...(detail.labor ?? []).map(l => l.service_task || ''),
+    ].filter(Boolean))));
     setLaborLines((detail.labor ?? []) as DraftLabor[]);
     setAttachments(detail.attachments);
     setLinkedTasks(detail.linked_tasks);
@@ -475,8 +476,12 @@ export default function WorkOrderForm() {
 
   const entriesFor = (task: string) =>
     parts.map((pt, idx) => ({ pt, idx })).filter(e => (e.pt.service_task || '') === task);
+  const laborEntriesFor = (task: string) =>
+    laborLines.map((l, idx) => ({ l, idx })).filter(e => (e.l.service_task || '') === task);
   const groupSubtotal = (task: string) =>
     entriesFor(task).reduce((acc, e) => acc + (e.pt.total_cost || 0), 0);
+  const groupLaborSubtotal = (task: string) =>
+    laborEntriesFor(task).reduce((acc, e) => acc + (e.l.total_cost || 0), 0);
 
   const addTaskGroup = () => {
     // Default the new group to the first built-in type not in use —
@@ -495,12 +500,14 @@ export default function WorkOrderForm() {
     // Same value picked twice → the two groups merge (Set dedupes).
     setTaskGroups(prev => Array.from(new Set(prev.map(g => (g === from ? to : g)))));
     setParts(prev => prev.map(pt => (pt.service_task === from ? { ...pt, service_task: to } : pt)));
+    setLaborLines(prev => prev.map(l => (l.service_task === from ? { ...l, service_task: to } : l)));
   };
 
   const removeTaskGroup = (task: string) => {
     // Never deletes part lines — they fall back to General (untagged).
     setTaskGroups(prev => prev.filter(g => g !== task));
     setParts(prev => prev.map(pt => (pt.service_task === task ? { ...pt, service_task: '' } : pt)));
+    setLaborLines(prev => prev.map(l => (l.service_task === task ? { ...l, service_task: '' } : l)));
   };
 
   // One parts table per task group.  Entries carry the ORIGINAL index
@@ -606,6 +613,81 @@ export default function WorkOrderForm() {
 
   // ── Save ──────────────────────────────────────────────────────
   //
+  // Labor sub-table for one task group — same sanctioned raw-table
+  // exception as parts.  The group defines service_task, so lines
+  // carry no per-row picker.
+  const renderLaborTable = (entries: Array<{ l: DraftLabor; idx: number }>) => {
+    if (entries.length === 0) return null;
+    return (
+      <div className="overflow-x-auto border-t border-border">
+        <table className="w-full text-sm min-w-[560px]">
+          <thead>
+            <tr className="text-left text-xs text-muted-foreground border-b border-border">
+              <th className="py-1.5 px-2 font-medium">
+                {t('work_orders_page.labor_desc', { defaultValue: 'Labor' })}
+              </th>
+              <th className="py-1.5 px-2 font-medium w-20 text-right">{t('work_orders_page.labor_hours', { defaultValue: 'Hours' })}</th>
+              <th className="py-1.5 px-2 font-medium w-24 text-right">{t('work_orders_page.labor_rate', { defaultValue: 'Rate' })}</th>
+              <th className="py-1.5 px-2 font-medium w-24 text-right">{t('work_orders_page.labor_total', { defaultValue: 'Total' })}</th>
+              <th className="py-1.5 pl-2 w-8" />
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map(({ l, idx }) => (
+              <tr key={l.id ?? `new-${idx}`} className="border-b border-border/50 last:border-0">
+                <td className="py-1.5 px-2">
+                  <input
+                    type="text"
+                    value={l.description}
+                    onChange={e => updateLaborLine(idx, { description: e.target.value })}
+                    placeholder={t('work_orders_page.labor_desc_ph', { defaultValue: 'e.g. Brake job labor' })}
+                    className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-foreground focus:outline-none focus:border-ring"
+                  />
+                </td>
+                <td className="py-1.5 px-2">
+                  <input
+                    type="number" min="0" step="0.25"
+                    value={l.hours || ''}
+                    onChange={e => updateLaborLine(idx, { hours: Number(e.target.value) || 0 })}
+                    className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-right tabular-nums text-foreground focus:outline-none focus:border-ring"
+                  />
+                </td>
+                <td className="py-1.5 px-2">
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={l.rate || ''}
+                    onChange={e => updateLaborLine(idx, { rate: Number(e.target.value) || 0 })}
+                    className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-right tabular-nums text-foreground focus:outline-none focus:border-ring"
+                  />
+                </td>
+                <td className="py-1.5 px-2">
+                  <input
+                    type="number" min="0" step="0.01"
+                    value={l.total_cost || ''}
+                    onChange={e => updateLaborLine(idx, { total_cost: Number(e.target.value) || 0 })}
+                    className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-right tabular-nums text-foreground focus:outline-none focus:border-ring"
+                  />
+                </td>
+                <td className="py-1.5 pl-2 text-right">
+                  <Tip label={t('work_orders_page.remove_labor', { defaultValue: 'Remove labor line' })}>
+                    <button
+                      type="button"
+                      onClick={() => removeLaborLine(idx)}
+                      aria-label={t('work_orders_page.remove_labor', { defaultValue: 'Remove labor line' })}
+                      className="text-muted-foreground hover:text-destructive p-1"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </Tip>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   // Two-phase save in CREATE mode: first POST the work order to get an
   // id, then POST each unsaved part.  Edit mode is simpler — PUT the
   // work order, POST any newly-added parts (existing parts already
@@ -934,7 +1016,7 @@ export default function WorkOrderForm() {
       <section className="bg-card border border-border rounded-xl p-5 mb-5">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <h3 className="text-sm font-semibold">{t('work_orders_page.section_parts')}</h3>
+            <h3 className="text-sm font-semibold">{t('work_orders_page.section_parts_labor', { defaultValue: 'Parts & labor' })}</h3>
             <p className="text-2xs text-muted-foreground mt-0.5">
               ↻ {t('work_orders_page.parts_hint')}
             </p>
@@ -956,6 +1038,14 @@ export default function WorkOrderForm() {
               <Plus size={12} />
               {t('work_orders_page.add_part')}
             </button>
+            <button
+              type="button"
+              onClick={() => setLaborLines(prev => [...prev, blankLabor()])}
+              className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-muted hover:bg-muted/80 border border-border rounded"
+            >
+              <Plus size={12} />
+              {t('work_orders_page.add_labor', { defaultValue: 'Add labor' })}
+            </button>
           </div>
         </div>
         {/* Shared suggestion list for every part-name input (native
@@ -963,7 +1053,7 @@ export default function WorkOrderForm() {
         <datalist id="wo-parts-catalog">
           {catalogParts.map(cp => <option key={cp.id} value={cp.name} />)}
         </datalist>
-        {parts.length === 0 && taskGroups.length === 0 ? (
+        {parts.length === 0 && laborLines.length === 0 && taskGroups.length === 0 ? (
           <p className="text-xs text-muted-foreground">{t('work_orders_page.no_parts')}</p>
         ) : (
           <div className="space-y-4">
@@ -978,6 +1068,9 @@ export default function WorkOrderForm() {
                   />
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {t('work_orders_page.group_subtotal')}: ${groupSubtotal(gv).toFixed(2)}
+                    {groupLaborSubtotal(gv) > 0 && (
+                      <> · {t('work_orders_page.group_labor', { defaultValue: 'labor' })} ${groupLaborSubtotal(gv).toFixed(2)}</>
+                    )}
                   </span>
                   <span className="ml-auto inline-flex items-center gap-1.5">
                     <button
@@ -987,6 +1080,14 @@ export default function WorkOrderForm() {
                     >
                       <Plus size={12} />
                       {t('work_orders_page.add_part')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLaborLines(prev => [...prev, blankLabor(gv)])}
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded"
+                    >
+                      <Plus size={12} />
+                      {t('work_orders_page.add_labor', { defaultValue: 'Add labor' })}
                     </button>
                     <Tip label={t('work_orders_page.remove_task_group')}>
                       <button
@@ -1001,9 +1102,10 @@ export default function WorkOrderForm() {
                   </span>
                 </div>
                 {renderPartsTable(entriesFor(gv))}
+                {renderLaborTable(laborEntriesFor(gv))}
               </div>
             ))}
-            {(entriesFor('').length > 0 || taskGroups.length === 0) && (
+            {(entriesFor('').length > 0 || laborEntriesFor('').length > 0 || taskGroups.length === 0) && (
               <div className="border border-border rounded-lg overflow-hidden">
                 <div className="flex items-center gap-2 px-3 py-2 bg-muted/60 border-b border-border">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
@@ -1011,110 +1113,15 @@ export default function WorkOrderForm() {
                   </span>
                   <span className="text-xs text-muted-foreground tabular-nums">
                     {t('work_orders_page.group_subtotal')}: ${groupSubtotal('').toFixed(2)}
+                    {groupLaborSubtotal('') > 0 && (
+                      <> · {t('work_orders_page.group_labor', { defaultValue: 'labor' })} ${groupLaborSubtotal('').toFixed(2)}</>
+                    )}
                   </span>
                 </div>
                 {renderPartsTable(entriesFor(''))}
+                {renderLaborTable(laborEntriesFor(''))}
               </div>
             )}
-          </div>
-        )}
-      </section>
-
-      {/* ── Labor lines (Tier-2 B1) — optional itemization.  When any
-          exist, the Costs block's labor field becomes their derived
-          sum (read-only); with none the manual scalar still works.
-          Form-embedded line editor = sanctioned raw-table exception. */}
-      <section className="bg-card border border-border rounded-xl p-5 mb-5">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold">
-            {t('work_orders_page.section_labor', { defaultValue: 'Labor' })}
-          </h3>
-          <button
-            type="button"
-            onClick={() => setLaborLines(prev => [...prev, blankLabor()])}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-foreground transition"
-          >
-            <Plus size={14} />
-            {t('work_orders_page.add_labor', { defaultValue: 'Add labor line' })}
-          </button>
-        </div>
-        {laborLines.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            {t('work_orders_page.labor_empty', { defaultValue:
-              'No itemized labor — the single Labor amount in Costs below still works. Add lines to split labor per task (hours × rate or a flat total).' })}
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-xs text-muted-foreground border-b border-border">
-                  <th className="py-1.5 pr-2 font-medium">{t('work_orders_page.labor_desc', { defaultValue: 'Description' })}</th>
-                  <th className="py-1.5 px-2 font-medium w-44">{t('work_orders_page.labor_task', { defaultValue: 'Service task' })}</th>
-                  <th className="py-1.5 px-2 font-medium w-20 text-right">{t('work_orders_page.labor_hours', { defaultValue: 'Hours' })}</th>
-                  <th className="py-1.5 px-2 font-medium w-24 text-right">{t('work_orders_page.labor_rate', { defaultValue: 'Rate' })}</th>
-                  <th className="py-1.5 px-2 font-medium w-24 text-right">{t('work_orders_page.labor_total', { defaultValue: 'Total' })}</th>
-                  <th className="py-1.5 pl-2 w-8" />
-                </tr>
-              </thead>
-              <tbody>
-                {laborLines.map((l, idx) => (
-                  <tr key={l.id ?? `new-${idx}`} className="border-b border-border/50 last:border-0">
-                    <td className="py-1.5 pr-2">
-                      <input
-                        type="text"
-                        value={l.description}
-                        onChange={e => updateLaborLine(idx, { description: e.target.value })}
-                        placeholder={t('work_orders_page.labor_desc_ph', { defaultValue: 'e.g. Brake job labor' })}
-                        className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-foreground focus:outline-none focus:border-ring"
-                      />
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <TypePicker
-                        value={l.service_task}
-                        onChange={(next) => updateLaborLine(idx, { service_task: next })}
-                        className="w-full"
-                      />
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <input
-                        type="number" min="0" step="0.25"
-                        value={l.hours || ''}
-                        onChange={e => updateLaborLine(idx, { hours: Number(e.target.value) || 0 })}
-                        className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-right tabular-nums text-foreground focus:outline-none focus:border-ring"
-                      />
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <input
-                        type="number" min="0" step="0.01"
-                        value={l.rate || ''}
-                        onChange={e => updateLaborLine(idx, { rate: Number(e.target.value) || 0 })}
-                        className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-right tabular-nums text-foreground focus:outline-none focus:border-ring"
-                      />
-                    </td>
-                    <td className="py-1.5 px-2">
-                      <input
-                        type="number" min="0" step="0.01"
-                        value={l.total_cost || ''}
-                        onChange={e => updateLaborLine(idx, { total_cost: Number(e.target.value) || 0 })}
-                        className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-right tabular-nums text-foreground focus:outline-none focus:border-ring"
-                      />
-                    </td>
-                    <td className="py-1.5 pl-2 text-right">
-                      <Tip label={t('work_orders_page.remove_labor', { defaultValue: 'Remove labor line' })}>
-                        <button
-                          type="button"
-                          onClick={() => removeLaborLine(idx)}
-                          aria-label={t('work_orders_page.remove_labor', { defaultValue: 'Remove labor line' })}
-                          className="text-muted-foreground hover:text-destructive p-1"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </Tip>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
         )}
       </section>
