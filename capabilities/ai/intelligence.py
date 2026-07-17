@@ -945,6 +945,7 @@ async def _run_anthropic_agent(
                     account_id=account_id, db=db,
                     scope_vehicles=_scoped_vehicle_set(user_context, user_role),
                     attachment_grids=(user_context or {}).get("_attachment_grids"),
+                    attachment_docs=(user_context or {}).get("_attachment_docs"),
                 )
             except Exception as e:
                 result = {"error": f"Tool execution failed: {e}"}
@@ -1517,6 +1518,7 @@ async def _run_openai_compat_agent(
                     account_id=account_id, db=db,
                     scope_vehicles=_scoped_vehicle_set(user_context, user_role),
                     attachment_grids=(user_context or {}).get("_attachment_grids"),
+                    attachment_docs=(user_context or {}).get("_attachment_docs"),
                 )
             except Exception as e:
                 result = {"error": f"Tool execution failed: {e}"}
@@ -1968,6 +1970,7 @@ async def ask_agent(question: str, vehicle_context: dict,
                         account_id=account_id, db=db,
                         scope_vehicles=_scoped_vehicle_set(user_context, user_role),
                         attachment_grids=(user_context or {}).get("_attachment_grids"),
+                        attachment_docs=(user_context or {}).get("_attachment_docs"),
                     )
                     tool_results.append({"tool": tool_name, "args": tool_args, "data": result})
 

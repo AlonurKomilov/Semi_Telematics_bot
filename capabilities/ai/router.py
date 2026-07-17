@@ -9,6 +9,8 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
+from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 import capabilities.ai as ai
@@ -75,6 +77,10 @@ class ChatAttachment(BaseModel):
     """
     name: str = Field(..., min_length=1, max_length=120)
     content: str = Field(..., min_length=1, max_length=1_400_000)
+    # "sheet" = spreadsheet text eligible for imports (gated);
+    # "text"  = extracted document text (PDF/TXT), read-only lane.
+    # Only selects the parser — a wrong value can't change privileges.
+    kind: Literal["sheet", "text"] = "sheet"
 
     @field_validator("content")
     @classmethod
@@ -426,9 +432,9 @@ async def ai_chat_stream(
     if user_context is not None and body.page_context:
         user_context["page_context"] = body.page_context
     # Transient attachments: parse the device-held file text into grids
+    # (spreadsheets, import-gated) and text docs (PDF/TXT, read-only)
     # that live ONLY in this request's scope (nothing persists — see
-    # docs/architecture/ai-import-assistant.md).  Gated inside the
-    # helper to callers holding at least one write-tool permission.
+    # docs/architecture/ai-import-assistant.md).
     if body.attachments:
         from capabilities.ai.attachments import (
             AttachmentError, parse_attachments_for_request,
@@ -439,13 +445,16 @@ async def ai_chat_stream(
                 detail="Attachments are disabled while previewing another role.",
             )
         try:
-            grids = await parse_attachments_for_request(
+            grids, docs = await parse_attachments_for_request(
                 body.attachments, user.get("role"), account_id,
             )
         except AttachmentError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        if user_context is not None and grids:
-            user_context["_attachment_grids"] = grids
+        if user_context is not None:
+            if grids:
+                user_context["_attachment_grids"] = grids
+            if docs:
+                user_context["_attachment_docs"] = docs
 
     try:
         # Implicit-satisfaction markers (timing + phrase).  Same as

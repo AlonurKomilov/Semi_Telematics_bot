@@ -330,10 +330,10 @@
     "attach_too_large": "ፋይሉ በጣም ትልቅ ነው (ከፍተኛ ~1.4 MB ጽሑፍ)።",
     "attach_limit": "ቢበዛ 3 ፋይሎች ማያያዝ ይቻላል።",
     "attach_read_failed": "ፋይሉን ማንበብ አልተቻለም — እንደገና ይሞክሩ።",
-    "placeholder_attached": "የተያያዘውን ፋይል እንዳስገባ ወይም እንድተነትን ጠይቁኝ…",
+    "placeholder_attached": "የተያያዘውን ሰነድ እንዳስገባ ወይም እንድተነትን ጠይቁኝ…",
     "attach_evicted": "በአባሪ መጠን ገደብ ውስጥ ለመቆየት {{name}} ተወግዷል።",
-    "attach_file": "ሠንጠረዥ አያይዝ",
-    "attach_bad_type": "ማያያዝ የሚቻለው የሠንጠረዥ ፋይሎችን ብቻ ነው (CSV ወይም Excel)።",
+    "attach_file": "ሰነድ አያይዝ",
+    "attach_bad_type": "ማያያዝ የሚቻለው ሰነዶችን ብቻ ነው (CSV፣ Excel፣ PDF ወይም TXT)።",
     "attach_drop": "ለማያያዝ ይልቀቁ"
   },
   "pages": {

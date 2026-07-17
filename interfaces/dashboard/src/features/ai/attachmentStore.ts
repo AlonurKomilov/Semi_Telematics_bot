@@ -35,8 +35,10 @@ function byteLen(s: string): number {
 
 export interface PendingAttachment {
   name: string;
-  /** Raw file text (CSV). */
+  /** Derived text: CSV for sheets, extracted text for documents. */
   content: string;
+  /** 'sheet' = importable spreadsheet text; 'text' = read-only document. */
+  kind: 'sheet' | 'text';
   /** UTF-8 byte size, measured at attach time (chip label + budgets). */
   size: number;
   /** Attached-at epoch ms — eviction order. */
@@ -54,8 +56,12 @@ function load(): PendingAttachment[] {
         (a): a is PendingAttachment =>
           !!a && typeof a.name === 'string' && typeof a.content === 'string',
       )
-      // Entries persisted before `size` existed get measured on load.
-      .map((a) => (typeof a.size === 'number' ? a : { ...a, size: byteLen(a.content) }));
+      // Entries persisted before `size`/`kind` existed get defaults on load.
+      .map((a) => ({
+        ...a,
+        size: typeof a.size === 'number' ? a.size : byteLen(a.content),
+        kind: a.kind === 'text' ? 'text' as const : 'sheet' as const,
+      }));
   } catch {
     return [];
   }
@@ -84,6 +90,7 @@ export function loadPendingAttachments(): PendingAttachment[] {
  */
 export function addPendingAttachment(
   current: PendingAttachment[], name: string, content: string,
+  kind: 'sheet' | 'text' = 'sheet',
 ): { list: PendingAttachment[]; evicted: string[] } | { error: 'too_large' | 'limit' } {
   const size = byteLen(content);
   if (size > MAX_ATTACHMENT_BYTES) return { error: 'too_large' };
@@ -91,7 +98,7 @@ export function addPendingAttachment(
   // attached again" loop).
   let list = current.filter((a) => a.name !== name);
   if (list.length >= MAX_ATTACHMENTS) return { error: 'limit' };
-  list = [...list, { name: name.slice(0, 120), content, size, t: Date.now() }];
+  list = [...list, { name: name.slice(0, 120), content, kind, size, t: Date.now() }];
   const evicted: string[] = [];
   while (
     list.length > 1

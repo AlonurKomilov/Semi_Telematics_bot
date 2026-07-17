@@ -395,7 +395,8 @@ async def execute_tool(tool_name: str, tool_args: dict,
                        account_id: int | None = None,
                        db=None,
                        scope_vehicles: list | None = None,
-                       attachment_grids: dict | None = None) -> dict:
+                       attachment_grids: dict | None = None,
+                       attachment_docs: dict | None = None) -> dict:
     """Execute a registered tool by name. Returns result dict.
 
     Every return is passed through :func:`_stamp_ok`, so the result always
@@ -409,11 +410,13 @@ async def execute_tool(tool_name: str, tool_args: dict,
     vehicles — letting a company/vehicle-restricted user get *their own*
     account-wide rollups instead of being blocked outright.
 
-    ``attachment_grids`` is the request's transiently-parsed attachments
-    (``{name: grid}``).  Injected as ``tool_args["_attachments"]`` ONLY for
-    tools whose registered schema declares ``uses_attachments`` — the same
-    server-side-channel pattern as ``_scope_vehicles``, so the model can
-    never supply grids itself.
+    ``attachment_grids`` / ``attachment_docs`` are the request's
+    transiently-parsed attachments (``{name: grid}`` spreadsheets and
+    ``{name: text}`` documents).  Injected as ``tool_args["_attachments"]``
+    / ``tool_args["_attachment_docs"]`` ONLY for tools whose registered
+    schema declares ``uses_attachments`` — the same server-side-channel
+    pattern as ``_scope_vehicles``, so the model can never supply them
+    itself.
     """
     handler = get_tool_handler(tool_name)
     if not handler:
@@ -422,13 +425,18 @@ async def execute_tool(tool_name: str, tool_args: dict,
         from capabilities.permissions.roles import SCOPE_AWARE_TOOLS
         if tool_name in SCOPE_AWARE_TOOLS:
             tool_args = {**tool_args, "_scope_vehicles": list(scope_vehicles)}
-    if "_attachments" in tool_args:
-        # Server-injected channel — a model-supplied value is never honored.
-        tool_args = {k: v for k, v in tool_args.items() if k != "_attachments"}
-    if attachment_grids:
+    if "_attachments" in tool_args or "_attachment_docs" in tool_args:
+        # Server-injected channels — a model-supplied value is never honored.
+        tool_args = {k: v for k, v in tool_args.items()
+                     if k not in ("_attachments", "_attachment_docs")}
+    if attachment_grids or attachment_docs:
         schema = get_tool_schema(tool_name)
         if schema and schema.get("uses_attachments"):
-            tool_args = {**tool_args, "_attachments": attachment_grids}
+            tool_args = dict(tool_args)
+            if attachment_grids:
+                tool_args["_attachments"] = attachment_grids
+            if attachment_docs:
+                tool_args["_attachment_docs"] = attachment_docs
     try:
         return _stamp_ok(await handler(tool_args, samsara_client,
                                        account_id=account_id, db=db))

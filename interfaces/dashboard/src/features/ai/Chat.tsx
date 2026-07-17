@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
-import { Bot, ArrowUp, Square, Trash2, Copy, Check, RefreshCw, Sparkles, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, Lightbulb, Loader2, ThumbsUp, ThumbsDown, Eye, History, SquarePen, Plus, Paperclip, X, type LucideIcon } from 'lucide-react';
+import { Bot, ArrowUp, Square, Trash2, Copy, Check, RefreshCw, Sparkles, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, Lightbulb, Loader2, ThumbsUp, ThumbsDown, Eye, History, SquarePen, Plus, Paperclip, FileText, X, type LucideIcon } from 'lucide-react';
 import { Tip } from '../../components/tooltip';
 import { Button } from '../../components/ui/button';
 import { toneClasses, toneText } from '../../lib/status';
@@ -16,7 +16,7 @@ import { DislikeReasonForm } from './sections/DislikeReasonForm';
 import { ReferencedVehicles } from './sections/ReferencedVehicles';
 import { thoughtKey, saveThought, getThought, deleteThoughtsForConversation } from './thoughtStore';
 import { loadPendingAttachments, addPendingAttachment, removePendingAttachment, type PendingAttachment } from './attachmentStore';
-import { SPREADSHEET_ACCEPT, isSpreadsheetFile, fileToCsvTexts } from './spreadsheet';
+import { DOCUMENT_ACCEPT, isDocumentFile, fileToAttachmentParts } from './documents';
 import { useAssistant } from './AssistantContext';
 import { useCurrentPageContext } from './PageContext';
 import { toolDeepLink } from './toolLinks';
@@ -424,15 +424,15 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   useEffect(() => () => { if (attachErrorTimer.current) clearTimeout(attachErrorTimer.current); }, []);
   async function attachFiles(files: FileList | File[]) {
     for (const file of Array.from(files)) {
-      if (!isSpreadsheetFile(file)) {
+      if (!isDocumentFile(file)) {
         flashAttachError(t('chat.attach_bad_type'));
         continue;
       }
-      let parts: { name: string; content: string }[];
+      let parts: { name: string; content: string; kind: 'sheet' | 'text' }[];
       try {
-        // CSV passes through; .xlsx/.xls converts to CSV ON THE DEVICE
-        // (spreadsheet.ts) — the wire contract stays CSV text.
-        parts = await fileToCsvTexts(file);
+        // Everything converts ON THE DEVICE (documents.ts): CSV passes
+        // through, Excel → CSV per sheet, PDF/TXT → extracted text.
+        parts = await fileToAttachmentParts(file);
       } catch {
         flashAttachError(t('chat.attach_read_failed'));
         continue;
@@ -442,7 +442,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         continue;
       }
       for (const part of parts) {
-        const res = addPendingAttachment(attachmentsRef.current, part.name, part.content);
+        const res = addPendingAttachment(attachmentsRef.current, part.name, part.content, part.kind);
         if ('error' in res) {
           flashAttachError(t(res.error === 'too_large' ? 'chat.attach_too_large' : 'chat.attach_limit'));
           break;   // the cap applies to the rest of this workbook too
@@ -732,7 +732,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           // Device-held file text, re-sent while the chip is attached —
           // the server parses per turn and stores nothing (import spine).
           attachments: attachments.length > 0
-            ? attachments.map(({ name, content }) => ({ name, content }))
+            ? attachments.map(({ name, content, kind }) => ({ name, content, kind }))
             : undefined,
         },
       );
@@ -1872,7 +1872,9 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   key={a.name}
                   className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-0.5 text-xs text-foreground"
                 >
-                  <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                  {a.kind === 'text'
+                    ? <FileText size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                    : <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden />}
                   <span className="max-w-40 truncate">{a.name}</span>
                   <span className="text-3xs text-muted-foreground tabular-nums">
                     {Math.max(1, Math.round(a.size / 1024))} KB
@@ -1943,7 +1945,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
               <input
                 ref={fileInputRef}
                 type="file"
-                accept={SPREADSHEET_ACCEPT}
+                accept={DOCUMENT_ACCEPT}
                 multiple
                 className="hidden"
                 onChange={(e) => {
@@ -1963,7 +1965,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   >
                     <Paperclip size={14} className="text-primary shrink-0" aria-hidden />
                     <span className="font-medium">{t('chat.attach_file')}</span>
-                    <span className="ml-auto text-3xs text-muted-foreground">CSV · Excel</span>
+                    <span className="ml-auto text-3xs text-muted-foreground">CSV · Excel · PDF</span>
                   </button>
                   <div className="my-1 border-t border-border" role="separator" />
                   {SLASH_COMMANDS.map((c) => (

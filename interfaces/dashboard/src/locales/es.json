@@ -330,10 +330,10 @@
     "attach_too_large": "El archivo es demasiado grande (máx. ~1.4 MB de texto).",
     "attach_limit": "Se pueden adjuntar 3 archivos como máximo.",
     "attach_read_failed": "No se pudo leer el archivo — inténtalo de nuevo.",
-    "placeholder_attached": "Pídeme importar o analizar el archivo adjunto…",
+    "placeholder_attached": "Pídeme importar o analizar el documento adjunto…",
     "attach_evicted": "Se quitó {{name}} para no superar el límite de tamaño de adjuntos.",
-    "attach_file": "Adjuntar hoja de cálculo",
-    "attach_bad_type": "Solo se pueden adjuntar hojas de cálculo (CSV o Excel).",
+    "attach_file": "Adjuntar documento",
+    "attach_bad_type": "Solo se pueden adjuntar documentos (CSV, Excel, PDF o TXT).",
     "attach_drop": "Suelta para adjuntar"
   },
   "pages": {

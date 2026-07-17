@@ -330,10 +330,10 @@
     "attach_too_large": "Faylku aad buu u weyn yahay (ugu badnaan ~1.4 MB oo qoraal ah).",
     "attach_limit": "Ugu badnaan 3 fayl ayaa la lifaaqi karaa.",
     "attach_read_failed": "Faylka lama akhriyi karin — mar kale isku day.",
-    "placeholder_attached": "I weydii inaan soo dejiyo ama falanqeeyo faylka lifaaqan…",
+    "placeholder_attached": "I weydii inaan soo dejiyo ama falanqeeyo dukumeentiga lifaaqan…",
     "attach_evicted": "{{name}} waa la saaray si loogu hoos jiro xadka cabbirka lifaaqa.",
-    "attach_file": "Ku lifaaq xaashi xisaabeed",
-    "attach_bad_type": "Waxaa la lifaaqi karaa kaliya xaashiyaha xisaabeed (CSV ama Excel).",
+    "attach_file": "Ku lifaaq dukumeenti",
+    "attach_bad_type": "Waxaa la lifaaqi karaa kaliya dukumeentiyo (CSV, Excel, PDF ama TXT).",
     "attach_drop": "Sii day si aad u lifaaqdo"
   },
   "pages": {

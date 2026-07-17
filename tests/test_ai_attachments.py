@@ -189,10 +189,68 @@ async def test_parse_gate_by_import_target_permission(monkeypatch):
         name="inv", description="", fields={},
         build_rows=_noop, executor=_noop, permission="can_manage_vehicles",
     ))
-    grids = await A.parse_attachments_for_request([Att()], "owner", None)
+    grids, docs = await A.parse_attachments_for_request([Att()], "owner", None)
     assert grids["sheet.csv"] == [["a", "b"], ["1", "2"]]
+    assert docs == {}
     with pytest.raises(AttachmentError, match="can't run imports"):
         await A.parse_attachments_for_request([Att()], "recruiter", None)
+
+
+async def test_text_documents_bypass_the_import_gate(monkeypatch):
+    """kind="text" is the READ-ONLY lane: no import permission needed
+    (same trust as typing the text), and the kind field only picks the
+    parser — it can't make a doc importable."""
+    import capabilities.ai.attachments as A
+
+    class Doc:
+        name = "manual.pdf"
+        content = "[Page 1]\nBrake inspection procedure\x00\x07 for trucks.\n"
+        kind = "text"
+
+    # Even with NO registered targets a recruiter may attach a text doc…
+    monkeypatch.setattr(A, "_IMPORT_TARGETS", {})
+    grids, docs = await A.parse_attachments_for_request([Doc()], "recruiter", None)
+    assert grids == {}
+    assert docs["manual.pdf"] == "[Page 1]\nBrake inspection procedure for trucks."
+
+    # …but a SHEET in the same request still trips the gate.
+    class Sheet:
+        name = "s.csv"
+        content = "a\n1\n"
+        kind = "sheet"
+
+    with pytest.raises(AttachmentError, match="can't run imports"):
+        await A.parse_attachments_for_request([Doc(), Sheet()], "recruiter", None)
+
+
+def test_doc_excerpt_pages_through_long_text():
+    from capabilities.ai.attachments import DOC_EXCERPT_CHARS, doc_excerpt
+
+    text = "x" * (DOC_EXCERPT_CHARS * 2 + 100)
+    first = doc_excerpt(text)
+    assert len(first["excerpt"]) == DOC_EXCERPT_CHARS
+    assert first["excerpt_truncated"] is True and first["char_count"] == len(text)
+    last = doc_excerpt(text, offset=DOC_EXCERPT_CHARS * 2)
+    assert len(last["excerpt"]) == 100
+    assert last["excerpt_truncated"] is False
+
+
+async def test_read_attachment_reads_text_documents():
+    from capabilities.ai.tools.attachments_tool import read_attachment
+
+    out = await read_attachment(
+        {"_attachment_docs": {"manual.pdf": "Torque spec: 450 ft-lb. " * 300}},
+        None,
+    )
+    assert out["kind"] == "text" and out["name"] == "manual.pdf"
+    assert out["excerpt"].startswith("Torque spec")
+    assert out["excerpt_truncated"] is True
+    nxt = await read_attachment(
+        {"name": "manual.pdf", "offset": out["offset"] + len(out["excerpt"]),
+         "_attachment_docs": {"manual.pdf": "Torque spec: 450 ft-lb. " * 300}},
+        None,
+    )
+    assert nxt["offset"] > 0 and "instructions" in nxt["note"]
 
 
 # ── Staged payload on proposals (real Postgres) ──────────────────────

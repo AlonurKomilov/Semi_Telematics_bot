@@ -330,10 +330,10 @@
     "attach_too_large": "Ce fichier est trop volumineux (max ~1,4 Mo de texte).",
     "attach_limit": "3 fichiers joints au maximum.",
     "attach_read_failed": "Impossible de lire ce fichier — réessayez.",
-    "placeholder_attached": "Demandez-moi d'importer ou d'analyser le fichier joint…",
+    "placeholder_attached": "Demandez-moi d'importer ou d'analyser le document joint…",
     "attach_evicted": "{{name}} a été retiré pour rester sous la limite de taille des pièces jointes.",
-    "attach_file": "Joindre une feuille de calcul",
-    "attach_bad_type": "Seules les feuilles de calcul peuvent être jointes (CSV ou Excel).",
+    "attach_file": "Joindre un document",
+    "attach_bad_type": "Seuls des documents peuvent être joints (CSV, Excel, PDF ou TXT).",
     "attach_drop": "Déposez pour joindre"
   },
   "pages": {

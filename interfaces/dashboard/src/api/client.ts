@@ -246,10 +246,12 @@ export async function apiStreamChat(
     /** What the user is viewing — a PROMPT HINT for the model (the
      *  backend still authorizes tools/scope from the JWT, never this). */
     pageContext?: unknown;
-    /** Device-held file text riding inline for THIS message (imports).
-     *  There is no upload endpoint by design — the server parses these
-     *  transiently and persists nothing until the user approves. */
-    attachments?: { name: string; content: string }[];
+    /** Device-held file text riding inline for THIS message. 'sheet' =
+     *  importable spreadsheet text; 'text' = extracted document (PDF/TXT),
+     *  read-only. There is no upload endpoint by design — the server
+     *  parses these transiently and persists nothing until the user
+     *  approves an import. */
+    attachments?: { name: string; content: string; kind?: 'sheet' | 'text' }[];
   },
 ): Promise<void> {
   const token = getToken();

@@ -54,6 +54,10 @@ MAX_CONTENT_BYTES = 1_400_000
 SAMPLE_ROWS = 20
 SAMPLE_CELL_CHARS = 80
 
+# Text documents (PDF text extracted on the device, plain .txt): the
+# model reads them through read_attachment in bounded windows.
+DOC_EXCERPT_CHARS = 4000
+
 # The bounded preview the USER sees on the import_preview artifact (the
 # full staged rows still travel to the executor — this only caps display).
 PREVIEW_MAX_ROWS = 50
@@ -298,67 +302,128 @@ def build_import_preview(
 
 # ── Request-scope helpers ─────────────────────────────────────────────
 
+def clean_doc_text(content: str, *, name: str = "attachment") -> str:
+    """Sanitize an extracted text document (PDF text, .txt).
+
+    Same posture as the grid parser: strip control characters (keep
+    newline/tab), enforce the byte cap by refusal — never by silent
+    truncation.
+    """
+    if content.startswith("﻿"):
+        content = content[1:]
+    if len(content.encode("utf-8")) > MAX_CONTENT_BYTES:
+        raise AttachmentError(
+            f"{name}: file too large (max {MAX_CONTENT_BYTES / 1_000_000:.1f} MB)."
+        )
+    cleaned = "".join(
+        ch for ch in content if ch in ("\n", "\t") or ord(ch) >= 32
+    ).strip()
+    if not cleaned:
+        raise AttachmentError(f"{name}: no readable text in the file.")
+    return cleaned
+
+
+def doc_excerpt(text: str, offset: int = 0) -> dict:
+    """A bounded window of a text document for the MODEL.
+
+    ``offset`` pages through long documents (the model asks for the next
+    window instead of ever receiving the whole file at once).
+    """
+    offset = max(0, int(offset))
+    window = text[offset:offset + DOC_EXCERPT_CHARS]
+    return {
+        "char_count": len(text),
+        "offset": offset,
+        "excerpt": window,
+        "excerpt_truncated": offset + len(window) < len(text),
+    }
+
+
 def attachment_prompt_line(user_context: dict | None) -> str:
     """Profile-line hint that THIS message carries attachments.
 
     Injected next to the datetime anchor in the agent prompt builders so
     the model reaches for ``read_attachment`` instead of guessing at (or
     hallucinating) the file's contents.  Empty string when the request
-    has no parsed grids — callers append conditionally.
+    has no parsed attachments — callers append conditionally.
     """
-    grids = (user_context or {}).get("_attachment_grids") or {}
-    if not grids:
+    uc = user_context or {}
+    grids = uc.get("_attachment_grids") or {}
+    docs = uc.get("_attachment_docs") or {}
+    if not grids and not docs:
         return ""
-    shapes = ", ".join(
+    shapes = [
         f"{name} ({len(g)} rows × {max((len(r) for r in g), default=0)} cols)"
         for name, g in grids.items()
-    )
+    ] + [
+        f"{name} (text document, {len(text):,} chars)"
+        for name, text in docs.items()
+    ]
     return (
-        f"- Attached files on THIS message: {shapes}. "
-        "Call read_attachment FIRST to inspect the layout before answering "
-        "about the file or proposing any action based on it."
+        f"- Attached files on THIS message: {', '.join(shapes)}. "
+        "Call read_attachment FIRST to inspect the contents before "
+        "answering about a file or proposing any action based on it."
     )
 
 
 async def parse_attachments_for_request(
     attachments: list, role: str | None, account_id: int | None,
-) -> dict[str, list[list[str]]]:
+) -> tuple[dict[str, list[list[str]]], dict[str, str]]:
     """Validate + transiently parse a request's attachments.
 
-    Gate: parsing runs only for callers holding a permission of at least
-    one registered ``ImportTarget`` — attachments exist purely to feed
-    imports, so a role that could never execute one gets no free parse.
-    ("Any write-tool permission" was considered and rejected: derived
-    always-on flags like ``can_alerts_vehicle`` give every role SOME
-    write tool, making that gate vacuous.)  Fail-closed when no targets
-    are registered.  Raises ``AttachmentError`` with a user-facing
-    message on any refusal.
+    Returns ``(grids, docs)`` — two lanes with different trust rules:
+
+    * **grids** (``kind="sheet"``, the default): spreadsheet text that
+      can feed IMPORTS.  Gated: parsed only for callers holding a
+      permission of at least one registered ``ImportTarget`` — a role
+      that could never execute an import gets no free parse.  ("Any
+      write-tool permission" was considered and rejected: derived
+      always-on flags like ``can_alerts_vehicle`` give every role SOME
+      write tool, making that gate vacuous.)  Fail-closed when no
+      targets are registered.
+    * **docs** (``kind="text"``): extracted text documents (PDF/TXT) the
+      model can only READ through bounded windows.  No import gate —
+      reading a document is the same trust level as the user typing its
+      contents, and every tool call stays behind the normal permission
+      gate.  The ``kind`` field only picks the parser: a mislabeled
+      attachment yields a failed parse or an inert text doc, never a
+      privilege change.
+
+    Raises ``AttachmentError`` with a user-facing message on any refusal.
     """
+    grids: dict[str, list[list[str]]] = {}
+    docs: dict[str, str] = {}
     if not attachments:
-        return {}
+        return grids, docs
     if len(attachments) > MAX_ATTACHMENTS:
         raise AttachmentError(f"At most {MAX_ATTACHMENTS} attachments per message.")
-    targets = [t for t in list_import_targets() if t.permission]
-    allowed = False
-    if role and targets:
-        try:
-            from adapters.storage import Role
-            from capabilities.permissions.roles import (
-                get_account_permissions, get_permissions,
+    sheet_atts = [
+        a for a in attachments if str(getattr(a, "kind", "sheet")) != "text"
+    ]
+    if sheet_atts:
+        targets = [t for t in list_import_targets() if t.permission]
+        allowed = False
+        if role and targets:
+            try:
+                from adapters.storage import Role
+                from capabilities.permissions.roles import (
+                    get_account_permissions, get_permissions,
+                )
+                r = Role(role)
+                perms = (await get_account_permissions(r, int(account_id))
+                         if account_id is not None else get_permissions(r))
+                allowed = any(getattr(perms, t.permission, False) for t in targets)
+            except (ValueError, KeyError, ImportError):
+                allowed = False
+        if not allowed:
+            raise AttachmentError(
+                "Your role can't run imports, so attachments aren't processed."
             )
-            r = Role(role)
-            perms = (await get_account_permissions(r, int(account_id))
-                     if account_id is not None else get_permissions(r))
-            allowed = any(getattr(perms, t.permission, False) for t in targets)
-        except (ValueError, KeyError, ImportError):
-            allowed = False
-    if not allowed:
-        raise AttachmentError(
-            "Your role can't run imports, so attachments aren't processed."
-        )
-    grids: dict[str, list[list[str]]] = {}
     for att in attachments:
         name = str(getattr(att, "name", "") or "attachment")[:120]
         content = str(getattr(att, "content", "") or "")
-        grids[name] = parse_csv_grid(content, name=name)
-    return grids
+        if str(getattr(att, "kind", "sheet")) == "text":
+            docs[name] = clean_doc_text(content, name=name)
+        else:
+            grids[name] = parse_csv_grid(content, name=name)
+    return grids, docs

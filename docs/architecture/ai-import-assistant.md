@@ -429,6 +429,25 @@ per non-empty sheet ("Fleet sheet.xlsx — Trucks"); the picker accepts
 CSV + Excel, multiple selection works, and files can be dragged onto
 the composer (counter-based highlight, drop hint).  The earlier
 "needs openpyxl" objection is void — no server dependency was added.
-PDF remains deliberately out of scope for IMPORTS: a PDF is not a grid;
-"read this PDF" is a separate document-understanding track, not a row
-importer.
+
+**Update 2026-07-17 (same day) — the TEXT-DOCUMENT lane:** attachments
+now have two kinds on the wire (`ChatAttachment.kind`):
+
+  * `sheet` (default) — spreadsheet text, eligible for IMPORTS, parse
+    gated on a registered ImportTarget permission (unchanged).
+  * `text` — extracted document text (PDF via pdf.js ON THE DEVICE,
+    plain .txt).  READ-ONLY: the model reads it through
+    `read_attachment`'s bounded 4k-char windows (`offset` pages through
+    long docs), it can never feed an import, and it needs no import
+    permission — attaching a document is the same trust level as typing
+    its contents, and every tool call stays behind the normal gate.
+    The `kind` field only selects the parser; a mislabeled attachment
+    yields a failed parse or an inert text doc, never a privilege
+    change.  PDF stays deliberately OUT of the import lane: a PDF is
+    not a grid, and guessed rows written to Inventory are worse than
+    no import.
+
+The composer affordance is now "Attach document · CSV · Excel · PDF"
+(+.txt), with per-kind chip icons.  Both extraction libraries (SheetJS,
+pdf.js) are device-side lazy chunks — the wire contract is still
+"derived text inline, nothing stored".
