@@ -284,7 +284,7 @@ export default function PartDetail() {
       // Non-destructive: the row + its invoice lines stay; an empty
       // part number fills from the canonical entry.
       await apiJSON(`/parts/${partId}/link-public/${pubPick.id}`, { method: 'POST' });
-      toast.success('Linked to the public catalog — nothing was deleted. Unlink here reverses it.');
+      toast.success('Linked to the catalog — nothing was deleted. Unlink here reverses it.');
       qc.invalidateQueries({ queryKey: ['part-detail', partId] });
       qc.invalidateQueries({ queryKey: ['parts-catalog'] });
       setMergeOpen(false);
@@ -379,14 +379,14 @@ export default function PartDetail() {
           </div>
 
           {/* Public-catalog link state: linking is automatic by name
-              (or via Merge into… → Public catalog); Unlink is the
+              (or via Merge into… → Catalog); Unlink is the
               wrong-match escape hatch and it STICKS. */}
           <div className="bg-card border border-border rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3">
             <Globe size={16} className="text-muted-foreground shrink-0" />
             {data.public ? (
               <>
                 <p className="text-sm text-foreground min-w-0">
-                  In public catalog as <span className="font-medium">{data.public.name}</span>
+                  In the catalog as <span className="font-medium">{data.public.name}</span>
                   {data.public.category && (
                     <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full border border-border text-2xs text-muted-foreground">
                       {data.public.category}
@@ -400,9 +400,9 @@ export default function PartDetail() {
               </>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Not in the public catalog — parts link automatically when
+                Not in the catalog — parts link automatically when
                 their name matches a curated entry, or via Merge into… →
-                Public catalog.
+                Catalog.
               </p>
             )}
           </div>
@@ -529,7 +529,7 @@ export default function PartDetail() {
 
       {/* Merge dialog — two dedup scopes, two verbs.  "Your parts"
           folds THIS part into the chosen survivor (destructive);
-          "Public catalog" LINKS it to the canonical entry
+          "Catalog" LINKS it to the canonical entry
           (non-destructive, reversible via Unlink). */}
       <Dialog open={mergeOpen} onOpenChange={(o) => { if (!o) setMergeOpen(false); }}>
         <DialogContent className="max-w-md">
@@ -538,11 +538,11 @@ export default function PartDetail() {
             <DialogDescription>
               {mergeScope === 'mine'
                 ? "All of this part's invoice lines move to the part you pick, this record is deleted, and future synced lines under this name resolve to the survivor. This cannot be undone."
-                : 'This part is the same thing as a public catalog entry. Linking keeps this record and its invoice lines — an empty part number fills from the canonical entry. Reversible with Unlink.'}
+                : 'This part is the same thing as a catalog entry. Linking keeps this record and its invoice lines — an empty part number fills from the canonical entry. Reversible with Unlink.'}
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-1 rounded-md border border-border p-1 bg-muted/40" role="tablist" aria-label="Duplicate scope">
-            {([['mine', 'Your parts'], ['public', 'Public catalog']] as const).map(([scope, label]) => (
+            {([['mine', 'Your parts'], ['public', 'Catalog']] as const).map(([scope, label]) => (
               <button
                 key={scope}
                 type="button"
@@ -574,7 +574,7 @@ export default function PartDetail() {
             <div className="flex flex-col gap-2">
               <input
                 className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
-                placeholder="Search the public catalog…"
+                placeholder="Search the catalog…"
                 value={pubTerm}
                 onChange={(e) => { setPubTerm(e.target.value); setPubPick(null); }}
               />

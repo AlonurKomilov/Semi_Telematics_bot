@@ -108,7 +108,7 @@ const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
       { to: '/ai-feedback', label: 'AI feedback', icon: MessageSquareWarning },
       { to: '/retention', label: 'Retention', icon: DatabaseBackup },
       { to: '/vendor-directory', label: 'Vendor directory', icon: Store },
-      { to: '/parts-directory', label: 'Parts directory', icon: Cog },
+      { to: '/parts-directory', label: 'Parts catalog', icon: Cog },
       { to: '/scans',     label: 'File scans', icon: ShieldCheck },
       { to: '/scheduler', label: 'Scheduler', icon: CalendarClock },
     ],

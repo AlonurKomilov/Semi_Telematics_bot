@@ -169,7 +169,7 @@ export default function Parts() {
       <div role="tablist" aria-label="Part sections" className="flex gap-1 mb-4 border-b border-border">
         {([
           { key: 'mine' as const, label: 'My parts' },
-          { key: 'public' as const, label: 'Public catalog' },
+          { key: 'public' as const, label: 'Catalog' },
         ]).map(({ key, label }) => {
           const sel = tab === key;
           return (
@@ -213,13 +213,13 @@ export default function Parts() {
         )
       ) : (
         pubError ? (
-          <ErrorState message={pubError instanceof Error ? pubError.message : 'Failed to load the public catalog'} />
+          <ErrorState message={pubError instanceof Error ? pubError.message : 'Failed to load the catalog'} />
         ) : pubLoading ? (
           <TableSkeleton rows={8} cols={4} />
         ) : pubEntries.length === 0 ? (
           <EmptyState
             icon={Globe}
-            title="The public catalog is just getting started"
+            title="The catalog is just getting started"
             description="Platform-curated canonical parts appear here as they're added. Your parts link to them automatically by name — no action needed."
           />
         ) : (
@@ -228,13 +228,13 @@ export default function Parts() {
             columns={publicColumns}
             data={pubEntries as unknown as Record<string, unknown>[]}
             searchKey={['name', 'category', 'part_number', 'description']}
-            searchPlaceholder="Search the public catalog…"
+            searchPlaceholder="Search the catalog…"
             onRowClick={(row) => {
               const e = row as unknown as PublicPartEntry;
               if (e.linked_part_id) {
                 navigate(`/parts/${e.linked_part_id}`);
               } else {
-                toast.info('Not one of your parts yet — link a part to this entry from its page: Merge into… → Public catalog.');
+                toast.info('Not one of your parts yet — link a part to this entry from its page: Merge into… → Catalog.');
               }
             }}
           />
