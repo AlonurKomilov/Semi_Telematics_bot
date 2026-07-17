@@ -1,6 +1,6 @@
 import { Routes, Route, NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Building2, Receipt, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store } from 'lucide-react';
+import { Building2, Receipt, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store, Gauge } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Login from './pages/Login';
 import Accounts from './pages/Accounts';
@@ -15,6 +15,7 @@ import RetentionPage from './pages/Retention';
 import VendorDirectoryPage from './pages/VendorDirectory';
 import ScansPage from './pages/Scans';
 import SchedulerPage from './pages/Scheduler';
+import CapacityPage from './pages/Capacity';
 import { clearToken, getToken } from './api/client';
 
 export default function App() {
@@ -63,6 +64,7 @@ export default function App() {
             <Route path="/vendor-directory" element={<VendorDirectoryPage />} />
             <Route path="/scans" element={<ScansPage />} />
             <Route path="/scheduler" element={<SchedulerPage />} />
+            <Route path="/capacity" element={<CapacityPage />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </div>
@@ -98,6 +100,7 @@ const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
     title: 'Platform',
     items: [
       { to: '/health', label: 'Health', icon: Activity },
+      { to: '/capacity', label: 'Capacity', icon: Gauge },
       { to: '/users',  label: 'Users',  icon: Users },
       { to: '/errors', label: 'Errors', icon: AlertTriangle },
       { to: '/ai-feedback', label: 'AI feedback', icon: MessageSquareWarning },

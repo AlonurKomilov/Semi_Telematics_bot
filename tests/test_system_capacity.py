@@ -11,11 +11,41 @@ from __future__ import annotations
 
 import pytest
 import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+
+from adapters.storage import Role
+from interfaces.api.auth import create_jwt
 
 
 @pytest_asyncio.fixture
 async def db(pg_db):
     return pg_db
+
+
+@pytest_asyncio.fixture
+async def capacity_app(pg_db, monkeypatch):
+    """API + a system-owner JWT + a plain-owner JWT (same pattern as the
+    other /system suites)."""
+    db = pg_db
+    acct = await db.create_account("Capacity Test Co")
+    op = await db.create_user(910001, acct.id, role=Role.OWNER)
+    non_op = await db.create_user(910002, acct.id, role=Role.OWNER)
+
+    import capabilities.permissions.roles as perms
+    monkeypatch.setattr(perms, "SYSTEM_OWNER_IDS", {op.telegram_id})
+
+    import infra.platform as _cp
+    old = _cp._db
+    _cp._db = db
+    from interfaces.api.app import create_api
+    transport = ASGITransport(app=create_api())
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        yield {
+            "client": client, "db": db, "acct": acct,
+            "op": {"Authorization": f"Bearer {create_jwt(op.telegram_id, acct.id, 'owner')}"},
+            "non_op": {"Authorization": f"Bearer {create_jwt(non_op.telegram_id, acct.id, 'owner')}"},
+        }
+    _cp._db = old
 
 
 # ── Mixin: minute → hourly rollup ─────────────────────────────────
@@ -135,6 +165,79 @@ async def test_host_probe_warmup_then_rates(db):
     second = sampler._host_probe()
     assert isinstance(second["cpu_pct"], float)
     assert second["net_rx_kbps"] is not None
+
+
+# ── /system/capacity API ──────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_capacity_endpoints_are_operator_only(capacity_app):
+    s = capacity_app
+    for path in ("/api/system/capacity/overview",
+                 "/api/system/capacity/series?window=24h",
+                 "/api/system/capacity/accounts"):
+        r = await s["client"].get(path, headers=s["non_op"])
+        assert r.status_code == 403, path
+        r = await s["client"].get(path)
+        assert r.status_code == 401, path
+
+
+@pytest.mark.asyncio
+async def test_capacity_overview_and_series_shapes(capacity_app):
+    s = capacity_app
+    db = s["db"]
+    # Seed a week of hourly peaks (cpu climbing 40→52%) + one minute row.
+    for d in range(10, 17):
+        for h in (9, 15):
+            await db._db.execute(
+                """INSERT INTO system_metrics_hourly
+                   (hour, peak_cpu_pct, peak_mem_pct, disk_used_gb, disk_pct,
+                    vehicles_active, accounts_active)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT (hour) DO NOTHING""",
+                (f"2026-07-{d}T{h:02d}:00", 40.0 + d, 35.0, 50.0 + d * 0.5, 26.0, 180, 4),
+            )
+    await db._db.commit()
+    await db.insert_system_metrics_minute({
+        "ts": "2026-07-17T08:30", "cpu_pct": 44.0, "mem_pct": 36.0,
+        "vehicles_active": 180, "accounts_active": 4,
+    })
+
+    r = await s["client"].get("/api/system/capacity/overview", headers=s["op"])
+    assert r.status_code == 200
+    body = r.json()
+    assert body["latest"]["ts"] == "2026-07-17T08:30"
+    hr = body["headroom"]
+    assert hr["watch_pct"] == 70.0 and hr["act_pct"] == 85.0
+    # Headroom math sanity when the 7d window catches seeded peaks: the
+    # binding resource is CPU and the estimate scales vehicles linearly
+    # (vehicles × 70 / peak).  With sparse seeded hours confidence is low.
+    if hr["binding_resource"] == "cpu" and hr["vehicles_at_watch"] is not None:
+        assert hr["vehicles_at_watch"] == int(180 * 70.0 / hr["peak_cpu_pct"])
+        assert hr["confidence"] == "low"
+
+    r = await s["client"].get("/api/system/capacity/series?window=30d", headers=s["op"])
+    assert r.status_code == 200
+    assert r.json()["tier"] == "hourly"
+    assert len(r.json()["points"]) >= 10
+    r = await s["client"].get("/api/system/capacity/series?window=24h", headers=s["op"])
+    assert r.json()["tier"] == "minute"
+
+
+@pytest.mark.asyncio
+async def test_capacity_accounts_labels_and_filter(capacity_app):
+    s = capacity_app
+    db = s["db"]
+    acct = s["acct"]
+    await db.upsert_account_usage_daily("2026-07-15", {acct.id: 1200, 999999: 5})
+    r = await s["client"].get(
+        f"/api/system/capacity/accounts?days=30&account_id={acct.id}",
+        headers=s["op"],
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert all(row["account_id"] == acct.id for row in body["rows"])
+    labels = {a["account_id"]: a["name"] for a in body["accounts"]}
+    assert labels.get(acct.id) == "Capacity Test Co"
 
 
 @pytest.mark.asyncio

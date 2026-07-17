@@ -141,6 +141,10 @@ export default function AccountDetailPage() {
         {/* Telemetry warehouse cascade (our processing, not a provider feed) */}
         <TelemetryCascadeCard accountId={accountId} />
 
+        {/* What this customer costs — request metering from the
+            capacity module (per-account daily counts). */}
+        <ResourceUsageCard accountId={accountId} />
+
         {/* Comp control + history */}
         <Card title="Complimentary access"
               actions={
@@ -432,6 +436,59 @@ function fmtBytes(n: number): string {
 // downsampling pipeline — provider-agnostic plumbing, not a Samsara feed —
 // so its health lives operator-side here, not on the customer's integration
 // card.  Self-loads on mount; freshness reflects ingest time per tier.
+function ResourceUsageCard({ accountId }: { accountId: number }) {
+  interface Usage {
+    days: number;
+    rows: { day: string; account_id: number; requests: number }[];
+    accounts: { account_id: number; name: string; vehicles: number }[];
+  }
+  const [data, setData] = useState<Usage | null>(null);
+  const [err, setErr] = useState('');
+
+  useEffect(() => {
+    apiJSON<Usage>(`/system/capacity/accounts?days=30&account_id=${accountId}`)
+      .then(setData)
+      .catch((e: unknown) => setErr(e instanceof Error ? e.message : 'failed'));
+  }, [accountId]);
+
+  const rows = (data?.rows ?? []).slice().sort((a, b) => a.day.localeCompare(b.day));
+  const total = rows.reduce((n, r) => n + r.requests, 0);
+  const today = rows.length ? rows[rows.length - 1] : null;
+  const barMax = Math.max(...rows.map((r) => r.requests), 1);
+  const vehicles = data?.accounts.find((a) => a.account_id === accountId)?.vehicles;
+
+  return (
+    <Card title="Resource usage · 30 days">
+      {err && <p className="text-sm text-slate-400">Unavailable: {err}</p>}
+      {!err && rows.length === 0 && (
+        <p className="text-sm text-slate-400">
+          No request metering recorded yet — counters start with the capacity sampler.
+        </p>
+      )}
+      {rows.length > 0 && (
+        <>
+          <dl className="text-sm space-y-1.5 mb-3">
+            <Row label="API requests (30d)" value={total.toLocaleString()} />
+            <Row label="Avg / day" value={Math.round(total / rows.length).toLocaleString()} />
+            <Row label="Today so far" value={(today?.requests ?? 0).toLocaleString()} />
+            {vehicles != null && <Row label="Active vehicles" value={String(vehicles)} />}
+          </dl>
+          {/* One thin bar per day — shape of the month at a glance. */}
+          <div className="flex items-end gap-px h-10" aria-label="Daily requests, last 30 days">
+            {rows.map((r) => (
+              <div key={r.day} title={`${r.day}: ${r.requests.toLocaleString()}`}
+                className="flex-1 rounded-t-sm bg-accent/70"
+                style={{ height: `${Math.max((r.requests / barMax) * 100, 3)}%` }}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+
 function TelemetryCascadeCard({ accountId }: { accountId: number }) {
   interface Tier {
     label: string;
