@@ -195,9 +195,18 @@ export default function App() {
   // auth on apex (forwarding to role's host).  Both avoid a flash of
   // the wrong UI during the synchronous redirect.
   if (!user && shouldBounceToApex()) {
+    // During an explicit sign-out the bounce deliberately stands down
+    // (logout() owns the navigation, after the server confirms the
+    // revoke) — so this state can last a few seconds.  An anonymous
+    // spinner at an exit point reads as "it's broken"; say what the
+    // wait is.
+    const signingOut = explicitSignoutActive();
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex flex-col items-center justify-center gap-3 h-screen">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary" />
+        {signingOut && (
+          <p className="text-sm text-muted-foreground">Signing out…</p>
+        )}
       </div>
     );
   }
