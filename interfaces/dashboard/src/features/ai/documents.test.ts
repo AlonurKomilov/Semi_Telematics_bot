@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fileToAttachmentParts, isDocumentFile, isImageFile } from './documents';
+import { fileToAttachmentParts, isDocumentFile, isImageFile, nextScreenshotName } from './documents';
 
 describe('document dispatcher (attach lanes)', () => {
   it('routes CSV to the importable sheet lane — even with a text/plain MIME', async () => {
@@ -27,6 +27,14 @@ describe('document dispatcher (attach lanes)', () => {
     const [part] = await fileToAttachmentParts(f);
     expect(part.kind).toBe('sheet');
     expect(part.name).toBe('fleet.xlsx');
+  });
+
+  it('numbers pasted screenshots against THIS chat, not a session counter', () => {
+    expect(nextScreenshotName([])).toBe('screenshot-1.png');
+    expect(nextScreenshotName(['screenshot-1.png', 'inv.csv'])).toBe('screenshot-2.png');
+    // A removed/never-sent screenshot frees its number back up.
+    expect(nextScreenshotName(['screenshot-3.png'])).toBe('screenshot-4.png');
+    expect(nextScreenshotName(['SCREENSHOT-2.PNG'])).toBe('screenshot-3.png');
   });
 
   it('recognizes document + image files and rejects the rest', () => {

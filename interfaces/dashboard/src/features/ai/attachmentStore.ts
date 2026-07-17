@@ -194,6 +194,16 @@ export function clearPendingAttachments(): void {
   persist(s);
 }
 
+/** Put files back into the composer — used when a NEW chat's send fails
+ *  before a conversation exists to bind them to (never lose the file). */
+export function setPendingAttachments(files: PendingAttachment[]): PendingAttachment[] {
+  const s = load();
+  s.pending = files.slice(-MAX_ATTACHMENTS);
+  enforceBudget(s);
+  persist(s);
+  return s.pending;
+}
+
 // ── Conversation-bound (sent) ────────────────────────────────────────
 
 export function loadConversationAttachments(conversationId: number): PendingAttachment[] {

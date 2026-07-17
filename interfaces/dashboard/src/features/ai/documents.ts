@@ -116,15 +116,27 @@ export async function pdfToText(data: ArrayBuffer): Promise<string> {
  * corrupt files; returns [] when a PDF has no extractable text (scanned
  * images) — callers show the friendly error either way.
  */
-let pasteSeq = 0;
+/** First free screenshot-N name against what's already in THIS chat's
+ *  context — numbering belongs to the chat, not to a session counter
+ *  (a page-wide counter kept climbing for files that were never sent). */
+export function nextScreenshotName(existingNames: string[]): string {
+  let max = 0;
+  for (const n of existingNames) {
+    const m = /^screenshot-(\d+)\.png$/i.exec(n);
+    if (m) max = Math.max(max, parseInt(m[1], 10));
+  }
+  return `screenshot-${max + 1}.png`;
+}
 
-export async function fileToAttachmentParts(file: File): Promise<AttachmentPart[]> {
+export async function fileToAttachmentParts(
+  file: File, existingNames: string[] = [],
+): Promise<AttachmentPart[]> {
   if (isImageFile(file)) {
     // Pasted screenshots are nameless (or all "image.png") — number them
-    // so a second paste doesn't replace the first chip.
+    // per-chat so a second paste doesn't replace the first chip.
     const name = file.name && file.name !== 'image.png'
       ? file.name
-      : `screenshot-${++pasteSeq}.png`;
+      : nextScreenshotName(existingNames);
     return [{ name, content: await imageToDataUrl(file), kind: 'image' }];
   }
   if (PDF_RE.test(file.name) || file.type === 'application/pdf') {

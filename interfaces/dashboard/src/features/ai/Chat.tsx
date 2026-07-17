@@ -15,7 +15,7 @@ import { formatDate, formatTime } from '../../utils/datetime';
 import { DislikeReasonForm } from './sections/DislikeReasonForm';
 import { ReferencedVehicles } from './sections/ReferencedVehicles';
 import { thoughtKey, saveThought, getThought, deleteThoughtsForConversation } from './thoughtStore';
-import { loadPendingAttachments, addPendingAttachment, removePendingAttachment, clearPendingAttachments, loadConversationAttachments, bindConversationAttachments, removeConversationAttachment, clearConversationAttachments, type PendingAttachment } from './attachmentStore';
+import { loadPendingAttachments, addPendingAttachment, removePendingAttachment, clearPendingAttachments, setPendingAttachments, loadConversationAttachments, bindConversationAttachments, removeConversationAttachment, clearConversationAttachments, type PendingAttachment } from './attachmentStore';
 import { DOCUMENT_ACCEPT, isDocumentFile, fileToAttachmentParts } from './documents';
 import { useAssistant } from './AssistantContext';
 import { useCurrentPageContext } from './PageContext';
@@ -451,7 +451,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
       try {
         // Everything converts ON THE DEVICE (documents.ts): CSV passes
         // through, Excel → CSV per sheet, PDF/TXT → extracted text.
-        parts = await fileToAttachmentParts(file);
+        parts = await fileToAttachmentParts(file, [
+          ...attachmentsRef.current.map((a) => a.name),
+          ...convoFiles.map((a) => a.name),
+        ]);
       } catch {
         flashAttachError(t('chat.attach_read_failed'));
         continue;
@@ -689,6 +692,20 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         ? sentFiles.map(({ name, kind }) => ({ name, kind }))
         : undefined,
     };
+    // The files leave the composer the moment the message does (their
+    // chips now live on the message above) and belong to the CHAT from
+    // here on.  An existing thread binds immediately; a brand-new chat
+    // binds when the done event brings the conversation id — and on
+    // failure the files return to the composer so nothing is lost.
+    const sentFromNewChat = sentFiles.length > 0 && conversationId == null;
+    if (sentFiles.length > 0) {
+      attachmentsRef.current = [];
+      setAttachments([]);
+      clearPendingAttachments();
+      if (conversationId != null) {
+        setConvoFiles(bindConversationAttachments(conversationId, sentFiles));
+      }
+    }
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setSuggestions([]);
@@ -784,19 +801,14 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           artifacts: aiMsg.artifacts, suggestions: finalSuggestions,
         });
       }
-      // Standard-chat lifecycle: the chips now live ON the sent message
-      // (persisted device-local for thread-reopen) and the files bind to
-      // the thread for follow-up turns; the composer clears.
+      // Standard-chat lifecycle: the chips live ON the sent message
+      // (persisted device-local for thread-reopen); a new chat's files
+      // bind to the thread now that its id exists.
       if (userMsg.attachments?.length) {
         saveThought(thoughtKey(finalConversationId, userMsg.text), { files: userMsg.attachments });
       }
-      if (sentFiles.length > 0) {
-        if (finalConversationId != null) {
-          setConvoFiles(bindConversationAttachments(finalConversationId, sentFiles));
-        }
-        attachmentsRef.current = [];
-        setAttachments([]);
-        clearPendingAttachments();
+      if (sentFiles.length > 0 && finalConversationId != null) {
+        setConvoFiles(bindConversationAttachments(finalConversationId, sentFiles));
       }
       setMessages((prev) => [...prev, aiMsg]);
       setSuggestions(finalSuggestions);
@@ -822,6 +834,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     } catch (e) {
       // Chip rests on any failure/abort (guarded — a superseding run owns it).
       if (runSeq === myRun) setRunState('idle');
+      // A failed/aborted NEW chat has no thread holding the files —
+      // return them to the composer so a retry still carries them.
+      if (sentFromNewChat) {
+        const restored = setPendingAttachments(sentFiles);
+        attachmentsRef.current = restored;
+        setAttachments(restored);
+      }
       if (e instanceof Error && e.name === 'AbortError') return;
       const msg = e instanceof Error ? e.message : 'Failed to get response';
       if (msg.includes('429') || msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('too many')) {
