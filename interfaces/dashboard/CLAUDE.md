@@ -86,6 +86,18 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   Keep `aria-label` on icon-only controls (the tooltip is not the
   accessible name). One `TooltipProvider` is mounted in main.tsx — never
   add per-instance providers.
+- **Time windows = `DateRangePresets`, always.**
+  [`components/shell/DateRangePresets.tsx`](src/components/shell/DateRangePresets.tsx)
+  is the SSOT for "pick a time window" (same idea as DataGrid for
+  tables): never hand-roll a days dropdown, a chip row, or a numeric
+  days input. Two forms, one `days` contract:
+  `variant="dropdown"` (default — toolbars/forms, presets + custom
+  calendar) and `variant="segments"` (inline chip row for chart/section
+  headers). Pass `options` for page-specific windows, `maxDays` when
+  the backend accepts more than 90, `disabled` while generating,
+  `isFetching` for the spinner. NOT this component: config values that
+  merely happen to be day counts (link expiry, rule periods, service
+  intervals, backfill action menus) — those stay form inputs.
 - **Tables = DataGrid, always.** Any tabular list of rows — even a
   5-row read-only summary — uses
   [`components/DataGrid`](src/components/DataGrid.tsx). It's the

@@ -17,7 +17,7 @@ import { useOutletContext } from 'react-router-dom';
 import { FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '../../api/client';
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
+import { DateRangePresets } from '../../components/shell';
 import type { ReportsLayoutOutletContext } from './ReportsLayout';
 
 
@@ -29,7 +29,6 @@ const WINDOW_OPTIONS = [
   { days: '730', label: 'Last 24 months' },
 ];
 
-const WINDOW_ITEMS = WINDOW_OPTIONS.map((o) => ({ value: o.days, label: o.label }));
 
 
 export default function DotBinder() {
@@ -105,17 +104,19 @@ export default function DotBinder() {
         </div>
 
         <div className="space-y-4 mb-5">
-          <label className="block">
+          {/* div, not label: the picker is buttons, not a labelable input */}
+          <div className="block">
             <span className="block text-xs text-muted-foreground mb-1">
               Coverage window
             </span>
-            <Select value={days} onValueChange={(v) => setDays(v)} disabled={generating} items={WINDOW_ITEMS}>
-              <SelectTrigger className="w-full" aria-label="Coverage window"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {WINDOW_ITEMS.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </label>
+            <DateRangePresets
+              value={Number(days)}
+              onChange={(d) => setDays(String(d))}
+              options={WINDOW_OPTIONS.map((o) => ({ label: o.label, days: Number(o.days) }))}
+              maxDays={730}
+              disabled={generating}
+            />
+          </div>
 
           <label className="block">
             <span className="block text-xs text-muted-foreground mb-1">

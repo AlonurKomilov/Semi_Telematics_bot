@@ -4,18 +4,25 @@ import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 
 /**
- * Quick-select day-range picker with optional custom-range calendar.
+ * Quick-select day-range picker with optional custom-range calendar —
+ * THE single source of truth for "pick a time window" (same idea as
+ * DataGrid for tables).  Never hand-roll a days dropdown, a chip row,
+ * or a numeric days input on a page.
  *
- * Mirrors the competitor dashboard's `Today / Yesterday / Last 7 / 14 /
- * 30 / 60 / 90` dropdown plus a two-month calendar for picking arbitrary
- * start/end dates. Writes back to a single `days` integer so existing
- * API endpoints (which expect `days=N` from-today semantics) keep
- * working unchanged.
+ * Two visual forms, one contract (`value`/`onChange` on a single
+ * `days` integer, so `days=N` from-today endpoints work unchanged):
  *
- * Custom-range UX caveat: the underlying scoring backend computes
- * windows as "last N days from today", so picking a custom start date
- * is interpreted as `days = today - start_date`. The calendar's end
- * date is informational and shown back to the user, but the API call
+ *   * ``variant="dropdown"`` (default) — the Today / Yesterday /
+ *     Last 7 / 14 / 30 / 60 / 90 listbox + "Custom range…" calendar.
+ *     Right for page toolbars.
+ *   * ``variant="segments"`` — an inline chip row (pass a compact
+ *     ``options`` list like 7/30/90) + a calendar chip for custom.
+ *     Right for chart/section headers where a dropdown is too heavy.
+ *
+ * Custom-range UX caveat: the underlying backends compute windows as
+ * "last N days from today", so picking a custom start date is
+ * interpreted as `days = today - start_date`. The calendar's end date
+ * is informational and shown back to the user, but the API call
  * always rounds the window to end at "today".
  */
 
@@ -24,6 +31,14 @@ export interface DateRangePresetsProps {
   onChange: (days: number) => void;
   /** Allowed presets — defaults to the same set the competitor exposes. */
   options?: { label: string; days: number }[];
+  /** Visual form — one contract, two shapes (see the component doc). */
+  variant?: 'dropdown' | 'segments';
+  /** Custom-calendar clamp — how far back the backend accepts.
+   *  Defaults to 90 (the composite scoring endpoints' cap); pages
+   *  backed by longer-window endpoints (DOT binder: 24 months) raise it. */
+  maxDays?: number;
+  /** Lock the control (e.g. while a report is generating). */
+  disabled?: boolean;
   /**
    * When true, render a subtle spinner inside the trigger so the user
    * sees feedback while the new period's data is being fetched.  Pages
@@ -143,6 +158,9 @@ export default function DateRangePresets({
   value,
   onChange,
   options = DEFAULT_OPTIONS,
+  variant = 'dropdown',
+  maxDays = 90,
+  disabled = false,
   isFetching = false,
 }: DateRangePresetsProps) {
   const tz = useTimezone();
@@ -172,10 +190,9 @@ export default function DateRangePresets({
 
   const applyCustom = () => {
     if (!pickedStart) return;
-    // Backend composite endpoint caps at 90 days; clamp here so the
-    // calendar can't generate API errors. Larger ranges silently fall
-    // back to the maximum supported window.
-    const days = Math.max(1, Math.min(90, daysBetween(pickedStart, today)));
+    // Clamp to the page's backend window cap so the calendar can't
+    // generate API errors; larger picks silently fall back to the max.
+    const days = Math.max(1, Math.min(maxDays, daysBetween(pickedStart, today)));
     onChange(days);
     setOpen(false);
     setShowCal(false);
@@ -195,25 +212,60 @@ export default function DateRangePresets({
     setPickerMonth(d);
   };
 
+  const segChip = (active: boolean) =>
+    `px-2.5 py-1 rounded-md text-xs font-medium border transition ${
+      active
+        ? 'bg-primary text-primary-foreground border-primary'
+        : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted hover:text-foreground'
+    }`;
+
   return (
     <div ref={ref} className="relative">
-      <button
-        onClick={() => { setOpen((o) => !o); setShowCal(false); }}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-md text-sm text-foreground/80 hover:bg-muted transition"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-busy={isFetching}
-      >
-        {isFetching ? (
-          <Loader2 size={14} className="animate-spin text-primary" aria-label="Loading" />
-        ) : (
-          <Calendar size={14} className="text-muted-foreground" />
-        )}
-        {isCustom ? `Last ${value} days` : labelFor(value, options)}
-        <ChevronDown size={12} className="text-muted-foreground" />
-      </button>
+      {variant === 'segments' ? (
+        // Chip row: presets inline, custom behind the calendar chip.
+        <div className="inline-flex items-center gap-1" aria-busy={isFetching}>
+          {options.map((opt) => (
+            <button
+              key={opt.days}
+              disabled={disabled}
+              onClick={() => { onChange(opt.days); setOpen(false); setShowCal(false); }}
+              className={`${segChip(opt.days === value)} disabled:opacity-50`}
+            >
+              {opt.label}
+            </button>
+          ))}
+          <button
+            disabled={disabled}
+            onClick={() => { setOpen(true); setShowCal(true); }}
+            className={`inline-flex items-center gap-1 ${segChip(isCustom)} disabled:opacity-50`}
+            aria-label="Custom range"
+          >
+            {isFetching
+              ? <Loader2 size={12} className="animate-spin" aria-label="Loading" />
+              : <Calendar size={12} />}
+            {isCustom ? `${value}d` : null}
+          </button>
+        </div>
+      ) : (
+        <button
+          disabled={disabled}
+          onClick={() => { setOpen((o) => !o); setShowCal(false); }}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-md text-sm text-foreground/80 hover:bg-muted transition disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-busy={isFetching}
+        >
+          {isFetching ? (
+            <Loader2 size={14} className="animate-spin text-primary" aria-label="Loading" />
+          ) : (
+            <Calendar size={14} className="text-muted-foreground" />
+          )}
+          {isCustom ? `Last ${value} days` : labelFor(value, options)}
+          <ChevronDown size={12} className="text-muted-foreground" />
+        </button>
+      )}
 
-      {open && !showCal && (
+      {variant === 'dropdown' && open && !showCal && (
         <ul
           role="listbox"
           className="absolute right-0 top-full mt-1 w-44 max-h-80 overflow-y-auto bg-card border border-border rounded-md shadow-xl z-50 py-1"

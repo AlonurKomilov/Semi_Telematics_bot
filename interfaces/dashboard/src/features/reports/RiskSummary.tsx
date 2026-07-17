@@ -1,6 +1,7 @@
 import { useSearchParams } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
 import { apiFetch, apiJSON } from '../../api/client';
+import { DateRangePresets } from '../../components/shell';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 
 const AUDIENCES = [
@@ -225,15 +226,11 @@ export default function RiskSummary() {
           </Select>
         </label>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium">Window (days)</span>
-          <input
-            type="number" min={1} max={90}
-            className="border rounded px-3 py-2 bg-background"
-            value={days}
-            onChange={(e) => setDays(Math.max(1, Math.min(90, Number(e.target.value) || 30)))}
-          />
-        </label>
+        {/* div, not label: the picker is buttons, not a labelable input */}
+        <div className="flex flex-col gap-1">
+          <span className="text-sm font-medium">Window</span>
+          <DateRangePresets value={days} onChange={setDays} />
+        </div>
 
         <label className="flex flex-col gap-1 md:col-span-2">
           <span className="text-sm font-medium">Company name for report (optional)</span>

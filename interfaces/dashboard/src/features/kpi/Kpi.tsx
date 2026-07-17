@@ -14,9 +14,10 @@ import { useRoleView } from '../../context/RoleViewContext';
 import { Gauge, SlidersHorizontal } from 'lucide-react';
 import DataGrid from '../../components/DataGrid';
 import {
-  PageHeader, EmptyState, ErrorState, TableSkeleton,
+  PageHeader, EmptyState, ErrorState, TableSkeleton, DateRangePresets,
 } from '../../components/shell';
 import { Button } from '../../components/ui/button';
+import { Tip } from '../../components/tooltip';
 import { toneClasses, type Tone } from '../../lib/status';
 import type { AnyColumn } from '../../types';
 import ThresholdsDialog from './ThresholdsDialog';
@@ -85,7 +86,7 @@ export default function Kpi() {
   const [section, setSection] = useState('dispatchers');
   const [thresholdsOpen, setThresholdsOpen] = useState(false);
 
-  const { data, isLoading, error } = useQuery<DispatcherKpisResponse>({
+  const { data, isLoading, isFetching, error } = useQuery<DispatcherKpisResponse>({
     queryKey: ['kpi-dispatchers', days],
     queryFn: () => getDispatcherKpis(days),
     enabled: section === 'dispatchers',
@@ -114,39 +115,34 @@ export default function Kpi() {
         {/* Domain sections */}
         <div className="flex items-center gap-1.5">
           {SECTIONS.map((s) => (
-            <button
-              key={s.key}
-              type="button"
-              disabled={!s.ready}
-              onClick={() => s.ready && setSection(s.key)}
-              title={s.ready ? undefined : 'Coming soon'}
-              className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
-                section === s.key
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-card text-foreground border-border hover:border-ring disabled:opacity-40'
-              }`}
-            >
-              {s.label}
-            </button>
+            // Span wrapper: a disabled button swallows pointer events,
+            // so the "Coming soon" Tip anchors on the span around it.
+            <Tip key={s.key} label={s.ready ? undefined : 'Coming soon'}>
+              <span className="inline-flex">
+                <button
+                  type="button"
+                  disabled={!s.ready}
+                  onClick={() => s.ready && setSection(s.key)}
+                  className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
+                    section === s.key
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-card text-foreground border-border hover:border-ring disabled:opacity-40'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              </span>
+            </Tip>
           ))}
         </div>
-        {/* Window picker */}
-        <div className="flex items-center gap-1.5">
-          {WINDOWS.map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => setDays(w)}
-              className={`px-2.5 py-1 rounded text-xs border ${
-                days === w
-                  ? 'bg-muted border-ring text-foreground'
-                  : 'bg-card border-border text-muted-foreground hover:border-ring'
-              }`}
-            >
-              {w}d
-            </button>
-          ))}
-        </div>
+        {/* Window picker — the SSOT selector in chip form. */}
+        <DateRangePresets
+          variant="segments"
+          value={days}
+          onChange={setDays}
+          options={WINDOWS.map((w) => ({ label: `${w}d`, days: w }))}
+          isFetching={isFetching}
+        />
       </div>
 
       {isLoading && <TableSkeleton />}

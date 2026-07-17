@@ -10,13 +10,12 @@ import {
 import { TrendingDown, Minus, Download, Receipt, DollarSign, Wallet, Users, TrendingUp } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import {
-  EmptyState, ErrorState, CardSkeleton,
+  EmptyState, ErrorState, CardSkeleton, DateRangePresets,
 } from '../../components/shell';
 import type { WorkOrderCostRow, AnyColumn } from '../../types';
 import { TASK_TYPE_OPTIONS } from '../maintenance/badges';
 import type { ReportsLayoutOutletContext } from './ReportsLayout';
 import { chartColor } from '../../lib/status';
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import DataGrid from '../../components/DataGrid';
 import { Tip } from '../../components/tooltip';
 
@@ -278,12 +277,12 @@ export default function Reports() {
     if (!outletCtx) return;
     outletCtx.setActions(
       <div className="flex items-center gap-2">
-        <Select value={String(days)} onValueChange={(v) => setDays(Number(v))} items={periodItems}>
-          <SelectTrigger aria-label="Report period"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            {periodItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <DateRangePresets
+          value={days}
+          onChange={setDays}
+          options={periodItems.map((it) => ({ label: it.label, days: Number(it.value) }))}
+          maxDays={730}
+        />
         <Tip label={t('cost_reports.export_csv_title')}>
           <button
             type="button"

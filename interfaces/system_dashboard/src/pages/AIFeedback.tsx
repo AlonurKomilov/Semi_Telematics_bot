@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { apiJSON, ApiError } from '../api/client';
+import RangeTabs from '../components/RangeTabs';
 import type { AIFeedbackResponse, AIFeedbackReason, AIFeedbackRow } from '../types';
 
 // Operator review of customer thumbs-down feedback.  Lists every
@@ -117,17 +118,7 @@ export default function AIFeedbackPage() {
         ))}
         <div className="ml-auto flex items-center gap-2 text-xs">
           <span className="text-slate-400">Days:</span>
-          {[7, 30, 90].map((d) => (
-            <button
-              key={d}
-              onClick={() => setDays(d)}
-              className={`px-2 py-1 rounded ${
-                days === d ? 'bg-slate-700 text-slate-100' : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              {d}
-            </button>
-          ))}
+          <RangeTabs tabs={[7, 30, 90] as const} value={days} onChange={setDays} />
         </div>
       </div>
 

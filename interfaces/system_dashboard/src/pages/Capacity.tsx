@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiJSON } from '../api/client';
+import RangeTabs from '../components/RangeTabs';
 
 // ── wire types ─────────────────────────────────────────────────
 
@@ -371,24 +372,13 @@ export default function CapacityPage() {
           <h2 className="text-xs font-semibold tracking-wider text-slate-400 uppercase">
             {pctMetric.label} — {win === '24h' ? 'last 24h (per minute)' : `${win} (hourly peaks)`}
           </h2>
-          <div className="flex gap-1">
-            {CHART_METRICS.map((m) => (
-              <button key={m.key} onClick={() => setMetric(m.key)}
-                className={`px-2 py-1 rounded text-[11px] border ${metric === m.key
-                  ? 'bg-slate-700 border-slate-600 text-slate-100'
-                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'}`}>
-                {m.label}
-              </button>
-            ))}
-            <span className="w-2" />
-            {(['24h', '7d', '30d'] as const).map((w) => (
-              <button key={w} onClick={() => setWin(w)}
-                className={`px-2 py-1 rounded text-[11px] border ${win === w
-                  ? 'bg-slate-700 border-slate-600 text-slate-100'
-                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'}`}>
-                {w}
-              </button>
-            ))}
+          <div className="flex items-center gap-3">
+            <RangeTabs
+              tabs={CHART_METRICS.map((m) => ({ value: m.key, label: m.label }))}
+              value={metric}
+              onChange={setMetric}
+            />
+            <RangeTabs tabs={['24h', '7d', '30d'] as const} value={win} onChange={setWin} />
           </div>
         </div>
         <AreaChart
