@@ -20,7 +20,8 @@ LOG_FILE = bot.log
        docker-build docker-up docker-down docker-logs docker-restart \
        nginx-install nginx-test nginx-status ports \
        redis-start redis-stop redis-cli \
-       build dashboard-build dashboard-build-if-needed miniapp-build miniapp-build-if-needed
+       build dashboard-build dashboard-build-if-needed miniapp-build miniapp-build-if-needed \
+       deps-install-if-needed
 
 # ── systemd-aware targets (preferred) ────────────────
 
@@ -28,8 +29,30 @@ LOG_FILE = bot.log
 install:
 	@bash install-service.sh
 
+## Install Python deps only when requirements.txt changed since the
+## last successful install (stamp file .deps-installed).  Makes
+## `make start` self-sufficient after a pull that adds a dependency —
+## without paying a pip resolve on every restart.  PEP 668 boxes
+## (system Python) need --break-system-packages; try plain pip first
+## so venv/container setups keep their normal path.
+deps-install-if-needed:
+	@STAMP=.deps-installed; \
+	if [ ! -f "$$STAMP" ] || [ requirements.txt -nt "$$STAMP" ]; then \
+		echo "📦 requirements.txt changed — installing Python deps..."; \
+		if pip install -q -r requirements.txt 2>/dev/null \
+			|| pip install -q --break-system-packages -r requirements.txt; then \
+			touch "$$STAMP"; \
+			echo "   ✅ Python deps up to date"; \
+		else \
+			echo "   ❌ pip install failed — fix before starting services"; \
+			exit 1; \
+		fi; \
+	else \
+		echo "   ✅ Python deps up to date (requirements.txt unchanged)"; \
+	fi
+
 ## Start all services: Redis + bot/API (systemd or nohup fallback)
-start: dashboard-build-if-needed miniapp-build-if-needed system-dashboard-build-if-needed
+start: deps-install-if-needed dashboard-build-if-needed miniapp-build-if-needed system-dashboard-build-if-needed
 	@echo "🚀 Starting 4truck services..."
 	@# ── 0. Clear stale Python bytecode so live source is always used ──
 	@find . -path ./.git -prune -o -name '*.pyc' -delete 2>/dev/null; true
