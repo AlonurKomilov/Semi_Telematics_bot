@@ -697,23 +697,28 @@ class WorkOrdersMixin:
         return [dict(r) for r in await cur.fetchall()]
 
     async def delete_work_order_labor(
-        self, line_id: int, account_id: int,
+        self, line_id: int, account_id: int, work_order_id: int,
     ) -> bool:
+        # work_order_id is part of the predicate, not just bookkeeping:
+        # the route authorizes VISIBILITY of the work order in the URL,
+        # so the line must actually belong to that work order — otherwise
+        # a company-scoped user could delete another work order's line
+        # by nesting its id under one they can see.
         cur = await self._db.execute(
             "SELECT work_order_id FROM work_order_labor "
-            "WHERE id = ? AND account_id = ?",
-            (line_id, account_id),
+            "WHERE id = ? AND account_id = ? AND work_order_id = ?",
+            (line_id, account_id, work_order_id),
         )
         row = await cur.fetchone()
         if not row:
             return False
-        wo_id = dict(row)["work_order_id"]
         await self._db.execute(
-            "DELETE FROM work_order_labor WHERE id = ? AND account_id = ?",
-            (line_id, account_id),
+            "DELETE FROM work_order_labor "
+            "WHERE id = ? AND account_id = ? AND work_order_id = ?",
+            (line_id, account_id, work_order_id),
         )
         await self._db.commit()
-        await self._recompute_labor_cost(wo_id, account_id)
+        await self._recompute_labor_cost(work_order_id, account_id)
         return True
 
     async def labor_by_service_task(

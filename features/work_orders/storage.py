@@ -75,6 +75,10 @@ def sanitize_company_folder(name: str) -> str:
         safe = safe.replace(ch, "_")
     safe = " ".join(safe.split())
     safe = safe[:100].strip()
+    # "." / ".." are path components, not names — a company literally
+    # named that would write outside its own folder level.
+    if safe in (".", ".."):
+        return "unnamed-company"
     return safe or "unnamed-company"
 
 

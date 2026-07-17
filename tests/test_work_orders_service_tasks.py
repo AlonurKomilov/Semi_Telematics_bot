@@ -107,15 +107,20 @@ async def test_labor_lines_recompute_and_report(db):
     assert by_task["custom_diagnostic"]["labor_spent"] == pytest.approx(75.0)
 
     # Cross-account scoping: another account can't delete the line.
-    assert await db.delete_work_order_labor(l1, a + 1) is False
+    assert await db.delete_work_order_labor(l1, a + 1, wo) is False
+    # Cross-WORK-ORDER scoping: the line must belong to the work order
+    # named in the URL — the route only authorized visibility of THAT
+    # work order, so a line nested under a different (visible) WO id
+    # must not delete.
+    assert await db.delete_work_order_labor(l1, a, wo + 999) is False
     # Delete one line → recompute.
-    assert await db.delete_work_order_labor(l1, a) is True
+    assert await db.delete_work_order_labor(l1, a, wo) is True
     row = await db.get_work_order(wo, a)
     assert row["labor_cost"] == pytest.approx(75.0)
 
     # Delete the LAST line → derived value stays (no zeroing).
     lines = await db.list_work_order_labor(wo, a)
-    assert await db.delete_work_order_labor(lines[0]["id"], a) is True
+    assert await db.delete_work_order_labor(lines[0]["id"], a, wo) is True
     row = await db.get_work_order(wo, a)
     assert row["labor_cost"] == pytest.approx(75.0)
     assert await db.list_work_order_labor(wo, a) == []
@@ -162,3 +167,16 @@ async def test_void_work_orders_excluded_from_cost_reports(db):
     parts = [p for p in await db.cost_by_part(a)
              if str(p.get("part_name", "")).lower() == "void filter"]
     assert parts and parts[0]["total_spent"] == 100
+
+
+def test_sanitize_company_folder_rejects_path_components():
+    """'.' / '..' are path components, not names — a company literally
+    named that must not write a folder level above its own."""
+    from features.work_orders.storage import sanitize_company_folder
+    assert sanitize_company_folder(".") == "unnamed-company"
+    assert sanitize_company_folder("..") == "unnamed-company"
+    assert sanitize_company_folder(" .. ") == "unnamed-company"
+    # trailing dots in real names stay legal (companies end in "INC.")
+    assert sanitize_company_folder("ACME INC.") == "ACME INC."
+    # separators still become underscores (pre-existing behavior)
+    assert sanitize_company_folder("a/b") == "a_b"

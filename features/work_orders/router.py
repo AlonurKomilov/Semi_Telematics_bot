@@ -467,7 +467,9 @@ async def delete_labor(
     tenant_db=Depends(get_tenant_db),
 ):
     await _require_visible_work_order(work_order_id, user, tenant_db)
-    ok = await tenant_db.delete_work_order_labor(line_id, user["account_id"])
+    ok = await tenant_db.delete_work_order_labor(
+        line_id, user["account_id"], work_order_id,
+    )
     return {"ok": ok}
 
 
