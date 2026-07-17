@@ -368,7 +368,8 @@
     "attach_preparing": "Leyendo…",
     "attach_no_text": "No hay texto legible en ese archivo — un PDF escaneado necesita OCR.",
     "attach_wait": "Aún leyendo el archivo — un momento.",
-    "attach_in_chat": "En este chat"
+    "attach_in_chat": "En este chat",
+    "attach_recent": "Archivos recientes"
   },
   "pages": {
     "overview_title": "Mi panel",

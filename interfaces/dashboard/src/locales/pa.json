@@ -368,7 +368,8 @@
     "attach_preparing": "ਪੜ੍ਹ ਰਿਹਾ ਹੈ…",
     "attach_no_text": "ਇਸ ਫ਼ਾਈਲ ਵਿੱਚ ਪੜ੍ਹਨਯੋਗ ਟੈਕਸਟ ਨਹੀਂ — ਸਕੈਨ ਕੀਤੇ PDF ਲਈ OCR ਚਾਹੀਦਾ ਹੈ।",
     "attach_wait": "ਫ਼ਾਈਲ ਅਜੇ ਪੜ੍ਹੀ ਜਾ ਰਹੀ ਹੈ — ਇੱਕ ਪਲ।",
-    "attach_in_chat": "ਇਸ ਚੈਟ ਵਿੱਚ"
+    "attach_in_chat": "ਇਸ ਚੈਟ ਵਿੱਚ",
+    "attach_recent": "ਹਾਲੀਆ ਫ਼ਾਈਲਾਂ"
   },
   "pages": {
     "overview_title": "ਮੇਰਾ ਡੈਸ਼ਬੋਰਡ",

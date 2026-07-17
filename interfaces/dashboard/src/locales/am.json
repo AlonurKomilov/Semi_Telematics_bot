@@ -368,7 +368,8 @@
     "attach_preparing": "በማንበብ ላይ…",
     "attach_no_text": "በዚህ ፋይል ውስጥ ሊነበብ የሚችል ጽሑፍ የለም — የተቃኘ PDF OCR ይፈልጋል።",
     "attach_wait": "ፋይሉ አሁንም እየተነበበ ነው — አንድ አፍታ።",
-    "attach_in_chat": "በዚህ ውይይት ውስጥ"
+    "attach_in_chat": "በዚህ ውይይት ውስጥ",
+    "attach_recent": "የቅርብ ጊዜ ፋይሎች"
   },
   "pages": {
     "overview_title": "የእኔ ዳሽቦርድ",

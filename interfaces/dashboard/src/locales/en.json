@@ -644,7 +644,8 @@
     "attach_preparing": "Reading…",
     "attach_no_text": "No readable text in that file — a scanned PDF needs OCR.",
     "attach_wait": "Still reading the file — one moment.",
-    "attach_in_chat": "In this chat"
+    "attach_in_chat": "In this chat",
+    "attach_recent": "Recent files"
   },
   "pages": {
     "overview_title": "My Dashboard",

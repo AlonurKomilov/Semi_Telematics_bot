@@ -368,7 +368,8 @@
     "attach_preparing": "Akhrinaya…",
     "attach_no_text": "Faylkaas ma laha qoraal la akhrin karo — PDF la iskaanneeyay wuxuu u baahan yahay OCR.",
     "attach_wait": "Weli faylka waa la akhrinayaa — daqiiqad.",
-    "attach_in_chat": "Sheekadan gudaheeda"
+    "attach_in_chat": "Sheekadan gudaheeda",
+    "attach_recent": "Faylashii dhawaa"
   },
   "pages": {
     "overview_title": "Dashboardkayga",

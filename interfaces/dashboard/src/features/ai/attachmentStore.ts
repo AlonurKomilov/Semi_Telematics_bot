@@ -251,3 +251,29 @@ export function clearConversationAttachments(conversationId: number): void {
   delete s.convo[String(conversationId)];
   persist(s);
 }
+
+/**
+ * Files attached in OTHER conversations, still held device-locally —
+ * offered as "Recent files" so a user can re-attach a sheet to a new
+ * chat without hunting for it on disk again.  Deduped by name (newest
+ * wins), newest first, excluding names already in the given list
+ * (current chat's bound files + pending chips).
+ */
+export function listRecentAttachments(
+  excludeConversationId: number | null,
+  excludeNames: string[] = [],
+  limit = 5,
+): PendingAttachment[] {
+  const s = load();
+  const skip = new Set(excludeNames);
+  const byName = new Map<string, PendingAttachment>();
+  for (const [key, list] of Object.entries(s.convo)) {
+    if (excludeConversationId != null && key === String(excludeConversationId)) continue;
+    for (const a of list) {
+      if (skip.has(a.name)) continue;
+      const prev = byName.get(a.name);
+      if (!prev || a.t > prev.t) byName.set(a.name, a);
+    }
+  }
+  return [...byName.values()].sort((a, b) => b.t - a.t).slice(0, limit);
+}

@@ -15,7 +15,7 @@ import { formatDate, formatTime } from '../../utils/datetime';
 import { DislikeReasonForm } from './sections/DislikeReasonForm';
 import { ReferencedVehicles } from './sections/ReferencedVehicles';
 import { thoughtKey, saveThought, getThought, deleteThoughtsForConversation } from './thoughtStore';
-import { loadPendingAttachments, addPendingAttachment, removePendingAttachment, clearPendingAttachments, setPendingAttachments, loadConversationAttachments, bindConversationAttachments, removeConversationAttachment, clearConversationAttachments, type PendingAttachment } from './attachmentStore';
+import { loadPendingAttachments, addPendingAttachment, removePendingAttachment, clearPendingAttachments, setPendingAttachments, loadConversationAttachments, bindConversationAttachments, removeConversationAttachment, clearConversationAttachments, listRecentAttachments, type PendingAttachment } from './attachmentStore';
 import { DOCUMENT_ACCEPT, isDocumentFile, fileToAttachmentParts } from './documents';
 import { useAssistant } from './AssistantContext';
 import { useCurrentPageContext, useRouteFallbackContext } from './PageContext';
@@ -2095,6 +2095,49 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       <span className="font-medium">{t('chat.attach_file')}</span>
                     </button>
                   </Tip>
+                  {/* Files attached in OTHER chats, still on this device —
+                      one click re-attaches without hunting the disk. */}
+                  {plusOpen && (() => {
+                    const recent = listRecentAttachments(
+                      conversationId,
+                      [...attachments.map((a) => a.name), ...convoFiles.map((a) => a.name)],
+                    );
+                    if (recent.length === 0) return null;
+                    return (
+                      <>
+                        <div className="my-1 border-t border-border" role="separator" />
+                        <div className="px-2.5 py-1 text-3xs font-medium uppercase tracking-wide text-muted-foreground">
+                          {t('chat.attach_recent')}
+                        </div>
+                        {recent.map((f) => (
+                          <button
+                            key={f.name}
+                            role="menuitem"
+                            onClick={() => {
+                              const res = addPendingAttachment(attachmentsRef.current, f.name, f.content, f.kind);
+                              if ('error' in res) {
+                                flashAttachError(t(res.error === 'too_large' ? 'chat.attach_too_large' : 'chat.attach_limit'));
+                              } else {
+                                attachmentsRef.current = res.list;
+                                setAttachments(res.list);
+                              }
+                            }}
+                            className="flex w-full items-center gap-2 px-2.5 py-1 text-xs rounded-md text-left text-foreground/80 hover:bg-muted transition-colors"
+                          >
+                            {f.kind === 'image'
+                              ? <ImageIcon size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                              : f.kind === 'text'
+                                ? <FileText size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                                : <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden />}
+                            <span className="max-w-40 truncate">{f.name}</span>
+                            <span className="ml-auto text-3xs text-muted-foreground tabular-nums">
+                              {Math.max(1, Math.round(f.size / 1024))} KB
+                            </span>
+                          </button>
+                        ))}
+                      </>
+                    );
+                  })()}
                   {/* Files already sent in this thread — still riding each
                       turn so follow-ups work; removable here. */}
                   {conversationId != null && convoFiles.length > 0 && (

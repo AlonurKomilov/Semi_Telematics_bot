@@ -368,7 +368,8 @@
     "attach_preparing": "Чтение…",
     "attach_no_text": "В файле нет читаемого текста — для отсканированного PDF нужен OCR.",
     "attach_wait": "Файл ещё читается — одну секунду.",
-    "attach_in_chat": "В этом чате"
+    "attach_in_chat": "В этом чате",
+    "attach_recent": "Недавние файлы"
   },
   "pages": {
     "overview_title": "Моя панель",
