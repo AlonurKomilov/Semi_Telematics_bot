@@ -93,6 +93,7 @@ from .application_verifications import ApplicationVerificationsMixin
 from .carrier_directory import CarrierDirectoryMixin
 from .account_integrations import AccountIntegrationsMixin, AccountIntegration  # noqa: F401
 from .datatruck import DatatruckStorageMixin
+from .system_metrics import SystemMetricsMixin
 from .vehicles_registry import VehiclesRegistryMixin, Vehicle  # noqa: F401
 from .loads import LoadsMixin, Load  # noqa: F401
 from .platform import PlatformDB
@@ -149,6 +150,7 @@ class Database(
     ApplicationVerificationsMixin,
     CarrierDirectoryMixin,
     DatatruckStorageMixin,
+    SystemMetricsMixin,
     VehiclesRegistryMixin,
     LoadsMixin,
     _DatabaseCore,

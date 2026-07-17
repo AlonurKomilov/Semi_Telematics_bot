@@ -28,6 +28,7 @@ _CONTRIBUTORS = (
     "capabilities.email.retention",       # owns email.delivery_events
     "capabilities.ai.retention",          # owns ai.chat_history (age-cap)
     "infra.scan_retention",               # owns platform.scan_log (AV scan audit)
+    "capabilities.platform.capacity.retention",  # owns system.metrics_* + account_usage_daily (capacity monitoring)
 )
 
 discover = make_discover(_CONTRIBUTORS)

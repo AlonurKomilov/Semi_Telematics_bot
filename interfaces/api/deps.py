@@ -5,13 +5,13 @@ import logging
 import time as _time
 from datetime import datetime, timezone
 
-from fastapi import Cookie, Depends, HTTPException, Header
+from fastapi import Cookie, Depends, HTTPException, Header, Request
 
 from jose import JWTError
 
 from interfaces.api.auth import AUTH_COOKIE_NAME, decode_jwt, is_jti_revoked
 from infra.platform import get_router as _get_router
-from capabilities.permissions.roles import get_account_permissions, get_user_permissions
+from capabilities.permissions.roles import get_user_permissions
 from adapters.storage import Role
 
 _log = logging.getLogger(__name__)
@@ -140,6 +140,7 @@ def paginate(items: list, page: int = 1, page_size: int = _DEFAULT_PAGE_SIZE) ->
 
 
 async def get_current_user(
+    request: Request,
     authorization: str | None = Header(default=None),
     auth_token: str | None = Cookie(default=None, alias=AUTH_COOKIE_NAME),
 ):
@@ -191,6 +192,13 @@ async def get_current_user(
             saw_revoked = True
             continue
         _fire_heartbeats(payload)
+        # Stamp the account onto the request so outer middleware (the
+        # capacity metering counter) can attribute this request to a
+        # customer without re-decoding the JWT.
+        try:
+            request.state.account_id = payload.get("account_id")
+        except Exception:
+            pass
         return payload
 
     if saw_revoked and last_error is None:

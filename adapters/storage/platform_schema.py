@@ -571,6 +571,59 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_account_persona_groups_account
             ON account_persona_groups(account_id);
 
+        -- System capacity metrics (operator console Capacity page) —
+        -- PLATFORM scope: one server, sampled every 60s by the
+        -- capabilities/platform/capacity sampler.  Minute = raw short-
+        -- retention samples; hourly = avg+PEAK tier the charts and
+        -- headroom math read; account_usage_daily = per-customer
+        -- request metering flushed nightly from Redis.
+        CREATE TABLE IF NOT EXISTS system_metrics_minute (
+            ts               TEXT PRIMARY KEY,   -- UTC ISO minute, e.g. 2026-07-17T09:41
+            cpu_pct          REAL,
+            load1            REAL,
+            mem_pct          REAL,
+            mem_used_mb      INTEGER,
+            disk_pct         REAL,
+            disk_used_gb     REAL,
+            disk_busy_pct    REAL,
+            net_rx_kbps      REAL,
+            net_tx_kbps      REAL,
+            pg_connections   INTEGER,
+            pg_size_mb       INTEGER,
+            redis_mb         REAL,
+            requests_min     INTEGER,
+            queue_depth      INTEGER,
+            vehicles_active  INTEGER,
+            accounts_active  INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS system_metrics_hourly (
+            hour                TEXT PRIMARY KEY,  -- UTC ISO hour, e.g. 2026-07-17T09:00
+            avg_cpu_pct         REAL, peak_cpu_pct        REAL,
+            avg_mem_pct         REAL, peak_mem_pct        REAL,
+            avg_disk_busy_pct   REAL, peak_disk_busy_pct  REAL,
+            avg_requests_min    REAL, peak_requests_min   REAL,
+            avg_queue_depth     REAL, peak_queue_depth    REAL,
+            avg_net_rx_kbps     REAL, peak_net_rx_kbps    REAL,
+            avg_net_tx_kbps     REAL, peak_net_tx_kbps    REAL,
+            peak_load1          REAL,
+            peak_pg_connections INTEGER,
+            disk_pct            REAL,
+            disk_used_gb        REAL,
+            pg_size_mb          INTEGER,
+            redis_mb            REAL,
+            mem_used_mb         INTEGER,
+            vehicles_active     INTEGER,
+            accounts_active     INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS account_usage_daily (
+            day         TEXT    NOT NULL,          -- UTC day, e.g. 2026-07-17
+            account_id  INTEGER NOT NULL,
+            requests    INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (day, account_id)
+        );
+
         -- Telematics-provider connections (one row per account × provider).
         -- Backs AccountIntegrationsMixin (adapters/storage/account_integrations.py)
         -- — the feature's storage code shipped without its DDL and only worked

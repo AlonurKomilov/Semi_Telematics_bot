@@ -90,6 +90,8 @@ _JOB_META = {
     "account_lifecycle_housekeeping": ("Accounts & system", "Hard-purge expired accounts + send deletion warnings"),
     "scheduler_jobs_snapshot":        ("Accounts & system", "Snapshot scheduled jobs for the operator console"),
     "market_rollups":                 ("Accounts & system", "Rebuild anonymized vendor market-price rollups (dark until MARKET_INTEL_ENABLED)"),
+    "capacity_sample":                ("Accounts & system", "Sample host/DB/Redis/request-rate into the capacity history (60s)"),
+    "capacity_flush_yesterday":       ("Accounts & system", "Close out yesterday's per-account request metering"),
 }
 
 
@@ -176,6 +178,26 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     scheduler.add_job(
         job_market_rollups, "cron",
         hour=4, minute=40, args=[app], id="market_rollups",
+        max_instances=1, coalesce=True,
+    )
+
+    # ── Capacity monitoring (operator console) ──────────────────────
+    # 60s sampler: host/PG/Redis/queue/request-rate → system_metrics_minute;
+    # tops of hours fold the previous hour + flush per-account metering.
+    # The 00:10 job closes out yesterday's metering after its Redis hash
+    # stops changing (after the 00:00 boundary, before the 04:10 purge).
+    from capabilities.platform.capacity.sampler import (
+        job_capacity_flush_yesterday,
+        job_capacity_sample,
+    )
+    scheduler.add_job(
+        job_capacity_sample, "interval",
+        minutes=1, args=[app], id="capacity_sample",
+        max_instances=1, coalesce=True,
+    )
+    scheduler.add_job(
+        job_capacity_flush_yesterday, "cron",
+        hour=0, minute=10, args=[app], id="capacity_flush_yesterday",
         max_instances=1, coalesce=True,
     )
 

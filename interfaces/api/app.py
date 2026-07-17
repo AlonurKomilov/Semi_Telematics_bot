@@ -130,6 +130,37 @@ class LimitBodyMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+class RequestMeteringMiddleware(BaseHTTPMiddleware):
+    """Count every completed API request into the shared Redis meters.
+
+    Runs AFTER the handler (``call_next`` first) so the auth dependency
+    has already stamped ``request.state.account_id`` — that's what
+    makes per-customer metering possible.  Redis is the one store all
+    gunicorn workers share; in-process counters are per-worker
+    fragments (see capabilities/platform/capacity/requests.py).
+    Best-effort by construction: metering never raises into the
+    request path.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if (
+            request.method != "OPTIONS"
+            and path.startswith("/api")
+            and not path.endswith(("/metrics", "/api/health"))
+        ):
+            try:
+                from capabilities.platform.capacity.requests import count_request
+                await count_request(
+                    request.headers.get("host", ""),
+                    getattr(request.state, "account_id", None),
+                )
+            except Exception:
+                pass
+        return response
+
+
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """Attach a unique request ID to every request for tracing."""
 
@@ -360,6 +391,10 @@ def create_api() -> FastAPI:
 
     # Request body size limit
     app.add_middleware(LimitBodyMiddleware)
+
+    # Capacity metering — platform-true request counters in Redis
+    # (feeds the operator console's Capacity page).
+    app.add_middleware(RequestMeteringMiddleware)
 
     # Billing enforcement — returns 402 once a non-paying account passes
     # the grace window.  Gated by BILLING_ENFORCEMENT_ENABLED so this

@@ -244,6 +244,93 @@ async def setex_flag(key: str, ttl: int):
         logger.debug(f"Redis SETEX flag {key}: {e}")
 
 
+# ── Counters (metering) ──────────────────────────────────────────
+
+async def incr(key: str, ttl: int) -> None:
+    """Best-effort counter increment with a TTL refresh on first write.
+
+    Built for request metering: Redis is the ONE store all gunicorn
+    workers share, so counters here are platform-true where in-process
+    counters are per-worker fragments.  Silently drops the increment
+    when Redis is down — metering must never add failure modes to the
+    request path.
+    """
+    if not _available or not _pool:
+        return
+    try:
+        count = await _pool.incr(key)  # type: ignore[misc]
+        if count == 1:
+            await _pool.expire(key, ttl)  # type: ignore[misc]
+    except Exception as e:
+        logger.debug("Redis INCR %s: %s", key, e)
+
+
+async def hincrby(key: str, field: str, ttl: int, amount: int = 1) -> None:
+    """Best-effort hash-field increment (per-account metering buckets)."""
+    if not _available or not _pool:
+        return
+    try:
+        await _pool.hincrby(key, field, amount)  # type: ignore[misc]
+        await _pool.expire(key, ttl)  # type: ignore[misc]
+    except Exception as e:
+        logger.debug("Redis HINCRBY %s.%s: %s", key, field, e)
+
+
+async def get_int(key: str) -> int | None:
+    """Read a raw counter as int.  None on miss/error (vs 0 = counted zero)."""
+    if not _available or not _pool:
+        return None
+    try:
+        raw = await _pool.get(key)
+        return int(raw) if raw is not None else None
+    except Exception as e:
+        logger.debug("Redis GET int %s: %s", key, e)
+        return None
+
+
+async def hgetall_int(key: str) -> dict[str, int]:
+    """Read a counter hash as {field: int}.  Empty dict on miss/error."""
+    if not _available or not _pool:
+        return {}
+    try:
+        raw = await _pool.hgetall(key)  # type: ignore[misc]
+        out: dict[str, int] = {}
+        for k, v in (raw or {}).items():
+            kk = k.decode() if isinstance(k, bytes) else str(k)
+            try:
+                out[kk] = int(v)
+            except (TypeError, ValueError):
+                continue
+        return out
+    except Exception as e:
+        logger.debug("Redis HGETALL %s: %s", key, e)
+        return {}
+
+
+async def llen(key: str) -> int | None:
+    """List length (e.g. the arq job queue).  None on miss/error."""
+    if not _available or not _pool:
+        return None
+    try:
+        return int(await _pool.llen(key))  # type: ignore[misc]
+    except Exception as e:
+        logger.debug("Redis LLEN %s: %s", key, e)
+        return None
+
+
+async def used_memory_mb() -> float | None:
+    """Redis used_memory from INFO, in MB.  None when unavailable."""
+    if not _available or not _pool:
+        return None
+    try:
+        info = await _pool.info("memory")  # type: ignore[misc]
+        used = info.get("used_memory")
+        return round(float(used) / (1024 * 1024), 1) if used else None
+    except Exception as e:
+        logger.debug("Redis INFO memory: %s", e)
+        return None
+
+
 # ── Rate limiting ─────────────────────────────────────────────────
 
 async def rate_limit_check(key: str, window_secs: int, max_requests: int) -> bool:

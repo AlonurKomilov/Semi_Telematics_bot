@@ -189,6 +189,9 @@ async def run_all(conn) -> None:
     await migrate_ai_action_proposals(conn)
     # Bulk actions (AI imports): staged rows column on proposals.
     await migrate_ai_proposal_staged_payload(conn)
+    # Capacity monitoring (operator console): platform metric history +
+    # per-account request metering.
+    await migrate_system_capacity_tables(conn)
 
 
 async def migrate_ai_action_proposals(conn) -> None:
@@ -242,6 +245,73 @@ async def migrate_ai_proposal_staged_payload(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.error("ai_action_proposals staged_payload migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_system_capacity_tables(conn) -> None:
+    """Create the capacity-monitoring tables on existing installs.
+
+    Mirrors platform_schema.py exactly (fresh installs get them there).
+    PRIMARY KEYs are the time buckets, so range reads are index-backed
+    without extra indexes.  Idempotent via CREATE TABLE IF NOT EXISTS.
+    """
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS system_metrics_minute (
+                ts               TEXT PRIMARY KEY,
+                cpu_pct          REAL,
+                load1            REAL,
+                mem_pct          REAL,
+                mem_used_mb      INTEGER,
+                disk_pct         REAL,
+                disk_used_gb     REAL,
+                disk_busy_pct    REAL,
+                net_rx_kbps      REAL,
+                net_tx_kbps     REAL,
+                pg_connections   INTEGER,
+                pg_size_mb       INTEGER,
+                redis_mb         REAL,
+                requests_min     INTEGER,
+                queue_depth      INTEGER,
+                vehicles_active  INTEGER,
+                accounts_active  INTEGER
+            )
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS system_metrics_hourly (
+                hour                TEXT PRIMARY KEY,
+                avg_cpu_pct         REAL, peak_cpu_pct        REAL,
+                avg_mem_pct         REAL, peak_mem_pct        REAL,
+                avg_disk_busy_pct   REAL, peak_disk_busy_pct  REAL,
+                avg_requests_min    REAL, peak_requests_min   REAL,
+                avg_queue_depth     REAL, peak_queue_depth    REAL,
+                avg_net_rx_kbps     REAL, peak_net_rx_kbps    REAL,
+                avg_net_tx_kbps     REAL, peak_net_tx_kbps    REAL,
+                peak_load1          REAL,
+                peak_pg_connections INTEGER,
+                disk_pct            REAL,
+                disk_used_gb        REAL,
+                pg_size_mb          INTEGER,
+                redis_mb            REAL,
+                mem_used_mb         INTEGER,
+                vehicles_active     INTEGER,
+                accounts_active     INTEGER
+            )
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS account_usage_daily (
+                day         TEXT    NOT NULL,
+                account_id  INTEGER NOT NULL,
+                requests    INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (day, account_id)
+            )
+        """)
+        await conn.commit()
+    except Exception as e:
+        logger.error("system capacity tables migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

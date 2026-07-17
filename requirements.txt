@@ -44,6 +44,8 @@ opentelemetry-api>=1.27
 opentelemetry-sdk>=1.27
 opentelemetry-instrumentation-fastapi>=0.48b0
 opentelemetry-instrumentation-aiohttp-client>=0.48b0
+# Host resource sampling (capacity monitoring on the operator console).
+psutil>=5.9
 opentelemetry-instrumentation-asyncpg>=0.48b0
 opentelemetry-instrumentation-redis>=0.48b0
 opentelemetry-exporter-otlp-proto-http>=1.27
