@@ -16,6 +16,7 @@ import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../../utils/timezones';
 import { useNow } from '../../hooks/useNow';
 import { rollupByDisplayLabel } from '../../features/ai/helpers';
 import ForumRoutingSection from './ForumRoutingSection';
+import AlertRoutingSection from './AlertRoutingSection';
 import DangerZoneSection from './DangerZoneSection';
 import { toneClasses } from '../../lib/status';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
@@ -390,9 +391,12 @@ export default function Settings() {
                 )}
               </div>
 
-              {/* Inline alert-routing section — only visible once the
+              {/* Inline alert-routing sections — only visible once the
                   bot is connected, since routing requires a working
-                  bot account to talk to Telegram. */}
+                  bot account to talk to Telegram.  Mode + per-department
+                  groups first; the per-topic table below it keeps
+                  serving single_group mode and the fallback route. */}
+              <AlertRoutingSection />
               <ForumRoutingSection />
             </div>
           ) : (

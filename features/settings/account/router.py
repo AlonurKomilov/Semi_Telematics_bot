@@ -144,7 +144,7 @@ async def update_bot_config(
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),
         "bot_config_update",
-        detail=f"Bot configured: @{bot_username}",
+        details=f"Bot configured: @{bot_username}",
     )
 
     # Hot-reload: start or restart per-account bot
@@ -190,7 +190,7 @@ async def delete_bot_config(
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),
         "bot_config_delete",
-        detail="Bot disconnected",
+        details="Bot disconnected",
     )
 
     # Hot-reload: stop per-account bot
@@ -256,6 +256,172 @@ async def get_bot_config(
         logger.debug("Telegram getMe failed (partial result returned): %s", e)
 
     return result
+
+
+# ── Alert routing (owner/admin self-serve) ────────────────────────────
+# The customer configures where their bot posts alerts: one forum group
+# for everything (single_group) or a flat group per department
+# (per_persona_groups).  Chat bindings are validated live against
+# Telegram's getChat with the ACCOUNT's own bot token — a typo'd chat id
+# or a group the bot was never added to gets a 422 here instead of
+# silently eating alerts later.
+
+# Mirrors capabilities.alerting.persona_mapping.PERSONAS — kept as a
+# local constant so a bad slug 400s at the validator (same rationale as
+# the operator console's copy in interfaces/api/routes/system.py).
+_VALID_PERSONAS = ("owner_admin", "dispatcher", "safety", "fleet", "hr")
+_ALERT_ROUTING_MODES = ("single_group", "per_persona_groups")
+
+# The nudge threshold: below this fleet size one group comfortably fits
+# the alert volume and the suggestion would be noise.  Advisory only —
+# nothing is gated on it.
+ALERT_ROUTING_NUDGE_VEHICLES = 30
+
+
+class AlertRoutingModeRequest(BaseModel):
+    mode: str = Field(..., pattern="^(single_group|per_persona_groups)$")
+
+
+class PersonaGroupBindRequest(BaseModel):
+    persona: str = Field(..., pattern="^(owner_admin|dispatcher|safety|fleet|hr)$")
+    chat_id: int = Field(..., description="Telegram chat id — negative for groups")
+
+
+@router.get("/alert-routing")
+async def get_alert_routing_settings(
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Current routing mode + per-persona group bindings + the fleet
+    size the dashboard uses for the 'consider per-department groups'
+    nudge."""
+    account = await platform_db.get_account(user["account_id"])
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    rows = await platform_db.list_persona_groups(user["account_id"])
+    personas: dict = {p: None for p in _VALID_PERSONAS}
+    for r in rows:
+        personas[r.persona] = {
+            "chat_id": r.chat_id,
+            "chat_title": r.chat_title,
+            "is_active": bool(r.is_active),
+        }
+
+    try:
+        vehicle_count = await tenant_db.count_vehicles(user["account_id"])
+    except Exception:
+        vehicle_count = 0
+
+    return {
+        "mode": getattr(account, "alert_routing_mode", "single_group") or "single_group",
+        "personas": personas,
+        "vehicle_count": vehicle_count,
+        "nudge_threshold": ALERT_ROUTING_NUDGE_VEHICLES,
+        "bot_configured": bool(account.bot_token_encrypted),
+    }
+
+
+@router.put("/alert-routing")
+async def set_alert_routing_settings(
+    body: AlertRoutingModeRequest,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Switch between single-group and per-department alert routing.
+
+    Safe in both directions: the resolver falls back to the legacy
+    single-group lookup for any persona without a binding, so flipping
+    the mode before every group is bound never drops alerts."""
+    ok = await platform_db.set_alert_routing_mode(user["account_id"], body.mode)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Account not found")
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "alert_routing_mode_set", details=body.mode,
+    )
+    return {"ok": True, "mode": body.mode}
+
+
+@router.post("/alert-routing/persona-groups")
+async def bind_persona_group(
+    body: PersonaGroupBindRequest,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Bind one department to a Telegram group (validated via getChat)."""
+    account = await platform_db.get_account(user["account_id"])
+    if not account or not account.bot_token_encrypted:
+        raise HTTPException(
+            status_code=400,
+            detail="Configure the account's Telegram bot before binding alert groups.",
+        )
+
+    import aiohttp
+    from infra.crypto import decrypt
+
+    chat_title = ""
+    try:
+        token = decrypt(account.bot_token_encrypted)
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"https://api.telegram.org/bot{token}/getChat",
+                params={"chat_id": body.chat_id},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                data = await resp.json()
+        if not data.get("ok"):
+            # Telegram's own wording ("chat not found") is the clearest
+            # explanation the user can get — pass it through.
+            raise HTTPException(
+                status_code=422,
+                detail="Telegram rejected this chat id: "
+                       f"{data.get('description', 'unknown error')}. "
+                       "Add the bot to the group, then use /chatid there.",
+            )
+        chat_title = (data.get("result") or {}).get("title", "") or ""
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to reach Telegram API: {e}")
+
+    row = await platform_db.upsert_persona_group(
+        account_id=user["account_id"], persona=body.persona,
+        chat_id=body.chat_id, chat_title=chat_title,
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "alert_persona_group_bound",
+        details=f"{body.persona} → {chat_title or body.chat_id}",
+    )
+    return {
+        "ok": True,
+        "persona": row.persona,
+        "chat_id": row.chat_id,
+        "chat_title": row.chat_title,
+    }
+
+
+@router.delete("/alert-routing/persona-groups/{persona}")
+async def unbind_persona_group(
+    persona: str,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Unbind a department's group — its alerts fall back to the legacy
+    single-group route (never dropped)."""
+    if persona not in _VALID_PERSONAS:
+        raise HTTPException(status_code=400, detail="Unknown persona")
+    await platform_db.delete_persona_group(user["account_id"], persona)
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "alert_persona_group_unbound", details=persona,
+    )
+    return {"ok": True}
 
 
 # ── Role AI guidance ──────────────────────────────────────────────────────────

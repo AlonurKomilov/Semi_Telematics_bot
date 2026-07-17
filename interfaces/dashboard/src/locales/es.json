@@ -40,6 +40,28 @@
     "so": "Soomaali",
     "am": "አማርኛ"
   },
+  "alert_routing": {
+    "section_title": "Enrutamiento de alertas",
+    "nudge": "Su flota ({{count}} vehículos) genera suficientes alertas como para saturar un solo grupo — considere un grupo por departamento.",
+    "mode_single_title": "Grupo único",
+    "mode_single_desc": "Todas las alertas en un grupo de foro, un tema por tipo de alerta.",
+    "mode_multi_title": "Grupo por departamento",
+    "mode_multi_desc": "Despacho, Seguridad, Flota y RR. HH. tienen su propio grupo; las alertas críticas también llegan al grupo del propietario.",
+    "hint_chatid": "Añada su bot al grupo de Telegram del departamento, ejecute /chatid allí y pegue el id abajo.",
+    "persona_dispatcher": "Despacho",
+    "persona_safety": "Seguridad",
+    "persona_fleet": "Flota",
+    "persona_hr": "RR. HH.",
+    "persona_owner_admin": "Propietario y admins",
+    "bind": "Vincular",
+    "unbind": "Desvincular",
+    "chat_id_ph": "Id del chat (ej. -100123…)",
+    "bound_fallback": "Sin vincular — usa el grupo principal",
+    "toast_mode_saved": "Enrutamiento de alertas actualizado",
+    "toast_bound": "Grupo vinculado: {{title}}",
+    "toast_unbound": "Grupo desvinculado — las alertas vuelven al grupo principal",
+    "toast_error": "No se pudo actualizar el enrutamiento"
+  },
   "nav": {
     "overview": "Resumen",
     "ai_assistant": "Asistente IA",

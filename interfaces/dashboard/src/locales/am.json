@@ -40,6 +40,28 @@
     "so": "Soomaali",
     "am": "አማርኛ"
   },
+  "alert_routing": {
+    "section_title": "የማንቂያ መስመር",
+    "nudge": "የተሽከርካሪ ብዛትዎ ({{count}}) አንድ ቡድን የሚሞላ ማንቂያ ይፈጥራል — ለእያንዳንዱ ክፍል የተለየ ቡድን ያስቡ።",
+    "mode_single_title": "አንድ ቡድን",
+    "mode_single_desc": "ሁሉም ማንቂያዎች በአንድ ፎረም ቡድን፣ ለእያንዳንዱ አይነት ርዕስ።",
+    "mode_multi_title": "በክፍል ቡድን",
+    "mode_multi_desc": "መላክ፣ ደህንነት፣ መርከብ እና HR የየራሳቸው ቡድን አላቸው፤ ወሳኝ ማንቂያዎች ለባለቤቱም ይደርሳሉ።",
+    "hint_chatid": "ቦትዎን ወደ ክፍሉ Telegram ቡድን ያክሉ፣ እዚያ /chatid ያሂዱ፣ ከዚያ id ውን ከታች ይለጥፉ።",
+    "persona_dispatcher": "መላክ",
+    "persona_safety": "ደህንነት",
+    "persona_fleet": "መርከብ",
+    "persona_hr": "HR",
+    "persona_owner_admin": "ባለቤት እና አስተዳዳሪዎች",
+    "bind": "አገናኝ",
+    "unbind": "አለያይ",
+    "chat_id_ph": "Chat id (ለምሳሌ -100123…)",
+    "bound_fallback": "አልተገናኘም — ዋናው ቡድን ይጠቀማል",
+    "toast_mode_saved": "የማንቂያ መስመር ተዘምኗል",
+    "toast_bound": "ቡድን ተገናኝቷል: {{title}}",
+    "toast_unbound": "ቡድን ተለያይቷል — ማንቂያዎች ወደ ዋናው ቡድን ይመለሳሉ",
+    "toast_error": "የማንቂያ መስመሩን ማዘመን አልተቻለም"
+  },
   "nav": {
     "overview": "አጠቃላይ እይታ",
     "ai_assistant": "AI ረዳት",

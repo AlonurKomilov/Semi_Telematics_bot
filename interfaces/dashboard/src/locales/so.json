@@ -40,6 +40,28 @@
     "so": "Soomaali",
     "am": "አማርኛ"
   },
+  "alert_routing": {
+    "section_title": "Jihaynta digniinaha",
+    "nudge": "Gaadiidkaagu ({{count}} gaari) wuxuu abuuraa digniino badan oo hal guruub buuxin kara — tixgeli guruub waax kasta.",
+    "mode_single_title": "Hal guruub",
+    "mode_single_desc": "Dhammaan digniinaha hal guruub forum ah, mowduuc nooc kasta.",
+    "mode_multi_title": "Guruub waax kasta",
+    "mode_multi_desc": "Dirid, Badbaado, Gaadiid iyo HR mid kastaa guruub u gaar ah; digniinaha halista ah waxay sidoo kale gaaraan guruubka milkiilaha.",
+    "hint_chatid": "Ku dar botkaaga guruubka Telegram ee waaxda, halkaas ku socodsii /chatid, kadib ku dheji id-ga hoos.",
+    "persona_dispatcher": "Dirid",
+    "persona_safety": "Badbaado",
+    "persona_fleet": "Gaadiid",
+    "persona_hr": "HR",
+    "persona_owner_admin": "Milkiile & maamul",
+    "bind": "Xir",
+    "unbind": "Fur",
+    "chat_id_ph": "Chat id (tus. -100123…)",
+    "bound_fallback": "Ma xirna — guruubka guud ayaa la isticmaalaa",
+    "toast_mode_saved": "Jihaynta waa la cusboonaysiiyay",
+    "toast_bound": "Guruub la xiray: {{title}}",
+    "toast_unbound": "Guruub la furay — digniinuhu waxay ku noqdaan guruubka guud",
+    "toast_error": "Jihaynta lama cusboonaysiin karin"
+  },
   "nav": {
     "overview": "Guudmar",
     "ai_assistant": "Caawiyaha AI",

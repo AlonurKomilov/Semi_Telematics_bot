@@ -870,6 +870,28 @@
     "toast_download_failed": "Download failed",
     "uploaded_by": "uploaded by {{name}}"
   },
+  "alert_routing": {
+    "section_title": "Alert routing",
+    "nudge": "Your fleet ({{count}} vehicles) generates enough alerts that one group can get crowded — consider a group per department.",
+    "mode_single_title": "Single group",
+    "mode_single_desc": "All alerts in one forum group, one topic per alert type.",
+    "mode_multi_title": "Group per department",
+    "mode_multi_desc": "Dispatch, Safety, Fleet and HR each get their own group; critical alerts also reach the owner group.",
+    "hint_chatid": "Add your bot to the department's Telegram group, run /chatid there, then paste the id below.",
+    "persona_dispatcher": "Dispatch",
+    "persona_safety": "Safety",
+    "persona_fleet": "Fleet",
+    "persona_hr": "HR",
+    "persona_owner_admin": "Owner & Admins",
+    "bind": "Bind",
+    "unbind": "Unbind",
+    "chat_id_ph": "Chat id (e.g. -100123…)",
+    "bound_fallback": "Not bound — uses the main group",
+    "toast_mode_saved": "Alert routing updated",
+    "toast_bound": "Group bound: {{title}}",
+    "toast_unbound": "Group unbound — alerts fall back to the main group",
+    "toast_error": "Could not update alert routing"
+  },
   "forum_routing": {
     "section_title": "Alert Routing",
     "section_desc": "Connect a Telegram forum group so the bot can post each alert to its own topic. Personal DMs are independent — each user sets their own preferences under Avatar → My Notifications.",

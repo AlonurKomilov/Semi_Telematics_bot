@@ -40,6 +40,28 @@
     "so": "Soomaali",
     "am": "አማርኛ"
   },
+  "alert_routing": {
+    "section_title": "ਅਲਰਟ ਰੂਟਿੰਗ",
+    "nudge": "ਤੁਹਾਡਾ ਫਲੀਟ ({{count}} ਵਾਹਨ) ਇੰਨੇ ਅਲਰਟ ਬਣਾਉਂਦਾ ਹੈ ਕਿ ਇੱਕ ਗਰੁੱਪ ਭਰ ਸਕਦਾ ਹੈ — ਹਰ ਵਿਭਾਗ ਲਈ ਵੱਖ ਗਰੁੱਪ ਬਾਰੇ ਸੋਚੋ।",
+    "mode_single_title": "ਇੱਕ ਗਰੁੱਪ",
+    "mode_single_desc": "ਸਾਰੇ ਅਲਰਟ ਇੱਕ ਫੋਰਮ ਗਰੁੱਪ ਵਿੱਚ, ਹਰ ਕਿਸਮ ਲਈ ਟਾਪਿਕ।",
+    "mode_multi_title": "ਵਿਭਾਗ ਅਨੁਸਾਰ ਗਰੁੱਪ",
+    "mode_multi_desc": "ਡਿਸਪੈਚ, ਸੇਫਟੀ, ਫਲੀਟ ਅਤੇ HR ਦੇ ਆਪਣੇ ਗਰੁੱਪ; ਗੰਭੀਰ ਅਲਰਟ ਮਾਲਕ ਦੇ ਗਰੁੱਪ ਨੂੰ ਵੀ ਜਾਂਦੇ ਹਨ।",
+    "hint_chatid": "ਆਪਣੇ ਬੋਟ ਨੂੰ ਵਿਭਾਗ ਦੇ Telegram ਗਰੁੱਪ ਵਿੱਚ ਸ਼ਾਮਲ ਕਰੋ, ਉੱਥੇ /chatid ਚਲਾਓ, ਫਿਰ id ਹੇਠਾਂ ਪੇਸਟ ਕਰੋ।",
+    "persona_dispatcher": "ਡਿਸਪੈਚ",
+    "persona_safety": "ਸੇਫਟੀ",
+    "persona_fleet": "ਫਲੀਟ",
+    "persona_hr": "HR",
+    "persona_owner_admin": "ਮਾਲਕ ਅਤੇ ਐਡਮਿਨ",
+    "bind": "ਜੋੜੋ",
+    "unbind": "ਹਟਾਓ",
+    "chat_id_ph": "Chat id (ਜਿਵੇਂ -100123…)",
+    "bound_fallback": "ਜੁੜਿਆ ਨਹੀਂ — ਮੁੱਖ ਗਰੁੱਪ ਵਰਤਿਆ ਜਾਂਦਾ ਹੈ",
+    "toast_mode_saved": "ਅਲਰਟ ਰੂਟਿੰਗ ਅੱਪਡੇਟ ਹੋਈ",
+    "toast_bound": "ਗਰੁੱਪ ਜੁੜਿਆ: {{title}}",
+    "toast_unbound": "ਗਰੁੱਪ ਹਟਾਇਆ — ਅਲਰਟ ਮੁੱਖ ਗਰੁੱਪ ਵਿੱਚ ਜਾਂਦੇ ਹਨ",
+    "toast_error": "ਅਲਰਟ ਰੂਟਿੰਗ ਅੱਪਡੇਟ ਨਹੀਂ ਹੋ ਸਕੀ"
+  },
   "nav": {
     "overview": "ਸੰਖੇਪ",
     "ai_assistant": "AI ਸਹਾਇਕ",

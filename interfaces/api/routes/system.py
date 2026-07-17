@@ -998,10 +998,10 @@ async def operator_set_billing_email(
 #
 # Operator surface for switching an account between the legacy
 # ``single_group`` (one forum chat + topic per alert_type) and the
-# ``per_persona_groups`` mode (flat group per persona).  The
-# customer-side dashboard is intentionally info-only here — operators
-# flip the mode and register persona→chat bindings from
-# system.4truck.us.
+# ``per_persona_groups`` mode (flat group per persona).  Customers
+# self-serve the same config from Settings → Bot (features/settings/
+# account/router.py /admin/alert-routing); these operator endpoints
+# remain for support work on any account.
 
 
 # Persona keys the operator UI can register.  Mirrors
