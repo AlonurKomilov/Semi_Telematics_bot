@@ -83,6 +83,20 @@ async def create_part(
     return {"part": part, "created": created}
 
 
+@router.get("/public/browse")
+async def browse_public(
+    q: str = "",
+    user: dict = Depends(require_permission("can_parts")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """The Public tab: ACTIVE canonical part identities (operator-
+    curated on the platform) + the caller's own link state.  Identity
+    only — no usage data, nothing cross-account."""
+    return {"entries": await tenant_db.browse_part_directory(
+        user["account_id"], q=q,
+    )}
+
+
 @router.get("/{part_id}")
 async def get_part(
     part_id: int,
@@ -92,11 +106,62 @@ async def get_part(
     """The drill-down: part record + recurrence per vehicle (with the
     mean-gap early-warning number) + price per vendor + purchase
     history (price-trend source).  Void invoices and drafts never
-    count — same rule as every cost report."""
+    count — same rule as every cost report.  When the part links to a
+    public catalog entry, its identity rides along (category displays
+    through this join — never copied onto the user's row)."""
     data = await tenant_db.part_analytics(part_id, user["account_id"])
     if not data:
         raise HTTPException(status_code=404, detail="Catalog part not found")
+    public = None
+    gid = data["part"].get("global_part_id")
+    if gid:
+        entry = await tenant_db.get_part_directory_entry(gid)
+        if entry:
+            public = {k: entry[k] for k in
+                      ("id", "name", "category", "part_number",
+                       "description", "status")}
+    data["public"] = public
     return data
+
+
+@router.post("/{part_id}/link-public/{entry_id}")
+async def link_public(
+    part_id: int,
+    entry_id: int,
+    user: dict = Depends(require_permission("can_parts")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """The dedup dialog's PUBLIC branch: this part IS that canonical
+    catalog entry.  Non-destructive — the row and its invoice lines
+    stay; an empty part_number fills from the entry.  Reversible."""
+    if not await tenant_db.get_catalog_part(part_id, user["account_id"]):
+        raise HTTPException(status_code=404, detail="Catalog part not found")
+    ok = await tenant_db.link_part_to_public(
+        user["account_id"], part_id, entry_id,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Public entry not found or not active")
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "part_public_link",
+        target_type="part", target_id=str(part_id),
+        details=f"linked to public entry #{entry_id}",
+    )
+    return {"ok": True}
+
+
+@router.delete("/{part_id}/link-public")
+async def unlink_public(
+    part_id: int,
+    user: dict = Depends(require_permission("can_parts")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Unlink + SUPPRESS: the adopt fan-out will never silently
+    re-link this row — the user's call sticks until they re-link."""
+    if not await tenant_db.get_catalog_part(part_id, user["account_id"]):
+        raise HTTPException(status_code=404, detail="Catalog part not found")
+    await tenant_db.link_part_to_public(user["account_id"], part_id, None)
+    return {"ok": True}
 
 
 class PartUpdate(BaseModel):

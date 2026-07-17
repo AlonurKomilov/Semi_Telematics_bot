@@ -193,6 +193,53 @@ async def run_all(conn) -> None:
     # Capacity monitoring (operator console): platform metric history +
     # per-account request metering.
     await migrate_system_capacity_tables(conn)
+    # Public parts catalog (operator-curated canonical part identities)
+    # + alias map + candidates-queue dismissal tombstones.
+    await migrate_part_directory(conn)
+
+
+async def migrate_part_directory(conn) -> None:
+    """Public parts catalog — platform-owned like vendor_directory (no
+    account_id, no RLS; system routes gate operator writes, account
+    routes read ACTIVE rows' identity only).  Three tables: canonical
+    entries, operator-mapped name aliases (an alias key never equals an
+    entry key — enforced at write time), and dismissal tombstones for
+    the candidates queue.  Idempotent: mirrors platform_schema."""
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS part_directory (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                name         TEXT    NOT NULL,
+                name_key     TEXT    NOT NULL UNIQUE,
+                category     TEXT    NOT NULL DEFAULT '',
+                part_number  TEXT    NOT NULL DEFAULT '',
+                description  TEXT    NOT NULL DEFAULT '',
+                status       TEXT    NOT NULL DEFAULT 'active',
+                source       TEXT    NOT NULL DEFAULT 'manual',
+                created_at   TEXT    NOT NULL,
+                updated_at   TEXT    NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_part_directory_status
+                ON part_directory(status);
+            CREATE TABLE IF NOT EXISTS part_directory_aliases (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                name_key    TEXT    NOT NULL UNIQUE,
+                entry_id    INTEGER NOT NULL,
+                created_at  TEXT    NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS part_directory_dismissals (
+                name_key    TEXT PRIMARY KEY,
+                created_at  TEXT NOT NULL
+            );
+        """)
+        await conn.commit()
+        logger.info("Platform migration: part_directory ready")
+    except Exception as e:
+        logger.error("part_directory migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
 
 
 async def migrate_ai_action_proposals(conn) -> None:

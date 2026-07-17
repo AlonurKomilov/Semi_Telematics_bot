@@ -6692,3 +6692,28 @@ async def migrate_work_orders_status_lifecycle_only(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 154: work_orders.status narrowed to lifecycle-only")
+
+
+@_register("155_parts_public_link")
+async def migrate_parts_public_link(conn) -> None:
+    """Link per-account catalog parts to the platform public parts
+    catalog (part_directory) — the parts analog of
+    ``vendors.global_vendor_id``.
+
+    ``public_link_suppressed`` is the Unlink-honesty marker: the adopt
+    fan-out re-fires on every entry activation / alias-add, so without
+    a per-row suppression flag a user who unlinked a wrong match would
+    be silently re-linked at the next fan-out.  Unlink sets it; an
+    explicit re-link clears it; adopt's match predicate requires
+    ``global_part_id IS NULL AND NOT public_link_suppressed``.
+    """
+    await conn.execute(
+        "ALTER TABLE parts_catalog "
+        "ADD COLUMN IF NOT EXISTS global_part_id INTEGER"
+    )
+    await conn.execute(
+        "ALTER TABLE parts_catalog "
+        "ADD COLUMN IF NOT EXISTS public_link_suppressed BOOLEAN NOT NULL DEFAULT FALSE"
+    )
+    await conn.commit()
+    logger.info("Migration 155: parts_catalog public-link columns ready")

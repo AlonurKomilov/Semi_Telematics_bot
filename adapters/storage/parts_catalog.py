@@ -99,7 +99,12 @@ class PartsCatalogMixin:
             (account_id, nkey),
         )
         row = await cur.fetchone()
-        return dict(row) if row else None
+        # Public-catalog autolink at resolve time (honors suppression +
+        # the generic blocklist) — accounts that start using a curated
+        # part AFTER curation still connect.
+        return await self.autolink_part_to_public(
+            account_id, dict(row) if row else None,
+        )
 
     async def create_catalog_part(
         self, account_id: int, name: str,

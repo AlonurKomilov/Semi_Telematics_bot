@@ -13,7 +13,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Cog, Plus } from 'lucide-react';
+import { Cog, Globe, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/DataGrid';
 import { PageHeader, EmptyState, ErrorState, TableSkeleton } from '../../components/shell';
@@ -22,7 +22,8 @@ import {
   DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
-import type { CatalogPart, AnyColumn } from '../../types';
+import { toneClasses } from '../../lib/status';
+import type { CatalogPart, PublicPartEntry, AnyColumn } from '../../types';
 
 function money(v: unknown): string {
   return `$${Number(v ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
@@ -66,11 +67,50 @@ const partColumns: AnyColumn[] = [
   },
 ];
 
+// Public tab: canonical identities curated on the platform.  Identity
+// only — linking happens automatically by name, or from a part's
+// "Resolve as duplicate" dialog; there is no ceremony here.
+const publicColumns: AnyColumn[] = [
+  {
+    key: 'name', label: 'Part', sortable: true,
+    render: (v, row) => {
+      const r = row as unknown as PublicPartEntry;
+      return (
+        <span className="inline-flex items-center gap-2">
+          <span className="font-medium">{String(v)}</span>
+          {r.part_number && (
+            <span className="font-mono text-2xs text-muted-foreground">{r.part_number}</span>
+          )}
+        </span>
+      );
+    },
+  },
+  {
+    key: 'category', label: 'Category', sortable: true, filterable: true,
+    render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>),
+  },
+  {
+    key: 'description', label: 'Description', sortable: false,
+    render: (v) => (v
+      ? <span className="text-muted-foreground truncate max-w-sm inline-block align-bottom">{String(v)}</span>
+      : <span className="text-muted-foreground">—</span>),
+  },
+  {
+    key: 'linked_part_name', label: 'Your Part', sortable: true,
+    render: (v) => (v ? (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses('ok')}`}>
+        {String(v)}
+      </span>
+    ) : <span className="text-muted-foreground">—</span>),
+  },
+];
+
 const EMPTY_FORM = { name: '', part_number: '', notes: '' };
 
 export default function Parts() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const [tab, setTab] = useState<'mine' | 'public'>('mine');
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -80,6 +120,13 @@ export default function Parts() {
     queryFn: () => apiJSON<{ parts: CatalogPart[] }>('/parts'),
   });
   const parts = data?.parts ?? [];
+
+  const { data: pubData, isLoading: pubLoading, error: pubError } = useQuery<{ entries: PublicPartEntry[] }>({
+    queryKey: ['parts-public-browse'],
+    queryFn: () => apiJSON<{ entries: PublicPartEntry[] }>('/parts/public/browse'),
+    enabled: tab === 'public',
+  });
+  const pubEntries = pubData?.entries ?? [];
 
   const addPart = async () => {
     if (!form.name.trim()) { toast.error('Name is required'); return; }
@@ -119,25 +166,79 @@ export default function Parts() {
         )}
       />
 
-      {error ? (
-        <ErrorState message={error instanceof Error ? error.message : 'Failed to load parts'} />
-      ) : isLoading ? (
-        <TableSkeleton rows={8} cols={4} />
-      ) : parts.length === 0 ? (
-        <EmptyState
-          icon={Cog}
-          title="No parts yet"
-          description="Parts appear here automatically as work-order line items are saved — or add one ahead of its first invoice."
-        />
+      <div role="tablist" aria-label="Part sections" className="flex gap-1 mb-4 border-b border-border">
+        {([
+          { key: 'mine' as const, label: 'My parts' },
+          { key: 'public' as const, label: 'Public catalog' },
+        ]).map(({ key, label }) => {
+          const sel = tab === key;
+          return (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={sel}
+              onClick={() => setTab(key)}
+              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition ${
+                sel
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === 'mine' ? (
+        error ? (
+          <ErrorState message={error instanceof Error ? error.message : 'Failed to load parts'} />
+        ) : isLoading ? (
+          <TableSkeleton rows={8} cols={4} />
+        ) : parts.length === 0 ? (
+          <EmptyState
+            icon={Cog}
+            title="No parts yet"
+            description="Parts appear here automatically as work-order line items are saved — or add one ahead of its first invoice."
+          />
+        ) : (
+          <DataGrid
+            tableId="parts-catalog"
+            columns={partColumns}
+            data={parts as unknown as Record<string, unknown>[]}
+            searchKey={['name', 'part_number', 'notes']}
+            searchPlaceholder="Search parts…"
+            onRowClick={(row) => navigate(`/parts/${(row as unknown as CatalogPart).id}`)}
+          />
+        )
       ) : (
-        <DataGrid
-          tableId="parts-catalog"
-          columns={partColumns}
-          data={parts as unknown as Record<string, unknown>[]}
-          searchKey={['name', 'part_number', 'notes']}
-          searchPlaceholder="Search parts…"
-          onRowClick={(row) => navigate(`/parts/${(row as unknown as CatalogPart).id}`)}
-        />
+        pubError ? (
+          <ErrorState message={pubError instanceof Error ? pubError.message : 'Failed to load the public catalog'} />
+        ) : pubLoading ? (
+          <TableSkeleton rows={8} cols={4} />
+        ) : pubEntries.length === 0 ? (
+          <EmptyState
+            icon={Globe}
+            title="The public catalog is just getting started"
+            description="Platform-curated canonical parts appear here as they're added. Your parts link to them automatically by name — no action needed."
+          />
+        ) : (
+          <DataGrid
+            tableId="parts-public-browse"
+            columns={publicColumns}
+            data={pubEntries as unknown as Record<string, unknown>[]}
+            searchKey={['name', 'category', 'part_number', 'description']}
+            searchPlaceholder="Search the public catalog…"
+            onRowClick={(row) => {
+              const e = row as unknown as PublicPartEntry;
+              if (e.linked_part_id) {
+                navigate(`/parts/${e.linked_part_id}`);
+              } else {
+                toast.info('Not one of your parts yet — link a part to this entry from its page: Merge into… → Public catalog.');
+              }
+            }}
+          />
+        )
       )}
 
       {/* Add-part dialog — resolve semantics, same contract as Add vendor. */}

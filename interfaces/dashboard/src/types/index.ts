@@ -1631,6 +1631,25 @@ export interface CatalogPart {
   updated_at: string;
   usage_count?: number;
   total_spent?: number;
+  /** Link to the platform public parts catalog (part_directory). */
+  global_part_id?: number | null;
+  /** Unlink honesty marker: TRUE after the user unlinks — the adopt
+   *  fan-out never silently re-links a suppressed row. */
+  public_link_suppressed?: boolean;
+}
+
+/** Public parts catalog identity (ACTIVE entries only; operator-
+ *  curated on the platform — identity fields, never usage data). */
+export interface PublicPartEntry {
+  id: number;
+  name: string;
+  category: string;
+  part_number: string;
+  description: string;
+  status?: string;
+  /** Browse only: the caller's own part linked to this entry. */
+  linked_part_id?: number | null;
+  linked_part_name?: string | null;
 }
 
 /** The part drill-down payload (GET /parts/{id}) — void invoices and
@@ -1671,6 +1690,9 @@ export interface PartAnalytics {
     service_task: string;
     effective_unit_price: number | null;
   }>;
+  /** Linked public-catalog identity (category displays through this
+   *  join — never copied onto the user's row); null when unlinked. */
+  public?: PublicPartEntry | null;
 }
 
 /** Anonymized market rollup row (Phase D — published shape only). */

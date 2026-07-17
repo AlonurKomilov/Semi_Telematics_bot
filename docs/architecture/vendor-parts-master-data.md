@@ -291,18 +291,52 @@ Advisor guardrails: the two id spaces NEVER share an endpoint (merge
 stays fold-only), the confirm button says the real verb (Merge vs
 Link), and adopting never renames the local vendor.
 
-**Parts public side — deliberately DEFERRED (advisor-ruled 2026-07-16):**
-parts get no directory: a part name is shop vocabulary, not a
-verifiable public identity (no geo, no seed dataset, no browse
-use-case), and Phase D already IS the parts public layer (aggregates
-key on `(global_vendor_id, part_key)` with no global parts registry by
-design).  Parts merge stays my-parts-only.  **Revisit trigger:** Phase
-D live AND real cells failing the 3-company rule from cross-account
-name fragmentation → add a thin operator-curated canonical-name alias
-map (aggregation aid only, still no browse tab).  Account-side instead:
-`POST /parts` Add-part (resolve semantics + honest `created` flag) and
-visible part IDs (#id chip on the profile, hidden-by-default ID grid
-column) for unambiguous merge bookkeeping.
+**Parts public side — BUILT 2026-07-16 (owner overrode the advisor's
+deferral; advisor then ruled the minimal safe scope, which is what
+shipped):** a `part_directory` platform family mirroring vendors WHERE
+the mirror makes sense, minus everything a part name can't be:
+
+- **Tables (platform):** `part_directory` (canonical identities:
+  name/name_key UNIQUE/category/part_number/description, status
+  active|archived, source manual|import|promoted — no geo, no reviews,
+  no chain, no pending), `part_directory_aliases` (operator-mapped
+  variants; an alias key may NEVER equal an entry key — write-time
+  rejected), `part_directory_dismissals` (candidates-queue
+  tombstones).  Tenant: `parts_catalog.global_part_id` +
+  `public_link_suppressed` (migration 155).
+- **NO user contribution pipeline** — parts have no "address present"
+  quality gate, so curation is TOP-DOWN only: console create / import
+  / one-click PROMOTE from the **candidates queue** (cross-account
+  name_keys used by ≥2 accounts matching nothing yet; operator-eyes
+  only; dismissals tombstone forever).
+- **GENERIC-KEY BLOCKLIST** (`GENERIC_PART_KEYS`, the 6-month-bite
+  guardrail): "labor" / "shop supplies" / "fee"… can never become
+  canonical — excluded from candidates, adoption AND creation.  One
+  bad promote would pool unlike things and later poison Phase D
+  ranges; with no geo pin to disambiguate, the blocklist is the brake.
+- **Adopt fan-out** (`adopt_matching_parts`, fires on create /
+  activate / alias-add) + **resolve-time autolink** for parts created
+  after curation.  Fill-empty `part_number` ONLY — category displays
+  through the join, name/notes stay user vocabulary (stricter than
+  vendors, deliberately).  **Unlink SUPPRESSES**: adopt's predicate is
+  `global_part_id IS NULL AND NOT public_link_suppressed`, so a
+  user's unlink survives every re-fire; explicit re-link clears it.
+- **Surfaces:** console → system.4truck.us "Parts directory"
+  (candidates promote/dismiss, entries CRUD, aliases, archive, TSV
+  import); dashboard → Parts page "My parts / Public catalog" tabs
+  (browse = ACTIVE identity + own link state, can_parts), part
+  profile public-link banner + Unlink, and the dedup dialog's second
+  scope "Public catalog" (Link verb — same two-verb pattern as
+  vendors).
+- **Phase D sequencing (unchanged rule):** market_intel still keys on
+  normalized part name; if it ever prefers `global_part_id`, flip the
+  key BEFORE `MARKET_INTEL_ENABLED` goes live — re-keying after launch
+  visibly shifts published ranges.
+
+Account-side (shipped same day): `POST /parts` Add-part (resolve
+semantics + honest `created` flag) and visible part IDs (#id chip on
+the profile, hidden-by-default ID grid column) for unambiguous merge
+bookkeeping.
 
 Map: two Services layers — "Repair Shops" (public directory, green) and
 "My Vendors" (the caller's auto-linked shops, blue, own-vendor name in

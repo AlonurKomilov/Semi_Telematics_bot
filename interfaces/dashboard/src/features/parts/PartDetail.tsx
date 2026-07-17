@@ -20,7 +20,7 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
   Tooltip as ChartTooltip, CartesianGrid,
 } from 'recharts';
-import { ArrowLeft, Cog, Merge, Pencil, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Cog, Globe, Link2Off, Merge, Pencil, TriangleAlert } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/DataGrid';
 import { PageHeader, EmptyState, ErrorState, TableSkeleton } from '../../components/shell';
@@ -36,7 +36,7 @@ import { Tip } from '../../components/tooltip';
 import { chartColor, toneClasses } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
-import type { AnyColumn, CatalogPart, PartAnalytics } from '../../types';
+import type { AnyColumn, CatalogPart, PartAnalytics, PublicPartEntry } from '../../types';
 
 function money(v: unknown, digits = 0): string {
   return `$${Number(v ?? 0).toLocaleString(undefined, {
@@ -73,6 +73,20 @@ export default function PartDetail() {
   const [mergeOpen, setMergeOpen] = useState(false);
   const [mergeTarget, setMergeTarget] = useState('');
   const [busy, setBusy] = useState(false);
+  // Two dedup scopes, two verbs: 'mine' = destructive fold into
+  // another of YOUR parts; 'public' = non-destructive LINK to the
+  // canonical catalog entry (reversible — Unlink also suppresses
+  // future auto-links so the user's call sticks).
+  const [mergeScope, setMergeScope] = useState<'mine' | 'public'>('mine');
+  const [pubTerm, setPubTerm] = useState('');
+  const [pubPick, setPubPick] = useState<PublicPartEntry | null>(null);
+
+  const { data: pubSearch } = useQuery<{ entries: PublicPartEntry[] }>({
+    queryKey: ['parts-public-search', pubTerm],
+    queryFn: () => apiJSON(`/parts/public/browse?q=${encodeURIComponent(pubTerm)}`),
+    enabled: mergeOpen && mergeScope === 'public' && pubTerm.trim().length >= 2,
+    staleTime: 30_000,
+  });
 
   const part = data?.part;
 
@@ -263,6 +277,38 @@ export default function PartDetail() {
     }
   };
 
+  const doLink = async () => {
+    if (!pubPick) return;
+    setBusy(true);
+    try {
+      // Non-destructive: the row + its invoice lines stay; an empty
+      // part number fills from the canonical entry.
+      await apiJSON(`/parts/${partId}/link-public/${pubPick.id}`, { method: 'POST' });
+      toast.success('Linked to the public catalog — nothing was deleted. Unlink here reverses it.');
+      qc.invalidateQueries({ queryKey: ['part-detail', partId] });
+      qc.invalidateQueries({ queryKey: ['parts-catalog'] });
+      setMergeOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Link failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doUnlink = async () => {
+    setBusy(true);
+    try {
+      await apiJSON(`/parts/${partId}/link-public`, { method: 'DELETE' });
+      toast.success('Unlinked — this part will not be auto-linked again unless you re-link it.');
+      qc.invalidateQueries({ queryKey: ['part-detail', partId] });
+      qc.invalidateQueries({ queryKey: ['parts-catalog'] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Unlink failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (error) {
     return (
       <div className="p-4 md:p-6">
@@ -302,7 +348,11 @@ export default function PartDetail() {
             <Button variant="outline" size="sm" onClick={openEdit}>
               <Pencil size={14} /> Edit
             </Button>
-            <Button variant="outline" size="sm" onClick={() => { setMergeTarget(''); setMergeOpen(true); }}>
+            <Button variant="outline" size="sm" onClick={() => {
+              setMergeScope('mine'); setMergeTarget('');
+              setPubTerm(''); setPubPick(null);
+              setMergeOpen(true);
+            }}>
               <Merge size={14} /> Merge into…
             </Button>
           </span>
@@ -326,6 +376,35 @@ export default function PartDetail() {
                 <p className="text-xl font-bold tabular-nums text-foreground">{s.value}</p>
               </div>
             ))}
+          </div>
+
+          {/* Public-catalog link state: linking is automatic by name
+              (or via Merge into… → Public catalog); Unlink is the
+              wrong-match escape hatch and it STICKS. */}
+          <div className="bg-card border border-border rounded-lg p-3 mb-4 flex flex-wrap items-center gap-3">
+            <Globe size={16} className="text-muted-foreground shrink-0" />
+            {data.public ? (
+              <>
+                <p className="text-sm text-foreground min-w-0">
+                  In public catalog as <span className="font-medium">{data.public.name}</span>
+                  {data.public.category && (
+                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded-full border border-border text-2xs text-muted-foreground">
+                      {data.public.category}
+                    </span>
+                  )}
+                </p>
+                <button type="button" onClick={doUnlink} disabled={busy}
+                  className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-md border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition">
+                  <Link2Off size={14} /> Unlink
+                </button>
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Not in the public catalog — parts link automatically when
+                their name matches a curated entry, or via Merge into… →
+                Public catalog.
+              </p>
+            )}
           </div>
 
           {data.purchases.length === 0 ? (
@@ -448,32 +527,90 @@ export default function PartDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Merge dialog — THIS part folds into the chosen survivor. */}
+      {/* Merge dialog — two dedup scopes, two verbs.  "Your parts"
+          folds THIS part into the chosen survivor (destructive);
+          "Public catalog" LINKS it to the canonical entry
+          (non-destructive, reversible via Unlink). */}
       <Dialog open={mergeOpen} onOpenChange={(o) => { if (!o) setMergeOpen(false); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Merge “{part?.name}” into another part</DialogTitle>
+            <DialogTitle>Resolve “{part?.name}” as a duplicate</DialogTitle>
             <DialogDescription>
-              All of this part's invoice lines move to the part you pick,
-              this record is deleted, and future synced lines under this
-              name resolve to the survivor. This cannot be undone.
+              {mergeScope === 'mine'
+                ? "All of this part's invoice lines move to the part you pick, this record is deleted, and future synced lines under this name resolve to the survivor. This cannot be undone."
+                : 'This part is the same thing as a public catalog entry. Linking keeps this record and its invoice lines — an empty part number fills from the canonical entry. Reversible with Unlink.'}
             </DialogDescription>
           </DialogHeader>
-          <Select value={mergeTarget} onValueChange={(v) => setMergeTarget(String(v))}>
-            <SelectTrigger className="w-full" aria-label="Merge target"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {mergeTargets.map((p) => (
-                <SelectItem key={p.id} value={String(p.id)}>
-                  <span className="font-mono text-xs text-muted-foreground">#{p.id}</span> {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-1 rounded-md border border-border p-1 bg-muted/40" role="tablist" aria-label="Duplicate scope">
+            {([['mine', 'Your parts'], ['public', 'Public catalog']] as const).map(([scope, label]) => (
+              <button
+                key={scope}
+                type="button"
+                role="tab"
+                aria-selected={mergeScope === scope}
+                onClick={() => setMergeScope(scope)}
+                className={`flex-1 h-8 rounded text-sm font-medium transition ${
+                  mergeScope === scope
+                    ? 'bg-card text-foreground border border-border shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {mergeScope === 'mine' ? (
+            <Select value={mergeTarget} onValueChange={(v) => setMergeTarget(String(v))}>
+              <SelectTrigger className="w-full" aria-label="Merge target"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {mergeTargets.map((p) => (
+                  <SelectItem key={p.id} value={String(p.id)}>
+                    <span className="font-mono text-xs text-muted-foreground">#{p.id}</span> {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <input
+                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="Search the public catalog…"
+                value={pubTerm}
+                onChange={(e) => { setPubTerm(e.target.value); setPubPick(null); }}
+              />
+              {pubTerm.trim().length >= 2 && (
+                <div className="max-h-48 overflow-y-auto rounded-md border border-border divide-y divide-border">
+                  {(pubSearch?.entries ?? []).length === 0 ? (
+                    <p className="p-2.5 text-sm text-muted-foreground">No matching catalog entries.</p>
+                  ) : (pubSearch?.entries ?? []).map((e) => (
+                    <button
+                      key={e.id}
+                      type="button"
+                      onClick={() => setPubPick(e)}
+                      className={`w-full text-left p-2.5 text-sm transition ${
+                        pubPick?.id === e.id ? 'bg-primary/10 text-foreground' : 'text-foreground hover:bg-muted'
+                      }`}
+                    >
+                      <span className="font-medium">{e.name}</span>
+                      {e.category ? <span className="ml-2 text-2xs text-muted-foreground">{e.category}</span> : null}
+                      {e.description && <span className="block text-xs text-muted-foreground truncate">{e.description}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setMergeOpen(false)}>Cancel</Button>
-            <Button onClick={doMerge} disabled={!mergeTarget || busy}>
-              {busy ? 'Merging…' : 'Merge'}
-            </Button>
+            {mergeScope === 'mine' ? (
+              <Button onClick={doMerge} disabled={!mergeTarget || busy}>
+                {busy ? 'Merging…' : 'Merge'}
+              </Button>
+            ) : (
+              <Button onClick={doLink} disabled={!pubPick || busy}>
+                {busy ? 'Linking…' : 'Link'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

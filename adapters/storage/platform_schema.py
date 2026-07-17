@@ -211,6 +211,45 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_vendor_directory_status
             ON vendor_directory(status);
 
+        -- Public parts catalog: operator-curated CANONICAL part
+        -- identities (no geo, no reviews, no user contribution — the
+        -- operator promotes from the cross-account candidates view or
+        -- creates/imports directly).  status: active | archived
+        -- (archived: adopt/resolve skip it; existing links survive but
+        -- stop receiving enrichment).  source: manual | import |
+        -- promoted.
+        CREATE TABLE IF NOT EXISTS part_directory (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            name         TEXT    NOT NULL,
+            name_key     TEXT    NOT NULL UNIQUE,
+            category     TEXT    NOT NULL DEFAULT '',
+            part_number  TEXT    NOT NULL DEFAULT '',
+            description  TEXT    NOT NULL DEFAULT '',
+            status       TEXT    NOT NULL DEFAULT 'active',
+            source       TEXT    NOT NULL DEFAULT 'manual',
+            created_at   TEXT    NOT NULL,
+            updated_at   TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_part_directory_status
+            ON part_directory(status);
+
+        -- Operator-mapped name variants ("conventionalwithclassicwsh"
+        -- → the canonical wash entry).  An alias key may NEVER equal
+        -- any entry's name_key (write-time check — entry key wins).
+        CREATE TABLE IF NOT EXISTS part_directory_aliases (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            name_key    TEXT    NOT NULL UNIQUE,
+            entry_id    INTEGER NOT NULL,
+            created_at  TEXT    NOT NULL
+        );
+
+        -- Candidates-queue tombstones: dismissed name_keys drop out of
+        -- the cross-account candidates view and stay out.
+        CREATE TABLE IF NOT EXISTS part_directory_dismissals (
+            name_key    TEXT PRIMARY KEY,
+            created_at  TEXT NOT NULL
+        );
+
         -- Anonymous vendor reviews: rating+comment per (shop, account),
         -- moderated (pending → approved/rejected) on system.4truck.us.
         -- account_id is attribution for uniqueness + operator audit
