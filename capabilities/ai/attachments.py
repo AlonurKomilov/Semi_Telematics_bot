@@ -58,6 +58,10 @@ SAMPLE_CELL_CHARS = 80
 # model reads them through read_attachment in bounded windows.
 DOC_EXCERPT_CHARS = 4000
 
+# Images arrive as device-compressed data-URLs (downscaled + re-encoded
+# in the browser) and are shown DIRECTLY to vision-capable models.
+IMAGE_MIMES = frozenset({"image/png", "image/jpeg", "image/webp", "image/gif"})
+
 # The bounded preview the USER sees on the import_preview artifact (the
 # full staged rows still travel to the executor — this only caps display).
 PREVIEW_MAX_ROWS = 50
@@ -323,6 +327,55 @@ def clean_doc_text(content: str, *, name: str = "attachment") -> str:
     return cleaned
 
 
+def parse_image_data_url(content: str, *, name: str = "attachment") -> str:
+    """Validate an image attachment's data-URL; returns it unchanged.
+
+    Strict shape check (``data:<allowed mime>;base64,<valid b64>``) with
+    the same refuse-never-truncate byte law — a malformed or oversized
+    image is rejected with a human message, never silently mangled.
+    """
+    if len(content.encode("utf-8")) > MAX_CONTENT_BYTES:
+        raise AttachmentError(
+            f"{name}: image too large (max {MAX_CONTENT_BYTES / 1_000_000:.1f} MB)."
+        )
+    header, sep, b64 = content.partition(",")
+    if not sep or not header.startswith("data:") or ";base64" not in header:
+        raise AttachmentError(f"{name}: not a valid image attachment.")
+    mime = header[5:].split(";", 1)[0].strip().lower()
+    if mime not in IMAGE_MIMES:
+        raise AttachmentError(
+            f"{name}: unsupported image type '{mime}' "
+            f"(use {', '.join(sorted(IMAGE_MIMES))})."
+        )
+    import base64 as _b64
+    try:
+        _b64.b64decode(b64, validate=True)
+    except Exception:
+        raise AttachmentError(f"{name}: the image data is corrupt.")
+    return content
+
+
+def iter_attachment_images(user_context: dict | None) -> list[tuple[str, str, bytes]]:
+    """Decode the request's image attachments → [(name, mime, raw bytes)].
+
+    Used by the model loops to attach the images to the request itself
+    (vision input) — images never flow through tools.  Entries that fail
+    to decode are skipped (they were validated at parse time; this is
+    belt-and-braces).
+    """
+    import base64 as _b64
+    out: list[tuple[str, str, bytes]] = []
+    for name, dataurl in ((user_context or {}).get("_attachment_images") or {}).items():
+        try:
+            header, _, b64 = str(dataurl).partition(",")
+            mime = header[5:].split(";", 1)[0].strip().lower()
+            if mime in IMAGE_MIMES:
+                out.append((name, mime, _b64.b64decode(b64)))
+        except Exception:
+            continue
+    return out
+
+
 def doc_excerpt(text: str, offset: int = 0) -> dict:
     """A bounded window of a text document for the MODEL.
 
@@ -350,7 +403,8 @@ def attachment_prompt_line(user_context: dict | None) -> str:
     uc = user_context or {}
     grids = uc.get("_attachment_grids") or {}
     docs = uc.get("_attachment_docs") or {}
-    if not grids and not docs:
+    images = uc.get("_attachment_images") or {}
+    if not grids and not docs and not images:
         return ""
     shapes = [
         f"{name} ({len(g)} rows × {max((len(r) for r in g), default=0)} cols)"
@@ -358,20 +412,32 @@ def attachment_prompt_line(user_context: dict | None) -> str:
     ] + [
         f"{name} (text document, {len(text):,} chars)"
         for name, text in docs.items()
+    ] + [
+        f"{name} (image)"
+        for name in images
     ]
-    return (
-        f"- Attached files on THIS message: {', '.join(shapes)}. "
-        "Call read_attachment FIRST to inspect the contents before "
-        "answering about a file or proposing any action based on it."
+    line = (
+        f"- Attached files on THIS message: {', '.join(shapes)}."
     )
+    if grids or docs:
+        line += (
+            " Call read_attachment FIRST to inspect spreadsheet/document "
+            "contents before answering about them or proposing any action."
+        )
+    if images:
+        line += (
+            " Images are provided with this request directly if your model "
+            "supports vision — do not call read_attachment for them."
+        )
+    return line
 
 
 async def parse_attachments_for_request(
     attachments: list, role: str | None, account_id: int | None,
-) -> tuple[dict[str, list[list[str]]], dict[str, str]]:
+) -> tuple[dict[str, list[list[str]]], dict[str, str], dict[str, str]]:
     """Validate + transiently parse a request's attachments.
 
-    Returns ``(grids, docs)`` — two lanes with different trust rules:
+    Returns ``(grids, docs, images)`` — lanes with different trust rules:
 
     * **grids** (``kind="sheet"``, the default): spreadsheet text that
       can feed IMPORTS.  Gated: parsed only for callers holding a
@@ -388,17 +454,22 @@ async def parse_attachments_for_request(
       gate.  The ``kind`` field only picks the parser: a mislabeled
       attachment yields a failed parse or an inert text doc, never a
       privilege change.
+    * **images** (``kind="image"``): device-compressed data-URLs, shown
+      DIRECTLY to vision-capable models (never through tools).  Same
+      read-only trust rules as text docs — no import gate.
 
     Raises ``AttachmentError`` with a user-facing message on any refusal.
     """
     grids: dict[str, list[list[str]]] = {}
     docs: dict[str, str] = {}
+    images: dict[str, str] = {}
     if not attachments:
-        return grids, docs
+        return grids, docs, images
     if len(attachments) > MAX_ATTACHMENTS:
         raise AttachmentError(f"At most {MAX_ATTACHMENTS} attachments per message.")
     sheet_atts = [
-        a for a in attachments if str(getattr(a, "kind", "sheet")) != "text"
+        a for a in attachments
+        if str(getattr(a, "kind", "sheet")) not in ("text", "image")
     ]
     if sheet_atts:
         targets = [t for t in list_import_targets() if t.permission]
@@ -422,8 +493,11 @@ async def parse_attachments_for_request(
     for att in attachments:
         name = str(getattr(att, "name", "") or "attachment")[:120]
         content = str(getattr(att, "content", "") or "")
-        if str(getattr(att, "kind", "sheet")) == "text":
+        kind = str(getattr(att, "kind", "sheet"))
+        if kind == "text":
             docs[name] = clean_doc_text(content, name=name)
+        elif kind == "image":
+            images[name] = parse_image_data_url(content, name=name)
         else:
             grids[name] = parse_csv_grid(content, name=name)
-    return grids, docs
+    return grids, docs, images

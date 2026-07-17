@@ -330,12 +330,12 @@
     "attach_too_large": "Файл слишком большой (макс. ~1,4 МБ текста).",
     "attach_limit": "Можно прикрепить не более 3 файлов.",
     "attach_read_failed": "Не удалось прочитать файл — попробуйте ещё раз.",
-    "placeholder_attached": "Попросите меня импортировать или проанализировать вложенный документ…",
+    "placeholder_attached": "Спросите меня о вложенном файле…",
     "attach_evicted": "{{name}} убран, чтобы не превысить лимит размера вложений.",
-    "attach_file": "Прикрепить документ",
-    "attach_bad_type": "Можно прикреплять только документы (CSV, Excel, PDF или TXT).",
+    "attach_file": "Загрузить файлы",
+    "attach_bad_type": "Можно прикреплять только документы или изображения (CSV, Excel, PDF, TXT, PNG, JPG).",
     "attach_drop": "Отпустите, чтобы прикрепить",
-    "attach_formats": "Поддерживаются: CSV, Excel, PDF, TXT"
+    "attach_formats": "Поддерживаются: CSV, Excel, PDF, TXT, изображения"
   },
   "pages": {
     "overview_title": "Моя панель",

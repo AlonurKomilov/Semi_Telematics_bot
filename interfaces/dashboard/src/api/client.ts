@@ -251,7 +251,7 @@ export async function apiStreamChat(
      *  read-only. There is no upload endpoint by design — the server
      *  parses these transiently and persists nothing until the user
      *  approves an import. */
-    attachments?: { name: string; content: string; kind?: 'sheet' | 'text' }[];
+    attachments?: { name: string; content: string; kind?: 'sheet' | 'text' | 'image' }[];
   },
 ): Promise<void> {
   const token = getToken();

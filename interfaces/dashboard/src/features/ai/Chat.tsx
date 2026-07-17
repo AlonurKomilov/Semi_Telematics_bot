@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
-import { Bot, ArrowUp, Square, Trash2, Copy, Check, RefreshCw, Sparkles, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, Lightbulb, Loader2, ThumbsUp, ThumbsDown, Eye, History, SquarePen, Plus, Paperclip, FileText, X, type LucideIcon } from 'lucide-react';
+import { Bot, ArrowUp, Square, Trash2, Copy, Check, RefreshCw, Sparkles, Pencil, Download, RotateCcw, ChevronDown, Zap, Brain, Microscope, Lightbulb, Loader2, ThumbsUp, ThumbsDown, Eye, History, SquarePen, Plus, Paperclip, FileText, Image as ImageIcon, X, type LucideIcon } from 'lucide-react';
 import { Tip } from '../../components/tooltip';
 import { Button } from '../../components/ui/button';
 import { toneClasses, toneText } from '../../lib/status';
@@ -428,7 +428,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         flashAttachError(t('chat.attach_bad_type'));
         continue;
       }
-      let parts: { name: string; content: string; kind: 'sheet' | 'text' }[];
+      let parts: { name: string; content: string; kind: 'sheet' | 'text' | 'image' }[];
       try {
         // Everything converts ON THE DEVICE (documents.ts): CSV passes
         // through, Excel → CSV per sheet, PDF/TXT → extracted text.
@@ -1874,7 +1874,9 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                 >
                   {a.kind === 'text'
                     ? <FileText size={12} className="shrink-0 text-muted-foreground" aria-hidden />
-                    : <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden />}
+                    : a.kind === 'image'
+                      ? <ImageIcon size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                      : <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden />}
                   <span className="max-w-40 truncate">{a.name}</span>
                   <span className="text-3xs text-muted-foreground tabular-nums">
                     {Math.max(1, Math.round(a.size / 1024))} KB
@@ -1906,6 +1908,15 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
               e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
             }}
             onKeyDown={handleKeyDown}
+            onPaste={(e) => {
+              // Ctrl+V screenshots: clipboard files become attachments
+              // through the same lane as picker/drag.
+              const files = Array.from(e.clipboardData?.files ?? []);
+              if (files.length > 0) {
+                e.preventDefault();
+                void attachFiles(files);
+              }
+            }}
             onFocus={() => setInputFocused(true)}
             onBlur={() => setInputFocused(false)}
             placeholder={attachments.length > 0

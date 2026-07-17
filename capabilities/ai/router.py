@@ -78,9 +78,10 @@ class ChatAttachment(BaseModel):
     name: str = Field(..., min_length=1, max_length=120)
     content: str = Field(..., min_length=1, max_length=1_400_000)
     # "sheet" = spreadsheet text eligible for imports (gated);
-    # "text"  = extracted document text (PDF/TXT), read-only lane.
+    # "text"  = extracted document text (PDF/TXT), read-only lane;
+    # "image" = device-compressed data-URL for vision-capable models.
     # Only selects the parser — a wrong value can't change privileges.
-    kind: Literal["sheet", "text"] = "sheet"
+    kind: Literal["sheet", "text", "image"] = "sheet"
 
     @field_validator("content")
     @classmethod
@@ -445,7 +446,7 @@ async def ai_chat_stream(
                 detail="Attachments are disabled while previewing another role.",
             )
         try:
-            grids, docs = await parse_attachments_for_request(
+            grids, docs, images = await parse_attachments_for_request(
                 body.attachments, user.get("role"), account_id,
             )
         except AttachmentError as e:
@@ -455,6 +456,8 @@ async def ai_chat_stream(
                 user_context["_attachment_grids"] = grids
             if docs:
                 user_context["_attachment_docs"] = docs
+            if images:
+                user_context["_attachment_images"] = images
 
     try:
         # Implicit-satisfaction markers (timing + phrase).  Same as

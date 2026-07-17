@@ -553,6 +553,21 @@ def _scoped_vehicle_set(user_context: dict | None, user_role: str | None) -> lis
     return None
 
 
+def _has_request_attachments(user_context: dict | None) -> bool:
+    """True when THIS request carries transient attachments.
+
+    Cache guard: an answer shaped by an attachment must never be cached
+    — the same question asked later WITHOUT the file (or with a
+    different one) would be served the stale attachment-derived answer.
+    """
+    uc = user_context or {}
+    return bool(
+        uc.get("_attachment_grids")
+        or uc.get("_attachment_docs")
+        or uc.get("_attachment_images")
+    )
+
+
 def _effective_scoped_flag(user_context: dict | None, user_role: str | None) -> bool:
     """True if the caller is vehicle/company-restricted — used to drop
     account-wide tools from what the model is advertised.  Mirrors the gate's
@@ -758,7 +773,7 @@ async def _run_anthropic_agent(
         account_id=account_id or 0,
         user_id=user_id or 0,
         language=language,
-    ) if not has_history else ""
+    ) if not has_history and not _has_request_attachments(user_context) else ""
     if not has_history and ck:
         cached = _cache_get(ck)
         if cached is not None:
@@ -785,7 +800,22 @@ async def _run_anthropic_agent(
     user_prompt = _build_agent_user_prompt(question, vehicle_context, user_context, history)
 
     url = _anthropic_url(location, project, anthropic_model_id)
-    messages: list[dict] = [{"role": "user", "content": user_prompt}]
+    # Vision input: image attachments become image blocks ahead of the
+    # prompt text (never tools).  Without images the content stays the
+    # plain string it always was.
+    from capabilities.ai.attachments import iter_attachment_images
+    import base64 as _b64mod
+    _img_blocks = [
+        {"type": "image",
+         "source": {"type": "base64", "media_type": mime,
+                    "data": _b64mod.b64encode(raw).decode("ascii")}}
+        for _n, mime, raw in iter_attachment_images(user_context)
+    ]
+    _first_content = (
+        user_prompt if not _img_blocks
+        else [*_img_blocks, {"type": "text", "text": user_prompt}]
+    )
+    messages: list[dict] = [{"role": "user", "content": _first_content}]
     tool_results: list[dict] = []
     reasoning_chunks: list[str] = []
     usage_total = {"prompt_tokens": 0, "reply_tokens": 0, "thinking_tokens": 0, "total_tokens": 0}
@@ -1272,7 +1302,7 @@ async def _run_openai_compat_agent(
         account_id=account_id or 0,
         user_id=user_id or 0,
         language=language,
-    ) if not has_history else ""
+    ) if not has_history and not _has_request_attachments(user_context) else ""
     if not has_history and ck:
         cached = _cache_get(ck)
         if cached is not None:
@@ -1297,6 +1327,17 @@ async def _run_openai_compat_agent(
 
     history = _chat_histories.get((user_id or 0, account_id or 0)) if user_id else None
     user_prompt = _build_agent_user_prompt(question, vehicle_context, user_context, history)
+    # MaaS models here are text-only — be honest about attached images
+    # instead of silently ignoring them (the Gemini/Claude paths attach
+    # them natively).
+    _img_names = list(((user_context or {}).get("_attachment_images") or {}))
+    if _img_names:
+        user_prompt += (
+            f"\n\n[The user attached image(s): {', '.join(_img_names)} — "
+            "this model cannot view images. If the visual content matters, "
+            "tell the user to switch the model picker to a vision-capable "
+            "tier (Fast/Thinking/Auto)]."
+        )
 
     url = _maas_base_url(location, project)
     messages: list[dict] = [
@@ -1715,7 +1756,7 @@ async def ask_agent(question: str, vehicle_context: dict,
         account_id=account_id or 0,
         user_id=user_id or 0,
         language=language,
-    ) if not has_history else ""
+    ) if not has_history and not _has_request_attachments(user_context) else ""
     if not has_history and ck:
         cached = _cache_get(ck)
         if cached is not None:
@@ -1876,6 +1917,19 @@ async def ask_agent(question: str, vehicle_context: dict,
 
     parts.append(f"User question: {question}")
     full_prompt = "".join(parts)
+    # Vision input: image attachments ride the request itself (never
+    # tools).  With images present, every user turn becomes an explicit
+    # Content whose parts are [prompt text, image bytes…]; without them
+    # the call stays the plain string it always was.
+    from capabilities.ai.attachments import iter_attachment_images
+    _user_parts = [Part.from_text(text=full_prompt)] + [
+        Part.from_bytes(data=raw, mime_type=mime)
+        for _n, mime, raw in iter_attachment_images(user_context)
+    ]
+    _initial_contents = (
+        full_prompt if len(_user_parts) == 1
+        else [Content(parts=_user_parts, role="user")]
+    )
     tool_results: list[dict] = []
 
     max_retries = 2
@@ -1884,7 +1938,7 @@ async def ask_agent(question: str, vehicle_context: dict,
     for attempt in range(max_retries + 1):
         try:
             response = await _call_model_with_telemetry(
-                full_prompt, tools=tools,
+                _initial_contents, tools=tools,
             )
 
             for _round in range(max_tool_rounds):
@@ -1951,7 +2005,7 @@ async def ask_agent(question: str, vehicle_context: dict,
                         )
                         response = await _call_model_with_telemetry(
                             [
-                                Content(parts=[Part.from_text(text=full_prompt)], role="user"),
+                                Content(parts=_user_parts, role="user"),
                                 candidate.content,
                                 Content(parts=[fn_response], role="user"),
                             ],
@@ -1983,7 +2037,7 @@ async def ask_agent(question: str, vehicle_context: dict,
                     )
                     response = await _call_model_with_telemetry(
                         [
-                            Content(parts=[Part.from_text(text=full_prompt)], role="user"),
+                            Content(parts=_user_parts, role="user"),
                             candidate.content,
                             Content(parts=[fn_response], role="user"),
                         ],

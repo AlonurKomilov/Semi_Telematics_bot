@@ -635,12 +635,12 @@
     "attach_too_large": "That file is too large (max ~1.4 MB of text).",
     "attach_limit": "At most 3 files can be attached.",
     "attach_read_failed": "Couldn't read that file — try again.",
-    "placeholder_attached": "Ask me to import or analyze the attached document…",
+    "placeholder_attached": "Ask me about the attached file…",
     "attach_evicted": "Removed {{name}} to stay under the attachment size limit.",
-    "attach_file": "Attach document",
-    "attach_bad_type": "Only documents can be attached (CSV, Excel, PDF, or TXT).",
+    "attach_file": "Upload files",
+    "attach_bad_type": "Only documents or images can be attached (CSV, Excel, PDF, TXT, PNG, JPG).",
     "attach_drop": "Drop to attach",
-    "attach_formats": "Supported: CSV, Excel, PDF, TXT"
+    "attach_formats": "Supported: CSV, Excel, PDF, TXT, images"
   },
   "pages": {
     "overview_title": "My Dashboard",

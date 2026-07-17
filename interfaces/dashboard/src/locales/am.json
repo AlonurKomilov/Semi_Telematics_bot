@@ -330,12 +330,12 @@
     "attach_too_large": "ፋይሉ በጣም ትልቅ ነው (ከፍተኛ ~1.4 MB ጽሑፍ)።",
     "attach_limit": "ቢበዛ 3 ፋይሎች ማያያዝ ይቻላል።",
     "attach_read_failed": "ፋይሉን ማንበብ አልተቻለም — እንደገና ይሞክሩ።",
-    "placeholder_attached": "የተያያዘውን ሰነድ እንዳስገባ ወይም እንድተነትን ጠይቁኝ…",
+    "placeholder_attached": "ስለ ተያያዘው ፋይል ጠይቁኝ…",
     "attach_evicted": "በአባሪ መጠን ገደብ ውስጥ ለመቆየት {{name}} ተወግዷል።",
-    "attach_file": "ሰነድ አያይዝ",
-    "attach_bad_type": "ማያያዝ የሚቻለው ሰነዶችን ብቻ ነው (CSV፣ Excel፣ PDF ወይም TXT)።",
+    "attach_file": "ፋይሎችን ስቀል",
+    "attach_bad_type": "ማያያዝ የሚቻለው ሰነዶችን ወይም ምስሎችን ብቻ ነው (CSV, Excel, PDF, TXT, PNG, JPG)።",
     "attach_drop": "ለማያያዝ ይልቀቁ",
-    "attach_formats": "የሚደገፉ፦ CSV, Excel, PDF, TXT"
+    "attach_formats": "የሚደገፉ፦ CSV, Excel, PDF, TXT, ምስሎች"
   },
   "pages": {
     "overview_title": "የእኔ ዳሽቦርድ",

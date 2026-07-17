@@ -189,9 +189,9 @@ async def test_parse_gate_by_import_target_permission(monkeypatch):
         name="inv", description="", fields={},
         build_rows=_noop, executor=_noop, permission="can_manage_vehicles",
     ))
-    grids, docs = await A.parse_attachments_for_request([Att()], "owner", None)
+    grids, docs, images = await A.parse_attachments_for_request([Att()], "owner", None)
     assert grids["sheet.csv"] == [["a", "b"], ["1", "2"]]
-    assert docs == {}
+    assert docs == {} and images == {}
     with pytest.raises(AttachmentError, match="can't run imports"):
         await A.parse_attachments_for_request([Att()], "recruiter", None)
 
@@ -209,7 +209,7 @@ async def test_text_documents_bypass_the_import_gate(monkeypatch):
 
     # Even with NO registered targets a recruiter may attach a text doc…
     monkeypatch.setattr(A, "_IMPORT_TARGETS", {})
-    grids, docs = await A.parse_attachments_for_request([Doc()], "recruiter", None)
+    grids, docs, _imgs = await A.parse_attachments_for_request([Doc()], "recruiter", None)
     assert grids == {}
     assert docs["manual.pdf"] == "[Page 1]\nBrake inspection procedure for trucks."
 
@@ -221,6 +221,54 @@ async def test_text_documents_bypass_the_import_gate(monkeypatch):
 
     with pytest.raises(AttachmentError, match="can't run imports"):
         await A.parse_attachments_for_request([Doc(), Sheet()], "recruiter", None)
+
+
+async def test_image_lane_validation_and_decode(monkeypatch):
+    """kind="image": strict data-URL validation (mime allowlist, real
+    base64), no import gate, and iter_attachment_images round-trips the
+    raw bytes for the vision loops."""
+    import base64
+    import capabilities.ai.attachments as A
+
+    raw = b"\x89PNG\r\n\x1a\nfakebody"
+    good = "data:image/png;base64," + base64.b64encode(raw).decode()
+
+    class Img:
+        name = "screen.png"
+        content = good
+        kind = "image"
+
+    monkeypatch.setattr(A, "_IMPORT_TARGETS", {})
+    # No import permission needed — recruiter passes with images only.
+    grids, docs, images = await A.parse_attachments_for_request(
+        [Img()], "recruiter", None)
+    assert grids == {} and docs == {}
+    assert images["screen.png"] == good
+
+    decoded = A.iter_attachment_images({"_attachment_images": images})
+    assert decoded == [("screen.png", "image/png", raw)]
+
+    with pytest.raises(AttachmentError, match="unsupported image type"):
+        A.parse_image_data_url("data:image/tiff;base64,AAAA")
+    with pytest.raises(AttachmentError, match="corrupt"):
+        A.parse_image_data_url("data:image/png;base64,@@not-b64@@")
+    with pytest.raises(AttachmentError, match="not a valid image"):
+        A.parse_image_data_url("hello,world")
+
+
+def test_prompt_line_names_all_three_lanes():
+    from capabilities.ai.attachments import attachment_prompt_line
+
+    line = attachment_prompt_line({
+        "_attachment_grids": {"inv.csv": [["a"], ["1"]]},
+        "_attachment_docs": {"manual.pdf": "text " * 10},
+        "_attachment_images": {"screen.png": "data:image/png;base64,AA=="},
+    })
+    assert "inv.csv (2 rows" in line
+    assert "manual.pdf (text document" in line
+    assert "screen.png (image)" in line
+    assert "read_attachment" in line
+    assert "vision" in line          # images: shown directly, not via tools
 
 
 def test_doc_excerpt_pages_through_long_text():

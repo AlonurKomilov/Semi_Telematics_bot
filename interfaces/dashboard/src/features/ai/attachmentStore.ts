@@ -37,8 +37,9 @@ export interface PendingAttachment {
   name: string;
   /** Derived text: CSV for sheets, extracted text for documents. */
   content: string;
-  /** 'sheet' = importable spreadsheet text; 'text' = read-only document. */
-  kind: 'sheet' | 'text';
+  /** 'sheet' = importable spreadsheet text; 'text' = read-only document;
+   *  'image' = compressed data-URL shown to vision-capable models. */
+  kind: 'sheet' | 'text' | 'image';
   /** UTF-8 byte size, measured at attach time (chip label + budgets). */
   size: number;
   /** Attached-at epoch ms — eviction order. */
@@ -60,7 +61,7 @@ function load(): PendingAttachment[] {
       .map((a) => ({
         ...a,
         size: typeof a.size === 'number' ? a.size : byteLen(a.content),
-        kind: a.kind === 'text' ? 'text' as const : 'sheet' as const,
+        kind: a.kind === 'text' || a.kind === 'image' ? a.kind : 'sheet' as const,
       }));
   } catch {
     return [];
@@ -90,7 +91,7 @@ export function loadPendingAttachments(): PendingAttachment[] {
  */
 export function addPendingAttachment(
   current: PendingAttachment[], name: string, content: string,
-  kind: 'sheet' | 'text' = 'sheet',
+  kind: 'sheet' | 'text' | 'image' = 'sheet',
 ): { list: PendingAttachment[]; evicted: string[] } | { error: 'too_large' | 'limit' } {
   const size = byteLen(content);
   if (size > MAX_ATTACHMENT_BYTES) return { error: 'too_large' };
