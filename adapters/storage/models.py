@@ -396,7 +396,7 @@ class PersonaGroup:
 
 @dataclass
 class BotInstance:
-    """An optional per-department SENDER bot ("Sub bot") — a role
+    """An optional per-role SENDER bot ("Sub bot") — a role
     manager's own BotFather bot that posts their persona's alerts.
 
     Composite key (account_id, persona), same slugs as PersonaGroup.

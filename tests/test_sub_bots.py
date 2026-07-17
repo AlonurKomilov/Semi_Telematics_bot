@@ -1,9 +1,9 @@
-"""Department Sub bots ("Sub bot" mode) — storage, permissions, sender pick.
+"""Role Sub bots ("Sub bot" mode) — storage, permissions, sender pick.
 
 The contract under test (docs/architecture/bot-topology.md):
 - one IDENTITY bot per account; a Sub bot is a per-persona SENDER only
 - owner/admin manage all Sub bots; a role manager (is_manager on the
-  matching base role) manages exactly their own department's
+  matching base role) manages exactly their own role's
 - delivery fail-open: no/inactive/down Sub bot → the primary bot sends
 - the owner_admin AGGREGATE cross-post always rides the primary bot
 """
@@ -76,7 +76,7 @@ def test_pick_sender_fallback_rules(monkeypatch):
     monkeypatch.setattr(reg, "_registry", _StubRegistry())
 
     t = lambda persona, agg=False: SimpleNamespace(persona=persona, is_aggregate=agg)
-    # attached + running → the department's Sub bot
+    # attached + running → the role's Sub bot
     assert _pick_sender(primary, 1, t("safety")) is sub
     # no sub for this persona → primary
     assert _pick_sender(primary, 1, t("dispatcher")) is primary
@@ -181,7 +181,7 @@ async def test_permission_model_and_roundtrip(api, monkeypatch):
         assert r.status_code == 200
         assert r.json()["bot_username"] == "dept_bot"
 
-        # …but NOT another department's, nor the owner_admin aggregate
+        # …but NOT another role's, nor the owner_admin aggregate
         for persona in ("dispatcher", "owner_admin"):
             r = await c.post("/api/admin/bot-instances", headers=mgr_h,
                              json={"persona": persona, "bot_token": VALID_TOKEN})

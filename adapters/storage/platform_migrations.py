@@ -2152,11 +2152,11 @@ async def migrate_create_account_persona_groups(conn) -> None:
 
 
 async def migrate_create_bot_instances(conn) -> None:
-    """Create ``bot_instances`` — optional per-department sender bots
+    """Create ``bot_instances`` — optional per-role sender bots
     ("Sub bot" mode).
 
     One row per (account, persona).  A role manager attaches their own
-    BotFather token so their department's alert group receives posts
+    BotFather token so their role's alert group receives posts
     from THEIR bot.  Sender-only by design: identity (registration,
     login, commands, user binding) never leaves the account's primary
     bot, and the alert pipeline falls back to the primary bot whenever

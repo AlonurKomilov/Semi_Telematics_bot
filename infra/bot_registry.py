@@ -48,12 +48,12 @@ def heartbeat_key(account_id: int) -> str:
 
 
 def sub_heartbeat_key(account_id: int, persona: str) -> str:
-    """Liveness key for one department's Sub bot (sender-only)."""
+    """Liveness key for one role's Sub bot (sender-only)."""
     return f"{HEARTBEAT_KEY_PREFIX}{account_id}:{persona}"
 
 
 async def is_sub_bot_alive(account_id: int, persona: str) -> bool:
-    """Cross-process liveness probe for a department Sub bot."""
+    """Cross-process liveness probe for a role Sub bot."""
     from adapters.cache.redis import exists
     return await exists(sub_heartbeat_key(account_id, persona))
 
@@ -188,13 +188,13 @@ async def _build_sub_bot_app(
     webhook_url: Optional[str] = None,
     webhook_secret: str = "",
 ) -> Application:
-    """Build and start a department SENDER bot ("Sub bot").
+    """Build and start a role SENDER bot ("Sub bot").
 
     Deliberately minimal: no handler_setup, no command surface — the
     only handler is /start with a what-am-I reply.  Identity
     (registration, login, the 43 commands) lives on the account's
     primary bot; this Application exists so the alert pipeline can post
-    a department's alerts from the department's own bot.
+    a role's alerts from the role's own bot.
     """
     from telegram.ext import CommandHandler
 
@@ -255,7 +255,7 @@ class BotRegistry:
         # running bot; cancelled in stop_bot so we don't keep refreshing
         # a key after the underlying Application has been torn down.
         self._heartbeat_tasks: dict[int, asyncio.Task] = {}
-        # Department Sub bots (sender-only), keyed (account_id, persona).
+        # Role Sub bots (sender-only), keyed (account_id, persona).
         # The primary bot stays in self._bots — existing paths untouched.
         self._sub_bots: dict[tuple[int, str], Application] = {}
         self._sub_heartbeat_tasks: dict[tuple[int, str], asyncio.Task] = {}
@@ -377,7 +377,7 @@ class BotRegistry:
         """Get the running Application for an account, or None."""
         return self._bots.get(account_id)
 
-    # ── Department Sub bots (sender-only) ─────────────────────────
+    # ── Role Sub bots (sender-only) ─────────────────────────
 
     async def start_sub_bot(
         self,
@@ -387,7 +387,7 @@ class BotRegistry:
         webhook_base: Optional[str] = None,
         webhook_secret: str = "",
     ) -> Application:
-        """Start one department's sender bot."""
+        """Start one role's sender bot."""
         key = (account_id, persona)
         if key in self._sub_bots:
             await self.stop_sub_bot(account_id, persona)
@@ -452,7 +452,7 @@ class BotRegistry:
             logger.exception("Error stopping sub bot %d/%s", account_id, persona)
 
     def get_sub(self, account_id: int, persona: str) -> Optional[Application]:
-        """The department's running sender bot, or None (→ primary sends)."""
+        """The role's running sender bot, or None (→ primary sends)."""
         return self._sub_bots.get((account_id, persona))
 
     async def start_all(self, platform_db, webhook_base: Optional[str] = None) -> int:
@@ -475,7 +475,7 @@ class BotRegistry:
                 logger.exception("Failed to start bot for account %d", acct.id)
         logger.info("Started %d / %d bots", started, len(accounts))
 
-        # Department Sub bots — senders only, started AFTER primaries so
+        # Role Sub bots — senders only, started AFTER primaries so
         # a sub-bot failure can never block an account's main bot.  A
         # sub-bot that fails here simply never enters _sub_bots and the
         # pipeline keeps sending that persona's alerts via the primary.
@@ -565,7 +565,7 @@ def get_app_for_account(account_id: int) -> Optional[Application]:
 def get_sender_for_persona(account_id: int, persona: str) -> Optional[Application]:
     """The Application that should POST this persona's group alerts.
 
-    Department Sub bot when one is attached and running, else the
+    Role Sub bot when one is attached and running, else the
     account's primary bot, else None.  Fail-open toward the primary by
     design: an attached-but-down Sub bot must never eat alerts.
     """

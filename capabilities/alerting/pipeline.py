@@ -66,11 +66,11 @@ async def _tg_send_with_retry(send, *, what: str):
 
 
 def _pick_sender(primary: Application, account_id: int, target) -> Application:
-    """The Application that posts THIS target: the department's Sub bot
+    """The Application that posts THIS target: the role's Sub bot
     when one is attached and running, else the account's primary bot.
 
     The owner_admin AGGREGATE cross-post always uses the primary bot —
-    it's the account-level digest, not a department surface.  Fail-open
+    it's the account-level digest, not a role surface.  Fail-open
     toward the primary: an attached-but-down Sub bot never eats alerts.
     """
     if getattr(target, "is_aggregate", False):
@@ -421,7 +421,7 @@ async def post_alert_to_topic(
     for target in targets:
         chat_id = target.chat_id
         thread_id = target.message_thread_id
-        # Department Sub bot when attached; primary otherwise.
+        # Role Sub bot when attached; primary otherwise.
         send_app = _pick_sender(bot_app, account_id, target)
 
         # CRITICAL persona-mode primary targets get on-shift @-mentions
@@ -603,7 +603,7 @@ async def _post_one_target(
     chat_id = target.chat_id
     thread_id = target.message_thread_id
     route_key = _PIPELINE_TO_ROUTE_KEY.get(alert_type)
-    # Department Sub bot when attached; the caller's primary otherwise.
+    # Role Sub bot when attached; the caller's primary otherwise.
     # Every send below rides this pick.
     bot_app = _pick_sender(bot_app, account_id, target)
 

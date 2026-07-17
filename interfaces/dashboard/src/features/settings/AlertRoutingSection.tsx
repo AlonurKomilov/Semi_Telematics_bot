@@ -6,11 +6,11 @@ import { toneClasses } from '../../lib/status';
 import { Check, Info } from 'lucide-react';
 
 // Where the bot posts alerts: everything into one forum group
-// (single_group, the default) or a flat group per department
+// (single_group, the default) or a flat group per role
 // (per_persona_groups).  Sits inside the Telegram Bot card, above the
 // per-topic ForumRoutingSection — that table keeps working in both
 // modes because the resolver falls back to the single-group route for
-// any department without a binding.
+// any role without a binding.
 
 interface PersonaBinding {
   chat_id: number;
@@ -35,13 +35,13 @@ interface SubBotRow {
 interface SubBotsResponse {
   personas: Record<string, SubBotRow | null>;
   // Personas THIS user may attach/detach (owner/admin: all; a role
-  // manager: exactly their own department) — server re-enforces.
+  // manager: exactly their own role) — server re-enforces.
   manageable: string[];
 }
 
-// Display order: operational departments first, the owner/admin
+// Display order: operational roles first, the owner/admin
 // critical-aggregate last.  These are persona artifacts by definition
-// (each row IS one department's group), so persona words are correct here.
+// (each row IS one role's group), so persona words are correct here.
 const PERSONA_ORDER = ['dispatcher', 'safety', 'fleet', 'hr', 'owner_admin'] as const;
 
 export default function AlertRoutingSection() {
@@ -252,9 +252,9 @@ export default function AlertRoutingSection() {
                   </>
                 )}
 
-                {/* Sub bot cell — the department's own SENDER bot.
+                {/* Sub bot cell — the role's own SENDER bot.
                     Attach/detach only for owner/admin or this
-                    department's manager (server re-enforces). */}
+                    role's manager (server re-enforces). */}
                 {sub ? (
                   <span className="inline-flex items-center gap-2 ml-auto">
                     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs border ${

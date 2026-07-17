@@ -260,7 +260,7 @@ async def get_bot_config(
 
 # ── Alert routing (owner/admin self-serve) ────────────────────────────
 # The customer configures where their bot posts alerts: one forum group
-# for everything (single_group) or a flat group per department
+# for everything (single_group) or a flat group per role
 # (per_persona_groups).  Chat bindings are validated live against
 # Telegram's getChat with the ACCOUNT's own bot token — a typo'd chat id
 # or a group the bot was never added to gets a 422 here instead of
@@ -294,7 +294,7 @@ async def get_alert_routing_settings(
     tenant_db=Depends(get_tenant_db),
 ):
     """Current routing mode + per-persona group bindings + the fleet
-    size the dashboard uses for the 'consider per-department groups'
+    size the dashboard uses for the 'consider per-role groups'
     nudge."""
     account = await platform_db.get_account(user["account_id"])
     if not account:
@@ -330,7 +330,7 @@ async def set_alert_routing_settings(
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Switch between single-group and per-department alert routing.
+    """Switch between single-group and per-role alert routing.
 
     Safe in both directions: the resolver falls back to the legacy
     single-group lookup for any persona without a binding, so flipping
@@ -352,7 +352,7 @@ async def bind_persona_group(
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Bind one department to a Telegram group (validated via getChat)."""
+    """Bind one role to a Telegram group (validated via getChat)."""
     account = await platform_db.get_account(user["account_id"])
     if not account or not account.bot_token_encrypted:
         raise HTTPException(
@@ -412,7 +412,7 @@ async def unbind_persona_group(
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Unbind a department's group — its alerts fall back to the legacy
+    """Unbind a role's group — its alerts fall back to the legacy
     single-group route (never dropped)."""
     if persona not in _VALID_PERSONAS:
         raise HTTPException(status_code=400, detail="Unknown persona")
@@ -424,11 +424,11 @@ async def unbind_persona_group(
     return {"ok": True}
 
 
-# ── Department Sub bots (sender-only) ─────────────────────────────────
-# In Sub-bot mode a department's alert group receives posts from the
-# department's OWN bot.  Owner/admin manage all of them; a role MANAGER
+# ── Role Sub bots (sender-only) ─────────────────────────────────
+# In Sub-bot mode a role's alert group receives posts from the
+# role's OWN bot.  Owner/admin manage all of them; a role MANAGER
 # (users.is_manager on the matching base role) manages exactly their
-# own department's bot — a safety manager cannot touch dispatch's.
+# own role's bot — a safety manager cannot touch dispatch's.
 # Sender-only contract: identity (registration, login, commands) stays
 # on the primary bot; delivery falls back to the primary whenever a
 # sub-bot is missing or down.
@@ -480,12 +480,12 @@ async def attach_sub_bot(
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Attach (or replace) a department's sender bot — validated via
+    """Attach (or replace) a role's sender bot — validated via
     Telegram getMe, token stored encrypted like the primary's."""
     if not _may_manage_persona_bot(user, body.persona):
         raise HTTPException(
             status_code=403,
-            detail="Only the owner/admin or this department's manager can attach its Sub bot.",
+            detail="Only the owner/admin or this role's manager can attach its Sub bot.",
         )
     account = await platform_db.get_account(user["account_id"])
     if not account or not account.bot_token_encrypted:
@@ -561,14 +561,14 @@ async def detach_sub_bot(
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Detach a department's sender bot — its alerts return to the
+    """Detach a role's sender bot — its alerts return to the
     primary bot on the next send (never dropped)."""
     if persona not in _VALID_PERSONAS:
         raise HTTPException(status_code=400, detail="Unknown persona")
     if not _may_manage_persona_bot(user, persona):
         raise HTTPException(
             status_code=403,
-            detail="Only the owner/admin or this department's manager can detach its Sub bot.",
+            detail="Only the owner/admin or this role's manager can detach its Sub bot.",
         )
     try:
         from infra.bot_registry import get_registry

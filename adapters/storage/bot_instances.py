@@ -1,7 +1,7 @@
-"""Per-department sender bots ("Sub bot") — CRUD mixin.
+"""Per-role sender bots ("Sub bot") — CRUD mixin.
 
 One optional Telegram bot per (account, persona): a role manager
-attaches their own BotFather token so their department's alert group
+attaches their own BotFather token so their role's alert group
 receives posts from THEIR bot.  Sender-only by contract — identity
 (registration, login, commands, user binding) never leaves the
 account's primary bot, and the alert pipeline falls back to the
