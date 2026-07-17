@@ -206,6 +206,37 @@ async def test_merge_repoints_lines_and_aliases(seeded):
 
 
 @pytest.mark.asyncio
+async def test_add_part_resolve_semantics(seeded):
+    """POST /parts is Add-vendor's contract: create when new, return
+    the EXISTING row with created=false when the name already resolves
+    — typed fields are never silently applied to the existing row."""
+    transport = ASGITransport(app=seeded["app"])
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.post("/api/parts", headers=_h(seeded["token_fleet"]),
+                         json={"name": "Air Dryer Cartridge",
+                               "part_number": "AD-9", "notes": "OEM only"})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["created"] is True
+        assert body["part"]["part_number"] == "AD-9"
+        pid = body["part"]["id"]
+
+        # Same normalized name → existing row, honest flag, no overwrite.
+        r = await c.post("/api/parts", headers=_h(seeded["token_fleet"]),
+                         json={"name": "air  dryer  CARTRIDGE",
+                               "part_number": "SHOULD-NOT-APPLY"})
+        assert r.status_code == 200
+        body2 = r.json()
+        assert body2["created"] is False
+        assert body2["part"]["id"] == pid
+        assert body2["part"]["part_number"] == "AD-9"
+
+        r = await c.post("/api/parts", headers=_h(seeded["token_driver"]),
+                         json={"name": "Nope"})
+        assert r.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_legacy_alias_equals_primary(seeded):
     """/work-orders/parts-catalog is a deprecated alias of /parts —
     identical payload, identical behavior (same handler objects)."""

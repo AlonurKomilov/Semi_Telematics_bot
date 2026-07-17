@@ -274,15 +274,35 @@ UI: the vendor profile shows pipeline STATE only (linked / sent for
 review / waiting for an address); Unlink remains as the correction
 valve.
 
-**Manual endpoints REMOVED (2026-07-16):** `POST /{id}/suggest-to-
-directory` and `POST /{id}/link-directory/{entry}` are gone — they had
-no UI callers, and the suggest path even bypassed the account's
-share_vendor_identities consent (auto-only closes that hole).  The one
-surviving user-side control is `DELETE /{id}/link-directory` (Unlink).
-Merge (`/{loser}/merge-into/{winner}`) stays an account-side DEDUP tool
-and now carries the loser's directory link to an unlinked survivor —
-merging a typo-duplicate no longer silently drops enrichment/review
-eligibility.
+**Manual suggest REMOVED (2026-07-16):** `POST /{id}/suggest-to-
+directory` is gone — no UI caller, and it bypassed the account's
+share_vendor_identities consent (auto-only closes that hole).
+Contribution is auto-ONLY, permanently.
+
+**The dedup carve-out (owner decision, same day):** dedup RESOLUTION is
+human work, and it lives in the merge dialog with two scopes and two
+verbs — "Your vendors" → destructive fold (`/{loser}/merge-into/
+{winner}`, which now carries the loser's directory link to an unlinked
+survivor), "Public directory" → non-destructive LINK
+(`POST /{id}/link-directory/{entry}`, link+adopt-empty-fields, for when
+the auto name-match couldn't see the duplicate: "TA Dallas" vs "TA
+Travel Center #241"; reversible via `DELETE /{id}/link-directory`).
+Advisor guardrails: the two id spaces NEVER share an endpoint (merge
+stays fold-only), the confirm button says the real verb (Merge vs
+Link), and adopting never renames the local vendor.
+
+**Parts public side — deliberately DEFERRED (advisor-ruled 2026-07-16):**
+parts get no directory: a part name is shop vocabulary, not a
+verifiable public identity (no geo, no seed dataset, no browse
+use-case), and Phase D already IS the parts public layer (aggregates
+key on `(global_vendor_id, part_key)` with no global parts registry by
+design).  Parts merge stays my-parts-only.  **Revisit trigger:** Phase
+D live AND real cells failing the 3-company rule from cross-account
+name fragmentation → add a thin operator-curated canonical-name alias
+map (aggregation aid only, still no browse tab).  Account-side instead:
+`POST /parts` Add-part (resolve semantics + honest `created` flag) and
+visible part IDs (#id chip on the profile, hidden-by-default ID grid
+column) for unambiguous merge bookkeeping.
 
 Map: two Services layers — "Repair Shops" (public directory, green) and
 "My Vendors" (the caller's auto-linked shops, blue, own-vendor name in

@@ -48,6 +48,12 @@ export default function VendorProfile() {
   const [mergeOpen, setMergeOpen] = useState(false);
   const [mergeTarget, setMergeTarget] = useState('');
   const [merging, setMerging] = useState(false);
+  // Two dedup scopes, two verbs: 'mine' = destructive fold into another
+  // of YOUR vendors; 'directory' = non-destructive LINK to the public
+  // entry the auto name-match missed (reversible via Unlink).
+  const [mergeScope, setMergeScope] = useState<'mine' | 'directory'>('mine');
+  const [dirTerm, setDirTerm] = useState('');
+  const [dirPick, setDirPick] = useState<DirectoryEntry | null>(null);
 
   // Edit dialog — contact/identity on the registry record (never
   // rewrites work-order snapshots; server enforces that).
@@ -179,6 +185,32 @@ export default function VendorProfile() {
     }
   };
 
+  // Directory search for the dedup Link branch (identity fields only).
+  const { data: dirSearch } = useQuery<{ entries: DirectoryEntry[] }>({
+    queryKey: ['vendor-dir-search', dirTerm],
+    queryFn: () => apiJSON(`/vendors/directory/search?q=${encodeURIComponent(dirTerm)}`),
+    enabled: mergeOpen && mergeScope === 'directory' && dirTerm.trim().length >= 2,
+    staleTime: 30_000,
+  });
+
+  const doLink = async () => {
+    if (!dirPick) return;
+    setMerging(true);
+    try {
+      // Non-destructive: the row + its work orders stay; identity
+      // links and empty contact fields fill from the verified entry.
+      await apiJSON(`/vendors/${vendorId}/link-directory/${dirPick.id}`, { method: 'POST' });
+      toast.success('Linked to the directory entry — nothing was deleted. Unlink here reverses it.');
+      qc.invalidateQueries({ queryKey: ['vendor', vendorId] });
+      qc.invalidateQueries({ queryKey: ['vendors'] });
+      setMergeOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Link failed');
+    } finally {
+      setMerging(false);
+    }
+  };
+
   const columns: AnyColumn[] = [
     { key: 'id', label: '#', sortable: true,
       render: (v) => <span className="font-mono text-xs text-muted-foreground">{`#${v}`}</span> },
@@ -240,7 +272,11 @@ export default function VendorProfile() {
               <Tip label="Fold this vendor into another (fixes typo-duplicates); its work orders move over.">
                 <button
                   type="button"
-                  onClick={() => setMergeOpen(true)}
+                  onClick={() => {
+                    setMergeScope('mine'); setMergeTarget('');
+                    setDirTerm(''); setDirPick(null);
+                    setMergeOpen(true);
+                  }}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded-md text-xs font-medium text-foreground transition"
                 >
                   <Merge size={14} />
@@ -520,31 +556,91 @@ export default function VendorProfile() {
         </DialogContent>
       </Dialog>
 
-      {/* Merge dialog — THIS vendor folds into the chosen survivor. */}
+      {/* Merge dialog — two dedup scopes, two verbs.  "Your vendors"
+          folds THIS vendor into the chosen survivor (destructive);
+          "Public directory" LINKS it to the entry the auto name-match
+          missed (non-destructive, reversible via Unlink). */}
       <Dialog open={mergeOpen} onOpenChange={(o) => { if (!o) setMergeOpen(false); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Merge “{vendor?.name}” into another vendor</DialogTitle>
+            <DialogTitle>Resolve “{vendor?.name}” as a duplicate</DialogTitle>
             <DialogDescription>
-              All of this vendor's work orders move to the vendor you pick,
-              this record is deleted, and future synced invoices under this
-              name resolve to the survivor. This cannot be undone.
+              {mergeScope === 'mine'
+                ? "All of this vendor's work orders move to the vendor you pick, this record is deleted, and future synced invoices under this name resolve to the survivor. This cannot be undone."
+                : 'This vendor is the same real-world shop as a public directory entry. Linking keeps this record and its work orders — identity connects and empty contact fields fill from the verified entry. Reversible with Unlink.'}
             </DialogDescription>
           </DialogHeader>
-          <Select value={mergeTarget} onValueChange={(v) => setMergeTarget(String(v))}
-            items={others.map(v => ({ value: String(v.id), label: v.name }))}>
-            <SelectTrigger className="w-full" aria-label="Merge target"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {others.map(v => (
-                <SelectItem key={v.id} value={String(v.id)}>{v.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex items-center gap-1 rounded-md border border-border p-1 bg-muted/40" role="tablist" aria-label="Duplicate scope">
+            {([['mine', 'Your vendors'], ['directory', 'Public directory']] as const).map(([scope, label]) => (
+              <button
+                key={scope}
+                type="button"
+                role="tab"
+                aria-selected={mergeScope === scope}
+                onClick={() => setMergeScope(scope)}
+                className={`flex-1 h-8 rounded text-sm font-medium transition ${
+                  mergeScope === scope
+                    ? 'bg-card text-foreground border border-border shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {mergeScope === 'mine' ? (
+            <Select value={mergeTarget} onValueChange={(v) => setMergeTarget(String(v))}
+              items={others.map(v => ({ value: String(v.id), label: v.name }))}>
+              <SelectTrigger className="w-full" aria-label="Merge target"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {others.map(v => (
+                  <SelectItem key={v.id} value={String(v.id)}>
+                    <span className="font-mono text-xs text-muted-foreground">#{v.id}</span> {v.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <input
+                className="h-9 rounded-md border border-border bg-background px-3 text-sm text-foreground"
+                placeholder="Search the public directory…"
+                value={dirTerm}
+                onChange={(e) => { setDirTerm(e.target.value); setDirPick(null); }}
+              />
+              {dirTerm.trim().length >= 2 && (
+                <div className="max-h-48 overflow-y-auto rounded-md border border-border divide-y divide-border">
+                  {(dirSearch?.entries ?? []).length === 0 ? (
+                    <p className="p-2.5 text-sm text-muted-foreground">No matching directory entries.</p>
+                  ) : (dirSearch?.entries ?? []).map((e) => (
+                    <button
+                      key={e.id}
+                      type="button"
+                      onClick={() => setDirPick(e)}
+                      className={`w-full text-left p-2.5 text-sm transition ${
+                        dirPick?.id === e.id ? 'bg-primary/10 text-foreground' : 'text-foreground hover:bg-muted'
+                      }`}
+                    >
+                      <span className="font-medium">{e.name}</span>
+                      {e.chain ? <span className="ml-2 text-2xs text-muted-foreground">{e.chain}</span> : null}
+                      {e.address && <span className="block text-xs text-muted-foreground truncate">{e.address}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <DialogFooter className="gap-2">
             <Button variant="ghost" onClick={() => setMergeOpen(false)}>Cancel</Button>
-            <Button onClick={doMerge} disabled={!mergeTarget || merging}>
-              {merging ? 'Merging…' : 'Merge'}
-            </Button>
+            {mergeScope === 'mine' ? (
+              <Button onClick={doMerge} disabled={!mergeTarget || merging}>
+                {merging ? 'Merging…' : 'Merge'}
+              </Button>
+            ) : (
+              <Button onClick={doLink} disabled={!dirPick || merging}>
+                {merging ? 'Linking…' : 'Link'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

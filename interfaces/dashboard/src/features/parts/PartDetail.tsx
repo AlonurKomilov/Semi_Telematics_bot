@@ -287,6 +287,13 @@ export default function PartDetail() {
         description="Recurrence per vehicle, price per vendor, and the purchase history behind them. Void invoices never count."
         actions={part && (
           <span className="inline-flex items-center gap-2">
+            {/* Stable identifier for merge bookkeeping/support — a
+                global serial, not a per-account sequence. */}
+            <Tip label="Part ID — use it to be sure which record you're merging or referencing.">
+              <span className="font-mono text-xs text-muted-foreground border border-border rounded-md px-2 py-1">
+                #{part.id}
+              </span>
+            </Tip>
             {part.part_number && (
               <span className="font-mono text-xs text-muted-foreground border border-border rounded-md px-2 py-1">
                 {part.part_number}
@@ -456,7 +463,9 @@ export default function PartDetail() {
             <SelectTrigger className="w-full" aria-label="Merge target"><SelectValue /></SelectTrigger>
             <SelectContent>
               {mergeTargets.map((p) => (
-                <SelectItem key={p.id} value={String(p.id)}>{p.name}</SelectItem>
+                <SelectItem key={p.id} value={String(p.id)}>
+                  <span className="font-mono text-xs text-muted-foreground">#{p.id}</span> {p.name}
+                </SelectItem>
               ))}
             </SelectContent>
           </Select>

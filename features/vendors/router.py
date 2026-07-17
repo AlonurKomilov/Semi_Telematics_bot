@@ -307,10 +307,41 @@ async def merge_vendors(
 
 
 # Directory contribution and linking are fully AUTOMATIC (autosuggest
-# on address-complete saves, adopt-on-approve fan-out) — there are no
-# manual suggest/link endpoints by design.  The one user-side control
-# that remains is the escape hatch below: unlink, for when the
-# name-match connected two genuinely different shops.
+# on address-complete saves, adopt-on-approve fan-out) — there is no
+# routine manual suggest/link.  TWO human-side controls exist, both
+# corrections (the owner's dedup carve-out): the merge dialog's
+# "Directory" branch below (link+adopt when the auto name-match missed
+# a real-world duplicate) and Unlink (when it matched wrong).
+@router.post("/{vendor_id}/link-directory/{entry_id}")
+async def link_directory(
+    vendor_id: int,
+    entry_id: int,
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """The merge dialog's DIRECTORY branch: this vendor IS that public
+    shop, the automatic name-match just couldn't see it ("TA Dallas"
+    vs "TA Travel Center #241").  Non-destructive: the vendor row and
+    its work orders stay; identity links + empty contact fields fill
+    from the verified entry.  Reversible via Unlink."""
+    if not await _vendor_access(user):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if not await tenant_db.get_vendor(vendor_id, user["account_id"]):
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    ok = await tenant_db.link_vendor_to_directory(
+        user["account_id"], vendor_id, entry_id,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Directory entry not found or not active")
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "vendor_directory_link",
+        target_type="vendor", target_id=str(vendor_id),
+        details=f"matched to directory entry #{entry_id}",
+    )
+    return {"ok": True}
+
+
 @router.delete("/{vendor_id}/link-directory")
 async def unlink_directory(
     vendor_id: int,

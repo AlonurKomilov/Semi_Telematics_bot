@@ -101,6 +101,53 @@ class PartsCatalogMixin:
         row = await cur.fetchone()
         return dict(row) if row else None
 
+    async def create_catalog_part(
+        self, account_id: int, name: str,
+        *,
+        part_number: str = "",
+        notes: str = "",
+    ) -> tuple[Optional[dict], bool]:
+        """Explicit Add-part: resolve semantics (alias-aware) with an
+        honest ``created`` flag.  When the name already resolves, the
+        EXISTING row comes back unchanged — the caller must tell the
+        user their typed part_number/notes were not applied, never
+        pretend a create happened."""
+        nkey = part_name_key(name)
+        if not nkey:
+            return None, False
+        cur = await self._db.execute(
+            "SELECT part_id FROM part_aliases "
+            "WHERE account_id = ? AND name_key = ?",
+            (account_id, nkey),
+        )
+        arow = await cur.fetchone()
+        if arow:
+            return await self.get_catalog_part(
+                dict(arow)["part_id"], account_id,
+            ), False
+        cur = await self._db.execute(
+            "SELECT * FROM parts_catalog WHERE account_id = ? AND name_key = ?",
+            (account_id, nkey),
+        )
+        row = await cur.fetchone()
+        if row:
+            return dict(row), False
+        now = self._now()
+        await self._db.execute(
+            "INSERT INTO parts_catalog (account_id, name, name_key, "
+            " part_number, notes, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (account_id, name_key) DO NOTHING",
+            (account_id, name.strip(), nkey, part_number, notes, now, now),
+        )
+        await self._db.commit()
+        cur = await self._db.execute(
+            "SELECT * FROM parts_catalog WHERE account_id = ? AND name_key = ?",
+            (account_id, nkey),
+        )
+        row = await cur.fetchone()
+        return (dict(row) if row else None), True
+
     async def update_catalog_part(
         self, part_id: int, account_id: int, **kwargs,
     ) -> bool:

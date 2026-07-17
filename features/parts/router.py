@@ -49,6 +49,40 @@ async def list_parts(
     return {"parts": await tenant_db.list_parts_catalog(user["account_id"])}
 
 
+class PartCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    part_number: str = Field("", max_length=100)
+    notes: str = Field("", max_length=2000)
+
+
+@router.post("")
+async def create_part(
+    body: PartCreate,
+    user: dict = Depends(require_permission("can_parts")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Add a part before its first invoice.  Resolve semantics (same
+    contract as Add-vendor): if the name already resolves — directly
+    or via a merge alias — the existing row returns with
+    ``created: false`` and the typed part_number/notes are NOT applied;
+    the UI says so and navigates there instead of faking a create."""
+    part, created = await tenant_db.create_catalog_part(
+        user["account_id"], body.name,
+        part_number=body.part_number.strip(),
+        notes=body.notes.strip(),
+    )
+    if not part:
+        raise HTTPException(status_code=422, detail="Part name is empty")
+    if created:
+        await tenant_db.add_audit_log(
+            user["account_id"], int(user["sub"]),
+            "part_catalog_create",
+            target_type="part", target_id=str(part["id"]),
+            details=part["name"],
+        )
+    return {"part": part, "created": created}
+
+
 @router.get("/{part_id}")
 async def get_part(
     part_id: int,

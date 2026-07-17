@@ -143,6 +143,44 @@ async def test_auto_pipeline_contributes_on_address_complete(seeded):
 
 
 @pytest.mark.asyncio
+async def test_merge_dialog_directory_branch_links_and_enriches(seeded):
+    """The dedup carve-out: the merge dialog's Directory branch links
+    the vendor to a public entry (non-destructive — row + WOs stay),
+    fills EMPTY contact fields only, and Unlink reverses the link."""
+    transport = ASGITransport(app=seeded["app"])
+    db = seeded["db"]
+    acct = seeded["acct"]
+    vid = seeded["vendor"]["id"]
+    entry = await db.create_directory_entry(
+        "Dedup Truck Stop", address="1 Interstate Way", phone="555-1",
+        status="active",
+    )
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.post(f"/api/vendors/{vid}/link-directory/999999",
+                         headers=_h(seeded["token_fleet"]))
+        assert r.status_code == 404
+
+        r = await c.post(f"/api/vendors/{vid}/link-directory/{entry['id']}",
+                         headers=_h(seeded["token_fleet"]))
+        assert r.status_code == 200
+
+        v = await db.get_vendor(vid, acct.id)
+        assert v["global_vendor_id"] == entry["id"]
+        assert v["address"] == "1 Interstate Way"   # empty field filled
+        assert v["phone"] == "555-9"                # set field NEVER overwritten
+
+        r = await c.delete(f"/api/vendors/{vid}/link-directory",
+                           headers=_h(seeded["token_fleet"]))
+        assert r.status_code == 200
+        v = await db.get_vendor(vid, acct.id)
+        assert v["global_vendor_id"] is None
+
+        r = await c.post(f"/api/vendors/{vid}/link-directory/{entry['id']}",
+                         headers=_h(seeded["token_driver"]))
+        assert r.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_merge_carries_directory_link_to_survivor(seeded):
     """Merge is the dedup tool for correct reporting — the directory
     link must survive it.  If only the loser was linked, the winner
