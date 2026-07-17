@@ -335,7 +335,10 @@
     "attach_file": "Загрузить файлы",
     "attach_bad_type": "Можно прикреплять только документы или изображения (CSV, Excel, PDF, TXT, PNG, JPG).",
     "attach_drop": "Отпустите, чтобы прикрепить",
-    "attach_formats": "Поддерживаются: CSV, Excel, PDF, TXT, изображения"
+    "attach_formats": "Поддерживаются: CSV, Excel, PDF, TXT, изображения",
+    "attach_preparing": "Чтение…",
+    "attach_no_text": "В файле нет читаемого текста — для отсканированного PDF нужен OCR.",
+    "attach_wait": "Файл ещё читается — одну секунду."
   },
   "pages": {
     "overview_title": "Моя панель",

@@ -335,7 +335,10 @@
     "attach_file": "Subir archivos",
     "attach_bad_type": "Solo se pueden adjuntar documentos o imágenes (CSV, Excel, PDF, TXT, PNG, JPG).",
     "attach_drop": "Suelta para adjuntar",
-    "attach_formats": "Compatibles: CSV, Excel, PDF, TXT, imágenes"
+    "attach_formats": "Compatibles: CSV, Excel, PDF, TXT, imágenes",
+    "attach_preparing": "Leyendo…",
+    "attach_no_text": "No hay texto legible en ese archivo — un PDF escaneado necesita OCR.",
+    "attach_wait": "Aún leyendo el archivo — un momento."
   },
   "pages": {
     "overview_title": "Mi panel",

@@ -335,7 +335,10 @@
     "attach_file": "Soo geli faylal",
     "attach_bad_type": "Waxaa la lifaaqi karaa kaliya dukumeentiyo ama sawirro (CSV, Excel, PDF, TXT, PNG, JPG).",
     "attach_drop": "Sii day si aad u lifaaqdo",
-    "attach_formats": "La taageeray: CSV, Excel, PDF, TXT, sawirro"
+    "attach_formats": "La taageeray: CSV, Excel, PDF, TXT, sawirro",
+    "attach_preparing": "Akhrinaya…",
+    "attach_no_text": "Faylkaas ma laha qoraal la akhrin karo — PDF la iskaanneeyay wuxuu u baahan yahay OCR.",
+    "attach_wait": "Weli faylka waa la akhrinayaa — daqiiqad."
   },
   "pages": {
     "overview_title": "Dashboardkayga",

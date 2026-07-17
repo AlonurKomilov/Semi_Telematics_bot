@@ -640,7 +640,10 @@
     "attach_file": "Upload files",
     "attach_bad_type": "Only documents or images can be attached (CSV, Excel, PDF, TXT, PNG, JPG).",
     "attach_drop": "Drop to attach",
-    "attach_formats": "Supported: CSV, Excel, PDF, TXT, images"
+    "attach_formats": "Supported: CSV, Excel, PDF, TXT, images",
+    "attach_preparing": "Reading…",
+    "attach_no_text": "No readable text in that file — a scanned PDF needs OCR.",
+    "attach_wait": "Still reading the file — one moment."
   },
   "pages": {
     "overview_title": "My Dashboard",

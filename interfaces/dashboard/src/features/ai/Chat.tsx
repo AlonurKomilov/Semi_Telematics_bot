@@ -413,6 +413,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   // drop the first file (reviewer W1).
   const attachmentsRef = useRef(attachments);
   useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
+  /** File names being converted on-device right now (PDF text extraction
+   *  / workbook parsing take seconds) — each shows a spinner chip that
+   *  becomes the real chip when its content is ready. */
+  const [preparing, setPreparing] = useState<string[]>([]);
   const [attachError, setAttachError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const attachErrorTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -429,6 +433,9 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         continue;
       }
       let parts: { name: string; content: string; kind: 'sheet' | 'text' | 'image' }[];
+      // Placeholder chip while the device-side conversion runs — a big
+      // PDF/workbook takes seconds, and silence reads as "stuck".
+      setPreparing((prev) => [...prev, file.name]);
       try {
         // Everything converts ON THE DEVICE (documents.ts): CSV passes
         // through, Excel → CSV per sheet, PDF/TXT → extracted text.
@@ -436,9 +443,14 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
       } catch {
         flashAttachError(t('chat.attach_read_failed'));
         continue;
+      } finally {
+        setPreparing((prev) => {
+          const i = prev.indexOf(file.name);
+          return i === -1 ? prev : [...prev.slice(0, i), ...prev.slice(i + 1)];
+        });
       }
       if (parts.length === 0) {
-        flashAttachError(t('chat.attach_read_failed'));
+        flashAttachError(t('chat.attach_no_text'));
         continue;
       }
       for (const part of parts) {
@@ -839,6 +851,12 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   function submit(text: string) {
     const trimmed = text.trim();
     if (!trimmed || loading) return;
+    // A file is still being read on-device — sending now would silently
+    // drop it from the turn the user attached it for.
+    if (preparing.length > 0) {
+      flashAttachError(t('chat.attach_wait'));
+      return;
+    }
     const cmd = SLASH_COMMANDS.find((c) => `/${c.name}` === trimmed.toLowerCase());
     if (cmd) {
       setInput('');
@@ -1865,8 +1883,21 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           )}
           {/* Attachment chips — the device-held file(s) riding with each
               send until removed.  name · size · ✕ per the import spine. */}
-          {(attachments.length > 0 || attachError) && (
+          {(attachments.length > 0 || preparing.length > 0 || attachError) && (
             <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+              {/* Being converted on-device (PDF text extraction / workbook
+                  parsing) — the wait is real, so it gets a real chip. */}
+              {preparing.map((name) => (
+                <span
+                  key={`preparing:${name}`}
+                  role="status"
+                  className="inline-flex items-center gap-1 rounded-md border border-border border-dashed bg-muted/40 px-2 py-0.5 text-xs text-muted-foreground"
+                >
+                  <Loader2 size={12} className="shrink-0 animate-spin" aria-hidden />
+                  <span className="max-w-40 truncate">{name}</span>
+                  <span className="text-3xs">{t('chat.attach_preparing')}</span>
+                </span>
+              ))}
               {attachments.map((a) => (
                 <span
                   key={a.name}
@@ -2077,7 +2108,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                 <Tip label={t('chat.send')}>
                   <button
                     onClick={() => submit(input)}
-                    disabled={!input.trim()}
+                    disabled={!input.trim() || preparing.length > 0}
                     aria-label={t('chat.send')}
                     className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >

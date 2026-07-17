@@ -335,7 +335,10 @@
     "attach_file": "ਫ਼ਾਈਲਾਂ ਅੱਪਲੋਡ ਕਰੋ",
     "attach_bad_type": "ਸਿਰਫ਼ ਦਸਤਾਵੇਜ਼ ਜਾਂ ਤਸਵੀਰਾਂ ਨੱਥੀ ਕੀਤੀਆਂ ਜਾ ਸਕਦੀਆਂ ਹਨ (CSV, Excel, PDF, TXT, PNG, JPG)।",
     "attach_drop": "ਨੱਥੀ ਕਰਨ ਲਈ ਛੱਡੋ",
-    "attach_formats": "ਸਮਰਥਿਤ: CSV, Excel, PDF, TXT, ਤਸਵੀਰਾਂ"
+    "attach_formats": "ਸਮਰਥਿਤ: CSV, Excel, PDF, TXT, ਤਸਵੀਰਾਂ",
+    "attach_preparing": "ਪੜ੍ਹ ਰਿਹਾ ਹੈ…",
+    "attach_no_text": "ਇਸ ਫ਼ਾਈਲ ਵਿੱਚ ਪੜ੍ਹਨਯੋਗ ਟੈਕਸਟ ਨਹੀਂ — ਸਕੈਨ ਕੀਤੇ PDF ਲਈ OCR ਚਾਹੀਦਾ ਹੈ।",
+    "attach_wait": "ਫ਼ਾਈਲ ਅਜੇ ਪੜ੍ਹੀ ਜਾ ਰਹੀ ਹੈ — ਇੱਕ ਪਲ।"
   },
   "pages": {
     "overview_title": "ਮੇਰਾ ਡੈਸ਼ਬੋਰਡ",
