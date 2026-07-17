@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiJSON, ApiError } from '../api/client';
+import RangeTabs from '../components/RangeTabs';
 import type { CompActionRow, PastDueRow, WebhookEventRow } from '../types';
 
 type Tab = 'comp' | 'past-due' | 'webhooks';
@@ -146,14 +147,17 @@ function PastDueTab() {
   return (
     <div>
       <Filters>
-        <label className="text-xs text-slate-400">Window:</label>
-        <select value={days} onChange={(e) => setDays(Number(e.target.value))}
-                className="bg-slate-950 border border-slate-700 rounded px-2 py-1.5 text-sm">
-          <option value={7}>7 days</option>
-          <option value={30}>30 days</option>
-          <option value={90}>90 days</option>
-          <option value={365}>1 year</option>
-        </select>
+        <span className="text-xs text-slate-400">Window:</span>
+        <RangeTabs
+          tabs={[
+            { value: 7, label: '7d' },
+            { value: 30, label: '30d' },
+            { value: 90, label: '90d' },
+            { value: 365, label: '1y' },
+          ]}
+          value={days}
+          onChange={setDays}
+        />
       </Filters>
       {err && <ErrorBox msg={err} />}
       <Table loading={loading} empty={rows.length === 0 && !loading}
