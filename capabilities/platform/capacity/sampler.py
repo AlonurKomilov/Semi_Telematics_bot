@@ -166,8 +166,9 @@ async def job_capacity_sample(_app=None) -> None:
 
 
 async def _flush_account_usage(db, day: str) -> None:
-    """Persist the day's per-account request hash (additive — GREATEST
-    upsert, so hourly + nightly flushes never regress each other)."""
+    """Persist the day's metering hashes (per-account + per-surface +
+    per-feature) — additive GREATEST upserts, so hourly + nightly
+    flushes never regress each other."""
     from . import requests as metering
 
     try:
@@ -176,6 +177,14 @@ async def _flush_account_usage(db, day: str) -> None:
             await db.upsert_account_usage_daily(day, counts)
     except Exception:
         logger.exception("capacity: account-usage flush failed for %s", day)
+    for dim, reader in (("surface", metering.surface_counts),
+                        ("feature", metering.feature_counts)):
+        try:
+            dim_counts = await reader(day)
+            if dim_counts:
+                await db.upsert_usage_breakdown_daily(day, dim, dim_counts)
+        except Exception:
+            logger.exception("capacity: %s flush failed for %s", dim, day)
 
 
 async def job_capacity_flush_yesterday(_app=None) -> None:

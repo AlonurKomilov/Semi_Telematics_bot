@@ -59,3 +59,13 @@ register_need(RetentionNeed(
     "platform.capacity", "system.account_usage_daily", 400,
     "per-customer cost history incl. year-over-year comparison",
 ))
+
+register_target(RetentionTarget(
+    "system.usage_breakdown_daily", "Request metering by surface/feature", "platform",
+    lambda db, _acct, days: db.prune_usage_breakdown_daily(_cutoff_day(days)),
+))
+
+register_need(RetentionNeed(
+    "platform.capacity", "system.usage_breakdown_daily", 400,
+    "same window as per-account usage — the two answer one question",
+))

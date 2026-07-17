@@ -15,11 +15,13 @@ sampler/flush jobs):
 
   ``sysreq:min:<YYYY-MM-DDTHH:MM>``  total requests that UTC minute
   ``sysreq:surf:<YYYY-MM-DD>``       hash: interface surface → count
+  ``sysreq:feat:<YYYY-MM-DD>``       hash: feature (route family) → count
   ``sysreq:acct:<YYYY-MM-DD>``       hash: account_id → count
 """
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 
 import infra.cache as cache
@@ -52,12 +54,35 @@ def minute_key(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%dT%H:%M")
 
 
-async def count_request(host: str, account_id: int | None) -> None:
+# Route families are a small finite set (the first path segment after
+# /api[/v1]), but the meter must never trust that: anything outside
+# this shape folds into 'other' so a probing crawler can't explode the
+# hash cardinality.
+_FEATURE_RE = re.compile(r"^[a-z0-9_-]{1,32}$")
+
+
+def feature_for_path(path: str) -> str:
+    """Map a request path to its feature (route family).
+
+    ``/api/v1/work-orders/12/attachments`` → ``work-orders``;
+    ``/api/vehicles/103`` → ``vehicles``.  Unknown shapes → 'other'.
+    """
+    parts = [p for p in (path or "").split("/") if p]
+    if parts and parts[0] == "api":
+        parts = parts[1:]
+    if parts and parts[0] == "v1":
+        parts = parts[1:]
+    seg = (parts[0] if parts else "").lower()
+    return seg if _FEATURE_RE.match(seg) else "other"
+
+
+async def count_request(host: str, account_id: int | None, path: str = "") -> None:
     """Meter one completed request.  Best-effort, never raises."""
     now = datetime.now(timezone.utc)
     day = now.strftime("%Y-%m-%d")
     await cache.incr(f"sysreq:min:{minute_key(now)}", _MINUTE_TTL)
     await cache.hincrby(f"sysreq:surf:{day}", surface_for_host(host), _DAY_TTL)
+    await cache.hincrby(f"sysreq:feat:{day}", feature_for_path(path), _DAY_TTL)
     if account_id is not None:
         await cache.hincrby(f"sysreq:acct:{day}", str(int(account_id)), _DAY_TTL)
 
@@ -85,3 +110,8 @@ async def account_counts(day: str) -> dict[int, int]:
 async def surface_counts(day: str) -> dict[str, int]:
     """Per-surface request counts for a UTC day."""
     return await cache.hgetall_int(f"sysreq:surf:{day}")
+
+
+async def feature_counts(day: str) -> dict[str, int]:
+    """Per-feature (route family) request counts for a UTC day."""
+    return await cache.hgetall_int(f"sysreq:feat:{day}")

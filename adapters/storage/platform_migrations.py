@@ -310,6 +310,15 @@ async def migrate_system_capacity_tables(conn) -> None:
                 PRIMARY KEY (day, account_id)
             )
         """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS usage_breakdown_daily (
+                day       TEXT    NOT NULL,
+                dim       TEXT    NOT NULL,
+                key       TEXT    NOT NULL,
+                requests  INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (day, dim, key)
+            )
+        """)
         await conn.commit()
     except Exception as e:
         logger.error("system capacity tables migration failed: %s", e)

@@ -44,8 +44,13 @@ interface Headroom {
 interface Overview {
   latest: MetricSample | null;
   headroom: Headroom;
-  surfaces_today: Record<string, number>;
   hourly_count: number;
+}
+
+interface Breakdown {
+  days: number;
+  surfaces: Record<string, number>;
+  features: Record<string, number>;
 }
 
 interface Series { window: string; tier: 'minute' | 'hourly'; points: MetricSample[] }
@@ -178,6 +183,39 @@ function AreaChart({
   );
 }
 
+// ── breakdown panel (shared by interface + feature) ────────────
+
+function BreakdownPanel({
+  title, windowLabel, rows, empty,
+}: {
+  title: string; windowLabel: string; rows: [string, number][]; empty: string;
+}) {
+  const max = Math.max(...rows.map(([, v]) => v), 1);
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+      <h2 className="text-xs font-semibold tracking-wider text-slate-400 uppercase mb-3">
+        {title} <span className="text-slate-600 normal-case tracking-normal">· {windowLabel}</span>
+      </h2>
+      {rows.length === 0 && <p className="text-xs text-slate-600">{empty}</p>}
+      <div className="space-y-2">
+        {rows.map(([name, count]) => (
+          <div key={name} className="flex items-center gap-2">
+            <span className="w-28 truncate text-xs text-slate-300" title={name}>{name}</span>
+            <div className="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden">
+              <div className="h-full rounded-full" style={{
+                width: `${(count / max) * 100}%`, background: SERIES_HUE, opacity: 0.85,
+              }} />
+            </div>
+            <span className="w-16 text-right text-xs text-slate-400 tabular-nums">
+              {count.toLocaleString()}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── page ───────────────────────────────────────────────────────
 
 const CHART_METRICS = [
@@ -193,9 +231,13 @@ function pickValue(p: MetricSample, metric: ChartMetric, tier: 'minute' | 'hourl
   return (tier === 'minute' ? p.requests_min : p.peak_requests_min) ?? null;
 }
 
+const WIN_DAYS = { '24h': 1, '7d': 7, '30d': 30 } as const;
+const WIN_LABEL = { '24h': 'today', '7d': 'last 7d', '30d': 'last 30d' } as const;
+
 export default function CapacityPage() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [series, setSeries] = useState<Series | null>(null);
+  const [breakdown, setBreakdown] = useState<Breakdown | null>(null);
   const [usage, setUsage] = useState<AccountsUsage | null>(null);
   const [win, setWin] = useState<'24h' | '7d' | '30d'>('24h');
   const [metric, setMetric] = useState<ChartMetric>('cpu');
@@ -213,8 +255,17 @@ export default function CapacityPage() {
     return () => clearInterval(t);
   }, [load]);
 
+  // The window selector drives BOTH the trend chart and the request
+  // breakdowns; today's slice stays live via the same 60s cadence.
   useEffect(() => {
-    apiJSON<Series>(`/system/capacity/series?window=${win}`).then(setSeries).catch(() => {});
+    const fetchWin = () => {
+      apiJSON<Series>(`/system/capacity/series?window=${win}`).then(setSeries).catch(() => {});
+      apiJSON<Breakdown>(`/system/capacity/breakdown?days=${WIN_DAYS[win]}`)
+        .then(setBreakdown).catch(() => {});
+    };
+    fetchWin();
+    const t = setInterval(fetchWin, 60_000);
+    return () => clearInterval(t);
   }, [win]);
 
   const latest = overview?.latest;
@@ -241,8 +292,15 @@ export default function CapacityPage() {
       .sort((a, b) => b.requests - a.requests);
   }, [usage]);
 
-  const surfaces = Object.entries(overview?.surfaces_today ?? {}).sort((a, b) => b[1] - a[1]);
-  const surfaceMax = Math.max(...surfaces.map(([, v]) => v), 1);
+  // Feature list can be long — top 10 named, the tail folds into one row.
+  const featureRows = useMemo<[string, number][]>(() => {
+    const entries = Object.entries(breakdown?.features ?? {}).sort((a, b) => b[1] - a[1]);
+    if (entries.length <= 11) return entries;
+    const rest = entries.slice(10).reduce((n, [, v]) => n + v, 0);
+    return [...entries.slice(0, 10), [`${entries.length - 10} more`, rest]];
+  }, [breakdown]);
+
+  const surfaces = Object.entries(breakdown?.surfaces ?? {}).sort((a, b) => b[1] - a[1]);
   const pctMetric = CHART_METRICS.find((m) => m.key === metric)!;
 
   return (
@@ -342,32 +400,22 @@ export default function CapacityPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-        {/* ── today's requests by surface ── */}
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
-          <h2 className="text-xs font-semibold tracking-wider text-slate-400 uppercase mb-3">
-            Requests today · by interface
-          </h2>
-          {surfaces.length === 0 && (
-            <p className="text-xs text-slate-600">No requests metered yet today.</p>
-          )}
-          <div className="space-y-2">
-            {surfaces.map(([name, count]) => (
-              <div key={name} className="flex items-center gap-2">
-                <span className="w-20 text-xs text-slate-300">{name}</span>
-                <div className="flex-1 h-2 rounded-full bg-slate-800 overflow-hidden">
-                  <div className="h-full rounded-full" style={{
-                    width: `${(count / surfaceMax) * 100}%`, background: SERIES_HUE, opacity: 0.85,
-                  }} />
-                </div>
-                <span className="w-16 text-right text-xs text-slate-400 tabular-nums">
-                  {count.toLocaleString()}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+        <BreakdownPanel
+          title="Requests · by interface"
+          windowLabel={WIN_LABEL[win]}
+          rows={surfaces}
+          empty="No requests metered in this window."
+        />
+        <BreakdownPanel
+          title="Requests · by feature"
+          windowLabel={WIN_LABEL[win]}
+          rows={featureRows}
+          empty="Feature metering starts with the next service restart."
+        />
+      </div>
 
+      <div className="grid grid-cols-1 gap-3 mb-4">
         {/* ── per-account usage (30d) ── */}
         <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
           <h2 className="text-xs font-semibold tracking-wider text-slate-400 uppercase mb-3">

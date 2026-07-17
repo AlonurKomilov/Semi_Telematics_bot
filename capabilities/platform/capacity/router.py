@@ -98,18 +98,52 @@ async def capacity_overview(
     _user: dict = Depends(require_system_owner),
     platform_db=Depends(get_platform_db),
 ):
-    """Gauges + headroom + today's surface split — the page's top half."""
+    """Gauges + headroom — the page's top half.  Request breakdowns
+    live on /breakdown (window-aware)."""
     latest = await platform_db.get_system_metrics_latest()
     month_ago = (datetime.now(timezone.utc) - timedelta(days=30)).strftime(
         "%Y-%m-%dT%H:00"
     )
     hours = await platform_db.get_system_metrics_hours(month_ago)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return {
         "latest": latest,
         "headroom": _headroom(hours, latest),
-        "surfaces_today": await metering.surface_counts(today),
         "hourly_count": len(hours),
+    }
+
+
+@router.get("/breakdown")
+async def capacity_breakdown(
+    days: int = Query(1, ge=1, le=400),
+    _user: dict = Depends(require_system_owner),
+    platform_db=Depends(get_platform_db),
+):
+    """Requests by interface surface and by feature over a window.
+
+    Durable daily rows (flushed hourly by the sampler) + today's
+    still-accumulating Redis hashes merged with the same GREATEST
+    semantics as the flush — so the panels are live for today and
+    window-true for 7d/30d."""
+    now = datetime.now(timezone.utc)
+    since = (now - timedelta(days=days - 1)).strftime("%Y-%m-%d")
+    today = now.strftime("%Y-%m-%d")
+
+    async def one(dim: str, live: dict[str, int]) -> dict[str, int]:
+        durable = await platform_db.get_usage_breakdown(since, dim)
+        # Today's durable row (last hourly flush) vs the live hash:
+        # the live value is ≥ the flushed one, so replace-by-max on
+        # today's contribution = add (live - flushed_today).
+        flushed_today = await platform_db.get_usage_breakdown(today, dim)
+        for k, v in live.items():
+            durable[k] = durable.get(k, 0) - flushed_today.get(k, 0) + max(
+                flushed_today.get(k, 0), v,
+            )
+        return {k: v for k, v in durable.items() if v > 0}
+
+    return {
+        "days": days,
+        "surfaces": await one("surface", await metering.surface_counts(today)),
+        "features": await one("feature", await metering.feature_counts(today)),
     }
 
 

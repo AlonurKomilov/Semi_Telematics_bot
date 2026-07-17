@@ -151,6 +151,61 @@ async def test_metering_is_noop_without_redis():
     assert await metering.account_counts("2026-07-17") == {}
 
 
+# ── Feature/surface breakdown ─────────────────────────────────────
+
+def test_feature_for_path_route_families():
+    from capabilities.platform.capacity.requests import feature_for_path
+
+    assert feature_for_path("/api/vehicles/103/inventory") == "vehicles"
+    assert feature_for_path("/api/v1/work-orders/12/attachments") == "work-orders"
+    assert feature_for_path("/api/ai/ask") == "ai"
+    assert feature_for_path("/api/system/capacity/overview") == "system"
+    # Cardinality guard: junk shapes fold into 'other'.
+    assert feature_for_path("/api/%2e%2e/etc") == "other"
+    assert feature_for_path("/api/" + "x" * 50) == "other"
+    assert feature_for_path("") == "other"
+
+
+@pytest.mark.asyncio
+async def test_usage_breakdown_upsert_read_prune(db):
+    await db.upsert_usage_breakdown_daily("2026-07-15", "feature", {"vehicles": 100, "ai": 20})
+    await db.upsert_usage_breakdown_daily("2026-07-16", "feature", {"vehicles": 50})
+    # GREATEST: a lower re-flush never regresses.
+    await db.upsert_usage_breakdown_daily("2026-07-16", "feature", {"vehicles": 30})
+    await db.upsert_usage_breakdown_daily("2026-07-16", "surface", {"dashboard": 999})
+
+    counts = await db.get_usage_breakdown("2026-07-15", "feature")
+    assert counts == {"vehicles": 150, "ai": 20}          # summed across days
+    assert await db.get_usage_breakdown("2026-07-16", "feature") == {"vehicles": 50}
+    # Dimensions never bleed into each other.
+    assert await db.get_usage_breakdown("2026-07-15", "surface") == {"dashboard": 999}
+
+    assert await db.prune_usage_breakdown_daily("2026-07-16") == 2
+    assert await db.get_usage_breakdown("2026-07-01", "feature") == {"vehicles": 50}
+
+
+@pytest.mark.asyncio
+async def test_capacity_breakdown_endpoint_windows(capacity_app):
+    from datetime import datetime, timedelta, timezone
+
+    s = capacity_app
+    db = s["db"]
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    old = (datetime.now(timezone.utc) - timedelta(days=10)).strftime("%Y-%m-%d")
+    await db.upsert_usage_breakdown_daily(old, "feature", {"vehicles": 400})
+    await db.upsert_usage_breakdown_daily(today, "feature", {"vehicles": 25})
+
+    r = await s["client"].get("/api/system/capacity/breakdown?days=1", headers=s["op"])
+    assert r.status_code == 200
+    assert r.json()["features"].get("vehicles") == 25      # today only
+
+    r = await s["client"].get("/api/system/capacity/breakdown?days=30", headers=s["op"])
+    assert r.json()["features"].get("vehicles") == 425     # window sums
+
+    r = await s["client"].get("/api/system/capacity/breakdown?days=1", headers=s["non_op"])
+    assert r.status_code == 403
+
+
 # ── Threshold alerts ──────────────────────────────────────────────
 
 def _cpu_rows(avg: float) -> list[dict]:

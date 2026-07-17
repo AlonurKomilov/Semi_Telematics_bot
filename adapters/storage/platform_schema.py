@@ -645,6 +645,18 @@ async def create_tables(conn) -> None:
             PRIMARY KEY (day, account_id)
         );
 
+        -- Request counts per dimension key per day (dim = 'surface' |
+        -- 'feature') — lets the console's breakdown panels follow the
+        -- 24h/7d/30d window instead of being pinned to today's Redis
+        -- hash.
+        CREATE TABLE IF NOT EXISTS usage_breakdown_daily (
+            day       TEXT    NOT NULL,            -- UTC day
+            dim       TEXT    NOT NULL,
+            key       TEXT    NOT NULL,
+            requests  INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (day, dim, key)
+        );
+
         -- Telematics-provider connections (one row per account × provider).
         -- Backs AccountIntegrationsMixin (adapters/storage/account_integrations.py)
         -- — the feature's storage code shipped without its DDL and only worked

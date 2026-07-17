@@ -122,6 +122,35 @@ class SystemMetricsMixin(_MixinBase):
         await self._db.commit()
         return True
 
+    async def upsert_usage_breakdown_daily(
+        self, day: str, dim: str, counts: dict[str, int],
+    ) -> int:
+        """Flush one day's per-``dim`` request counts (``dim`` =
+        'surface' | 'feature').  Same GREATEST semantics as the
+        per-account flush — the Redis hash is cumulative for the day,
+        so a re-flush never regresses persisted history."""
+        n = 0
+        for key, requests in counts.items():
+            await self._db.execute(
+                """INSERT INTO usage_breakdown_daily (day, dim, key, requests)
+                   VALUES (?, ?, ?, ?)
+                   ON CONFLICT (day, dim, key) DO UPDATE SET
+                     requests = GREATEST(usage_breakdown_daily.requests, excluded.requests)""",
+                (day, dim, str(key)[:40], int(requests)),
+            )
+            n += 1
+        await self._db.commit()
+        return n
+
+    async def get_usage_breakdown(self, since_day: str, dim: str) -> dict[str, int]:
+        """Summed per-key counts for ``dim`` since a UTC day (inclusive)."""
+        cur = await self._db.execute(
+            """SELECT key, SUM(requests) FROM usage_breakdown_daily
+                WHERE day >= ? AND dim = ? GROUP BY key""",
+            (since_day, dim),
+        )
+        return {str(r[0]): int(r[1]) for r in await cur.fetchall()}
+
     async def upsert_account_usage_daily(
         self, day: str, requests_by_account: dict[int, int],
     ) -> int:
@@ -199,6 +228,13 @@ class SystemMetricsMixin(_MixinBase):
     async def prune_account_usage_daily(self, cutoff_day: str) -> int:
         cur = await self._db.execute(
             "DELETE FROM account_usage_daily WHERE day < ?", (cutoff_day,),
+        )
+        await self._db.commit()
+        return cur.rowcount or 0
+
+    async def prune_usage_breakdown_daily(self, cutoff_day: str) -> int:
+        cur = await self._db.execute(
+            "DELETE FROM usage_breakdown_daily WHERE day < ?", (cutoff_day,),
         )
         await self._db.commit()
         return cur.rowcount or 0

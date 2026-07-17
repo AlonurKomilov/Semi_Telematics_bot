@@ -156,6 +156,7 @@ class RequestMeteringMiddleware(BaseHTTPMiddleware):
                 await count_request(
                     request.headers.get("host", ""),
                     getattr(request.state, "account_id", None),
+                    path,
                 )
             except Exception:
                 pass
