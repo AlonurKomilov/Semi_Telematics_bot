@@ -512,7 +512,7 @@ async def test_propose_import_error_paths(monkeypatch):
 
     out = await propose_import(tool="t", target_name="_c1_target",
                                tool_args={}, account_id=1, db=None)
-    assert "No attachment" in out["error"]
+    assert "No spreadsheet came with this message" in out["error"]
 
     out = await propose_import(
         tool="t", target_name="_c1_target",

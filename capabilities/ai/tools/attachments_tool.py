@@ -71,8 +71,10 @@ async def read_attachment(tool_args: dict, samsara_client,
     available = [*grids, *docs]
     if not available:
         return {"error": (
-            "No attachment on this message. Files must be attached to the "
-            "message itself — earlier messages' attachments are not kept."
+            "No attachment came with this message. Files live on the "
+            "user's device — tell them to re-attach in one click via the "
+            "composer's + menu under 'Recent files' (or attach fresh), "
+            "then ask again."
         )}
     name = str(tool_args.get("name") or "").strip()
     if name and name not in grids and name not in docs:
@@ -148,8 +150,9 @@ async def propose_import(
     grids: dict = tool_args.get("_attachments") or {}
     if not grids:
         return tool_error(
-            "No attachment on this message — ask the user to attach the "
-            "file to the message itself, then try again."
+            "No spreadsheet came with this message. Files live on the "
+            "user's device — ask them to re-attach it (one click via the "
+            "composer's + menu under 'Recent files'), then try again."
         )
     name = str(tool_args.get("attachment") or "").strip()
     if name and name not in grids:
