@@ -97,6 +97,9 @@ EMAIL_WEBHOOK_EVENTS: Any = _STUB
 INTEGRATION_HEALTH: Any = _STUB
 # Telematics history-backfill runs (capabilities/integrations/shared/history_backfill.py).
 INTEGRATION_BACKFILL: Any = _STUB
+# Telegram flood-control hits on alert sends (capabilities/alerting/pipeline.py).
+# Cardinality bounded: 3 fixed results.
+ALERT_SEND_FLOOD: Any = _STUB
 
 
 def _build_metrics() -> bool:
@@ -110,6 +113,7 @@ def _build_metrics() -> bool:
     global BILLING_WEBHOOK_EVENTS, BILLING_SYNC_QTY
     global BILLING_NOTIFICATIONS, BILLING_COMP_SWEEP
     global EMAIL_WEBHOOK_EVENTS, INTEGRATION_HEALTH, INTEGRATION_BACKFILL
+    global ALERT_SEND_FLOOD
 
     if not isinstance(SAMSARA_LATENCY, _StubMetric):
         return True  # already built
@@ -232,7 +236,17 @@ def _build_metrics() -> bool:
         labelnames=("action",),
     )
 
-    logger.info("Prometheus metrics registered (11 instruments)")
+    # Telegram flood-control hits on alert sends.  ``result`` ∈
+    # {retried, delivered_after_retry, dropped} — a sustained ``dropped``
+    # rate means an account's alert volume exceeds even the limiter and
+    # is the measurable trigger for the roadmap's sender-split option.
+    ALERT_SEND_FLOOD = Counter(
+        "alert_send_flood_total",
+        "Telegram RetryAfter hits on alert sends and their outcome",
+        labelnames=("result",),
+    )
+
+    logger.info("Prometheus metrics registered (12 instruments)")
     return True
 
 
@@ -354,6 +368,16 @@ def record_comp_sweep(action: str, count: int = 1) -> None:
     if count <= 0:
         return
     BILLING_COMP_SWEEP.labels(action=action).inc(count)
+
+
+def record_alert_flood(result: str) -> None:
+    """One Telegram flood-control (RetryAfter) hit on an alert send.
+
+    ``result`` ∈ {``retried``, ``delivered_after_retry``, ``dropped``}.
+    Alert on a sustained ``dropped`` rate — it means the account's
+    volume exceeds even the client-side limiter.
+    """
+    ALERT_SEND_FLOOD.labels(result=result).inc()
 
 
 def time_block(timings: dict, name: str):

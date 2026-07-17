@@ -14,7 +14,7 @@ keyboards/audit utilities without pulling more cross-module imports.
 import asyncio
 
 from telegram import Update, BotCommand
-from telegram.ext import Application, ContextTypes
+from telegram.ext import AIORateLimiter, Application, ContextTypes
 from telegram.constants import ParseMode
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -208,6 +208,9 @@ def build_app() -> Application:
     app = (Application.builder()
            .token(TELEGRAM_TOKEN)
            .concurrent_updates(True)
+           # Queue sends under Telegram flood limits instead of failing
+           # (see infra/bot_registry._build_bot_app for the numbers).
+           .rate_limiter(AIORateLimiter())
            .post_init(post_init)
            .post_shutdown(post_shutdown)
            .build())

@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import logging
 
-from telegram.ext import Application
+from telegram.ext import AIORateLimiter, Application
 
 from infra.config import TELEGRAM_SYSTEM_BOT_TOKEN
 
@@ -61,6 +61,9 @@ def build_system_app() -> Application | None:
     app = (Application.builder()
            .token(TELEGRAM_SYSTEM_BOT_TOKEN)
            .concurrent_updates(True)
+           # Queue sends under Telegram flood limits instead of failing
+           # (see infra/bot_registry._build_bot_app for the numbers).
+           .rate_limiter(AIORateLimiter())
            .build())
 
     # Route Telegram-side exceptions through the same error reporter

@@ -31,6 +31,38 @@ from infra.config import (
 )
 from infra.services import get_tenant_db
 from infra.platform import get_platform_db
+from infra.observability import record_alert_flood
+
+
+async def _tg_send_with_retry(send, *, what: str):
+    """Run one ``bot.send_*`` coroutine factory, retrying ONCE after
+    Telegram flood control.
+
+    The Application-level AIORateLimiter queues sends under the global
+    limits, but the per-group window (~20 msg/min) can still return
+    ``RetryAfter`` during an alert burst — without this, that alert was
+    silently lost.  ``send`` is a zero-arg callable returning a fresh
+    coroutine (a lambda around the send call) so the retry re-issues
+    the request instead of awaiting a spent coroutine.  A second
+    ``RetryAfter`` propagates to the caller's existing failure handling
+    and is counted as ``dropped``.
+    """
+    from telegram.error import RetryAfter
+    try:
+        return await send()
+    except RetryAfter as e:
+        delay = float(getattr(e, "retry_after", 3)) + 0.5
+        record_alert_flood("retried")
+        logger.warning("Telegram flood control on %s — retrying in %.1fs", what, delay)
+        await asyncio.sleep(delay)
+        try:
+            result = await send()
+            record_alert_flood("delivered_after_retry")
+            return result
+        except RetryAfter:
+            record_alert_flood("dropped")
+            logger.error("Telegram flood control persisted on %s — send dropped", what)
+            raise
 
 
 # Maps each alert_type the pipeline knows about to the canonical
@@ -415,10 +447,13 @@ async def post_alert_to_topic(
                         logger.debug("Forum photo failed acct=%d type=%s: %s",
                                      account_id, alert_type, pe)
 
-                await bot_app.bot.send_message(
-                    chat_id=chat_id, message_thread_id=thread_id,
-                    text=send_text, parse_mode=parse_mode,
-                    reply_markup=reply_markup, reply_to_message_id=reply_to,
+                await _tg_send_with_retry(
+                    lambda: bot_app.bot.send_message(
+                        chat_id=chat_id, message_thread_id=thread_id,
+                        text=send_text, parse_mode=parse_mode,
+                        reply_markup=reply_markup, reply_to_message_id=reply_to,
+                    ),
+                    what=f"forum alert acct={account_id} type={alert_type}",
                 )
             logger.info(
                 "forum alert posted (lite) acct=%d type=%s chat=%d thread=%s%s",
@@ -661,13 +696,16 @@ async def _post_one_target(
                     except Exception as pe:
                         logger.debug("Forum photo send failed for %s: %s", vehicle_name, pe)
 
-                msg = await bot_app.bot.send_message(
-                    chat_id=chat_id,
-                    message_thread_id=thread_id,
-                    text=send_text_for_target,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=basic_kb,
-                    reply_to_message_id=reply_to,
+                msg = await _tg_send_with_retry(
+                    lambda: bot_app.bot.send_message(
+                        chat_id=chat_id,
+                        message_thread_id=thread_id,
+                        text=send_text_for_target,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=basic_kb,
+                        reply_to_message_id=reply_to,
+                    ),
+                    what="parking group post",
                 )
 
         # Record one alert_ack for the group post so the existing
@@ -1141,12 +1179,15 @@ async def send_alert(
                         _reply_to = pmsg.message_id
                     except Exception as pe:
                         logger.debug(f"Photo send failed for {vname}: {pe}")
-                return await bot_app.bot.send_message(
-                    chat_id=sub.telegram_id,
-                    text=send_text,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=keyboard,
-                    reply_to_message_id=_reply_to,
+                return await _tg_send_with_retry(
+                    lambda: bot_app.bot.send_message(
+                        chat_id=sub.telegram_id,
+                        text=send_text,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=keyboard,
+                        reply_to_message_id=_reply_to,
+                    ),
+                    what="alert DM",
                 )
 
             if needs_ack:

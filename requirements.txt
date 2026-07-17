@@ -1,4 +1,6 @@
-python-telegram-bot==21.6
+# [rate-limiter] pulls aiolimiter — required since the Application
+# builders attach AIORateLimiter (it raises at startup without it).
+python-telegram-bot[rate-limiter]==21.6
 aiohttp==3.10.11
 python-dotenv==1.0.1
 apscheduler==3.10.4

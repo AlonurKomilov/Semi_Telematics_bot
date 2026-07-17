@@ -20,7 +20,7 @@ import logging
 from typing import Callable, Optional
 
 from telegram import Update, BotCommand
-from telegram.ext import Application
+from telegram.ext import AIORateLimiter, Application
 
 from infra.crypto import decrypt
 
@@ -90,6 +90,12 @@ async def _build_bot_app(
         Application.builder()
         .token(token)
         .concurrent_updates(True)
+        # Telegram flood control: ~30 msg/s per bot, ~20 msg/min per
+        # group.  Without a limiter a 100-vehicle alert burst exceeds
+        # the per-group window and sends start failing with RetryAfter.
+        # The limiter queues instead of failing; the alert pipeline adds
+        # a retry on top for anything that still slips through.
+        .rate_limiter(AIORateLimiter())
         .build()
     )
 
