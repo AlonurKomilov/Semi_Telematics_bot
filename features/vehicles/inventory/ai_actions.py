@@ -47,21 +47,8 @@ def _norm(s: object) -> str:
     return " ".join(str(s or "").split()).casefold()
 
 
-def _display(v) -> str:
-    return f"{v.unit_number} ({v.company_code})" if v.company_code else v.unit_number
-
-
-def _resolve_vehicles(
-    raw_units: set[str], vehicles: list,
-) -> tuple[dict[str, tuple[int, str]], dict[str, str]]:
-    """Resolve sheet unit strings against the registry.
-
-    Returns ``(resolved, failed)`` keyed by the normalized raw string:
-    ``resolved[key] = (vehicle_id, display)``, ``failed[key] = reason``.
-    Precedence: exact unit_number match first (a sheet unit may
-    legitimately contain spaces), then ``<unit> <company-code>`` suffix
-    parse.  Every path demands exactly ONE candidate.
-    """
+def _build_lookup(vehicles: list) -> tuple[dict, dict, set]:
+    """Registry lookup maps: by unit, by (unit, company), known codes."""
     by_unit: dict[str, list] = {}
     by_pair: dict[tuple[str, str], list] = {}
     codes: set[str] = set()
@@ -72,32 +59,45 @@ def _resolve_vehicles(
         if c:
             codes.add(c)
             by_pair.setdefault((u, c), []).append(v)
+    return by_unit, by_pair, codes
 
-    resolved: dict[str, tuple[int, str]] = {}
-    failed: dict[str, str] = {}
-    for raw in raw_units:
-        key = _norm(raw)
-        if not key:
-            failed[key] = "blank vehicle"
-            continue
-        cands = by_unit.get(key, [])
-        if len(cands) == 1:
-            resolved[key] = (cands[0].id, _display(cands[0]))
-            continue
-        if len(cands) > 1:
-            failed[key] = (
-                f"'{raw}' matches {len(cands)} vehicles (different "
-                "companies) — add the company code"
-            )
-            continue
-        unit, _, code = key.rpartition(" ")
-        if unit and code in codes:
-            pair = by_pair.get((unit, code), [])
-            if len(pair) == 1:
-                resolved[key] = (pair[0].id, _display(pair[0]))
-                continue
-        failed[key] = f"no vehicle '{raw}' in the registry"
-    return resolved, failed
+
+def _resolve_one(
+    unit_raw: object, comp_raw: object,
+    by_unit: dict, by_pair: dict, codes: set,
+):
+    """One record's vehicle → ``(Vehicle, None)`` or ``(None, reason)``.
+
+    A mapped COMPANY column wins outright: (unit, company) is unique in
+    the registry, so a sheet that carries both disambiguates units like
+    '22' that exist in several companies.  Without it: exact unit match
+    first (a sheet unit may legitimately contain spaces), then the
+    '<unit> <code>' suffix parse.  Every path demands exactly ONE
+    candidate — ambiguity is a reported skip, never a guess.
+    """
+    key = _norm(unit_raw)
+    if not key:
+        return None, "blank vehicle"
+    comp = _norm(comp_raw)
+    if comp:
+        pair = by_pair.get((key, comp), [])
+        if len(pair) == 1:
+            return pair[0], None
+        return None, f"no vehicle '{unit_raw}' in company '{comp_raw}'"
+    cands = by_unit.get(key, [])
+    if len(cands) == 1:
+        return cands[0], None
+    if len(cands) > 1:
+        return None, (
+            f"'{unit_raw}' matches {len(cands)} vehicles (different "
+            "companies) — map the sheet's company column too"
+        )
+    unit, _, code = key.rpartition(" ")
+    if unit and code in codes:
+        pair = by_pair.get((unit, code), [])
+        if len(pair) == 1:
+            return pair[0], None
+    return None, f"no vehicle '{unit_raw}' in the registry"
 
 
 def _clean_category(raw: object) -> str:
@@ -122,18 +122,18 @@ async def _build_rows(
     if db is None or account_id is None:
         return [], ["Inventory data is not available in this context."]
     vehicles = await db.list_vehicles(int(account_id))
-    resolved, failed = _resolve_vehicles(
-        {str(r.get("vehicle", "")) for r in records}, vehicles,
-    )
+    by_unit, by_pair, codes = _build_lookup(vehicles)
     rows: list[dict] = []
     skipped: list[str] = []
     for rec in records:
         where = f"row {rec.get('_source_row', '?')}"
-        key = _norm(rec.get("vehicle", ""))
-        if key not in resolved:
-            skipped.append(f"{where}: {failed.get(key, 'unresolved vehicle')}")
+        v, reason = _resolve_one(
+            rec.get("vehicle", ""), rec.get("company", ""),
+            by_unit, by_pair, codes,
+        )
+        if v is None:
+            skipped.append(f"{where}: {reason}")
             continue
-        vid, display = resolved[key]
         item = " ".join(str(rec.get("item", "")).split())
         if not item:
             skipped.append(f"{where}: no item name")
@@ -146,13 +146,17 @@ async def _build_rows(
             )
             continue
         rows.append({
-            "vehicle": display,                  # the RESOLVED registry vehicle
+            # The RESOLVED registry vehicle, split exactly like the
+            # Inventory page's own columns (Vehicle | Company) — the
+            # preview must mirror the destination's shape.
+            "vehicle": v.unit_number,
+            "company": v.company_code,
             "item": item[:120],
             "category": _clean_category(rec.get("category", "")),
             "status": status,
             "identifier": str(rec.get("identifier", "") or "")[:120],
             "note": str(rec.get("note", "") or "")[:1000],
-            "_vehicle_id": vid,                  # server-side; hidden in preview
+            "_vehicle_id": v.id,                 # server-side; hidden in preview
             "_source_row": rec.get("_source_row"),
         })
     return rows, skipped
@@ -171,6 +175,12 @@ register_import_target(ImportTarget(
         "vehicle": (
             "Unit number as written in the sheet; may carry a company-code "
             "suffix like '103 OSY'. Resolved against the vehicle registry."
+        ),
+        "company": (
+            "Company code (e.g. OSY, G1). Map the sheet's company column "
+            "here when it has one — it disambiguates unit numbers that "
+            "exist in several companies; otherwise it's filled from the "
+            "registry after resolution."
         ),
         "item": "Item name (required), e.g. 'Fire extinguisher', 'Dashcam'.",
         "category": (
@@ -232,7 +242,7 @@ register_import_target(ImportTarget(
                             "type": "object",
                             "properties": {
                                 "index": {"type": "integer", "description": "0-based column index."},
-                                "field": {"type": "string", "description": "Target field, e.g. 'vehicle'."},
+                                "field": {"type": "string", "description": "Target field: 'vehicle', and 'company' when the sheet has its own company-code column (map BOTH — it disambiguates units that exist in several companies)."},
                             },
                         },
                     },
@@ -336,7 +346,10 @@ async def _execute_import_inventory(payload, account_id, user_context, db):
         for r in rows:
             vid = _vid_of(r)
             v = active.get(vid)
-            where = str(r.get("vehicle") or f"row {r.get('_source_row', '?')}")
+            _veh = str(r.get("vehicle") or "")
+            _comp = str(r.get("company") or "")
+            where = (f"{_veh} ({_comp})" if _veh and _comp else _veh) \
+                or f"row {r.get('_source_row', '?')}"
             if v is None:
                 skipped.append(f"{where}: vehicle is no longer in the registry")
                 continue

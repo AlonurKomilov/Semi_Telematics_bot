@@ -63,13 +63,34 @@ async def test_resolution_rules(pg_db):
         _rec("999", row=6),                 # unknown → skip
     ]
     rows, skipped = await _build_rows(records, acct, None, pg_db)
-    assert [r["vehicle"] for r in rows] == ["110", "103 (OSY)", "022 (OSY)"]
+    # Vehicle | Company split exactly like the Inventory page's columns.
+    assert [(r["vehicle"], r["company"]) for r in rows] == [
+        ("110", ""), ("103", "OSY"), ("022", "OSY")]
     assert rows[0]["_vehicle_id"] == vids[("110", "")]
     assert rows[1]["_vehicle_id"] == vids[("103", "OSY")]
     assert rows[2]["_vehicle_id"] == vids[("022", "OSY")]   # NOT ("22","OSY")
     assert len(skipped) == 2
     assert any("matches 2 vehicles" in s and "row 3" in s for s in skipped)
     assert any("no vehicle '999'" in s and "row 6" in s for s in skipped)
+
+
+async def test_company_column_disambiguates(pg_db):
+    """A mapped company column resolves units that are ambiguous bare
+    ('22' exists in OSY and TRK) — the gap that skipped real rows in the
+    live test.  A wrong company is a clear per-row skip."""
+    acct, _uid, vids = await _seed(pg_db)
+    records = [
+        _rec("22", row=2, company="OSY"),
+        _rec("22", row=3, company="TRK"),
+        _rec("22", row=4, company="NOPE"),
+    ]
+    rows, skipped = await _build_rows(records, acct, None, pg_db)
+    assert [(r["vehicle"], r["company"]) for r in rows] == [
+        ("22", "OSY"), ("22", "TRK")]
+    assert rows[0]["_vehicle_id"] == vids[("22", "OSY")]
+    assert rows[1]["_vehicle_id"] == vids[("22", "TRK")]
+    assert len(skipped) == 1
+    assert "in company 'NOPE'" in skipped[0] and "row 4" in skipped[0]
 
 
 async def test_row_validation(pg_db):
@@ -190,8 +211,10 @@ async def test_propose_flow_shows_resolved_vehicles(pg_db):
     # 2 units × 2 items staged; unit 999 skipped twice (2 melt records).
     assert preview["totals"] == {"total": 4, "shown": 4, "skipped": 2}
     # Approval is only meaningful if resolution is VISIBLE (§5.5): the
-    # preview shows the resolved registry vehicle, not the sheet string.
-    assert {r["vehicle"] for r in preview["rows"]} == {"110", "103 (OSY)"}
+    # preview shows the resolved registry vehicle split Vehicle | Company
+    # exactly like the Inventory page's own columns.
+    assert {(r["vehicle"], r["company"]) for r in preview["rows"]} == {
+        ("110", ""), ("103", "OSY")}
     assert {r["status"] for r in preview["rows"]} == {"installed", "needs_check"}
     assert card["summary"] == "Import 4 inventory items — 2 skipped"
     assert len(card["staged"]) == 4
