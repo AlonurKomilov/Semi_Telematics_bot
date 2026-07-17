@@ -15,7 +15,7 @@ import { formatDate, formatTime } from '../../utils/datetime';
 import { DislikeReasonForm } from './sections/DislikeReasonForm';
 import { ReferencedVehicles } from './sections/ReferencedVehicles';
 import { thoughtKey, saveThought, getThought, deleteThoughtsForConversation } from './thoughtStore';
-import { loadPendingAttachments, addPendingAttachment, removePendingAttachment, type PendingAttachment } from './attachmentStore';
+import { loadPendingAttachments, addPendingAttachment, removePendingAttachment, clearPendingAttachments, loadConversationAttachments, bindConversationAttachments, removeConversationAttachment, clearConversationAttachments, type PendingAttachment } from './attachmentStore';
 import { DOCUMENT_ACCEPT, isDocumentFile, fileToAttachmentParts } from './documents';
 import { useAssistant } from './AssistantContext';
 import { useCurrentPageContext } from './PageContext';
@@ -50,6 +50,10 @@ interface LocalMessage extends AIChatMessage {
   /** Structured artifacts (tables/charts) rendered natively under the
    *  answer.  Browser-local like reasoning/process. */
   artifacts?: Artifact[];
+  /** Files that rode WITH this user message (name + kind; the content
+   *  stays device-local in attachmentStore).  Standard-chat look: the
+   *  chip shows on the sent message, not stuck in the composer. */
+  attachments?: { name: string; kind: string }[];
 }
 
 // No hardcoded loading messages — we show real tool activity from the stream
@@ -413,6 +417,14 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   // drop the first file (reviewer W1).
   const attachmentsRef = useRef(attachments);
   useEffect(() => { attachmentsRef.current = attachments; }, [attachments]);
+  /** Files bound to the OPEN conversation — sent with an earlier message
+   *  and still riding every turn (the server holds nothing between
+   *  turns; this is the stateless equivalent of a standard chat keeping
+   *  the file "in the conversation").  Managed via the "+" menu. */
+  const [convoFiles, setConvoFiles] = useState<PendingAttachment[]>([]);
+  useEffect(() => {
+    setConvoFiles(conversationId != null ? loadConversationAttachments(conversationId) : []);
+  }, [conversationId]);
   /** File names being converted on-device right now (PDF text extraction
    *  / workbook parsing take seconds) — each shows a spinner chip that
    *  becomes the real chip when its content is ready. */
@@ -550,17 +562,17 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           const loaded = (m.messages || []).map(msg => {
             // Thought logs live in localStorage (never the DB) — re-attach
             // by content-derived key so refresh restores them on this device.
-            const local = msg.role === 'model'
-              ? getThought(thoughtKey(convs[0].id, msg.text)) : null;
+            const local = getThought(thoughtKey(convs[0].id, msg.text));
             return {
               ...msg,
               // Use the backend timestamp when present so loaded scrollback
               // shows the real send time, not "12:34 PM" stamped at page load.
               timestamp: msg.ts ? new Date(msg.ts) : new Date(),
               modelTier: msg.model_tier || undefined,
-              reasoning: local?.reasoning,
-              process: local?.process,
-              artifacts: local?.artifacts,
+              reasoning: msg.role === 'model' ? local?.reasoning : undefined,
+              process: msg.role === 'model' ? local?.process : undefined,
+              artifacts: msg.role === 'model' ? local?.artifacts : undefined,
+              attachments: msg.role === 'user' ? local?.files : undefined,
             };
           });
           setMessages(loaded);
@@ -664,7 +676,19 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   // ── Chat functions ───────────────────────────────────────────
   async function send(text: string) {
     if (!text.trim() || loading) return;
-    const userMsg: LocalMessage = { role: 'user', text: text.trim(), timestamp: new Date() };
+    // This turn's files: the thread's bound files + freshly attached
+    // chips (newest wins on a name clash), newest 3 within the caps.
+    const sentFiles = (() => {
+      const byName = new Map<string, PendingAttachment>();
+      for (const f of [...convoFiles, ...attachmentsRef.current]) byName.set(f.name, f);
+      return [...byName.values()].sort((a, b) => a.t - b.t).slice(-3);
+    })();
+    const userMsg: LocalMessage = {
+      role: 'user', text: text.trim(), timestamp: new Date(),
+      attachments: sentFiles.length > 0
+        ? sentFiles.map(({ name, kind }) => ({ name, kind }))
+        : undefined,
+    };
     setMessages((prev) => [...prev, userMsg]);
     setInput('');
     setSuggestions([]);
@@ -741,10 +765,10 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         abort.signal,
         {
           conversationId, newConversation: isNewChat, pageContext,
-          // Device-held file text, re-sent while the chip is attached —
-          // the server parses per turn and stores nothing (import spine).
-          attachments: attachments.length > 0
-            ? attachments.map(({ name, content, kind }) => ({ name, content, kind }))
+          // Device-held file text: this thread's bound files + the new
+          // chips — the server parses per turn and stores nothing.
+          attachments: sentFiles.length > 0
+            ? sentFiles.map(({ name, content, kind }) => ({ name, content, kind }))
             : undefined,
         },
       );
@@ -759,6 +783,20 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           reasoning: aiMsg.reasoning, process: aiMsg.process,
           artifacts: aiMsg.artifacts, suggestions: finalSuggestions,
         });
+      }
+      // Standard-chat lifecycle: the chips now live ON the sent message
+      // (persisted device-local for thread-reopen) and the files bind to
+      // the thread for follow-up turns; the composer clears.
+      if (userMsg.attachments?.length) {
+        saveThought(thoughtKey(finalConversationId, userMsg.text), { files: userMsg.attachments });
+      }
+      if (sentFiles.length > 0) {
+        if (finalConversationId != null) {
+          setConvoFiles(bindConversationAttachments(finalConversationId, sentFiles));
+        }
+        attachmentsRef.current = [];
+        setAttachments([]);
+        clearPendingAttachments();
       }
       setMessages((prev) => [...prev, aiMsg]);
       setSuggestions(finalSuggestions);
@@ -962,15 +1000,15 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
       setConversationId(conv.id);
       setIsNewChat(false);
       const loaded = (m.messages || []).map(msg => {
-        const local = msg.role === 'model'
-          ? getThought(thoughtKey(conv.id, msg.text)) : null;
+        const local = getThought(thoughtKey(conv.id, msg.text));
         return {
           ...msg,
           timestamp: msg.ts ? new Date(msg.ts) : new Date(),
           modelTier: msg.model_tier || undefined,
-          reasoning: local?.reasoning,
-          process: local?.process,
-          artifacts: local?.artifacts,
+          reasoning: msg.role === 'model' ? local?.reasoning : undefined,
+          process: msg.role === 'model' ? local?.process : undefined,
+          artifacts: msg.role === 'model' ? local?.artifacts : undefined,
+          attachments: msg.role === 'user' ? local?.files : undefined,
         };
       });
       setMessages(loaded);
@@ -1001,6 +1039,8 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     setDeleteConfirmId(null);
     await apiJSON(`/ai/conversations/${conv.id}`, { method: 'DELETE' }).catch(() => {});
     deleteThoughtsForConversation(conv.id);  // local thought logs go with it
+    clearConversationAttachments(conv.id);   // and its device-held files
+    if (conv.id === conversationId) setConvoFiles([]);
     await loadConversations();
     // Deleting the OPEN thread clears the view — next message starts fresh.
     if (conv.id === conversationId) {
@@ -1373,6 +1413,23 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           >
             {msg.role === 'user' ? (
               <div className="max-w-[80%] group">
+                {(msg.attachments?.length ?? 0) > 0 && (
+                  <div className="mb-1 flex flex-wrap justify-end gap-1.5">
+                    {msg.attachments!.map((f) => (
+                      <span
+                        key={f.name}
+                        className="inline-flex items-center gap-1 rounded-md border border-border bg-muted/60 px-2 py-0.5 text-xs text-foreground"
+                      >
+                        {f.kind === 'image'
+                          ? <ImageIcon size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                          : f.kind === 'text'
+                            ? <FileText size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                            : <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden />}
+                        <span className="max-w-40 truncate">{f.name}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <div className="rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap bg-primary text-primary-foreground rounded-br-none">
                   {msg.text}
                 </div>
@@ -2010,6 +2067,36 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                       <span className="font-medium">{t('chat.attach_file')}</span>
                     </button>
                   </Tip>
+                  {/* Files already sent in this thread — still riding each
+                      turn so follow-ups work; removable here. */}
+                  {conversationId != null && convoFiles.length > 0 && (
+                    <>
+                      <div className="my-1 border-t border-border" role="separator" />
+                      <div className="px-2.5 py-1 text-3xs font-medium uppercase tracking-wide text-muted-foreground">
+                        {t('chat.attach_in_chat')}
+                      </div>
+                      {convoFiles.map((f) => (
+                        <div
+                          key={f.name}
+                          className="flex w-full items-center gap-2 px-2.5 py-1 text-xs text-foreground/80"
+                        >
+                          {f.kind === 'image'
+                            ? <ImageIcon size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                            : f.kind === 'text'
+                              ? <FileText size={12} className="shrink-0 text-muted-foreground" aria-hidden />
+                              : <Paperclip size={12} className="shrink-0 text-muted-foreground" aria-hidden />}
+                          <span className="max-w-40 truncate">{f.name}</span>
+                          <button
+                            onClick={() => setConvoFiles(removeConversationAttachment(conversationId, f.name))}
+                            aria-label={t('chat.attach_remove')}
+                            className="ml-auto rounded text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            <X size={12} aria-hidden />
+                          </button>
+                        </div>
+                      ))}
+                    </>
+                  )}
                   <div className="my-1 border-t border-border" role="separator" />
                   {SLASH_COMMANDS.map((c) => (
                     <button

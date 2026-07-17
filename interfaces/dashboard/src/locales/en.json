@@ -643,7 +643,8 @@
     "attach_formats": "Supported: CSV, Excel, PDF, TXT, images",
     "attach_preparing": "Reading…",
     "attach_no_text": "No readable text in that file — a scanned PDF needs OCR.",
-    "attach_wait": "Still reading the file — one moment."
+    "attach_wait": "Still reading the file — one moment.",
+    "attach_in_chat": "In this chat"
   },
   "pages": {
     "overview_title": "My Dashboard",

@@ -33,6 +33,9 @@ interface ThoughtEntry {
   s?: string[];
   /** Structured artifacts (tables/charts) rendered under the answer. */
   a?: Artifact[];
+  /** Files that rode WITH a user message (name + kind only — content
+   *  stays in attachmentStore) — restores the message's chips. */
+  f?: { n: string; k: string }[];
   /** Stored-at epoch ms — LRU eviction order. */
   t: number;
 }
@@ -94,18 +97,22 @@ function _nextT(): number {
 
 export function saveThought(
   key: string,
-  data: { reasoning?: string; process?: AIProcessStep[]; suggestions?: string[]; artifacts?: Artifact[] },
+  data: { reasoning?: string; process?: AIProcessStep[]; suggestions?: string[]; artifacts?: Artifact[]; files?: { name: string; kind: string }[] },
 ): void {
   if (!data.reasoning
     && (!data.process || data.process.length === 0)
     && (!data.suggestions || data.suggestions.length === 0)
-    && (!data.artifacts || data.artifacts.length === 0)) return;
+    && (!data.artifacts || data.artifacts.length === 0)
+    && (!data.files || data.files.length === 0)) return;
   const map = load();
   map[key] = {
     r: data.reasoning || undefined,
     p: data.process && data.process.length > 0 ? data.process : undefined,
     s: data.suggestions && data.suggestions.length > 0 ? data.suggestions : undefined,
     a: data.artifacts && data.artifacts.length > 0 ? data.artifacts : undefined,
+    f: data.files && data.files.length > 0
+      ? data.files.map((x) => ({ n: x.name, k: x.kind }))
+      : undefined,
     t: _nextT(),
   };
   persist(map);
@@ -113,10 +120,13 @@ export function saveThought(
 
 export function getThought(
   key: string,
-): { reasoning?: string; process?: AIProcessStep[]; suggestions?: string[]; artifacts?: Artifact[] } | null {
+): { reasoning?: string; process?: AIProcessStep[]; suggestions?: string[]; artifacts?: Artifact[]; files?: { name: string; kind: string }[] } | null {
   const e = load()[key];
   if (!e) return null;
-  return { reasoning: e.r, process: e.p, suggestions: e.s, artifacts: e.a };
+  return {
+    reasoning: e.r, process: e.p, suggestions: e.s, artifacts: e.a,
+    files: e.f?.map((x) => ({ name: x.n, kind: x.k })),
+  };
 }
 
 /** Drop all thought logs for one conversation (per-chat delete). */

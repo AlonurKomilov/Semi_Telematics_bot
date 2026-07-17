@@ -1,16 +1,27 @@
 /**
- * Browser-local store for the composer's PENDING chat attachments.
+ * Browser-local store for chat attachments — PENDING (composing) and
+ * CONVERSATION-BOUND (already sent).
  *
  * Policy (docs/architecture/ai-import-assistant.md §3, owner directive):
  * the FILE lives on the user's device — never server disk, never the DB.
- * Its text rides inline on the chat request each time a message is sent
- * while the chip is attached; the server parses it transiently and keeps
- * only what the user later APPROVES (the proposal's staged rows).
+ * Its derived text rides inline on each chat request; the server parses
+ * it transiently and keeps only what the user later APPROVES (the
+ * proposal's staged rows).
  *
- * This store exists so an attached file survives panel close / page
- * refresh while the user is still composing.  Same quota discipline as
- * thoughtStore: hard caps + oldest-first eviction, and any storage
- * failure degrades to "not attached" rather than breaking the chat.
+ * Lifecycle (mirrors the standard chat pattern the user knows):
+ *   pending  — attached in the composer, not sent yet; survives panel
+ *              close / refresh mid-compose; removable via ✕.
+ *   convo    — sent with a message: the chip moves onto the message,
+ *              the composer clears, and the file binds to that
+ *              CONVERSATION so follow-up turns keep riding it (the
+ *              server holds nothing between turns).  Removable from
+ *              the "+" menu's "In this chat" list; dies with the
+ *              thread.
+ *
+ * Same quota discipline as thoughtStore: one shared budget over both
+ * sections, hard caps, oldest-first eviction (convo entries first —
+ * they're re-derivable by re-attaching), and any storage failure
+ * degrades to "not attached" rather than breaking the chat.
  */
 
 /** Per-attachment cap in UTF-8 BYTES — bytes, not chars, because the
@@ -19,11 +30,10 @@
 export const MAX_ATTACHMENT_BYTES = 1_400_000;
 /** Mirrors the backend's per-request cap (MAX_ATTACHMENTS). */
 export const MAX_ATTACHMENTS = 3;
-// Total budget in UTF-8 bytes — sized so the whole attachment set plus
-// JSON overhead always clears the 2MB request-body ceiling with the
-// friendly per-file errors firing first, never the blunt 413.  Also
-// keeps localStorage happy (the ~5MB origin quota is shared with the
-// thought store's 2.5MB).
+// Total budget in UTF-8 bytes across pending + all conversations —
+// sized so a request's attachment set plus JSON overhead always clears
+// the 2MB body ceiling, and localStorage stays healthy (the ~5MB origin
+// quota is shared with the thought store's 2.5MB).
 const MAX_TOTAL_BYTES = 1_800_000;
 
 const STORE_KEY = '4truck:ai-attachments:v1';
@@ -46,48 +56,111 @@ export interface PendingAttachment {
   t: number;
 }
 
-function load(): PendingAttachment[] {
+interface StoreShape {
+  pending: PendingAttachment[];
+  /** conversation id (as string key) → files bound to that thread. */
+  convo: Record<string, PendingAttachment[]>;
+}
+
+function normalize(a: PendingAttachment): PendingAttachment {
+  return {
+    ...a,
+    size: typeof a.size === 'number' ? a.size : byteLen(a.content),
+    kind: a.kind === 'text' || a.kind === 'image' ? a.kind : 'sheet',
+  };
+}
+
+function isAttachment(a: unknown): a is PendingAttachment {
+  return !!a && typeof (a as PendingAttachment).name === 'string'
+    && typeof (a as PendingAttachment).content === 'string';
+}
+
+function load(): StoreShape {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (!raw) return [];
+    if (!raw) return { pending: [], convo: {} };
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .filter(
-        (a): a is PendingAttachment =>
-          !!a && typeof a.name === 'string' && typeof a.content === 'string',
-      )
-      // Entries persisted before `size`/`kind` existed get defaults on load.
-      .map((a) => ({
-        ...a,
-        size: typeof a.size === 'number' ? a.size : byteLen(a.content),
-        kind: a.kind === 'text' || a.kind === 'image' ? a.kind : 'sheet' as const,
-      }));
+    // v1 stored a bare pending array — migrate in place on first read.
+    if (Array.isArray(parsed)) {
+      return { pending: parsed.filter(isAttachment).map(normalize), convo: {} };
+    }
+    if (!parsed || typeof parsed !== 'object') return { pending: [], convo: {} };
+    const shape = parsed as StoreShape;
+    const convo: Record<string, PendingAttachment[]> = {};
+    for (const [k, v] of Object.entries(shape.convo ?? {})) {
+      if (Array.isArray(v)) convo[k] = v.filter(isAttachment).map(normalize);
+    }
+    return {
+      pending: (Array.isArray(shape.pending) ? shape.pending : [])
+        .filter(isAttachment).map(normalize),
+      convo,
+    };
   } catch {
-    return [];
+    return { pending: [], convo: {} };
   }
 }
 
-function persist(list: PendingAttachment[]): void {
+function totalBytes(s: StoreShape): number {
+  let n = s.pending.reduce((acc, a) => acc + a.size, 0);
+  for (const list of Object.values(s.convo)) {
+    n += list.reduce((acc, a) => acc + a.size, 0);
+  }
+  return n;
+}
+
+/** Evict oldest-first until the shared budget fits — conversation-bound
+ *  entries go first (they're restorable by re-attaching the file);
+ *  pending (still composing) survive longest. Returns evicted names. */
+function enforceBudget(s: StoreShape): string[] {
+  const evicted: string[] = [];
+  while (totalBytes(s) > MAX_TOTAL_BYTES) {
+    let oldestKey: string | null = null;
+    let oldestIdx = -1;
+    let oldestT = Infinity;
+    for (const [k, list] of Object.entries(s.convo)) {
+      list.forEach((a, i) => {
+        if (a.t < oldestT) { oldestT = a.t; oldestKey = k; oldestIdx = i; }
+      });
+    }
+    if (oldestKey !== null) {
+      evicted.push(s.convo[oldestKey][oldestIdx].name);
+      s.convo[oldestKey].splice(oldestIdx, 1);
+      if (s.convo[oldestKey].length === 0) delete s.convo[oldestKey];
+      continue;
+    }
+    if (s.pending.length > 1) {
+      s.pending.sort((a, b) => a.t - b.t);
+      evicted.push(s.pending[0].name);
+      s.pending = s.pending.slice(1);
+      continue;
+    }
+    break;   // a single pending file never self-evicts (per-file cap holds it sane)
+  }
+  return evicted;
+}
+
+function persist(s: StoreShape): void {
   try {
-    localStorage.setItem(STORE_KEY, JSON.stringify(list));
+    localStorage.setItem(STORE_KEY, JSON.stringify(s));
   } catch {
-    // Quota exceeded (other origin data) — the attachment stays usable
-    // in memory for THIS session; it just won't survive a refresh.
+    // Quota exceeded (other origin data) — attachments stay usable in
+    // memory for THIS session; they just won't survive a refresh.
     try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
   }
 }
 
+// ── Pending (composer) ───────────────────────────────────────────────
+
 export function loadPendingAttachments(): PendingAttachment[] {
-  return load();
+  return load().pending;
 }
 
 /**
- * Add a file. Returns the new list (plus the names of any files evicted
- * to fit the total budget — the composer tells the user, never a silent
- * loss), or an error key the caller translates: 'too_large' | 'limit'.
- * A single over-cap file is refused, never truncated (mirrors the
- * backend's law).
+ * Add a file to the composer. Returns the new pending list (plus the
+ * names of any files evicted to fit the shared budget — the composer
+ * tells the user, never a silent loss), or an error key the caller
+ * translates: 'too_large' | 'limit'.  A single over-cap file is
+ * refused, never truncated (mirrors the backend's law).
  */
 export function addPendingAttachment(
   current: PendingAttachment[], name: string, content: string,
@@ -97,30 +170,74 @@ export function addPendingAttachment(
   if (size > MAX_ATTACHMENT_BYTES) return { error: 'too_large' };
   // Re-attaching the same name replaces it (the natural "fixed the sheet,
   // attached again" loop).
-  let list = current.filter((a) => a.name !== name);
+  const list = current.filter((a) => a.name !== name);
   if (list.length >= MAX_ATTACHMENTS) return { error: 'limit' };
-  list = [...list, { name: name.slice(0, 120), content, kind, size, t: Date.now() }];
-  const evicted: string[] = [];
-  while (
-    list.length > 1
-    && list.reduce((n, a) => n + a.size, 0) > MAX_TOTAL_BYTES
-  ) {
-    list = [...list].sort((a, b) => a.t - b.t);
-    evicted.push(list[0].name);
-    list = list.slice(1);
-  }
-  persist(list);
-  return { list, evicted };
+  const s = load();
+  s.pending = [...list, { name: name.slice(0, 120), content, kind, size, t: Date.now() }];
+  const evicted = enforceBudget(s);
+  persist(s);
+  return { list: s.pending, evicted };
 }
 
 export function removePendingAttachment(
   current: PendingAttachment[], name: string,
 ): PendingAttachment[] {
-  const list = current.filter((a) => a.name !== name);
-  persist(list);
-  return list;
+  const s = load();
+  s.pending = current.filter((a) => a.name !== name);
+  persist(s);
+  return s.pending;
 }
 
 export function clearPendingAttachments(): void {
-  try { localStorage.removeItem(STORE_KEY); } catch { /* ignore */ }
+  const s = load();
+  s.pending = [];
+  persist(s);
+}
+
+// ── Conversation-bound (sent) ────────────────────────────────────────
+
+export function loadConversationAttachments(conversationId: number): PendingAttachment[] {
+  return load().convo[String(conversationId)] ?? [];
+}
+
+/**
+ * Bind files to a conversation after a successful send — they auto-ride
+ * every later message in that thread (the stateless equivalent of a
+ * standard chat keeping the file "in the conversation").  Merged by
+ * name (newest wins), capped at MAX_ATTACHMENTS newest per thread.
+ */
+export function bindConversationAttachments(
+  conversationId: number, files: PendingAttachment[],
+): PendingAttachment[] {
+  const s = load();
+  const key = String(conversationId);
+  const merged = [...(s.convo[key] ?? [])];
+  for (const f of files) {
+    const i = merged.findIndex((a) => a.name === f.name);
+    if (i !== -1) merged.splice(i, 1);
+    merged.push(f);
+  }
+  merged.sort((a, b) => a.t - b.t);
+  s.convo[key] = merged.slice(-MAX_ATTACHMENTS);
+  enforceBudget(s);
+  persist(s);
+  return s.convo[key] ?? [];
+}
+
+export function removeConversationAttachment(
+  conversationId: number, name: string,
+): PendingAttachment[] {
+  const s = load();
+  const key = String(conversationId);
+  s.convo[key] = (s.convo[key] ?? []).filter((a) => a.name !== name);
+  if (s.convo[key].length === 0) delete s.convo[key];
+  persist(s);
+  return s.convo[key] ?? [];
+}
+
+/** Drop a deleted thread's files (called with the per-chat delete). */
+export function clearConversationAttachments(conversationId: number): void {
+  const s = load();
+  delete s.convo[String(conversationId)];
+  persist(s);
 }

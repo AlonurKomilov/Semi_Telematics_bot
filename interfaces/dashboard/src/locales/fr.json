@@ -338,7 +338,8 @@
     "attach_formats": "Pris en charge : CSV, Excel, PDF, TXT, images",
     "attach_preparing": "Lecture…",
     "attach_no_text": "Aucun texte lisible dans ce fichier — un PDF scanné nécessite l'OCR.",
-    "attach_wait": "Lecture du fichier en cours — un instant."
+    "attach_wait": "Lecture du fichier en cours — un instant.",
+    "attach_in_chat": "Dans cette discussion"
   },
   "pages": {
     "overview_title": "Mon tableau de bord",

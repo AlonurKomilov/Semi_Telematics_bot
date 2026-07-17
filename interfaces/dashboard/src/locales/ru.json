@@ -338,7 +338,8 @@
     "attach_formats": "Поддерживаются: CSV, Excel, PDF, TXT, изображения",
     "attach_preparing": "Чтение…",
     "attach_no_text": "В файле нет читаемого текста — для отсканированного PDF нужен OCR.",
-    "attach_wait": "Файл ещё читается — одну секунду."
+    "attach_wait": "Файл ещё читается — одну секунду.",
+    "attach_in_chat": "В этом чате"
   },
   "pages": {
     "overview_title": "Моя панель",

@@ -338,7 +338,8 @@
     "attach_formats": "Compatibles: CSV, Excel, PDF, TXT, imágenes",
     "attach_preparing": "Leyendo…",
     "attach_no_text": "No hay texto legible en ese archivo — un PDF escaneado necesita OCR.",
-    "attach_wait": "Aún leyendo el archivo — un momento."
+    "attach_wait": "Aún leyendo el archivo — un momento.",
+    "attach_in_chat": "En este chat"
   },
   "pages": {
     "overview_title": "Mi panel",

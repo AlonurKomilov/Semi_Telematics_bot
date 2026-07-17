@@ -338,7 +338,8 @@
     "attach_formats": "La taageeray: CSV, Excel, PDF, TXT, sawirro",
     "attach_preparing": "Akhrinaya…",
     "attach_no_text": "Faylkaas ma laha qoraal la akhrin karo — PDF la iskaanneeyay wuxuu u baahan yahay OCR.",
-    "attach_wait": "Weli faylka waa la akhrinayaa — daqiiqad."
+    "attach_wait": "Weli faylka waa la akhrinayaa — daqiiqad.",
+    "attach_in_chat": "Sheekadan gudaheeda"
   },
   "pages": {
     "overview_title": "Dashboardkayga",
