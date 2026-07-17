@@ -418,5 +418,17 @@ above, all recorded at the section they amend:
   attachment → 404" row became structurally impossible (no stored
   attachments to cross accounts).
 
-Still open (v2 candidates): `.xlsx`, other-feature adapters, a
-post-import deep link to the Inventory page from the done-state card.
+Still open (v2 candidates): other-feature adapters, a post-import deep
+link to the Inventory page from the done-state card.
+
+**Update 2026-07-17 — Excel + drag-and-drop (live-test feedback):**
+`.xlsx`/`.xls`/`.xlsm` are now supported WITHOUT touching the wire
+contract: the browser converts workbooks to CSV text on the DEVICE
+(`spreadsheet.ts`, SheetJS lazy-loaded as its own chunk), one attachment
+per non-empty sheet ("Fleet sheet.xlsx — Trucks"); the picker accepts
+CSV + Excel, multiple selection works, and files can be dragged onto
+the composer (counter-based highlight, drop hint).  The earlier
+"needs openpyxl" objection is void — no server dependency was added.
+PDF remains deliberately out of scope for IMPORTS: a PDF is not a grid;
+"read this PDF" is a separate document-understanding track, not a row
+importer.

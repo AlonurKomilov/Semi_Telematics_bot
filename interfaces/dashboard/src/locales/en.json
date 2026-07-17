@@ -631,14 +631,15 @@
     "suggestions": "Suggestions",
     "placeholder_ask": "Ask about {{subject}}…",
     "placeholder_commands": "Type / for commands",
-    "attach_csv": "Attach spreadsheet (CSV)",
     "attach_remove": "Remove attachment",
-    "attach_not_csv": "Only CSV files can be attached for now.",
     "attach_too_large": "That file is too large (max ~1.4 MB of text).",
     "attach_limit": "At most 3 files can be attached.",
     "attach_read_failed": "Couldn't read that file — try again.",
     "placeholder_attached": "Ask me to import or analyze the attached file…",
-    "attach_evicted": "Removed {{name}} to stay under the attachment size limit."
+    "attach_evicted": "Removed {{name}} to stay under the attachment size limit.",
+    "attach_file": "Attach spreadsheet",
+    "attach_bad_type": "Only spreadsheet files can be attached (CSV or Excel).",
+    "attach_drop": "Drop to attach"
   },
   "pages": {
     "overview_title": "My Dashboard",

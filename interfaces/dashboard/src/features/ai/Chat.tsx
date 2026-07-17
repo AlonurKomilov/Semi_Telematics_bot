@@ -16,6 +16,7 @@ import { DislikeReasonForm } from './sections/DislikeReasonForm';
 import { ReferencedVehicles } from './sections/ReferencedVehicles';
 import { thoughtKey, saveThought, getThought, deleteThoughtsForConversation } from './thoughtStore';
 import { loadPendingAttachments, addPendingAttachment, removePendingAttachment, type PendingAttachment } from './attachmentStore';
+import { SPREADSHEET_ACCEPT, isSpreadsheetFile, fileToCsvTexts } from './spreadsheet';
 import { useAssistant } from './AssistantContext';
 import { useCurrentPageContext } from './PageContext';
 import { toolDeepLink } from './toolLinks';
@@ -421,15 +422,31 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     attachErrorTimer.current = setTimeout(() => setAttachError(''), 5000);
   }
   useEffect(() => () => { if (attachErrorTimer.current) clearTimeout(attachErrorTimer.current); }, []);
-  function onAttachFile(file: File) {
-    const isCsv = /\.csv$/i.test(file.name) || file.type === 'text/csv';
-    if (!isCsv) { flashAttachError(t('chat.attach_not_csv')); return; }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const res = addPendingAttachment(attachmentsRef.current, file.name, String(reader.result ?? ''));
-      if ('error' in res) {
-        flashAttachError(t(res.error === 'too_large' ? 'chat.attach_too_large' : 'chat.attach_limit'));
-      } else {
+  async function attachFiles(files: FileList | File[]) {
+    for (const file of Array.from(files)) {
+      if (!isSpreadsheetFile(file)) {
+        flashAttachError(t('chat.attach_bad_type'));
+        continue;
+      }
+      let parts: { name: string; content: string }[];
+      try {
+        // CSV passes through; .xlsx/.xls converts to CSV ON THE DEVICE
+        // (spreadsheet.ts) — the wire contract stays CSV text.
+        parts = await fileToCsvTexts(file);
+      } catch {
+        flashAttachError(t('chat.attach_read_failed'));
+        continue;
+      }
+      if (parts.length === 0) {
+        flashAttachError(t('chat.attach_read_failed'));
+        continue;
+      }
+      for (const part of parts) {
+        const res = addPendingAttachment(attachmentsRef.current, part.name, part.content);
+        if ('error' in res) {
+          flashAttachError(t(res.error === 'too_large' ? 'chat.attach_too_large' : 'chat.attach_limit'));
+          break;   // the cap applies to the rest of this workbook too
+        }
         attachmentsRef.current = res.list;   // close the race before React re-renders
         setAttachments(res.list);
         // A budget eviction is a real loss — say it, never a vanishing chip.
@@ -437,9 +454,33 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           flashAttachError(t('chat.attach_evicted', { name: res.evicted.join(', ') }));
         }
       }
-    };
-    reader.onerror = () => flashAttachError(t('chat.attach_read_failed'));
-    reader.readAsText(file);
+    }
+  }
+  /** Drag-and-drop onto the composer — counter-based so child enter/leave
+   *  events don't flicker the highlight. */
+  const [dragOver, setDragOver] = useState(false);
+  const dragDepth = useRef(0);
+  function onDragEnter(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    dragDepth.current += 1;
+    setDragOver(true);
+  }
+  function onDragOver(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+  }
+  function onDragLeave(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    dragDepth.current = Math.max(0, dragDepth.current - 1);
+    if (dragDepth.current === 0) setDragOver(false);
+  }
+  function onDrop(e: React.DragEvent) {
+    if (!e.dataTransfer.types.includes('Files')) return;
+    e.preventDefault();
+    dragDepth.current = 0;
+    setDragOver(false);
+    if (e.dataTransfer.files.length > 0) void attachFiles(e.dataTransfer.files);
   }
   /** Composer placeholder alternates between the primary ask and the "/"
    *  hint while the field is idle+empty (two short phrases beat one long
@@ -1696,7 +1737,14 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
           the left, send/stop on the right).  Stays editable while a reply
           streams — Enter is still blocked by submit()'s loading guard — so the
           user can keep drafting their next question. */}
-      <div className="mt-3 flex-shrink-0">
+      <div
+        className="mt-3 flex-shrink-0"
+        // Drag a spreadsheet anywhere onto the composer to attach it.
+        onDragEnter={onDragEnter}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
         {/* Status strip — a tinted WRAPPER around the composer (one connected
             card, like the reference design — never a floating bar with a gap).
             The header row sits inside the wrapper, above the input card.
@@ -1809,7 +1857,12 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   )}
                 </div>
               )}
-              <div className={`${stripState ? 'rounded-lg' : 'rounded-xl'} border border-border bg-card px-3 pt-2.5 pb-2 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20`}>
+              <div className={`${stripState ? 'rounded-lg' : 'rounded-xl'} border bg-card px-3 pt-2.5 pb-2 transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/20 ${dragOver ? 'border-primary ring-2 ring-primary/30' : 'border-border'}`}>
+          {dragOver && (
+            <div className="mb-1.5 flex items-center gap-1.5 text-2xs font-medium text-primary" role="status">
+              <Paperclip size={12} aria-hidden /> {t('chat.attach_drop')}
+            </div>
+          )}
           {/* Attachment chips — the device-held file(s) riding with each
               send until removed.  name · size · ✕ per the import spine. */}
           {(attachments.length > 0 || attachError) && (
@@ -1890,11 +1943,11 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".csv,text/csv"
+                accept={SPREADSHEET_ACCEPT}
+                multiple
                 className="hidden"
                 onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) onAttachFile(f);
+                  if (e.target.files?.length) void attachFiles(e.target.files);
                   e.target.value = '';   // same file re-attachable after ✕
                 }}
               />
@@ -1909,7 +1962,8 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                     className="flex w-full items-center gap-2 px-2.5 py-1.5 text-sm rounded-md text-left text-foreground/80 hover:bg-muted transition-colors"
                   >
                     <Paperclip size={14} className="text-primary shrink-0" aria-hidden />
-                    <span className="font-medium">{t('chat.attach_csv')}</span>
+                    <span className="font-medium">{t('chat.attach_file')}</span>
+                    <span className="ml-auto text-3xs text-muted-foreground">CSV · Excel</span>
                   </button>
                   <div className="my-1 border-t border-border" role="separator" />
                   {SLASH_COMMANDS.map((c) => (

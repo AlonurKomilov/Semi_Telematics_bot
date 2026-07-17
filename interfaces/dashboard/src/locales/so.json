@@ -326,14 +326,15 @@
     "suggestions": "Soo jeedinno",
     "placeholder_ask": "Wax ka weydii {{subject}}…",
     "placeholder_commands": "Ku qor / amarrada",
-    "attach_csv": "Ku lifaaq xaashi xisaabeed (CSV)",
     "attach_remove": "Ka saar lifaaqa",
-    "attach_not_csv": "Hadda waxaa la lifaaqi karaa kaliya faylasha CSV.",
     "attach_too_large": "Faylku aad buu u weyn yahay (ugu badnaan ~1.4 MB oo qoraal ah).",
     "attach_limit": "Ugu badnaan 3 fayl ayaa la lifaaqi karaa.",
     "attach_read_failed": "Faylka lama akhriyi karin — mar kale isku day.",
     "placeholder_attached": "I weydii inaan soo dejiyo ama falanqeeyo faylka lifaaqan…",
-    "attach_evicted": "{{name}} waa la saaray si loogu hoos jiro xadka cabbirka lifaaqa."
+    "attach_evicted": "{{name}} waa la saaray si loogu hoos jiro xadka cabbirka lifaaqa.",
+    "attach_file": "Ku lifaaq xaashi xisaabeed",
+    "attach_bad_type": "Waxaa la lifaaqi karaa kaliya xaashiyaha xisaabeed (CSV ama Excel).",
+    "attach_drop": "Sii day si aad u lifaaqdo"
   },
   "pages": {
     "overview_title": "Dashboardkayga",
