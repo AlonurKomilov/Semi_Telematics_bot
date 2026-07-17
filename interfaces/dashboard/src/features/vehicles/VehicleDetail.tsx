@@ -12,9 +12,11 @@
  * full width below — each of those three sections opts in via
  * ``lg:col-span-2`` on its own root.
  */
+import { useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { PageLayoutHost } from '../_lib/PageLayoutHost';
 import { CardSkeleton } from '../../components/shell';
+import { usePublishContext } from '../ai/PageContext';
 import { VEHICLE_SECTIONS } from './registry';
 import { VEHICLE_LAYOUTS } from './layouts';
 
@@ -28,6 +30,18 @@ export default function VehicleDetail() {
   // ``vehicles[0]`` — often the wrong one.
   const [search] = useSearchParams();
   const company = search.get('company') || undefined;
+
+  // The assistant's "this truck": publish the opened vehicle as the
+  // page focus so questions like "any faults here?" resolve to it.
+  usePublishContext(useMemo(() => name ? {
+    feature: 'vehicles',
+    label: 'Vehicle',
+    focus: {
+      kind: 'vehicle',
+      id: name,
+      label: company ? `${name} (${company})` : name,
+    },
+  } : null, [name, company]));
 
   if (!name) return null;
   return (

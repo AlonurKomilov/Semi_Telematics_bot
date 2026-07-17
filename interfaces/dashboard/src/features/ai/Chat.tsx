@@ -18,7 +18,7 @@ import { thoughtKey, saveThought, getThought, deleteThoughtsForConversation } fr
 import { loadPendingAttachments, addPendingAttachment, removePendingAttachment, clearPendingAttachments, setPendingAttachments, loadConversationAttachments, bindConversationAttachments, removeConversationAttachment, clearConversationAttachments, type PendingAttachment } from './attachmentStore';
 import { DOCUMENT_ACCEPT, isDocumentFile, fileToAttachmentParts } from './documents';
 import { useAssistant } from './AssistantContext';
-import { useCurrentPageContext } from './PageContext';
+import { useCurrentPageContext, useRouteFallbackContext } from './PageContext';
 import { toolDeepLink } from './toolLinks';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
@@ -292,7 +292,12 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   const { activeView, isDriverView, briefingLabel, chatSubject } = useShellConfig();
   // Copilot wiring: what the user is looking at (attached to each request)
   // and the panel's prefill bus (a queued question to send on open).
-  const pageContext = useCurrentPageContext();
+  // Rich page descriptor when the page publishes one; otherwise the
+  // route-derived "user is on <feature>" fallback — the AI always knows
+  // where the user is.
+  const publishedContext = useCurrentPageContext();
+  const routeContext = useRouteFallbackContext();
+  const pageContext = publishedContext ?? routeContext;
   const { consumePrefill, setRunState, headerSlot } = useAssistant();
 
   // ── Chat state ───────────────────────────────────────────────

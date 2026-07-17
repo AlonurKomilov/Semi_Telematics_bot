@@ -25,6 +25,9 @@
 import {
   createContext, useContext, useState, useEffect, useMemo, type ReactNode,
 } from 'react';
+import { useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { FEATURE_CATALOG } from '../../config/featureCatalog';
 
 export interface PageContext {
   /** MUST equal a featureCatalog `id` (drives deep-links + the chip label). */
@@ -76,4 +79,31 @@ export function usePublishContext(ctx: PageContext | null): void {
 /** Latest published page context, or null.  Read by the assistant panel. */
 export function useCurrentPageContext(): PageContext | null {
   return useContext(Ctx)?.current ?? null;
+}
+
+/**
+ * Route-derived fallback: "the user is on <feature>" for EVERY page,
+ * current and future, with zero per-page wiring — matched from the
+ * featureCatalog SSOT by longest path prefix (so /vehicles/inventory
+ * wins over /vehicles; '/' only matches exactly).  Pages that publish a
+ * rich descriptor (filters/selection/focus) via usePublishContext
+ * override this automatically — the fallback only fills the silence.
+ */
+export function useRouteFallbackContext(): PageContext | null {
+  const { pathname } = useLocation();
+  const { t } = useTranslation();
+  return useMemo(() => {
+    let best: { id: string; labelKey: string } | null = null;
+    let bestLen = -1;
+    for (const f of FEATURE_CATALOG) {
+      const match = f.path === '/'
+        ? pathname === '/'
+        : pathname === f.path || pathname.startsWith(f.path + '/');
+      if (match && f.path.length > bestLen) {
+        best = { id: f.id, labelKey: f.labelKey };
+        bestLen = f.path.length;
+      }
+    }
+    return best ? { feature: best.id, label: t(best.labelKey) } : null;
+  }, [pathname, t]);
 }
