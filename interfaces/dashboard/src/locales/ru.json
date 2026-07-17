@@ -334,7 +334,8 @@
     "attach_evicted": "{{name}} убран, чтобы не превысить лимит размера вложений.",
     "attach_file": "Прикрепить документ",
     "attach_bad_type": "Можно прикреплять только документы (CSV, Excel, PDF или TXT).",
-    "attach_drop": "Отпустите, чтобы прикрепить"
+    "attach_drop": "Отпустите, чтобы прикрепить",
+    "attach_formats": "Поддерживаются: CSV, Excel, PDF, TXT"
   },
   "pages": {
     "overview_title": "Моя панель",

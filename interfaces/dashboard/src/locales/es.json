@@ -334,7 +334,8 @@
     "attach_evicted": "Se quitó {{name}} para no superar el límite de tamaño de adjuntos.",
     "attach_file": "Adjuntar documento",
     "attach_bad_type": "Solo se pueden adjuntar documentos (CSV, Excel, PDF o TXT).",
-    "attach_drop": "Suelta para adjuntar"
+    "attach_drop": "Suelta para adjuntar",
+    "attach_formats": "Compatibles: CSV, Excel, PDF, TXT"
   },
   "pages": {
     "overview_title": "Mi panel",

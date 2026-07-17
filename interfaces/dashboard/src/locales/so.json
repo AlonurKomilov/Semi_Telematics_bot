@@ -334,7 +334,8 @@
     "attach_evicted": "{{name}} waa la saaray si loogu hoos jiro xadka cabbirka lifaaqa.",
     "attach_file": "Ku lifaaq dukumeenti",
     "attach_bad_type": "Waxaa la lifaaqi karaa kaliya dukumeentiyo (CSV, Excel, PDF ama TXT).",
-    "attach_drop": "Sii day si aad u lifaaqdo"
+    "attach_drop": "Sii day si aad u lifaaqdo",
+    "attach_formats": "La taageeray: CSV, Excel, PDF, TXT"
   },
   "pages": {
     "overview_title": "Dashboardkayga",

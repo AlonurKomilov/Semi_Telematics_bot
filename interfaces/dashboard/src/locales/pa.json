@@ -334,7 +334,8 @@
     "attach_evicted": "ਨੱਥੀ ਆਕਾਰ ਸੀਮਾ ਹੇਠ ਰਹਿਣ ਲਈ {{name}} ਹਟਾਇਆ ਗਿਆ।",
     "attach_file": "ਦਸਤਾਵੇਜ਼ ਨੱਥੀ ਕਰੋ",
     "attach_bad_type": "ਸਿਰਫ਼ ਦਸਤਾਵੇਜ਼ ਨੱਥੀ ਕੀਤੇ ਜਾ ਸਕਦੇ ਹਨ (CSV, Excel, PDF ਜਾਂ TXT)।",
-    "attach_drop": "ਨੱਥੀ ਕਰਨ ਲਈ ਛੱਡੋ"
+    "attach_drop": "ਨੱਥੀ ਕਰਨ ਲਈ ਛੱਡੋ",
+    "attach_formats": "ਸਮਰਥਿਤ: CSV, Excel, PDF, TXT"
   },
   "pages": {
     "overview_title": "ਮੇਰਾ ਡੈਸ਼ਬੋਰਡ",

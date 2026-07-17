@@ -334,7 +334,8 @@
     "attach_evicted": "{{name}} a été retiré pour rester sous la limite de taille des pièces jointes.",
     "attach_file": "Joindre un document",
     "attach_bad_type": "Seuls des documents peuvent être joints (CSV, Excel, PDF ou TXT).",
-    "attach_drop": "Déposez pour joindre"
+    "attach_drop": "Déposez pour joindre",
+    "attach_formats": "Pris en charge : CSV, Excel, PDF, TXT"
   },
   "pages": {
     "overview_title": "Mon tableau de bord",

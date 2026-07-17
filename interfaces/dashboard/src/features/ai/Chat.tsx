@@ -1958,15 +1958,16 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
                   role="menu"
                   className="absolute left-0 bottom-full mb-1 z-50 w-64 rounded-lg border border-border bg-card p-1 shadow-xl"
                 >
-                  <button
-                    role="menuitem"
-                    onClick={() => { setPlusOpen(false); fileInputRef.current?.click(); }}
-                    className="flex w-full items-center gap-2 px-2.5 py-1.5 text-sm rounded-md text-left text-foreground/80 hover:bg-muted transition-colors"
-                  >
-                    <Paperclip size={14} className="text-primary shrink-0" aria-hidden />
-                    <span className="font-medium">{t('chat.attach_file')}</span>
-                    <span className="ml-auto text-3xs text-muted-foreground">CSV · Excel · PDF</span>
-                  </button>
+                  <Tip label={t('chat.attach_formats')}>
+                    <button
+                      role="menuitem"
+                      onClick={() => { setPlusOpen(false); fileInputRef.current?.click(); }}
+                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-sm rounded-md text-left text-foreground/80 hover:bg-muted transition-colors"
+                    >
+                      <Paperclip size={14} className="text-primary shrink-0" aria-hidden />
+                      <span className="font-medium">{t('chat.attach_file')}</span>
+                    </button>
+                  </Tip>
                   <div className="my-1 border-t border-border" role="separator" />
                   {SLASH_COMMANDS.map((c) => (
                     <button

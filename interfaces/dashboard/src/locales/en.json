@@ -639,7 +639,8 @@
     "attach_evicted": "Removed {{name}} to stay under the attachment size limit.",
     "attach_file": "Attach document",
     "attach_bad_type": "Only documents can be attached (CSV, Excel, PDF, or TXT).",
-    "attach_drop": "Drop to attach"
+    "attach_drop": "Drop to attach",
+    "attach_formats": "Supported: CSV, Excel, PDF, TXT"
   },
   "pages": {
     "overview_title": "My Dashboard",

@@ -334,7 +334,8 @@
     "attach_evicted": "በአባሪ መጠን ገደብ ውስጥ ለመቆየት {{name}} ተወግዷል።",
     "attach_file": "ሰነድ አያይዝ",
     "attach_bad_type": "ማያያዝ የሚቻለው ሰነዶችን ብቻ ነው (CSV፣ Excel፣ PDF ወይም TXT)።",
-    "attach_drop": "ለማያያዝ ይልቀቁ"
+    "attach_drop": "ለማያያዝ ይልቀቁ",
+    "attach_formats": "የሚደገፉ፦ CSV, Excel, PDF, TXT"
   },
   "pages": {
     "overview_title": "የእኔ ዳሽቦርድ",
