@@ -18,3 +18,10 @@ System-owner domain: consumed by the operator console (system.4truck.us
 Capacity page), never by customer surfaces — hence capabilities/platform/
 (the layer guard keeps features/ from importing it).
 """
+
+# Capacity-planning thresholds (fractions of a resource at PEAK) —
+# SINGLE SOURCE for the router's headroom math, the console's bands,
+# and the alert engine.  Below WATCH = comfortable; WATCH..ACT = plan
+# the upgrade; ≥ ACT = upgrade now (and the alert fires).
+WATCH_PCT = 70.0
+ACT_PCT = 85.0

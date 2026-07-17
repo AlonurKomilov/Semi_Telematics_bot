@@ -16,18 +16,12 @@ from fastapi import APIRouter, Depends, Query
 
 from interfaces.api.deps import get_platform_db, require_system_owner
 
+from . import ACT_PCT, WATCH_PCT
 from . import requests as metering
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/system/capacity", tags=["system"])
-
-# Capacity-planning thresholds (fractions of a resource at PEAK):
-# below WATCH = comfortable; WATCH..ACT = plan the upgrade; above ACT =
-# upgrade now.  Shared with the frontend via the overview payload so
-# the bands can't drift between the math and the display.
-WATCH_PCT = 70.0
-ACT_PCT = 85.0
 
 
 def _headroom(hours: list[dict], latest: dict | None) -> dict:
@@ -68,11 +62,11 @@ def _headroom(hours: list[dict], latest: dict | None) -> dict:
     out["peak_cpu_pct"] = peak_cpu
     out["peak_mem_pct"] = peak_mem
 
-    candidates = [
-        ("cpu", peak_cpu),
-        ("memory", peak_mem),
+    candidates: list[tuple[str, float]] = [
+        (n, v)
+        for n, v in (("cpu", peak_cpu), ("memory", peak_mem))
+        if v is not None and v > 0
     ]
-    candidates = [(n, v) for n, v in candidates if v]
     vehicles = out["vehicles_now"]
     if candidates and vehicles:
         name, peak = max(candidates, key=lambda c: c[1])

@@ -92,6 +92,7 @@ _JOB_META = {
     "market_rollups":                 ("Accounts & system", "Rebuild anonymized vendor market-price rollups (dark until MARKET_INTEL_ENABLED)"),
     "capacity_sample":                ("Accounts & system", "Sample host/DB/Redis/request-rate into the capacity history (60s)"),
     "capacity_flush_yesterday":       ("Accounts & system", "Close out yesterday's per-account request metering"),
+    "capacity_alerts":                ("Accounts & system", "Telegram the operators when capacity crosses 85% (stateful, breach/recovery)"),
 }
 
 
@@ -198,6 +199,14 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     scheduler.add_job(
         job_capacity_flush_yesterday, "cron",
         hour=0, minute=10, args=[app], id="capacity_flush_yesterday",
+        max_instances=1, coalesce=True,
+    )
+    # Threshold alerts: stateful breach/recovery (one message per
+    # transition, hysteresis 80/85) — safe at a 5-min cadence.
+    from capabilities.platform.capacity.alerts import job_capacity_alerts
+    scheduler.add_job(
+        job_capacity_alerts, "interval",
+        minutes=5, args=[app], id="capacity_alerts",
         max_instances=1, coalesce=True,
     )
 

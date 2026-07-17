@@ -151,6 +151,132 @@ async def test_metering_is_noop_without_redis():
     assert await metering.account_counts("2026-07-17") == {}
 
 
+# ── Threshold alerts ──────────────────────────────────────────────
+
+def _cpu_rows(avg: float) -> list[dict]:
+    return [{"cpu_pct": avg, "mem_pct": 40.0, "queue_depth": 0} for _ in range(5)]
+
+
+def test_evaluate_hysteresis_zones():
+    from capabilities.platform.capacity import alerts
+
+    fresh = {"ts": "2026-07-17T09:00", "disk_pct": 30.0}
+    assert alerts.evaluate(_cpu_rows(92.0), fresh, None)["cpu"]["state"] == "breach"
+    assert alerts.evaluate(_cpu_rows(82.0), fresh, None)["cpu"]["state"] == "hold"
+    assert alerts.evaluate(_cpu_rows(60.0), fresh, None)["cpu"]["state"] == "clear"
+    # Ingest stall zones: ≥60 breach, 30–60 hold, <30 clear.
+    assert alerts.evaluate([], fresh, 90.0)["ingest"]["state"] == "breach"
+    assert alerts.evaluate([], fresh, 45.0)["ingest"]["state"] == "hold"
+    assert alerts.evaluate([], fresh, 5.0)["ingest"]["state"] == "clear"
+
+
+def test_evaluate_sampler_stall():
+    from datetime import datetime, timedelta, timezone
+
+    from capabilities.platform.capacity import alerts
+
+    old = (datetime.now(timezone.utc) - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M")
+    sig = alerts.evaluate([], {"ts": old}, None)
+    assert sig["sampler"]["state"] == "breach"
+
+
+class _FakeBot:
+    def __init__(self):
+        self.sent: list[str] = []
+
+    async def send_message(self, chat_id, text):  # noqa: ANN001
+        self.sent.append(text)
+
+
+class _FakeDB:
+    """Just enough surface for check_and_alert."""
+
+    def __init__(self, rows, latest):
+        self.rows, self.latest = rows, latest
+        self._db = self          # ingest probe hits _db.execute → raise
+
+    async def get_system_metrics_minutes(self, since):
+        return self.rows
+
+    async def get_system_metrics_latest(self):
+        return self.latest
+
+    async def execute(self, *_a, **_k):
+        raise RuntimeError("no vehicle_state in fake")
+
+
+@pytest_asyncio.fixture
+def alert_env(monkeypatch):
+    """In-memory breach state + captured sends + owners allowlisted."""
+    from types import SimpleNamespace
+
+    import capabilities.permissions.roles as perms
+    import infra.cache as cache
+    from capabilities.platform.capacity import alerts
+
+    active: set[str] = set()
+
+    async def is_active(s):
+        return s in active
+
+    async def set_active(s):
+        active.add(s)
+
+    async def clear_active(s):
+        active.discard(s)
+
+    monkeypatch.setattr(alerts, "_is_active", is_active)
+    monkeypatch.setattr(alerts, "_set_active", set_active)
+    monkeypatch.setattr(alerts, "_clear_active", clear_active)
+    monkeypatch.setattr(cache, "is_available", lambda: True)
+    monkeypatch.setattr(perms, "SYSTEM_OWNER_IDS", {111, 222})
+    bot = _FakeBot()
+    return {"app": SimpleNamespace(bot=bot), "bot": bot, "active": active}
+
+
+@pytest.mark.asyncio
+async def test_alert_fires_once_then_recovers(alert_env):
+    from capabilities.platform.capacity import alerts
+
+    fresh_latest = None  # no sampler-stall signal in play
+
+    # Breach → exactly ONE alert to EACH operator.
+    db = _FakeDB(_cpu_rows(92.0), fresh_latest)
+    sent = await alerts.check_and_alert(db, alert_env["app"])
+    assert len(sent) == 1 and "CPU" in sent[0] and "🔴" in sent[0]
+    assert len(alert_env["bot"].sent) == 2          # two operators
+    assert "cpu" in alert_env["active"]
+
+    # Still breached → silence (no 5-minute spam).
+    sent = await alerts.check_and_alert(db, alert_env["app"])
+    assert sent == []
+
+    # Hysteresis zone (82%) → still silence, state stays active.
+    sent = await alerts.check_and_alert(_FakeDB(_cpu_rows(82.0), fresh_latest), alert_env["app"])
+    assert sent == [] and "cpu" in alert_env["active"]
+
+    # Clear (60%) → one recovery, state dropped.
+    sent = await alerts.check_and_alert(_FakeDB(_cpu_rows(60.0), fresh_latest), alert_env["app"])
+    assert len(sent) == 1 and "🟢" in sent[0]
+    assert "cpu" not in alert_env["active"]
+
+    # Cleared and still clear → silence.
+    sent = await alerts.check_and_alert(_FakeDB(_cpu_rows(60.0), fresh_latest), alert_env["app"])
+    assert sent == []
+
+
+@pytest.mark.asyncio
+async def test_alerts_skip_entirely_without_redis(monkeypatch, alert_env):
+    """No shared state → no dedupe → the only safe move is silence."""
+    import infra.cache as cache
+
+    from capabilities.platform.capacity import alerts
+
+    monkeypatch.setattr(cache, "is_available", lambda: False)
+    sent = await alerts.check_and_alert(_FakeDB(_cpu_rows(99.0), None), alert_env["app"])
+    assert sent == [] and alert_env["bot"].sent == []
+
+
 # ── Sampler probes ────────────────────────────────────────────────
 
 @pytest.mark.asyncio
