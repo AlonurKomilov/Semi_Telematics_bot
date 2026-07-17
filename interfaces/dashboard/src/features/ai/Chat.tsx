@@ -684,17 +684,21 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   // ── Chat functions ───────────────────────────────────────────
   async function send(text: string) {
     if (!text.trim() || loading) return;
-    // This turn's files: the thread's bound files + freshly attached
-    // chips (newest wins on a name clash), newest 3 within the caps.
+    // NEW files were attached THIS turn — only these get chips on the
+    // sent message (a follow-up must not look like a re-upload).
+    const newFiles = [...attachmentsRef.current];
+    // The wire payload still carries the thread's bound files too — the
+    // server holds nothing between turns, so every request re-rides
+    // them (newest wins on a name clash, newest 3 within the caps).
     const sentFiles = (() => {
       const byName = new Map<string, PendingAttachment>();
-      for (const f of [...convoFiles, ...attachmentsRef.current]) byName.set(f.name, f);
+      for (const f of [...convoFiles, ...newFiles]) byName.set(f.name, f);
       return [...byName.values()].sort((a, b) => a.t - b.t).slice(-3);
     })();
     const userMsg: LocalMessage = {
       role: 'user', text: text.trim(), timestamp: new Date(),
-      attachments: sentFiles.length > 0
-        ? sentFiles.map(({ name, kind }) => ({ name, kind }))
+      attachments: newFiles.length > 0
+        ? newFiles.map(({ name, kind }) => ({ name, kind }))
         : undefined,
     };
     // The files leave the composer the moment the message does (their
@@ -702,13 +706,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     // here on.  An existing thread binds immediately; a brand-new chat
     // binds when the done event brings the conversation id — and on
     // failure the files return to the composer so nothing is lost.
-    const sentFromNewChat = sentFiles.length > 0 && conversationId == null;
-    if (sentFiles.length > 0) {
+    const sentFromNewChat = newFiles.length > 0 && conversationId == null;
+    if (newFiles.length > 0) {
       attachmentsRef.current = [];
       setAttachments([]);
       clearPendingAttachments();
       if (conversationId != null) {
-        setConvoFiles(bindConversationAttachments(conversationId, sentFiles));
+        setConvoFiles(bindConversationAttachments(conversationId, newFiles));
       }
     }
     setMessages((prev) => [...prev, userMsg]);
@@ -812,8 +816,8 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
       if (userMsg.attachments?.length) {
         saveThought(thoughtKey(finalConversationId, userMsg.text), { files: userMsg.attachments });
       }
-      if (sentFiles.length > 0 && finalConversationId != null) {
-        setConvoFiles(bindConversationAttachments(finalConversationId, sentFiles));
+      if (newFiles.length > 0 && finalConversationId != null) {
+        setConvoFiles(bindConversationAttachments(finalConversationId, newFiles));
       }
       setMessages((prev) => [...prev, aiMsg]);
       setSuggestions(finalSuggestions);
@@ -842,7 +846,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
       // A failed/aborted NEW chat has no thread holding the files —
       // return them to the composer so a retry still carries them.
       if (sentFromNewChat) {
-        const restored = setPendingAttachments(sentFiles);
+        const restored = setPendingAttachments(newFiles);
         attachmentsRef.current = restored;
         setAttachments(restored);
       }
