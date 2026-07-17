@@ -571,6 +571,27 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_account_persona_groups_account
             ON account_persona_groups(account_id);
 
+        -- Department sender ("Sub bot") per persona: an OPTIONAL extra
+        -- bot a role manager attaches so their department's alerts
+        -- arrive from their own bot.  Senders only — identity
+        -- (registration, login, commands) stays on the account's
+        -- primary bot.  The resolver joins this on persona; a missing/
+        -- inactive row falls back to the primary bot, never drops.
+        CREATE TABLE IF NOT EXISTS bot_instances (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            persona         TEXT    NOT NULL,
+            bot_username    TEXT    NOT NULL DEFAULT '',
+            token_encrypted TEXT    NOT NULL,
+            webhook_secret  TEXT    NOT NULL DEFAULT '',
+            is_active       INTEGER NOT NULL DEFAULT 1,
+            created_at      TEXT    NOT NULL,
+            updated_at      TEXT    NOT NULL,
+            UNIQUE(account_id, persona)
+        );
+        CREATE INDEX IF NOT EXISTS idx_bot_instances_account
+            ON bot_instances(account_id);
+
         -- System capacity metrics (operator console Capacity page) —
         -- PLATFORM scope: one server, sampled every 60s by the
         -- capabilities/platform/capacity sampler.  Minute = raw short-

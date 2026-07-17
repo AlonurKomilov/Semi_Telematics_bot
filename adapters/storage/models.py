@@ -395,6 +395,27 @@ class PersonaGroup:
 
 
 @dataclass
+class BotInstance:
+    """An optional per-department SENDER bot ("Sub bot") — a role
+    manager's own BotFather bot that posts their persona's alerts.
+
+    Composite key (account_id, persona), same slugs as PersonaGroup.
+    Sender-only by contract: identity (registration, login, commands)
+    stays on the account's primary bot, and delivery falls back to the
+    primary whenever this instance is missing or down.
+    """
+    id: int
+    account_id: int
+    persona: str
+    bot_username: str
+    token_encrypted: str
+    webhook_secret: str
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+
+@dataclass
 class Invite:
     id: int
     code: str

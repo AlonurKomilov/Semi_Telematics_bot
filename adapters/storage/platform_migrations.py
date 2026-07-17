@@ -58,6 +58,7 @@ async def run_all(conn) -> None:
     await migrate_create_user_sessions(conn)
     await migrate_create_account_persona_groups(conn)
     await migrate_add_accounts_alert_routing_mode(conn)
+    await migrate_create_bot_instances(conn)
     # Self-service password reset + email verification + per-user
     # lockout after failed login attempts.  Adds three columns to
     # ``users`` and creates two short-lived token tables.  Safe to
@@ -2088,6 +2089,51 @@ async def migrate_create_account_persona_groups(conn) -> None:
         logger.info("Created account_persona_groups table")
     except Exception as e:
         logger.error("account_persona_groups migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_create_bot_instances(conn) -> None:
+    """Create ``bot_instances`` — optional per-department sender bots
+    ("Sub bot" mode).
+
+    One row per (account, persona).  A role manager attaches their own
+    BotFather token so their department's alert group receives posts
+    from THEIR bot.  Sender-only by design: identity (registration,
+    login, commands, user binding) never leaves the account's primary
+    bot, and the alert pipeline falls back to the primary bot whenever
+    a sub-bot is missing or down — an attached-but-broken sub-bot can
+    never eat alerts.
+    """
+    try:
+        cur = await conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='bot_instances'"
+        )
+        if await cur.fetchone():
+            return
+        await conn.execute(
+            """CREATE TABLE bot_instances (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id      INTEGER NOT NULL,
+                persona         TEXT    NOT NULL,
+                bot_username    TEXT    NOT NULL DEFAULT '',
+                token_encrypted TEXT    NOT NULL,
+                webhook_secret  TEXT    NOT NULL DEFAULT '',
+                is_active       INTEGER NOT NULL DEFAULT 1,
+                created_at      TEXT    NOT NULL,
+                updated_at      TEXT    NOT NULL,
+                UNIQUE(account_id, persona)
+            )"""
+        )
+        await conn.execute(
+            "CREATE INDEX idx_bot_instances_account ON bot_instances(account_id)"
+        )
+        await conn.commit()
+        logger.info("Created bot_instances table")
+    except Exception as e:
+        logger.error("bot_instances migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

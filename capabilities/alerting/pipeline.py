@@ -65,6 +65,23 @@ async def _tg_send_with_retry(send, *, what: str):
             raise
 
 
+def _pick_sender(primary: Application, account_id: int, target) -> Application:
+    """The Application that posts THIS target: the department's Sub bot
+    when one is attached and running, else the account's primary bot.
+
+    The owner_admin AGGREGATE cross-post always uses the primary bot —
+    it's the account-level digest, not a department surface.  Fail-open
+    toward the primary: an attached-but-down Sub bot never eats alerts.
+    """
+    if getattr(target, "is_aggregate", False):
+        return primary
+    persona = getattr(target, "persona", "") or ""
+    if not persona:
+        return primary
+    from infra.bot_registry import get_sender_for_persona
+    return get_sender_for_persona(account_id, persona) or primary
+
+
 # Maps each alert_type the pipeline knows about to the canonical
 # alert_routing key.  Single-source-of-truth lives in storage's
 # ``ALERT_TYPE_KEYS`` tuple; this table only translates the verbose
@@ -404,6 +421,8 @@ async def post_alert_to_topic(
     for target in targets:
         chat_id = target.chat_id
         thread_id = target.message_thread_id
+        # Department Sub bot when attached; primary otherwise.
+        send_app = _pick_sender(bot_app, account_id, target)
 
         # CRITICAL persona-mode primary targets get on-shift @-mentions
         # the same way the send_alert path does (shared composer).
@@ -426,7 +445,7 @@ async def post_alert_to_topic(
                 reply_to: int | None = None
                 if video_url:
                     try:
-                        vmsg = await bot_app.bot.send_video(
+                        vmsg = await send_app.bot.send_video(
                             chat_id=chat_id, message_thread_id=thread_id,
                             video=video_url, read_timeout=30, write_timeout=30,
                         )
@@ -437,7 +456,7 @@ async def post_alert_to_topic(
                 elif photo_bytes:
                     try:
                         import io as _io
-                        pmsg = await bot_app.bot.send_photo(
+                        pmsg = await send_app.bot.send_photo(
                             chat_id=chat_id, message_thread_id=thread_id,
                             photo=_io.BytesIO(photo_bytes),
                             read_timeout=15, write_timeout=15,
@@ -448,7 +467,7 @@ async def post_alert_to_topic(
                                      account_id, alert_type, pe)
 
                 await _tg_send_with_retry(
-                    lambda: bot_app.bot.send_message(
+                    lambda: send_app.bot.send_message(
                         chat_id=chat_id, message_thread_id=thread_id,
                         text=send_text, parse_mode=parse_mode,
                         reply_markup=reply_markup, reply_to_message_id=reply_to,
@@ -584,6 +603,9 @@ async def _post_one_target(
     chat_id = target.chat_id
     thread_id = target.message_thread_id
     route_key = _PIPELINE_TO_ROUTE_KEY.get(alert_type)
+    # Department Sub bot when attached; the caller's primary otherwise.
+    # Every send below rides this pick.
+    bot_app = _pick_sender(bot_app, account_id, target)
 
     # CRITICAL-only @-mention for per-persona-mode primary targets.
     # Composed by the shared helper so the lite ``post_alert_to_topic``

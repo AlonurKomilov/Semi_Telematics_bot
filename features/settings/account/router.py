@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 
 from interfaces.api.deps import (
-    require_permission, get_current_db_user, get_tenant_db,
+    require_permission, get_current_user, get_current_db_user, get_tenant_db,
     get_platform_db, paginate, resolve_user_id,
 )
 from adapters.storage.models import Role
@@ -420,6 +420,167 @@ async def unbind_persona_group(
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),
         "alert_persona_group_unbound", details=persona,
+    )
+    return {"ok": True}
+
+
+# ── Department Sub bots (sender-only) ─────────────────────────────────
+# In Sub-bot mode a department's alert group receives posts from the
+# department's OWN bot.  Owner/admin manage all of them; a role MANAGER
+# (users.is_manager on the matching base role) manages exactly their
+# own department's bot — a safety manager cannot touch dispatch's.
+# Sender-only contract: identity (registration, login, commands) stays
+# on the primary bot; delivery falls back to the primary whenever a
+# sub-bot is missing or down.
+
+
+def _may_manage_persona_bot(user: dict, persona: str) -> bool:
+    role = user.get("role", "")
+    if role in ("owner", "admin"):
+        return True
+    if persona == "owner_admin":
+        return False  # the aggregate is owner/admin territory
+    return bool(user.get("is_manager")) and role == persona
+
+
+class SubBotAttachRequest(BaseModel):
+    persona: str = Field(..., pattern="^(owner_admin|dispatcher|safety|fleet|hr)$")
+    bot_token: str = Field(..., min_length=30, max_length=100)
+
+
+@router.get("/bot-instances")
+async def list_sub_bots(
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Per-persona Sub bot status.  Every staff member may LOOK (the
+    rows also tell a manager which personas they can manage); writes
+    are gated per persona."""
+    from infra.bot_registry import is_sub_bot_alive
+    rows = await platform_db.list_bot_instances(user["account_id"])
+    by_persona: dict = {p: None for p in _VALID_PERSONAS}
+    for r in rows:
+        if not r.is_active:
+            continue
+        by_persona[r.persona] = {
+            "persona": r.persona,
+            "bot_username": r.bot_username,
+            "is_running": await is_sub_bot_alive(user["account_id"], r.persona),
+        }
+    return {
+        "personas": by_persona,
+        "manageable": [p for p in _VALID_PERSONAS if _may_manage_persona_bot(user, p)],
+    }
+
+
+@router.post("/bot-instances")
+async def attach_sub_bot(
+    body: SubBotAttachRequest,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Attach (or replace) a department's sender bot — validated via
+    Telegram getMe, token stored encrypted like the primary's."""
+    if not _may_manage_persona_bot(user, body.persona):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the owner/admin or this department's manager can attach its Sub bot.",
+        )
+    account = await platform_db.get_account(user["account_id"])
+    if not account or not account.bot_token_encrypted:
+        raise HTTPException(
+            status_code=400,
+            detail="Configure the account's primary Telegram bot before attaching Sub bots.",
+        )
+
+    import secrets as _secrets
+    import aiohttp
+    from infra.crypto import encrypt
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"https://api.telegram.org/bot{body.bot_token}/getMe",
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                data = await resp.json()
+        if not data.get("ok"):
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid bot token: {data.get('description', 'unknown error')}",
+            )
+        bot_info = data["result"]
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to reach Telegram API: {e}")
+
+    bot_username = bot_info.get("username", "")
+    if bot_username and bot_username == (account.bot_username or ""):
+        raise HTTPException(
+            status_code=422,
+            detail="That's the account's primary bot — a Sub bot needs its own token.",
+        )
+
+    row = await platform_db.upsert_bot_instance(
+        account_id=user["account_id"],
+        persona=body.persona,
+        token_encrypted=encrypt(body.bot_token),
+        bot_username=bot_username,
+        webhook_secret=_secrets.token_urlsafe(24),
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "sub_bot_attached", details=f"{body.persona} → @{bot_username}",
+    )
+
+    # Hot-start where a registry runs in-process (bot service / dev).
+    # On the split API process this is a no-op; the bot service picks
+    # the instance up on its next start_all.
+    try:
+        from infra.bot_registry import get_registry
+        registry = get_registry()
+        if registry:
+            await registry.start_sub_bot(
+                account_id=user["account_id"], persona=body.persona,
+                encrypted_token=row.token_encrypted,
+                webhook_secret=row.webhook_secret,
+            )
+    except Exception as e:
+        logger.warning("Sub bot hot-start failed %d/%s: %s",
+                       user["account_id"], body.persona, e)
+
+    return {"ok": True, "persona": body.persona, "bot_username": bot_username}
+
+
+@router.delete("/bot-instances/{persona}")
+async def detach_sub_bot(
+    persona: str,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Detach a department's sender bot — its alerts return to the
+    primary bot on the next send (never dropped)."""
+    if persona not in _VALID_PERSONAS:
+        raise HTTPException(status_code=400, detail="Unknown persona")
+    if not _may_manage_persona_bot(user, persona):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the owner/admin or this department's manager can detach its Sub bot.",
+        )
+    try:
+        from infra.bot_registry import get_registry
+        registry = get_registry()
+        if registry:
+            await registry.stop_sub_bot(user["account_id"], persona)
+    except Exception as e:
+        logger.warning("Sub bot stop failed %d/%s: %s", user["account_id"], persona, e)
+    await platform_db.delete_bot_instance(user["account_id"], persona)
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "sub_bot_detached", details=persona,
     )
     return {"ok": True}
 

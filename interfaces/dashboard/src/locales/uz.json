@@ -41,6 +41,13 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "subbot_label": "Sub bot",
+    "subbot_attach": "Sub bot ulash",
+    "subbot_detach": "Uzish",
+    "subbot_token_ph": "@BotFather dan Sub bot tokeni",
+    "subbot_hint": "Sub bot: bu bo'limning ogohlantirishlari o'z botidan keladi. U bo'lmasa, asosiy bot yuboradi. Ro'yxatdan o'tish va buyruqlar doim asosiy botda qoladi.",
+    "toast_subbot_attached": "Sub bot ulandi: @{{username}} — bir daqiqada ishga tushadi",
+    "toast_subbot_detached": "Sub bot uzildi — asosiy bot yuborishni davom ettiradi",
     "section_title": "Ogohlantirishlarni yo'naltirish",
     "nudge": "Avtoparkingiz ({{count}} mashina) bitta guruhni to'ldiradigan darajada ogohlantirish yaratadi — har bo'limga alohida guruhni ko'rib chiqing.",
     "mode_single_title": "Bitta guruh",

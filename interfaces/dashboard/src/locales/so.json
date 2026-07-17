@@ -41,6 +41,13 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "subbot_label": "Sub bot",
+    "subbot_attach": "Ku xir Sub bot",
+    "subbot_detach": "Ka saar",
+    "subbot_token_ph": "Token-ka Sub bot ee @BotFather",
+    "subbot_hint": "Sub bot: digniinaha waaxdan waxay ka yimaadaan bot u gaar ah. Haddii uusan jirin, bot-ka guud ayaa dira. Diiwaangelinta iyo amarradu waxay had iyo jeer ku sii jiraan bot-ka guud.",
+    "toast_subbot_attached": "Sub bot waa la xiray: @{{username}} — hal daqiiqo gudaheed ayuu shaqeyn doonaa",
+    "toast_subbot_detached": "Sub bot waa laga saaray — bot-ka guud ayaa sii wada dirista",
     "section_title": "Jihaynta digniinaha",
     "nudge": "Gaadiidkaagu ({{count}} gaari) wuxuu abuuraa digniino badan oo hal guruub buuxin kara — tixgeli guruub waax kasta.",
     "mode_single_title": "Hal guruub",

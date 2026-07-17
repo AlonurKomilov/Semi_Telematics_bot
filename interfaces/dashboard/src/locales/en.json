@@ -871,6 +871,13 @@
     "uploaded_by": "uploaded by {{name}}"
   },
   "alert_routing": {
+    "subbot_label": "Sub bot",
+    "subbot_attach": "Attach Sub bot",
+    "subbot_detach": "Detach",
+    "subbot_token_ph": "Sub bot token from @BotFather",
+    "subbot_hint": "Sub bot: this department's alerts arrive from its own bot. Without one, the main bot sends. Registration and commands always stay on the main bot.",
+    "toast_subbot_attached": "Sub bot attached: @{{username}} — activates within a minute",
+    "toast_subbot_detached": "Sub bot detached — the main bot takes over",
     "section_title": "Alert routing",
     "nudge": "Your fleet ({{count}} vehicles) generates enough alerts that one group can get crowded — consider a group per department.",
     "mode_single_title": "Single group",

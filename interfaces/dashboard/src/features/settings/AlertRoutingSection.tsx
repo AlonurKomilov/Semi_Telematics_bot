@@ -26,6 +26,19 @@ interface AlertRoutingResponse {
   bot_configured: boolean;
 }
 
+interface SubBotRow {
+  persona: string;
+  bot_username: string;
+  is_running: boolean;
+}
+
+interface SubBotsResponse {
+  personas: Record<string, SubBotRow | null>;
+  // Personas THIS user may attach/detach (owner/admin: all; a role
+  // manager: exactly their own department) — server re-enforces.
+  manageable: string[];
+}
+
 // Display order: operational departments first, the owner/admin
 // critical-aggregate last.  These are persona artifacts by definition
 // (each row IS one department's group), so persona words are correct here.
@@ -34,13 +47,18 @@ const PERSONA_ORDER = ['dispatcher', 'safety', 'fleet', 'hr', 'owner_admin'] as 
 export default function AlertRoutingSection() {
   const { t } = useTranslation();
   const [data, setData] = useState<AlertRoutingResponse | null>(null);
+  const [subBots, setSubBots] = useState<SubBotsResponse | null>(null);
   const [chatInputs, setChatInputs] = useState<Record<string, string>>({});
+  const [tokenInputs, setTokenInputs] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string>('');
 
   const load = useCallback(() => {
     apiJSON<AlertRoutingResponse>('/admin/alert-routing')
       .then(setData)
       .catch(() => setData(null));
+    apiJSON<SubBotsResponse>('/admin/bot-instances')
+      .then(setSubBots)
+      .catch(() => setSubBots(null));
   }, []);
   useEffect(load, [load]);
 
@@ -99,6 +117,47 @@ export default function AlertRoutingSection() {
     }
   };
 
+  const attachSubBot = async (persona: string) => {
+    const token = (tokenInputs[persona] || '').trim();
+    if (!token || busy) return;
+    setBusy(`sub-${persona}`);
+    try {
+      const res = await apiJSON<{ bot_username: string }>('/admin/bot-instances', {
+        method: 'POST', body: { persona, bot_token: token },
+      });
+      setTokenInputs({ ...tokenInputs, [persona]: '' });
+      setSubBots(subBots && {
+        ...subBots,
+        personas: {
+          ...subBots.personas,
+          [persona]: { persona, bot_username: res.bot_username, is_running: false },
+        },
+      });
+      toast.success(t('alert_routing.toast_subbot_attached', { username: res.bot_username }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const detachSubBot = async (persona: string) => {
+    if (busy) return;
+    setBusy(`sub-${persona}`);
+    try {
+      await apiJSON(`/admin/bot-instances/${persona}`, { method: 'DELETE' });
+      setSubBots(subBots && {
+        ...subBots,
+        personas: { ...subBots.personas, [persona]: null },
+      });
+      toast.success(t('alert_routing.toast_subbot_detached'));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
+    } finally {
+      setBusy('');
+    }
+  };
+
   const showNudge =
     data.mode === 'single_group' && data.vehicle_count > data.nudge_threshold;
 
@@ -149,6 +208,8 @@ export default function AlertRoutingSection() {
           <p className="text-xs text-muted-foreground">{t('alert_routing.hint_chatid')}</p>
           {PERSONA_ORDER.map((persona) => {
             const bound = data.personas[persona];
+            const sub = subBots?.personas?.[persona] ?? null;
+            const canManageSub = subBots?.manageable?.includes(persona) ?? false;
             return (
               <div key={persona} className="flex flex-wrap items-center gap-2 text-sm">
                 <span className="w-32 shrink-0 text-foreground">
@@ -190,9 +251,54 @@ export default function AlertRoutingSection() {
                     </span>
                   </>
                 )}
+
+                {/* Sub bot cell — the department's own SENDER bot.
+                    Attach/detach only for owner/admin or this
+                    department's manager (server re-enforces). */}
+                {sub ? (
+                  <span className="inline-flex items-center gap-2 ml-auto">
+                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs border ${
+                      sub.is_running ? toneClasses('ok') : toneClasses('neutral')
+                    }`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${sub.is_running ? 'bg-ok' : 'bg-muted-foreground'}`} />
+                      {t('alert_routing.subbot_label')} @{sub.bot_username}
+                    </span>
+                    {canManageSub && (
+                      <button
+                        type="button"
+                        onClick={() => { void detachSubBot(persona); }}
+                        disabled={busy === `sub-${persona}`}
+                        className="text-xs text-destructive hover:underline disabled:opacity-50"
+                      >
+                        {t('alert_routing.subbot_detach')}
+                      </button>
+                    )}
+                  </span>
+                ) : canManageSub ? (
+                  <span className="inline-flex items-center gap-2 ml-auto">
+                    <input
+                      type="password"
+                      value={tokenInputs[persona] || ''}
+                      onChange={(e) => setTokenInputs({ ...tokenInputs, [persona]: e.target.value })}
+                      placeholder={t('alert_routing.subbot_token_ph')}
+                      className="w-52 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground font-mono focus:outline-none focus:border-ring"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { void attachSubBot(persona); }}
+                      disabled={busy === `sub-${persona}` || (tokenInputs[persona] || '').trim().length < 30}
+                      className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
+                    >
+                      {busy === `sub-${persona}` ? '…' : t('alert_routing.subbot_attach')}
+                    </button>
+                  </span>
+                ) : null}
               </div>
             );
           })}
+          <p className="text-xs text-muted-foreground">
+            {t('alert_routing.subbot_hint')}
+          </p>
         </div>
       )}
     </div>

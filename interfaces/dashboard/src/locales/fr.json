@@ -41,6 +41,13 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "subbot_label": "Sub bot",
+    "subbot_attach": "Attacher un Sub bot",
+    "subbot_detach": "Détacher",
+    "subbot_token_ph": "Token du Sub bot depuis @BotFather",
+    "subbot_hint": "Sub bot : les alertes de ce service arrivent depuis son propre bot. Sans lui, le bot principal envoie. L'inscription et les commandes restent toujours sur le bot principal.",
+    "toast_subbot_attached": "Sub bot attaché : @{{username}} — actif dans une minute",
+    "toast_subbot_detached": "Sub bot détaché — le bot principal reprend",
     "section_title": "Routage des alertes",
     "nudge": "Votre flotte ({{count}} véhicules) génère assez d'alertes pour saturer un seul groupe — envisagez un groupe par service.",
     "mode_single_title": "Groupe unique",

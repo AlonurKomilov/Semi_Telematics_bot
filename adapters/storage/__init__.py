@@ -45,10 +45,12 @@ from .invites import InvitesMixin
 from .chats import ChatsMixin
 from .forum_routing import ForumRoutingMixin
 from .account_persona_groups import AccountPersonaGroupsMixin
+from .bot_instances import BotInstancesMixin
 from .maintenance import MaintenanceMixin
 from .work_orders import WorkOrdersMixin
 from .vendors import VendorsMixin
 from .parts_catalog import PartsCatalogMixin
+from .part_directory import PartDirectoryMixin
 from .vendor_directory import VendorDirectoryMixin
 from .market_intel import MarketIntelMixin
 from .vehicle_inventory import VehicleInventoryMixin
@@ -108,10 +110,12 @@ class Database(
     ChatsMixin,
     ForumRoutingMixin,
     AccountPersonaGroupsMixin,
+    BotInstancesMixin,
     MaintenanceMixin,
     WorkOrdersMixin,
     VendorsMixin,
     PartsCatalogMixin,
+    PartDirectoryMixin,
     VendorDirectoryMixin,
     MarketIntelMixin,
     VehicleInventoryMixin,

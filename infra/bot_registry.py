@@ -47,6 +47,17 @@ def heartbeat_key(account_id: int) -> str:
     return f"{HEARTBEAT_KEY_PREFIX}{account_id}"
 
 
+def sub_heartbeat_key(account_id: int, persona: str) -> str:
+    """Liveness key for one department's Sub bot (sender-only)."""
+    return f"{HEARTBEAT_KEY_PREFIX}{account_id}:{persona}"
+
+
+async def is_sub_bot_alive(account_id: int, persona: str) -> bool:
+    """Cross-process liveness probe for a department Sub bot."""
+    from adapters.cache.redis import exists
+    return await exists(sub_heartbeat_key(account_id, persona))
+
+
 async def is_bot_alive(account_id: int) -> bool:
     """Cross-process liveness probe — used by the API to answer
     /admin/bot-config without needing the bot process's in-memory
@@ -170,6 +181,71 @@ async def _build_bot_app(
     return app
 
 
+async def _build_sub_bot_app(
+    token: str,
+    account_id: int,
+    persona: str,
+    webhook_url: Optional[str] = None,
+    webhook_secret: str = "",
+) -> Application:
+    """Build and start a department SENDER bot ("Sub bot").
+
+    Deliberately minimal: no handler_setup, no command surface — the
+    only handler is /start with a what-am-I reply.  Identity
+    (registration, login, the 43 commands) lives on the account's
+    primary bot; this Application exists so the alert pipeline can post
+    a department's alerts from the department's own bot.
+    """
+    from telegram.ext import CommandHandler
+
+    app = (
+        Application.builder()
+        .token(token)
+        .concurrent_updates(True)
+        .rate_limiter(AIORateLimiter())
+        .build()
+    )
+    app.bot_data["account_id"] = account_id
+    app.bot_data["persona"] = persona
+
+    async def _start(update: Update, _context) -> None:
+        if update.effective_message is None:
+            return
+        await update.effective_message.reply_text(
+            "This bot only delivers your team's alerts. "
+            "To register, use commands, or manage it, talk to your "
+            "company's main bot or open the dashboard.",
+        )
+
+    app.add_handler(CommandHandler("start", _start))
+
+    await app.initialize()
+    me = await app.bot.get_me()
+    app.bot_data["bot_username"] = me.username or ""
+    # Sender-only surface: an empty popup is honest — /start still works.
+    await app.bot.set_my_commands([])
+
+    assert app.updater is not None, "Application built without updater"
+    if webhook_url:
+        per_bot_path = f"/webhook/{account_id}/i/{persona}"
+        await app.updater.start_webhook(
+            listen="127.0.0.1",
+            port=0,
+            url_path=per_bot_path,
+            webhook_url=f"{webhook_url.rstrip('/')}{per_bot_path}",
+            secret_token=webhook_secret or None,
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+        )
+    else:
+        await app.updater.start_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+        )
+    await app.start()
+    return app
+
+
 class BotRegistry:
     """Manages per-account Telegram bot Application instances."""
 
@@ -179,6 +255,10 @@ class BotRegistry:
         # running bot; cancelled in stop_bot so we don't keep refreshing
         # a key after the underlying Application has been torn down.
         self._heartbeat_tasks: dict[int, asyncio.Task] = {}
+        # Department Sub bots (sender-only), keyed (account_id, persona).
+        # The primary bot stays in self._bots — existing paths untouched.
+        self._sub_bots: dict[tuple[int, str], Application] = {}
+        self._sub_heartbeat_tasks: dict[tuple[int, str], asyncio.Task] = {}
 
     async def _heartbeat_loop(self, account_id: int) -> None:
         """Refresh the Redis liveness key on a fixed interval.
@@ -297,6 +377,84 @@ class BotRegistry:
         """Get the running Application for an account, or None."""
         return self._bots.get(account_id)
 
+    # ── Department Sub bots (sender-only) ─────────────────────────
+
+    async def start_sub_bot(
+        self,
+        account_id: int,
+        persona: str,
+        encrypted_token: str,
+        webhook_base: Optional[str] = None,
+        webhook_secret: str = "",
+    ) -> Application:
+        """Start one department's sender bot."""
+        key = (account_id, persona)
+        if key in self._sub_bots:
+            await self.stop_sub_bot(account_id, persona)
+
+        app = await _build_sub_bot_app(
+            token=decrypt(encrypted_token),
+            account_id=account_id,
+            persona=persona,
+            webhook_url=webhook_base,
+            webhook_secret=webhook_secret,
+        )
+        self._sub_bots[key] = app
+
+        from adapters.cache.redis import setex_flag
+        hb_key = sub_heartbeat_key(account_id, persona)
+        try:
+            await setex_flag(hb_key, HEARTBEAT_TTL_SECS)
+        except Exception:
+            logger.debug("Initial sub-bot heartbeat failed %d/%s", account_id, persona)
+
+        async def _hb_loop() -> None:
+            while True:
+                try:
+                    await setex_flag(hb_key, HEARTBEAT_TTL_SECS)
+                except Exception:
+                    logger.debug("Sub-bot heartbeat failed %d/%s", account_id, persona)
+                await asyncio.sleep(HEARTBEAT_REFRESH_SECS)
+
+        self._sub_heartbeat_tasks[key] = asyncio.create_task(
+            _hb_loop(), name=f"subbot-heartbeat-{account_id}-{persona}",
+        )
+        logger.info(
+            "Sub bot started for account %d persona=%s (@%s)",
+            account_id, persona, app.bot_data.get("bot_username", "?"),
+        )
+        return app
+
+    async def stop_sub_bot(self, account_id: int, persona: str) -> None:
+        key = (account_id, persona)
+        task = self._sub_heartbeat_tasks.pop(key, None)
+        if task and not task.done():
+            task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):
+                pass
+        try:
+            from adapters.cache.redis import delete
+            await delete(sub_heartbeat_key(account_id, persona))
+        except Exception:
+            logger.debug("Sub-bot heartbeat delete failed %d/%s", account_id, persona)
+
+        app = self._sub_bots.pop(key, None)
+        if not app:
+            return
+        try:
+            if app.updater and app.updater.running:
+                await app.updater.stop()
+            await app.stop()
+            await app.shutdown()
+        except Exception:
+            logger.exception("Error stopping sub bot %d/%s", account_id, persona)
+
+    def get_sub(self, account_id: int, persona: str) -> Optional[Application]:
+        """The department's running sender bot, or None (→ primary sends)."""
+        return self._sub_bots.get((account_id, persona))
+
     async def start_all(self, platform_db, webhook_base: Optional[str] = None) -> int:
         """Start bots for all accounts that have a configured token.
 
@@ -316,10 +474,40 @@ class BotRegistry:
             except Exception:
                 logger.exception("Failed to start bot for account %d", acct.id)
         logger.info("Started %d / %d bots", started, len(accounts))
+
+        # Department Sub bots — senders only, started AFTER primaries so
+        # a sub-bot failure can never block an account's main bot.  A
+        # sub-bot that fails here simply never enters _sub_bots and the
+        # pipeline keeps sending that persona's alerts via the primary.
+        try:
+            instances = await platform_db.list_all_active_bot_instances()
+        except Exception:
+            instances = []
+            logger.debug("bot_instances lookup failed — no sub bots started")
+        sub_started = 0
+        for inst in instances:
+            try:
+                await self.start_sub_bot(
+                    account_id=inst.account_id,
+                    persona=inst.persona,
+                    encrypted_token=inst.token_encrypted,
+                    webhook_base=webhook_base,
+                    webhook_secret=inst.webhook_secret,
+                )
+                sub_started += 1
+            except Exception:
+                logger.exception(
+                    "Failed to start sub bot %d/%s — persona falls back to primary",
+                    inst.account_id, inst.persona,
+                )
+        if instances:
+            logger.info("Started %d / %d sub bots", sub_started, len(instances))
         return started
 
     async def stop_all(self) -> None:
         """Stop all running bots — call during shutdown."""
+        for aid, persona in list(self._sub_bots.keys()):
+            await self.stop_sub_bot(aid, persona)
         account_ids = list(self._bots.keys())
         for aid in account_ids:
             await self.stop_bot(aid)
@@ -372,3 +560,17 @@ def get_app_for_account(account_id: int) -> Optional[Application]:
     if _registry:
         return _registry.get(account_id)
     return None
+
+
+def get_sender_for_persona(account_id: int, persona: str) -> Optional[Application]:
+    """The Application that should POST this persona's group alerts.
+
+    Department Sub bot when one is attached and running, else the
+    account's primary bot, else None.  Fail-open toward the primary by
+    design: an attached-but-down Sub bot must never eat alerts.
+    """
+    if _registry and persona:
+        sub = _registry.get_sub(account_id, persona)
+        if sub is not None:
+            return sub
+    return get_app_for_account(account_id)

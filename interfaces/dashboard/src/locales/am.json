@@ -41,6 +41,13 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "subbot_label": "ንዑስ ቦት",
+    "subbot_attach": "ንዑስ ቦት አገናኝ",
+    "subbot_detach": "አለያይ",
+    "subbot_token_ph": "ከ@BotFather የንዑስ ቦት token",
+    "subbot_hint": "ንዑስ ቦት፦ የዚህ ክፍል ማንቂያዎች ከራሱ ቦት ይመጣሉ። ከሌለ ዋናው ቦት ይልካል። ምዝገባና ትዕዛዞች ሁልጊዜ በዋናው ቦት ላይ ይቆያሉ።",
+    "toast_subbot_attached": "ንዑስ ቦት ተገናኝቷል፦ @{{username}} — በአንድ ደቂቃ ውስጥ ይሰራል",
+    "toast_subbot_detached": "ንዑስ ቦት ተለያይቷል — ዋናው ቦት መላክን ይቀጥላል",
     "section_title": "የማንቂያ መስመር",
     "nudge": "የተሽከርካሪ ብዛትዎ ({{count}}) አንድ ቡድን የሚሞላ ማንቂያ ይፈጥራል — ለእያንዳንዱ ክፍል የተለየ ቡድን ያስቡ።",
     "mode_single_title": "አንድ ቡድን",

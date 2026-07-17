@@ -41,6 +41,13 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "subbot_label": "Sub bot",
+    "subbot_attach": "Conectar Sub bot",
+    "subbot_detach": "Quitar",
+    "subbot_token_ph": "Token del Sub bot de @BotFather",
+    "subbot_hint": "Sub bot: las alertas de este departamento llegan desde su propio bot. Sin uno, envía el bot principal. El registro y los comandos siempre quedan en el bot principal.",
+    "toast_subbot_attached": "Sub bot conectado: @{{username}} — se activa en un minuto",
+    "toast_subbot_detached": "Sub bot quitado — el bot principal toma el relevo",
     "section_title": "Enrutamiento de alertas",
     "nudge": "Su flota ({{count}} vehículos) genera suficientes alertas como para saturar un solo grupo — considere un grupo por departamento.",
     "mode_single_title": "Grupo único",
