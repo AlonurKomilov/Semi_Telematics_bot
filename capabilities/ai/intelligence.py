@@ -29,6 +29,7 @@ from capabilities.ai.tools import (  # noqa: E402,F401
     get_anthropic_tools as _get_anthropic_tools,
     get_openai_tools as _get_openai_tools,
     get_tool_schema,
+    model_view as _model_view,
     AI_TOOLS,  # backward compat re-export
 )
 from capabilities.permissions.roles import (
@@ -951,7 +952,9 @@ async def _run_anthropic_agent(
             result_blocks.append({
                 "type": "tool_result",
                 "tool_use_id": tu_id,
-                "content": json.dumps(result, default=str),
+                # model_view: staged/payload/preview-rows never re-enter
+                # the conversation — tool_results above keeps full fidelity.
+                "content": json.dumps(_model_view(result), default=str),
             })
         messages.append({"role": "user", "content": result_blocks})
         # Loop and call again with updated messages.
@@ -1521,7 +1524,9 @@ async def _run_openai_compat_agent(
             messages.append({
                 "role": "tool",
                 "tool_call_id": tc_id,
-                "content": json.dumps(result, default=str)[:20000],
+                # model_view: staged/payload/preview-rows never re-enter
+                # the conversation — tool_results above keeps full fidelity.
+                "content": json.dumps(_model_view(result), default=str)[:20000],
             })
         # Loop continues — the model sees the tool results next round.
         final_reasoning_tail = text  # non-empty text alongside tool calls is rare; keep last
@@ -1940,7 +1945,7 @@ async def ask_agent(question: str, vehicle_context: dict,
                         tool_results.append({"tool": tool_name, "args": tool_args, "data": result})
                         fn_response = Part.from_function_response(
                             name=tool_name,
-                            response={"result": result},
+                            response={"result": _model_view(result)},
                         )
                         response = await _call_model_with_telemetry(
                             [
@@ -1968,7 +1973,10 @@ async def ask_agent(question: str, vehicle_context: dict,
 
                     fn_response = Part.from_function_response(
                         name=tool_name,
-                        response={"result": result},
+                        # model_view: staged/payload/preview-rows never
+                        # re-enter the conversation — tool_results above
+                        # keeps full fidelity for the router.
+                        response={"result": _model_view(result)},
                     )
                     response = await _call_model_with_telemetry(
                         [

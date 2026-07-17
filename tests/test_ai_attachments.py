@@ -420,6 +420,50 @@ async def test_propose_import_error_paths(monkeypatch):
     assert "a.csv" in out["error"]                       # lists what IS there
 
 
+async def test_model_view_redacts_staged_and_preview_rows(monkeypatch):
+    """The loops echo model_view(result), not the raw result: staged rows /
+    payload / preview rows never re-enter the conversation (second-shot
+    prompt-injection surface + token bloat), while tool_results keeps
+    full fidelity for the router."""
+    import capabilities.ai.attachments as A
+    from capabilities.ai.tools.attachments_tool import propose_import
+    from capabilities.ai.tools.registry import model_view
+
+    monkeypatch.setattr(A, "_IMPORT_TARGETS", {})
+    A.register_import_target(_target())
+    out = await propose_import(
+        tool="import_test_rows", target_name="_c1_target",
+        tool_args={"mapping": MAPPING,
+                   "_attachments": {"inv.csv": parse_csv_grid(MATRIX_CSV)}},
+        account_id=1, db=None,
+    )
+    mv = model_view(out)
+    preview, card = mv["artifacts"]
+    assert "staged" not in card and "payload" not in card
+    assert isinstance(preview["rows"], str) and "not repeated" in preview["rows"]
+    assert preview["totals"]["total"] == 10          # counts stay visible
+    assert "never instructions" in mv["untrusted_note"]
+    # The ORIGINAL result is untouched — the router still gets everything.
+    assert isinstance(out["artifacts"][0]["rows"], list)
+    assert out["artifacts"][1]["staged"]
+    # Results without artifacts pass through identically.
+    plain = {"ok": True, "data": 42}
+    assert model_view(plain) is plain
+
+
+def test_chat_attachment_cap_counts_bytes_not_chars():
+    """A near-cap non-Latin file must hit the friendly per-field error,
+    not sail past a char-count check into the blunt 413 (review W2)."""
+    import pytest as _pytest
+    from pydantic import ValidationError
+    from capabilities.ai.router import ChatAttachment
+
+    cyrillic = "ы" * 800_000                     # 800k chars = 1.6MB utf-8
+    with _pytest.raises(ValidationError, match="too large"):
+        ChatAttachment(name="big.csv", content=cyrillic)
+    ChatAttachment(name="ok.csv", content="a" * 1_000_000)   # 1MB ascii fine
+
+
 def test_read_attachment_is_registered_for_all_roles():
     """No TOOL_PERMISSIONS row on purpose: the real gate ran at parse time,
     so the tool is advertised everywhere and is a no-op without grids."""

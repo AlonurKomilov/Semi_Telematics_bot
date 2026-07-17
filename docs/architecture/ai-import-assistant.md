@@ -97,8 +97,8 @@ model  ──▶ import_inventory_items(name, mapping_spec)  [WRITE, propose]
              └─ SERVER applies mapping to the full in-memory grid
                 → normalized rows + validation report → preview artifact
                 → proposal stores the DERIVED ROWS (encrypted staged
-                  payload, new un-truncated column) + mapping + sha256
-                  + counts.  The rows ARE the data the user is about to
+                  payload, new un-truncated column) + mapping + counts.
+                  The rows ARE the data the user is about to
                   write into Inventory — staging them briefly is
                   consistent with "files on device, data in DB".
 
@@ -150,7 +150,8 @@ fork of the pipeline.
 - `read_attachment` read tool (generic; request-scoped;
   untrusted-sample framing: ~20 rows, ~80 chars/cell, delimited as
   data-not-instructions).
-- `ai_action_proposals.staged_payload` — new nullable encrypted column
+- `ai_action_proposals.staged_payload` — new encrypted TEXT column
+  (`NOT NULL DEFAULT ''` as shipped)
   (migration; index-in-migration rule) holding the derived rows WITHOUT
   the 8k truncation of the legacy payload column.  Pruned with the
   proposal row by the existing 7-day sweep (pending ones die at TTL).

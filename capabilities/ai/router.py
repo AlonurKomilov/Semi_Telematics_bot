@@ -9,7 +9,7 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 import capabilities.ai as ai
 from capabilities.ai.registry import DEFAULT_LOCATION
@@ -75,6 +75,20 @@ class ChatAttachment(BaseModel):
     """
     name: str = Field(..., min_length=1, max_length=120)
     content: str = Field(..., min_length=1, max_length=1_400_000)
+
+    @field_validator("content")
+    @classmethod
+    def _content_byte_cap(cls, v: str) -> str:
+        # max_length above counts CHARS; the real ceiling (the 2MB body
+        # middleware) counts BYTES — enforce the same byte cap as the
+        # attachments module so non-Latin sheets get the friendly error,
+        # not the blunt 413.
+        from capabilities.ai.attachments import MAX_CONTENT_BYTES
+        if len(v.encode("utf-8")) > MAX_CONTENT_BYTES:
+            raise ValueError(
+                f"attachment too large (max {MAX_CONTENT_BYTES / 1_000_000:.1f} MB)"
+            )
+        return v
 
 
 class ChatRequest(BaseModel):

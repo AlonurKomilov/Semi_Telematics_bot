@@ -10,6 +10,7 @@ from capabilities.ai.tools.registry import (                              # noqa
     get_openai_tools,
     invalidate_tool_cache,
     execute_tool,
+    model_view,
     tool_ok,
     tool_error,
     tool_propose,
