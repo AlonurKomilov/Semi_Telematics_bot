@@ -17,6 +17,8 @@ from capabilities.ai.tools.registry import (                              # noqa
     get_tool_schema,
     register_action_executor,
     get_action_executor,
+    register_undo_executor,
+    get_undo_executor,
 )
 
 # Pre-load the alerting capability FIRST.  Some feature packages' ``__init__``

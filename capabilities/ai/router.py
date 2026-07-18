@@ -1120,6 +1120,31 @@ async def approve_action(
     )
 
 
+@router.post("/actions/{proposal_id}/undo")
+@limiter.limit("30/minute")
+async def undo_action(
+    proposal_id: str,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Reverse an EXECUTED action via its registered undo recipe.
+
+    Copilot-style change-set undo (soft + evented + audited as
+    ``ai_undo:<tool>``), allowed to the approver or an owner/admin,
+    within the 7-day window.  No body, like approve; and like approve,
+    no ``active_view`` dependency — undo never runs under a persona
+    preview.
+    """
+    user_context, _vf, _lang = await _get_user_info(user, platform_db)
+    from capabilities.ai.actions import undo_approved_action
+    return await undo_approved_action(
+        proposal_id, user=user, user_context=user_context,
+        platform_db=platform_db, tenant_db=tenant_db,
+    )
+
+
 @router.post("/actions/{proposal_id}/reject")
 @limiter.limit("30/minute")
 async def reject_action(
@@ -1150,16 +1175,23 @@ async def get_action(
     )
     if prop is None:
         raise HTTPException(status_code=404, detail="Proposal not found")
+    from capabilities.ai.actions import _client_result, undoable
     result = None
-    if prop["status"] == "consumed" and prop.get("result"):
+    undo_result = None
+    if prop["status"] in ("consumed", "undone") and prop.get("result"):
         try:
-            result = json.loads(prop["result"])
+            raw = json.loads(prop["result"])
+            undo_result = raw.get("_undo") if isinstance(raw, dict) else None
+            result = _client_result(raw)
         except (TypeError, ValueError):
             result = None
     return {
         "id": prop["id"], "tool": prop["tool"],
         "summary": prop["summary"], "risk": prop["risk"],
         "status": prop["status"], "result": result,
+        # Copilot-style undo affordance for the card.
+        "undoable": undoable(prop),
+        "undo_result": undo_result,
     }
 
 

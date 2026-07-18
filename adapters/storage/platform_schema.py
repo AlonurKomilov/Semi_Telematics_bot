@@ -320,12 +320,16 @@ async def create_tables(conn) -> None:
             summary     TEXT    NOT NULL DEFAULT '',  -- human summary (encrypted)
             payload     TEXT    NOT NULL DEFAULT '',  -- JSON args (encrypted)
             risk        TEXT    NOT NULL DEFAULT 'low',
-            status      TEXT    NOT NULL DEFAULT 'pending',  -- pending|executing|consumed|declined|failed
+            status      TEXT    NOT NULL DEFAULT 'pending',  -- pending|executing|consumed|declined|failed|undoing|undone
             result      TEXT    NOT NULL DEFAULT '',  -- JSON result after execute (encrypted)
             -- Bulk actions (imports): the server-derived rows the user
             -- approves, encrypted, deliberately NOT length-truncated
             -- like payload — the executor writes FROM these rows.
             staged_payload TEXT NOT NULL DEFAULT '',
+            -- Copilot-style undo: set when a consumed action was reversed
+            -- (soft, via the tool's registered undo executor).
+            undone_at   TEXT    NOT NULL DEFAULT '',
+            undone_by   BIGINT,
             created_at  TEXT    NOT NULL,
             expires_at  TEXT    NOT NULL
         );

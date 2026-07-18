@@ -190,6 +190,7 @@ async def run_all(conn) -> None:
     await migrate_ai_action_proposals(conn)
     # Bulk actions (AI imports): staged rows column on proposals.
     await migrate_ai_proposal_staged_payload(conn)
+    await migrate_ai_proposal_undo(conn)
     # Capacity monitoring (operator console): platform metric history +
     # per-account request metering.
     await migrate_system_capacity_tables(conn)
@@ -293,6 +294,32 @@ async def migrate_ai_proposal_staged_payload(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.error("ai_action_proposals staged_payload migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_ai_proposal_undo(conn) -> None:
+    """Add ``undone_at`` / ``undone_by`` to ``ai_action_proposals``.
+
+    Copilot-style undo of an executed AI action: the columns record when
+    and by whom a consumed proposal was reversed (soft, via the tool's
+    registered undo executor).  Idempotent via ADD COLUMN IF NOT EXISTS;
+    no index on the new columns (the known platform_schema boot-crash
+    rule doesn't even arise — lookups stay by PK)."""
+    try:
+        await conn.execute(
+            "ALTER TABLE ai_action_proposals"
+            " ADD COLUMN IF NOT EXISTS undone_at TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.execute(
+            "ALTER TABLE ai_action_proposals"
+            " ADD COLUMN IF NOT EXISTS undone_by BIGINT"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.error("ai_action_proposals undo migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

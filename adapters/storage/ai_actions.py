@@ -87,12 +87,33 @@ class AIActionProposalsMixin(_MixinBase):
         """Fetch a proposal, scoped to its owner.  None on any mismatch."""
         cur = await self._db.execute(
             """SELECT id, tool, summary, payload, risk, status, result,
-                      created_at, expires_at, staged_payload
+                      created_at, expires_at, staged_payload,
+                      user_id, undone_at, undone_by
                  FROM ai_action_proposals
                 WHERE id = ? AND account_id = ? AND user_id = ?""",
             (proposal_id, account_id, user_id),
         )
-        r = await cur.fetchone()
+        return self._row_to_proposal(await cur.fetchone())
+
+    async def get_action_proposal_for_account(
+        self, proposal_id: str, account_id: int,
+    ) -> dict | None:
+        """Fetch a proposal scoped to the ACCOUNT only — for the undo
+        path, where an owner/admin may reverse another employee's
+        executed action.  Callers MUST gate on role before using this
+        (the creator-scoped getter stays the default read)."""
+        cur = await self._db.execute(
+            """SELECT id, tool, summary, payload, risk, status, result,
+                      created_at, expires_at, staged_payload,
+                      user_id, undone_at, undone_by
+                 FROM ai_action_proposals
+                WHERE id = ? AND account_id = ?""",
+            (proposal_id, account_id),
+        )
+        return self._row_to_proposal(await cur.fetchone())
+
+    @staticmethod
+    def _row_to_proposal(r) -> dict | None:
         if r is None:
             return None
         return {
@@ -101,7 +122,48 @@ class AIActionProposalsMixin(_MixinBase):
             "risk": r[4], "status": r[5], "result": _dec(r[6]),
             "created_at": r[7], "expires_at": r[8],
             "staged_payload": _dec(r[9]),
+            "user_id": r[10], "undone_at": r[11] or "", "undone_by": r[12],
         }
+
+    async def claim_action_undo(
+        self, proposal_id: str, account_id: int,
+    ) -> bool:
+        """Atomically claim a consumed proposal for undo (consumed →
+        undoing) — two concurrent undos can never both run the reverse.
+        Authorization happens BEFORE this call (approver or owner/admin);
+        scoping here is by account."""
+        cur = await self._db.execute(
+            """UPDATE ai_action_proposals
+                  SET status = 'undoing'
+                WHERE id = ? AND account_id = ? AND status = 'consumed'""",
+            (proposal_id, account_id),
+        )
+        await self._db.commit()
+        return (cur.rowcount or 0) == 1
+
+    async def finalize_action_undo(
+        self, proposal_id: str, account_id: int, *,
+        success: bool, undone_by: int | None = None,
+    ) -> None:
+        """Close an undo claim: 'undone' (stamped who/when) on success,
+        back to 'consumed' on failure so the undo stays available."""
+        from datetime import datetime, timezone
+        if success:
+            await self._db.execute(
+                """UPDATE ai_action_proposals
+                      SET status = 'undone', undone_at = ?, undone_by = ?
+                    WHERE id = ? AND account_id = ?""",
+                (datetime.now(timezone.utc).isoformat(), undone_by,
+                 proposal_id, account_id),
+            )
+        else:
+            await self._db.execute(
+                """UPDATE ai_action_proposals
+                      SET status = 'consumed'
+                    WHERE id = ? AND account_id = ? AND status = 'undoing'""",
+                (proposal_id, account_id),
+            )
+        await self._db.commit()
 
     async def claim_action_proposal(
         self, proposal_id: str, account_id: int, user_id: int,
@@ -129,13 +191,20 @@ class AIActionProposalsMixin(_MixinBase):
         self, proposal_id: str, account_id: int, user_id: int,
         status: str, result_json: str = "",
     ) -> None:
-        """Close a claimed proposal: 'consumed' (+ result) or 'failed'."""
+        """Close a claimed proposal: 'consumed' (+ result) or 'failed'.
+
+        ``result`` is deliberately NOT length-truncated (unlike the
+        model-adjacent ``payload``): it is server-built by the executor
+        and size-bounded by construction, and bulk actions store their
+        undo manifest in it (``_item_ids``) — a silently-shortened
+        manifest would corrupt a later undo.
+        """
         from infra.crypto import encrypt
         await self._db.execute(
             """UPDATE ai_action_proposals
                   SET status = ?, result = ?
                 WHERE id = ? AND account_id = ? AND user_id = ?""",
-            (status, encrypt(result_json[:8000]) if result_json else "",
+            (status, encrypt(result_json) if result_json else "",
              proposal_id, account_id, user_id),
         )
         await self._db.commit()

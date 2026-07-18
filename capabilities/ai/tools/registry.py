@@ -84,6 +84,34 @@ def get_action_executor(name: str) -> Callable[..., Coroutine] | None:
     return _ACTION_EXECUTORS.get(name)
 
 
+# Copilot-style undo: an action type MAY register how to reverse itself.
+# The recipe receives the EXECUTED result (which carries the change-set,
+# e.g. ``_item_ids``) and reverses exactly that — never a point-in-time
+# restore.  Actions without a recipe simply have no Undo.  The code
+# registry is the trust root, same as executors — a tampered proposal
+# row can't invent an undo path.
+_UNDO_EXECUTORS: dict[str, Callable[..., Coroutine]] = {}
+
+
+def register_undo_executor(name: str):
+    """Decorator — registers the async UNDO recipe for a write action.
+
+    Signature: ``async def fn(result: dict, payload: dict,
+    account_id: int, user_context: dict, db) -> dict``.  MUST be
+    soft/evented (the undo itself stays recoverable) and MUST tolerate
+    partially-vanished targets (skip + report, never fail the whole
+    undo).  Runs only from the undo endpoint post-authorization.
+    """
+    def decorator(fn: Callable[..., Coroutine]):
+        _UNDO_EXECUTORS[name] = fn
+        return fn
+    return decorator
+
+
+def get_undo_executor(name: str) -> Callable[..., Coroutine] | None:
+    return _UNDO_EXECUTORS.get(name)
+
+
 def tool_propose(
     tool: str, summary: str, payload: dict, *, risk: str = "low",
     consequence: str = "", staged: list | dict | None = None,

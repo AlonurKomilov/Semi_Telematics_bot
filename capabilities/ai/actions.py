@@ -27,7 +27,7 @@ import logging
 
 from fastapi import HTTPException
 
-from capabilities.ai.tools import get_tool_schema, get_action_executor
+from capabilities.ai.tools import get_tool_schema, get_action_executor, get_undo_executor
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ async def execute_approved_action(
 
     # Already-resolved proposals return idempotently / refuse.
     if prop["status"] == "consumed":
-        return {"status": "consumed", "result": _load(prop.get("result"))}
+        return {"status": "consumed", "result": _client_result(_load(prop.get("result")))}
     if prop["status"] != "pending":
         # executing (a claim is in flight) / declined / failed.
         raise HTTPException(status_code=409, detail=f"Proposal is {prop['status']}")
@@ -117,7 +117,7 @@ async def execute_approved_action(
         # if it finished, else 409.
         again = await platform_db.get_action_proposal(proposal_id, account_id, uid)
         if again and again["status"] == "consumed":
-            return {"status": "consumed", "result": _load(again.get("result"))}
+            return {"status": "consumed", "result": _client_result(_load(again.get("result")))}
         raise HTTPException(status_code=409, detail="Proposal already being handled")
 
     # ── Execute ──
@@ -148,7 +148,141 @@ async def execute_approved_action(
     except Exception:
         logger.exception("Audit write failed for AI action %s (executed anyway)", tool)
 
-    return {"status": "consumed", "result": result}
+    return {"status": "consumed", "result": _client_result(result)}
+
+
+# Undo availability window — matches the proposal row's retention sweep
+# (prune_ai_action_proposals days=7), stated explicitly so a lagging
+# prune can't silently extend it.
+UNDO_WINDOW_DAYS = 7
+
+
+def undoable(prop: dict) -> bool:
+    """Whether this proposal can be undone RIGHT NOW: executed, has a
+    registered recipe, and within the window."""
+    if prop.get("status") != "consumed":
+        return False
+    if get_undo_executor(prop.get("tool", "")) is None:
+        return False
+    from datetime import datetime, timedelta, timezone
+    cutoff = (datetime.now(timezone.utc)
+              - timedelta(days=UNDO_WINDOW_DAYS)).isoformat()
+    return str(prop.get("created_at") or "") > cutoff
+
+
+async def undo_approved_action(
+    proposal_id: str,
+    *,
+    user: dict,
+    user_context: dict | None,
+    platform_db,
+    tenant_db,
+) -> dict:
+    """Reverse an EXECUTED proposal via its registered undo recipe.
+
+    Copilot-style change-set undo, never a point-in-time restore: the
+    recipe receives the stored result (the exact change-set, e.g.
+    ``_item_ids``) and reverses only that — concurrent work by other
+    users is untouched.
+
+    Authorization (real JWT role — persona preview is never honored):
+    the APPROVER may undo their own action; owner/admin may undo any
+    employee's.  Both must still hold the tool's own permission.
+    Atomic claim (consumed → undoing) prevents a double-undo; failure
+    reverts to consumed so the undo stays available.  Audited as
+    ``ai_undo:<tool>`` with the undoer as actor.
+    """
+    account_id = user["account_id"]
+    uid = int(user["sub"])
+    role = str(user.get("role") or "")
+
+    prop = await platform_db.get_action_proposal_for_account(proposal_id, account_id)
+    if prop is None:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+
+    is_approver = int(prop.get("user_id") or 0) == uid
+    if not is_approver and role not in ("owner", "admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the approver or an owner/admin can undo this action",
+        )
+
+    if prop["status"] == "undone":
+        return {"status": "undone", "result": _load(prop.get("result")).get("_undo")}
+    if not undoable(prop):
+        raise HTTPException(
+            status_code=409,
+            detail="This action can't be undone (not executed, no undo "
+                   "support, or outside the undo window)",
+        )
+
+    tool = prop["tool"]
+    payload = _load(prop.get("payload"))
+    result = _load(prop.get("result"))
+
+    # Tool-permission re-check on the REAL role (same gate as approve).
+    from capabilities.ai.intelligence import _check_tool_permission
+    exec_context = {**(user_context or {}), "user_id": uid}
+    blocked = await _check_tool_permission(
+        tool, payload, user.get("role"), exec_context, account_id,
+    )
+    if blocked is not None:
+        raise HTTPException(status_code=403, detail="You don't have permission for this action")
+
+    recipe = get_undo_executor(tool)
+    if recipe is None:   # raced a deploy that dropped the recipe
+        raise HTTPException(status_code=409, detail="This action type has no undo")
+
+    if not await platform_db.claim_action_undo(proposal_id, account_id):
+        # Lost the race — report the winner's outcome if it finished.
+        again = await platform_db.get_action_proposal_for_account(proposal_id, account_id)
+        if again and again["status"] == "undone":
+            return {"status": "undone", "result": _load(again.get("result")).get("_undo")}
+        raise HTTPException(status_code=409, detail="Undo already in progress")
+
+    try:
+        undo_result = await recipe(result, payload, account_id, exec_context, tenant_db)
+    except HTTPException:
+        await platform_db.finalize_action_undo(proposal_id, account_id, success=False)
+        raise
+    except Exception as e:
+        await platform_db.finalize_action_undo(proposal_id, account_id, success=False)
+        logger.exception("AI undo recipe failed: %s", tool)
+        raise HTTPException(status_code=500, detail=f"Undo failed: {type(e).__name__}") from e
+
+    await platform_db.finalize_action_undo(
+        proposal_id, account_id, success=True, undone_by=uid,
+    )
+    # Persist the undo outcome INSIDE the stored result so a refreshed
+    # card can show "Undone — N items removed" (single result column by
+    # design; scoped to the approver like every proposal write).
+    await platform_db.finalize_action_proposal(
+        proposal_id, account_id, int(prop.get("user_id") or 0), "undone",
+        json.dumps({**result, "_undo": undo_result}, default=str),
+    )
+
+    try:
+        await tenant_db.add_audit_log(
+            account_id, uid,
+            action=f"ai_undo:{tool}",
+            target_type=str(result.get("target_type", "")) if isinstance(result, dict) else "",
+            target_id=str(result.get("target_id", "")) if isinstance(result, dict) else "",
+            details=json.dumps(
+                {"proposal_id": proposal_id, "undo": undo_result,
+                 "approved_by": prop.get("user_id")}, default=str)[:2000],
+        )
+    except Exception:
+        logger.exception("Audit write failed for AI undo %s (undone anyway)", tool)
+
+    return {"status": "undone", "result": undo_result}
+
+
+def _client_result(result):
+    """Strip server-side keys (underscore-prefixed, e.g. the ``_item_ids``
+    undo manifest) from a result before it reaches the client."""
+    if not isinstance(result, dict):
+        return result
+    return {k: v for k, v in result.items() if not k.startswith("_")}
 
 
 def _load(raw) -> dict:

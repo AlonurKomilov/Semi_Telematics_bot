@@ -36,6 +36,7 @@ from capabilities.ai.tools.attachments_tool import propose_import
 from capabilities.ai.tools.registry import (
     register_action_executor,
     register_tool,
+    register_undo_executor,
 )
 
 logger = logging.getLogger("bot.ai")
@@ -341,6 +342,7 @@ async def _execute_import_inventory(payload, account_id, user_context, db):
             )
 
     imported = 0
+    item_ids: list[int] = []
     skipped: list[str] = []
     async with db.transaction():
         for r in rows:
@@ -360,7 +362,7 @@ async def _execute_import_inventory(payload, account_id, user_context, db):
             if status is None or not item:
                 skipped.append(f"{where}: invalid staged row")
                 continue
-            await db.add_inventory_item(
+            item_id = await db.add_inventory_item(
                 int(account_id), vid,
                 category=_clean_category(r.get("category", "")),
                 label=item,
@@ -370,6 +372,7 @@ async def _execute_import_inventory(payload, account_id, user_context, db):
                 actor_user_id=actor,
                 driver_user_id=driver_by_vid[vid],
             )
+            item_ids.append(int(item_id))
             imported += 1
 
     msg = f"Imported {imported} inventory items"
@@ -381,5 +384,56 @@ async def _execute_import_inventory(payload, account_id, user_context, db):
         "skipped_count": len(skipped),
         "target_type": "vehicle_inventory",
         "target_id": "",
+        "message": msg + ".",
+        # The undo manifest — exactly what this execution created.
+        # Underscore-prefixed = server-side: stripped from every client
+        # response, stored (un-truncated, encrypted) with the proposal.
+        "_item_ids": item_ids,
+    }
+
+
+@register_undo_executor("import_inventory_items")
+async def _undo_import_inventory(result, payload, account_id, user_context, db):
+    """Reverse an executed import — remove EXACTLY the items it created.
+
+    Copilot-style change-set undo: soft (is_active=0 + a 'removed' event
+    noting the AI-import undo — the trail survives, and even the undo is
+    recoverable), account-scoped in SQL, and tolerant of items someone
+    already removed manually (skip + count, never a failure).
+    """
+    from fastapi import HTTPException
+
+    ids = result.get("_item_ids") if isinstance(result, dict) else None
+    if not isinstance(ids, list) or not ids:
+        raise HTTPException(
+            status_code=409,
+            detail="This import predates undo support — remove the items "
+                   "from the Inventory page instead.",
+        )
+    actor = int((user_context or {}).get("user_id") or 0) or None
+    undone = 0
+    already_gone = 0
+    async with db.transaction():
+        for raw_id in ids[:MAX_RECORDS]:
+            try:
+                iid = int(raw_id)
+            except (TypeError, ValueError):
+                continue
+            ok = await db.remove_inventory_item(
+                int(account_id), iid,
+                note="AI import undone",
+                actor_user_id=actor,
+            )
+            if ok:
+                undone += 1
+            else:
+                already_gone += 1
+    msg = f"Removed {undone} imported items"
+    if already_gone:
+        msg += f" ({already_gone} were already removed)"
+    return {
+        "undone": undone,
+        "already_gone": already_gone,
+        "target_type": "vehicle_inventory",
         "message": msg + ".",
     }
