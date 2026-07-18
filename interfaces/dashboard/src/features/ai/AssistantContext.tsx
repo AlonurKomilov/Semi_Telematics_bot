@@ -27,6 +27,7 @@ export const PANEL_W_DEFAULT = 420;
 const PANEL_W_MIN = 320;
 const PANEL_W_MAX = 680;
 const PANEL_W_KEY = 'assistant.panelWidth';
+const PANEL_EXPANDED_KEY = 'assistant.expanded';
 export const clampPanelW = (w: number) =>
   Math.min(PANEL_W_MAX, Math.max(PANEL_W_MIN, Math.round(w)));
 
@@ -59,6 +60,10 @@ interface AssistantState {
   /** True while the divider is being dragged — consumers disable their
    *  width/margin transitions so the panes track the pointer 1:1. */
   panelResizing: boolean;
+  /** Samsara-style Expand: the docked panel becomes a full-canvas
+   *  overlay (same chat, bigger room).  Persisted per device. */
+  panelExpanded: boolean;
+  setPanelExpanded: (v: boolean) => void;
   setPanelResizing: (v: boolean) => void;
   /** DOM node in the panel's chrome header where the docked <Chat> portals
    *  its New-chat / History controls (so they sit beside the ✕ and the chat
@@ -82,6 +87,15 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     } catch { return PANEL_W_DEFAULT; }
   });
   const [panelResizing, setPanelResizing] = useState(false);
+  const [panelExpanded, setPanelExpandedState] = useState<boolean>(() => {
+    try { return localStorage.getItem(PANEL_EXPANDED_KEY) === '1'; } catch { return false; }
+  });
+  const setPanelExpanded = useCallback((v: boolean) => {
+    setPanelExpandedState(v);
+    try { localStorage.setItem(PANEL_EXPANDED_KEY, v ? '1' : '0'); } catch { /* private mode */ }
+    // Maps/charts behind the overlay need a reflow when it toggles.
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 220);
+  }, []);
   const [headerSlot, setHeaderSlotState] = useState<HTMLElement | null>(null);
   const setHeaderSlot = useCallback((el: HTMLElement | null) => {
     setHeaderSlotState((prev) => (prev === el ? prev : el));
@@ -123,11 +137,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     open, openPanel, closePanel, togglePanel, prefill, consumePrefill,
     runPhase: run.phase, runLabel: run.label, setRunState,
     panelWidth, setPanelWidth, panelResizing, setPanelResizing,
+    panelExpanded, setPanelExpanded,
     headerSlot, setHeaderSlot,
   }), [
     open, openPanel, closePanel, togglePanel, prefill, consumePrefill,
     run.phase, run.label, setRunState,
     panelWidth, setPanelWidth, panelResizing, setPanelResizing,
+    panelExpanded, setPanelExpanded,
     headerSlot, setHeaderSlot,
   ]);
 
@@ -150,6 +166,7 @@ export function useAssistant(): AssistantState {
       runPhase: 'idle', runLabel: '', setRunState: () => {},
       panelWidth: PANEL_W_DEFAULT, setPanelWidth: () => {},
       panelResizing: false, setPanelResizing: () => {},
+      panelExpanded: false, setPanelExpanded: () => {},
       headerSlot: null, setHeaderSlot: () => {},
     };
   }

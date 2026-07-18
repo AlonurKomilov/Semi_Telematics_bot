@@ -14,7 +14,7 @@
 import { useEffect, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
-import { Bot, X, Loader2, Check } from 'lucide-react';
+import { Bot, X, Loader2, Check, Maximize2, Minimize2 } from 'lucide-react';
 import {
   useAssistant, clampPanelW, setPanelWidthVar, PANEL_W_DEFAULT,
 } from './AssistantContext';
@@ -31,6 +31,7 @@ export default function AssistantPanel() {
   const {
     open, openPanel, closePanel, togglePanel, runPhase, runLabel,
     panelWidth, setPanelWidth, setPanelResizing, setHeaderSlot,
+    panelExpanded, setPanelExpanded,
   } = useAssistant();
   const { hasAny } = useViewPermissions();
   const { t } = useTranslation();
@@ -129,7 +130,9 @@ export default function AssistantPanel() {
           wrapper), so a docked panel reads as a second canvas in the SAME
           frame, not a foreign white card floating over it. */}
       <div
-        className={`fixed inset-y-0 right-0 z-40 w-full sm:w-[var(--assistant-w)] bg-sidebar text-sidebar-foreground shadow-2xl xl:shadow-none transition-transform duration-200 ${
+        className={`fixed inset-y-0 right-0 z-40 w-full bg-sidebar text-sidebar-foreground transition-transform duration-200 ${
+          panelExpanded ? 'shadow-none' : 'sm:w-[var(--assistant-w)] shadow-2xl xl:shadow-none'
+        } ${
           open ? 'translate-x-0' : 'translate-x-full pointer-events-none'
         }`}
         role="complementary"
@@ -148,7 +151,7 @@ export default function AssistantPanel() {
           aria-valuenow={panelWidth}
           aria-valuemin={320}
           aria-valuemax={680}
-          tabIndex={open ? 0 : -1}
+          tabIndex={open && !panelExpanded ? 0 : -1}
           onPointerDown={startResize}
           onDoubleClick={() => setPanelWidth(PANEL_W_DEFAULT)}
           onKeyDown={(e) => {
@@ -156,7 +159,9 @@ export default function AssistantPanel() {
             else if (e.key === 'ArrowRight') { e.preventDefault(); setPanelWidth(panelWidth - 16); }
           }}
           style={{ touchAction: 'none' }}
-          className="absolute left-0 inset-y-0 z-10 hidden w-1.5 cursor-col-resize items-center justify-center sm:flex group focus:outline-none"
+          className={`absolute left-0 inset-y-0 z-10 w-1.5 cursor-col-resize items-center justify-center group focus:outline-none ${
+            panelExpanded ? 'hidden' : 'hidden sm:flex'
+          }`}
         >
           <span
             className="h-8 w-0.5 rounded-full bg-sidebar-border group-hover:bg-ring group-focus-visible:bg-ring transition-colors"
@@ -177,6 +182,18 @@ export default function AssistantPanel() {
             <div className="flex items-center gap-1">
               {/* Docked <Chat> portals its New-chat / History controls here. */}
               <div ref={setHeaderSlot} className="flex items-center gap-1" />
+              <Tip label={panelExpanded ? 'Collapse to side panel' : 'Expand'}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setPanelExpanded(!panelExpanded)}
+                  className="hidden sm:inline-flex shrink-0 text-muted-foreground"
+                  aria-label={panelExpanded ? 'Collapse assistant to side panel' : 'Expand assistant'}
+                  aria-pressed={panelExpanded}
+                >
+                  {panelExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                </Button>
+              </Tip>
               <Tip label="Close (⌘J)">
                 <Button
                   variant="ghost"
@@ -195,7 +212,9 @@ export default function AssistantPanel() {
               a closed panel does no work (no history load, no polling) and
               re-mounts fresh on reopen. */}
           <div className="flex-1 min-h-0 mx-2 mb-2 rounded-xl bg-background text-foreground overflow-hidden">
-            <div className="h-full p-3">
+            {/* Expanded: the chat column centers at a readable measure
+                (Samsara-style) instead of stretching edge-to-edge. */}
+            <div className={`h-full p-3 ${panelExpanded ? 'mx-auto w-full max-w-4xl' : ''}`}>
               {open && (
                 <Suspense fallback={
                   <div className="flex h-full items-center justify-center">

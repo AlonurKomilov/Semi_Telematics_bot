@@ -20,20 +20,24 @@ import AssistantPanel from './AssistantPanel';
  *  stays an overlay: pushing 420px out of a small viewport would crush
  *  the content more than the overlay covers it. */
 function DockedContent({ children }: { children: ReactNode }) {
-  const { open, panelResizing } = useAssistant();
+  const { open, panelResizing, panelExpanded } = useAssistant();
+  // The push only applies in DOCKED mode — the expanded overlay covers
+  // the page instead of sitting beside it, so reserving margin there
+  // would just shove the (hidden) content around for nothing.
+  const pushed = open && !panelExpanded;
   useEffect(() => {
     // Maps (Google Maps doesn't observe container size) and any component
     // that caches its width reflow on a window resize — fire one after the
     // margin transition settles so charts/maps fill the new width.
     const id = setTimeout(() => window.dispatchEvent(new Event('resize')), 220);
     return () => clearTimeout(id);
-  }, [open]);
+  }, [pushed]);
   // Width comes from the `--assistant-w` var on <html> (AssistantContext),
   // so a divider drag repaints this margin without re-rendering the app.
   return (
     <div
       className={`${panelResizing ? '' : 'transition-[margin-right] duration-200'} ${
-        open ? 'xl:mr-[var(--assistant-w)]' : ''
+        pushed ? 'xl:mr-[var(--assistant-w)]' : ''
       }`}
     >
       {children}
