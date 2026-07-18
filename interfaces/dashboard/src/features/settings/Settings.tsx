@@ -72,6 +72,30 @@ export default function Settings() {
     }
   };
 
+  // Market-data sharing (give-to-get) — the DURABLE home of the
+  // consent, with OFF as reachable as ON (the vendor-profile card only
+  // offers quick-enable).  Hidden entirely while the platform switch
+  // is dark (available=false).
+  const [marketSharing, setMarketSharing] = useState<{ available: boolean; enabled: boolean } | null>(null);
+  const [marketSaving, setMarketSaving] = useState(false);
+  useEffect(() => {
+    if (!canManageAccount) return;
+    apiJSON<{ available: boolean; enabled: boolean }>('/vendors/market-sharing')
+      .then(setMarketSharing)
+      .catch(() => setMarketSharing(null));
+  }, [canManageAccount]);
+  const toggleMarketSharing = async (enabled: boolean) => {
+    setMarketSaving(true);
+    try {
+      await apiJSON('/vendors/market-sharing', { method: 'PUT', body: { enabled } });
+      setMarketSharing(m => (m ? { ...m, enabled } : m));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update market sharing');
+    } finally {
+      setMarketSaving(false);
+    }
+  };
+
 
   // Track editable settings
   const [edits, setEdits] = useState<Record<string, string>>({});
@@ -286,6 +310,33 @@ export default function Settings() {
               className="accent-primary"
             />
             Contribute vendor identities to the public directory
+          </label>
+        </section>
+      )}
+
+      {/* Market-data sharing (give-to-get) — the durable consent home:
+          OFF is as reachable as ON here (the vendor-profile card only
+          quick-enables).  Hidden while the platform feature is dark. */}
+      {canManageAccount && marketSharing?.available && (
+        <section className="bg-card border border-border rounded-xl p-5">
+          <h2 className="text-lg font-semibold mb-1">Market Price Data</h2>
+          <p className="text-xs text-muted-foreground mb-3 max-w-xl">
+            See what other fleets typically pay — per shop, and per part
+            by state — in exchange for contributing your own prices to the
+            same anonymous pool. Ranges only ever show aggregates from 3+
+            companies; your company name and invoices are never shown to
+            anyone. Turning this off stops both contributing and seeing
+            ranges.
+          </p>
+          <label className="inline-flex items-center gap-2.5 text-sm text-foreground cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={marketSharing.enabled}
+              disabled={marketSaving}
+              onChange={(e) => toggleMarketSharing(e.target.checked)}
+              className="accent-primary"
+            />
+            Share anonymized price data and see market ranges
           </label>
         </section>
       )}
