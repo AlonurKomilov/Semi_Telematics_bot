@@ -93,6 +93,11 @@ export default function AlertRoutingSection({
   const [tokenInputs, setTokenInputs] = useState<Record<string, string>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string>('');
+  // Which row's group-bind / sub-bot-attach input is open (on-demand
+  // inputs keep the roster scannable AND dodge browser autofill — a
+  // permanently-rendered bare input attracted saved emails/passwords,
+  // seen live on the owner's account).
+  const [openInput, setOpenInput] = useState<string>('');
 
   const load = useCallback(() => {
     apiJSON<AlertRoutingResponse>('/admin/alert-routing').then(setData).catch(() => setData(null));
@@ -256,6 +261,7 @@ export default function AlertRoutingSection({
   const groupCell = (persona: string) => {
     const bound = data.personas[persona];
     const editable = canManage(persona);
+    const isMain = persona === 'owner_admin';
     if (bound) {
       return (
         <>
@@ -276,8 +282,27 @@ export default function AlertRoutingSection({
         </>
       );
     }
+    // Unbound: the Main row's meaning differs — ITS group is the
+    // critical cross-post destination, not a fallback consumer.
+    const fallbackText = isMain
+      ? t('alert_routing.main_group_unbound')
+      : t('alert_routing.bound_fallback');
     if (!editable) {
-      return <span className="text-xs text-muted-foreground">{t('alert_routing.bound_fallback')}</span>;
+      return <span className="text-xs text-muted-foreground">{fallbackText}</span>;
+    }
+    if (openInput !== `group-${persona}`) {
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => setOpenInput(`group-${persona}`)}
+            className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
+          >
+            {t('alert_routing.bind_group_btn')}
+          </button>
+          <span className="text-xs text-muted-foreground">{fallbackText}</span>
+        </>
+      );
     }
     return (
       <>
@@ -285,17 +310,26 @@ export default function AlertRoutingSection({
           value={chatInputs[persona] || ''}
           onChange={(e) => setChatInputs({ ...chatInputs, [persona]: e.target.value })}
           placeholder={t('alert_routing.chat_id_ph')}
+          autoComplete="off"
+          inputMode="numeric"
+          spellCheck={false}
           className="w-40 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground font-mono focus:outline-none focus:border-ring"
         />
         <button
           type="button"
-          onClick={() => { void bind(persona); }}
+          onClick={() => { void bind(persona).then(() => setOpenInput('')); }}
           disabled={busy === persona || !(chatInputs[persona] || '').trim()}
           className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
         >
           {busy === persona ? '…' : t('alert_routing.bind')}
         </button>
-        <span className="text-xs text-muted-foreground">{t('alert_routing.bound_fallback')}</span>
+        <button
+          type="button"
+          onClick={() => setOpenInput('')}
+          className="text-xs text-muted-foreground hover:text-foreground"
+        >
+          {t('alert_routing.cancel')}
+        </button>
       </>
     );
   };
@@ -375,17 +409,25 @@ export default function AlertRoutingSection({
         singleBody
       ) : (
         <div className="space-y-3">
+          {/* Completion cue — how much of the roster is set up. */}
+          <p className="text-xs text-muted-foreground">
+            {t('alert_routing.roster_progress', {
+              n: ROLE_ORDER.filter((p) => data.personas[p]).length,
+              total: ROLE_ORDER.length,
+            })}
+          </p>
+
           {/* Main row — the identity bot.  Same spot the single-mode
               header occupies; label states its three jobs. */}
           <div className="border border-border rounded-lg px-3 py-2">
             <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium text-foreground">{t('alert_routing.main_row_label')}</span>
               <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs border ${
                 botConfig.is_running !== false ? toneClasses('ok') : toneClasses('warn')
               }`}>
                 <span className={`w-1.5 h-1.5 rounded-full ${botConfig.is_running !== false ? 'bg-ok animate-pulse' : 'bg-warn'}`} />
                 {botConfig.is_running !== false ? t('alert_routing.running') : t('alert_routing.configured')}
               </span>
-              <span className="font-medium text-foreground">{t('alert_routing.main_row_label')}</span>
               <a
                 href={`https://t.me/${botConfig.bot_username}`}
                 target="_blank" rel="noopener noreferrer"
@@ -403,63 +445,90 @@ export default function AlertRoutingSection({
             {topicsExpander('owner_admin')}
           </div>
 
-          {/* Role rows */}
+          {/* Role rows — reading order mirrors the setup order: the
+              role, its GROUP (step 1), then its optional Sub bot
+              (step 2), then topics. */}
           {ROLE_ORDER.map((persona) => {
             const sub = subBots?.personas?.[persona] ?? null;
             const editable = canManage(persona);
             return (
               <div key={persona} className="border border-border rounded-lg px-3 py-2">
                 <div className="flex flex-wrap items-center gap-2 text-sm">
-                  {sub ? (
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs border ${
-                      sub.is_running ? toneClasses('ok') : toneClasses('neutral')
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${sub.is_running ? 'bg-ok' : 'bg-muted-foreground'}`} />
-                      @{sub.bot_username}
-                    </span>
-                  ) : (
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs border ${toneClasses('neutral')}`}>
-                      {t('alert_routing.main_sends')}
-                    </span>
-                  )}
-                  <span className="font-medium text-foreground w-20">
+                  <span className="font-medium text-foreground w-20 shrink-0">
                     {t(`alert_routing.persona_${persona}`)}
                   </span>
 
-                  {/* Sub bot cell */}
-                  {sub ? (
-                    editable && (
-                      <button
-                        type="button"
-                        onClick={() => { void detachSubBot(persona); }}
-                        disabled={busy === `sub-${persona}`}
-                        className="text-xs text-destructive hover:underline disabled:opacity-50"
-                      >
-                        {t('alert_routing.subbot_detach')}
-                      </button>
-                    )
-                  ) : editable ? (
-                    <span className="inline-flex items-center gap-2">
-                      <input
-                        type="password"
-                        value={tokenInputs[persona] || ''}
-                        onChange={(e) => setTokenInputs({ ...tokenInputs, [persona]: e.target.value })}
-                        placeholder={t('alert_routing.subbot_token_ph')}
-                        className="w-48 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground font-mono focus:outline-none focus:border-ring"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => { void attachSubBot(persona); }}
-                        disabled={busy === `sub-${persona}` || (tokenInputs[persona] || '').trim().length < 30}
-                        className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
-                      >
-                        {busy === `sub-${persona}` ? '…' : t('alert_routing.subbot_attach')}
-                      </button>
-                    </span>
-                  ) : null}
-
-                  <span className="inline-flex items-center gap-2 ml-auto">
+                  {/* Group cell — step 1 */}
+                  <span className="inline-flex items-center gap-2">
                     {groupCell(persona)}
+                  </span>
+
+                  {/* Sub bot cell — step 2, right-aligned */}
+                  <span className="inline-flex items-center gap-2 ml-auto">
+                    {sub ? (
+                      <>
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs border ${
+                          sub.is_running ? toneClasses('ok') : toneClasses('neutral')
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${sub.is_running ? 'bg-ok' : 'bg-muted-foreground'}`} />
+                          @{sub.bot_username}
+                        </span>
+                        {editable && (
+                          <button
+                            type="button"
+                            onClick={() => { void detachSubBot(persona); }}
+                            disabled={busy === `sub-${persona}`}
+                            className="text-xs text-destructive hover:underline disabled:opacity-50"
+                          >
+                            {t('alert_routing.subbot_detach')}
+                          </button>
+                        )}
+                      </>
+                    ) : !editable ? (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs border ${toneClasses('neutral')}`}>
+                        {t('alert_routing.main_sends')}
+                      </span>
+                    ) : openInput !== `token-${persona}` ? (
+                      <>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs border ${toneClasses('neutral')}`}>
+                          {t('alert_routing.main_sends')}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setOpenInput(`token-${persona}`)}
+                          className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
+                        >
+                          {t('alert_routing.subbot_attach')}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          value={tokenInputs[persona] || ''}
+                          onChange={(e) => setTokenInputs({ ...tokenInputs, [persona]: e.target.value })}
+                          placeholder={t('alert_routing.subbot_token_ph')}
+                          autoComplete="off"
+                          spellCheck={false}
+                          className="w-48 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground font-mono focus:outline-none focus:border-ring"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => { void attachSubBot(persona).then(() => setOpenInput('')); }}
+                          disabled={busy === `sub-${persona}` || (tokenInputs[persona] || '').trim().length < 30}
+                          className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
+                        >
+                          {busy === `sub-${persona}` ? '…' : t('alert_routing.subbot_attach')}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setOpenInput('')}
+                          className="text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          {t('alert_routing.cancel')}
+                        </button>
+                      </>
+                    )}
                   </span>
                 </div>
                 {topicsExpander(persona)}
