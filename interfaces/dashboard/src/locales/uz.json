@@ -41,6 +41,9 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "no_group_chip": "guruh yo'q",
+    "persona_accounting": "Buxgalteriya",
+    "persona_recruiter": "Rekruting",
     "main_group_unbound": "Egalar guruhi yo'q — kritik nusxalar o'chiq",
     "bind_group_btn": "Guruh ulash…",
     "cancel": "Bekor",

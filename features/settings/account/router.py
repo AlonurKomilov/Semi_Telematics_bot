@@ -273,7 +273,8 @@ async def get_bot_config(
 # Mirrors capabilities.alerting.persona_mapping.PERSONAS — kept as a
 # local constant so a bad slug 400s at the validator (same rationale as
 # the operator console's copy in interfaces/api/routes/system.py).
-_VALID_PERSONAS = ("owner_admin", "dispatcher", "safety", "fleet", "hr")
+_VALID_PERSONAS = ("owner_admin", "dispatcher", "safety", "fleet", "hr",
+                   "accounting", "recruiter")
 _ALERT_ROUTING_MODES = ("single_group", "per_persona_groups")
 
 # The nudge threshold: below this fleet size one group comfortably fits
@@ -287,7 +288,7 @@ class AlertRoutingModeRequest(BaseModel):
 
 
 class PersonaGroupBindRequest(BaseModel):
-    persona: str = Field(..., pattern="^(owner_admin|dispatcher|safety|fleet|hr)$")
+    persona: str = Field(..., pattern="^(owner_admin|dispatcher|safety|fleet|hr|accounting|recruiter)$")
     chat_id: int = Field(..., description="Telegram chat id — negative for groups")
 
 
@@ -465,7 +466,7 @@ def _may_manage_persona_bot(user: dict, persona: str) -> bool:
 
 
 class SubBotAttachRequest(BaseModel):
-    persona: str = Field(..., pattern="^(owner_admin|dispatcher|safety|fleet|hr)$")
+    persona: str = Field(..., pattern="^(owner_admin|dispatcher|safety|fleet|hr|accounting|recruiter)$")
     bot_token: str = Field(..., min_length=30, max_length=100,
                            pattern=r"^\d+:[A-Za-z0-9_-]+$")
 
@@ -629,24 +630,40 @@ class PersonaTopicToggle(BaseModel):
     value: bool
 
 
+async def _topics_for(account_id: int, persona: str) -> list[str]:
+    """A row's alert types.  Role rows derive from the PERMISSION
+    matrix (the SSOT — granting Fleet the Safety-Events feature adds
+    events to Fleet's topics automatically); the Main/owner_admin row
+    keeps its static admin set."""
+    from capabilities.alerting.persona_mapping import (
+        canonical_types_for_persona, types_for_role,
+    )
+    if persona == "owner_admin":
+        return canonical_types_for_persona("owner_admin")
+    return await types_for_role(account_id, persona)
+
+
 @router.get("/alert-routing/persona-topics")
 async def list_persona_topics(
     user: dict = Depends(get_current_user),
     tenant_db=Depends(get_tenant_db),
 ):
     """Per-role topic settings, grouped by role — the ▸ topics &
-    settings expander's data.  ``manageable`` mirrors the sub-bot
-    contract so the UI enables toggles only where the server would
-    accept the write."""
-    from capabilities.alerting.persona_mapping import canonical_types_for_persona
+    settings expander's data, PERMISSION-FILTERED per role.
+    ``manageable`` mirrors the sub-bot contract so the UI enables
+    toggles only where the server would accept the write."""
     account_id = user["account_id"]
     personas: dict = {}
     for persona in _VALID_PERSONAS:
         rows = []
-        for key in canonical_types_for_persona(persona):
+        for key in await _topics_for(account_id, persona):
             enabled = await tenant_db.get_account_setting(
-                account_id, f"persona_route.{key}", default="1",
+                account_id, f"persona_route.{persona}.{key}", default="",
             )
+            if not enabled:  # legacy account-wide key, pre-per-role
+                enabled = await tenant_db.get_account_setting(
+                    account_id, f"persona_route.{key}", default="1",
+                )
             ai = await tenant_db.get_account_setting(
                 account_id, f"forum_ai.{key}", default="1",
             )
@@ -662,41 +679,48 @@ async def list_persona_topics(
     }
 
 
-@router.put("/alert-routing/persona-topics/{alert_type}")
+@router.put("/alert-routing/persona-topics/{persona}/{alert_type}")
 async def toggle_persona_topic(
+    persona: str,
     alert_type: str,
     body: PersonaTopicToggle,
     user: dict = Depends(get_current_user),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Flip one alert type's role-group routing or AI inclusion.
-
-    Permission is derived from the type's OWNING role: owner/admin
-    always; a role manager only for types that route to their role."""
+    """Flip one alert type's routing (per ROLE) or AI inclusion
+    (per type, shared editorial).  A manager may only touch their own
+    role's row, and only types the role's PERMISSIONS grant it."""
     from adapters.storage.models import ALERT_TYPE_KEYS
-    from capabilities.alerting.persona_mapping import persona_for_alert
 
+    if persona not in _VALID_PERSONAS:
+        raise HTTPException(status_code=400, detail="Unknown persona")
     if alert_type not in ALERT_TYPE_KEYS:
         raise HTTPException(status_code=422, detail=f"Unknown alert_type: {alert_type}")
-    owning_persona = persona_for_alert(alert_type)
-    if not _may_manage_persona_bot(user, owning_persona):
+    if not _may_manage_persona_bot(user, persona):
         raise HTTPException(
             status_code=403,
             detail="Only the owner/admin or this role's manager can change its topics.",
         )
+    if alert_type not in await _topics_for(user["account_id"], persona):
+        raise HTTPException(
+            status_code=403,
+            detail="This role's permissions don't include that alert type.",
+        )
 
-    setting = "persona_route" if body.field == "enabled" else "forum_ai"
+    if body.field == "enabled":
+        setting_key = f"persona_route.{persona}.{alert_type}"
+    else:
+        setting_key = f"forum_ai.{alert_type}"
     await tenant_db.set_account_setting(
-        user["account_id"], f"{setting}.{alert_type}",
-        "1" if body.value else "0",
+        user["account_id"], setting_key, "1" if body.value else "0",
     )
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),
         "persona_topic_toggle",
         target_type="alert_type", target_id=alert_type,
-        details=f"{body.field}={body.value} ({owning_persona})",
+        details=f"{body.field}={body.value} ({persona})",
     )
-    return {"alert_type": alert_type, body.field: body.value}
+    return {"persona": persona, "alert_type": alert_type, body.field: body.value}
 
 
 # ── Role AI guidance ──────────────────────────────────────────────────────────

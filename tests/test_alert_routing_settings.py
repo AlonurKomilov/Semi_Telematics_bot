@@ -84,7 +84,7 @@ async def test_get_shape_and_mode_roundtrip(api):
         assert r.status_code == 200
         body = r.json()
         assert body["mode"] == "single_group"
-        assert set(body["personas"]) == {"owner_admin", "dispatcher", "safety", "fleet", "hr"}
+        assert set(body["personas"]) == {"owner_admin", "dispatcher", "safety", "fleet", "hr", "accounting", "recruiter"}
         assert all(v is None for v in body["personas"].values())
         assert body["bot_configured"] is False
         assert body["nudge_threshold"] == 30

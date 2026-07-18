@@ -41,6 +41,9 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "no_group_chip": "немає групи",
+    "persona_accounting": "Бухгалтерія",
+    "persona_recruiter": "Рекрутинг",
     "main_group_unbound": "Немає групи власників — критичні копії вимкнено",
     "bind_group_btn": "Прив'язати групу…",
     "cancel": "Скасувати",

@@ -41,6 +41,9 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "no_group_chip": "ਗਰੁੱਪ ਨਹੀਂ",
+    "persona_accounting": "ਲੇਖਾ",
+    "persona_recruiter": "ਭਰਤੀ",
     "main_group_unbound": "ਮਾਲਕਾਂ ਦਾ ਗਰੁੱਪ ਨਹੀਂ — ਗੰਭੀਰ ਕਾਪੀਆਂ ਬੰਦ",
     "bind_group_btn": "ਗਰੁੱਪ ਜੋੜੋ…",
     "cancel": "ਰੱਦ ਕਰੋ",

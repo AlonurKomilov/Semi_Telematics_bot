@@ -200,7 +200,7 @@ async def test_permission_model_and_roundtrip(api, monkeypatch):
         body = (await c.get("/api/admin/bot-instances", headers=mgr_h)).json()
         assert body["manageable"] == ["safety"]
         body = (await c.get("/api/admin/bot-instances", headers=owner_h)).json()
-        assert set(body["manageable"]) == {"owner_admin", "dispatcher", "safety", "fleet", "hr"}
+        assert set(body["manageable"]) == {"owner_admin", "dispatcher", "safety", "fleet", "hr", "accounting", "recruiter"}
 
         # the manager detaches their own; delivery falls back to primary
         assert (await c.delete("/api/admin/bot-instances/safety",
@@ -229,9 +229,9 @@ def test_manager_tier_grants_role_bot_flag():
     """The Settings-page door: every persona-manager tier carries
     can_manage_role_bot; non-persona tiers (recruiter) don't."""
     from capabilities.permissions.roles import MANAGER_GRANTS
-    for role in (Role.FLEET, Role.SAFETY, Role.DISPATCHER, Role.HR):
+    for role in (Role.FLEET, Role.SAFETY, Role.DISPATCHER, Role.HR,
+                 Role.ACCOUNTING, Role.RECRUITER):
         assert "can_manage_role_bot" in MANAGER_GRANTS[role], role
-    assert "can_manage_role_bot" not in MANAGER_GRANTS.get(Role.RECRUITER, frozenset())
 
 
 async def test_manager_binds_own_group_and_topics(api, monkeypatch):
@@ -260,19 +260,21 @@ async def test_manager_binds_own_group_and_topics(api, monkeypatch):
         assert (await c.post("/api/admin/alert-routing/persona-groups", headers=mgr_h,
                              json={"persona": "fleet", "chat_id": -778})).status_code == 403
 
-        # topics: grouped by role, filtered to the role's own types
+        # topics: grouped by role, PERMISSION-driven (the matrix is the
+        # SSOT) — safety's defaults must include its home types; hr's
+        # must include documents.
         body = (await c.get("/api/admin/alert-routing/persona-topics", headers=mgr_h)).json()
         safety_types = {r["alert_type"] for r in body["personas"]["safety"]}
-        assert safety_types == {"events", "camera"}
-        assert {r["alert_type"] for r in body["personas"]["hr"]} == {"documents"}
+        assert {"events", "camera"} <= safety_types
+        assert "documents" in {r["alert_type"] for r in body["personas"]["hr"]}
         assert body["manageable"] == ["safety"]
 
-        # toggle own type OK; another role's type 403; unknown 422
-        assert (await c.put("/api/admin/alert-routing/persona-topics/events", headers=mgr_h,
+        # toggle own row OK; another role's row 403; unknown type 422
+        assert (await c.put("/api/admin/alert-routing/persona-topics/safety/events", headers=mgr_h,
                             json={"field": "enabled", "value": False})).status_code == 200
-        assert (await c.put("/api/admin/alert-routing/persona-topics/faults", headers=mgr_h,
+        assert (await c.put("/api/admin/alert-routing/persona-topics/fleet/faults", headers=mgr_h,
                             json={"field": "enabled", "value": False})).status_code == 403
-        assert (await c.put("/api/admin/alert-routing/persona-topics/pirates", headers=mgr_h,
+        assert (await c.put("/api/admin/alert-routing/persona-topics/safety/pirates", headers=mgr_h,
                             json={"field": "enabled", "value": False})).status_code == 422
 
         # the toggle round-trips
@@ -283,3 +285,29 @@ async def test_manager_binds_own_group_and_topics(api, monkeypatch):
         # manager unbinds their own group
         assert (await c.delete("/api/admin/alert-routing/persona-groups/safety",
                                headers=mgr_h)).status_code == 200
+
+
+async def test_permission_matrix_drives_topics(api):
+    """The owner's rule: granting a role a feature in the Permissions
+    matrix adds that alert type to the role's bot-roster topics.  Fleet
+    doesn't see Safety Events by default; grant can_events_all → it
+    appears in fleet's topics list."""
+    from dataclasses import asdict
+    from capabilities.permissions.roles import ROLE_PERMISSIONS, FeatureSet
+    app, db = api
+    acct, users = await _seed(db, "Matrix SSOT Co")
+    owner_h = _headers(users["owner"], acct, "owner")
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        # accounting's DEFAULTS lack faults (fuel + parking only)
+        body = (await c.get("/api/admin/alert-routing/persona-topics", headers=owner_h)).json()
+        assert "faults" not in {r["alert_type"] for r in body["personas"]["accounting"]}
+
+        acc_defaults = asdict(ROLE_PERMISSIONS.get(Role.ACCOUNTING, FeatureSet()))
+        acc_defaults["can_faults"] = True
+        await db.set_role_permissions(acct.id, "accounting", acc_defaults)
+        from capabilities.permissions.roles import invalidate_permissions_cache
+        invalidate_permissions_cache(acct.id)
+
+        body = (await c.get("/api/admin/alert-routing/persona-topics", headers=owner_h)).json()
+        assert "faults" in {r["alert_type"] for r in body["personas"]["accounting"]}

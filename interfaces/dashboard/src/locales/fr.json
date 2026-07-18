@@ -41,6 +41,9 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "no_group_chip": "sans groupe",
+    "persona_accounting": "Comptabilité",
+    "persona_recruiter": "Recrutement",
     "main_group_unbound": "Pas de groupe propriétaires — copies critiques désactivées",
     "bind_group_btn": "Lier un groupe…",
     "cancel": "Annuler",

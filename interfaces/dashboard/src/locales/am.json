@@ -41,6 +41,9 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "no_group_chip": "ቡድን የለም",
+    "persona_accounting": "ሂሳብ",
+    "persona_recruiter": "ቅጥር",
     "main_group_unbound": "የባለቤቶች ቡድን የለም — ወሳኝ ቅጂዎች ጠፍተዋል",
     "bind_group_btn": "ቡድን አገናኝ…",
     "cancel": "ሰርዝ",

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { Check, ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { InfoTip } from '../../components/tooltip';
 
 // The Telegram Bot card's body controller.  The Routing selector sits
 // at the TOP of the card (it's the bot-topology decision, not an
@@ -65,7 +66,7 @@ export interface BotConfigLite {
 }
 
 // Operational roles; the owner_admin aggregate renders as the Main row.
-const ROLE_ORDER = ['dispatcher', 'safety', 'fleet', 'hr'] as const;
+const ROLE_ORDER = ['dispatcher', 'safety', 'fleet', 'hr', 'accounting', 'recruiter'] as const;
 
 // Display names for the canonical alert types — same English catalog
 // the single-forum panel shows (its names come from the backend spec).
@@ -211,7 +212,7 @@ export default function AlertRoutingSection({
     if (busy) return;
     setBusy(`topic-${alert_type}-${field}`);
     try {
-      await apiJSON(`/admin/alert-routing/persona-topics/${alert_type}`, {
+      await apiJSON(`/admin/alert-routing/persona-topics/${persona}/${alert_type}`, {
         method: 'PUT', body: { field, value },
       });
       setTopics(topics && {
@@ -288,7 +289,11 @@ export default function AlertRoutingSection({
       ? t('alert_routing.main_group_unbound')
       : t('alert_routing.bound_fallback');
     if (!editable) {
-      return <span className="text-xs text-muted-foreground">{fallbackText}</span>;
+      return (
+        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+          {t('alert_routing.no_group_chip')} <InfoTip label={fallbackText} size={12} />
+        </span>
+      );
     }
     if (openInput !== `group-${persona}`) {
       return (
@@ -300,7 +305,7 @@ export default function AlertRoutingSection({
           >
             {t('alert_routing.bind_group_btn')}
           </button>
-          <span className="text-xs text-muted-foreground">{fallbackText}</span>
+          <InfoTip label={`${fallbackText} ${t('alert_routing.hint_chatid')}`} size={12} />
         </>
       );
     }
@@ -410,11 +415,12 @@ export default function AlertRoutingSection({
       ) : (
         <div className="space-y-3">
           {/* Completion cue — how much of the roster is set up. */}
-          <p className="text-xs text-muted-foreground">
+          <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             {t('alert_routing.roster_progress', {
-              n: ROLE_ORDER.filter((p) => data.personas[p]).length,
-              total: ROLE_ORDER.length,
+              n: ROLE_ORDER.filter((p) => data.personas[p] && (topics?.personas?.[p]?.length ?? 0) > 0).length,
+              total: ROLE_ORDER.filter((p) => (topics?.personas?.[p]?.length ?? 0) > 0).length || ROLE_ORDER.length,
             })}
+            <InfoTip label={`${t('alert_routing.subbot_hint')} ${t('alert_routing.fallback_note')}`} size={12} />
           </p>
 
           {/* Main row — the identity bot.  Same spot the single-mode
@@ -451,6 +457,13 @@ export default function AlertRoutingSection({
           {ROLE_ORDER.map((persona) => {
             const sub = subBots?.personas?.[persona] ?? null;
             const editable = canManage(persona);
+            // The Permissions matrix is the SSOT: a role with no
+            // alert-type features granted has nothing to route, so its
+            // row doesn't render (unless something is already bound).
+            const roleTopics = topics?.personas?.[persona] ?? [];
+            if (!roleTopics.length && !data.personas[persona] && !sub) {
+              return null;
+            }
             return (
               <div key={persona} className="border border-border rounded-lg px-3 py-2">
                 <div className="flex flex-wrap items-center gap-2 text-sm">
@@ -458,13 +471,8 @@ export default function AlertRoutingSection({
                     {t(`alert_routing.persona_${persona}`)}
                   </span>
 
-                  {/* Group cell — step 1 */}
+                  {/* BOT cell — same slot as the Main row's status/username */}
                   <span className="inline-flex items-center gap-2">
-                    {groupCell(persona)}
-                  </span>
-
-                  {/* Sub bot cell — step 2, right-aligned */}
-                  <span className="inline-flex items-center gap-2 ml-auto">
                     {sub ? (
                       <>
                         <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs border ${
@@ -530,18 +538,18 @@ export default function AlertRoutingSection({
                       </>
                     )}
                   </span>
+
+                  {/* GROUP cell — right-aligned, same slot as Main */}
+                  <span className="inline-flex items-center gap-2 ml-auto">
+                    {groupCell(persona)}
+                  </span>
                 </div>
                 {topicsExpander(persona)}
               </div>
             );
           })}
 
-          <p className="text-xs text-muted-foreground">
-            {t('alert_routing.hint_chatid')} {t('alert_routing.subbot_hint')}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {t('alert_routing.fallback_note')}
-          </p>
+
         </div>
       )}
     </div>

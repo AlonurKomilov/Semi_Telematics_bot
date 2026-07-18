@@ -463,7 +463,8 @@ class RoleTier:
 TIER_GRANTS: dict[Role, RoleTier] = {
     Role.RECRUITER: RoleTier(
         senior_label="Manager", base_label="Employee",
-        grants=frozenset({"can_invite", "can_manage_carrier_directory"}),
+        grants=frozenset({"can_invite", "can_manage_carrier_directory",
+                          "can_manage_role_bot"}),
     ),
     Role.ADMIN: RoleTier(
         senior_label="Full admin", base_label="Standard admin",
@@ -516,7 +517,7 @@ TIER_GRANTS: dict[Role, RoleTier] = {
         # The accounting lead can review the shop invoices / maintenance
         # records behind the cost numbers (parts analytics included).
         grants=frozenset({"can_work_orders_all", "can_maintenance_all",
-                          "can_parts"}),
+                          "can_parts", "can_manage_role_bot"}),
     ),
 }
 

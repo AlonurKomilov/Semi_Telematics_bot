@@ -41,6 +41,9 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "no_group_chip": "нет группы",
+    "persona_accounting": "Бухгалтерия",
+    "persona_recruiter": "Рекрутинг",
     "main_group_unbound": "Нет группы владельцев — критические копии выключены",
     "bind_group_btn": "Привязать группу…",
     "cancel": "Отмена",

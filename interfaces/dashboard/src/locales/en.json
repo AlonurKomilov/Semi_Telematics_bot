@@ -872,6 +872,9 @@
     "uploaded_by": "uploaded by {{name}}"
   },
   "alert_routing": {
+    "no_group_chip": "no group",
+    "persona_accounting": "Accounting",
+    "persona_recruiter": "Recruiting",
     "main_group_unbound": "No owners group — critical cross-posts off",
     "bind_group_btn": "Bind group…",
     "cancel": "Cancel",

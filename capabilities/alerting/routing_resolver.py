@@ -146,63 +146,99 @@ async def _resolve_per_persona(
     results are NOT enough — the primary must exist or the operator
     sees CRITICAL routed differently from non-CRITICAL.
     """
-    primary_persona = persona_mapping.persona_for_alert(alert_type)
+    key = persona_mapping.canonical_route_key(alert_type)
     targets: list[AlertTarget] = []
     primary_present = False
 
-    # Per-role topic toggle: a role manager can turn one alert type's
-    # group routing off (Settings → Telegram Bot → role row → topics).
-    # Semantics mirror the single-group disable: NO group post for this
-    # type (aggregate included) and the pipeline falls back to per-user
-    # DMs.  ``primary_present=True`` so we don't regress to the legacy
-    # forum — the mode IS configured; this type is deliberately off.
+    # ── Permission-driven fan-out (the matrix is the SSOT) ──────────
+    # The alert posts to EVERY staff role whose effective per-account
+    # permissions include this alert type's feature, whose per-role
+    # toggle is on, and whose group is bound.  Granting Fleet the
+    # Safety-Events feature in the Permissions matrix therefore routes
+    # events to Fleet's group too — no static map to keep in sync.
+    tenant = None
     try:
         from infra.services import get_tenant_db
         tenant = await get_tenant_db(account_id)
-        key = persona_mapping.canonical_route_key(alert_type)
-        val = await tenant.get_account_setting(
-            account_id, f"persona_route.{key}", default="1",
-        )
-        if val == "0":
-            return [], True
     except Exception as e:
-        # Fail-open to "enabled" — a settings-read blip must never
-        # silence alerts.
-        logger.debug("persona_route setting read failed acct=%d type=%s: %s",
-                     account_id, alert_type, e)
+        logger.debug("tenant handle unavailable acct=%d: %s", account_id, e)
 
-    primary = await db.get_persona_group(account_id, primary_persona)
-    if primary is not None:
+    async def _route_on(role: str) -> bool:
+        """Per-role toggle; also honors the legacy account-wide
+        ``persona_route.{key}`` written before toggles were per-role."""
+        if tenant is None:
+            return True  # fail-open — a settings blip never silences alerts
+        try:
+            per_role = await tenant.get_account_setting(
+                account_id, f"persona_route.{role}.{key}", default="",
+            )
+            if per_role:
+                return per_role != "0"
+            legacy = await tenant.get_account_setting(
+                account_id, f"persona_route.{key}", default="1",
+            )
+            return legacy != "0"
+        except Exception:
+            return True
+
+    roles_for_type: list[str] = []
+    try:
+        for role in persona_mapping.STAFF_ROLES:
+            if key in await persona_mapping.types_for_role(account_id, role):
+                roles_for_type.append(role)
+    except Exception as e:
+        logger.debug("types_for_role failed acct=%d type=%s: %s",
+                     account_id, alert_type, e)
+    if not roles_for_type:
+        # Permission lookup unavailable → the static default map keeps
+        # alerts flowing (fail-open to the type's home role).
+        home = persona_mapping.persona_for_alert(alert_type)
+        if home != persona_mapping.OWNER_ADMIN:
+            roles_for_type = [home]
+
+    seen_chats: set[int] = set()
+    for role in roles_for_type:
+        if not await _route_on(role):
+            continue
+        grp = await db.get_persona_group(account_id, role)
+        if grp is None:
+            continue
         primary_present = True
+        if grp.chat_id in seen_chats:
+            continue  # two roles sharing one chat (small fleets)
+        seen_chats.add(grp.chat_id)
         targets.append(AlertTarget(
-            chat_id=primary.chat_id,
+            chat_id=grp.chat_id,
             message_thread_id=None,
             is_aggregate=False,
-            persona=primary_persona,
+            persona=role,
         ))
 
-    # Cross-post to the owner_admin aggregate ONLY for CRITICAL.
-    # Skip when the primary persona IS owner_admin (avoid double-post
-    # to the same group when the alert was already owner-routed).
-    if sev == CRITICAL_SEVERITY and primary_persona != persona_mapping.OWNER_ADMIN:
-        aggregate = await db.get_persona_group(account_id, persona_mapping.OWNER_ADMIN)
-        if aggregate is not None:
-            # Avoid duplicate target when admin pointed two personas
-            # at the same chat (small fleet sharing one group).
-            existing_chats = {t.chat_id for t in targets}
-            if aggregate.chat_id not in existing_chats:
+    # owner_admin-homed types (system/reescalate) post to the owners
+    # group as their PRIMARY destination.
+    if persona_mapping.persona_for_alert(alert_type) == persona_mapping.OWNER_ADMIN:
+        owners = await db.get_persona_group(account_id, persona_mapping.OWNER_ADMIN)
+        if owners is not None:
+            primary_present = True
+            if owners.chat_id not in seen_chats:
+                seen_chats.add(owners.chat_id)
                 targets.append(AlertTarget(
-                    chat_id=aggregate.chat_id,
+                    chat_id=owners.chat_id,
                     message_thread_id=None,
-                    is_aggregate=True,
+                    is_aggregate=False,
                     persona=persona_mapping.OWNER_ADMIN,
                 ))
+    # Cross-post to the owner_admin aggregate ONLY for CRITICAL.
+    elif sev == CRITICAL_SEVERITY:
+        aggregate = await db.get_persona_group(account_id, persona_mapping.OWNER_ADMIN)
+        if aggregate is not None and aggregate.chat_id not in seen_chats:
+            targets.append(AlertTarget(
+                chat_id=aggregate.chat_id,
+                message_thread_id=None,
+                is_aggregate=True,
+                persona=persona_mapping.OWNER_ADMIN,
+            ))
 
-    # Special case: when the alert_type IS already routed to owner_admin
-    # as the primary persona, ``primary_present`` should still gate the
-    # short-circuit (we've fully migrated for this alert_type even
-    # though no separate aggregate was added).  Covered above by
-    # ``primary_present = True`` on primary insert.
     return targets, primary_present
 
 

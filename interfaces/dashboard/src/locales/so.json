@@ -41,6 +41,9 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "no_group_chip": "guruub ma jiro",
+    "persona_accounting": "Xisaabaad",
+    "persona_recruiter": "Shaqaalaysiin",
     "main_group_unbound": "Guruub milkiile ma jiro — nuqullada halista waa damman yihiin",
     "bind_group_btn": "Xir guruub…",
     "cancel": "Jooji",

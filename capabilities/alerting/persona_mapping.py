@@ -85,11 +85,55 @@ def canonical_route_key(alert_type: str) -> str:
 
 
 def canonical_types_for_persona(persona: str) -> list[str]:
-    """The canonical ALERT_TYPE_KEYS slugs routed to *persona*, in the
-    catalog's display order — the per-role topics list the settings UI
-    shows (a role's manager only ever sees their own types)."""
+    """The canonical ALERT_TYPE_KEYS slugs routed to *persona* by the
+    STATIC default map — the seed grouping only.  The settings UI and
+    the fan-out resolver use :func:`types_for_role` instead, which
+    derives each role's types from the account's PERMISSION matrix
+    (the single source of truth)."""
     from adapters.storage.models import ALERT_TYPE_KEYS
     return [k for k in ALERT_TYPE_KEYS if persona_for_alert(k) == persona]
+
+
+# ── Permission-driven topics (the matrix is the SSOT) ────────────────
+# Which FEATURE permission grants a role each alert type.  When the
+# owner grants a role a feature in the Permissions matrix (e.g. Fleet
+# gets Safety Events), that role's group topics — and the alert
+# fan-out — follow automatically.  any-of semantics per type.
+ALERT_TYPE_FEATURE_FLAGS: Final[dict[str, tuple[str, ...]]] = {
+    "faults":      ("can_faults",),
+    "health":      ("can_health",),
+    "fuel":        ("can_fuel",),
+    "events":      ("can_events_all", "can_events_vehicle"),
+    "camera":      ("can_cameras",),
+    "parking":     ("can_parking_all", "can_parking_vehicle"),
+    "geofence":    ("can_geofence_all", "can_geofence_vehicle"),
+    "scorecard":   ("can_scorecard_all", "can_scorecard_vehicle"),
+    "maintenance": ("can_maintenance_all", "can_maintenance_vehicle"),
+    "documents":   ("can_manage_driver_docs",),
+    "system":      ("can_manage_integrations", "can_manage_account"),
+}
+
+# Staff roles that can hold a group row on the bot roster.  Drivers get
+# DMs, never a staff group; owner/admin live on the Main row.
+STAFF_ROLES: Final[tuple[str, ...]] = (
+    "dispatcher", "safety", "fleet", "hr", "accounting", "recruiter",
+)
+
+
+async def types_for_role(account_id: int, role: str) -> list[str]:
+    """The alert types *role* may route to its group in THIS account —
+    derived from the effective per-account permission set (matrix
+    overrides included), not the static map.  Unknown role → []."""
+    from adapters.storage.models import ALERT_TYPE_KEYS, Role
+    from capabilities.permissions.roles import get_account_permissions
+    try:
+        perms = await get_account_permissions(Role(role), account_id, None)
+    except Exception:
+        return []
+    return [
+        k for k in ALERT_TYPE_KEYS
+        if any(getattr(perms, f, False) for f in ALERT_TYPE_FEATURE_FLAGS[k])
+    ]
 
 
 def persona_for_alert(alert_type: str) -> str:
