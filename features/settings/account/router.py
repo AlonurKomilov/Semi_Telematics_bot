@@ -94,7 +94,8 @@ async def update_setting(
 
 
 class BotConfigRequest(BaseModel):
-    bot_token: str = Field(..., min_length=30, max_length=100)
+    bot_token: str = Field(..., min_length=30, max_length=100,
+                           pattern=r"^\d+:[A-Za-z0-9_-]+$")
 
 
 @router.put("/bot-config")
@@ -445,7 +446,8 @@ def _may_manage_persona_bot(user: dict, persona: str) -> bool:
 
 class SubBotAttachRequest(BaseModel):
     persona: str = Field(..., pattern="^(owner_admin|dispatcher|safety|fleet|hr)$")
-    bot_token: str = Field(..., min_length=30, max_length=100)
+    bot_token: str = Field(..., min_length=30, max_length=100,
+                           pattern=r"^\d+:[A-Za-z0-9_-]+$")
 
 
 @router.get("/bot-instances")
