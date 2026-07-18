@@ -4,29 +4,32 @@ import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 
 /**
- * Quick-select day-range picker with optional custom-range calendar —
- * THE single source of truth for "pick a time window" (same idea as
- * DataGrid for tables).  Never hand-roll a days dropdown, a chip row,
- * or a numeric days input on a page.
+ * The time-window picker — THE single source of truth for "pick a time
+ * window" (same idea as DataGrid for tables).  Never hand-roll a days
+ * dropdown, a chip row, or a numeric days input on a page.
  *
- * Two visual forms, one contract (`value`/`onChange` on a single
+ * Layout: the industry-standard two-pane popover — a presets rail on
+ * the left (click applies instantly) beside an always-visible
+ * two-month calendar (one month under ``md``), with a live range
+ * summary in the footer.  No "Custom range…" hop: presets and the
+ * calendar are one surface.
+ *
+ * Two trigger forms, one contract (`value`/`onChange` on a single
  * `days` integer, so `days=N` from-today endpoints work unchanged):
  *
- *   * ``variant="dropdown"`` (default) — the Today / Yesterday /
- *     Last 7 / 14 / 30 / 60 / 90 listbox + "Custom range…" calendar.
- *     Right for page toolbars.
- *   * ``variant="segments"`` — an inline chip row (pass a compact
- *     ``options`` list like 7/30/90) + a calendar chip for custom.
- *     Right for chart/section headers where a dropdown is too heavy.
+ *   * ``variant="dropdown"`` (default) — labeled trigger button.
+ *     Right for page toolbars and forms.
+ *   * ``variant="segments"`` — inline chip row (pass a compact
+ *     ``options`` list like 7/30/90) + a calendar chip opening the
+ *     same panel.  Right for chart/section headers.
  *
  * END-DATE support is per-page and FAIL-CLOSED: most backends only
  * understand "last N days from today", so by default the calendar
  * picks a START date and the range ends today.  A page whose backend
  * honors an explicit end (e.g. /events' `end=` param) passes
- * ``onApplyRange`` + ``end`` — then the calendar becomes a true
- * two-click start→end picker.  Never enable it for a page whose API
- * ignores the end date: the label would promise a window the data
- * doesn't match.
+ * ``onApplyRange`` + ``end`` — then the calendar is a true two-click
+ * start→end picker.  Never enable it for a page whose API ignores the
+ * end date: the label would promise a window the data doesn't match.
  */
 
 export interface DateRangePresetsProps {
@@ -95,20 +98,23 @@ function labelFor(value: number, opts: { label: string; days: number }[]): strin
   return `Last ${value} days`;
 }
 
-// ── Mini-calendar for picking a start date ───────────────────
+// ── One month grid ───────────────────────────────────────────
 
 interface CalendarMonthProps {
   monthStart: Date;
-  selected: Date | null;
-  /** Picked END day (two-click mode); null while only the start is set. */
-  selectedEnd?: Date | null;
+  /** Picked range start. */
+  start: Date | null;
+  /** Picked END day (two-click mode); null while unpicked. */
+  endPicked: Date | null;
   hover: Date | null;
-  rangeEnd: Date;
+  /** Where the highlight band runs to when no end is picked (today in
+   *  start-only mode; hover preview while picking an end). */
+  bandEnd: Date;
   onPick: (d: Date) => void;
   onHover: (d: Date | null) => void;
 }
 
-function CalendarMonth({ monthStart, selected, selectedEnd = null, hover, rangeEnd, onPick, onHover }: CalendarMonthProps) {
+function CalendarMonth({ monthStart, start, endPicked, hover, bandEnd, onPick, onHover }: CalendarMonthProps) {
   const today = startOfDay(new Date());
   const year = monthStart.getFullYear();
   const month = monthStart.getMonth();
@@ -121,30 +127,38 @@ function CalendarMonth({ monthStart, selected, selectedEnd = null, hover, rangeE
   for (let d = 1; d <= lastDay; d++) cells.push(new Date(year, month, d));
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const inRange = (d: Date): boolean => {
-    if (!selected) return false;
-    // Highlight priority: a committed end wins; while the end is still
-    // unpicked, the hover previews it; otherwise the range runs to
-    // rangeEnd (today in start-only mode).
-    const end = selectedEnd ?? (hover && hover > selected ? hover : rangeEnd);
-    return d >= startOfDay(selected) && d <= startOfDay(end);
-  };
+  const effEnd = endPicked
+    ?? (start && hover && hover > start ? hover : bandEnd);
+
+  const inBand = (d: Date): boolean =>
+    !!start && d > startOfDay(start) && d < startOfDay(effEnd);
 
   return (
-    <div className="w-56">
-      <p className="text-xs font-semibold text-foreground text-center mb-2">
+    <div className="w-60">
+      <p className="text-xs font-semibold text-foreground text-center mb-2 h-7 leading-7">
         {monthStart.toLocaleString(undefined, { month: 'long', year: 'numeric' })}
       </p>
-      <div className="grid grid-cols-7 gap-0.5 text-3xs text-muted-foreground text-center mb-1">
+      <div className="grid grid-cols-7 text-3xs text-muted-foreground text-center mb-1">
         {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((d) => <div key={d}>{d}</div>)}
       </div>
-      <div className="grid grid-cols-7 gap-0.5">
+      <div className="grid grid-cols-7 gap-y-0.5">
         {cells.map((d, i) => {
-          if (!d) return <div key={i} />;
+          if (!d) return <div key={i} className="h-8" />;
           const future = d > today;
-          const isSelected = (selected && fmtIso(d) === fmtIso(selected))
-            || (selectedEnd && fmtIso(d) === fmtIso(selectedEnd));
-          const ranged = inRange(d) && !isSelected;
+          const iso = fmtIso(d);
+          const isStart = !!start && iso === fmtIso(start);
+          const isEnd = !!endPicked && iso === fmtIso(endPicked);
+          const isToday = iso === fmtIso(today);
+          const banded = inBand(d);
+          const cls = future
+            ? 'text-muted-foreground/30 cursor-not-allowed'
+            : isStart || isEnd
+              ? 'bg-primary text-primary-foreground font-semibold rounded-md'
+              : banded
+                ? 'bg-primary/10 text-foreground'
+                : `text-foreground/80 hover:bg-muted rounded-md${
+                    isToday ? ' ring-1 ring-inset ring-primary/50 text-primary font-medium' : ''
+                  }`;
           return (
             <button
               key={i}
@@ -152,15 +166,7 @@ function CalendarMonth({ monthStart, selected, selectedEnd = null, hover, rangeE
               onClick={() => onPick(d)}
               onMouseEnter={() => onHover(d)}
               onMouseLeave={() => onHover(null)}
-              className={`text-xs h-7 rounded transition ${
-                future
-                  ? 'text-muted-foreground/30 cursor-not-allowed'
-                  : isSelected
-                  ? 'bg-primary text-primary-foreground font-semibold'
-                  : ranged
-                  ? 'bg-primary/15 text-foreground'
-                  : 'text-foreground/80 hover:bg-muted'
-              }`}
+              className={`h-8 w-full text-xs transition ${cls}`}
             >
               {d.getDate()}
             </button>
@@ -170,6 +176,8 @@ function CalendarMonth({ monthStart, selected, selectedEnd = null, hover, rangeE
     </div>
   );
 }
+
+// ── The picker ───────────────────────────────────────────────
 
 export default function DateRangePresets({
   value,
@@ -185,10 +193,12 @@ export default function DateRangePresets({
   const rangeCapable = onApplyRange !== undefined;
   const tz = useTimezone();
   const [open, setOpen] = useState(false);
-  const [showCal, setShowCal] = useState(false);
   const [pickerMonth, setPickerMonth] = useState<Date>(() => {
     const d = new Date();
     d.setDate(1);
+    // Panel shows [pickerMonth, pickerMonth+1] — land with the CURRENT
+    // month on the right, so recent days are immediately clickable.
+    d.setMonth(d.getMonth() - 1);
     return d;
   });
   const [pickedStart, setPickedStart] = useState<Date | null>(null);
@@ -196,11 +206,13 @@ export default function DateRangePresets({
   const [hoverDate, setHoverDate] = useState<Date | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
+  const resetPicks = () => { setPickedStart(null); setPickedEnd(null); };
+
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
-        setShowCal(false);
+        resetPicks();
       }
     };
     document.addEventListener('mousedown', onClick);
@@ -220,8 +232,6 @@ export default function DateRangePresets({
     setPickedEnd(d);
   };
 
-  const resetPicks = () => { setPickedStart(null); setPickedEnd(null); };
-
   const applyCustom = () => {
     if (!pickedStart) return;
     const effEnd = pickedEnd ?? today;
@@ -235,7 +245,12 @@ export default function DateRangePresets({
       onChange(days);
     }
     setOpen(false);
-    setShowCal(false);
+    resetPicks();
+  };
+
+  const applyPreset = (days: number) => {
+    onChange(days);
+    setOpen(false);
     resetPicks();
   };
 
@@ -247,16 +262,16 @@ export default function DateRangePresets({
     ? `${fmtNice(new Date(endDate.getTime() - value * 86_400_000), tz)} – ${fmtNice(endDate, tz)}`
     : null;
 
-  const monthBack = () => {
+  const monthShift = (delta: number) => {
     const d = new Date(pickerMonth);
-    d.setMonth(d.getMonth() - 1);
+    d.setMonth(d.getMonth() + delta);
     setPickerMonth(d);
   };
-  const monthFwd = () => {
+  const secondMonth = (() => {
     const d = new Date(pickerMonth);
     d.setMonth(d.getMonth() + 1);
-    setPickerMonth(d);
-  };
+    return d;
+  })();
 
   const segChip = (active: boolean) =>
     `px-2.5 py-1 rounded-md text-xs font-medium border transition ${
@@ -265,39 +280,46 @@ export default function DateRangePresets({
         : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted hover:text-foreground'
     }`;
 
+  const footerSummary = pickedStart
+    ? `${fmtNice(pickedStart, tz)} → ${fmtNice(pickedEnd ?? today, tz)} · ${daysBetween(pickedStart, pickedEnd ?? today)} days`
+    : rangeCapable
+      ? 'Click a start date, then an end date'
+      : 'Click a start date — the range ends today';
+
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative inline-block">
       {variant === 'segments' ? (
-        // Chip row: presets inline, custom behind the calendar chip.
+        // Chip row: presets inline, the calendar chip opens the panel.
         <div className="inline-flex items-center gap-1" aria-busy={isFetching}>
           {options.map((opt) => (
             <button
               key={opt.days}
               disabled={disabled}
-              onClick={() => { onChange(opt.days); setOpen(false); setShowCal(false); }}
-              className={`${segChip(opt.days === value)} disabled:opacity-50`}
+              onClick={() => applyPreset(opt.days)}
+              className={`${segChip(opt.days === value && end == null)} disabled:opacity-50`}
             >
               {opt.label}
             </button>
           ))}
           <button
             disabled={disabled}
-            onClick={() => { setOpen(true); setShowCal(true); }}
+            onClick={() => setOpen((o) => !o)}
             className={`inline-flex items-center gap-1 ${segChip(isCustom)} disabled:opacity-50`}
             aria-label="Custom range"
+            aria-expanded={open}
           >
             {isFetching
               ? <Loader2 size={12} className="animate-spin" aria-label="Loading" />
               : <Calendar size={12} />}
-            {isCustom ? `${value}d` : null}
+            {isCustom ? (rangeLabel ?? `${value}d`) : null}
           </button>
         </div>
       ) : (
         <button
           disabled={disabled}
-          onClick={() => { setOpen((o) => !o); setShowCal(false); }}
+          onClick={() => { setOpen((o) => !o); }}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-md text-sm text-foreground/80 hover:bg-muted transition disabled:opacity-50 disabled:cursor-not-allowed"
-          aria-haspopup="listbox"
+          aria-haspopup="dialog"
           aria-expanded={open}
           aria-busy={isFetching}
         >
@@ -311,95 +333,89 @@ export default function DateRangePresets({
         </button>
       )}
 
-      {variant === 'dropdown' && open && !showCal && (
-        <ul
-          role="listbox"
-          className="absolute right-0 top-full mt-1 w-44 max-h-80 overflow-y-auto bg-card border border-border rounded-md shadow-xl z-50 py-1"
-        >
-          {options.map((opt) => {
-            const active = opt.days === value;
-            return (
-              <li key={opt.days}>
-                <button
-                  onClick={() => { onChange(opt.days); setOpen(false); }}
-                  className={`w-full flex items-center justify-between px-3 py-1.5 text-sm transition ${
-                    active
-                      ? 'bg-primary/10 text-primary font-medium'
-                      : 'text-foreground/80 hover:bg-muted'
-                  }`}
-                >
-                  <span>{opt.label}</span>
-                  {active && <span className="text-3xs text-primary">●</span>}
-                </button>
-              </li>
-            );
-          })}
-          <li className="border-t border-border mt-1 pt-1">
-            <button
-              onClick={() => setShowCal(true)}
-              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-foreground/80 hover:bg-muted transition"
-            >
-              <Calendar size={12} className="text-muted-foreground" />
-              Custom range…
-            </button>
-          </li>
-        </ul>
-      )}
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl flex overflow-hidden">
+          {/* ── presets rail ── */}
+          <ul className="w-36 shrink-0 border-r border-border py-1.5 max-h-96 overflow-y-auto" role="listbox">
+            {options.map((opt) => {
+              const active = opt.days === value && end == null;
+              return (
+                <li key={opt.days}>
+                  <button
+                    onClick={() => applyPreset(opt.days)}
+                    className={`w-full text-left px-3 py-1.5 text-sm transition ${
+                      active
+                        ? 'bg-primary/10 text-primary font-medium'
+                        : 'text-foreground/80 hover:bg-muted'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
 
-      {open && showCal && (
-        <div className="absolute right-0 top-full mt-1 w-80 bg-card border border-border rounded-md shadow-xl z-50 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <button
-              onClick={monthBack}
-              className="inline-flex size-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground"
-              aria-label="Previous month"
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <p className="text-xs text-muted-foreground">
-              {!rangeCapable ? 'Pick a start date'
-                : !pickedStart ? 'Pick a start date'
-                : !pickedEnd ? 'Now pick the end date'
-                : 'Range selected'}
-            </p>
-            <button
-              onClick={monthFwd}
-              className="inline-flex size-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground"
-              aria-label="Next month"
-            >
-              <ChevronRight size={14} />
-            </button>
-          </div>
-          <CalendarMonth
-            monthStart={pickerMonth}
-            selected={pickedStart}
-            selectedEnd={pickedEnd}
-            hover={hoverDate}
-            rangeEnd={today}
-            onPick={pickDay}
-            onHover={setHoverDate}
-          />
-          <div className="mt-3 flex items-center justify-between text-2xs text-muted-foreground">
-            <span>
-              {pickedStart
-                ? `${fmtNice(pickedStart, tz)} → ${fmtNice(pickedEnd ?? today, tz)} (${daysBetween(pickedStart, pickedEnd ?? today)}d)`
-                : rangeCapable ? 'Pick start, then end' : 'Range ends today'}
-            </span>
-          </div>
-          <div className="mt-2 flex justify-end gap-2">
-            <button
-              onClick={() => { setShowCal(false); resetPicks(); }}
-              className="px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={applyCustom}
-              disabled={!pickedStart}
-              className="px-3 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Apply
-            </button>
+          {/* ── calendar pane ── */}
+          <div className="p-3">
+            <div className="relative">
+              <button
+                onClick={() => monthShift(-1)}
+                className="absolute left-0 top-0 inline-flex size-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground z-10"
+                aria-label="Previous month"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <button
+                onClick={() => monthShift(1)}
+                className="absolute right-0 top-0 inline-flex size-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground z-10"
+                aria-label="Next month"
+              >
+                <ChevronRight size={14} />
+              </button>
+              <div className="flex gap-5">
+                <div className="hidden md:block">
+                  <CalendarMonth
+                    monthStart={pickerMonth}
+                    start={pickedStart}
+                    endPicked={pickedEnd}
+                    hover={hoverDate}
+                    bandEnd={today}
+                    onPick={pickDay}
+                    onHover={setHoverDate}
+                  />
+                </div>
+                <CalendarMonth
+                  monthStart={secondMonth}
+                  start={pickedStart}
+                  endPicked={pickedEnd}
+                  hover={hoverDate}
+                  bandEnd={today}
+                  onPick={pickDay}
+                  onHover={setHoverDate}
+                />
+              </div>
+            </div>
+
+            {/* ── footer: live summary + actions ── */}
+            <div className="mt-3 pt-2.5 border-t border-border flex items-center justify-between gap-3">
+              <span className="text-2xs text-muted-foreground">{footerSummary}</span>
+              <span className="flex items-center gap-2">
+                <button
+                  onClick={() => { setOpen(false); resetPicks(); }}
+                  className="px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={applyCustom}
+                  disabled={!pickedStart}
+                  className="px-3 py-1 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Apply
+                </button>
+              </span>
+            </div>
           </div>
         </div>
       )}
