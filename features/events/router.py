@@ -29,18 +29,49 @@ router = APIRouter(prefix="/safety", tags=["safety"])
 @router.get("/events")
 async def safety_events(
     days: int = Query(7, ge=1, le=90),
+    end: str | None = Query(
+        None, pattern=r"^\d{4}-\d{2}-\d{2}$",
+        description="Window END day (inclusive, UTC). Default: today. "
+                    "The window is the `days` ending on this day.",
+    ),
     event_type: str | None = Query(None, description="crash, braking, harshTurn, etc."),
     driver: str | None = Query(None, description="Filter by driver name (substring)"),
     company: str | None = Query(None),
     user: dict = Depends(require_permission_any("can_events_all", "can_events_vehicle")),
 ):
-    """Safety events — harsh braking, crashes, speeding, etc."""
+    """Safety events — harsh braking, crashes, speeding, etc.
+
+    Explicit-end windows: fetch reaches from the window START through
+    today (the storage layer only speaks "last N days"), then the rows
+    are filtered PRECISELY to [start, end] below — so the response
+    never includes events outside the promised window.
+    """
+    from datetime import datetime, timedelta, timezone
+
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
     client = await get_client(user["account_id"])
 
+    # Resolve the window bounds.  ``end`` in the future clamps to today;
+    # an end further back than a year is a client bug → 422.
+    now = datetime.now(timezone.utc)
+    end_dt: datetime | None = None
+    if end:
+        try:
+            end_dt = datetime.fromisoformat(end).replace(tzinfo=timezone.utc)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="end must be YYYY-MM-DD")
+        if end_dt > now:
+            end_dt = None                      # future end = today = default
+        elif (now - end_dt).days > 365:
+            raise HTTPException(status_code=422, detail="end is too far in the past")
+
+    # Days to fetch so the window START is covered even when the end
+    # sits in the past (offset = today − end).
+    fetch_days = days + ((now - end_dt).days + 1 if end_dt else 0)
+
     async def _live():
-        return await client.get_events(days=days, company=company)
+        return await client.get_events(days=fetch_days, company=company)
 
     from capabilities.warehouse.telemetry import warehouse_reader as _wh
     # include_raw=False skips the per-row ``json.loads(raw_json)`` in
@@ -50,7 +81,7 @@ async def safety_events(
     # /events/{id}/video proxy endpoint.
     wh_rows = await _wh.get_safety_events(
         user["account_id"],
-        days=days,
+        days=fetch_days,
         event_type=event_type,
         samsara_fallback=_live,
         include_raw=False,
@@ -95,6 +126,23 @@ async def safety_events(
     events = [_row_to_event(r) for r in wh_rows]
     events = filter_by_allowed_companies(events, allowed, key="company")
 
+    # Precise [start, end] filter for explicit-end windows — applied to
+    # BOTH the warehouse and the live-fallback rows, so the response
+    # matches the promised window regardless of the data path.
+    if end_dt is not None:
+        upper = end_dt + timedelta(days=1)               # inclusive end day
+        lower = upper - timedelta(days=days)
+        def _in_window(e: dict) -> bool:
+            t = (e.get("time") or "").replace("Z", "+00:00")
+            try:
+                ts = datetime.fromisoformat(t)
+            except ValueError:
+                return False
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            return lower <= ts < upper
+        events = [e for e in events if _in_window(e)]
+
     # If user only has _own, filter to their assigned vehicle
     if user.get("_matched_perm") == "can_events_vehicle":
         trucks = await get_user_vehicle_nums(user)
@@ -122,6 +170,7 @@ async def safety_events(
         "events": events,
         "count": len(events),
         "days": days,
+        "end": end if end_dt is not None else None,
         "summary": {"by_type": by_type, "by_severity": by_severity},
     }
 

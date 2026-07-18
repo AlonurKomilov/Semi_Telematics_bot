@@ -19,11 +19,14 @@ import { formatDay } from '../../utils/datetime';
  *     ``options`` list like 7/30/90) + a calendar chip for custom.
  *     Right for chart/section headers where a dropdown is too heavy.
  *
- * Custom-range UX caveat: the underlying backends compute windows as
- * "last N days from today", so picking a custom start date is
- * interpreted as `days = today - start_date`. The calendar's end date
- * is informational and shown back to the user, but the API call
- * always rounds the window to end at "today".
+ * END-DATE support is per-page and FAIL-CLOSED: most backends only
+ * understand "last N days from today", so by default the calendar
+ * picks a START date and the range ends today.  A page whose backend
+ * honors an explicit end (e.g. /events' `end=` param) passes
+ * ``onApplyRange`` + ``end`` — then the calendar becomes a true
+ * two-click start→end picker.  Never enable it for a page whose API
+ * ignores the end date: the label would promise a window the data
+ * doesn't match.
  */
 
 export interface DateRangePresetsProps {
@@ -39,6 +42,14 @@ export interface DateRangePresetsProps {
   maxDays?: number;
   /** Lock the control (e.g. while a report is generating). */
   disabled?: boolean;
+  /** Current custom END day (``YYYY-MM-DD``), null/undefined = today.
+   *  Only meaningful together with ``onApplyRange``. */
+  end?: string | null;
+  /** Enables TRUE start→end picking in the calendar.  Pass ONLY when
+   *  the page's backend honors an explicit end date; called with the
+   *  window length and the end day (null = ends today).  Presets keep
+   *  firing plain ``onChange`` — reset your end state there. */
+  onApplyRange?: (days: number, end: string | null) => void;
   /**
    * When true, render a subtle spinner inside the trigger so the user
    * sees feedback while the new period's data is being fetched.  Pages
@@ -89,13 +100,15 @@ function labelFor(value: number, opts: { label: string; days: number }[]): strin
 interface CalendarMonthProps {
   monthStart: Date;
   selected: Date | null;
+  /** Picked END day (two-click mode); null while only the start is set. */
+  selectedEnd?: Date | null;
   hover: Date | null;
   rangeEnd: Date;
   onPick: (d: Date) => void;
   onHover: (d: Date | null) => void;
 }
 
-function CalendarMonth({ monthStart, selected, hover, rangeEnd, onPick, onHover }: CalendarMonthProps) {
+function CalendarMonth({ monthStart, selected, selectedEnd = null, hover, rangeEnd, onPick, onHover }: CalendarMonthProps) {
   const today = startOfDay(new Date());
   const year = monthStart.getFullYear();
   const month = monthStart.getMonth();
@@ -110,7 +123,10 @@ function CalendarMonth({ monthStart, selected, hover, rangeEnd, onPick, onHover 
 
   const inRange = (d: Date): boolean => {
     if (!selected) return false;
-    const end = hover && hover > selected ? hover : rangeEnd;
+    // Highlight priority: a committed end wins; while the end is still
+    // unpicked, the hover previews it; otherwise the range runs to
+    // rangeEnd (today in start-only mode).
+    const end = selectedEnd ?? (hover && hover > selected ? hover : rangeEnd);
     return d >= startOfDay(selected) && d <= startOfDay(end);
   };
 
@@ -126,7 +142,8 @@ function CalendarMonth({ monthStart, selected, hover, rangeEnd, onPick, onHover 
         {cells.map((d, i) => {
           if (!d) return <div key={i} />;
           const future = d > today;
-          const isSelected = selected && fmtIso(d) === fmtIso(selected);
+          const isSelected = (selected && fmtIso(d) === fmtIso(selected))
+            || (selectedEnd && fmtIso(d) === fmtIso(selectedEnd));
           const ranged = inRange(d) && !isSelected;
           return (
             <button
@@ -161,8 +178,11 @@ export default function DateRangePresets({
   variant = 'dropdown',
   maxDays = 90,
   disabled = false,
+  end = null,
+  onApplyRange,
   isFetching = false,
 }: DateRangePresetsProps) {
+  const rangeCapable = onApplyRange !== undefined;
   const tz = useTimezone();
   const [open, setOpen] = useState(false);
   const [showCal, setShowCal] = useState(false);
@@ -172,6 +192,7 @@ export default function DateRangePresets({
     return d;
   });
   const [pickedStart, setPickedStart] = useState<Date | null>(null);
+  const [pickedEnd, setPickedEnd] = useState<Date | null>(null);
   const [hoverDate, setHoverDate] = useState<Date | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -188,18 +209,43 @@ export default function DateRangePresets({
 
   const today = startOfDay(new Date());
 
-  const applyCustom = () => {
-    if (!pickedStart) return;
-    // Clamp to the page's backend window cap so the calendar can't
-    // generate API errors; larger picks silently fall back to the max.
-    const days = Math.max(1, Math.min(maxDays, daysBetween(pickedStart, today)));
-    onChange(days);
-    setOpen(false);
-    setShowCal(false);
-    setPickedStart(null);
+  // Two-click picking (range-capable pages only): first click = start;
+  // a later click = end; clicking before the start restarts the range.
+  const pickDay = (d: Date) => {
+    if (!rangeCapable || !pickedStart || d < pickedStart) {
+      setPickedStart(d);
+      setPickedEnd(null);
+      return;
+    }
+    setPickedEnd(d);
   };
 
-  const isCustom = !options.some((o) => o.days === value);
+  const resetPicks = () => { setPickedStart(null); setPickedEnd(null); };
+
+  const applyCustom = () => {
+    if (!pickedStart) return;
+    const effEnd = pickedEnd ?? today;
+    // Clamp to the page's backend window cap so the calendar can't
+    // generate API errors; larger picks silently fall back to the max.
+    const days = Math.max(1, Math.min(maxDays, daysBetween(pickedStart, effEnd)));
+    if (rangeCapable && onApplyRange) {
+      const endsToday = fmtIso(effEnd) === fmtIso(today);
+      onApplyRange(days, endsToday ? null : fmtIso(effEnd));
+    } else {
+      onChange(days);
+    }
+    setOpen(false);
+    setShowCal(false);
+    resetPicks();
+  };
+
+  // An explicit end day makes the selection custom even when the
+  // window LENGTH matches a preset ("last 7 ending Jun 20" ≠ "Last 7").
+  const isCustom = end != null || !options.some((o) => o.days === value);
+  const endDate = end ? startOfDay(new Date(`${end}T00:00:00`)) : null;
+  const rangeLabel = endDate
+    ? `${fmtNice(new Date(endDate.getTime() - value * 86_400_000), tz)} – ${fmtNice(endDate, tz)}`
+    : null;
 
   const monthBack = () => {
     const d = new Date(pickerMonth);
@@ -260,7 +306,7 @@ export default function DateRangePresets({
           ) : (
             <Calendar size={14} className="text-muted-foreground" />
           )}
-          {isCustom ? `Last ${value} days` : labelFor(value, options)}
+          {rangeLabel ?? (isCustom ? `Last ${value} days` : labelFor(value, options))}
           <ChevronDown size={12} className="text-muted-foreground" />
         </button>
       )}
@@ -310,7 +356,12 @@ export default function DateRangePresets({
             >
               <ChevronLeft size={14} />
             </button>
-            <p className="text-xs text-muted-foreground">Pick a start date</p>
+            <p className="text-xs text-muted-foreground">
+              {!rangeCapable ? 'Pick a start date'
+                : !pickedStart ? 'Pick a start date'
+                : !pickedEnd ? 'Now pick the end date'
+                : 'Range selected'}
+            </p>
             <button
               onClick={monthFwd}
               className="inline-flex size-7 items-center justify-center rounded-md hover:bg-muted text-muted-foreground"
@@ -322,21 +373,22 @@ export default function DateRangePresets({
           <CalendarMonth
             monthStart={pickerMonth}
             selected={pickedStart}
+            selectedEnd={pickedEnd}
             hover={hoverDate}
             rangeEnd={today}
-            onPick={setPickedStart}
+            onPick={pickDay}
             onHover={setHoverDate}
           />
           <div className="mt-3 flex items-center justify-between text-2xs text-muted-foreground">
             <span>
               {pickedStart
-                ? `${fmtNice(pickedStart, tz)} → ${fmtNice(today, tz)} (${daysBetween(pickedStart, today)}d)`
-                : 'Range ends today'}
+                ? `${fmtNice(pickedStart, tz)} → ${fmtNice(pickedEnd ?? today, tz)} (${daysBetween(pickedStart, pickedEnd ?? today)}d)`
+                : rangeCapable ? 'Pick start, then end' : 'Range ends today'}
             </span>
           </div>
           <div className="mt-2 flex justify-end gap-2">
             <button
-              onClick={() => { setShowCal(false); setPickedStart(null); }}
+              onClick={() => { setShowCal(false); resetPicks(); }}
               className="px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
             >
               Cancel

@@ -134,6 +134,10 @@ export default function Events() {
   // matches the Scorecards / Risk Summary defaults.  Users still get
   // the 7 / 14 / 60 / 90 presets in the DateRangePresets menu.
   const [days, setDays] = useState(30);
+  // Explicit window END day (YYYY-MM-DD, null = today).  /safety/events
+  // honors ``end=`` — this page unlocks the picker's two-click range
+  // mode ("show me the week of the incident", not just "last N days").
+  const [end, setEnd] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState('all');
   const [driverSearch, setDriverSearch] = useState('');
   // Inline video viewer state — null means closed.  Opening surfaces
@@ -189,9 +193,10 @@ export default function Events() {
   // refetches in the background (placeholderData keeps the previous
   // result on screen during the refetch).
   const { data, isLoading, isFetching, error: queryError, refetch } = useQuery<SafetyEventsResponse>({
-    queryKey: ['safety-events', days, typeFilter, driverSearch],
+    queryKey: ['safety-events', days, end, typeFilter, driverSearch],
     queryFn: () => {
       const params = new URLSearchParams({ days: String(days) });
+      if (end) params.set('end', end);
       if (typeFilter !== 'all') params.set('event_type', typeFilter);
       if (driverSearch) params.set('driver', driverSearch);
       return apiJSON<SafetyEventsResponse>(`/safety/events?${params}`);
@@ -249,7 +254,13 @@ export default function Events() {
         title={t('events.page_title')}
         description={t('events.page_description_long')}
         actions={
-          <DateRangePresets value={days} onChange={setDays} isFetching={isFetching} />
+          <DateRangePresets
+            value={days}
+            end={end}
+            onChange={(d) => { setDays(d); setEnd(null); }}
+            onApplyRange={(d, e) => { setDays(d); setEnd(e); }}
+            isFetching={isFetching}
+          />
         }
       />
 
