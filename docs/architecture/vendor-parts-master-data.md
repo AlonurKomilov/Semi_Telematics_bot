@@ -333,9 +333,41 @@ the mirror makes sense, minus everything a part name can't be:
   finally clear the 3-company rule as one cell), normalized-name
   fallback for unlinked, and unlinked GENERIC names form no part cells
   at all.  Executed while dark per the advisor's sequencing rule —
-  re-keying after launch would visibly shift published ranges.  The
-  only remaining launch step is the owner's legal review →
-  `MARKET_INTEL_ENABLED=1` (documented in .env.example).
+  re-keying after launch would visibly shift published ranges.
+
+## 6b. Market intel — own platform family + console launch + geo cells
+## (SHIPPED dark, 2026-07-18)
+
+Owner directives executed the same day:
+
+- **Family consolidation:** market intel is neither Vendors' nor
+  Parts' — it lives at `capabilities/platform/market_intel/` (router
+  + jobs; the nightly job moved out of vendor_directory/jobs.py).
+  The env-twin hack is DEAD: the launch gate is
+  `Database.market_intel_enabled()` (adapters/storage/
+  platform_settings.py) — a shared-Database method both layers may
+  legally call, backed by the `platform_settings` table with the
+  `MARKET_INTEL_ENABLED` env var as an emergency override only.
+- **Console launch cockpit** (system.4truck.us → "Market intel"): the
+  ON/OFF switch (propagates ≤60s, no restart, no SSH), readiness
+  numbers (sharing accounts / vendor cells / part-geo cells / last
+  computed), a "Compute rollups now" preview (safe while dark — cells
+  stay invisible until the switch opens), and the chain explainer.
+  The .env ritual is gone from the launch runbook.
+- **Part-centric GEOGRAPHIC estimates** (owner idea): new
+  `market_part_rollups` platform table — (catalog part × national |
+  state) cells from the same nightly pass, state parsed from the
+  shop's curated directory address.  ONLY catalog-linked parts pool
+  (one more reason curation matters); same six hard rules; city tier
+  deliberately deferred (3+ sharing companies per city per part is a
+  high bar — state lights up first).  Surfaces: "Estimated market
+  price" card on the part profile (national + state chips;
+  give-to-get pitch with count when not sharing; hidden while dark or
+  unlinked) and an "Est. Price" column on the Catalog tab (national
+  range, sharing accounts only).  The VENDOR-side ranges are
+  unchanged — the two answer different questions ("is this quote
+  fair?" at the shop vs "what should this cost around me?" before
+  choosing one).
 
 Account-side (shipped same day): `POST /parts` Add-part (resolve
 semantics + honest `created` flag) and visible part IDs (#id chip on

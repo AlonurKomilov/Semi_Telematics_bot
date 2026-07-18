@@ -27,16 +27,11 @@ from capabilities.permissions.roles import can_for_account, Role
 router = APIRouter(prefix="/vendors", tags=["vendors"])
 
 
-def _market_intel_enabled() -> bool:
-    """Dark-launch flag for Phase D market intelligence.
-
-    Deliberate TWIN of ``market_intel_enabled`` in
-    capabilities/platform/vendor_directory/jobs.py — the features
-    layer may not import from the platform sub-family (audience layer
-    boundary, enforced by test_layer_boundaries), so both sides read
-    the same env var independently.  Keep name + truthy set in sync."""
-    import os
-    return os.getenv("MARKET_INTEL_ENABLED", "0").strip() in ("1", "true", "TRUE", "yes")
+# Market-intel launch gate: resolved by ``tenant_db.market_intel_enabled()``
+# — the system-console switch (+ env emergency override) on the shared
+# Database.  The old env-only "deliberate twin" function is gone: a
+# method on the shared Database is the one home BOTH layers may
+# legally call, so there is nothing left to keep in sync.
 
 
 async def _vendor_access(user: dict) -> bool:
@@ -150,7 +145,7 @@ async def get_market_sharing(
     if not await _vendor_access(user):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     return {
-        "available": _market_intel_enabled(),
+        "available": await tenant_db.market_intel_enabled(),
         "enabled": await tenant_db.get_market_sharing(user["account_id"]),
     }
 
@@ -164,7 +159,7 @@ async def set_market_sharing(
     """Flip the account's give-to-get consent.  can_manage_account —
     sharing (anonymized) business data is an account-owner decision,
     not a fleet-manager one."""
-    if not _market_intel_enabled():
+    if not await tenant_db.market_intel_enabled():
         raise HTTPException(status_code=404, detail="Market intelligence is not enabled")
     await tenant_db.set_market_sharing(user["account_id"], body.enabled)
     await tenant_db.add_audit_log(
@@ -417,7 +412,7 @@ async def market_for_entry(
     joinable back to any account."""
     if not await _vendor_access(user):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    if not _market_intel_enabled():
+    if not await tenant_db.market_intel_enabled():
         return {"available": False, "reason": "disabled", "rows": []}
     if not await tenant_db.get_market_sharing(user["account_id"]):
         # Reciprocity, honestly: tell the account HOW MANY ranges exist

@@ -175,7 +175,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # Market intel (Phase D): nightly rollup rebuild at 04:40 UTC —
     # after the 04:10 account purge, before morning traffic.  No-op
     # while MARKET_INTEL_ENABLED is unset (dark launch).
-    from capabilities.platform.vendor_directory.jobs import job_market_rollups
+    from capabilities.platform.market_intel.jobs import job_market_rollups
     scheduler.add_job(
         job_market_rollups, "cron",
         hour=4, minute=40, args=[app], id="market_rollups",

@@ -211,6 +211,32 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_vendor_directory_status
             ON vendor_directory(status);
 
+        -- Platform-wide key/value settings the SYSTEM OWNER flips from
+        -- the console (launch gates, platform toggles).  Env vars stay
+        -- honored as emergency overrides where a reader documents it.
+        CREATE TABLE IF NOT EXISTS platform_settings (
+            key         TEXT PRIMARY KEY,
+            value       TEXT NOT NULL DEFAULT '',
+            updated_at  TEXT NOT NULL
+        );
+
+        -- Geographic part-price rollups (market intel, part-centric):
+        -- (public catalog part, national|state) → typical range from
+        -- sharing accounts.  Same six hard rules as
+        -- market_price_rollups; ONLY catalog-linked parts pool here.
+        CREATE TABLE IF NOT EXISTS market_part_rollups (
+            global_part_id INTEGER NOT NULL,
+            scope          TEXT    NOT NULL,
+            region         TEXT    NOT NULL DEFAULT '',
+            companies      INTEGER NOT NULL,
+            invoices       INTEGER NOT NULL,
+            p25            REAL    NOT NULL,
+            p75            REAL    NOT NULL,
+            window_months  INTEGER NOT NULL,
+            computed_at    TEXT    NOT NULL,
+            PRIMARY KEY (global_part_id, scope, region)
+        );
+
         -- Public parts catalog: operator-curated CANONICAL part
         -- identities (no geo, no reviews, no user contribution — the
         -- operator promotes from the cross-account candidates view or

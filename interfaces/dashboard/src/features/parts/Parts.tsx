@@ -96,6 +96,20 @@ const publicColumns: AnyColumn[] = [
       : <span className="text-muted-foreground">—</span>),
   },
   {
+    // Populated only when market intel is live AND this account
+    // shares (give-to-get) — otherwise the server omits the fields
+    // and the column reads "—" for everyone.
+    key: 'est_p25', label: 'Est. Price', sortable: true,
+    render: (v, row) => {
+      const r = row as unknown as PublicPartEntry;
+      return (r.est_p25 != null && r.est_p75 != null) ? (
+        <span className="tabular-nums font-medium">
+          {money(r.est_p25)}–{money(r.est_p75)}
+        </span>
+      ) : <span className="text-muted-foreground">—</span>;
+    },
+  },
+  {
     key: 'linked_part_name', label: 'Your Part', sortable: true,
     render: (v) => (v ? (
       <span className={`inline-flex items-center px-2 py-0.5 rounded-full border text-xs font-medium ${toneClasses('ok')}`}>

@@ -31,6 +31,28 @@ these sample sizes.
 from __future__ import annotations
 
 
+_US_STATES = frozenset({
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI",
+    "ID", "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI",
+    "MN", "MS", "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC",
+    "ND", "OH", "OK", "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT",
+    "VT", "VA", "WA", "WV", "WI", "WY", "DC",
+})
+
+
+def _us_state_from_address(address: str) -> str:
+    """Best-effort state code from a curated directory address
+    ("2540 High Point Pkwy, Barstow, CA, 92311" → "CA").  Scans
+    comma-tokens from the END so street words never false-match;
+    '' when nothing parses (the point still counts nationally)."""
+    for token in reversed((address or "").split(",")):
+        for word in reversed(token.strip().split()):
+            w = word.strip().upper()
+            if len(w) == 2 and w in _US_STATES:
+                return w
+    return ""
+
+
 def _percentile(sorted_points: list[float], q: float) -> float:
     if not sorted_points:
         return 0.0
@@ -104,6 +126,7 @@ class MarketIntelMixin:
             "       COALESCE(NULLIF(d.name, ''), c.name) AS dim_label, "
             "       c.global_part_id   AS global_part_id, "
             "       c.name_key         AS raw_key, "
+            "       vd.address         AS shop_address, "
             "       w.account_id       AS account_id, "
             "       p.unit_cost        AS point "
             "FROM work_order_parts p "
@@ -111,6 +134,7 @@ class MarketIntelMixin:
             "JOIN vendors v ON v.id = w.vendor_id AND v.account_id = w.account_id "
             "JOIN parts_catalog c ON c.id = p.part_id AND c.account_id = w.account_id "
             "LEFT JOIN part_directory d ON d.id = c.global_part_id "
+            "LEFT JOIN vendor_directory vd ON vd.id = v.global_vendor_id "
             "JOIN accounts a ON a.id = w.account_id "
             "WHERE a.share_market_data = 1 "
             "  AND v.global_vendor_id IS NOT NULL "
@@ -145,8 +169,46 @@ class MarketIntelMixin:
             if lbl:
                 c["labels"][lbl] = c["labels"].get(lbl, 0) + 1
 
+        # ── Part-centric GEOGRAPHIC cells (owner ask: "what should
+        # this part cost around me?" — consulted BEFORE picking a
+        # shop, unlike the per-shop cells above which answer "is this
+        # quote fair?" at the shop).  ONLY catalog-linked parts pool
+        # here (canonical identity across accounts); the shop's
+        # curated address supplies the state, national always counts.
+        # City tier deliberately deferred: 3+ sharing companies per
+        # CITY per part is years away — state cells light up first.
+        geo_cells: dict = {}
+        for r in part_rows:
+            gpid = r.get("global_part_id")
+            if not gpid:
+                continue
+            for scope, region in (
+                ("national", ""),
+                ("state", _us_state_from_address(str(r.get("shop_address") or ""))),
+            ):
+                if scope == "state" and not region:
+                    continue
+                k = (int(gpid), scope, region)
+                c = geo_cells.setdefault(k, {"accounts": set(), "points": []})
+                c["accounts"].add(r["account_id"])
+                c["points"].append(float(r["point"]))
+
         now = self._now()
         await self._db.execute("DELETE FROM market_price_rollups")
+        await self._db.execute("DELETE FROM market_part_rollups")
+        for (gpid, scope, region), c in geo_cells.items():
+            if len(c["accounts"]) < self.MIN_COMPANIES:
+                continue          # same rule 2 — never publish thin cells
+            pts = sorted(c["points"])
+            await self._db.execute(
+                "INSERT INTO market_part_rollups "
+                "(global_part_id, scope, region, companies, invoices, "
+                " p25, p75, window_months, computed_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (gpid, scope, region, len(c["accounts"]), len(pts),
+                 round(_percentile(pts, 0.25), 2),
+                 round(_percentile(pts, 0.75), 2), self.WINDOW_MONTHS, now),
+            )
         written = 0
         for (entry_id, dim_type, dim_key), c in cells.items():
             if len(c["accounts"]) < self.MIN_COMPANIES:
@@ -168,6 +230,56 @@ class MarketIntelMixin:
         return written
 
     # ── Reads ────────────────────────────────────────────────────
+
+    async def market_part_estimates(self, global_part_id: int) -> dict:
+        """Published geographic estimates for one catalog part:
+        the national cell (or None) + every state cell that passed
+        the 3-company rule.  Published shape only."""
+        cur = await self._db.execute(
+            "SELECT scope, region, companies, invoices, p25, p75, "
+            "       window_months, computed_at "
+            "FROM market_part_rollups WHERE global_part_id = ? "
+            "ORDER BY scope ASC, region ASC",
+            (global_part_id,),
+        )
+        national, states = None, []
+        for r in (dict(x) for x in await cur.fetchall()):
+            if r["scope"] == "national":
+                national = r
+            else:
+                states.append(r)
+        return {"national": national, "states": states}
+
+    async def market_part_national_map(self) -> dict[int, dict]:
+        """All national part cells in one read — the Catalog browse
+        column's data source (one query, merged in the handler)."""
+        cur = await self._db.execute(
+            "SELECT global_part_id, companies, p25, p75 "
+            "FROM market_part_rollups WHERE scope = 'national'",
+        )
+        return {
+            int(r["global_part_id"]): dict(r)
+            for r in (dict(x) for x in await cur.fetchall())
+        }
+
+    async def market_intel_stats(self) -> dict:
+        """Console readiness numbers: is the flywheel turning?"""
+        out: dict = {}
+        cur = await self._db.execute(
+            "SELECT COUNT(*) AS n FROM accounts WHERE share_market_data = 1",
+        )
+        out["sharing_accounts"] = int(dict(await cur.fetchone())["n"])
+        cur = await self._db.execute(
+            "SELECT COUNT(*) AS n, MAX(computed_at) AS at FROM market_price_rollups",
+        )
+        row = dict(await cur.fetchone())
+        out["vendor_cells"] = int(row["n"] or 0)
+        out["computed_at"] = row["at"]
+        cur = await self._db.execute(
+            "SELECT COUNT(*) AS n FROM market_part_rollups",
+        )
+        out["part_geo_cells"] = int(dict(await cur.fetchone())["n"])
+        return out
 
     async def market_rollups_for_entry(self, entry_id: int) -> list[dict]:
         """Published shape only — counts + typical range, nothing

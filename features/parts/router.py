@@ -89,12 +89,22 @@ async def browse_public(
     user: dict = Depends(require_permission("can_parts")),
     tenant_db=Depends(get_tenant_db),
 ):
-    """The Public tab: ACTIVE canonical part identities (operator-
+    """The Catalog tab: ACTIVE canonical part identities (operator-
     curated on the platform) + the caller's own link state.  Identity
-    only — no usage data, nothing cross-account."""
-    return {"entries": await tenant_db.browse_part_directory(
-        user["account_id"], q=q,
-    )}
+    only — no usage data, nothing cross-account.  When market intel is
+    live AND the account shares (give-to-get), each row also carries
+    the NATIONAL typical range (published cells only — every one
+    passed the 3-company rule)."""
+    entries = await tenant_db.browse_part_directory(user["account_id"], q=q)
+    if (await tenant_db.market_intel_enabled()
+            and await tenant_db.get_market_sharing(user["account_id"])):
+        national = await tenant_db.market_part_national_map()
+        for e in entries:
+            cell = national.get(e["id"])
+            if cell:
+                e["est_p25"] = cell["p25"]
+                e["est_p75"] = cell["p75"]
+    return {"entries": entries}
 
 
 @router.get("/{part_id}")
@@ -121,6 +131,23 @@ async def get_part(
                       ("id", "name", "category", "part_number",
                        "description", "status")}
     data["public"] = public
+
+    # Geographic market estimates ("what should this part cost around
+    # me?") — same triple gate as the vendor-side ranges: platform
+    # switch ON, catalog-linked part, and the caller's account shares
+    # its own data (give-to-get; count-only tease otherwise).
+    if not await tenant_db.market_intel_enabled():
+        data["market"] = {"available": False, "reason": "disabled"}
+    elif not gid:
+        data["market"] = {"available": False, "reason": "not_linked"}
+    elif not await tenant_db.get_market_sharing(user["account_id"]):
+        est = await tenant_db.market_part_estimates(gid)
+        n = (1 if est["national"] else 0) + len(est["states"])
+        data["market"] = {"available": False, "reason": "not_sharing",
+                          "available_count": n}
+    else:
+        est = await tenant_db.market_part_estimates(gid)
+        data["market"] = {"available": True, **est}
     return data
 
 

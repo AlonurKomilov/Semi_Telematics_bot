@@ -197,6 +197,43 @@ async def run_all(conn) -> None:
     # Public parts catalog (operator-curated canonical part identities)
     # + alias map + candidates-queue dismissal tombstones.
     await migrate_part_directory(conn)
+    # Console-managed platform settings + geographic part-price rollups.
+    await migrate_platform_settings_and_part_rollups(conn)
+
+
+async def migrate_platform_settings_and_part_rollups(conn) -> None:
+    """platform_settings (console-flipped launch gates — replaces the
+    .env-only pattern for MARKET_INTEL_ENABLED) and market_part_rollups
+    (part-centric geographic price cells).  Idempotent mirrors of
+    platform_schema."""
+    try:
+        await conn.executescript("""
+            CREATE TABLE IF NOT EXISTS platform_settings (
+                key         TEXT PRIMARY KEY,
+                value       TEXT NOT NULL DEFAULT '',
+                updated_at  TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS market_part_rollups (
+                global_part_id INTEGER NOT NULL,
+                scope          TEXT    NOT NULL,
+                region         TEXT    NOT NULL DEFAULT '',
+                companies      INTEGER NOT NULL,
+                invoices       INTEGER NOT NULL,
+                p25            REAL    NOT NULL,
+                p75            REAL    NOT NULL,
+                window_months  INTEGER NOT NULL,
+                computed_at    TEXT    NOT NULL,
+                PRIMARY KEY (global_part_id, scope, region)
+            );
+        """)
+        await conn.commit()
+        logger.info("Platform migration: platform_settings + market_part_rollups ready")
+    except Exception as e:
+        logger.error("platform_settings migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
 
 
 async def migrate_part_directory(conn) -> None:

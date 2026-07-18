@@ -1,6 +1,6 @@
 import { Routes, Route, NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Building2, Receipt, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store, Cog, Gauge } from 'lucide-react';
+import { Building2, Receipt, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store, Cog, TrendingUp, Gauge } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Login from './pages/Login';
 import Accounts from './pages/Accounts';
@@ -14,6 +14,7 @@ import AIFeedbackPage from './pages/AIFeedback';
 import RetentionPage from './pages/Retention';
 import VendorDirectoryPage from './pages/VendorDirectory';
 import PartsDirectoryPage from './pages/PartsDirectory';
+import MarketIntelPage from './pages/MarketIntel';
 import ScansPage from './pages/Scans';
 import SchedulerPage from './pages/Scheduler';
 import CapacityPage from './pages/Capacity';
@@ -64,6 +65,7 @@ export default function App() {
             <Route path="/retention" element={<RetentionPage />} />
             <Route path="/vendor-directory" element={<VendorDirectoryPage />} />
             <Route path="/parts-directory" element={<PartsDirectoryPage />} />
+            <Route path="/market-intel" element={<MarketIntelPage />} />
             <Route path="/scans" element={<ScansPage />} />
             <Route path="/scheduler" element={<SchedulerPage />} />
             <Route path="/capacity" element={<CapacityPage />} />
@@ -109,6 +111,7 @@ const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
       { to: '/retention', label: 'Retention', icon: DatabaseBackup },
       { to: '/vendor-directory', label: 'Vendor directory', icon: Store },
       { to: '/parts-directory', label: 'Parts catalog', icon: Cog },
+      { to: '/market-intel', label: 'Market intel', icon: TrendingUp },
       { to: '/scans',     label: 'File scans', icon: ShieldCheck },
       { to: '/scheduler', label: 'Scheduler', icon: CalendarClock },
     ],

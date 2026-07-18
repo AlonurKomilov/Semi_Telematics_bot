@@ -240,3 +240,47 @@ async def test_browse_identity_only_with_link_state_and_gates(seeded):
         assert body["public"]["name"] == "Detroit DD15 Oil Filter"
         assert body["public"]["category"] == "Filters"
         assert body["part"].get("category") is None
+
+
+@pytest.mark.asyncio
+async def test_market_intel_console_switch(seeded):
+    """The launch switch lives on the console now: operator flips it,
+    every reader follows within the cache TTL (same-process: instantly)
+    — no .env, no restart.  Customer tokens never reach /system."""
+    from adapters.storage.platform_settings import _settings_cache
+    _settings_cache.clear()   # cross-test cache hygiene
+
+    transport = ASGITransport(app=seeded["app"])
+    async with AsyncClient(transport=transport, base_url="http://t") as c:
+        r = await c.get("/api/system/market-intel", headers=_h(seeded["token_op"]))
+        assert r.status_code == 200
+        body = r.json()
+        assert body["enabled"] is False and body["switch"] is False
+        assert "sharing_accounts" in body and "part_geo_cells" in body
+
+        r = await c.put("/api/system/market-intel", headers=_h(seeded["token_op"]),
+                        json={"enabled": True})
+        assert r.status_code == 200 and r.json()["enabled"] is True
+
+        # Customer-side reader follows the switch (no env var set).
+        r = await c.get("/api/vendors/market-sharing", headers=_h(seeded["token_fleet"]))
+        assert r.status_code == 200
+        assert r.json()["available"] is True
+
+        # Preview trigger works regardless of the switch.
+        r = await c.post("/api/system/market-intel/rollup-now",
+                         headers=_h(seeded["token_op"]))
+        assert r.status_code == 200
+
+        r = await c.put("/api/system/market-intel", headers=_h(seeded["token_op"]),
+                        json={"enabled": False})
+        assert r.status_code == 200
+        r = await c.get("/api/vendors/market-sharing", headers=_h(seeded["token_fleet"]))
+        assert r.json()["available"] is False
+
+        # Customer tokens never reach the cockpit.
+        for method in ("GET", "PUT"):
+            r = await c.request(method, "/api/system/market-intel",
+                                headers=_h(seeded["token_fleet"]),
+                                json={"enabled": True} if method == "PUT" else None)
+            assert r.status_code == 403

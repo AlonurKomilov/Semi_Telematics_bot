@@ -51,6 +51,7 @@ from .work_orders import WorkOrdersMixin
 from .vendors import VendorsMixin
 from .parts_catalog import PartsCatalogMixin
 from .part_directory import PartDirectoryMixin
+from .platform_settings import PlatformSettingsMixin
 from .vendor_directory import VendorDirectoryMixin
 from .market_intel import MarketIntelMixin
 from .vehicle_inventory import VehicleInventoryMixin
@@ -116,6 +117,7 @@ class Database(
     VendorsMixin,
     PartsCatalogMixin,
     PartDirectoryMixin,
+    PlatformSettingsMixin,
     VendorDirectoryMixin,
     MarketIntelMixin,
     VehicleInventoryMixin,

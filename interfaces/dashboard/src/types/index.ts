@@ -1650,6 +1650,22 @@ export interface PublicPartEntry {
   /** Browse only: the caller's own part linked to this entry. */
   linked_part_id?: number | null;
   linked_part_name?: string | null;
+  /** Browse only, market intel live + account sharing: the NATIONAL
+   *  typical range (p25–p75, 3+ companies, 12 months). */
+  est_p25?: number;
+  est_p75?: number;
+}
+
+/** One published geographic price cell for a catalog part. */
+export interface PartGeoCell {
+  scope: 'national' | 'state';
+  region: string;
+  companies: number;
+  invoices: number;
+  p25: number;
+  p75: number;
+  window_months: number;
+  computed_at: string;
 }
 
 /** The part drill-down payload (GET /parts/{id}) — void invoices and
@@ -1693,6 +1709,16 @@ export interface PartAnalytics {
   /** Linked public-catalog identity (category displays through this
    *  join — never copied onto the user's row); null when unlinked. */
   public?: PublicPartEntry | null;
+  /** Geographic market estimates — triple-gated server-side (platform
+   *  switch, catalog link, give-to-get).  reason: disabled |
+   *  not_linked | not_sharing (with available_count tease). */
+  market?: {
+    available: boolean;
+    reason?: 'disabled' | 'not_linked' | 'not_sharing';
+    available_count?: number;
+    national?: PartGeoCell | null;
+    states?: PartGeoCell[];
+  };
 }
 
 /** Anonymized market rollup row (Phase D — published shape only). */

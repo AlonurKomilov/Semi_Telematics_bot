@@ -150,3 +150,64 @@ async def test_part_cells_key_on_public_catalog_identity(db):
     assert "conventionalwithclassicwsh" not in parts
     # ...and the generic key formed no cell despite 3 sharing companies.
     assert "shop supplies" not in parts
+
+
+@pytest.mark.asyncio
+async def test_part_geo_cells_state_and_national(db):
+    """Part-centric geographic estimates: catalog-linked parts pool
+    per state (shop's curated address supplies it) and nationally;
+    thin state cells never publish; unlinked parts never pool."""
+    accts = [(await db.create_account(f"G{i}")).id for i in range(1, 5)]
+    tx_shop = await db.create_directory_entry(
+        "Geo Dallas Truck Parts", status="active",
+        address="100 I-35 Frontage Rd, Dallas, TX, 75201",
+    )
+    ca_shop = await db.create_directory_entry(
+        "Geo Fresno Truck Parts", status="active",
+        address="900 Golden State Blvd, Fresno, CA, 93650",
+    )
+    canon = await db.create_part_directory_entry("Steer Tire 295/75R22.5")
+
+    async def buy(acct, shop, price, local_name):
+        await db.set_market_sharing(acct, True)
+        v = await db.resolve_or_create_vendor(acct, shop["name"])
+        await db.link_vendor_to_directory(acct, v["id"], shop["id"])
+        wo = await db.add_work_order(
+            acct, "CO", "T-1", shop["name"], vendor_id=v["id"],
+            service_date="2026-06-01", total_cost=price,
+        )
+        part = await db.resolve_or_create_part(acct, local_name)
+        await db.link_part_to_public(acct, part["id"], canon["id"])
+        await db.add_work_order_part(
+            wo, part_name=local_name, quantity=1, unit_cost=price,
+            total_cost=price, part_id=part["id"],
+        )
+        return wo
+
+    # Three companies in TX → TX cell + national; one in CA → CA
+    # stays thin (<3) and must NOT publish; national pools all four.
+    await buy(accts[0], tx_shop, 400.0, "steer tire A")
+    await buy(accts[1], tx_shop, 450.0, "steer tire B")
+    await buy(accts[2], tx_shop, 500.0, "steer tire C")
+    wo4 = await buy(accts[3], ca_shop, 480.0, "steer tire D")
+
+    # An UNLINKED part on the same invoice: no geo cells, ever.
+    loc = await db.resolve_or_create_part(accts[3], "Weird Local Thing")
+    await db.add_work_order_part(
+        wo4, part_name="Weird Local Thing", quantity=1, unit_cost=77.0,
+        total_cost=77.0, part_id=loc["id"],
+    )
+
+    await db.compute_market_rollups(SINCE)
+    est = await db.market_part_estimates(canon["id"])
+
+    assert est["national"] is not None
+    assert est["national"]["companies"] == 4
+    assert [s["region"] for s in est["states"]] == ["TX"]   # CA thin → absent
+    assert est["states"][0]["companies"] == 3
+    assert 400.0 <= est["states"][0]["p25"] <= est["states"][0]["p75"] <= 500.0
+
+    # Nothing pooled for the unlinked part: only the canonical id
+    # appears in the geo table at all.
+    m = await db.market_part_national_map()
+    assert set(m.keys()) == {canon["id"]}

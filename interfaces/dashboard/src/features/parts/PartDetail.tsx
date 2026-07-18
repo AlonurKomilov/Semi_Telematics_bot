@@ -407,6 +407,55 @@ export default function PartDetail() {
             )}
           </div>
 
+          {/* Geographic market estimates — "what should this part
+              cost around me?"  Hidden entirely while the platform
+              switch is off or the part isn't catalog-linked; the
+              give-to-get pitch shows the count when not sharing. */}
+          {data.market && data.market.reason !== 'disabled' && data.market.reason !== 'not_linked' && (
+            <div className="bg-card border border-border rounded-lg p-3 mb-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+                Estimated market price
+              </p>
+              {data.market.available ? (
+                (data.market.national || (data.market.states ?? []).length > 0) ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {data.market.national && (
+                      <Tip label={`Typical range across ${data.market.national.companies} companies · ${data.market.national.invoices} invoices · last ${data.market.national.window_months} months. Prices vary by volume and situation.`}>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-sm text-foreground">
+                          <span className="text-xs text-muted-foreground">National</span>
+                          <span className="tabular-nums font-medium">
+                            {money(data.market.national.p25, 0)}–{money(data.market.national.p75, 0)}
+                          </span>
+                        </span>
+                      </Tip>
+                    )}
+                    {(data.market.states ?? []).map((s) => (
+                      <Tip key={s.region} label={`${s.companies} companies · ${s.invoices} invoices · last ${s.window_months} months.`}>
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border text-sm text-foreground">
+                          <span className="text-xs text-muted-foreground">{s.region}</span>
+                          <span className="tabular-nums font-medium">
+                            {money(s.p25, 0)}–{money(s.p75, 0)}
+                          </span>
+                        </span>
+                      </Tip>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Not enough data yet — ranges publish once 3+ companies
+                    have bought this part.
+                  </p>
+                )
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {(data.market.available_count ?? 0) > 0
+                    ? `${data.market.available_count} market range${(data.market.available_count ?? 0) > 1 ? 's' : ''} available for this part — enable market sharing in Settings to see them (your data contributes anonymously in return).`
+                    : 'Enable market sharing in Settings to see typical prices here as they become available (your data contributes anonymously in return).'}
+                </p>
+              )}
+            </div>
+          )}
+
           {data.purchases.length === 0 ? (
             <EmptyState
               icon={Cog}
