@@ -110,11 +110,14 @@ interface CalendarMonthProps {
   /** Where the highlight band runs to when no end is picked (today in
    *  start-only mode; hover preview while picking an end). */
   bandEnd: Date;
+  /** True on pages that can pick an explicit end — enables the
+   *  either-direction hover preview and the hover-endpoint highlight. */
+  rangeCapable: boolean;
   onPick: (d: Date) => void;
   onHover: (d: Date | null) => void;
 }
 
-function CalendarMonth({ monthStart, start, endPicked, hover, bandEnd, onPick, onHover }: CalendarMonthProps) {
+function CalendarMonth({ monthStart, start, endPicked, hover, bandEnd, rangeCapable, onPick, onHover }: CalendarMonthProps) {
   const today = startOfDay(new Date());
   const year = monthStart.getFullYear();
   const month = monthStart.getMonth();
@@ -127,11 +130,18 @@ function CalendarMonth({ monthStart, start, endPicked, hover, bandEnd, onPick, o
   for (let d = 1; d <= lastDay; d++) cells.push(new Date(year, month, d));
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const effEnd = endPicked
-    ?? (start && hover && hover > start ? hover : bandEnd);
+  // The far end of the visual range.  A committed end wins; mid-pick,
+  // the hover previews it in EITHER direction (so dragging back from
+  // the start highlights just like dragging forward — the fix); a
+  // start-only page has no pickable end, so its band always runs
+  // start→today (bandEnd).  The band is then ordered [lo, hi] so it
+  // renders correctly whichever way it points.
+  const far = endPicked ?? (rangeCapable && start && hover ? hover : bandEnd);
+  const lo = start && far ? (startOfDay(start) <= startOfDay(far) ? start : far) : null;
+  const hi = start && far ? (startOfDay(start) <= startOfDay(far) ? far : start) : null;
 
   const inBand = (d: Date): boolean =>
-    !!start && d > startOfDay(start) && d < startOfDay(effEnd);
+    !!lo && !!hi && d > startOfDay(lo) && d < startOfDay(hi);
 
   return (
     <div className="w-60">
@@ -148,17 +158,24 @@ function CalendarMonth({ monthStart, start, endPicked, hover, bandEnd, onPick, o
           const iso = fmtIso(d);
           const isStart = !!start && iso === fmtIso(start);
           const isEnd = !!endPicked && iso === fmtIso(endPicked);
+          // The day the cursor is on while the end is still open — the
+          // range's other endpoint-to-be.  Marked so both forward and
+          // backward drags feel like grabbing an endpoint.
+          const isHoverEnd = rangeCapable && !!start && !endPicked
+            && !!hover && iso === fmtIso(hover) && iso !== fmtIso(start);
           const isToday = iso === fmtIso(today);
           const banded = inBand(d);
           const cls = future
             ? 'text-muted-foreground/30 cursor-not-allowed'
             : isStart || isEnd
               ? 'bg-primary text-primary-foreground font-semibold rounded-md'
-              : banded
-                ? 'bg-primary/10 text-foreground'
-                : `text-foreground/80 hover:bg-muted rounded-md${
-                    isToday ? ' ring-1 ring-inset ring-primary/50 text-primary font-medium' : ''
-                  }`;
+              : isHoverEnd
+                ? 'bg-primary/30 text-foreground font-medium rounded-md'
+                : banded
+                  ? 'bg-primary/10 text-foreground'
+                  : `text-foreground/80 hover:bg-muted rounded-md${
+                      isToday ? ' ring-1 ring-inset ring-primary/50 text-primary font-medium' : ''
+                    }`;
           return (
             <button
               key={i}
@@ -221,15 +238,29 @@ export default function DateRangePresets({
 
   const today = startOfDay(new Date());
 
-  // Two-click picking (range-capable pages only): first click = start;
-  // a later click = end; clicking before the start restarts the range.
+  // Two-click picking.  Start-only pages just re-anchor on every click.
+  // Range pages: the FIRST click (or a click after a completed range)
+  // opens a new range; the SECOND click closes it — and the pair is
+  // ORDERED, so clicking an earlier day second reads as [earlier,
+  // later] instead of restarting from it (the user-comfort fix; you
+  // can now sweep backward from the anchor).
   const pickDay = (d: Date) => {
-    if (!rangeCapable || !pickedStart || d < pickedStart) {
+    if (!rangeCapable) {
       setPickedStart(d);
       setPickedEnd(null);
       return;
     }
-    setPickedEnd(d);
+    if (!pickedStart || pickedEnd) {
+      setPickedStart(d);
+      setPickedEnd(null);
+      return;
+    }
+    if (d < pickedStart) {
+      setPickedEnd(pickedStart);
+      setPickedStart(d);
+    } else {
+      setPickedEnd(d);
+    }
   };
 
   const applyCustom = () => {
@@ -280,8 +311,16 @@ export default function DateRangePresets({
         : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted hover:text-foreground'
     }`;
 
-  const footerSummary = pickedStart
-    ? `${fmtNice(pickedStart, tz)} → ${fmtNice(pickedEnd ?? today, tz)} · ${daysBetween(pickedStart, pickedEnd ?? today)} days`
+  // Footer tracks the pick live — including the hover preview and its
+  // direction — so it agrees with the calendar band as you sweep.
+  const previewFar = pickedEnd
+    ?? (rangeCapable && pickedStart && hoverDate ? hoverDate : today);
+  const [sumLo, sumHi] = pickedStart
+    ? (startOfDay(pickedStart) <= startOfDay(previewFar)
+        ? [pickedStart, previewFar] : [previewFar, pickedStart])
+    : [null, null];
+  const footerSummary = sumLo && sumHi
+    ? `${fmtNice(sumLo, tz)} → ${fmtNice(sumHi, tz)} · ${daysBetween(sumLo, sumHi)} days`
     : rangeCapable
       ? 'Click a start date, then an end date'
       : 'Click a start date — the range ends today';
@@ -381,6 +420,7 @@ export default function DateRangePresets({
                     endPicked={pickedEnd}
                     hover={hoverDate}
                     bandEnd={today}
+                    rangeCapable={rangeCapable}
                     onPick={pickDay}
                     onHover={setHoverDate}
                   />
@@ -391,6 +431,7 @@ export default function DateRangePresets({
                   endPicked={pickedEnd}
                   hover={hoverDate}
                   bandEnd={today}
+                  rangeCapable={rangeCapable}
                   onPick={pickDay}
                   onHover={setHoverDate}
                 />
