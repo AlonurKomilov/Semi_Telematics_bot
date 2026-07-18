@@ -95,7 +95,10 @@ const P_REPORTS = ['can_faults', 'can_risk_report_all', 'can_risk_report_own', '
 export const FEATURE_CATALOG: CatalogFeature[] = [
   // ── CORE (always on) ──────────────────────────────────────────────
   { id: 'overview',       labelKey: 'nav.overview',       path: '/',          icon: LayoutDashboard, modules: ['core'], tier: 'system', permission: null, navGroup: 'main' },
-  { id: 'ai_assistant',   labelKey: 'nav.ai_assistant',   path: '/ai/chat',   icon: Bot,             modules: ['core'], tier: 'system', permission: ['can_ai_chat'], navGroup: 'main' },
+  // Route-only: the assistant launches from the topbar icon (beside the
+  // avatar) + ⌘J, not a sidebar row — navHidden keeps the route guard
+  // and can_ai_chat wiring while dropping the nav entry.
+  { id: 'ai_assistant',   labelKey: 'nav.ai_assistant',   path: '/ai/chat',   icon: Bot,             modules: ['core'], tier: 'system', permission: ['can_ai_chat'], navGroup: 'main', navHidden: true },
   { id: 'alerts',         labelKey: 'nav.alerts',         path: '/alerts',    icon: Bell,            modules: ['core'], tier: 'system', permission: P_ALERTS, navGroup: 'monitoring' },
   { id: 'reports',        labelKey: 'nav.reports',        path: '/reports',   icon: FileText,        modules: ['core'], tier: 'system', permission: P_REPORTS, navGroup: 'reports' },
   // KPI — the account-wide performance analytics surface (dispatcher grades

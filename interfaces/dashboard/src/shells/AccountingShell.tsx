@@ -16,6 +16,7 @@ import Sidebar from '../components/Sidebar';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
+import { AssistantLauncher } from '../features/ai/AssistantLauncher';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
 
@@ -96,6 +97,7 @@ export default function AccountingShell() {
               <Search size={18} />
             </button>
             <LanguageSelector />
+            <AssistantLauncher />
             <ThemeToggle />
             <AvatarMenu />
           </div>

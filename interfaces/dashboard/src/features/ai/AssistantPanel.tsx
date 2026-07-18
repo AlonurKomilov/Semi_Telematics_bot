@@ -12,9 +12,8 @@
  * never see the launcher.  ⌘/Ctrl-J toggles it from anywhere.
  */
 import { useEffect, lazy, Suspense } from 'react';
-import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
-import { Bot, X, Loader2, Check, Maximize2, Minimize2 } from 'lucide-react';
+import { Bot, X, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import {
   useAssistant, clampPanelW, setPanelWidthVar, PANEL_W_DEFAULT,
 } from './AssistantContext';
@@ -29,12 +28,11 @@ const Chat = lazy(() => import('./Chat'));
 
 export default function AssistantPanel() {
   const {
-    open, openPanel, closePanel, togglePanel, runPhase, runLabel,
+    open, closePanel, togglePanel,
     panelWidth, setPanelWidth, setPanelResizing, setHeaderSlot,
     panelExpanded, setPanelExpanded,
   } = useAssistant();
   const { hasAny } = useViewPermissions();
-  const { t } = useTranslation();
   const location = useLocation();
 
   /** Divider drag: pointer-captured on the handle so move/up keep firing
@@ -95,34 +93,6 @@ export default function AssistantPanel() {
 
   return (
     <>
-      {/* Docked launcher — bottom-right, shown only while closed.  Hiding
-          the panel never cancels a run (the stream keeps going and the
-          server persists the finished turn), so while one is in flight the
-          chip becomes a compact status pill — Thinking / Running / Done —
-          and the user can reopen anytime. */}
-      {!open && (
-        <Tip label="Assistant (⌘J)" side="left">
-          <button
-            onClick={() => openPanel()}
-            className="fixed bottom-5 right-5 z-40 flex items-center gap-2 rounded-full bg-primary text-primary-foreground shadow-lg px-4 py-3 text-sm font-medium hover:brightness-110 transition"
-            aria-label="Open assistant"
-          >
-            {runPhase === 'running' ? (
-              <Loader2 size={18} className="animate-spin" aria-hidden />
-            ) : runPhase === 'done' ? (
-              <Check size={18} aria-hidden />
-            ) : (
-              <Bot size={18} aria-hidden />
-            )}
-            <span className="hidden sm:inline">
-              {runPhase === 'running'
-                ? (runLabel || t('chat.running'))
-                : runPhase === 'done' ? t('chat.done_step') : 'Assistant'}
-            </span>
-          </button>
-        </Tip>
-      )}
-
       {/* Slide-over panel — non-modal, right-docked.  Styled as SHELL
           CHROME (bg-sidebar) holding the chat in a rounded bg-background
           canvas — the exact anatomy of the app frame (see the shells'
