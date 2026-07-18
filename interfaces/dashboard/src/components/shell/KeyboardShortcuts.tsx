@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
+import { shortcut } from '../../utils/platform';
 
 interface ShortcutDef {
   keys: string;
@@ -18,7 +19,7 @@ export default function KeyboardShortcuts({ onOpenSearch }: KeyboardShortcutsPro
   const [helpOpen, setHelpOpen] = useState(false);
 
   const shortcuts: ShortcutDef[] = [
-    { keys: '⌘K', label: 'Open command palette', action: onOpenSearch },
+    { keys: shortcut('K'), label: 'Open command palette', action: onOpenSearch },
     { keys: '/', label: 'Open command palette' },
     { keys: '?', label: 'Show this help' },
     { keys: 'g h', label: 'Go to Overview', href: '/' },

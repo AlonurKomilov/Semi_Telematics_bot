@@ -20,6 +20,7 @@ import {
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { Tip } from '../../components/tooltip';
 import { Button } from '../../components/ui/button';
+import { shortcut } from '../../utils/platform';
 
 // Lazy so the chat body (+ its DataGrid / recharts / formatAI deps) is a
 // separate chunk loaded on FIRST panel open — not baked into the main
@@ -164,7 +165,7 @@ export default function AssistantPanel() {
                   {panelExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                 </Button>
               </Tip>
-              <Tip label="Close (⌘J)">
+              <Tip label={`Close (${shortcut('J')})`}>
                 <Button
                   variant="ghost"
                   size="icon"

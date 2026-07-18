@@ -4,6 +4,7 @@ import { Search, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useRoleView } from '../../context/RoleViewContext';
 import { ROUTE_ENTRIES, type RouteEntry } from './routeRegistry';
+import { shortcut } from '../../utils/platform';
 
 interface CommandPaletteProps {
   open: boolean;
@@ -167,7 +168,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
           <span>↑↓ to navigate · ↵ to open</span>
           <span>
             Press
-            <kbd className="mx-1 px-1.5 py-0.5 rounded border border-border">⌘K</kbd>
+            <kbd className="mx-1 px-1.5 py-0.5 rounded border border-border">{shortcut('K')}</kbd>
             anywhere
           </span>
         </div>

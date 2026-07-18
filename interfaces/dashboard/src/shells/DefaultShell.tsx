@@ -24,6 +24,7 @@ import { ThemeToggle } from '../components/ThemeToggle';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
+import { shortcut } from '../utils/platform';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
 
@@ -114,7 +115,7 @@ export default function DefaultShell() {
               <Search size={14} />
               <span>Search…</span>
               <kbd className="ml-auto px-1.5 py-0.5 text-3xs border border-border rounded bg-card">
-                ⌘K
+                {shortcut('K')}
               </kbd>
             </button>
             <button

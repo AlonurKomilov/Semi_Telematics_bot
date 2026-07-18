@@ -17,6 +17,7 @@ import { Bot, Loader2, Check } from 'lucide-react';
 import { useAssistant } from './AssistantContext';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { Tip } from '../../components/tooltip';
+import { shortcut } from '../../utils/platform';
 
 export function AssistantLauncher() {
   const { open, togglePanel, runPhase } = useAssistant();
@@ -28,7 +29,7 @@ export function AssistantLauncher() {
   const Icon = runPhase === 'running' ? Loader2 : runPhase === 'done' ? Check : Bot;
 
   return (
-    <Tip label="Assistant (⌘J)">
+    <Tip label={`Assistant (${shortcut('J')})`}>
       <button
         onClick={() => togglePanel()}
         aria-label="Toggle assistant"
