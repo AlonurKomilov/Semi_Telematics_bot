@@ -11,14 +11,14 @@
  * On mount it fetches the live status (a proposal approved on another
  * device / earlier session shows "Done" instead of a stale button).
  */
-import { useState, useEffect } from 'react';
-import { Check, X, Loader2, ShieldAlert } from 'lucide-react';
-import { aiApproveAction, aiRejectAction, aiGetActionStatus } from '../../../api/client';
+import { useState, useEffect, useRef } from 'react';
+import { Check, X, Loader2, ShieldAlert, Undo2 } from 'lucide-react';
+import { aiApproveAction, aiRejectAction, aiUndoAction, aiGetActionStatus } from '../../../api/client';
 import { toneClasses } from '../../../lib/status';
 import { registerArtifact } from './registry';
 import type { Artifact } from './types';
 
-type Phase = 'pending' | 'working' | 'done' | 'declined' | 'failed' | 'expired';
+type Phase = 'pending' | 'working' | 'done' | 'declined' | 'failed' | 'expired' | 'undoing' | 'undone';
 
 function ActionProposalView({ artifact }: { artifact: Artifact }) {
   const a = artifact as Artifact & {
@@ -28,6 +28,13 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
   const [phase, setPhase] = useState<Phase>('pending');
   const [error, setError] = useState('');
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
+  // Copilot-style undo: availability from the server, two-click confirm
+  // (163 items shouldn't vanish on a stray click), outcome message.
+  const [undoAvailable, setUndoAvailable] = useState(false);
+  const [undoConfirm, setUndoConfirm] = useState(false);
+  const [undoResult, setUndoResult] = useState<Record<string, unknown> | null>(null);
+  const undoConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (undoConfirmTimer.current) clearTimeout(undoConfirmTimer.current); }, []);
 
   // Reconcile with the server on mount — a proposal may already be
   // resolved (approved elsewhere, expired) so the card never lies.
@@ -37,7 +44,11 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
     aiGetActionStatus(a.proposal_id)
       .then((s) => {
         if (!alive) return;
-        if (s.status === 'consumed') { setPhase('done'); setResult(s.result); }
+        if (s.status === 'consumed') {
+          setPhase('done'); setResult(s.result); setUndoAvailable(!!s.undoable);
+        }
+        else if (s.status === 'undone') { setPhase('undone'); setUndoResult(s.undo_result ?? null); }
+        else if (s.status === 'undoing') setPhase('undoing');
         else if (s.status === 'declined') setPhase('declined');
         else if (s.status === 'failed') setPhase('failed');
       })
@@ -60,6 +71,11 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
       const res = await aiApproveAction(a.proposal_id);
       setResult(res.result || null);
       setPhase('done');
+      // Freshly executed — re-read undo availability from the server
+      // (registry recipe + window), never assume it client-side.
+      aiGetActionStatus(a.proposal_id)
+        .then((s) => setUndoAvailable(!!s.undoable))
+        .catch(() => { /* card just shows no Undo */ });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Action failed');
       setPhase('pending');
@@ -69,6 +85,26 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
     if (!a.proposal_id) return;
     try { await aiRejectAction(a.proposal_id); } catch { /* best effort */ }
     setPhase('declined');
+  }
+  async function undo() {
+    if (!a.proposal_id) return;
+    if (!undoConfirm) {
+      // First click arms the confirm; it disarms itself after 5s.
+      setUndoConfirm(true);
+      if (undoConfirmTimer.current) clearTimeout(undoConfirmTimer.current);
+      undoConfirmTimer.current = setTimeout(() => setUndoConfirm(false), 5000);
+      return;
+    }
+    setUndoConfirm(false);
+    setPhase('undoing'); setError('');
+    try {
+      const res = await aiUndoAction(a.proposal_id);
+      setUndoResult(res.result || null);
+      setPhase('undone');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Undo failed');
+      setPhase('done');
+    }
   }
 
   const msg = (result?.message as string) || '';
@@ -113,8 +149,35 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
         </div>
       )}
       {phase === 'done' && (
-        <div className="mt-2 inline-flex items-center gap-1.5 text-2xs text-ok">
-          <Check size={12} aria-hidden /> {msg || 'Done'}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span className="inline-flex items-center gap-1.5 text-2xs text-ok">
+            <Check size={12} aria-hidden /> {msg || 'Done'}
+          </span>
+          {undoAvailable && (
+            <button
+              onClick={undo}
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-2xs transition-colors ${
+                undoConfirm
+                  ? `font-medium ${toneClasses('warn')}`
+                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+              }`}
+            >
+              <Undo2 size={12} aria-hidden />
+              {undoConfirm ? 'Undo this action?' : 'Undo'}
+            </button>
+          )}
+          {error && <span className="text-3xs text-destructive">{error}</span>}
+        </div>
+      )}
+      {phase === 'undoing' && (
+        <div className="mt-2 inline-flex items-center gap-1.5 text-2xs text-muted-foreground">
+          <Loader2 size={12} className="animate-spin" aria-hidden /> Undoing…
+        </div>
+      )}
+      {phase === 'undone' && (
+        <div className="mt-2 inline-flex items-center gap-1.5 text-2xs text-muted-foreground">
+          <Undo2 size={12} aria-hidden />
+          {(undoResult?.message as string) || 'Undone — the changes were reversed.'}
         </div>
       )}
       {phase === 'declined' && (

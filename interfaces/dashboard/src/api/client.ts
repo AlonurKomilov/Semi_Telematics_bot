@@ -197,8 +197,13 @@ export interface AIActionStatus {
   tool: string;
   summary: string;
   risk: string;
-  status: 'pending' | 'executing' | 'consumed' | 'declined' | 'failed';
+  status: 'pending' | 'executing' | 'consumed' | 'declined' | 'failed' | 'undoing' | 'undone';
   result: Record<string, unknown> | null;
+  /** Copilot-style undo: whether this executed action can be reversed
+   *  right now (has a recipe, within the window). */
+  undoable?: boolean;
+  /** Outcome of a completed undo (message, counts). */
+  undo_result?: Record<string, unknown> | null;
 }
 
 /** Approve a proposed write — the server re-authorizes + executes. */
@@ -207,6 +212,11 @@ export function aiApproveAction(proposalId: string): Promise<{ status: string; r
 }
 
 /** Reject a proposed write (no mutation, recorded). */
+/** Reverse an executed action — exactly its change-set, nothing else. */
+export function aiUndoAction(proposalId: string): Promise<{ status: string; result: Record<string, unknown> }> {
+  return apiJSON(`/ai/actions/${encodeURIComponent(proposalId)}/undo`, { method: 'POST' });
+}
+
 export function aiRejectAction(proposalId: string): Promise<{ ok: boolean }> {
   return apiJSON(`/ai/actions/${encodeURIComponent(proposalId)}/reject`, { method: 'POST' });
 }
