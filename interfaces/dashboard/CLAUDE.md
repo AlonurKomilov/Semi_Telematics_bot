@@ -95,7 +95,11 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   calendar) and `variant="segments"` (inline chip row for chart/section
   headers). Pass `options` for page-specific windows, `maxDays` when
   the backend accepts more than 90, `disabled` while generating,
-  `isFetching` for the spinner. NOT this component: config values that
+  `isFetching` for the spinner. END dates are per-page and FAIL-CLOSED:
+  pass `onApplyRange` + `end` ONLY when the page's backend honors an
+  explicit `end=` param (worked example: Safety Events) — otherwise the
+  calendar stays start-only and the range honestly ends today.
+  NOT this component: config values that
   merely happen to be day counts (link expiry, rule periods, service
   intervals, backfill action menus) — those stay form inputs.
 - **Tables = DataGrid, always.** Any tabular list of rows — even a
