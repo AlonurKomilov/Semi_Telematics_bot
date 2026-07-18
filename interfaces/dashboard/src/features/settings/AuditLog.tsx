@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ClipboardList } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/DataGrid';
+import { Tip } from '../../components/tooltip';
 import {
   PageHeader,
   EmptyState,
@@ -35,7 +36,24 @@ const ACTION_LABEL: Record<string, string> = {
   invite_declined: 'Invite declined by recipient',
   invite_email_bounced: 'Invite email bounced',
   invite_email_complained: 'Invite reported as spam',
+  // AI copilot actions — actor is the human who approved/undid, never
+  // the model.  The "AI:" prefix clusters them in the column filter,
+  // giving owners an "AI actions only" view for free.
+  'ai_write:import_inventory_items': 'AI: imported inventory items',
+  'ai_undo:import_inventory_items': 'AI: undid inventory import',
+  'ai_write:create_maintenance_task': 'AI: created maintenance task',
+  'ai_write:acknowledge_alerts': 'AI: acknowledged alerts',
 };
+
+/** Friendly label with a generic fallback for FUTURE AI tools — an
+ *  unmapped ai_write:/ai_undo: still reads as an AI action, never a
+ *  raw wire key. */
+function actionLabel(s: string): string {
+  if (ACTION_LABEL[s]) return ACTION_LABEL[s];
+  if (s.startsWith('ai_write:')) return `AI action: ${s.slice(9).replace(/_/g, ' ')}`;
+  if (s.startsWith('ai_undo:')) return `AI undo: ${s.slice(8).replace(/_/g, ' ')}`;
+  return s;
+}
 
 const makeColumns = (tz: string): AnyColumn[] => [
   { key: 'created_at', label: 'Time', sortable: true,
@@ -49,21 +67,17 @@ const makeColumns = (tz: string): AnyColumn[] => [
     // dropdown shows the same friendly label the cell renders.
     filterable: true,
     filterValue: (row) => String((row as { action?: string }).action ?? ''),
-    filterLabel: (row) => {
-      const s = String((row as { action?: string }).action ?? '');
-      return ACTION_LABEL[s] ?? s;
-    },
-    render: (v) => {
-      const s = String(v ?? '');
-      return ACTION_LABEL[s] ?? s;
-    },
+    filterLabel: (row) => actionLabel(String((row as { action?: string }).action ?? '')),
+    render: (v) => actionLabel(String(v ?? '')),
   },
   { key: 'user_id', label: 'User ID', sortable: true, filterable: true },
   { key: 'target_type', label: 'Target', sortable: true, filterable: true },
   { key: 'target_id', label: 'Target ID' },
   { key: 'details', label: 'Details', render: (v) => {
     const s = String(v || '');
-    return s.length > 80 ? <span title={s}>{s.slice(0, 80)}…</span> : s;
+    return s.length > 80
+      ? <Tip label={s}><span>{s.slice(0, 80)}…</span></Tip>
+      : s;
   }},
 ];
 
