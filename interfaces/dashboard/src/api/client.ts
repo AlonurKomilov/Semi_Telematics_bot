@@ -231,6 +231,21 @@ export async function apiJSONSlow<T = unknown>(path: string, opts: ApiFetchOpts 
   return apiJSON<T>(path, opts, AI_REQUEST_TIMEOUT_MS);
 }
 
+// Per-dashboard AI spaces: the persona subdomain this tab runs on.
+// Mirrors RoleViewContext's SUBDOMAIN_TO_ROLE host set (both flows must
+// change when a persona is added).  Unknown hosts (localhost, apex)
+// fall back to 'dash'.  Partitioning of the user's OWN threads only —
+// never a security boundary.
+const KNOWN_WORKSPACES = new Set(['dash', 'fleet', 'dispatch', 'safety', 'hr', 'accounting', 'recruiter']);
+export function getWorkspace(): string {
+  try {
+    const label = window.location.hostname.toLowerCase().split('.')[0];
+    return KNOWN_WORKSPACES.has(label) ? label : 'dash';
+  } catch {
+    return 'dash';
+  }
+}
+
 /** SSE event types from /ai/chat/stream */
 export type StreamEvent =
   | { type: 'tool'; name: string; label: string }
@@ -280,6 +295,7 @@ export async function apiStreamChat(
       new_conversation: opts?.newConversation ?? false,
       page_context: opts?.pageContext ?? null,
       attachments: opts?.attachments?.length ? opts.attachments : null,
+      workspace: getWorkspace(),
     }),
     signal,
     credentials: 'include',

@@ -322,6 +322,11 @@ async def create_tables(conn) -> None:
             account_id INTEGER NOT NULL,
             user_id    BIGINT  NOT NULL,
             title      TEXT    NOT NULL DEFAULT '',
+            -- Per-dashboard AI spaces: the persona subdomain this thread
+            -- belongs to ('dash', 'fleet', …).  '' = legacy/miniapp rows,
+            -- surfaced on dash.  A partitioning key for the user's own
+            -- data — NOT a security boundary (tools/scope stay JWT-gated).
+            workspace  TEXT    NOT NULL DEFAULT '',
             created_at TEXT    NOT NULL,
             updated_at TEXT    NOT NULL
         );

@@ -115,6 +115,11 @@ class ChatRequest(BaseModel):
     # Transient CSV attachments (imports).  Streaming path only — the
     # non-streaming path suppresses writes, so it rejects these too.
     attachments: list[ChatAttachment] | None = Field(default=None, max_length=3)
+    # Per-dashboard AI spaces: the persona subdomain this chat runs on
+    # ('dash', 'fleet', …).  Partitions the user's OWN thread list —
+    # never a security boundary (tools/scope stay JWT-gated).  Absent
+    # (miniapp/bot) → unscoped legacy behavior.
+    workspace: str | None = Field(default=None, min_length=2, max_length=20, pattern=r"^[a-z]+$")
 
 
 class DiagnoseRequest(BaseModel):
@@ -306,11 +311,12 @@ async def ai_chat(
         # the id of a lazily-created thread back to the client.
         if body.new_conversation:
             conv_id = await platform_db.create_ai_conversation(
-                account_id, int(user["sub"]), body.message,
+                account_id, int(user["sub"]), body.message, body.workspace,
             )
         else:
             conv_id = await platform_db.resolve_ai_conversation(
                 account_id, int(user["sub"]), body.conversation_id, body.message,
+                body.workspace,
             )
         # Conversational context comes from the DB, not this worker's
         # memory — a follow-up usually lands on a different gunicorn
@@ -480,11 +486,12 @@ async def ai_chat_stream(
         # same as the non-streaming /chat path; see the comments there.
         if body.new_conversation:
             conv_id = await platform_db.create_ai_conversation(
-                account_id, int(user["sub"]), body.message,
+                account_id, int(user["sub"]), body.message, body.workspace,
             )
         else:
             conv_id = await platform_db.resolve_ai_conversation(
                 account_id, int(user["sub"]), body.conversation_id, body.message,
+                body.workspace,
             )
         await ai.sync_history_from_db(
             platform_db, account_id, int(user["sub"]), conversation_id=conv_id,
@@ -1003,6 +1010,7 @@ async def clear_history(
 
 @router.get("/conversations")
 async def list_conversations(
+    workspace: str | None = None,
     user: dict = Depends(get_current_user),
     platform_db=Depends(get_platform_db),
 ):
@@ -1010,10 +1018,14 @@ async def list_conversations(
 
     Strictly self-scoped — same access rule as /history: nobody reads
     another user's conversations through the customer API.
+    ``workspace`` scopes the list to one dashboard's AI space ('dash'
+    includes legacy unscoped threads); absent → all (legacy callers).
     """
+    if workspace is not None and not (2 <= len(workspace) <= 20 and workspace.isalpha()):
+        workspace = None
     try:
         conversations = await platform_db.list_ai_conversations(
-            user["account_id"], int(user["sub"]),
+            user["account_id"], int(user["sub"]), workspace,
         )
     except Exception as e:
         raise HTTPException(

@@ -191,6 +191,7 @@ async def run_all(conn) -> None:
     # Bulk actions (AI imports): staged rows column on proposals.
     await migrate_ai_proposal_staged_payload(conn)
     await migrate_ai_proposal_undo(conn)
+    await migrate_ai_conversation_workspace(conn)
     # Capacity monitoring (operator console): platform metric history +
     # per-account request metering.
     await migrate_system_capacity_tables(conn)
@@ -357,6 +358,26 @@ async def migrate_ai_proposal_undo(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.error("ai_action_proposals undo migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_ai_conversation_workspace(conn) -> None:
+    """Add ``workspace`` to ``ai_conversations`` — per-dashboard AI
+    spaces (thread lists scoped to the persona subdomain).  '' = legacy
+    rows, surfaced on dash.  Idempotent; no index (thread lists stay on
+    the existing (account_id, user_id, updated_at) index — per-user row
+    counts are tiny)."""
+    try:
+        await conn.execute(
+            "ALTER TABLE ai_conversations"
+            " ADD COLUMN IF NOT EXISTS workspace TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.error("ai_conversations workspace migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

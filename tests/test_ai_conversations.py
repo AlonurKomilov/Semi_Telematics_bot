@@ -125,3 +125,45 @@ class TestThreading:
 
         assert deleted == 1
         assert await pg_db.list_ai_conversations(acct, uid) == []
+
+
+class TestWorkspaces:
+    """Per-dashboard AI spaces: threads partition by the persona
+    subdomain; 'dash' inherits legacy unscoped rows; None (miniapp/bot)
+    stays unscoped.  Partitioning of the user's OWN data — the
+    (account, user) scoping above is the security boundary."""
+
+    async def _mk(self, pg_db, acct, uid, title, ws):
+        cid = await pg_db.create_ai_conversation(acct, uid, title, ws)
+        # list_ai_conversations hides messageless threads — give it one.
+        await pg_db.save_chat_messages(acct, uid, title, "ok", conversation_id=cid)
+        return cid
+
+    async def test_lists_and_latest_are_scoped(self, pg_db):
+        acct, uid = await _seed_user(pg_db)
+        legacy = await self._mk(pg_db, acct, uid, "legacy thread", None)
+        dash = await self._mk(pg_db, acct, uid, "dash thread", "dash")
+        fleet = await self._mk(pg_db, acct, uid, "fleet thread", "fleet")
+
+        dash_ids = {c["id"] for c in await pg_db.list_ai_conversations(acct, uid, "dash")}
+        assert dash_ids == {legacy, dash}          # dash inherits legacy ''
+        fleet_ids = {c["id"] for c in await pg_db.list_ai_conversations(acct, uid, "fleet")}
+        assert fleet_ids == {fleet}
+        all_ids = {c["id"] for c in await pg_db.list_ai_conversations(acct, uid)}
+        assert all_ids == {legacy, dash, fleet}    # unscoped legacy callers
+
+        assert await pg_db.get_latest_ai_conversation_id(acct, uid, "fleet") == fleet
+        assert await pg_db.get_latest_ai_conversation_id(acct, uid, "safety") is None
+
+    async def test_resolve_never_crosses_workspaces(self, pg_db):
+        acct, uid = await _seed_user(pg_db)
+        fleet = await self._mk(pg_db, acct, uid, "fleet thread", "fleet")
+
+        # Explicit id from ANOTHER workspace falls through to a fresh
+        # thread in the caller's space — no cross-space continuation.
+        got = await pg_db.resolve_ai_conversation(acct, uid, fleet, "hi", "safety")
+        assert got != fleet
+        assert await pg_db.get_latest_ai_conversation_id(acct, uid, "safety") == got
+
+        # No id → the caller's own latest, not another workspace's.
+        assert await pg_db.resolve_ai_conversation(acct, uid, None, "q", "fleet") == fleet

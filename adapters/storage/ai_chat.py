@@ -70,40 +70,61 @@ def _title_from_question(question: str) -> str:
     return t or "New chat"
 
 
+def _workspace_clause(workspace: str | None) -> tuple[str, tuple]:
+    """SQL fragment scoping threads to a dashboard workspace.
+
+    ``None`` → no scoping (miniapp/bot callers that predate workspaces);
+    ``'dash'`` → dash rows PLUS legacy ``''`` rows (history to date
+    surfaces on the owner dashboard, nothing lost); anything else →
+    exact match.  A partitioning key for the user's OWN data — never a
+    security boundary.
+    """
+    if workspace is None:
+        return "", ()
+    if workspace == "dash":
+        return " AND workspace IN ('dash', '')", ()
+    return " AND workspace = ?", (workspace,)
+
+
 class AIChatHistoryMixin(_MixinBase):
 
     # ── Conversations (threads) ──────────────────────────────────
 
     async def create_ai_conversation(
         self, account_id: int, user_id: int, title: str,
+        workspace: str | None = None,
     ) -> int:
         """Create a thread; returns its id.  Title encrypted at rest."""
         from infra.crypto import encrypt
         now = self._now()
         cur = await self._db.execute(
             "INSERT INTO ai_conversations"
-            " (account_id, user_id, title, created_at, updated_at)"
-            " VALUES (?, ?, ?, ?, ?)",
-            (account_id, user_id, encrypt(_title_from_question(title)), now, now),
+            " (account_id, user_id, title, workspace, created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
+            (account_id, user_id, encrypt(_title_from_question(title)),
+             workspace or "", now, now),
         )
         await self._db.commit()
         return int(cur.lastrowid)
 
     async def get_latest_ai_conversation_id(
         self, account_id: int, user_id: int,
+        workspace: str | None = None,
     ) -> int | None:
         """Most recently active thread id, or None when the user has none."""
+        ws_sql, ws_params = _workspace_clause(workspace)
         cur = await self._db.execute(
             "SELECT id FROM ai_conversations"
-            " WHERE account_id = ? AND user_id = ?"
+            " WHERE account_id = ? AND user_id = ?" + ws_sql +
             " ORDER BY updated_at DESC, id DESC LIMIT 1",
-            (account_id, user_id),
+            (account_id, user_id, *ws_params),
         )
         row = await cur.fetchone()
         return int(row[0]) if row else None
 
     async def list_ai_conversations(
         self, account_id: int, user_id: int,
+        workspace: str | None = None,
     ) -> list[dict]:
         """The History panel's rows — newest-activity first.
 
@@ -112,17 +133,19 @@ class AIChatHistoryMixin(_MixinBase):
         by pruning are removed by ``_drop_empty_ai_conversations`` so
         they never show as hollow entries here.
         """
+        ws_sql, ws_params = _workspace_clause(workspace)
+        ws_sql = ws_sql.replace("workspace", "c.workspace")
         cur = await self._db.execute(
             """SELECT c.id, c.title, c.created_at, c.updated_at,
                       (SELECT COUNT(*) FROM ai_chat_history h
                         WHERE h.conversation_id = c.id) AS message_count
                  FROM ai_conversations c
-                WHERE c.account_id = ? AND c.user_id = ?
+                WHERE c.account_id = ? AND c.user_id = ?""" + ws_sql + """
                   AND EXISTS (SELECT 1 FROM ai_chat_history h
                                WHERE h.conversation_id = c.id)
                 ORDER BY c.updated_at DESC, c.id DESC
                 LIMIT ?""",
-            (account_id, user_id, _MAX_CONVERSATIONS_LISTED),
+            (account_id, user_id, *ws_params, _MAX_CONVERSATIONS_LISTED),
         )
         rows = await cur.fetchall()
         return [
@@ -159,27 +182,34 @@ class AIChatHistoryMixin(_MixinBase):
     async def resolve_ai_conversation(
         self, account_id: int, user_id: int,
         conversation_id: int | None, question: str,
+        workspace: str | None = None,
     ) -> int:
         """Conversation id a new exchange should land in.
 
-        Explicit id → verified against (account, user); a stale id
-        (thread deleted from another tab) falls through to a fresh
-        thread rather than resurrecting the deleted one.  No id →
-        latest thread, else a new one titled from the question.
+        Explicit id → verified against (account, user) AND the caller's
+        workspace — a thread from another dashboard falls through to a
+        fresh thread here rather than leaking across spaces.  A stale id
+        (thread deleted from another tab) does the same.  No id →
+        latest thread IN THIS WORKSPACE, else a new one titled from the
+        question.
         """
+        ws_sql, ws_params = _workspace_clause(workspace)
         if conversation_id is not None:
             cur = await self._db.execute(
                 "SELECT id FROM ai_conversations"
-                " WHERE id = ? AND account_id = ? AND user_id = ?",
-                (conversation_id, account_id, user_id),
+                " WHERE id = ? AND account_id = ? AND user_id = ?" + ws_sql,
+                (conversation_id, account_id, user_id, *ws_params),
             )
             if await cur.fetchone():
                 return conversation_id
-            return await self.create_ai_conversation(account_id, user_id, question)
-        latest = await self.get_latest_ai_conversation_id(account_id, user_id)
+            return await self.create_ai_conversation(
+                account_id, user_id, question, workspace)
+        latest = await self.get_latest_ai_conversation_id(
+            account_id, user_id, workspace)
         if latest is not None:
             return latest
-        return await self.create_ai_conversation(account_id, user_id, question)
+        return await self.create_ai_conversation(
+            account_id, user_id, question, workspace)
 
     async def _drop_empty_ai_conversations(
         self, account_id: int | None = None, user_id: int | None = None,

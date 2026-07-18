@@ -6,7 +6,7 @@ import { Bot, ArrowUp, Square, Trash2, Copy, Check, RefreshCw, Sparkles, Pencil,
 import { Tip } from '../../components/tooltip';
 import { Button } from '../../components/ui/button';
 import { toneClasses, toneText } from '../../lib/status';
-import { apiJSON, apiJSONAI, apiStreamChat } from '../../api/client';
+import { apiJSON, apiJSONAI, apiStreamChat, getWorkspace } from '../../api/client';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import type { AIChatMessage, AIConversation, AIConversationsResponse, AIConversationMessagesResponse, AIProcessStep, AISummaryResponse, AIUsage, AITierChoice, AITierOption, AITierResponse } from '../../types';
 import { formatAIResponse } from '../../utils/formatAI';
@@ -558,7 +558,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
     // Threads-first load: list the user's conversations, open the most
     // recent one.  No threads yet → clean empty chat (first message
     // creates one lazily server-side).
-    apiJSON<AIConversationsResponse>('/ai/conversations')
+    apiJSON<AIConversationsResponse>(`/ai/conversations?workspace=${getWorkspace()}`)
       .then(async (d) => {
         const convs = d.conversations || [];
         setConversations(convs);
@@ -981,7 +981,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
 
   async function loadConversations() {
     try {
-      const d = await apiJSON<AIConversationsResponse>('/ai/conversations');
+      const d = await apiJSON<AIConversationsResponse>(`/ai/conversations?workspace=${getWorkspace()}`);
       setConversations(d.conversations || []);
     } catch { /* panel keeps its last list; next open retries */ }
   }
