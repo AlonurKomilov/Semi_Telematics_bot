@@ -1,16 +1,25 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
-import { Check, Info } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Info } from 'lucide-react';
 
-// Where the bot posts alerts: everything into one forum group
-// (single_group, the default) or a flat group per role
-// (per_persona_groups).  Sits inside the Telegram Bot card, above the
-// per-topic ForumRoutingSection — that table keeps working in both
-// modes because the resolver falls back to the single-group route for
-// any role without a binding.
+// The Telegram Bot card's body controller.  The Routing selector sits
+// at the TOP of the card (it's the bot-topology decision, not an
+// alert sub-setting — the owner's hierarchy call):
+//
+//   Routing: [Single bot] [Sub bot per role]
+//     Single bot       → the classic header + forum-with-topics panel
+//                        (passed in as ``singleBody`` from Settings)
+//     Sub bot per role → the bot ROSTER: Main row first (identity +
+//                        Owner & Admins group + fallback sender), then
+//                        one row per role: status · Sub bot · group ·
+//                        ▸ topics & settings
+//
+// A role MANAGER sees this same card (route opened via
+// can_manage_role_bot) — the server's ``manageable`` list drives which
+// rows/toggles are editable; everything else renders read-only.
 
 interface PersonaBinding {
   chat_id: number;
@@ -34,38 +43,73 @@ interface SubBotRow {
 
 interface SubBotsResponse {
   personas: Record<string, SubBotRow | null>;
-  // Personas THIS user may attach/detach (owner/admin: all; a role
-  // manager: exactly their own role) — server re-enforces.
   manageable: string[];
 }
 
-// Display order: operational roles first, the owner/admin
-// critical-aggregate last.  These are persona artifacts by definition
-// (each row IS one role's group), so persona words are correct here.
-const PERSONA_ORDER = ['dispatcher', 'safety', 'fleet', 'hr', 'owner_admin'] as const;
+interface TopicRow {
+  alert_type: string;
+  enabled: boolean;
+  ai: boolean;
+}
 
-export default function AlertRoutingSection() {
+interface PersonaTopicsResponse {
+  personas: Record<string, TopicRow[]>;
+  manageable: string[];
+}
+
+export interface BotConfigLite {
+  has_bot: boolean;
+  bot_username: string;
+  first_name?: string;
+  is_running?: boolean;
+}
+
+// Operational roles; the owner_admin aggregate renders as the Main row.
+const ROLE_ORDER = ['dispatcher', 'safety', 'fleet', 'hr'] as const;
+
+// Display names for the canonical alert types — same English catalog
+// the single-forum panel shows (its names come from the backend spec).
+const TYPE_LABELS: Record<string, string> = {
+  faults: 'Faults', health: 'Health', fuel: 'Fuel', events: 'Safety Events',
+  camera: 'Cameras', parking: 'Parking', geofence: 'Geofences',
+  scorecard: 'Scorecards', maintenance: 'Maintenance',
+  documents: 'Driver Documents', system: 'Sync & System',
+};
+
+export default function AlertRoutingSection({
+  botConfig,
+  canManageAccount,
+  singleBody,
+}: {
+  botConfig: BotConfigLite;
+  canManageAccount: boolean;
+  singleBody: ReactNode;
+}) {
   const { t } = useTranslation();
   const [data, setData] = useState<AlertRoutingResponse | null>(null);
   const [subBots, setSubBots] = useState<SubBotsResponse | null>(null);
+  const [topics, setTopics] = useState<PersonaTopicsResponse | null>(null);
   const [chatInputs, setChatInputs] = useState<Record<string, string>>({});
   const [tokenInputs, setTokenInputs] = useState<Record<string, string>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string>('');
 
   const load = useCallback(() => {
-    apiJSON<AlertRoutingResponse>('/admin/alert-routing')
-      .then(setData)
-      .catch(() => setData(null));
-    apiJSON<SubBotsResponse>('/admin/bot-instances')
-      .then(setSubBots)
-      .catch(() => setSubBots(null));
+    apiJSON<AlertRoutingResponse>('/admin/alert-routing').then(setData).catch(() => setData(null));
+    apiJSON<SubBotsResponse>('/admin/bot-instances').then(setSubBots).catch(() => setSubBots(null));
+    apiJSON<PersonaTopicsResponse>('/admin/alert-routing/persona-topics')
+      .then(setTopics).catch(() => setTopics(null));
   }, []);
   useEffect(load, [load]);
 
-  if (!data) return null;
+  if (!data) return <>{singleBody}</>;
+
+  const manageable = subBots?.manageable ?? [];
+  const canManage = (persona: string) =>
+    canManageAccount || manageable.includes(persona);
 
   const setMode = async (mode: AlertRoutingResponse['mode']) => {
-    if (mode === data.mode || busy) return;
+    if (mode === data.mode || busy || !canManageAccount) return;
     setBusy('mode');
     try {
       await apiJSON('/admin/alert-routing', { method: 'PUT', body: { mode } });
@@ -158,8 +202,32 @@ export default function AlertRoutingSection() {
     }
   };
 
+  const toggleTopic = async (persona: string, alert_type: string, field: 'enabled' | 'ai', value: boolean) => {
+    if (busy) return;
+    setBusy(`topic-${alert_type}-${field}`);
+    try {
+      await apiJSON(`/admin/alert-routing/persona-topics/${alert_type}`, {
+        method: 'PUT', body: { field, value },
+      });
+      setTopics(topics && {
+        ...topics,
+        personas: {
+          ...topics.personas,
+          [persona]: (topics.personas[persona] || []).map((r) =>
+            r.alert_type === alert_type ? { ...r, [field]: value } : r,
+          ),
+        },
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
+    } finally {
+      setBusy('');
+    }
+  };
+
   const showNudge =
-    data.mode === 'single_group' && data.vehicle_count > data.nudge_threshold;
+    canManageAccount && data.mode === 'single_group'
+    && data.vehicle_count > data.nudge_threshold;
 
   const modeOption = (
     mode: AlertRoutingResponse['mode'],
@@ -171,10 +239,10 @@ export default function AlertRoutingSection() {
       <button
         type="button"
         onClick={() => { void setMode(mode); }}
-        disabled={busy === 'mode'}
+        disabled={busy === 'mode' || !canManageAccount}
         className={`flex-1 text-left border rounded-lg px-3 py-2 transition ${
           selected ? 'border-primary bg-primary/5' : 'border-border hover:border-ring'
-        }`}
+        } ${!canManageAccount ? 'opacity-70 cursor-default' : ''}`}
       >
         <span className="flex items-center gap-2 text-sm font-medium text-foreground">
           {selected && <Check size={14} className="text-primary shrink-0" />}
@@ -185,85 +253,182 @@ export default function AlertRoutingSection() {
     );
   };
 
+  const groupCell = (persona: string) => {
+    const bound = data.personas[persona];
+    const editable = canManage(persona);
+    if (bound) {
+      return (
+        <>
+          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs border ${toneClasses('ok')}`}>
+            <Check size={12} />
+            {bound.chat_title || bound.chat_id}
+          </span>
+          {editable && (
+            <button
+              type="button"
+              onClick={() => { void unbind(persona); }}
+              disabled={busy === persona}
+              className="text-xs text-destructive hover:underline disabled:opacity-50"
+            >
+              {t('alert_routing.unbind')}
+            </button>
+          )}
+        </>
+      );
+    }
+    if (!editable) {
+      return <span className="text-xs text-muted-foreground">{t('alert_routing.bound_fallback')}</span>;
+    }
+    return (
+      <>
+        <input
+          value={chatInputs[persona] || ''}
+          onChange={(e) => setChatInputs({ ...chatInputs, [persona]: e.target.value })}
+          placeholder={t('alert_routing.chat_id_ph')}
+          className="w-40 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground font-mono focus:outline-none focus:border-ring"
+        />
+        <button
+          type="button"
+          onClick={() => { void bind(persona); }}
+          disabled={busy === persona || !(chatInputs[persona] || '').trim()}
+          className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
+        >
+          {busy === persona ? '…' : t('alert_routing.bind')}
+        </button>
+        <span className="text-xs text-muted-foreground">{t('alert_routing.bound_fallback')}</span>
+      </>
+    );
+  };
+
+  const topicsExpander = (persona: string) => {
+    const rows = topics?.personas?.[persona] ?? [];
+    if (!rows.length) return null;
+    const open = !!expanded[persona];
+    const editable = canManage(persona);
+    return (
+      <div className="w-full">
+        <button
+          type="button"
+          onClick={() => setExpanded({ ...expanded, [persona]: !open })}
+          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+        >
+          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          {t('alert_routing.topics_expander')}
+        </button>
+        {open && (
+          <div className="mt-1.5 ml-4 space-y-1">
+            {rows.map((r) => (
+              <div key={r.alert_type} className="flex items-center gap-3 text-xs">
+                <span className="w-32 shrink-0 text-foreground">
+                  {TYPE_LABELS[r.alert_type] || r.alert_type}
+                </span>
+                <label className={`inline-flex items-center gap-1.5 ${editable ? '' : 'opacity-70'}`}>
+                  <input
+                    type="checkbox"
+                    checked={r.enabled}
+                    disabled={!editable || busy === `topic-${r.alert_type}-enabled`}
+                    onChange={(e) => { void toggleTopic(persona, r.alert_type, 'enabled', e.target.checked); }}
+                  />
+                  <span className="text-muted-foreground">{t('alert_routing.topic_route')}</span>
+                </label>
+                <label className={`inline-flex items-center gap-1.5 ${editable ? '' : 'opacity-70'}`}>
+                  <input
+                    type="checkbox"
+                    checked={r.ai}
+                    disabled={!editable || busy === `topic-${r.alert_type}-ai`}
+                    onChange={(e) => { void toggleTopic(persona, r.alert_type, 'ai', e.target.checked); }}
+                  />
+                  <span className="text-muted-foreground">{t('alert_routing.topic_ai')}</span>
+                </label>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const roleMode = data.mode === 'per_persona_groups';
+
   return (
-    <div className="mt-6 border-t border-border pt-4">
-      <h3 className="text-sm font-semibold mb-2">{t('alert_routing.section_title')}</h3>
-
-      {showNudge && (
-        <div className={`mb-3 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${toneClasses('info')}`}>
-          <Info size={14} className="mt-0.5 shrink-0" />
-          <span>{t('alert_routing.nudge', { count: data.vehicle_count })}</span>
+    <div>
+      {/* Routing — the topology decision, top of the card. */}
+      <div className="mb-3">
+        <div className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t('alert_routing.routing_label')}
         </div>
-      )}
-
-      <div className="flex flex-col sm:flex-row gap-2 mb-3">
-        {modeOption('single_group',
-          t('alert_routing.mode_single_title'), t('alert_routing.mode_single_desc'))}
-        {modeOption('per_persona_groups',
-          t('alert_routing.mode_multi_title'), t('alert_routing.mode_multi_desc'))}
+        {showNudge && (
+          <div className={`mb-2 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${toneClasses('info')}`}>
+            <Info size={14} className="mt-0.5 shrink-0" />
+            <span>{t('alert_routing.nudge', { count: data.vehicle_count })}</span>
+          </div>
+        )}
+        <div className="flex flex-col sm:flex-row gap-2">
+          {modeOption('single_group',
+            t('alert_routing.mode_single_title'), t('alert_routing.mode_single_desc'))}
+          {modeOption('per_persona_groups',
+            t('alert_routing.mode_multi_title'), t('alert_routing.mode_multi_desc'))}
+        </div>
       </div>
 
-      {data.mode === 'per_persona_groups' && (
-        <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">{t('alert_routing.hint_chatid')}</p>
-          {PERSONA_ORDER.map((persona) => {
-            const bound = data.personas[persona];
-            const sub = subBots?.personas?.[persona] ?? null;
-            const canManageSub = subBots?.manageable?.includes(persona) ?? false;
-            return (
-              <div key={persona} className="flex flex-wrap items-center gap-2 text-sm">
-                <span className="w-32 shrink-0 text-foreground">
-                  {t(`alert_routing.persona_${persona}`)}
-                </span>
-                {bound ? (
-                  <>
-                    <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs border ${toneClasses('ok')}`}>
-                      <Check size={12} />
-                      {bound.chat_title || bound.chat_id}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => { void unbind(persona); }}
-                      disabled={busy === persona}
-                      className="text-xs text-destructive hover:underline disabled:opacity-50"
-                    >
-                      {t('alert_routing.unbind')}
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <input
-                      value={chatInputs[persona] || ''}
-                      onChange={(e) => setChatInputs({ ...chatInputs, [persona]: e.target.value })}
-                      placeholder={t('alert_routing.chat_id_ph')}
-                      className="w-44 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground font-mono focus:outline-none focus:border-ring"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => { void bind(persona); }}
-                      disabled={busy === persona || !(chatInputs[persona] || '').trim()}
-                      className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
-                    >
-                      {busy === persona ? '…' : t('alert_routing.bind')}
-                    </button>
-                    <span className="text-xs text-muted-foreground">
-                      {t('alert_routing.bound_fallback')}
-                    </span>
-                  </>
-                )}
+      {!roleMode ? (
+        singleBody
+      ) : (
+        <div className="space-y-3">
+          {/* Main row — the identity bot.  Same spot the single-mode
+              header occupies; label states its three jobs. */}
+          <div className="border border-border rounded-lg px-3 py-2">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs border ${
+                botConfig.is_running !== false ? toneClasses('ok') : toneClasses('warn')
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${botConfig.is_running !== false ? 'bg-ok animate-pulse' : 'bg-warn'}`} />
+                {botConfig.is_running !== false ? t('alert_routing.running') : t('alert_routing.configured')}
+              </span>
+              <span className="font-medium text-foreground">{t('alert_routing.main_row_label')}</span>
+              <a
+                href={`https://t.me/${botConfig.bot_username}`}
+                target="_blank" rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                @{botConfig.bot_username}
+              </a>
+              <span className="inline-flex items-center gap-2 ml-auto">
+                {groupCell('owner_admin')}
+              </span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t('alert_routing.main_row_caption')}
+            </p>
+            {topicsExpander('owner_admin')}
+          </div>
 
-                {/* Sub bot cell — the role's own SENDER bot.
-                    Attach/detach only for owner/admin or this
-                    role's manager (server re-enforces). */}
-                {sub ? (
-                  <span className="inline-flex items-center gap-2 ml-auto">
+          {/* Role rows */}
+          {ROLE_ORDER.map((persona) => {
+            const sub = subBots?.personas?.[persona] ?? null;
+            const editable = canManage(persona);
+            return (
+              <div key={persona} className="border border-border rounded-lg px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  {sub ? (
                     <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs border ${
                       sub.is_running ? toneClasses('ok') : toneClasses('neutral')
                     }`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${sub.is_running ? 'bg-ok' : 'bg-muted-foreground'}`} />
-                      {t('alert_routing.subbot_label')} @{sub.bot_username}
+                      @{sub.bot_username}
                     </span>
-                    {canManageSub && (
+                  ) : (
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs border ${toneClasses('neutral')}`}>
+                      {t('alert_routing.main_sends')}
+                    </span>
+                  )}
+                  <span className="font-medium text-foreground w-20">
+                    {t(`alert_routing.persona_${persona}`)}
+                  </span>
+
+                  {/* Sub bot cell */}
+                  {sub ? (
+                    editable && (
                       <button
                         type="button"
                         onClick={() => { void detachSubBot(persona); }}
@@ -272,32 +437,41 @@ export default function AlertRoutingSection() {
                       >
                         {t('alert_routing.subbot_detach')}
                       </button>
-                    )}
-                  </span>
-                ) : canManageSub ? (
+                    )
+                  ) : editable ? (
+                    <span className="inline-flex items-center gap-2">
+                      <input
+                        type="password"
+                        value={tokenInputs[persona] || ''}
+                        onChange={(e) => setTokenInputs({ ...tokenInputs, [persona]: e.target.value })}
+                        placeholder={t('alert_routing.subbot_token_ph')}
+                        className="w-48 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground font-mono focus:outline-none focus:border-ring"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => { void attachSubBot(persona); }}
+                        disabled={busy === `sub-${persona}` || (tokenInputs[persona] || '').trim().length < 30}
+                        className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
+                      >
+                        {busy === `sub-${persona}` ? '…' : t('alert_routing.subbot_attach')}
+                      </button>
+                    </span>
+                  ) : null}
+
                   <span className="inline-flex items-center gap-2 ml-auto">
-                    <input
-                      type="password"
-                      value={tokenInputs[persona] || ''}
-                      onChange={(e) => setTokenInputs({ ...tokenInputs, [persona]: e.target.value })}
-                      placeholder={t('alert_routing.subbot_token_ph')}
-                      className="w-52 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground font-mono focus:outline-none focus:border-ring"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => { void attachSubBot(persona); }}
-                      disabled={busy === `sub-${persona}` || (tokenInputs[persona] || '').trim().length < 30}
-                      className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
-                    >
-                      {busy === `sub-${persona}` ? '…' : t('alert_routing.subbot_attach')}
-                    </button>
+                    {groupCell(persona)}
                   </span>
-                ) : null}
+                </div>
+                {topicsExpander(persona)}
               </div>
             );
           })}
+
           <p className="text-xs text-muted-foreground">
-            {t('alert_routing.subbot_hint')}
+            {t('alert_routing.hint_chatid')} {t('alert_routing.subbot_hint')}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {t('alert_routing.fallback_note')}
           </p>
         </div>
       )}

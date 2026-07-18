@@ -265,7 +265,7 @@ export default function AppRouter() {
         <Route path="audit" element={L(<P perm="can_manage_users"><AuditLog /></P>)} />
         <Route path="work-hours" element={L(<P perm="can_manage_work_hours"><WorkHours /></P>)} />
         <Route path="invites" element={L(<P perm="can_invite"><Invites /></P>)} />
-        <Route path="settings" element={L(<P perm="can_manage_account"><Settings /></P>)} />
+        <Route path="settings" element={L(<P perm={["can_manage_account", "can_manage_role_bot"]}><Settings /></P>)} />
         {/* Personal preferences — accessible to every authenticated
             user regardless of role. */}
         <Route path="profile" element={L(<Profile />)} />

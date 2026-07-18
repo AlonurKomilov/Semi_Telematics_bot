@@ -130,6 +130,7 @@ class FeatureSet:
     can_scorecard_all: bool = False     # scorecards for all subjects (driver or vehicle)
     can_scorecard_vehicle: bool = False     # scorecards for the assigned vehicle(s) only
     can_manage_scorecard_rules: bool = False  # edit the scoring rules + pillar caps (Scorecards' admin component — was bundled in can_manage_account)
+    can_manage_role_bot: bool = False   # Settings → Telegram Bot reachability for role MANAGERS (their own row: group, Sub bot, topics).  Granted ONLY via the manager tier — never a base-role seed; the API re-checks is_manager+role per persona regardless.
     can_location_map: bool = False      # live location map (all trucks)
     can_location_vehicle: bool = False      # live location map (assigned vehicle)
     can_fuel_cost: bool = False         # fuel cost tracker
@@ -484,18 +485,21 @@ TIER_GRANTS: dict[Role, RoleTier] = {
         senior_label="Manager", base_label="Employee",
         grants=frozenset({
             "can_invite", "can_manage_work_hours", "can_risk_report_all",
+            "can_manage_role_bot",
         }),
     ),
     Role.SAFETY: RoleTier(
         senior_label="Manager", base_label="Employee",
         # The safety lead owns the scoring config (rules + pillar caps).
-        grants=frozenset({"can_manage_scorecard_rules", "can_invite"}),
+        grants=frozenset({"can_manage_scorecard_rules", "can_invite",
+                          "can_manage_role_bot"}),
     ),
     Role.DISPATCHER: RoleTier(
         senior_label="Manager", base_label="Employee",
         # The dispatch lead builds shift schedules + curates map layers.
         grants=frozenset({
             "can_manage_work_hours", "can_manage_poi_layers", "can_invite",
+            "can_manage_role_bot",
         }),
     ),
     Role.HR: RoleTier(
@@ -504,7 +508,7 @@ TIER_GRANTS: dict[Role, RoleTier] = {
         # ownership + recruiting-pipeline oversight.
         grants=frozenset({
             "can_manage_work_hours", "can_manage_applications",
-            "can_convert_to_driver",
+            "can_convert_to_driver", "can_manage_role_bot",
         }),
     ),
     Role.ACCOUNTING: RoleTier(
@@ -1122,6 +1126,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_scorecard_all": "scorecards (all)",
     "can_scorecard_vehicle": "scorecards (assigned vehicle)",
     "can_manage_scorecard_rules": "scorecard rules + pillar caps (scoring config)",
+    "can_manage_role_bot": "their role's Telegram bot row (group, Sub bot, topics)",
     "can_location_map": "live location map (all)",
     "can_location_vehicle": "live location (assigned vehicle)",
     "can_fuel_cost": "fuel cost tracking",

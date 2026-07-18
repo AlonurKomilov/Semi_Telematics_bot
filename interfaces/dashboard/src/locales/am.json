@@ -41,6 +41,16 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "routing_label": "መስመር",
+    "running": "እየሰራ ነው",
+    "configured": "ተዘጋጅቷል",
+    "main_row_label": "ዋና · ባለቤት እና አስተዳዳሪዎች",
+    "main_row_caption": "ምዝገባ፣ መግቢያ እና ትዕዛዞች በዚህ ቦት ላይ ይኖራሉ። የባለቤቶችን ቡድንም ይለጥፋል፣ የራሱ ንዑስ ቦት ለሌለው ሚናም ይልካል።",
+    "main_sends": "ዋናው ቦት ይልካል",
+    "fallback_note": "አንዱ የፎረም ቡድን እንደ መጠባበቂያ ይቆያል — ርዕሶቹን ለማስተዳደር ወደ አንድ ቦት ይቀይሩ።",
+    "topics_expander": "ርዕሶች እና ቅንብሮች",
+    "topic_route": "ወደ ቡድን",
+    "topic_ai": "AI ትንተና",
     "subbot_label": "ንዑስ ቦት",
     "subbot_attach": "ንዑስ ቦት አገናኝ",
     "subbot_detach": "አለያይ",

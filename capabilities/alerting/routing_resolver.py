@@ -150,6 +150,27 @@ async def _resolve_per_persona(
     targets: list[AlertTarget] = []
     primary_present = False
 
+    # Per-role topic toggle: a role manager can turn one alert type's
+    # group routing off (Settings → Telegram Bot → role row → topics).
+    # Semantics mirror the single-group disable: NO group post for this
+    # type (aggregate included) and the pipeline falls back to per-user
+    # DMs.  ``primary_present=True`` so we don't regress to the legacy
+    # forum — the mode IS configured; this type is deliberately off.
+    try:
+        from infra.services import get_tenant_db
+        tenant = await get_tenant_db(account_id)
+        key = persona_mapping.canonical_route_key(alert_type)
+        val = await tenant.get_account_setting(
+            account_id, f"persona_route.{key}", default="1",
+        )
+        if val == "0":
+            return [], True
+    except Exception as e:
+        # Fail-open to "enabled" — a settings-read blip must never
+        # silence alerts.
+        logger.debug("persona_route setting read failed acct=%d type=%s: %s",
+                     account_id, alert_type, e)
+
     primary = await db.get_persona_group(account_id, primary_persona)
     if primary is not None:
         primary_present = True

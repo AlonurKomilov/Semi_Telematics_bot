@@ -208,7 +208,10 @@ async def delete_bot_config(
 
 @router.get("/bot-config")
 async def get_bot_config(
-    user: dict = Depends(require_permission("can_manage_account")),
+    # Read open to any staff member — role managers render the Main
+    # row of the bot roster from this (username/running only; the token
+    # never leaves the server).  Writes below stay owner-gated.
+    user: dict = Depends(get_current_user),
     platform_db=Depends(get_platform_db),
 ):
     """Get bot configuration status for this account."""
@@ -290,7 +293,10 @@ class PersonaGroupBindRequest(BaseModel):
 
 @router.get("/alert-routing")
 async def get_alert_routing_settings(
-    user: dict = Depends(require_permission("can_manage_account")),
+    # Read is open to any staff member: role MANAGERS need this to see
+    # their own row on Settings → Telegram Bot (writes stay gated
+    # below — mode is owner/admin, bindings are per-persona).
+    user: dict = Depends(get_current_user),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -349,11 +355,20 @@ async def set_alert_routing_settings(
 @router.post("/alert-routing/persona-groups")
 async def bind_persona_group(
     body: PersonaGroupBindRequest,
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(get_current_user),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Bind one role to a Telegram group (validated via getChat)."""
+    """Bind one role to a Telegram group (validated via getChat).
+
+    Owner/admin bind any role; a role MANAGER binds exactly their own
+    (the owner's decision: managers own their role's bot, group, and
+    topics)."""
+    if not _may_manage_persona_bot(user, body.persona):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the owner/admin or this role's manager can bind its group.",
+        )
     account = await platform_db.get_account(user["account_id"])
     if not account or not account.bot_token_encrypted:
         raise HTTPException(
@@ -409,7 +424,7 @@ async def bind_persona_group(
 @router.delete("/alert-routing/persona-groups/{persona}")
 async def unbind_persona_group(
     persona: str,
-    user: dict = Depends(require_permission("can_manage_account")),
+    user: dict = Depends(get_current_user),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -417,6 +432,11 @@ async def unbind_persona_group(
     single-group route (never dropped)."""
     if persona not in _VALID_PERSONAS:
         raise HTTPException(status_code=400, detail="Unknown persona")
+    if not _may_manage_persona_bot(user, persona):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the owner/admin or this role's manager can unbind its group.",
+        )
     await platform_db.delete_persona_group(user["account_id"], persona)
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]),
@@ -585,6 +605,98 @@ async def detach_sub_bot(
         "sub_bot_detached", details=persona,
     )
     return {"ok": True}
+
+
+# ── Per-role topic settings (route on/off + AI inclusion) ─────────────
+# The role-group equivalent of the single-forum topic table: each role's
+# group gets per-alert-type controls, editable by that role's manager,
+# and each role only ever sees ITS OWN alert types (the persona mapping
+# is the routing SSOT, so a Recruiter never sees Maintenance toggles).
+#
+# Storage is account_settings — the same mechanism the single-forum AI
+# toggle already uses:
+#   forum_ai.{key}       "1"/"0"  AI-analysis inclusion (SHARED with
+#                                 single-group mode by design: "include
+#                                 AI for Faults" is a per-type editorial
+#                                 choice, not a per-mode one)
+#   persona_route.{key}  "1"/"0"  role-group routing on/off (persona
+#                                 mode only; single-group keeps its own
+#                                 alert_routing.is_active)
+
+
+class PersonaTopicToggle(BaseModel):
+    field: str = Field(..., pattern="^(enabled|ai)$")
+    value: bool
+
+
+@router.get("/alert-routing/persona-topics")
+async def list_persona_topics(
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Per-role topic settings, grouped by role — the ▸ topics &
+    settings expander's data.  ``manageable`` mirrors the sub-bot
+    contract so the UI enables toggles only where the server would
+    accept the write."""
+    from capabilities.alerting.persona_mapping import canonical_types_for_persona
+    account_id = user["account_id"]
+    personas: dict = {}
+    for persona in _VALID_PERSONAS:
+        rows = []
+        for key in canonical_types_for_persona(persona):
+            enabled = await tenant_db.get_account_setting(
+                account_id, f"persona_route.{key}", default="1",
+            )
+            ai = await tenant_db.get_account_setting(
+                account_id, f"forum_ai.{key}", default="1",
+            )
+            rows.append({
+                "alert_type": key,
+                "enabled": enabled != "0",
+                "ai": ai != "0",
+            })
+        personas[persona] = rows
+    return {
+        "personas": personas,
+        "manageable": [p for p in _VALID_PERSONAS if _may_manage_persona_bot(user, p)],
+    }
+
+
+@router.put("/alert-routing/persona-topics/{alert_type}")
+async def toggle_persona_topic(
+    alert_type: str,
+    body: PersonaTopicToggle,
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Flip one alert type's role-group routing or AI inclusion.
+
+    Permission is derived from the type's OWNING role: owner/admin
+    always; a role manager only for types that route to their role."""
+    from adapters.storage.models import ALERT_TYPE_KEYS
+    from capabilities.alerting.persona_mapping import persona_for_alert
+
+    if alert_type not in ALERT_TYPE_KEYS:
+        raise HTTPException(status_code=422, detail=f"Unknown alert_type: {alert_type}")
+    owning_persona = persona_for_alert(alert_type)
+    if not _may_manage_persona_bot(user, owning_persona):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the owner/admin or this role's manager can change its topics.",
+        )
+
+    setting = "persona_route" if body.field == "enabled" else "forum_ai"
+    await tenant_db.set_account_setting(
+        user["account_id"], f"{setting}.{alert_type}",
+        "1" if body.value else "0",
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "persona_topic_toggle",
+        target_type="alert_type", target_id=alert_type,
+        details=f"{body.field}={body.value} ({owning_persona})",
+    )
+    return {"alert_type": alert_type, body.field: body.value}
 
 
 # ── Role AI guidance ──────────────────────────────────────────────────────────

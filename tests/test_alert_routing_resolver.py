@@ -337,3 +337,32 @@ async def test_severity_case_insensitive(_patch_platform_db, seeded_db):
         account_id=acct.id, alert_type="faults", severity="CRITICAL",
     )
     assert len(targets) == 2
+
+
+@pytest.mark.asyncio
+async def test_persona_topic_disable_skips_group(_patch_platform_db, seeded_db):
+    """A role manager turning one alert type OFF (persona_route.{key}=0)
+    stops the group post for that type entirely — the resolver returns
+    no targets and the pipeline falls back to per-user DMs, mirroring
+    the single-group disable semantics.  Turning it back on restores
+    the persona target."""
+    from capabilities.alerting.routing_resolver import resolve_alert_targets
+    db = seeded_db["db"]
+    acct = seeded_db["account"]
+
+    await db.set_alert_routing_mode(acct.id, "per_persona_groups")
+    await db.upsert_persona_group(
+        account_id=acct.id, persona="dispatcher",
+        chat_id=-5001, chat_title="Dispatch",
+    )
+
+    on = await resolve_alert_targets(account_id=acct.id, alert_type="geofence")
+    assert len(on) == 1 and on[0].persona == "dispatcher"
+
+    await db.set_account_setting(acct.id, "persona_route.geofence", "0")
+    off = await resolve_alert_targets(account_id=acct.id, alert_type="geofence")
+    assert off == []
+
+    await db.set_account_setting(acct.id, "persona_route.geofence", "1")
+    back = await resolve_alert_targets(account_id=acct.id, alert_type="geofence")
+    assert len(back) == 1

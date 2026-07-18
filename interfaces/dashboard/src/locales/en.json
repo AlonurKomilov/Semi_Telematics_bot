@@ -872,6 +872,16 @@
     "uploaded_by": "uploaded by {{name}}"
   },
   "alert_routing": {
+    "routing_label": "Routing",
+    "running": "Running",
+    "configured": "Configured",
+    "main_row_label": "Main · Owner & Admins",
+    "main_row_caption": "Registration, login and commands live on this bot. It also posts the Owner & Admins group and sends for any role without its own Sub bot.",
+    "main_sends": "main bot sends",
+    "fallback_note": "The single forum group stays as fallback — switch to Single bot to manage its topics.",
+    "topics_expander": "topics & settings",
+    "topic_route": "Route to group",
+    "topic_ai": "AI analysis",
     "subbot_label": "Sub bot",
     "subbot_attach": "Attach Sub bot",
     "subbot_detach": "Detach",

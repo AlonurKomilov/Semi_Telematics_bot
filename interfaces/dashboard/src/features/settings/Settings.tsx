@@ -45,6 +45,10 @@ export default function Settings() {
   const [accountTzSaving, setAccountTzSaving] = useState(false);
   const [accountTzSuccess, setAccountTzSuccess] = useState('');
   const canManageAccount = !!authUser?.permissions?.can_manage_account;
+  // Role MANAGERS reach this page via can_manage_role_bot (their own
+  // row on the Telegram Bot roster).  They see ONLY the bot card —
+  // every other section is account administration.
+  const canManageRoleBot = !!(authUser?.permissions as Record<string, unknown> | undefined)?.can_manage_role_bot;
 
   // Vendor-directory contribution consent (UX audit 2026-07-16): the
   // auto-pipeline default (ON) becomes inspectable + owner-editable.
@@ -102,7 +106,7 @@ export default function Settings() {
   const { data: botConfig } = useQuery({
     queryKey: ['admin-bot-config'],
     queryFn: () => apiJSON<BotConfig>('/admin/bot-config'),
-    enabled: isOwner,
+    enabled: isOwner || canManageRoleBot,
   });
   const setBotConfig = (next: BotConfig | null) => qc.setQueryData(['admin-bot-config'], next);
 
@@ -317,14 +321,17 @@ export default function Settings() {
       )}
 
       {/* Telegram Bot (owner only) */}
-      {isOwner && (
+      {(isOwner || canManageRoleBot) && (
         <section className="bg-card border border-border rounded-xl p-5">
           <h2 className="text-lg font-semibold mb-3">Telegram Bot</h2>
           {botSuccess && <p className="text-ok text-sm mb-3">{botSuccess}</p>}
           {botError && <p className="text-destructive text-sm mb-3">{botError}</p>}
 
           {botConfig?.has_bot ? (
-            <div>
+            <AlertRoutingSection
+              botConfig={botConfig}
+              canManageAccount={canManageAccount}
+              singleBody={<div>
               <div className="flex items-center gap-3 mb-4">
                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border ${
                   botConfig.is_running !== false
@@ -396,9 +403,9 @@ export default function Settings() {
                   bot account to talk to Telegram.  Mode + per-department
                   groups first; the per-topic table below it keeps
                   serving single_group mode and the fallback route. */}
-              <AlertRoutingSection />
               <ForumRoutingSection />
-            </div>
+            </div>}
+            />
           ) : (
             <div>
               <p className="text-sm text-muted-foreground mb-3">
@@ -422,6 +429,7 @@ export default function Settings() {
       )}
 
       {/* Editable Settings */}
+      {canManageAccount && (
       <section className="bg-card border border-border rounded-xl p-5">
         <h2 className="text-lg font-semibold mb-3">Configuration</h2>
         {Object.keys(edits).length === 0 ? (
@@ -439,9 +447,10 @@ export default function Settings() {
           </div>
         )}
       </section>
+      )}
 
       {/* AI Usage */}
-      {data?.ai_usage && Object.keys(data.ai_usage).length > 0 && (
+      {canManageAccount && data?.ai_usage && Object.keys(data.ai_usage).length > 0 && (
         <section className="bg-card border border-border rounded-xl p-5">
           <h2 className="text-lg font-semibold mb-3">AI Usage <span className="text-xs text-muted-foreground font-normal">(last {(data.ai_usage as any).days ?? 30} days)</span></h2>
           {/* Top-level stats */}
@@ -488,6 +497,7 @@ export default function Settings() {
       )}
 
       {/* Working Hours */}
+      {canManageAccount && (
       <section className="bg-card border border-border rounded-xl p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-semibold">Working Hours</h2>
@@ -581,9 +591,10 @@ export default function Settings() {
           <p className="text-muted-foreground text-sm">No schedules configured.</p>
         )}
       </section>
+      )}
 
       {/* Owner-only account deletion — renders nothing for other roles. */}
-      <DangerZoneSection />
+      {canManageAccount && <DangerZoneSection />}
     </div>
   );
 }

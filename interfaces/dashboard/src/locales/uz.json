@@ -41,6 +41,16 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "routing_label": "Yo'naltirish",
+    "running": "Ishlamoqda",
+    "configured": "Sozlangan",
+    "main_row_label": "Asosiy · Egasi va adminlar",
+    "main_row_caption": "Ro'yxatdan o'tish, kirish va buyruqlar shu botda yashaydi. U egalar guruhini ham yuritadi va Sub botsiz har qanday rol uchun yuboradi.",
+    "main_sends": "asosiy bot yuboradi",
+    "fallback_note": "Yagona forum guruh zaxira bo'lib qoladi — mavzularini boshqarish uchun Bitta botga o'ting.",
+    "topics_expander": "mavzular va sozlamalar",
+    "topic_route": "Guruhga yuborish",
+    "topic_ai": "AI tahlil",
     "subbot_label": "Sub bot",
     "subbot_attach": "Sub bot ulash",
     "subbot_detach": "Uzish",

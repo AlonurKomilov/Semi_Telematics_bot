@@ -65,6 +65,27 @@ Decided 2026-07-17 (owner + advisor consult). Status: ACCEPTED, shipped.
 - Route the owner_admin aggregate through a Sub bot.
 - Rebind `users.telegram_id` per Sub bot.
 
-Deferred (revisit on demand): per-role forum TOPICS inside each
-role group (today: flat role groups; the single_group mode
-keeps its topic-per-alert-type forum).
+## Per-role topic settings (shipped 2026-07-17, second increment)
+
+Each role row on Settings → Telegram Bot carries "▸ topics & settings":
+per-alert-type **Route to group** and **AI analysis** toggles, filtered
+to the types that route to that role (`canonical_types_for_persona` —
+the persona mapping is the SSOT, so a role only ever sees its own
+types).  Editable by owner/admin or that role's manager (same
+`_may_manage_persona_bot` gate as the Sub bot).  Storage is
+account_settings: `persona_route.{key}` (role-mode routing on/off —
+independent from single-group's `alert_routing.is_active` so a
+manager's toggle never rewrites the owner's forum config) and
+`forum_ai.{key}` (SHARED with single-group mode by design — AI
+inclusion is a per-type editorial choice, not a per-mode one).
+Disable semantics mirror single-group: no group post for that type
+(resolver returns no targets), per-user DMs still fire.
+
+Role managers reach the page via `can_manage_role_bot` — granted ONLY
+through the manager tier (TIER_GRANTS for fleet/safety/dispatcher/hr),
+never a base-role seed; the API re-checks `is_manager` + role per
+persona regardless (UI reachability ≠ authorization).
+
+Deferred (revisit on demand): real Telegram forum THREADS inside each
+role group (today role groups are flat chats with per-type dashboard
+controls; the single_group mode keeps its thread-per-alert-type forum).

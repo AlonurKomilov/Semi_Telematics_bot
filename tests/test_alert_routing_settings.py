@@ -142,6 +142,8 @@ async def test_requires_manage_account_permission(api):
     acct, owner = await _seed_owner(db, "Gate Co")
     h = _headers(owner, acct, role="driver")  # role without can_manage_account
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
-        assert (await c.get("/api/admin/alert-routing", headers=h)).status_code == 403
+        # READ opened to all staff (role managers render their row from
+        # it); the mode WRITE stays owner/admin.
+        assert (await c.get("/api/admin/alert-routing", headers=h)).status_code == 200
         assert (await c.put("/api/admin/alert-routing", headers=h,
                             json={"mode": "single_group"})).status_code == 403

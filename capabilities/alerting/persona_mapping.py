@@ -68,6 +68,30 @@ _ALERT_TYPE_TO_PERSONA: dict[str, str] = {
 }
 
 
+# Pipeline-side aliases → the canonical ``ALERT_TYPE_KEYS`` slug the
+# settings layer keys on (``forum_ai.{key}`` / ``persona_route.{key}``).
+_CANONICAL_ALIASES: dict[str, str] = {
+    "fault":        "faults",
+    "event":        "events",
+    "doc_expiry":   "documents",
+    "samsara_sync": "system",
+    "reescalate":   "system",
+}
+
+
+def canonical_route_key(alert_type: str) -> str:
+    """Normalise a pipeline alert_type to its canonical settings slug."""
+    return _CANONICAL_ALIASES.get(alert_type, alert_type)
+
+
+def canonical_types_for_persona(persona: str) -> list[str]:
+    """The canonical ALERT_TYPE_KEYS slugs routed to *persona*, in the
+    catalog's display order — the per-role topics list the settings UI
+    shows (a role's manager only ever sees their own types)."""
+    from adapters.storage.models import ALERT_TYPE_KEYS
+    return [k for k in ALERT_TYPE_KEYS if persona_for_alert(k) == persona]
+
+
 def persona_for_alert(alert_type: str) -> str:
     """Return the persona key that should receive ``alert_type``.
 

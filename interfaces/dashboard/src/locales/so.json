@@ -41,6 +41,16 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "routing_label": "Jihayn",
+    "running": "Shaqaynaya",
+    "configured": "La sameeyay",
+    "main_row_label": "Guud · Milkiile & maamul",
+    "main_row_caption": "Diiwaangelinta, gelitaanka iyo amarradu waxay ku nool yihiin bot-kan. Wuxuu kaloo daabacaa guruubka milkiilaha wuxuuna u diraa door kasta oo aan lahayn Sub bot.",
+    "main_sends": "bot-ka guud ayaa dira",
+    "fallback_note": "Guruubka forum ee keliya wuxuu ahaanayaa kayd — u beddel Hal bot si aad u maamusho mowduucyadiisa.",
+    "topics_expander": "mowduucyo & dejin",
+    "topic_route": "U dir guruubka",
+    "topic_ai": "Falanqayn AI",
     "subbot_label": "Sub bot",
     "subbot_attach": "Ku xir Sub bot",
     "subbot_detach": "Ka saar",

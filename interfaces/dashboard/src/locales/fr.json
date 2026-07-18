@@ -41,6 +41,16 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "routing_label": "Routage",
+    "running": "Actif",
+    "configured": "Configuré",
+    "main_row_label": "Principal · Propriétaire et admins",
+    "main_row_caption": "L'inscription, la connexion et les commandes vivent sur ce bot. Il publie aussi le groupe propriétaires et envoie pour tout rôle sans Sub bot.",
+    "main_sends": "le bot principal envoie",
+    "fallback_note": "Le groupe forum unique reste en secours — passez en Bot unique pour gérer ses sujets.",
+    "topics_expander": "sujets et réglages",
+    "topic_route": "Vers le groupe",
+    "topic_ai": "Analyse IA",
     "subbot_label": "Sub bot",
     "subbot_attach": "Attacher un Sub bot",
     "subbot_detach": "Détacher",
