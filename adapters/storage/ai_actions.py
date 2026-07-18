@@ -144,16 +144,27 @@ class AIActionProposalsMixin(_MixinBase):
     async def finalize_action_undo(
         self, proposal_id: str, account_id: int, *,
         success: bool, undone_by: int | None = None,
+        result_json: str = "",
     ) -> None:
-        """Close an undo claim: 'undone' (stamped who/when) on success,
-        back to 'consumed' on failure so the undo stays available."""
-        from datetime import datetime, timezone
+        """Close an undo claim in ONE statement: 'undone' (stamped
+        who/when, result replaced with the merged undo outcome) on
+        success, back to 'consumed' on failure so the undo stays
+        available.  Single UPDATE on purpose (reviewer): a two-step
+        finalize left a window where status said 'undone' but the
+        outcome message wasn't stored yet — and a crash between the
+        steps lost it forever.  Both branches guard on
+        ``status = 'undoing'`` (single-writer symmetry with the claim).
+        """
         if success:
+            from datetime import datetime, timezone
+            from infra.crypto import encrypt
             await self._db.execute(
                 """UPDATE ai_action_proposals
-                      SET status = 'undone', undone_at = ?, undone_by = ?
-                    WHERE id = ? AND account_id = ?""",
+                      SET status = 'undone', undone_at = ?, undone_by = ?,
+                          result = ?
+                    WHERE id = ? AND account_id = ? AND status = 'undoing'""",
                 (datetime.now(timezone.utc).isoformat(), undone_by,
+                 encrypt(result_json) if result_json else "",
                  proposal_id, account_id),
             )
         else:

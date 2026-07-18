@@ -34,6 +34,7 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
   const [undoConfirm, setUndoConfirm] = useState(false);
   const [undoResult, setUndoResult] = useState<Record<string, unknown> | null>(null);
   const undoConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const undoArmedAt = useRef(0);
   useEffect(() => () => { if (undoConfirmTimer.current) clearTimeout(undoConfirmTimer.current); }, []);
 
   // Reconcile with the server on mount — a proposal may already be
@@ -55,6 +56,26 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
       .catch(() => { if (alive) setPhase('expired'); }); // 404 = pruned/expired
     return () => { alive = false; };
   }, [a.proposal_id]);
+
+  // A card that mounts (or lands) in 'undoing' would otherwise show a
+  // spinner forever — the mount reconcile is one-shot.  Poll until the
+  // state turns terminal; the interval dies with the phase.
+  useEffect(() => {
+    if (phase !== 'undoing' || !a.proposal_id) return;
+    const pid = a.proposal_id;
+    const iv = setInterval(() => {
+      aiGetActionStatus(pid)
+        .then((s) => {
+          if (s.status === 'undone') { setPhase('undone'); setUndoResult(s.undo_result ?? null); }
+          else if (s.status === 'consumed') {
+            // Undo failed server-side and reverted — back to done.
+            setPhase('done'); setResult(s.result); setUndoAvailable(!!s.undoable);
+          }
+        })
+        .catch(() => { /* keep polling; terminal states end it */ });
+    }, 2000);
+    return () => clearInterval(iv);
+  }, [phase, a.proposal_id]);
 
   if (!a.proposal_id) {
     return (
@@ -91,10 +112,14 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
     if (!undoConfirm) {
       // First click arms the confirm; it disarms itself after 5s.
       setUndoConfirm(true);
+      undoArmedAt.current = Date.now();
       if (undoConfirmTimer.current) clearTimeout(undoConfirmTimer.current);
       undoConfirmTimer.current = setTimeout(() => setUndoConfirm(false), 5000);
       return;
     }
+    // An accidental double-click would arm-then-fire in one gesture —
+    // a confirm only counts once it's been visible for a beat.
+    if (Date.now() - undoArmedAt.current < 300) return;
     setUndoConfirm(false);
     setPhase('undoing'); setError('');
     try {

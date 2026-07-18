@@ -250,15 +250,12 @@ async def undo_approved_action(
         logger.exception("AI undo recipe failed: %s", tool)
         raise HTTPException(status_code=500, detail=f"Undo failed: {type(e).__name__}") from e
 
+    # ONE guarded UPDATE: status + who/when + the merged undo outcome —
+    # no window where the card could see 'undone' without its message,
+    # and no crash-gap that loses the outcome (reviewer W1/W2).
     await platform_db.finalize_action_undo(
         proposal_id, account_id, success=True, undone_by=uid,
-    )
-    # Persist the undo outcome INSIDE the stored result so a refreshed
-    # card can show "Undone — N items removed" (single result column by
-    # design; scoped to the approver like every proposal write).
-    await platform_db.finalize_action_proposal(
-        proposal_id, account_id, int(prop.get("user_id") or 0), "undone",
-        json.dumps({**result, "_undo": undo_result}, default=str),
+        result_json=json.dumps({**result, "_undo": undo_result}, default=str),
     )
 
     try:
