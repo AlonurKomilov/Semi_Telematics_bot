@@ -88,18 +88,29 @@ class MarketIntelMixin:
         )
         task_rows = [dict(r) for r in await cur.fetchall()]
 
-        # Points per (shop, part): one point = one line's unit cost,
-        # keyed + labeled through the account's parts catalog.
+        # Points per (shop, part): one point = one line's unit cost.
+        # Key: the PUBLIC catalog identity when the account's part is
+        # linked (``gp:<global_part_id>`` — pools "ConventionalWith
+        # ClassicWsh" and "Truck Wash — Conventional" into ONE cell,
+        # labeled with the canonical name), else the account catalog's
+        # normalized name as before.  This keying was flipped BEFORE
+        # MARKET_INTEL_ENABLED ever went live — re-keying after launch
+        # would visibly shift published ranges (advisor rule).
         cur = await self._db.execute(
             "SELECT v.global_vendor_id AS entry_id, "
-            "       c.name_key         AS dim_key, "
-            "       c.name             AS dim_label, "
+            "       CASE WHEN c.global_part_id IS NOT NULL "
+            "            THEN 'gp:' || c.global_part_id::text "
+            "            ELSE c.name_key END AS dim_key, "
+            "       COALESCE(NULLIF(d.name, ''), c.name) AS dim_label, "
+            "       c.global_part_id   AS global_part_id, "
+            "       c.name_key         AS raw_key, "
             "       w.account_id       AS account_id, "
             "       p.unit_cost        AS point "
             "FROM work_order_parts p "
             "JOIN work_orders w ON w.id = p.work_order_id "
             "JOIN vendors v ON v.id = w.vendor_id AND v.account_id = w.account_id "
             "JOIN parts_catalog c ON c.id = p.part_id AND c.account_id = w.account_id "
+            "LEFT JOIN part_directory d ON d.id = c.global_part_id "
             "JOIN accounts a ON a.id = w.account_id "
             "WHERE a.share_market_data = 1 "
             "  AND v.global_vendor_id IS NOT NULL "
@@ -107,7 +118,16 @@ class MarketIntelMixin:
             "  AND p.unit_cost > 0",
             (since_iso,),
         )
-        part_rows = [dict(r) for r in await cur.fetchall()]
+        # Unlinked GENERIC names never form cells: "labor" / "shop
+        # supplies" mean a different thing at every shop, so pooling
+        # their unit costs is exactly the unlike-things poisoning the
+        # blocklist exists to prevent.  (Linked parts can't be generic
+        # — entry creation rejects the blocklist.)
+        from .part_directory import GENERIC_PART_KEYS
+        part_rows = [
+            r for r in (dict(x) for x in await cur.fetchall())
+            if r.get("global_part_id") or r.get("raw_key") not in GENERIC_PART_KEYS
+        ]
 
         # Aggregate in Python (portable percentiles).
         cells: dict = {}

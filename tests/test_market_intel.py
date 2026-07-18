@@ -100,3 +100,53 @@ async def test_sharing_toggle_roundtrip(db):
     assert await db.get_market_sharing(acct) is True
     assert await db.set_market_sharing(acct, False) is True
     assert await db.get_market_sharing(acct) is False
+
+
+@pytest.mark.asyncio
+async def test_part_cells_key_on_public_catalog_identity(db):
+    """Pre-launch key flip: accounts naming the same part differently
+    pool into ONE cell once their parts link to the same public
+    catalog entry — keyed ``gp:<id>``, labeled with the canonical
+    name.  Unlinked GENERIC names never form part cells."""
+    a1 = (await db.create_account("K1")).id
+    a2 = (await db.create_account("K2")).id
+    a3 = (await db.create_account("K3")).id
+    shop = await db.create_directory_entry("Keyed Repair", status="active")
+    canon = await db.create_part_directory_entry(
+        "Truck Wash — Conventional", category="Wash",
+    )
+
+    local_names = ["ConventionalWithClassicWsh", "Conv Classic Wash", "conventional wash"]
+    for acct, name, price in zip((a1, a2, a3), local_names, (40.0, 50.0, 60.0)):
+        await db.set_market_sharing(acct, True)
+        v = await db.resolve_or_create_vendor(acct, shop["name"])
+        await db.link_vendor_to_directory(acct, v["id"], shop["id"])
+        wo = await db.add_work_order(
+            acct, "CO", "T-1", shop["name"],
+            vendor_id=v["id"], service_date="2026-06-01", total_cost=price,
+        )
+        part = await db.resolve_or_create_part(acct, name)
+        await db.link_part_to_public(acct, part["id"], canon["id"])
+        await db.add_work_order_part(
+            wo, part_name=name, quantity=1, unit_cost=price,
+            total_cost=price, part_id=part["id"],
+        )
+        # A generic, UNLINKED line at the same shop — must form no cell.
+        gen = await db.resolve_or_create_part(acct, "Shop Supplies")
+        await db.add_work_order_part(
+            wo, part_name="Shop Supplies", quantity=1, unit_cost=12.0,
+            total_cost=12.0, part_id=gen["id"],
+        )
+
+    await db.compute_market_rollups(SINCE)
+    rows = await db.market_rollups_for_entry(shop["id"])
+    parts = {r["dim_key"]: r for r in rows if r["dim_type"] == "part"}
+
+    key = f"gp:{canon['id']}"
+    assert key in parts                       # variants pooled into one cell
+    assert parts[key]["companies"] == 3
+    assert parts[key]["dim_label"] == "Truck Wash — Conventional"
+    # No per-variant name cells survived the flip...
+    assert "conventionalwithclassicwsh" not in parts
+    # ...and the generic key formed no cell despite 3 sharing companies.
+    assert "shop supplies" not in parts
