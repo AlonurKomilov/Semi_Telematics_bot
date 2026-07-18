@@ -269,3 +269,46 @@ security consult drove three hardening changes beyond the original design:
   cannot clear anything out of scope — purely an existence signal. Tighten by
   also flagging ids absent from `get_alert_history_vehicles` for scoped callers
   if we ever want to close the oracle.
+
+## Undo (shipped 2026-07-18 — U1 494df38 · U2 e20a04f · U3 e83e422)
+
+Copilot-style **change-set undo**, never a point-in-time restore (which
+would rewind other users' concurrent work): an executed action may be
+reversed to exactly what IT created, and nothing else.
+
+- **Contract:** an action type MAY register its reverse recipe
+  (`register_undo_executor(name)` — signature
+  `(result, payload, account_id, user_context, db) → dict`).  The code
+  registry is the trust root, mirroring executors.  No recipe → no Undo
+  (high-risk/destructive actions remain disabled entirely).
+- **Manifest:** the executor records its change-set in the stored result
+  under underscore-prefixed keys (`_item_ids`) — server-side by
+  convention: `_client_result()` strips them from every client response,
+  and `finalize_action_proposal` no longer truncates `result` (a
+  shortened manifest would corrupt the reversal).
+- **Authorization ladder:** the APPROVER may undo their own action;
+  owner/admin may undo any employee's (the "found it in Audit Log →
+  fix it" path).  Both re-checked against the tool's own permission on
+  the real JWT role; persona preview never honored.
+- **State machine:** `consumed → undoing → undone` via an atomic
+  conditional claim (no double-undo); recipe failure reverts to
+  `consumed` so the undo stays available.  `undone_at`/`undone_by`
+  columns record who/when; the undo outcome is merged into the stored
+  result (`_undo`) so a refreshed card shows it.
+- **Window:** 7 days (`UNDO_WINDOW_DAYS`), matching the proposal row's
+  retention sweep and enforced explicitly.
+- **Recipes must be soft + evented + tolerant:** the inventory recipe
+  soft-removes (`is_active=0` + an "AI import undone" event per item —
+  the trail survives; even the undo is recoverable) in ONE transaction,
+  skips items already removed manually, and fails closed (409, claim
+  rolled back) on a legacy result without a manifest.
+- **Audit:** `ai_undo:<tool>` with the undoer as actor + who originally
+  approved; the Audit Log page labels AI rows ("AI: …") so the Action
+  filter doubles as an "AI actions only" view.
+- **UI:** the executed card shows a ghost Undo (server-driven
+  availability) with a two-click warn-toned confirm that self-disarms;
+  `undoing`/`undone` phases reconcile from `GET /ai/actions/{id}` like
+  every other phase.
+
+Adding undo to a future action = register one recipe + record the
+change-set in its result.  Tests: `tests/test_ai_action_undo.py`.
