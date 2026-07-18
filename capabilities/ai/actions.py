@@ -274,6 +274,129 @@ async def undo_approved_action(
     return {"status": "undone", "result": undo_result}
 
 
+# ── Editable import preview (per-cell corrections pre-approve) ──────
+#
+# The human-approval step gains hands: the proposal CREATOR may correct
+# individual cells (or drop rows) of a PENDING import's staged rows.
+# Edits are validated by the target's own edit_row hook — same rules as
+# the import (fixed vocab refused with the reason, open vocab
+# normalized, references re-resolved) — and mutate the SERVER's staged
+# payload, so the no-body approve endpoint keeps executing exactly what
+# the preview shows.  Approve/undo trust model unchanged.
+
+def _staged_target(prop: dict):
+    """The proposal's ImportTarget (via its payload), or None."""
+    from capabilities.ai.attachments import get_import_target
+    payload = _load(prop.get("payload"))
+    return get_import_target(str(payload.get("target") or ""))
+
+
+async def _load_editable(proposal_id: str, user: dict, platform_db):
+    """Common loader for the rows endpoints: creator-scoped, pending,
+    an import with an edit hook.  Returns (prop, target, rows)."""
+    account_id = user["account_id"]
+    uid = int(user["sub"])
+    prop = await platform_db.get_action_proposal(proposal_id, account_id, uid)
+    if prop is None:
+        raise HTTPException(status_code=404, detail="Proposal not found")
+    if prop["status"] != "pending":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Rows can only be edited while pending (now {prop['status']})",
+        )
+    target = _staged_target(prop)
+    if target is None or target.edit_row is None:
+        raise HTTPException(status_code=400, detail="This action has no editable rows")
+    try:
+        rows = json.loads(prop.get("staged_payload") or "[]")
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=409, detail="Staged data is unreadable")
+    if not isinstance(rows, list) or not rows:
+        raise HTTPException(status_code=409, detail="No staged rows to edit")
+    return prop, target, rows
+
+
+def _client_rows(rows: list) -> list[dict]:
+    return [
+        {k: v for k, v in r.items() if not str(k).startswith("_")}
+        for r in rows if isinstance(r, dict)
+    ]
+
+
+def _summary_for(target, n: int, prop: dict) -> str:
+    skipped = _load(prop.get("payload")).get("skipped")
+    summary = f"Import {n} {target.description or 'rows into ' + target.name}"
+    if skipped:
+        summary += f" — {skipped} skipped"
+    return summary
+
+
+async def get_staged_rows(proposal_id: str, *, user: dict, platform_db) -> dict:
+    _prop, target, rows = await _load_editable(proposal_id, user, platform_db)
+    return {
+        "rows": _client_rows(rows),
+        "to_import": len(rows),
+        "edit_options": dict(target.edit_options),
+    }
+
+
+async def edit_staged_row(
+    proposal_id: str, *, row_index: int, changes: dict,
+    user: dict, platform_db,
+) -> dict:
+    prop, target, rows = await _load_editable(proposal_id, user, platform_db)
+    if not isinstance(changes, dict) or not changes:
+        raise HTTPException(status_code=400, detail="No changes given")
+    if not (0 <= row_index < len(rows)):
+        raise HTTPException(status_code=404, detail="Row not found")
+    new_row, error = await target.edit_row(
+        rows[row_index], changes, user["account_id"], _tenant_of(user),
+    )
+    if new_row is None:
+        raise HTTPException(status_code=422, detail=error or "Invalid edit")
+    rows[row_index] = new_row
+    await _persist_rows(proposal_id, user, platform_db, target, prop, rows)
+    return {
+        "row_index": row_index,
+        "row": _client_rows([new_row])[0],
+        "to_import": len(rows),
+    }
+
+
+async def remove_staged_row(
+    proposal_id: str, *, row_index: int, user: dict, platform_db,
+) -> dict:
+    prop, target, rows = await _load_editable(proposal_id, user, platform_db)
+    if not (0 <= row_index < len(rows)):
+        raise HTTPException(status_code=404, detail="Row not found")
+    if len(rows) == 1:
+        raise HTTPException(
+            status_code=422,
+            detail="The last row can't be removed — reject the action instead",
+        )
+    rows.pop(row_index)
+    await _persist_rows(proposal_id, user, platform_db, target, prop, rows)
+    return {"rows": _client_rows(rows), "to_import": len(rows)}
+
+
+async def _persist_rows(proposal_id, user, platform_db, target, prop, rows):
+    ok = await platform_db.update_staged_payload(
+        proposal_id, user["account_id"], int(user["sub"]),
+        json.dumps(rows, default=str),
+        summary=_summary_for(target, len(rows), prop),
+    )
+    if not ok:   # approved/declined between load and write
+        raise HTTPException(status_code=409, detail="Proposal is no longer pending")
+
+
+def _tenant_of(user):
+    """The tenant db for edit_row's re-resolution — the rows endpoints
+    receive only platform_db; resolution reads (vehicle registry) go
+    through the shared service accessor like other request-path reads."""
+    from infra.services import get_db
+    return get_db()
+
+
 def _client_result(result):
     """Strip server-side keys (underscore-prefixed, e.g. the ``_item_ids``
     undo manifest) from a result before it reaches the client."""

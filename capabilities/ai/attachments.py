@@ -246,9 +246,21 @@ class ImportTarget:
     name: str
     description: str
     fields: dict[str, str]
-    build_rows: Callable[..., Awaitable[tuple[list[dict], list[str]]]]
+    # (records, account_id, user_context, db) -> (rows, skipped) or
+    # (rows, skipped, notices) — propose_import pads the 2-tuple form.
+    build_rows: Callable[..., Awaitable[tuple]]
     executor: Callable[..., Awaitable[dict]]
     permission: str = ""
+    # Optional per-cell edit hook — powers the editable import preview.
+    # ``async (row, changes, account_id, db) -> (new_row | None, error |
+    # None)``: validate with the SAME rules as build_rows (fixed vocab
+    # rejected with the reason, open vocab normalized, references
+    # re-resolved) and return the corrected row, or (None, reason).
+    # Targets without a hook simply have a read-only preview.
+    edit_row: Callable[..., Awaitable[tuple[dict | None, str | None]]] | None = None
+    # Dropdown values per editable field (e.g. the fixed status list) —
+    # served to the editor UI so it can render pickers.
+    edit_options: dict = field(default_factory=dict)
     extra: dict = field(default_factory=dict)
 
 

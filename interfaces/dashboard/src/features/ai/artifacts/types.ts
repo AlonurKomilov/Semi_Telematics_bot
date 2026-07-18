@@ -56,6 +56,9 @@ export interface ImportPreviewArtifact extends BaseArtifact {
   /** Non-fatal adjustments (values coerced to vocabulary defaults) —
    *  the rows staged, but not exactly as mapped. */
   notices?: string[];
+  /** Linked pending proposal — powers the editable preview (stamped by
+   *  the router alongside the sibling action_proposal). */
+  proposal_id?: string;
 }
 
 export type Artifact =

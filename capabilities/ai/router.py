@@ -536,7 +536,8 @@ async def ai_chat_stream(
                     # turn, injecting their server ids and STRIPPING the raw
                     # payload from the client copy (payload stays server-only
                     # — the client approves by id, never resends it).
-                    for _a in event.get("artifacts") or []:
+                    _arts = event.get("artifacts") or []
+                    for _i, _a in enumerate(_arts):
                         if (isinstance(_a, dict)
                                 and _a.get("type") == "action_proposal"
                                 and not _a.get("proposal_id")):
@@ -553,6 +554,14 @@ async def ai_chat_stream(
                                     ),
                                 )
                                 _a["proposal_id"] = _pid
+                                # Link the nearest preceding preview to its
+                                # proposal — powers the editable preview.
+                                for _b in reversed(_arts[:_i]):
+                                    if (isinstance(_b, dict)
+                                            and _b.get("type") == "import_preview"
+                                            and not _b.get("proposal_id")):
+                                        _b["proposal_id"] = _pid
+                                        break
                             except Exception:
                                 _a["error"] = "Could not create the action."
                             # Server-only fields never reach the client —
@@ -1154,6 +1163,63 @@ async def undo_action(
     return await undo_approved_action(
         proposal_id, user=user, user_context=user_context,
         platform_db=platform_db, tenant_db=tenant_db,
+    )
+
+
+class RowEditBody(BaseModel):
+    row: int = Field(..., ge=0, le=100_000)
+    changes: dict = Field(default_factory=dict)
+
+
+class RowRemoveBody(BaseModel):
+    row: int = Field(..., ge=0, le=100_000)
+
+
+@router.get("/actions/{proposal_id}/rows")
+async def action_rows(
+    proposal_id: str,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """The FULL staged rows of a pending import (the editable preview) —
+    creator-only; server-side keys stripped."""
+    from capabilities.ai.actions import get_staged_rows
+    return await get_staged_rows(proposal_id, user=user, platform_db=platform_db)
+
+
+@router.post("/actions/{proposal_id}/rows/edit")
+@limiter.limit("60/minute")
+async def action_row_edit(
+    proposal_id: str,
+    body: RowEditBody,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Correct ONE cell (or a few fields) of one staged row before
+    approving.  Validated by the target's own rules — fixed vocabularies
+    are refused with the reason, never coerced; the server's staged rows
+    are the single source the no-body approve executes."""
+    from capabilities.ai.actions import edit_staged_row
+    return await edit_staged_row(
+        proposal_id, row_index=body.row, changes=body.changes,
+        user=user, platform_db=platform_db,
+    )
+
+
+@router.post("/actions/{proposal_id}/rows/remove")
+@limiter.limit("60/minute")
+async def action_row_remove(
+    proposal_id: str,
+    body: RowRemoveBody,
+    request: Request,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Drop one staged row from a pending import."""
+    from capabilities.ai.actions import remove_staged_row
+    return await remove_staged_row(
+        proposal_id, row_index=body.row, user=user, platform_db=platform_db,
     )
 
 

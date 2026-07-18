@@ -186,6 +186,50 @@ async def _build_rows(
     return rows, skipped, notices
 
 
+async def _edit_row(row: dict, changes: dict, account_id: int, db):
+    """Per-cell corrections on a staged import row (the editable
+    preview).  Same rules as build_rows: STATUS is fixed vocabulary and
+    an invalid value is refused with the reason; CATEGORY is open and
+    normalizes; vehicle/company re-resolve against the registry
+    (exactly one or refused).  Returns (new_row, None) or (None, why).
+    """
+    new_row = dict(row)
+    for field_name, raw in changes.items():
+        value = str(raw or "").strip()
+        if field_name == "status":
+            status = _clean_status(value)
+            if status is None:
+                return None, (
+                    f"status must be one of: {', '.join(INVENTORY_STATUSES)}"
+                )
+            new_row["status"] = status
+        elif field_name == "category":
+            new_row["category"] = _clean_category(value)
+        elif field_name == "item":
+            item = " ".join(value.split())
+            if not item:
+                return None, "item can't be empty"
+            new_row["item"] = item[:120]
+        elif field_name == "identifier":
+            new_row["identifier"] = value[:120]
+        elif field_name == "note":
+            new_row["note"] = value[:1000]
+        elif field_name in ("vehicle", "company"):
+            unit = value if field_name == "vehicle" else str(new_row.get("vehicle", ""))
+            comp = value if field_name == "company" else str(new_row.get("company", ""))
+            vehicles = await db.list_vehicles(int(account_id))
+            by_unit, by_pair, codes = _build_lookup(vehicles)
+            v, reason = _resolve_one(unit, comp, by_unit, by_pair, codes)
+            if v is None:
+                return None, reason or "vehicle not found"
+            new_row["vehicle"] = v.unit_number
+            new_row["company"] = v.company_code
+            new_row["_vehicle_id"] = v.id
+        else:
+            return None, f"'{field_name}' can't be edited"
+    return new_row, None
+
+
 async def _noop_executor(rows, account_id, user_context, db):  # pragma: no cover
     raise NotImplementedError(
         "inventory imports execute via the import_inventory_items action"
@@ -227,6 +271,8 @@ register_import_target(ImportTarget(
     build_rows=_build_rows,
     executor=_noop_executor,   # real execution = the registered action below
     permission="can_manage_vehicles",
+    edit_row=_edit_row,
+    edit_options={"status": list(INVENTORY_STATUSES)},
 ))
 
 

@@ -125,6 +125,34 @@ class AIActionProposalsMixin(_MixinBase):
             "user_id": r[10], "undone_at": r[11] or "", "undone_by": r[12],
         }
 
+    async def update_staged_payload(
+        self, proposal_id: str, account_id: int, user_id: int,
+        staged_payload_json: str, summary: str = "",
+    ) -> bool:
+        """Replace a PENDING proposal's staged rows (the editable import
+        preview) — creator-scoped, refused once the proposal left
+        pending.  Optionally refreshes the summary so the approve card's
+        counts follow the edits.  Last-write-wins per call: the caller
+        serializes the full corrected row set (one user editing their
+        own draft; per-cell edits are individually validated upstream).
+        """
+        from infra.crypto import encrypt
+        sets = "staged_payload = ?"
+        params: list = [encrypt(staged_payload_json)]
+        if summary:
+            sets += ", summary = ?"
+            params.append(encrypt(summary[:2000]))
+        params += [proposal_id, account_id, user_id]
+        cur = await self._db.execute(
+            f"""UPDATE ai_action_proposals
+                  SET {sets}
+                WHERE id = ? AND account_id = ? AND user_id = ?
+                  AND status = 'pending'""",
+            tuple(params),
+        )
+        await self._db.commit()
+        return (cur.rowcount or 0) == 1
+
     async def claim_action_undo(
         self, proposal_id: str, account_id: int,
     ) -> bool:

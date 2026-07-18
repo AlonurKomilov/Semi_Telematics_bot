@@ -212,6 +212,35 @@ export function aiApproveAction(proposalId: string): Promise<{ status: string; r
 }
 
 /** Reject a proposed write (no mutation, recorded). */
+/** Full staged rows of a pending import (the editable preview). */
+export interface ActionRows {
+  rows: Record<string, unknown>[];
+  to_import: number;
+  /** Dropdown values per editable field (e.g. the fixed status list). */
+  edit_options: Record<string, string[]>;
+}
+
+export function aiGetActionRows(proposalId: string): Promise<ActionRows> {
+  return apiJSON(`/ai/actions/${encodeURIComponent(proposalId)}/rows`);
+}
+
+/** Correct one cell (or a few fields) of one staged row. */
+export function aiEditActionRow(
+  proposalId: string, row: number, changes: Record<string, string>,
+): Promise<{ row_index: number; row: Record<string, unknown>; to_import: number }> {
+  return apiJSON(`/ai/actions/${encodeURIComponent(proposalId)}/rows/edit`, {
+    method: 'POST', body: { row, changes },
+  });
+}
+
+export function aiRemoveActionRow(
+  proposalId: string, row: number,
+): Promise<{ rows: Record<string, unknown>[]; to_import: number }> {
+  return apiJSON(`/ai/actions/${encodeURIComponent(proposalId)}/rows/remove`, {
+    method: 'POST', body: { row },
+  });
+}
+
 /** Reverse an executed action — exactly its change-set, nothing else. */
 export function aiUndoAction(proposalId: string): Promise<{ status: string; result: Record<string, unknown> }> {
   return apiJSON(`/ai/actions/${encodeURIComponent(proposalId)}/undo`, { method: 'POST' });

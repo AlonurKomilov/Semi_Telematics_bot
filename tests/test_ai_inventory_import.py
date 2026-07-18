@@ -13,6 +13,8 @@ import os
 
 os.environ.setdefault("ENCRYPTION_KEY", "")
 
+import json
+
 import pytest
 from fastapi import HTTPException
 
@@ -295,3 +297,123 @@ def test_scope_and_permission_contract():
     assert "import_inventory_items" not in SCOPE_AWARE_TOOLS
     assert any(t.name == "inventory" and t.permission == "can_manage_vehicles"
                for t in list_import_targets())
+
+
+# ── Editable preview: per-cell corrections before approve ────────────
+
+async def _pending_import(pg_db, acct, uid):
+    records = [
+        _rec("110", item="Dashcam", row=2),
+        _rec("110", item="Tablet", status="installed", row=3),
+    ]
+    rows, skipped, _n = await _build_rows(records, acct, None, pg_db)
+    assert skipped == []
+    pid = await pg_db.create_action_proposal(
+        acct, uid, "import_inventory_items", "Import 2 inventory items",
+        json.dumps({"target": "inventory", "count": 2}),
+        staged_payload_json=json.dumps(rows),
+    )
+    return pid
+
+
+async def test_single_cell_edit_validates_and_persists(pg_db, monkeypatch):
+    """The owner's ask verbatim: change ONE row's status cell — the rest
+    untouched; a value outside the FIXED status vocabulary is refused
+    with the reason (never coerced); category edits may create customs;
+    vehicle edits re-resolve."""
+    import capabilities.ai.actions as A
+    from capabilities.ai.actions import edit_staged_row, get_staged_rows
+    monkeypatch.setattr(A, "_tenant_of", lambda user: pg_db)
+
+    acct, uid, _vids = await _seed(pg_db)
+    user = {"account_id": acct, "sub": str(uid), "role": "owner"}
+    pid = await _pending_import(pg_db, acct, uid)
+
+    out = await edit_staged_row(
+        pid, row_index=1, changes={"status": "needs check"},
+        user=user, platform_db=pg_db)
+    assert out["row"]["status"] == "needs_check"
+    assert out["to_import"] == 2
+
+    from fastapi import HTTPException as HE
+    with pytest.raises(HE) as e:
+        await edit_staged_row(pid, row_index=1, changes={"status": "broken!!"},
+                              user=user, platform_db=pg_db)
+    assert e.value.status_code == 422 and "status must be one of" in e.value.detail
+
+    out = await edit_staged_row(
+        pid, row_index=0, changes={"category": "Safety Equipment"},
+        user=user, platform_db=pg_db)
+    assert out["row"]["category"] == "safety_equipment"
+
+    with pytest.raises(HE) as e:
+        await edit_staged_row(pid, row_index=0, changes={"vehicle": "999"},
+                              user=user, platform_db=pg_db)
+    assert e.value.status_code == 422 and "no vehicle '999'" in e.value.detail
+
+    # Row 1's earlier edit survived; row 0 kept its own status.
+    got = await get_staged_rows(pid, user=user, platform_db=pg_db)
+    assert got["rows"][1]["status"] == "needs_check"
+    assert got["rows"][0]["status"] == "installed"
+    assert got["edit_options"]["status"]
+    assert all(not k.startswith("_") for r in got["rows"] for k in r)
+
+
+async def test_approve_executes_the_edited_rows(pg_db, monkeypatch):
+    """The loop's whole point: the no-body approve writes the CORRECTED
+    rows — and a removed row is not imported."""
+    import capabilities.ai.actions as A
+    from capabilities.ai.actions import edit_staged_row, remove_staged_row
+    monkeypatch.setattr(A, "_tenant_of", lambda user: pg_db)
+
+    acct, uid, vids = await _seed(pg_db)
+    user = {"account_id": acct, "sub": str(uid), "role": "owner"}
+    pid = await _pending_import(pg_db, acct, uid)
+
+    await edit_staged_row(pid, row_index=0, changes={"status": "damaged"},
+                          user=user, platform_db=pg_db)
+    out = await remove_staged_row(pid, row_index=1, user=user, platform_db=pg_db)
+    assert out["to_import"] == 1
+
+    from capabilities.ai.actions import execute_approved_action
+    res = await execute_approved_action(
+        pid, user=user, user_context={}, platform_db=pg_db, tenant_db=pg_db)
+    assert res["result"]["imported"] == 1
+    items = await pg_db.list_vehicle_inventory(acct, vids[("110", "")])
+    assert len(items) == 1
+    assert items[0]["status"] == "damaged"          # the edit landed
+    assert items[0]["label"] == "Dashcam"           # the removed row didn't
+
+    # Editing after approve is closed.
+    from fastapi import HTTPException as HE
+    with pytest.raises(HE) as e:
+        await edit_staged_row(pid, row_index=0, changes={"status": "spare"},
+                              user=user, platform_db=pg_db)
+    assert e.value.status_code == 409
+
+
+async def test_row_edits_are_creator_scoped_and_bounded(pg_db, monkeypatch):
+    import capabilities.ai.actions as A
+    from capabilities.ai.actions import edit_staged_row, remove_staged_row
+    monkeypatch.setattr(A, "_tenant_of", lambda user: pg_db)
+
+    acct, uid, _vids = await _seed(pg_db)
+    user = {"account_id": acct, "sub": str(uid), "role": "owner"}
+    stranger = {"account_id": acct, "sub": str(uid + 999), "role": "owner"}
+    pid = await _pending_import(pg_db, acct, uid)
+
+    from fastapi import HTTPException as HE
+    with pytest.raises(HE) as e:
+        await edit_staged_row(pid, row_index=0, changes={"status": "spare"},
+                              user=stranger, platform_db=pg_db)
+    assert e.value.status_code == 404               # not the creator
+
+    with pytest.raises(HE) as e:
+        await edit_staged_row(pid, row_index=99, changes={"status": "spare"},
+                              user=user, platform_db=pg_db)
+    assert e.value.status_code == 404               # no such row
+
+    await remove_staged_row(pid, row_index=1, user=user, platform_db=pg_db)
+    with pytest.raises(HE) as e:
+        await remove_staged_row(pid, row_index=0, user=user, platform_db=pg_db)
+    assert e.value.status_code == 422               # last row: reject instead
