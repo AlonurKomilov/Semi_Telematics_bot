@@ -28,7 +28,19 @@ async def job_market_rollups(_app=None) -> None:
         return
     since = (datetime.now(timezone.utc) - timedelta(days=365)).isoformat()
     try:
+        # Duration is the scale gauge: the full rebuild is deliberately
+        # simple (sliding window + rank statistics + retroactive edits
+        # all self-heal), and THIS number tells us years in advance
+        # when to reach for percentile_cont / dirty-cell marking.
+        import time as _time
+        t0 = _time.monotonic()
         n = await db.compute_market_rollups(since)
-        logger.info("market_rollups: %d vendor cells published", n)
+        elapsed = _time.monotonic() - t0
+        logger.info(
+            "market_rollups: %d vendor cells published in %.1fs%s",
+            n, elapsed,
+            " — SLOW, consider SQL-side percentiles + dirty-cell marking"
+            if elapsed > 300 else "",
+        )
     except Exception as e:
         logger.error("market_rollups failed: %s", e, exc_info=True)
