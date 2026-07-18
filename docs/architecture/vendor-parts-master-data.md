@@ -328,10 +328,14 @@ the mirror makes sense, minus everything a part name can't be:
   profile public-link banner + Unlink, and the dedup dialog's second
   scope "Public catalog" (Link verb — same two-verb pattern as
   vendors).
-- **Phase D sequencing (unchanged rule):** market_intel still keys on
-  normalized part name; if it ever prefers `global_part_id`, flip the
-  key BEFORE `MARKET_INTEL_ENABLED` goes live — re-keying after launch
-  visibly shifts published ranges.
+- **Phase D key flip — DONE pre-launch (2026-07-18):** part cells now
+  pool by `gp:<global_part_id>` when linked (canonical label; variants
+  finally clear the 3-company rule as one cell), normalized-name
+  fallback for unlinked, and unlinked GENERIC names form no part cells
+  at all.  Executed while dark per the advisor's sequencing rule —
+  re-keying after launch would visibly shift published ranges.  The
+  only remaining launch step is the owner's legal review →
+  `MARKET_INTEL_ENABLED=1` (documented in .env.example).
 
 Account-side (shipped same day): `POST /parts` Add-part (resolve
 semantics + honest `created` flag) and visible part IDs (#id chip on
