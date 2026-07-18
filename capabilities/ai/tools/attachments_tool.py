@@ -187,7 +187,8 @@ async def propose_import(
     # default).  They MUST surface: swallowing them once let the model
     # claim a mapping change succeeded when the adapter had quietly
     # rejected the value.
-    rows, skipped, notices = (*built, [])[:3]
+    _padded: tuple = (*built, [])
+    rows, skipped, notices = _padded[0], list(_padded[1]), list(_padded[2])
     skipped = [*problems, *skipped]
     if not rows:
         return tool_error(
