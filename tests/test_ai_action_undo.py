@@ -56,7 +56,7 @@ async def _approve_import(pg_db, acct: int, uid: int, *, role="fleet"):
         {"vehicle": "111", "item": "Tablet", "status": "installed",
          "category": "tablet", "_source_row": 3},
     ]
-    rows, skipped = await _build_rows(records, acct, None, pg_db)
+    rows, skipped, _notices = await _build_rows(records, acct, None, pg_db)
     assert skipped == []
     pid = await pg_db.create_action_proposal(
         acct, uid, "import_inventory_items", "Import 2 inventory items",

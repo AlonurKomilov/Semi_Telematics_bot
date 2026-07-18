@@ -270,7 +270,7 @@ def list_import_targets() -> list[ImportTarget]:
 
 def build_import_preview(
     target: ImportTarget, rows: list[dict], skipped: list[str],
-    *, title: str = "",
+    *, title: str = "", notices: list[str] | None = None,
 ) -> dict:
     """Build the shared ``import_preview`` artifact for a staged import.
 
@@ -301,6 +301,11 @@ def build_import_preview(
         },
         "skipped": [str(s)[:200] for s in skipped[:PREVIEW_MAX_SKIPPED]],
         "skipped_truncated": len(skipped) > PREVIEW_MAX_SKIPPED,
+        # Non-fatal adjustments (e.g. a value coerced to a vocabulary
+        # default).  Distinct from skips: the rows DID stage, but not
+        # exactly as mapped — silence here once let the model claim a
+        # change succeeded when the adapter had quietly rejected it.
+        "notices": [str(n)[:300] for n in (notices or [])[:PREVIEW_MAX_SKIPPED]],
     }
 
 

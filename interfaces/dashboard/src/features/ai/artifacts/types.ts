@@ -53,6 +53,9 @@ export interface ImportPreviewArtifact extends BaseArtifact {
   /** Human-readable per-row skip reasons (bounded server-side). */
   skipped: string[];
   skipped_truncated?: boolean;
+  /** Non-fatal adjustments (values coerced to vocabulary defaults) —
+   *  the rows staged, but not exactly as mapped. */
+  notices?: string[];
 }
 
 export type Artifact =

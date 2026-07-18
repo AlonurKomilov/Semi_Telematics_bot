@@ -8,7 +8,7 @@
  * totals line, and the per-row skip report.  Renders directly above the
  * action_proposal approve card in the same tool result.
  */
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Info } from 'lucide-react';
 import DataGrid from '../../../components/DataGrid';
 import { toneText } from '../../../lib/status';
 import type { AnyColumn } from '../../../types';
@@ -40,6 +40,18 @@ function ImportPreviewView({ artifact }: { artifact: Artifact }) {
         {shown < total ? `Showing ${shown} of ${total} rows to import.` : `${total} rows to import.`}
         {skipped > 0 && ` ${skipped} skipped.`}
       </div>
+      {(artifact.notices?.length ?? 0) > 0 && (
+        <div className="mt-1.5 rounded-md border border-info-bd bg-info-bg p-2">
+          <div className={`mb-1 inline-flex items-center gap-1 text-3xs font-medium ${toneText('info')}`}>
+            <Info size={12} aria-hidden /> Adjusted during validation
+          </div>
+          <ul className="space-y-0.5 text-3xs text-muted-foreground">
+            {artifact.notices!.map((n, i) => (
+              <li key={i}>{n}</li>
+            ))}
+          </ul>
+        </div>
+      )}
       {artifact.skipped.length > 0 && (
         <div className="mt-1.5 rounded-md border border-warn-bd bg-warn-bg p-2">
           <div className={`mb-1 inline-flex items-center gap-1 text-3xs font-medium ${toneText('warn')}`}>

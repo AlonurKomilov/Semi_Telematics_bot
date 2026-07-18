@@ -118,14 +118,23 @@ def _clean_status(raw: object) -> str | None:
 
 async def _build_rows(
     records: list[dict], account_id: int | None, user_context, db,
-) -> tuple[list[dict], list[str]]:
-    """Validate mapped records into stageable inventory rows + skip report."""
+) -> tuple[list[dict], list[str], list[str]]:
+    """Validate mapped records into stageable inventory rows.
+
+    Returns ``(rows, skipped, notices)``.  Notices are non-fatal
+    ADJUSTMENTS — above all category coercions: category is a fixed
+    vocabulary, and a mapped value outside it stages as 'other'.  That
+    coercion used to be silent, which let the model truthfully believe
+    (and report) that "category = Fire extinguisher" had been applied
+    when the adapter had quietly rejected it.
+    """
     if db is None or account_id is None:
-        return [], ["Inventory data is not available in this context."]
+        return [], ["Inventory data is not available in this context."], []
     vehicles = await db.list_vehicles(int(account_id))
     by_unit, by_pair, codes = _build_lookup(vehicles)
     rows: list[dict] = []
     skipped: list[str] = []
+    coerced_categories: dict[str, int] = {}
     for rec in records:
         where = f"row {rec.get('_source_row', '?')}"
         v, reason = _resolve_one(
@@ -146,6 +155,10 @@ async def _build_rows(
                 f"{', '.join(INVENTORY_STATUSES)} — map it in value_map"
             )
             continue
+        raw_cat = str(rec.get("category", "") or "")
+        category = _clean_category(raw_cat)
+        if raw_cat.strip() and category == "other" and _norm(raw_cat).replace(" ", "_") != "other":
+            coerced_categories[raw_cat.strip()] = coerced_categories.get(raw_cat.strip(), 0) + 1
         rows.append({
             # The RESOLVED registry vehicle, split exactly like the
             # Inventory page's own columns (Vehicle | Company) — the
@@ -153,14 +166,22 @@ async def _build_rows(
             "vehicle": v.unit_number,
             "company": v.company_code,
             "item": item[:120],
-            "category": _clean_category(rec.get("category", "")),
+            "category": category,
             "status": status,
             "identifier": str(rec.get("identifier", "") or "")[:120],
             "note": str(rec.get("note", "") or "")[:1000],
             "_vehicle_id": v.id,                 # server-side; hidden in preview
             "_source_row": rec.get("_source_row"),
         })
-    return rows, skipped
+    notices = [
+        (
+            f"category '{raw}' is not a valid category (allowed: "
+            f"{', '.join(INVENTORY_CATEGORIES)}) — stored as 'other' "
+            f"for {count} row(s)"
+        )
+        for raw, count in coerced_categories.items()
+    ]
+    return rows, skipped, notices
 
 
 async def _noop_executor(rows, account_id, user_context, db):  # pragma: no cover

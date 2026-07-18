@@ -181,7 +181,13 @@ async def propose_import(
     # FUTURE resource_ids-scoped import target gets its injected scope
     # without a framework change.
     ctx = {"_scope_vehicles": tool_args.get("_scope_vehicles")}
-    rows, skipped = await target.build_rows(records, account_id, ctx, db)
+    built = await target.build_rows(records, account_id, ctx, db)
+    # build_rows returns (rows, skipped) or (rows, skipped, notices) —
+    # notices are non-fatal adjustments (a value coerced to a vocabulary
+    # default).  They MUST surface: swallowing them once let the model
+    # claim a mapping change succeeded when the adapter had quietly
+    # rejected the value.
+    rows, skipped, notices = (*built, [])[:3]
     skipped = [*problems, *skipped]
     if not rows:
         return tool_error(
@@ -194,6 +200,7 @@ async def propose_import(
     preview = build_import_preview(
         target, rows, skipped,
         title=f"Import preview — {target.name} · {name}",
+        notices=notices,
     )
     n = len(rows)
     if not summary:
@@ -203,7 +210,7 @@ async def propose_import(
         summary = f"Import {n} {target.description or 'rows into ' + target.name}"
         if skipped:
             summary += f" — {len(skipped)} skipped"
-    return tool_propose(
+    out = tool_propose(
         tool,
         summary,
         # Propose-time metadata for the card/audit trail; the executor
@@ -220,3 +227,30 @@ async def propose_import(
         staged=rows,
         artifacts_extra=[preview],
     )
+    # Honest-reporting contract for the MODEL (these top-level fields
+    # survive model_view's artifact redaction).  A prior live run showed
+    # the model repeating a REMEMBERED total from an earlier preview and
+    # claiming success on a change the adapter had coerced away — give
+    # it the exact numbers and the adjustments, and say they're binding.
+    out["to_import"] = n
+    out["skipped_count"] = len(skipped)
+    if notices:
+        out["adjustments"] = list(notices)[:10]
+    reporting = (
+        f"Report EXACTLY these numbers to the user: {n} rows will be "
+        f"imported, {len(skipped)} skipped. Never reuse totals from an "
+        "earlier preview."
+    )
+    if notices:
+        reporting += (
+            " Some mapped values were ADJUSTED by validation (see "
+            "'adjustments') — tell the user what changed instead of "
+            "claiming the mapping was applied as-is."
+        )
+    if len(skipped) > n:
+        reporting += (
+            " More rows were skipped than staged — the mapping is likely "
+            "wrong (e.g. a missing value_map); say so and offer to fix it."
+        )
+    out["reporting_note"] = reporting
+    return out

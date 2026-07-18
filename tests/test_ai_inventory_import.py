@@ -62,7 +62,7 @@ async def test_resolution_rules(pg_db):
         _rec("022", row=5),                 # leading zero: its OWN vehicle
         _rec("999", row=6),                 # unknown → skip
     ]
-    rows, skipped = await _build_rows(records, acct, None, pg_db)
+    rows, skipped, _notices = await _build_rows(records, acct, None, pg_db)
     # Vehicle | Company split exactly like the Inventory page's columns.
     assert [(r["vehicle"], r["company"]) for r in rows] == [
         ("110", ""), ("103", "OSY"), ("022", "OSY")]
@@ -84,13 +84,69 @@ async def test_company_column_disambiguates(pg_db):
         _rec("22", row=3, company="TRK"),
         _rec("22", row=4, company="NOPE"),
     ]
-    rows, skipped = await _build_rows(records, acct, None, pg_db)
+    rows, skipped, _notices = await _build_rows(records, acct, None, pg_db)
     assert [(r["vehicle"], r["company"]) for r in rows] == [
         ("22", "OSY"), ("22", "TRK")]
     assert rows[0]["_vehicle_id"] == vids[("22", "OSY")]
     assert rows[1]["_vehicle_id"] == vids[("22", "TRK")]
     assert len(skipped) == 1
     assert "in company 'NOPE'" in skipped[0] and "row 4" in skipped[0]
+
+
+async def test_category_coercion_is_reported_not_silent(pg_db):
+    """Category is a fixed vocabulary: a mapped value outside it stages
+    as 'other' — but the coercion MUST surface as a notice.  Silence
+    here once let the model claim "category = Fire extinguisher" was
+    applied when the adapter had quietly rejected it."""
+    acct, _uid, _vids = await _seed(pg_db)
+    records = [
+        _rec("110", category="Fire extinguisher", row=2),
+        _rec("110", category="Fire extinguisher", row=3),
+        _rec("110", category="camera", row=4),           # valid: no notice
+    ]
+    rows, _skipped, notices = await _build_rows(records, acct, None, pg_db)
+    assert [r["category"] for r in rows] == ["other", "other", "camera"]
+    assert len(notices) == 1
+    assert "'Fire extinguisher' is not a valid category" in notices[0]
+    assert "2 row(s)" in notices[0]
+
+
+async def test_propose_result_carries_the_honest_numbers(pg_db):
+    """The model-visible propose result must pin the EXACT totals and
+    adjustments (a live run showed the model repeating a remembered
+    total from an earlier preview and claiming a coerced mapping had
+    been applied as-is)."""
+    from capabilities.ai.attachments import parse_csv_grid
+    from capabilities.ai.tools.registry import model_view
+    acct, _uid, _vids = await _seed(pg_db)
+    sheet = (
+        "Units,Fire extinguisher\n"
+        "110,Good\n"
+        "999,Good\n"
+    )
+    mapping = {
+        "has_header": True,
+        "id_columns": [{"index": 0, "field": "vehicle"}],
+        "melt_columns": [
+            {"index": 1, "constants": {"item": "Fire extinguisher",
+                                       "category": "Fire extinguisher"},
+             "value_field": "status", "value_map": {"good": "installed"}},
+        ],
+    }
+    out = await import_inventory_items(
+        {"mapping": mapping, "_attachments": {"s.csv": parse_csv_grid(sheet)}},
+        None, account_id=acct, db=pg_db)
+    assert out["to_import"] == 1 and out["skipped_count"] == 1
+    assert any("not a valid category" in a for a in out["adjustments"])
+    assert "Report EXACTLY these numbers" in out["reporting_note"]
+    assert "ADJUSTED by validation" in out["reporting_note"]
+    # The preview artifact shows the notice to the USER too…
+    preview = out["artifacts"][0]
+    assert preview["notices"]
+    # …and everything survives the model_view redaction for the MODEL.
+    mv = model_view(out)
+    assert mv["to_import"] == 1 and mv["adjustments"]
+    assert isinstance(mv["artifacts"][0]["rows"], str)   # rows still redacted
 
 
 async def test_row_validation(pg_db):
@@ -101,7 +157,7 @@ async def test_row_validation(pg_db):
         _rec("110", status="needs check", row=4),          # normalizes to vocab
         _rec("110", category="Safety Equipment", row=5),   # unknown cat → other
     ]
-    rows, skipped = await _build_rows(records, acct, None, pg_db)
+    rows, skipped, _notices = await _build_rows(records, acct, None, pg_db)
     assert len(rows) == 2
     assert rows[0]["status"] == "needs_check"
     assert rows[1]["category"] == "other"
@@ -117,7 +173,7 @@ async def _stage(pg_db, acct):
         _rec("103 OSY", item="Tablet", status="needs_check", row=3,
              identifier="SN-42", note="screen cracked"),
     ]
-    rows, skipped = await _build_rows(records, acct, None, pg_db)
+    rows, skipped, _notices = await _build_rows(records, acct, None, pg_db)
     assert skipped == []
     return rows
 
