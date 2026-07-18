@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 
 from adapters.storage.vehicle_inventory import (
     INVENTORY_CATEGORIES,
+    normalize_inventory_category,
     INVENTORY_STATUSES,
 )
 from interfaces.api.deps import (
@@ -111,7 +112,7 @@ async def vehicle_inventory(
         "vehicle_id": vehicle["id"],
         "items": items,
         "summary": _summary(items),
-        "categories": list(INVENTORY_CATEGORIES),
+        "categories": await tenant.list_inventory_categories(int(user["account_id"])),
         "statuses": list(INVENTORY_STATUSES),
     }
 
@@ -131,14 +132,16 @@ async def add_item(
     user: dict = Depends(_MANAGE),
     tenant=Depends(get_tenant_db),
 ):
-    if body.category not in INVENTORY_CATEGORIES:
-        raise HTTPException(400, f"category must be one of {INVENTORY_CATEGORIES}")
+    # Category is an OPEN vocabulary — custom values are welcomed and
+    # normalized ("Safety Equipment" -> safety_equipment); STATUS stays
+    # the fixed lifecycle enum.
+    category = normalize_inventory_category(body.category)
     account_id = int(user["account_id"])
     vehicle = await _resolve_vehicle(tenant, user, vehicle_name, body.company)
     driver_id = await _driver_snapshot(tenant, account_id, int(vehicle["id"]))
     item_id = await tenant.add_inventory_item(
         account_id, int(vehicle["id"]),
-        category=body.category, label=body.label,
+        category=category, label=body.label,
         identifier=body.identifier, notes=body.notes,
         actor_user_id=await resolve_user_id(user), driver_user_id=driver_id,
     )
@@ -175,7 +178,7 @@ async def inventory_all(
         rows = [r for r in rows if not r["company_code"] or r["company_code"] in allowed]
     return {
         "items": rows,
-        "categories": list(INVENTORY_CATEGORIES),
+        "categories": await tenant.list_inventory_categories(int(user["account_id"])),
         "statuses": list(INVENTORY_STATUSES),
     }
 
@@ -198,8 +201,8 @@ async def patch_item(
     user: dict = Depends(_MANAGE),
     tenant=Depends(get_tenant_db),
 ):
-    if body.category is not None and body.category not in INVENTORY_CATEGORIES:
-        raise HTTPException(400, f"category must be one of {INVENTORY_CATEGORIES}")
+    if body.category is not None:
+        body.category = normalize_inventory_category(body.category)
     if body.status is not None and body.status not in INVENTORY_STATUSES:
         raise HTTPException(400, f"status must be one of {INVENTORY_STATUSES}")
     account_id = int(user["account_id"])

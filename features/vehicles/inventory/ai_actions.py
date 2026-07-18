@@ -26,6 +26,7 @@ import logging
 from adapters.storage.vehicle_inventory import (
     INVENTORY_CATEGORIES,
     INVENTORY_STATUSES,
+    normalize_inventory_category,
 )
 from capabilities.ai.attachments import (
     MAX_RECORDS,
@@ -102,9 +103,11 @@ def _resolve_one(
 
 
 def _clean_category(raw: object) -> str:
-    """Unknown category soft-defaults to 'other' — taxonomy, not data."""
-    c = _norm(raw).replace(" ", "_")
-    return c if c in INVENTORY_CATEGORIES else "other"
+    """Category is an OPEN vocabulary (owner decision): a value outside
+    the built-ins becomes a normalized CUSTOM category ('Safety
+    Equipment' -> safety_equipment), never a silent 'other'.  Empty ->
+    'other'."""
+    return normalize_inventory_category(raw)
 
 
 def _clean_status(raw: object) -> str | None:
@@ -122,11 +125,11 @@ async def _build_rows(
     """Validate mapped records into stageable inventory rows.
 
     Returns ``(rows, skipped, notices)``.  Notices are non-fatal
-    ADJUSTMENTS — above all category coercions: category is a fixed
-    vocabulary, and a mapped value outside it stages as 'other'.  That
-    coercion used to be silent, which let the model truthfully believe
-    (and report) that "category = Fire extinguisher" had been applied
-    when the adapter had quietly rejected it.
+    ADJUSTMENTS the user must see: above all NEW categories — category
+    is an open vocabulary, so an unknown value creates a custom category
+    (normalized snake_case) rather than silently becoming 'other' (the
+    old coercion once let the model claim a mapping change had applied
+    when the adapter had quietly rejected it).  STATUS stays fixed.
     """
     if db is None or account_id is None:
         return [], ["Inventory data is not available in this context."], []
@@ -134,7 +137,7 @@ async def _build_rows(
     by_unit, by_pair, codes = _build_lookup(vehicles)
     rows: list[dict] = []
     skipped: list[str] = []
-    coerced_categories: dict[str, int] = {}
+    new_categories: dict[str, int] = {}
     for rec in records:
         where = f"row {rec.get('_source_row', '?')}"
         v, reason = _resolve_one(
@@ -155,10 +158,9 @@ async def _build_rows(
                 f"{', '.join(INVENTORY_STATUSES)} — map it in value_map"
             )
             continue
-        raw_cat = str(rec.get("category", "") or "")
-        category = _clean_category(raw_cat)
-        if raw_cat.strip() and category == "other" and _norm(raw_cat).replace(" ", "_") != "other":
-            coerced_categories[raw_cat.strip()] = coerced_categories.get(raw_cat.strip(), 0) + 1
+        category = _clean_category(rec.get("category", ""))
+        if category not in INVENTORY_CATEGORIES:
+            new_categories[category] = new_categories.get(category, 0) + 1
         rows.append({
             # The RESOLVED registry vehicle, split exactly like the
             # Inventory page's own columns (Vehicle | Company) — the
@@ -175,11 +177,11 @@ async def _build_rows(
         })
     notices = [
         (
-            f"category '{raw}' is not a valid category (allowed: "
-            f"{', '.join(INVENTORY_CATEGORIES)}) — stored as 'other' "
-            f"for {count} row(s)"
+            f"new category '{cat}' will be created ({count} row(s)) — "
+            "it joins the built-ins "
+            f"({', '.join(INVENTORY_CATEGORIES)}) in the category picker"
         )
-        for raw, count in coerced_categories.items()
+        for cat, count in new_categories.items()
     ]
     return rows, skipped, notices
 
@@ -206,13 +208,18 @@ register_import_target(ImportTarget(
         ),
         "item": "Item name (required), e.g. 'Fire extinguisher', 'Dashcam'.",
         "category": (
-            "One of: " + ", ".join(INVENTORY_CATEGORIES)
-            + ". Anything else becomes 'other'."
+            "OPEN vocabulary. Built-ins: " + ", ".join(INVENTORY_CATEGORIES)
+            + "; any other value creates a NEW custom category "
+            "(normalized like safety_equipment) — tell the user when "
+            "that happens."
         ),
         "status": (
-            "One of: " + ", ".join(INVENTORY_STATUSES)
+            "FIXED vocabulary (drives alert logic, cannot take new "
+            "values): " + ", ".join(INVENTORY_STATUSES)
             + ". Translate sheet phrasing via the mapping's value_map — "
-            "rows with an unmapped status are skipped."
+            "rows with an unmapped status are skipped. If the user asks "
+            "for a status outside this list, explain the column is "
+            "fixed instead of attempting it."
         ),
         "identifier": "Serial / card number / transponder id (optional).",
         "note": "Free-text note carried onto the item (optional).",
@@ -274,7 +281,14 @@ register_import_target(ImportTarget(
                             "type": "object",
                             "properties": {
                                 "index": {"type": "integer", "description": "0-based column index."},
-                                "constants": {"type": "object", "description": "Fixed fields for every record from this column, e.g. {\"item\": \"Fire extinguisher\", \"category\": \"other\"}."},
+                                "constants": {"type": "object", "description": (
+                                    "Fixed fields for every record from this column, e.g. "
+                                    "{\"item\": \"Fire extinguisher\", \"category\": \"other\"}. "
+                                    "CATEGORY is open (built-ins: " + ", ".join(INVENTORY_CATEGORIES)
+                                    + "; other values create a new custom category). "
+                                    "STATUS is FIXED to: " + ", ".join(INVENTORY_STATUSES)
+                                    + " — new status values are impossible; explain that instead of trying."
+                                )},
                                 "value_field": {"type": "string", "description": "Field the cell value lands in, usually 'status'."},
                                 "value_map": {"type": "object", "description": "Cell text → vocabulary value, e.g. {\"Good\": \"installed\", \"Not checked\": \"needs_check\"}."},
                                 "skip_values": {"type": "array", "items": {"type": "string"}, "description": "Cell values that produce no record (besides empty)."},

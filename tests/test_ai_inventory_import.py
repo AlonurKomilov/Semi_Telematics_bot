@@ -93,21 +93,22 @@ async def test_company_column_disambiguates(pg_db):
     assert "in company 'NOPE'" in skipped[0] and "row 4" in skipped[0]
 
 
-async def test_category_coercion_is_reported_not_silent(pg_db):
-    """Category is a fixed vocabulary: a mapped value outside it stages
-    as 'other' — but the coercion MUST surface as a notice.  Silence
-    here once let the model claim "category = Fire extinguisher" was
-    applied when the adapter had quietly rejected it."""
+async def test_new_categories_are_created_and_reported(pg_db):
+    """Category is an OPEN vocabulary: an unknown value creates a
+    normalized custom category — and the creation MUST surface as a
+    notice (the old silent 'other' coercion let the model claim a
+    mapping change had applied when it hadn't)."""
     acct, _uid, _vids = await _seed(pg_db)
     records = [
         _rec("110", category="Fire extinguisher", row=2),
         _rec("110", category="Fire extinguisher", row=3),
-        _rec("110", category="camera", row=4),           # valid: no notice
+        _rec("110", category="camera", row=4),           # built-in: no notice
     ]
     rows, _skipped, notices = await _build_rows(records, acct, None, pg_db)
-    assert [r["category"] for r in rows] == ["other", "other", "camera"]
+    assert [r["category"] for r in rows] == [
+        "fire_extinguisher", "fire_extinguisher", "camera"]
     assert len(notices) == 1
-    assert "'Fire extinguisher' is not a valid category" in notices[0]
+    assert "new category 'fire_extinguisher'" in notices[0]
     assert "2 row(s)" in notices[0]
 
 
@@ -137,7 +138,7 @@ async def test_propose_result_carries_the_honest_numbers(pg_db):
         {"mapping": mapping, "_attachments": {"s.csv": parse_csv_grid(sheet)}},
         None, account_id=acct, db=pg_db)
     assert out["to_import"] == 1 and out["skipped_count"] == 1
-    assert any("not a valid category" in a for a in out["adjustments"])
+    assert any("new category" in a for a in out["adjustments"])
     assert "Report EXACTLY these numbers" in out["reporting_note"]
     assert "ADJUSTED by validation" in out["reporting_note"]
     # The preview artifact shows the notice to the USER too…
@@ -155,12 +156,12 @@ async def test_row_validation(pg_db):
         _rec("110", item="  ", row=2),                     # blank item
         _rec("110", status="Good", row=3),                 # unmapped status
         _rec("110", status="needs check", row=4),          # normalizes to vocab
-        _rec("110", category="Safety Equipment", row=5),   # unknown cat → other
+        _rec("110", category="Safety Equipment", row=5),   # custom category
     ]
     rows, skipped, _notices = await _build_rows(records, acct, None, pg_db)
     assert len(rows) == 2
     assert rows[0]["status"] == "needs_check"
-    assert rows[1]["category"] == "other"
+    assert rows[1]["category"] == "safety_equipment"
     assert any("no item name" in s and "row 2" in s for s in skipped)
     assert any("value_map" in s and "row 3" in s for s in skipped)
 

@@ -34,9 +34,21 @@ else:
     _MixinBase = object
 
 
+# Built-in categories — the SUGGESTED vocabulary, not a closed one:
+# category is a grouping label (owner decision 2026-07-18), so accounts
+# may create their own ("safety_equipment").  Custom values are
+# normalized snake_case via normalize_inventory_category; the frontend
+# renders unknown keys with a fallback icon/label.  STATUS stays a FIXED
+# vocabulary — it drives the attention badges and alert logic.
 INVENTORY_CATEGORIES = (
     "camera", "fuel_card", "toll_transponder", "eld", "tablet", "other",
 )
+
+
+def normalize_inventory_category(raw: object) -> str:
+    """Free-text category -> stored snake_case key ('' -> 'other')."""
+    key = "_".join(str(raw or "").strip().lower().split())[:40]
+    return key or "other"
 
 # Lifecycle statuses.  "installed" is healthy; the warn/danger split is a
 # UI concern (tones), but ATTENTION_STATUSES drives the fleet-list badge.
@@ -156,6 +168,19 @@ class VehicleInventoryMixin(_MixinBase):
             (account_id,),
         )
         return [dict(r) for r in rows]
+
+    async def list_inventory_categories(self, account_id: int) -> list[str]:
+        """Suggested + in-use categories for the pickers: the built-in
+        vocabulary first, then this account's custom values (from active
+        items), sorted."""
+        cur = await self._db.execute(
+            "SELECT DISTINCT category FROM vehicle_inventory_items"
+            " WHERE account_id = ? AND is_active = 1",
+            (account_id,),
+        )
+        used = {str(r[0]) for r in await cur.fetchall() if r[0]}
+        custom = sorted(used - set(INVENTORY_CATEGORIES))
+        return [*INVENTORY_CATEGORIES, *custom]
 
     async def get_assigned_driver_for_truck(
         self, account_id: int, truck_num: str,

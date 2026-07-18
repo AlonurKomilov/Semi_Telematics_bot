@@ -75,13 +75,26 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
   const [err, setErr] = useState('');
   const { data: fleet, isLoading: fleetLoading } = useFleetList(vehicleName == null);
 
-  const items = categories.map((c) => ({ value: c, label: categoryMeta(c).label }));
+  // Category is an OPEN vocabulary: the server list (built-ins + this
+  // account's customs) plus an "Add category…" entry that reveals a
+  // free-text input — the server normalizes ("Safety Equipment" ->
+  // safety_equipment).
+  const CUSTOM = '__custom__';
+  const [customCategory, setCustomCategory] = useState('');
+  const items = [
+    ...categories.map((c) => ({ value: c, label: categoryMeta(c).label })),
+    { value: CUSTOM, label: 'Add category…' },
+  ];
 
   const submit = async () => {
     setErr('');
+    if (category === CUSTOM && !customCategory.trim()) {
+      setErr('Name the new category first.');
+      return;
+    }
     try {
       await add.mutateAsync({
-        category,
+        category: category === CUSTOM ? customCategory.trim() : category,
         label: label.trim(),
         identifier: identifier.trim(),
         notes: notes.trim(),
@@ -117,6 +130,17 @@ export function AddItemDialog({ vehicleName, company, categories, onClose }: {
               </SelectContent>
             </Select>
           </label>
+          {category === CUSTOM && (
+            <label className="block">
+              <span className={labelCls}>New category</span>
+              <input
+                value={customCategory}
+                onChange={(e) => setCustomCategory(e.target.value)}
+                placeholder="e.g. Safety Equipment"
+                className={`mt-1 ${inputCls}`}
+              />
+            </label>
+          )}
           <label className="block">
             <span className={labelCls}>Label</span>
             <input value={label} onChange={(e) => setLabel(e.target.value)}
