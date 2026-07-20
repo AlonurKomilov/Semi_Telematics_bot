@@ -128,3 +128,68 @@ async def test_backfill_from_legacy_columns(pg_db):
     rows2 = await pg_db.list_recipient_notification_prefs(acct, "user", uid)
     fuel = [r for r in rows2 if r["channel"] == "telegram_dm" and r["alert_type"] == "fuel"][0]
     assert fuel["enabled"] is True            # the re-run did NOT clobber the edit
+
+
+# ── Shadow compare: matrix reader == column reader (the 2b safety) ────
+
+async def _mk_user(pg_db, acct, tg, role, **prefs):
+    u = await pg_db.create_user(telegram_id=tg, account_id=acct, role=role)
+    if prefs:
+        await pg_db.update_user(u.id, **prefs)   # sets columns + write-also mirror
+    return u
+
+
+async def test_matrix_reader_matches_column_reader(pg_db):
+    """For every alert type, the matrix-backed reader returns EXACTLY the
+    same subscribers as the legacy-column reader — the equivalence proof
+    that makes the 2b reader flip safe."""
+    from adapters.storage.platform_migrations import migrate_notification_matrix
+    acct = (await pg_db.create_account("Shadow Co")).id
+    await _mk_user(pg_db, acct, 2001, Role.FLEET,
+                   alerts_on=True, alert_fuel=False)
+    await _mk_user(pg_db, acct, 2002, Role.DISPATCHER,
+                   alerts_on=True, alert_faults=False)
+    await _mk_user(pg_db, acct, 2003, Role.SAFETY, alerts_on=True)
+    await _mk_user(pg_db, acct, 2004, Role.FLEET,
+                   alerts_on=False, alert_faults=True)   # master OFF
+
+    # Backfill completes the matrix from the columns (write-also only
+    # mirrored the CHANGED types); ON CONFLICT DO NOTHING leaves the
+    # already-mirrored rows intact.
+    await migrate_notification_matrix(pg_db._db)
+
+    TYPES = ("faults", "health", "fuel", "geofence", "events",
+             "parking", "camera")
+    for atype in TYPES:
+        col = {u.id for u in await pg_db.get_typed_alert_subscribers(acct, atype)}
+        mat = {u.id for u in await pg_db.get_typed_alert_subscribers_via_matrix(acct, atype)}
+        assert col == mat, (atype, col, mat)
+
+    # Write-also keeps them in lockstep AFTER backfill: flip a live toggle
+    # and both readers still agree with no re-backfill.
+    u = await pg_db.get_user_by_telegram_id(2003)
+    await pg_db.update_user(u.id, alert_events=False)
+    for atype in TYPES:
+        col = {x.id for x in await pg_db.get_typed_alert_subscribers(acct, atype)}
+        mat = {x.id for x in await pg_db.get_typed_alert_subscribers_via_matrix(acct, atype)}
+        assert col == mat, ("after-edit", atype, col, mat)
+
+
+async def test_matrix_excludes_users_without_telegram(pg_db):
+    """The only deliberate difference: a user with prefs but NO telegram
+    address is a 'subscriber' in the columns yet correctly excluded by
+    the matrix (nothing to DM) — documented, not a regression."""
+    from adapters.storage.platform_migrations import migrate_notification_matrix
+    from interfaces.api.auth import _hash_password
+    acct = (await pg_db.create_account("NoTg Co")).id
+    email_user = await pg_db.create_user_with_email(
+        email=f"e.{acct}@x.com", password_hash=_hash_password("password12345"),
+        account_id=acct, role=Role.FLEET,
+    )
+    await pg_db.update_user(email_user.id, alerts_on=True)   # no telegram_id
+    await migrate_notification_matrix(pg_db._db)
+
+    col = {u.id for u in await pg_db.get_typed_alert_subscribers(acct, "faults")}
+    mat = {u.id for u in await pg_db.get_typed_alert_subscribers_via_matrix(acct, "faults")}
+    assert email_user.id in col          # columns include the no-telegram user
+    assert email_user.id not in mat      # matrix (correctly) does not

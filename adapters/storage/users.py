@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from .models import Role, User
+
+logger = logging.getLogger("bot.storage.users")
 
 
 class UsersMixin:
@@ -581,7 +584,53 @@ class UsersMixin:
                 invalidate_user(user_id)
             except Exception:
                 pass
+        # Write-also: mirror alert-pref changes into the notification
+        # matrix so it stays live-fresh during the columns→matrix
+        # transition (notifications phase 2b).  Best-effort — a mirror
+        # failure must NEVER break the primary column write; the columns
+        # remain the reader's SSOT until the reader flip (2b-2).
+        try:
+            await self._mirror_alert_prefs_to_matrix(user_id, updates)
+        except Exception:
+            logger.debug("notification-matrix mirror skipped for user %s", user_id)
         return True
+
+    # Map of legacy per-type columns → the matrix's alert_type slug.
+    _ALERT_PREF_COLS = {
+        "alert_faults": "faults", "alert_health": "health",
+        "alert_fuel": "fuel", "alert_geofence": "geofence",
+        "alert_events": "events", "alert_parking": "parking",
+        "alert_camera": "camera",
+    }
+
+    async def _mirror_alert_prefs_to_matrix(self, user_id: int, updates: dict) -> None:
+        """Reflect a user's changed alert toggles / master switch into
+        ``notification_pref`` + ``notification_channel`` (telegram_dm)."""
+        touched = {c: updates[c] for c in self._ALERT_PREF_COLS if c in updates}
+        master_changed = "alerts_on" in updates
+        if not touched and not master_changed:
+            return
+        cur = await self._db.execute(
+            "SELECT account_id, telegram_id, alerts_on FROM users WHERE id = ?",
+            (user_id,),
+        )
+        row = await cur.fetchone()
+        if row is None:
+            return
+        account_id, telegram_id, alerts_on = row[0], row[1], row[2]
+        for col, val in touched.items():
+            await self.set_notification_pref(
+                account_id, "user", user_id, "telegram_dm",
+                self._ALERT_PREF_COLS[col], enabled=bool(val),
+            )
+        # The channel connection carries the telegram address + master
+        # switch; only meaningful for telegram-linked users.
+        if telegram_id is not None:
+            await self.upsert_notification_channel(
+                account_id, "user", user_id, "telegram_dm",
+                address=str(telegram_id), verified=True,
+                enabled_master=bool(alerts_on),
+            )
 
     async def toggle_alerts(self, telegram_id: int) -> bool:
         """Toggle alerts_on for a user. Returns new state."""
@@ -651,6 +700,33 @@ class UsersMixin:
         # Role-relevance filter — see docstring.  Local import keeps
         # the heavyweight ``capabilities`` package out of this storage
         # module's import graph on cold start.
+        from capabilities.alerting.relevance import role_can_receive_alert
+        return [u for u in users if role_can_receive_alert(u.role, alert_type)]
+
+    async def get_typed_alert_subscribers_via_matrix(
+        self, account_id: int, alert_type: str,
+    ) -> list[User]:
+        """Matrix-backed twin of :meth:`get_typed_alert_subscribers`
+        (notifications phase 2b).  Reads ``notification_pref`` +
+        ``notification_channel`` (telegram_dm) instead of the legacy
+        ``alert_*`` columns, then applies the SAME role-relevance filter
+        so behavior matches.  NOT yet wired into the live pipeline — the
+        shadow-compare test proves it returns the same users before the
+        reader flip (2b-2)."""
+        subs = await self.get_notification_subscribers(
+            account_id, alert_type, "telegram_dm",
+        )
+        ids = [int(s["recipient_id"]) for s in subs
+               if str(s["recipient_id"]).lstrip("-").isdigit()]
+        if not ids:
+            return []
+        placeholders = ", ".join("?" for _ in ids)
+        cur = await self._db.execute(
+            f"SELECT * FROM users WHERE account_id = ? AND is_active = 1"
+            f" AND id IN ({placeholders})",
+            (account_id, *ids),
+        )
+        users = [self._row_to_user(r) for r in await cur.fetchall()]
         from capabilities.alerting.relevance import role_can_receive_alert
         return [u for u in users if role_can_receive_alert(u.role, alert_type)]
 
