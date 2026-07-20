@@ -210,6 +210,25 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         max_instances=1, coalesce=True,
     )
 
+    # ── Notification digests ────────────────────────────────────────
+    # Recipients who chose a batched cadence get ONE grouped summary per
+    # channel instead of a message per event.  Telegram stays immediate,
+    # so today these drain nothing — the queue fills once Email ships.
+    from capabilities.notifications.jobs import (
+        job_flush_daily_digests,
+        job_flush_hourly_digests,
+    )
+    scheduler.add_job(
+        job_flush_hourly_digests, "cron",
+        minute=5, args=[app], id="notification_digest_hourly",
+        max_instances=1, coalesce=True,
+    )
+    scheduler.add_job(
+        job_flush_daily_digests, "cron",
+        hour=13, minute=0, args=[app], id="notification_digest_daily",
+        max_instances=1, coalesce=True,
+    )
+
     scheduler.add_job(
         job_pti_spawn_weekly, "cron",
         minute=10, args=[app], id="pti_spawn_weekly",

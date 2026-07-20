@@ -401,6 +401,28 @@ async def create_tables(conn) -> None:
             PRIMARY KEY (account_id, recipient_type, recipient_id, channel)
         );
 
+        -- Digest queue: notifications whose recipient chose a batched
+        -- cadence accumulate here and are flushed as ONE summary per
+        -- (recipient, channel) by the scheduled flush job.  Required
+        -- before Email goes live — per-alert email at fleet volume
+        -- (~668 alerts/wk) is unusable.  Telegram stays 'immediate' and
+        -- never enqueues.
+        CREATE TABLE IF NOT EXISTS notification_digest_queue (
+            id             INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id     INTEGER NOT NULL,
+            recipient_type TEXT    NOT NULL,
+            recipient_id   TEXT    NOT NULL,
+            channel        TEXT    NOT NULL,
+            cadence        TEXT    NOT NULL,      -- 'hourly' | 'daily'
+            alert_type     TEXT    NOT NULL,
+            summary        TEXT    NOT NULL DEFAULT '',
+            address        TEXT    NOT NULL DEFAULT '',
+            created_at     TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_notification_digest_due
+            ON notification_digest_queue(cadence, account_id, recipient_type,
+                                         recipient_id, channel, id);
+
         CREATE TABLE IF NOT EXISTS knowledge_base (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL,

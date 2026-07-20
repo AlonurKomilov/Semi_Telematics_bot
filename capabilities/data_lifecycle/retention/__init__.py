@@ -27,6 +27,7 @@ _CONTRIBUTORS = (
     "capabilities.scorecards.retention",  # owns scorecards.score_history
     "capabilities.email.retention",       # owns email.delivery_events
     "capabilities.ai.retention",          # owns ai.chat_history (age-cap)
+    "capabilities.notifications.retention",  # owns notifications.digest_queue (undeliverable residue)
     "infra.scan_retention",               # owns platform.scan_log (AV scan audit)
     "capabilities.platform.capacity.retention",  # owns system.metrics_* + account_usage_daily (capacity monitoring)
 )

@@ -194,6 +194,7 @@ async def run_all(conn) -> None:
     await migrate_ai_proposal_undo(conn)
     await migrate_ai_conversation_workspace(conn)
     await migrate_notification_matrix(conn)
+    await migrate_notification_digest_queue(conn)
     # Capacity monitoring (operator console): platform metric history +
     # per-account request metering.
     await migrate_system_capacity_tables(conn)
@@ -483,6 +484,39 @@ async def migrate_notification_matrix(conn) -> None:
         logger.info("Migration: backfilled notification matrix (telegram_dm)")
     except Exception as e:
         logger.error("notification matrix backfill failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_notification_digest_queue(conn) -> None:
+    """Create ``notification_digest_queue`` — the batched-cadence buffer
+    flushed as one summary per (recipient, channel).  Additive; nothing
+    enqueues until a recipient picks a non-immediate cadence."""
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS notification_digest_queue (
+                id             SERIAL PRIMARY KEY,
+                account_id     INTEGER NOT NULL,
+                recipient_type TEXT    NOT NULL,
+                recipient_id   TEXT    NOT NULL,
+                channel        TEXT    NOT NULL,
+                cadence        TEXT    NOT NULL,
+                alert_type     TEXT    NOT NULL,
+                summary        TEXT    NOT NULL DEFAULT '',
+                address        TEXT    NOT NULL DEFAULT '',
+                created_at     TEXT    NOT NULL
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notification_digest_due"
+            " ON notification_digest_queue(cadence, account_id, recipient_type,"
+            " recipient_id, channel, id)"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.error("notification digest queue migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

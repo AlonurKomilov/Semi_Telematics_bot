@@ -30,6 +30,12 @@ else:
     _MixinBase = object
 
 
+# Mirror of capabilities.notifications.service.{IMMEDIATE,DIGEST_CADENCES}
+# — duplicated on purpose so adapters/ never imports capabilities/.  A
+# test pins the two lists together so they can't drift.
+_VALID_CADENCES = ("immediate", "hourly", "daily")
+
+
 class NotificationPrefsMixin(_MixinBase):
 
     # ── Per-type preferences ─────────────────────────────────────────
@@ -40,6 +46,11 @@ class NotificationPrefsMixin(_MixinBase):
         cadence: str = "immediate",
     ) -> None:
         """Upsert one rule (recipient × channel × alert_type)."""
+        if cadence not in _VALID_CADENCES:
+            # Fail loudly at the write boundary: an unrecognised cadence
+            # has no flush job, so it would silently swallow every
+            # notification it matched.
+            raise ValueError(f"unknown cadence {cadence!r}")
         now = self._now()
         await self._db.execute(
             """INSERT INTO notification_pref
@@ -144,3 +155,78 @@ class NotificationPrefsMixin(_MixinBase):
             return None
         return {"address": r[0], "verified": bool(r[1]),
                 "verified_at": r[1], "enabled_master": bool(r[2])}
+
+    # ── Digest queue (batched cadences) ──────────────────────────────
+
+    async def enqueue_digest_item(
+        self, account_id: int, recipient_type: str, recipient_id: str,
+        channel: str, cadence: str, alert_type: str,
+        summary: str, address: str = "",
+    ) -> None:
+        """Buffer one notification for a batched cadence.  Flushed as part
+        of a single summary by :meth:`fetch_due_digest_items`' consumer."""
+        await self._db.execute(
+            """INSERT INTO notification_digest_queue
+                 (account_id, recipient_type, recipient_id, channel,
+                  cadence, alert_type, summary, address, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, recipient_type, str(recipient_id), channel,
+             cadence, alert_type, summary[:500], address, self._now()),
+        )
+        await self._db.commit()
+
+    async def fetch_due_digest_items(
+        self, cadence: str, limit: int = 2000,
+    ) -> list[dict]:
+        """Queued items for a cadence, ordered so a consumer can group by
+        (account, recipient, channel) in one pass."""
+        cur = await self._db.execute(
+            """SELECT id, account_id, recipient_type, recipient_id, channel,
+                      alert_type, summary, address
+                 FROM notification_digest_queue
+                WHERE cadence = ?
+                ORDER BY account_id, recipient_type, recipient_id, channel, id
+                LIMIT ?""",
+            (cadence, limit),
+        )
+        return [
+            {"id": r[0], "account_id": r[1], "recipient_type": r[2],
+             "recipient_id": r[3], "channel": r[4], "alert_type": r[5],
+             "summary": r[6], "address": r[7]}
+            for r in await cur.fetchall()
+        ]
+
+    async def clear_digest_items(
+        self, ids: list[int], *, account_id: int | None = None,
+    ) -> int:
+        """Delete flushed items.  Only called AFTER a successful send, so a
+        failed flush leaves the buffer intact for the next run.
+
+        ``account_id`` scopes the DELETE — belt-and-suspenders so a future
+        caller can't delete another tenant's rows by passing mixed ids."""
+        ids = [int(i) for i in ids]
+        if not ids:
+            return 0
+        placeholders = ", ".join("?" for _ in ids)
+        sql = f"DELETE FROM notification_digest_queue WHERE id IN ({placeholders})"
+        params: tuple = tuple(ids)
+        if account_id is not None:
+            sql += " AND account_id = ?"
+            params = (*ids, account_id)
+        cur = await self._db.execute(sql, params)
+        await self._db.commit()
+        return cur.rowcount or 0
+
+    async def prune_notification_digest_queue(self, days: int) -> int:
+        """Retention sweep for the digest buffer.  Successful flushes clear
+        their own items, so anything older than the window is residue from
+        a channel that vanished or a cadence nothing drains — delete it so
+        a silent backlog can't grow without bound."""
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        cur = await self._db.execute(
+            "DELETE FROM notification_digest_queue WHERE created_at < ?",
+            (cutoff,),
+        )
+        await self._db.commit()
+        return cur.rowcount or 0

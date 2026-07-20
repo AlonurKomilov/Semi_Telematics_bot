@@ -21,5 +21,12 @@ from capabilities.notifications.channels import (  # noqa: F401
     shared_channels,
 )
 
+from capabilities.notifications.service import (  # noqa: F401,E402
+    DIGEST_CADENCES,
+    dispatch,
+    flush_digests,
+    render_digest,
+)
+
 # Register the built-in transports (their module-load @register_channel).
 from capabilities.notifications import telegram as _telegram  # noqa: F401,E402
