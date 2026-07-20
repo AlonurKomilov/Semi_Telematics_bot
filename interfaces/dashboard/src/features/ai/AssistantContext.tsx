@@ -172,3 +172,20 @@ export function useAssistant(): AssistantState {
   }
   return ctx;
 }
+
+/**
+ * Class the shells apply to their `<main>` content card so an open,
+ * DOCKED panel resizes the content (not the topbar) beside it — the
+ * Samsara/Gemini pattern where the topbar stays full-width and the
+ * assistant sits below it on the right.  Width comes from the
+ * `--assistant-w` var so a divider drag repaints the margin without a
+ * React re-render; expanded mode overlays instead of pushing, so no
+ * margin there.
+ */
+export function useDockedContentClass(): string {
+  const { open, panelExpanded, panelResizing } = useAssistant();
+  const pushed = open && !panelExpanded;
+  return `${panelResizing ? '' : 'transition-[margin-right] duration-200'} ${
+    pushed ? 'xl:mr-[var(--assistant-w)]' : ''
+  }`;
+}

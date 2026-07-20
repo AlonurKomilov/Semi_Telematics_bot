@@ -18,6 +18,7 @@ import { ThemeToggle } from '../components/ThemeToggle';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
+import { useDockedContentClass } from '../features/ai/AssistantContext';
 import { shortcut } from '../utils/platform';
 import CommandPalette from '../components/shell/CommandPalette';
 import KeyboardShortcuts from '../components/shell/KeyboardShortcuts';
@@ -25,6 +26,7 @@ import FleetHero from './heroes/FleetHero';
 import ShellHero from './heroes/ShellHero';
 
 export default function FleetShell() {
+  const dockedContentClass = useDockedContentClass();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -110,7 +112,7 @@ export default function FleetShell() {
           </div>
         </header>
 
-        <main className="flex-1 bg-background rounded-xl overflow-hidden">
+        <main className={`flex-1 bg-background rounded-xl overflow-hidden ${dockedContentClass}`}>
           <div className="h-full overflow-y-auto p-4 lg:p-6">
             <Outlet />
           </div>

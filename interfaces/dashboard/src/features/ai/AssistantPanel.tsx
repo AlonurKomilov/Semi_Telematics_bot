@@ -101,14 +101,15 @@ export default function AssistantPanel() {
           wrapper), so a docked panel reads as a second canvas in the SAME
           frame, not a foreign white card floating over it. */}
       <div
-        className={`fixed right-0 z-40 bg-sidebar text-sidebar-foreground transition-transform duration-200 ${
+        className={`fixed right-0 z-40 top-12 bottom-0 bg-sidebar text-sidebar-foreground transition-transform duration-200 ${
           panelExpanded
-            // Expanded = fill only the CONTENT region: below the h-12
-            // topbar and right of the sidebar (--sidebar-w), leaving the
-            // app chrome visible.  Below lg the sidebar is a drawer, so
-            // no left offset there.
-            ? 'top-12 bottom-0 left-0 lg:left-[var(--sidebar-w)] shadow-none'
-            : 'inset-y-0 w-full sm:w-[var(--assistant-w)] shadow-2xl xl:shadow-none'
+            // Expanded = fill the whole CONTENT region: right of the
+            // sidebar (--sidebar-w).  Below lg the sidebar is a drawer,
+            // so no left offset there.
+            ? 'left-0 lg:left-[var(--sidebar-w)] shadow-none'
+            // Docked = a right strip BELOW the topbar (top-12), the app
+            // topbar stays full-width and the content resizes beside it.
+            : 'w-full sm:w-[var(--assistant-w)] shadow-2xl xl:shadow-none'
         } ${
           open ? 'translate-x-0' : 'translate-x-full pointer-events-none'
         }`}
@@ -146,11 +147,11 @@ export default function AssistantPanel() {
           />
         </div>
         <div className="flex h-full flex-col">
-          {/* h-12 + px-4 mirrors the shells' topbar exactly (every shell:
-              `h-12 bg-sidebar … px-3 lg:px-4`).  The panel is fixed to the
-              viewport top like the topbar, so any other height leaves this
-              row's controls sitting a few px off the topbar's — the two
-              read as one continuous bar across the split. */}
+          {/* The panel's own header sits just BELOW the app topbar (the
+              panel is anchored at top-12), like Samsara/Gemini — a
+              second bar carrying the assistant title + New-chat / History
+              (portalled) + Expand + Close.  h-12 + px-4 matches the
+              topbar's metrics so the two bars stack cleanly. */}
           <div className="flex h-12 items-center justify-between px-4 flex-shrink-0">
             <span className="flex items-center gap-2 text-sm font-semibold">
               <Bot size={16} className="text-primary" aria-hidden />
