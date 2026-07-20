@@ -110,9 +110,10 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   raw `<table>` for a data list. For minimal display tables (no
   chrome needed) pass `enableToolbar={false} enablePagination={false}`
   and DataGrid renders just the header + rows inside a bordered
-  card. `firstColumnLeading={{ header, cell }}` attaches a bulk-select
-  checkbox (or expand toggle, row-number, …) that follows whichever
-  column is currently leftmost. The narrow exceptions where raw
+  card. For bulk-select checkboxes use the `bulkSelection` prop (see
+  the bulk rule below); `firstColumnLeading={{ header, cell }}` is for
+  OTHER leading content (expand toggle, row-number, …) that follows
+  whichever column is currently leftmost. The narrow exceptions where raw
   `<table>` is still correct: (a) permission / config **matrices**
   (form UI, not a list), (b) **form-embedded** line-item editors
   (Work-order parts), (c) **headerless layout tables** used as form
@@ -120,21 +121,25 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   operator would want to sort or filter, it's DataGrid.
 - **Bulk selection + actions = DataGrid props, never hand-rolled.**
   DataGrid owns row selection (the checkbox column — header select-all
-  with indeterminate, per-row, group select-all) and the floating
-  **bulk-action bar**; both are the SSOT. Turn it on with
-  `bulkSelection` and pass `bulkActions={[{ label, icon?, tone?,
-  confirm?, onRun(selectedRows) }]}` — each `onRun` receives the
-  selected ORIGINAL rows (never tanstack ids) and DataGrid clears the
-  selection when it resolves. `onBulkSelectionChange` mirrors the set
-  out (e.g. AI page-context). Do NOT re-implement a `selectedIds`
-  Set, checkbox `<input>`s via `firstColumnLeading`, or a `fixed
-  bottom-4` bar on a page — that's the old copy-pasted pattern this
-  replaced. `firstColumnLeading` remains ONLY for genuinely
-  non-selection leading content (row number, expand toggle). Checkbox
-  selection and Ctrl/Cmd-click Copy share one set + one bar. (Alerts
-  Results still uses the legacy `firstColumnLeading` checkboxes pending
-  two API additions — a selectable-row predicate + externally-clearable
-  selection for its shared `AlertsSelectionContext`.)
+  with indeterminate, per-row, group select-all) and the **bulk-action
+  bar** — a TOP strip between the toolbar and the table (icon-only
+  buttons with `<Tip>` tooltips, `tone: 'danger'` paints the icon red),
+  shown when 1+ rows are selected. Turn it on with `bulkSelection` and
+  pass `bulkActions={[{ label, icon?, tone?, confirm?, options?,
+  onRun(selectedRows, value?) }]}` — each `onRun` receives the selected
+  ORIGINAL rows (never tanstack ids) and DataGrid clears the selection
+  when it resolves. `options` makes the button a dropdown (e.g. "Change
+  status ▾"), passing the chosen value to `onRun`. `bulkRowLabel` gives
+  per-row a11y; `isRowSelectable(row)` gates which rows get a checkbox
+  (e.g. only ackable alerts); `onBulkSelectionChange` mirrors the set
+  out (e.g. AI page-context). Do NOT re-implement a `selectedIds` Set,
+  checkbox `<input>`s via `firstColumnLeading`, or a `fixed bottom-4`
+  bar on a page — that's the old copy-pasted pattern this replaced.
+  `firstColumnLeading` remains ONLY for genuinely non-selection leading
+  content. Checkbox selection and Ctrl/Cmd-click Copy share one set +
+  one bar. (Alerts Results still uses the legacy `firstColumnLeading`
+  checkboxes pending its own migration — its selection lives in a shared
+  `AlertsSelectionContext` woven through ~8 files.)
 - **Column `filterable` = by cardinality, not by reflex.** Set
   `filterable: true` on a column when the dropdown will actually help
   an operator narrow the list. Two supported filter modes on the

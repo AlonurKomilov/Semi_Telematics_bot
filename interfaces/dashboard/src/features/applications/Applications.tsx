@@ -427,13 +427,13 @@ export default function Applications() {
     };
 
   const bulkActions: BulkAction[] = [
-    { label: 'Move to screening',
+    { label: 'Move to screening', icon: ShieldCheck,
       confirm: (n) => `Move to screening ${n} application${n > 1 ? 's' : ''}?`,
       onRun: bulkMove('screening', 'Move to screening') },
-    { label: 'Reject', tone: 'danger',
+    { label: 'Reject', icon: Ban, tone: 'danger',
       confirm: (n) => `Reject ${n} application${n > 1 ? 's' : ''}?`,
       onRun: bulkMove('rejected', 'Reject') },
-    { label: 'Withdraw',
+    { label: 'Withdraw', icon: X,
       confirm: (n) => `Withdraw ${n} application${n > 1 ? 's' : ''}?`,
       onRun: bulkMove('withdrawn', 'Withdraw') },
   ];

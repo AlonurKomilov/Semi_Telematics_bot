@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Wrench, Plus, X, History, FileText,
-  List, CalendarDays, Trash2, CheckSquare, BellOff, Bell,
+  List, CalendarDays, Trash2, CheckSquare, BellOff, Bell, Archive, RefreshCw,
   Paperclip, Image as ImageIcon, Upload, ClipboardList,
 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
@@ -834,69 +834,64 @@ export default function Tasks() {
     return enrichedBase;
   }, [dueSoonClassify, customTypeLabelByValue, tz]);
 
-  // Bulk actions — DataGrid owns the selection + the floating bar +
-  // the confirm; each handler just receives the selected task rows and
-  // POSTs to the /tasks/bulk/* routes.  DataGrid clears the selection
-  // when the action resolves.
+  // Bulk actions — DataGrid owns the selection + the top action bar +
+  // the confirm; each handler receives the selected task rows and POSTs
+  // to the /tasks/bulk/* routes.  DataGrid clears the selection when the
+  // action resolves.  ("Archive" isn't a flag — the Active/Archive
+  // segment is derived from status, so archiving = status 'cancelled'.)
   const idsOf = (rows: Record<string, unknown>[]) =>
     rows.map(r => (r as unknown as MaintenanceTask).id);
 
-  const handleBulkComplete = async (rows: Record<string, unknown>[]) => {
+  const bulkSetStatus = (status: string) => async (rows: Record<string, unknown>[]) => {
     try {
-      const res = await apiJSON<{ updated: number; spawned_ids: number[] }>(
+      const res = await apiJSON<{ updated: number; spawned_ids?: number[] }>(
         '/maintenance/tasks/bulk/status',
-        { method: 'POST', body: { task_ids: idsOf(rows), status: 'completed' } },
+        { method: 'POST', body: { task_ids: idsOf(rows), status } },
       );
+      const spawned = res.spawned_ids?.length ?? 0;
       toast.success(
-        `Marked ${res.updated} complete`
-        + (res.spawned_ids.length ? ` · ${res.spawned_ids.length} recurring follow-up${res.spawned_ids.length === 1 ? '' : 's'} created` : ''),
+        `Updated ${res.updated} task${res.updated === 1 ? '' : 's'}`
+        + (spawned ? ` · ${spawned} recurring follow-up${spawned === 1 ? '' : 's'} created` : ''),
       );
       load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Bulk update failed');
-    }
-  };
-
-  // Bulk-flip the selected tasks to 'in_progress'.  Useful for
-  // "shop visit booked next Friday — mark these 8 as in progress".
-  // Skips the attestation/recur-spawn path that 'completed' takes,
-  // since in-progress isn't a terminal state.
-  const handleBulkInProgress = async (rows: Record<string, unknown>[]) => {
-    try {
-      const res = await apiJSON<{ updated: number }>(
-        '/maintenance/tasks/bulk/status',
-        { method: 'POST', body: { task_ids: idsOf(rows), status: 'in_progress' } },
-      );
-      toast.success(`Marked ${res.updated} as in progress`);
-      load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Bulk update failed');
-    }
-  };
-
-  const handleBulkDelete = async (rows: Record<string, unknown>[]) => {
-    try {
-      const res = await apiJSON<{ deleted: number }>(
-        '/maintenance/tasks/bulk/delete',
-        { method: 'POST', body: { task_ids: idsOf(rows) } },
-      );
-      toast.success(`Deleted ${res.deleted} task${res.deleted === 1 ? '' : 's'}`);
-      load();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Bulk delete failed');
     }
   };
 
   const bulkActions: BulkAction[] = [
-    { label: 'Mark complete', icon: CheckSquare, tone: 'ok',
+    { label: 'Mark complete', icon: CheckSquare,
       confirm: (n) => `Mark ${n} task${n === 1 ? '' : 's'} complete?\n\n`
         + 'You will be recorded as the attester for each one. '
         + 'Recurring tasks will auto-spawn their next instance.',
-      onRun: handleBulkComplete },
-    { label: 'In progress', tone: 'info', onRun: handleBulkInProgress },
+      onRun: bulkSetStatus('completed') },
+    // No confirm: a status picker reads like a Select, not a
+    // destructive action (Delete/Archive keep their confirms).
+    { label: 'Change status', icon: RefreshCw,
+      options: STATUS_OPTIONS.map((s) => ({ value: s, label: STATUS_LABELS[s] || s })),
+      onRun: (rows, value) => {
+        // Every menu item passes a real status; a missing value means a
+        // wiring bug — fail loudly rather than silently downgrading.
+        if (!value) { toast.error('No status chosen'); return; }
+        return bulkSetStatus(value)(rows);
+      } },
+    { label: 'Archive', icon: Archive,
+      confirm: (n) => `Archive ${n} task${n === 1 ? '' : 's'}? They move to the Archive tab (status "cancelled").`,
+      onRun: bulkSetStatus('cancelled') },
     { label: 'Delete', icon: Trash2, tone: 'danger',
       confirm: (n) => `Delete ${n} task${n === 1 ? '' : 's'}?\n\nThis cannot be undone.`,
-      onRun: handleBulkDelete },
+      onRun: async (rows) => {
+        try {
+          const res = await apiJSON<{ deleted: number }>(
+            '/maintenance/tasks/bulk/delete',
+            { method: 'POST', body: { task_ids: idsOf(rows) } },
+          );
+          toast.success(`Deleted ${res.deleted} task${res.deleted === 1 ? '' : 's'}`);
+          load();
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : 'Bulk delete failed');
+        }
+      } },
   ];
 
   const handleAdd = async (e: React.FormEvent) => {

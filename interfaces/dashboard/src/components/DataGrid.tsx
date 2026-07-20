@@ -109,34 +109,27 @@ function readLegacyDensity(): Density {
   return 'default';
 }
 
-/** One button in the bulk-action bar (the floating toolbar shown when
+/** One button in the bulk-action bar (the top toolbar strip shown when
  *  rows are selected).  DataGrid renders these from the ``bulkActions``
  *  prop and hands each ``onRun`` the currently-selected ORIGINAL rows —
  *  never tanstack row ids — so pages read their own domain fields. */
 export interface BulkAction {
   label: string;
   icon?: LucideIcon;
-  /** Visual weight of the button (default = neutral). */
-  tone?: 'default' | 'primary' | 'ok' | 'info' | 'danger';
+  /** Visual weight of the button (default = neutral).  ``danger``
+   *  paints the icon red. */
+  tone?: 'default' | 'danger';
   /** window.confirm prompt before running; receives the selection
    *  count.  Omit for actions that need no confirmation. */
   confirm?: (count: number) => string;
-  onRun: (rows: Record<string, unknown>[]) => void | Promise<void>;
+  /** When present, the button opens a MENU of these options instead of
+   *  running directly; the chosen option's ``value`` is passed to
+   *  ``onRun`` (e.g. "Change status ▾" → pending / in-progress / done). */
+  options?: { value: string; label: string }[];
+  /** Run against the selected ORIGINAL rows.  ``value`` is the chosen
+   *  menu option for a dropdown action, undefined for a plain one. */
+  onRun: (rows: Record<string, unknown>[], value?: string) => void | Promise<void>;
 }
-
-/** Bulk-action button tone → Button variant + colour override.  The
- *  ok/info tones paint solid status colours (green/blue) the base
- *  variants don't carry; keeps the semantic bar colours the pages had. */
-const BULK_ACTION_TONE: Record<
-  NonNullable<BulkAction['tone']>,
-  { variant: 'default' | 'outline' | 'destructive'; className?: string }
-> = {
-  default: { variant: 'outline' },
-  primary: { variant: 'default' },
-  ok:      { variant: 'default', className: 'bg-ok text-white hover:bg-ok/90 border-transparent' },
-  info:    { variant: 'default', className: 'bg-info text-white hover:bg-info/90 border-transparent' },
-  danger:  { variant: 'destructive' },
-};
 
 interface DataGridProps {
   columns: AnyColumn[];
@@ -171,13 +164,17 @@ interface DataGridProps {
   /** Mirror the selection out to the page (e.g. AI page context).
    *  Called with the selected ORIGINAL rows whenever it changes. */
   onBulkSelectionChange?: (rows: Record<string, unknown>[]) => void;
-  /** Buttons for the floating bulk-action bar, shown before the
+  /** Buttons for the bulk-action bar (the top selection strip), shown before the
    *  built-in Copy/Clear when 1+ rows are selected. */
   bulkActions?: BulkAction[];
   /** Per-row accessible label for the select checkbox (screen readers).
    *  Without it every box announces the generic "Select row"; pass a
    *  row-identifying string (e.g. the unit number or reference). */
   bulkRowLabel?: (row: Record<string, unknown>) => string;
+  /** Gate which rows are selectable — a row returning false shows no
+   *  checkbox and is excluded from select-all (e.g. Alerts: only
+   *  ackable alerts).  Omit → every row is selectable. */
+  isRowSelectable?: (row: Record<string, unknown>) => boolean;
   firstColumnLeading?: {
     header: () => React.ReactNode;
     cell: (row: Record<string, unknown>) => React.ReactNode;
@@ -484,6 +481,7 @@ export default function DataGrid({
   headerToolbar, tableId, firstColumnLeading, rowGroupHeader, defaultRowGroup,
   enableToolbar = true, enablePagination = true, segments,
   bulkSelection = false, onBulkSelectionChange, bulkActions, bulkRowLabel,
+  isRowSelectable,
 }: DataGridProps) {
   const { t } = useTranslation();
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -970,7 +968,7 @@ export default function DataGrid({
   //
   // Independent of the existing per-row ``onRowClick`` (plain click
   // still opens the edit drawer when configured).  Modifier-clicks
-  // build up a selection set; once any rows are picked, a floating
+  // build up a selection set; once any rows are picked, a top selection-strip
   // action bar offers Copy (TSV → clipboard, ready to paste into
   // Excel / Sheets) and Clear.  Selection is keyed by tanstack
   // ``row.id`` (string), which is stable across filter/sort.
@@ -978,7 +976,7 @@ export default function DataGrid({
   const lastClickedIdRef = useRef<string | null>(null);
   // Drop selection when the rendered slice no longer contains any
   // of the selected rows (e.g. operator added a filter that hides
-  // them) — otherwise the floating bar lies about what's selected.
+  // them) — otherwise the selection strip lies about what's selected.
   useEffect(() => {
     if (selectedRowIds.size === 0) return;
     // Keep ids still present in the FILTERED set (every page, flat leaf
@@ -1064,11 +1062,13 @@ export default function DataGrid({
   // ── Checkbox bulk-selection ──────────────────────────────────────
   //
   // Checkboxes feed the SAME ``selectedRowIds`` set as modifier-click,
-  // so there is ONE selection and ONE floating bar — never two systems
+  // so there is ONE selection and ONE bar — never two systems
   // fighting.  Select-all spans the whole FILTERED set (every page),
   // matching what operators expect from a header checkbox.
   const selectableRows = () =>
-    table.getFilteredRowModel().rows.filter(r => !r.getIsGrouped());
+    table.getFilteredRowModel().rows.filter(r =>
+      !r.getIsGrouped()
+      && (!isRowSelectable || isRowSelectable(r.original as Record<string, unknown>)));
   const allRowsSelected = (() => {
     if (!bulkSelection) return false;
     const rows = selectableRows();
@@ -1107,6 +1107,9 @@ export default function DataGrid({
     />
   );
   const renderGroupBox = (ids: string[]) => {
+    // No selectable leaves in this group (all excluded by
+    // isRowSelectable) → no checkbox, matching the per-row hide.
+    if (ids.length === 0) return null;
     const all = ids.length > 0 && ids.every(id => selectedRowIds.has(id));
     const some = !all && ids.some(id => selectedRowIds.has(id));
     return (
@@ -1142,12 +1145,12 @@ export default function DataGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRowIds]);
 
-  const runBulkAction = async (action: BulkAction) => {
+  const runBulkAction = async (action: BulkAction, value?: string) => {
     const rows = selectedOriginals();
     if (rows.length === 0) return;
     if (action.confirm && !window.confirm(action.confirm(rows.length))) return;
     try {
-      await action.onRun(rows);
+      await action.onRun(rows, value);
       // Act → selection resets (the acted rows usually leave the list).
       setSelectedRowIds(new Set());
     } catch (err) {
@@ -1991,6 +1994,115 @@ export default function DataGrid({
         </div>
       </div>
       )}
+
+      {/* Selection toolbar — a top-anchored strip that appears between
+          the toolbar and the table when 1+ rows are selected (checkbox
+          OR Ctrl/Cmd-click).  Icon-only actions with tooltips (the
+          reference pattern): page ``bulkActions`` first, then built-in
+          Copy + Clear.  Replaces the old floating bottom pill.
+          Suppressed on chrome-free minimal tables (enableToolbar=false
+          with no bulkActions) so a stray modifier-click can't stretch a
+          card that's meant to have no toolbar. */}
+      {selectedRowIds.size > 0 && (bulkSelection || enableToolbar) && (
+        <div className="flex items-center gap-0.5 px-3 py-1.5 bg-primary/5 border-b border-border">
+          <span className="text-xs font-medium text-foreground mr-1">
+            {selectedRowIds.size} selected
+          </span>
+          {bulkActions && bulkActions.length > 0 && (
+            <span className="h-4 w-px bg-border mx-1.5" aria-hidden="true" />
+          )}
+          {bulkActions?.map((action) => {
+            const Icon = action.icon;
+            const btnCls = action.tone === 'danger'
+              ? 'text-destructive hover:bg-destructive/10 hover:text-destructive'
+              : 'text-muted-foreground hover:text-foreground';
+            const inner = Icon
+              ? <Icon />
+              : <span className="text-xs px-1 font-medium">{action.label}</span>;
+            if (action.options) {
+              return (
+                <MenuPrimitive.Root key={action.label}>
+                  <MenuPrimitive.Trigger
+                    render={(props) => (
+                      <Tip label={action.label}>
+                        <Button
+                          {...props}
+                          type="button"
+                          variant="ghost"
+                          size={Icon ? 'icon' : 'xs'}
+                          className={btnCls}
+                          aria-label={action.label}
+                        >
+                          {inner}
+                          {/* Chevron only in text mode — an icon button
+                              stays a single glyph like the Export/Columns
+                              triggers (aria-expanded conveys the menu). */}
+                          {!Icon && <ChevronDown size={12} className="opacity-60" />}
+                        </Button>
+                      </Tip>
+                    )}
+                  />
+                  <MenuPrimitive.Portal>
+                    <MenuPrimitive.Positioner align="start" sideOffset={4} className="z-50 outline-none">
+                      <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+                        {action.options.map((opt) => (
+                          <MenuPrimitive.Item
+                            key={opt.value}
+                            onClick={() => runBulkAction(action, opt.value)}
+                            className="w-full flex items-center px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground text-left"
+                          >
+                            {opt.label}
+                          </MenuPrimitive.Item>
+                        ))}
+                      </MenuPrimitive.Popup>
+                    </MenuPrimitive.Positioner>
+                  </MenuPrimitive.Portal>
+                </MenuPrimitive.Root>
+              );
+            }
+            return (
+              <Tip key={action.label} label={action.label}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size={Icon ? 'icon' : 'xs'}
+                  className={btnCls}
+                  onClick={() => runBulkAction(action)}
+                  aria-label={action.label}
+                >
+                  {inner}
+                </Button>
+              </Tip>
+            );
+          })}
+          <span className="flex-1" />
+          <Tip label="Copy to clipboard (Excel / Sheets)">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={copySelectedRows}
+              aria-label="Copy selected rows"
+            >
+              <Copy />
+            </Button>
+          </Tip>
+          <Tip label="Clear selection">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="text-muted-foreground hover:text-foreground"
+              onClick={() => setSelectedRowIds(new Set())}
+              aria-label="Clear selection"
+            >
+              <X />
+            </Button>
+          </Tip>
+        </div>
+      )}
+
       <div className="relative">
       <div
         ref={scrollContainerRef}
@@ -2242,7 +2354,9 @@ export default function DataGrid({
                           />
                           {bulkSelection ? (
                             <span onClick={(e) => e.stopPropagation()}>
-                              {renderGroupBox(row.subRows.map(r => r.id))}
+                              {renderGroupBox(row.subRows
+                                .filter(r => !isRowSelectable || isRowSelectable(r.original as Record<string, unknown>))
+                                .map(r => r.id))}
                             </span>
                           ) : firstColumnLeading?.groupHeader && (
                             <span onClick={(e) => e.stopPropagation()}>
@@ -2312,7 +2426,9 @@ export default function DataGrid({
                           cIdx !== 0
                             ? undefined
                             : bulkSelection
-                              ? renderRowBox(row.id, row.original)
+                              ? (isRowSelectable && !isRowSelectable(row.original)
+                                  ? undefined
+                                  : renderRowBox(row.id, row.original))
                               : firstColumnLeading?.cell
                                 ? firstColumnLeading.cell(row.original)
                                 : undefined
@@ -2567,58 +2683,8 @@ export default function DataGrid({
           anchor={manageAnchorRef.current}
         />
       )}
-      {/* Selection action bar — floats over the bottom of the
-          viewport when 1+ rows are picked.  Hint: Ctrl/Cmd-click
-          toggles a row, Shift-click extends a range.  Copy puts the
-          selection on the clipboard as tab-separated text so the
-          operator can paste straight into Excel / Sheets. */}
-      {selectedRowIds.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 inline-flex items-center gap-2 px-3 py-2 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg">
-          <span className="text-xs font-medium text-foreground">
-            {selectedRowIds.size} selected
-          </span>
-          {/* Page-declared bulk actions come first (the primary intent);
-              built-in Copy/Clear follow. */}
-          {bulkActions?.map((action) => {
-            const tone = BULK_ACTION_TONE[action.tone ?? 'default'];
-            const Icon = action.icon;
-            return (
-              <Button
-                key={action.label}
-                type="button"
-                variant={tone.variant}
-                size="xs"
-                className={tone.className}
-                onClick={() => runBulkAction(action)}
-              >
-                {Icon && <Icon />}
-                {action.label}
-              </Button>
-            );
-          })}
-          {bulkActions && bulkActions.length > 0 && (
-            <span className="text-border" aria-hidden="true">|</span>
-          )}
-          <Button
-            type="button"
-            variant="default"
-            size="xs"
-            onClick={copySelectedRows}
-          >
-            <Copy />
-            Copy
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            onClick={() => setSelectedRowIds(new Set())}
-          >
-            <X />
-            Clear
-          </Button>
-        </div>
-      )}
+      {/* The selection action bar is the TOP strip above the table
+          (see near the toolbar) — no floating bottom bar. */}
     </div>
   );
 }
