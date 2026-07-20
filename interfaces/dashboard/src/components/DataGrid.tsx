@@ -2029,12 +2029,11 @@ export default function DataGrid({
           the table body inside the card. */}
       {enableToolbar && (
       <div className="flex flex-wrap items-center justify-between p-3 gap-3 bg-muted border-b border-border">
-        {/* LEFT: the bulk-action selection bar when 1+ rows are picked
-            (so it shares THIS row with Search / Filter / Columns /
-            Export rather than stacking a second strip); otherwise the
-            page-supplied headerToolbar (filter chips, etc.). */}
+        {/* LEFT: page-supplied headerToolbar (filter chips, etc.).
+            The bulk-action bar + the active-filter chips share ONE
+            strip BELOW this row (they swap), matching the reference. */}
         <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
-          {selectedRowIds.size > 0 ? selectionBarContent : headerToolbar}
+          {headerToolbar}
         </div>
         {/* RIGHT: Search input, then a uniform icon cluster —
             Filter · Sort · Columns · Export — then density.  Icons
@@ -2204,12 +2203,16 @@ export default function DataGrid({
       </div>
       )}
 
-      {/* Active filters / sort / search chips — below the toolbar,
-          above the table.  Self-gated (null when nothing is active), so
-          it also surfaces sorts set via the column ⋮ menu on
-          minimal-toolbar grids, while a truly chrome-free table with no
-          active constraint shows nothing. */}
-      {filterChipRow}
+      {/* ONE strip below the toolbar, above the table — it SWAPS:
+          the bulk-action bar when 1+ rows are selected, otherwise the
+          active filter/sort/search chips (null when none).  Same
+          location for both, matching the reference; a chrome-free table
+          with nothing active/selected shows nothing. */}
+      {selectedRowIds.size > 0 && (bulkSelection || enableToolbar) ? (
+        <div className="px-3 py-1.5 border-b border-border">
+          {selectionBarContent}
+        </div>
+      ) : filterChipRow}
 
       <div className="relative">
       <div
