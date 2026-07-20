@@ -1145,6 +1145,108 @@ export default function DataGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedRowIds]);
 
+  // The selection bar's content — count + icon actions + Copy + Clear.
+  // Rendered INSIDE the toolbar row's left slot (in place of the page's
+  // headerToolbar) when 1+ rows are selected, so bulk actions share the
+  // same bar as Search / Filter / Columns / Export rather than stacking
+  // a second strip below it.
+  const selectionBarContent = (
+    <div className="flex items-center gap-0.5">
+      <span className="text-xs font-medium text-foreground mr-1">
+        {selectedRowIds.size} selected
+      </span>
+      {bulkActions && bulkActions.length > 0 && (
+        <span className="h-4 w-px bg-border mx-1.5" aria-hidden="true" />
+      )}
+      {bulkActions?.map((action) => {
+        const Icon = action.icon;
+        const btnCls = action.tone === 'danger'
+          ? 'text-destructive hover:bg-destructive/10 hover:text-destructive'
+          : 'text-muted-foreground hover:text-foreground';
+        const inner = Icon
+          ? <Icon />
+          : <span className="text-xs px-1 font-medium">{action.label}</span>;
+        if (action.options) {
+          return (
+            <MenuPrimitive.Root key={action.label}>
+              <MenuPrimitive.Trigger
+                render={(props) => (
+                  <Tip label={action.label}>
+                    <Button
+                      {...props}
+                      type="button"
+                      variant="ghost"
+                      size={Icon ? 'icon' : 'xs'}
+                      className={btnCls}
+                      aria-label={action.label}
+                    >
+                      {inner}
+                      {!Icon && <ChevronDown size={12} className="opacity-60" />}
+                    </Button>
+                  </Tip>
+                )}
+              />
+              <MenuPrimitive.Portal>
+                <MenuPrimitive.Positioner align="start" sideOffset={4} className="z-50 outline-none">
+                  <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+                    {action.options.map((opt) => (
+                      <MenuPrimitive.Item
+                        key={opt.value}
+                        onClick={() => runBulkAction(action, opt.value)}
+                        className="w-full flex items-center px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground text-left"
+                      >
+                        {opt.label}
+                      </MenuPrimitive.Item>
+                    ))}
+                  </MenuPrimitive.Popup>
+                </MenuPrimitive.Positioner>
+              </MenuPrimitive.Portal>
+            </MenuPrimitive.Root>
+          );
+        }
+        return (
+          <Tip key={action.label} label={action.label}>
+            <Button
+              type="button"
+              variant="ghost"
+              size={Icon ? 'icon' : 'xs'}
+              className={btnCls}
+              onClick={() => runBulkAction(action)}
+              aria-label={action.label}
+            >
+              {inner}
+            </Button>
+          </Tip>
+        );
+      })}
+      <span className="h-4 w-px bg-border mx-1.5" aria-hidden="true" />
+      <Tip label="Copy to clipboard (Excel / Sheets)">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground hover:text-foreground"
+          onClick={copySelectedRows}
+          aria-label="Copy selected rows"
+        >
+          <Copy />
+        </Button>
+      </Tip>
+      <Tip label="Clear selection">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="text-muted-foreground hover:text-foreground"
+          onClick={() => setSelectedRowIds(new Set())}
+          aria-label="Clear selection"
+        >
+          <X />
+        </Button>
+      </Tip>
+    </div>
+  );
+
   const runBulkAction = async (action: BulkAction, value?: string) => {
     const rows = selectedOriginals();
     if (rows.length === 0) return;
@@ -1821,11 +1923,12 @@ export default function DataGrid({
           the table body inside the card. */}
       {enableToolbar && (
       <div className="flex flex-wrap items-center justify-between p-3 gap-3 bg-muted border-b border-border">
-        {/* LEFT: page-supplied headerToolbar (filter chips, etc.).
-            Active-filter management moved into the toolbar Filter
-            button's popover on the right. */}
+        {/* LEFT: the bulk-action selection bar when 1+ rows are picked
+            (so it shares THIS row with Search / Filter / Columns /
+            Export rather than stacking a second strip); otherwise the
+            page-supplied headerToolbar (filter chips, etc.). */}
         <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
-          {headerToolbar}
+          {selectedRowIds.size > 0 ? selectionBarContent : headerToolbar}
         </div>
         {/* RIGHT: Search input, then a uniform icon cluster —
             Filter · Sort · Columns · Export — then density.  Icons
@@ -1993,114 +2096,6 @@ export default function DataGrid({
           })()}
         </div>
       </div>
-      )}
-
-      {/* Selection toolbar — a top-anchored strip that appears between
-          the toolbar and the table when 1+ rows are selected (checkbox
-          OR Ctrl/Cmd-click).  Icon-only actions with tooltips (the
-          reference pattern): page ``bulkActions`` first, then built-in
-          Copy + Clear.  Replaces the old floating bottom pill.
-          Suppressed on chrome-free minimal tables (enableToolbar=false
-          with no bulkActions) so a stray modifier-click can't stretch a
-          card that's meant to have no toolbar. */}
-      {selectedRowIds.size > 0 && (bulkSelection || enableToolbar) && (
-        <div className="flex items-center gap-0.5 px-3 py-1.5 bg-primary/5 border-b border-border">
-          <span className="text-xs font-medium text-foreground mr-1">
-            {selectedRowIds.size} selected
-          </span>
-          {bulkActions && bulkActions.length > 0 && (
-            <span className="h-4 w-px bg-border mx-1.5" aria-hidden="true" />
-          )}
-          {bulkActions?.map((action) => {
-            const Icon = action.icon;
-            const btnCls = action.tone === 'danger'
-              ? 'text-destructive hover:bg-destructive/10 hover:text-destructive'
-              : 'text-muted-foreground hover:text-foreground';
-            const inner = Icon
-              ? <Icon />
-              : <span className="text-xs px-1 font-medium">{action.label}</span>;
-            if (action.options) {
-              return (
-                <MenuPrimitive.Root key={action.label}>
-                  <MenuPrimitive.Trigger
-                    render={(props) => (
-                      <Tip label={action.label}>
-                        <Button
-                          {...props}
-                          type="button"
-                          variant="ghost"
-                          size={Icon ? 'icon' : 'xs'}
-                          className={btnCls}
-                          aria-label={action.label}
-                        >
-                          {inner}
-                          {/* Chevron only in text mode — an icon button
-                              stays a single glyph like the Export/Columns
-                              triggers (aria-expanded conveys the menu). */}
-                          {!Icon && <ChevronDown size={12} className="opacity-60" />}
-                        </Button>
-                      </Tip>
-                    )}
-                  />
-                  <MenuPrimitive.Portal>
-                    <MenuPrimitive.Positioner align="start" sideOffset={4} className="z-50 outline-none">
-                      <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
-                        {action.options.map((opt) => (
-                          <MenuPrimitive.Item
-                            key={opt.value}
-                            onClick={() => runBulkAction(action, opt.value)}
-                            className="w-full flex items-center px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground text-left"
-                          >
-                            {opt.label}
-                          </MenuPrimitive.Item>
-                        ))}
-                      </MenuPrimitive.Popup>
-                    </MenuPrimitive.Positioner>
-                  </MenuPrimitive.Portal>
-                </MenuPrimitive.Root>
-              );
-            }
-            return (
-              <Tip key={action.label} label={action.label}>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size={Icon ? 'icon' : 'xs'}
-                  className={btnCls}
-                  onClick={() => runBulkAction(action)}
-                  aria-label={action.label}
-                >
-                  {inner}
-                </Button>
-              </Tip>
-            );
-          })}
-          <span className="flex-1" />
-          <Tip label="Copy to clipboard (Excel / Sheets)">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={copySelectedRows}
-              aria-label="Copy selected rows"
-            >
-              <Copy />
-            </Button>
-          </Tip>
-          <Tip label="Clear selection">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="text-muted-foreground hover:text-foreground"
-              onClick={() => setSelectedRowIds(new Set())}
-              aria-label="Clear selection"
-            >
-              <X />
-            </Button>
-          </Tip>
-        </div>
       )}
 
       <div className="relative">
