@@ -1473,6 +1473,79 @@ export default function DataGrid({
     [columns, effectiveVisibility],
   );
 
+  // ── Active filters / sort / search as removable chips ─────────────
+  //
+  // A row of pills below the toolbar (auto-shown only when something is
+  // active) — the always-visible, one-click-remove counterpart to the
+  // Filter/Sort popovers: "what's limiting my view?" is now readable at
+  // a glance, and each ✕ clears just that constraint.  Adding filters
+  // still happens in the column ⋮ menus.
+  const trimmedGlobal = hasSearch ? globalFilter.trim() : '';
+  const chipCount = columnFilters.length + sorting.length + (trimmedGlobal ? 1 : 0);
+  const chipCls =
+    'inline-flex items-center gap-1 pl-2 pr-0.5 py-0.5 rounded-md border border-border '
+    + 'bg-background text-xs text-foreground';
+  const chipX = 'ml-0.5 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted';
+  const filterChipRow = chipCount === 0 ? null : (
+    <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-muted/30 border-b border-border">
+      {trimmedGlobal && (
+        <span className={chipCls}>
+          <Search size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
+          <span className="truncate max-w-[16rem]">“{trimmedGlobal}”</span>
+          <button type="button" onClick={() => setGlobalFilter('')}
+            aria-label="Clear search" className={chipX}>
+            <X size={12} />
+          </button>
+        </span>
+      )}
+      {columnFilters.map((f) => {
+        const col = columns.find(c => c.key === f.id);
+        return (
+          <span key={`f-${f.id}`} className={chipCls}>
+            <FilterIcon size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
+            <Tip label={`${col?.label || f.id}: ${describeFilter(f.id, f.value)}`}>
+              <span className="truncate max-w-[18rem]">
+                <span className="font-medium">{col?.label || f.id}</span>
+                {': '}{describeFilter(f.id, f.value)}
+              </span>
+            </Tip>
+            <button type="button"
+              onClick={() => setColumnFilters(prev => prev.filter(x => x.id !== f.id))}
+              aria-label={`Clear ${col?.label || f.id} filter`} className={chipX}>
+              <X size={12} />
+            </button>
+          </span>
+        );
+      })}
+      {sorting.map((s) => {
+        const col = columns.find(c => c.key === s.id);
+        return (
+          <span key={`s-${s.id}`} className={chipCls}>
+            <ArrowUpDown size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
+            <Tip label={`Sorted by ${col?.label || s.id} · ${s.desc ? 'descending' : 'ascending'}`}>
+              <span className="truncate max-w-[18rem]">
+                Sorted by <span className="font-medium">{col?.label || s.id}</span>
+                {s.desc ? ' ↓' : ' ↑'}
+              </span>
+            </Tip>
+            <button type="button"
+              onClick={() => setSorting(prev => prev.filter(x => x.id !== s.id))}
+              aria-label={`Clear ${col?.label || s.id} sort`} className={chipX}>
+              <X size={12} />
+            </button>
+          </span>
+        );
+      })}
+      {chipCount >= 2 && (
+        <button type="button"
+          onClick={() => { setColumnFilters([]); setSorting([]); setGlobalFilter(''); }}
+          className="ml-0.5 px-1.5 py-0.5 text-2xs text-muted-foreground hover:text-foreground">
+          Clear all
+        </button>
+      )}
+    </div>
+  );
+
   const visibleHeaderGroups = table.getHeaderGroups();
   // Sortable context needs the list of column ids currently rendered
   // (after visibility filter) so drag swaps reorder the right slice.
@@ -2130,6 +2203,13 @@ export default function DataGrid({
         </div>
       </div>
       )}
+
+      {/* Active filters / sort / search chips — below the toolbar,
+          above the table.  Self-gated (null when nothing is active), so
+          it also surfaces sorts set via the column ⋮ menu on
+          minimal-toolbar grids, while a truly chrome-free table with no
+          active constraint shows nothing. */}
+      {filterChipRow}
 
       <div className="relative">
       <div

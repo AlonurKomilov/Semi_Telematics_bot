@@ -137,7 +137,11 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   bar on a page — that's the old copy-pasted pattern this replaced.
   `firstColumnLeading` remains ONLY for genuinely non-selection leading
   content. Checkbox selection and Ctrl/Cmd-click Copy share one set +
-  one bar. (Alerts Results still uses the legacy `firstColumnLeading`
+  one bar. Controlled selection: pass `selectedIds` + `onSelectedIdsChange`
+  when a page must OWN the set (e.g. Alerts' shared context); omit both
+  for the default DataGrid-owned selection. Active filters / sort /
+  search auto-render as removable chips below the toolbar (nothing to
+  wire per page — driven by the grid's own state). (Alerts Results still uses the legacy `firstColumnLeading`
   checkboxes pending its own migration — its selection lives in a shared
   `AlertsSelectionContext` woven through ~8 files.)
 - **Column `filterable` = by cardinality, not by reflex.** Set
