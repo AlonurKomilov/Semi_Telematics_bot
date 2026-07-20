@@ -139,11 +139,15 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   content. Checkbox selection and Ctrl/Cmd-click Copy share one set +
   one bar. Controlled selection: pass `selectedIds` + `onSelectedIdsChange`
   when a page must OWN the set (e.g. Alerts' shared context); omit both
-  for the default DataGrid-owned selection. Active filters / sort /
-  search auto-render as removable chips below the toolbar (nothing to
-  wire per page — driven by the grid's own state). (Alerts Results still uses the legacy `firstColumnLeading`
-  checkboxes pending its own migration — its selection lives in a shared
-  `AlertsSelectionContext` woven through ~8 files.)
+  for the default DataGrid-owned selection (Alerts Results is the
+  controlled example — its selection lives in a shared
+  `AlertsSelectionContext`). Active view state auto-renders as removable
+  chips inline on the toolbar line, after the bulk bar / headerToolbar
+  (nothing to wire per page — driven by the grid's own state): filter ·
+  sort · search · row-grouping ("Grouped by X") · hidden-columns ("N
+  hidden"). Pin and column-bracket grouping intentionally get NO chip
+  (pin is visually self-evident; the bracket group is column-config, not
+  a per-session toggle).
 - **Column `filterable` = by cardinality, not by reflex.** Set
   `filterable: true` on a column when the dropdown will actually help
   an operator narrow the list. Two supported filter modes on the

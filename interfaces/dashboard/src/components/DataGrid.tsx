@@ -25,7 +25,7 @@ import {
 import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Rows3, Rows2, Rows4,
   Search, X, Columns3, Download, Copy, Filter as FilterIcon, ArrowUpDown,
-  CornerUpRight,
+  CornerUpRight, ListTree, EyeOff,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
@@ -1481,7 +1481,11 @@ export default function DataGrid({
   // a glance, and each ✕ clears just that constraint.  Adding filters
   // still happens in the column ⋮ menus.
   const trimmedGlobal = hasSearch ? globalFilter.trim() : '';
+  // "Clear all" counts only the data CONSTRAINTS (filter/sort/search);
+  // grouping + hidden are view-state chips with their own single ✕.
   const chipCount = columnFilters.length + sorting.length + (trimmedGlobal ? 1 : 0);
+  const groupedCol = rowGroupBy ? columns.find(c => c.key === rowGroupBy) : undefined;
+  const hasAnyChip = chipCount > 0 || !!rowGroupBy || hiddenCount > 0;
   const chipCls =
     'inline-flex items-center gap-1 pl-2 pr-0.5 py-0.5 rounded-md border border-border '
     + 'bg-background text-xs text-foreground';
@@ -1489,7 +1493,7 @@ export default function DataGrid({
   // The chips flow INLINE on the toolbar line, after the bulk-action
   // bar (or headerToolbar) — no wrapper strip; each chip is a flex item
   // in the toolbar's left slot.
-  const filterChips = chipCount === 0 ? null : (
+  const filterChips = !hasAnyChip ? null : (
     <>
       {trimmedGlobal && (
         <span className={chipCls}>
@@ -1539,6 +1543,32 @@ export default function DataGrid({
           </span>
         );
       })}
+      {rowGroupBy && (
+        <span className={chipCls}>
+          <ListTree size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
+          <span className="truncate max-w-[18rem]">
+            Grouped by <span className="font-medium">{groupedCol?.label || rowGroupBy}</span>
+          </span>
+          <button type="button" onClick={() => setRowGroupPref(null)}
+            aria-label="Ungroup rows" className={chipX}>
+            <X size={12} />
+          </button>
+        </span>
+      )}
+      {hiddenCount > 0 && (
+        <span className={chipCls}>
+          <EyeOff size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
+          <span>{hiddenCount} hidden</span>
+          {/* Force EVERY column visible so the count truly clears
+              (a bare {} would leave defaultHidden columns hidden). */}
+          <button type="button"
+            onClick={() => setColumnVisibility(
+              Object.fromEntries(columns.map(c => [c.key, true])))}
+            aria-label="Show hidden columns" className={chipX}>
+            <X size={12} />
+          </button>
+        </span>
+      )}
       {chipCount >= 2 && (
         <button type="button"
           onClick={() => { setColumnFilters([]); setSorting([]); setGlobalFilter(''); }}
