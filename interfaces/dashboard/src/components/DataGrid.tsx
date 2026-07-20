@@ -1486,8 +1486,11 @@ export default function DataGrid({
     'inline-flex items-center gap-1 pl-2 pr-0.5 py-0.5 rounded-md border border-border '
     + 'bg-background text-xs text-foreground';
   const chipX = 'ml-0.5 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted';
-  const filterChipRow = chipCount === 0 ? null : (
-    <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-muted/30 border-b border-border">
+  // The chips flow INLINE on the toolbar line, after the bulk-action
+  // bar (or headerToolbar) — no wrapper strip; each chip is a flex item
+  // in the toolbar's left slot.
+  const filterChips = chipCount === 0 ? null : (
+    <>
       {trimmedGlobal && (
         <span className={chipCls}>
           <Search size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
@@ -1543,7 +1546,7 @@ export default function DataGrid({
           Clear all
         </button>
       )}
-    </div>
+    </>
   );
 
   const visibleHeaderGroups = table.getHeaderGroups();
@@ -2029,13 +2032,15 @@ export default function DataGrid({
           the table body inside the card. */}
       {enableToolbar && (
       <div className="flex flex-wrap items-center justify-between p-3 gap-3 bg-muted border-b border-border">
-        {/* LEFT: the bulk-action bar when 1+ rows are selected — it
-            lives ON this toolbar line (Search + the filter/sort/
-            columns/export icons stay on the right); otherwise the
-            page-supplied headerToolbar.  The active filter/sort/search
-            CHIPS are a SEPARATE strip below this row. */}
+        {/* LEFT, all on THIS toolbar line (Search + the filter/sort/
+            columns/export icons stay on the right):
+              [bulk-action bar when selected, else headerToolbar]
+              followed by the active filter/sort/search CHIPS.
+            So selecting rows shows the actions, and the chips sit right
+            after them on the same bar. */}
         <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
           {selectedRowIds.size > 0 ? selectionBarContent : headerToolbar}
+          {filterChips}
         </div>
         {/* RIGHT: Search input, then a uniform icon cluster —
             Filter · Sort · Columns · Export — then density.  Icons
@@ -2204,11 +2209,6 @@ export default function DataGrid({
         </div>
       </div>
       )}
-
-      {/* Active filter/sort/search chips — their OWN strip below the
-          toolbar (the bulk-action bar lives ON the toolbar line above,
-          not here).  Self-gated: null when nothing is active. */}
-      {filterChipRow}
 
       <div className="relative">
       <div
