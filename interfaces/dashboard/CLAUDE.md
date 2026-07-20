@@ -118,6 +118,23 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   (Work-order parts), (c) **headerless layout tables** used as form
   scaffolding (Forum routing rows). If it's a list of records the
   operator would want to sort or filter, it's DataGrid.
+- **Bulk selection + actions = DataGrid props, never hand-rolled.**
+  DataGrid owns row selection (the checkbox column — header select-all
+  with indeterminate, per-row, group select-all) and the floating
+  **bulk-action bar**; both are the SSOT. Turn it on with
+  `bulkSelection` and pass `bulkActions={[{ label, icon?, tone?,
+  confirm?, onRun(selectedRows) }]}` — each `onRun` receives the
+  selected ORIGINAL rows (never tanstack ids) and DataGrid clears the
+  selection when it resolves. `onBulkSelectionChange` mirrors the set
+  out (e.g. AI page-context). Do NOT re-implement a `selectedIds`
+  Set, checkbox `<input>`s via `firstColumnLeading`, or a `fixed
+  bottom-4` bar on a page — that's the old copy-pasted pattern this
+  replaced. `firstColumnLeading` remains ONLY for genuinely
+  non-selection leading content (row number, expand toggle). Checkbox
+  selection and Ctrl/Cmd-click Copy share one set + one bar. (Alerts
+  Results still uses the legacy `firstColumnLeading` checkboxes pending
+  two API additions — a selectable-row predicate + externally-clearable
+  selection for its shared `AlertsSelectionContext`.)
 - **Column `filterable` = by cardinality, not by reflex.** Set
   `filterable: true` on a column when the dropdown will actually help
   an operator narrow the list. Two supported filter modes on the

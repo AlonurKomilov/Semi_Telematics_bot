@@ -12,7 +12,7 @@ import { statusClasses, toneClasses } from '../../lib/status';
 import { APEX_DOMAIN } from '../../lib/safeReturnTo';
 import { formatDate } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
-import DataGrid, { type DataGridSegment } from '../../components/DataGrid';
+import DataGrid, { type DataGridSegment, type BulkAction } from '../../components/DataGrid';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../components/ui/select';
@@ -364,7 +364,7 @@ export default function Applications() {
   const qc = useQueryClient();
   const [links, setLinks] = useState<ApplicationLink[]>([]);
   const [view, setView] = useState<'table' | 'board'>('table');
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  // (Bulk selection lives inside DataGrid now — no page-level set.)
   const [openId, setOpenId] = useState<number | null>(null);
   // Shared react-query entry (also feeds the topbar ApplicationsHero,
   // so any mutation here re-renders the hero counts in the same tick).
@@ -406,35 +406,37 @@ export default function Applications() {
     }
   };
 
-  const toggleRow = (id: number) =>
-    setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
-  const allVisibleSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
-  const toggleAll = () =>
-    setSelected((s) => {
-      const n = new Set(s);
-      if (allVisibleSelected) rows.forEach((r) => n.delete(r.id));
-      else rows.forEach((r) => n.add(r.id));
-      return n;
-    });
+  // Bulk move: DataGrid owns the selection + the floating bar + the
+  // confirm; this just POSTs the ids.  The server enforces the per-app
+  // rules (illegal jumps, the vetting gate, hired-only-via-Hire) and
+  // tells us what it skipped.
+  const bulkMove = (status: string, label: string) =>
+    async (bulkRows: Record<string, unknown>[]) => {
+      const ids = bulkRows.map(r => (r as unknown as AppRow).id);
+      if (ids.length === 0) return;
+      try {
+        const r = await apiJSON<{ updated: number[]; skipped: { id: number; reason: string }[] }>(
+          '/applications/bulk-status', { method: 'POST', body: { ids, status } });
+        const skipped = r.skipped?.length ?? 0;
+        if (skipped) toast.warning(`${r.updated.length} updated · ${skipped} skipped (${r.skipped[0].reason})`);
+        else toast.success(`${r.updated.length} application${r.updated.length > 1 ? 's' : ''} ${label.toLowerCase()}d`);
+        loadApps();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : 'Bulk action failed');
+      }
+    };
 
-  // Bulk move: the server enforces the per-app rules (illegal jumps, the
-  // vetting gate, hired-only-via-Hire) and tells us what it skipped.
-  const bulkAction = async (status: string, label: string) => {
-    const ids = [...selected];
-    if (ids.length === 0) return;
-    if (!confirm(`${label} ${ids.length} application${ids.length > 1 ? 's' : ''}?`)) return;
-    try {
-      const r = await apiJSON<{ updated: number[]; skipped: { id: number; reason: string }[] }>(
-        '/applications/bulk-status', { method: 'POST', body: { ids, status } });
-      const skipped = r.skipped?.length ?? 0;
-      if (skipped) toast.warning(`${r.updated.length} updated · ${skipped} skipped (${r.skipped[0].reason})`);
-      else toast.success(`${r.updated.length} application${r.updated.length > 1 ? 's' : ''} ${label.toLowerCase()}d`);
-      setSelected(new Set());
-      loadApps();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Bulk action failed');
-    }
-  };
+  const bulkActions: BulkAction[] = [
+    { label: 'Move to screening',
+      confirm: (n) => `Move to screening ${n} application${n > 1 ? 's' : ''}?`,
+      onRun: bulkMove('screening', 'Move to screening') },
+    { label: 'Reject', tone: 'danger',
+      confirm: (n) => `Reject ${n} application${n > 1 ? 's' : ''}?`,
+      onRun: bulkMove('rejected', 'Reject') },
+    { label: 'Withdraw',
+      confirm: (n) => `Withdraw ${n} application${n > 1 ? 's' : ''}?`,
+      onRun: bulkMove('withdrawn', 'Withdraw') },
+  ];
 
   const loadLinks = useCallback(() => {
     apiJSON<{ items: ApplicationLink[] }>('/applications/links')
@@ -650,15 +652,7 @@ export default function Applications() {
             </button>
           </div>
         </div>
-        {view === 'table' && selected.size > 0 && (
-          <div className="flex flex-wrap items-center gap-2 border border-border rounded-md bg-muted/40 px-3 py-2 text-xs mb-3">
-            <span className="font-medium text-foreground">{selected.size} selected</span>
-            <button onClick={() => bulkAction('screening', 'Move to screening')} className="rounded-md border border-border px-2 py-1 hover:bg-muted">Move to screening</button>
-            <button onClick={() => bulkAction('rejected', 'Reject')} className={`rounded-md px-2 py-1 ${toneClasses('danger')}`}>Reject</button>
-            <button onClick={() => bulkAction('withdrawn', 'Withdraw')} className="rounded-md border border-border px-2 py-1 hover:bg-muted">Withdraw</button>
-            <button onClick={() => setSelected(new Set())} className="ml-auto text-muted-foreground hover:text-foreground">Clear</button>
-          </div>
-        )}
+        {/* Bulk-action bar is rendered by DataGrid from ``bulkActions``. */}
         {err && <div className="p-3 text-sm text-destructive">{err}</div>}
         {view === 'board' ? (
           <div className="bg-card border border-border rounded-lg overflow-hidden">
@@ -766,36 +760,10 @@ export default function Applications() {
                 ),
               },
             ]}
-            // Bulk-select checkbox follows whichever column is first
-            // visible (same pattern as Maintenance Tasks): header
-            // fires ``toggleAll``, per-row fires ``toggleRow``.  Both
-            // use ``stopPropagation`` so ticking doesn't trigger the
-            // row-click → detail-drawer.
-            firstColumnLeading={{
-              header: () => (
-                <input
-                  type="checkbox"
-                  aria-label="Select all"
-                  checked={allVisibleSelected}
-                  onClick={(e) => e.stopPropagation()}
-                  onChange={toggleAll}
-                  className="cursor-pointer accent-primary"
-                />
-              ),
-              cell: (row) => {
-                const r = row as unknown as AppRow;
-                return (
-                  <input
-                    type="checkbox"
-                    aria-label={`Select ${r.reference}`}
-                    checked={selected.has(r.id)}
-                    onClick={(e) => e.stopPropagation()}
-                    onChange={() => toggleRow(r.id)}
-                    className="cursor-pointer accent-primary"
-                  />
-                );
-              },
-            }}
+            // Bulk selection + action bar are DataGrid's (the SSOT).
+            bulkSelection
+            bulkActions={bulkActions}
+            bulkRowLabel={(r) => (r as unknown as AppRow).reference}
           />
         )}
       </section>

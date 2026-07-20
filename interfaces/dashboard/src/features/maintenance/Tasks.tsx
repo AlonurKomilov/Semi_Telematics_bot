@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { usePublishContext } from '../ai/PageContext';
-import DataGrid, { type DataGridSegment } from '../../components/DataGrid';
+import DataGrid, { type DataGridSegment, type BulkAction } from '../../components/DataGrid';
 import {
   useMaintenanceTasksQuery, makeUrgencyClassifier, classifyTaskBuckets,
 } from './useMaintenanceTasks';
@@ -310,7 +310,10 @@ export default function Tasks() {
   // batch operation.  Cleared whenever the visible task list changes
   // (filter chip flip, refetch) so stale ids never get sent to the
   // server.  Kept as Set for O(1) toggle.
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  // Mirror of DataGrid's bulk selection — DataGrid owns the checkbox
+  // set + the action bar now; this copy exists only to feed the AI
+  // page-context (usePublishContext below).
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -362,7 +365,7 @@ export default function Tasks() {
     feature: 'maintenance',
     label: t('nav.maintenance'),
     filters: { company: fCompany || undefined },
-    selectedIds: [...selectedIds],
+    selectedIds,
     focus: selected
       ? { kind: 'maintenance task', id: selected.id, label: `Truck ${selected.vehicle_name}` }
       : undefined,
@@ -688,26 +691,8 @@ export default function Tasks() {
   // Active / Archive segment tabs own the lifecycle split.
   const gridTasks = allTasks;
 
-  // Clear selection whenever the visible list changes (filter switch
-  // or refetch).  Stale ids would otherwise sit in state and could
-  // target rows that are no longer visible — confusing UX and a small
-  // risk of bulk-acting on the wrong tasks.
-  useEffect(() => {
-    setSelectedIds(prev => {
-      if (prev.size === 0) return prev;
-      const visible = new Set(gridTasks.map(t => t.id));
-      const next = new Set<number>();
-      for (const id of prev) if (visible.has(id)) next.add(id);
-      return next.size === prev.size ? prev : next;
-    });
-  }, [gridTasks]);
+  // (Selection clearing on filter change is handled inside DataGrid.)
 
-  // Final columns array — the bulk-select master + per-row checkboxes
-  // are NOT part of the columns array.  DataGrid's
-  // ``firstColumnLeading`` prop (below in the JSX) attaches them to
-  // whichever column is currently leftmost, so they follow the
-  // operator's pin / reorder choices instead of being stuck on a
-  // specific column.
   const columns: AnyColumn[] = useMemo(() => {
     // Override the Status column's render so an open row whose
     // due_date / due_miles / due_engine_hours puts it in the dueSoon
@@ -849,25 +834,23 @@ export default function Tasks() {
     return enrichedBase;
   }, [dueSoonClassify, customTypeLabelByValue, tz]);
 
-  // Bulk action handlers — POST to the new /tasks/bulk/* routes.
-  const handleBulkComplete = async () => {
-    if (selectedIds.size === 0) return;
-    const ok = window.confirm(
-      `Mark ${selectedIds.size} task${selectedIds.size === 1 ? '' : 's'} complete?\n\n`
-      + 'You will be recorded as the attester for each one. '
-      + 'Recurring tasks will auto-spawn their next instance.',
-    );
-    if (!ok) return;
+  // Bulk actions — DataGrid owns the selection + the floating bar +
+  // the confirm; each handler just receives the selected task rows and
+  // POSTs to the /tasks/bulk/* routes.  DataGrid clears the selection
+  // when the action resolves.
+  const idsOf = (rows: Record<string, unknown>[]) =>
+    rows.map(r => (r as unknown as MaintenanceTask).id);
+
+  const handleBulkComplete = async (rows: Record<string, unknown>[]) => {
     try {
       const res = await apiJSON<{ updated: number; spawned_ids: number[] }>(
         '/maintenance/tasks/bulk/status',
-        { method: 'POST', body: { task_ids: Array.from(selectedIds), status: 'completed' } },
+        { method: 'POST', body: { task_ids: idsOf(rows), status: 'completed' } },
       );
       toast.success(
         `Marked ${res.updated} complete`
         + (res.spawned_ids.length ? ` · ${res.spawned_ids.length} recurring follow-up${res.spawned_ids.length === 1 ? '' : 's'} created` : ''),
       );
-      setSelectedIds(new Set());
       load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Bulk update failed');
@@ -878,40 +861,43 @@ export default function Tasks() {
   // "shop visit booked next Friday — mark these 8 as in progress".
   // Skips the attestation/recur-spawn path that 'completed' takes,
   // since in-progress isn't a terminal state.
-  const handleBulkInProgress = async () => {
-    if (selectedIds.size === 0) return;
+  const handleBulkInProgress = async (rows: Record<string, unknown>[]) => {
     try {
       const res = await apiJSON<{ updated: number }>(
         '/maintenance/tasks/bulk/status',
-        { method: 'POST', body: { task_ids: Array.from(selectedIds), status: 'in_progress' } },
+        { method: 'POST', body: { task_ids: idsOf(rows), status: 'in_progress' } },
       );
       toast.success(`Marked ${res.updated} as in progress`);
-      setSelectedIds(new Set());
       load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Bulk update failed');
     }
   };
 
-  const handleBulkDelete = async () => {
-    if (selectedIds.size === 0) return;
-    const ok = window.confirm(
-      `Delete ${selectedIds.size} task${selectedIds.size === 1 ? '' : 's'}?\n\n`
-      + 'This cannot be undone.',
-    );
-    if (!ok) return;
+  const handleBulkDelete = async (rows: Record<string, unknown>[]) => {
     try {
       const res = await apiJSON<{ deleted: number }>(
         '/maintenance/tasks/bulk/delete',
-        { method: 'POST', body: { task_ids: Array.from(selectedIds) } },
+        { method: 'POST', body: { task_ids: idsOf(rows) } },
       );
       toast.success(`Deleted ${res.deleted} task${res.deleted === 1 ? '' : 's'}`);
-      setSelectedIds(new Set());
       load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Bulk delete failed');
     }
   };
+
+  const bulkActions: BulkAction[] = [
+    { label: 'Mark complete', icon: CheckSquare, tone: 'ok',
+      confirm: (n) => `Mark ${n} task${n === 1 ? '' : 's'} complete?\n\n`
+        + 'You will be recorded as the attester for each one. '
+        + 'Recurring tasks will auto-spawn their next instance.',
+      onRun: handleBulkComplete },
+    { label: 'In progress', tone: 'info', onRun: handleBulkInProgress },
+    { label: 'Delete', icon: Trash2, tone: 'danger',
+      confirm: (n) => `Delete ${n} task${n === 1 ? '' : 's'}?\n\nThis cannot be undone.`,
+      onRun: handleBulkDelete },
+  ];
 
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1706,54 +1692,15 @@ export default function Tasks() {
             searchKey={['vehicle_name', 'company_code', 'description', 'task_type']}
             searchPlaceholder="Search…"
             onRowClick={(row) => openTaskForEdit(row as unknown as MaintenanceTask)}
-            // Bulk-select checkboxes follow whichever column is
-            // currently leftmost — DataGrid injects ``header`` into
-            // the first header cell, and ``cell`` into the first body
-            // cell of each row.  Tasks owns the selection state
-            // (selectedIds) and renders the checkbox React nodes;
-            // DataGrid just places them.
-            firstColumnLeading={{
-              header: () => {
-                const allVisibleIds = tasks.map(t => t.id);
-                const allSelected = allVisibleIds.length > 0
-                  && allVisibleIds.every(id => selectedIds.has(id));
-                return (
-                  <input
-                    type="checkbox"
-                    checked={allSelected}
-                    ref={el => { if (el) el.indeterminate = !allSelected && selectedIds.size > 0; }}
-                    onClick={e => e.stopPropagation()}
-                    onChange={e => {
-                      if (e.target.checked) setSelectedIds(new Set(allVisibleIds));
-                      else setSelectedIds(new Set());
-                    }}
-                    className="cursor-pointer accent-primary"
-                    aria-label="Select all visible tasks"
-                  />
-                );
-              },
-              cell: (row) => {
-                const t = row as unknown as MaintenanceTask;
-                const checked = selectedIds.has(t.id);
-                return (
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    onClick={e => e.stopPropagation()}
-                    onChange={e => {
-                      setSelectedIds(prev => {
-                        const next = new Set(prev);
-                        if (e.target.checked) next.add(t.id);
-                        else next.delete(t.id);
-                        return next;
-                      });
-                    }}
-                    className="cursor-pointer accent-primary"
-                    aria-label={`Select task ${t.id}`}
-                  />
-                );
-              },
-            }}
+            // Bulk selection + action bar are DataGrid's now (the SSOT):
+            // it owns the checkbox column and the floating bar rendered
+            // from bulkActions.  onBulkSelectionChange mirrors the set
+            // out for the AI page-context.
+            bulkSelection
+            bulkActions={bulkActions}
+            bulkRowLabel={(r) => `task on ${(r as unknown as MaintenanceTask).vehicle_name}`}
+            onBulkSelectionChange={(rows) =>
+              setSelectedIds(rows.map(r => (r as unknown as MaintenanceTask).id))}
           />
           {/* No count footer — the topbar hero carries the live
               Overdue / Due Soon / Pending / Completed counts and the
@@ -1761,50 +1708,7 @@ export default function Tasks() {
         </>
       )}
 
-      {/* Bulk-action floating bar — only shown when 1+ rows are
-          selected in list mode.  Position fixed at the bottom so it
-          stays visible even when the user scrolls the table.  The
-          handlers prompt for confirmation before hitting the backend
-          (same pattern as the single-task completion dialog). */}
-      {viewMode === 'list' && selectedIds.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 px-4 py-2 bg-card border border-border rounded-full shadow-lg">
-          <span className="text-sm font-medium">
-            {selectedIds.size} selected
-          </span>
-          <span className="text-muted-foreground">·</span>
-          <button
-            type="button"
-            onClick={handleBulkComplete}
-            className="inline-flex items-center gap-1.5 px-3 py-1 bg-ok text-white rounded-full text-xs font-medium transition"
-          >
-            <CheckSquare size={14} />
-            Mark complete
-          </button>
-          <button
-            type="button"
-            onClick={handleBulkInProgress}
-            className="inline-flex items-center gap-1.5 px-3 py-1 bg-info text-white rounded-full text-xs font-medium transition"
-          >
-            In progress
-          </button>
-          <button
-            type="button"
-            onClick={handleBulkDelete}
-            className="inline-flex items-center gap-1.5 px-3 py-1 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded-full text-xs font-medium transition"
-          >
-            <Trash2 size={14} />
-            Delete
-          </button>
-          <button
-            type="button"
-            onClick={() => setSelectedIds(new Set())}
-            className="text-muted-foreground hover:text-foreground p-1"
-            aria-label="Clear selection"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      )}
+      {/* Bulk-action bar is rendered by DataGrid from ``bulkActions``. */}
 
       {selected && (
         <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={() => setSelected(null)}>

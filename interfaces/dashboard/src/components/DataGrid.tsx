@@ -26,6 +26,7 @@ import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Rows3, Rows2, Rows4,
   Search, X, Columns3, Download, Copy, Filter as FilterIcon, ArrowUpDown,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
 import { createPortal } from 'react-dom';
@@ -108,6 +109,35 @@ function readLegacyDensity(): Density {
   return 'default';
 }
 
+/** One button in the bulk-action bar (the floating toolbar shown when
+ *  rows are selected).  DataGrid renders these from the ``bulkActions``
+ *  prop and hands each ``onRun`` the currently-selected ORIGINAL rows —
+ *  never tanstack row ids — so pages read their own domain fields. */
+export interface BulkAction {
+  label: string;
+  icon?: LucideIcon;
+  /** Visual weight of the button (default = neutral). */
+  tone?: 'default' | 'primary' | 'ok' | 'info' | 'danger';
+  /** window.confirm prompt before running; receives the selection
+   *  count.  Omit for actions that need no confirmation. */
+  confirm?: (count: number) => string;
+  onRun: (rows: Record<string, unknown>[]) => void | Promise<void>;
+}
+
+/** Bulk-action button tone → Button variant + colour override.  The
+ *  ok/info tones paint solid status colours (green/blue) the base
+ *  variants don't carry; keeps the semantic bar colours the pages had. */
+const BULK_ACTION_TONE: Record<
+  NonNullable<BulkAction['tone']>,
+  { variant: 'default' | 'outline' | 'destructive'; className?: string }
+> = {
+  default: { variant: 'outline' },
+  primary: { variant: 'default' },
+  ok:      { variant: 'default', className: 'bg-ok text-white hover:bg-ok/90 border-transparent' },
+  info:    { variant: 'default', className: 'bg-info text-white hover:bg-info/90 border-transparent' },
+  danger:  { variant: 'destructive' },
+};
+
 interface DataGridProps {
   columns: AnyColumn[];
   data: Record<string, unknown>[];
@@ -131,6 +161,23 @@ interface DataGridProps {
    *  pinned-first Priority gets the checkbox even though Vehicle had
    *  it before.  Parent owns the selection state; DataGrid just
    *  places the React nodes parent renders. */
+  /** Checkbox bulk-SELECTION.  When true, DataGrid owns the checkbox
+   *  column itself — header select-all (with indeterminate), a per-row
+   *  box, and a group select-all when grouped — all feeding the SAME
+   *  selection set as modifier-click.  Pages no longer hand-roll
+   *  ``firstColumnLeading`` checkboxes; that prop stays for genuinely
+   *  non-selection leading content (row number, expand toggle). */
+  bulkSelection?: boolean;
+  /** Mirror the selection out to the page (e.g. AI page context).
+   *  Called with the selected ORIGINAL rows whenever it changes. */
+  onBulkSelectionChange?: (rows: Record<string, unknown>[]) => void;
+  /** Buttons for the floating bulk-action bar, shown before the
+   *  built-in Copy/Clear when 1+ rows are selected. */
+  bulkActions?: BulkAction[];
+  /** Per-row accessible label for the select checkbox (screen readers).
+   *  Without it every box announces the generic "Select row"; pass a
+   *  row-identifying string (e.g. the unit number or reference). */
+  bulkRowLabel?: (row: Record<string, unknown>) => string;
   firstColumnLeading?: {
     header: () => React.ReactNode;
     cell: (row: Record<string, unknown>) => React.ReactNode;
@@ -436,6 +483,7 @@ export default function DataGrid({
   columns, data: sourceData, onRowClick, searchKey, stickyHeader, searchPlaceholder,
   headerToolbar, tableId, firstColumnLeading, rowGroupHeader, defaultRowGroup,
   enableToolbar = true, enablePagination = true, segments,
+  bulkSelection = false, onBulkSelectionChange, bulkActions, bulkRowLabel,
 }: DataGridProps) {
   const { t } = useTranslation();
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -819,6 +867,17 @@ export default function DataGrid({
   const table = useReactTable({
     data,
     columns: tableColumns,
+    // Stable row identity for BULK grids only: key on the row's own
+    // ``id`` so a checkbox selection survives sort (index ids would
+    // re-point to different rows).  Left undefined otherwise, so every
+    // non-bulk grid keeps tanstack's default index ids unchanged — the
+    // Ctrl/Cmd-click Copy selection behaves exactly as before.
+    getRowId: bulkSelection
+      ? (row, index) => {
+          const rid = (row as Record<string, unknown>).id;
+          return rid == null ? String(index) : String(rid);
+        }
+      : undefined,
     state: {
       sorting,
       globalFilter: hasSearch ? globalFilter : undefined,
@@ -922,16 +981,20 @@ export default function DataGrid({
   // them) — otherwise the floating bar lies about what's selected.
   useEffect(() => {
     if (selectedRowIds.size === 0) return;
-    const visibleIds = new Set(table.getRowModel().rows.map(r => r.id));
+    // Keep ids still present in the FILTERED set (every page, flat leaf
+    // rows — pre-grouping/pagination), dropping only rows the new
+    // filter actually hides.  Using the paginated getRowModel() here
+    // would wrongly drop cross-page select-all picks on the next
+    // keystroke, and wipe leaf selections while grouped (that model
+    // yields group rows, not leaf ids).
+    const filteredIds = new Set(table.getFilteredRowModel().rows.map(r => r.id));
     let changed = false;
     const kept = new Set<string>();
     for (const id of selectedRowIds) {
-      if (visibleIds.has(id)) kept.add(id);
+      if (filteredIds.has(id)) kept.add(id);
       else changed = true;
     }
     if (changed) setSelectedRowIds(kept);
-  // table.getRowModel() identity changes per render; gating on the
-  // post-filter row IDs would be more precise but expensive.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [columnFilters, globalFilter]);
 
@@ -976,8 +1039,11 @@ export default function DataGrid({
       });
       return;
     }
-    // Plain click — clear selection, then forward to caller.
-    if (selectedRowIds.size > 0) setSelectedRowIds(new Set());
+    // Plain click — forward to caller.  In modifier-select (Copy) mode
+    // a stray plain click resets the in-progress selection; with
+    // checkbox bulkSelection the selection is deliberate and must
+    // survive opening a row to view it.
+    if (!bulkSelection && selectedRowIds.size > 0) setSelectedRowIds(new Set());
     lastClickedIdRef.current = rowId;
     onRowClick?.(rowOriginal);
   };
@@ -993,6 +1059,105 @@ export default function DataGrid({
       .map(id => colByKey.get(id))
       .filter((c): c is AnyColumn => Boolean(c));
     await writeToClipboard(buildTsv(copyCols, rows));
+  };
+
+  // ── Checkbox bulk-selection ──────────────────────────────────────
+  //
+  // Checkboxes feed the SAME ``selectedRowIds`` set as modifier-click,
+  // so there is ONE selection and ONE floating bar — never two systems
+  // fighting.  Select-all spans the whole FILTERED set (every page),
+  // matching what operators expect from a header checkbox.
+  const selectableRows = () =>
+    table.getFilteredRowModel().rows.filter(r => !r.getIsGrouped());
+  const allRowsSelected = (() => {
+    if (!bulkSelection) return false;
+    const rows = selectableRows();
+    return rows.length > 0 && rows.every(r => selectedRowIds.has(r.id));
+  })();
+  const someRowsSelected = bulkSelection && selectedRowIds.size > 0 && !allRowsSelected;
+
+  const cbClass = 'cursor-pointer accent-primary align-middle';
+  const renderSelectAll = () => (
+    <input
+      type="checkbox"
+      checked={allRowsSelected}
+      ref={el => { if (el) el.indeterminate = someRowsSelected; }}
+      onClick={e => e.stopPropagation()}
+      onChange={e =>
+        setSelectedRowIds(e.target.checked
+          ? new Set(selectableRows().map(r => r.id))
+          : new Set())}
+      className={cbClass}
+      aria-label="Select all rows"
+    />
+  );
+  const renderRowBox = (rowId: string, original: Record<string, unknown>) => (
+    <input
+      type="checkbox"
+      checked={selectedRowIds.has(rowId)}
+      onClick={e => e.stopPropagation()}
+      onChange={e =>
+        setSelectedRowIds(prev => {
+          const next = new Set(prev);
+          if (e.target.checked) next.add(rowId); else next.delete(rowId);
+          return next;
+        })}
+      className={cbClass}
+      aria-label={bulkRowLabel ? `Select ${bulkRowLabel(original)}` : 'Select row'}
+    />
+  );
+  const renderGroupBox = (ids: string[]) => {
+    const all = ids.length > 0 && ids.every(id => selectedRowIds.has(id));
+    const some = !all && ids.some(id => selectedRowIds.has(id));
+    return (
+      <input
+        type="checkbox"
+        checked={all}
+        ref={el => { if (el) el.indeterminate = some; }}
+        onClick={e => e.stopPropagation()}
+        onChange={e =>
+          setSelectedRowIds(prev => {
+            const next = new Set(prev);
+            ids.forEach(id => { if (e.target.checked) next.add(id); else next.delete(id); });
+            return next;
+          })}
+        className={cbClass}
+        aria-label="Select group"
+      />
+    );
+  };
+
+  // Resolve the selection to ORIGINAL rows (via the core model, so
+  // rows on other pages still resolve) for the action handlers + the
+  // page mirror callback.
+  const selectedOriginals = (): Record<string, unknown>[] => {
+    const byId = new Map(table.getCoreRowModel().rows.map(r => [r.id, r.original]));
+    return [...selectedRowIds]
+      .map(id => byId.get(id))
+      .filter((r): r is Record<string, unknown> => r != null);
+  };
+
+  useEffect(() => {
+    onBulkSelectionChange?.(selectedOriginals());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRowIds]);
+
+  const runBulkAction = async (action: BulkAction) => {
+    const rows = selectedOriginals();
+    if (rows.length === 0) return;
+    if (action.confirm && !window.confirm(action.confirm(rows.length))) return;
+    try {
+      await action.onRun(rows);
+      // Act → selection resets (the acted rows usually leave the list).
+      setSelectedRowIds(new Set());
+    } catch (err) {
+      // A well-behaved onRun catches + toasts its own errors; this is
+      // the safety net so a throwing consumer can't leave the bar
+      // stuck with no feedback.  Selection is kept so the user can
+      // retry the same rows.
+      // eslint-disable-next-line no-console
+      console.error('bulk action failed', err);
+    }
   };
 
   // FACETED filter options — each select-mode column's dropdown lists
@@ -1990,7 +2155,9 @@ export default function DataGrid({
                         // checkbox) goes on the FIRST visible header
                         // — when the operator pins / reorders, the
                         // checkbox moves with the new first column.
-                        leadingContent={hIdx === 0 ? firstColumnLeading?.header() : undefined}
+                        leadingContent={hIdx === 0
+                          ? (bulkSelection ? renderSelectAll() : firstColumnLeading?.header())
+                          : undefined}
                         groupNames={groupNames}
                         currentGroup={effectiveGroupByKey.get(header.column.id) ?? null}
                         onAssignGroup={(name) => assignGroup(header.column.id, name)}
@@ -2073,7 +2240,11 @@ export default function DataGrid({
                               row.getIsExpanded() && 'rotate-90',
                             )}
                           />
-                          {firstColumnLeading?.groupHeader && (
+                          {bulkSelection ? (
+                            <span onClick={(e) => e.stopPropagation()}>
+                              {renderGroupBox(row.subRows.map(r => r.id))}
+                            </span>
+                          ) : firstColumnLeading?.groupHeader && (
                             <span onClick={(e) => e.stopPropagation()}>
                               {firstColumnLeading.groupHeader(value, leafOriginals)}
                             </span>
@@ -2138,9 +2309,13 @@ export default function DataGrid({
                         // checkbox is rendered into whichever cell is
                         // currently leftmost.
                         leadingContent={
-                          cIdx === 0 && firstColumnLeading?.cell
-                            ? firstColumnLeading.cell(row.original)
-                            : undefined
+                          cIdx !== 0
+                            ? undefined
+                            : bulkSelection
+                              ? renderRowBox(row.id, row.original)
+                              : firstColumnLeading?.cell
+                                ? firstColumnLeading.cell(row.original)
+                                : undefined
                         }
                       />
                     ))}
@@ -2402,6 +2577,28 @@ export default function DataGrid({
           <span className="text-xs font-medium text-foreground">
             {selectedRowIds.size} selected
           </span>
+          {/* Page-declared bulk actions come first (the primary intent);
+              built-in Copy/Clear follow. */}
+          {bulkActions?.map((action) => {
+            const tone = BULK_ACTION_TONE[action.tone ?? 'default'];
+            const Icon = action.icon;
+            return (
+              <Button
+                key={action.label}
+                type="button"
+                variant={tone.variant}
+                size="xs"
+                className={tone.className}
+                onClick={() => runBulkAction(action)}
+              >
+                {Icon && <Icon />}
+                {action.label}
+              </Button>
+            );
+          })}
+          {bulkActions && bulkActions.length > 0 && (
+            <span className="text-border" aria-hidden="true">|</span>
+          )}
           <Button
             type="button"
             variant="default"
