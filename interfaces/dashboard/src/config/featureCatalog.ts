@@ -99,7 +99,10 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // avatar) + ⌘J, not a sidebar row — navHidden keeps the route guard
   // and can_ai_chat wiring while dropping the nav entry.
   { id: 'ai_assistant',   labelKey: 'nav.ai_assistant',   path: '/ai/chat',   icon: Bot,             modules: ['core'], tier: 'system', permission: ['can_ai_chat'], navGroup: 'main', navHidden: true },
-  { id: 'alerts',         labelKey: 'nav.alerts',         path: '/alerts',    icon: Bell,            modules: ['core'], tier: 'system', permission: P_ALERTS, navGroup: 'monitoring' },
+  // Alerts launches from the topbar bell (a monitoring SERVICE beside
+  // the AI icon), not a sidebar row — navHidden keeps the /alerts route
+  // guard + P_ALERTS wiring while dropping the nav entry.
+  { id: 'alerts',         labelKey: 'nav.alerts',         path: '/alerts',    icon: Bell,            modules: ['core'], tier: 'system', permission: P_ALERTS, navGroup: 'monitoring', navHidden: true },
   { id: 'reports',        labelKey: 'nav.reports',        path: '/reports',   icon: FileText,        modules: ['core'], tier: 'system', permission: P_REPORTS, navGroup: 'reports' },
   // KPI — the account-wide performance analytics surface (dispatcher grades
   // first; fleet/safety/driver sections later).  Shared-tier, delegatable via

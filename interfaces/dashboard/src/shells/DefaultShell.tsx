@@ -24,6 +24,7 @@ import { ThemeToggle } from '../components/ThemeToggle';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
 import { AssistantLauncher } from '../features/ai/AssistantLauncher';
+import { AlertsLauncher } from '../features/alerts/AlertsLauncher';
 import { useDockedContentClass } from '../features/ai/AssistantContext';
 import { shortcut } from '../utils/platform';
 import CommandPalette from '../components/shell/CommandPalette';
@@ -128,6 +129,7 @@ export default function DefaultShell() {
               <Search size={18} />
             </button>
             <LanguageSelector />
+            <AlertsLauncher />
             <AssistantLauncher />
             <ThemeToggle />
             <AvatarMenu />
