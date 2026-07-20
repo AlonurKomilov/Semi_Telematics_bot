@@ -367,6 +367,40 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_ai_action_proposals_user
             ON ai_action_proposals(account_id, user_id, created_at);
 
+        -- Multi-channel notification preferences (docs/architecture/
+        -- notifications.md).  ONE row per rule: "recipient wants
+        -- alert_type on channel (+ cadence)".  Recipient scope splits
+        -- personal (per-user) from shared (per-account/topic).  Adding a
+        -- channel = new rows, never new columns.  Phase 2a: table +
+        -- backfill only; readers still use the legacy alert_* columns
+        -- until the reader-switch step (2b).
+        CREATE TABLE IF NOT EXISTS notification_pref (
+            account_id     INTEGER NOT NULL,
+            recipient_type TEXT    NOT NULL,             -- 'user' | 'account' | 'topic'
+            recipient_id   TEXT    NOT NULL,             -- user_id / topic id / distro id
+            channel        TEXT    NOT NULL,             -- 'telegram_dm' | 'email' | 'web_push' | 'sms' | 'telegram_topic'
+            alert_type     TEXT    NOT NULL,             -- 'faults' | ... | '*'
+            enabled        INTEGER NOT NULL DEFAULT 1,
+            cadence        TEXT    NOT NULL DEFAULT 'immediate',  -- 'immediate' | 'hourly' | 'daily'
+            updated_at     TEXT    NOT NULL DEFAULT '',
+            PRIMARY KEY (account_id, recipient_type, recipient_id, channel, alert_type)
+        );
+
+        -- Per-recipient channel CONNECTION (address + verified state +
+        -- the channel master switch) — separate from the per-type
+        -- toggles above ("is my email verified" ≠ "do I want fuel on it").
+        CREATE TABLE IF NOT EXISTS notification_channel (
+            account_id     INTEGER NOT NULL,
+            recipient_type TEXT    NOT NULL,
+            recipient_id   TEXT    NOT NULL,
+            channel        TEXT    NOT NULL,
+            address        TEXT    NOT NULL DEFAULT '',   -- telegram_id / email / push-sub / E.164
+            verified_at    TEXT    NOT NULL DEFAULT '',   -- '' = unverified
+            enabled_master INTEGER NOT NULL DEFAULT 1,    -- per-channel master switch
+            updated_at     TEXT    NOT NULL DEFAULT '',
+            PRIMARY KEY (account_id, recipient_type, recipient_id, channel)
+        );
+
         CREATE TABLE IF NOT EXISTS knowledge_base (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL,

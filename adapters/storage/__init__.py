@@ -89,6 +89,7 @@ from .coaching import CoachingMixin
 from .storage_sync import StorageSyncMixin
 from .ai_chat import AIChatHistoryMixin
 from .ai_actions import AIActionProposalsMixin
+from .notification_prefs import NotificationPrefsMixin
 from .errors import ErrorLogMixin
 from .scan_log import ScanLogMixin
 from .applications import ApplicationsMixin
@@ -151,6 +152,7 @@ class Database(
     StorageSyncMixin,
     AIChatHistoryMixin,
     AIActionProposalsMixin,
+    NotificationPrefsMixin,
     ErrorLogMixin,
     ScanLogMixin,
     ApplicationsMixin,

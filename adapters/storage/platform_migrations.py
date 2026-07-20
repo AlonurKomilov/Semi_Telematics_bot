@@ -193,6 +193,7 @@ async def run_all(conn) -> None:
     await migrate_ai_proposal_staged_payload(conn)
     await migrate_ai_proposal_undo(conn)
     await migrate_ai_conversation_workspace(conn)
+    await migrate_notification_matrix(conn)
     # Capacity monitoring (operator console): platform metric history +
     # per-account request metering.
     await migrate_system_capacity_tables(conn)
@@ -379,6 +380,109 @@ async def migrate_ai_conversation_workspace(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.error("ai_conversations workspace migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_notification_matrix(conn) -> None:
+    """Create ``notification_pref`` + ``notification_channel`` and
+    backfill the PERSONAL Telegram-DM prefs from the legacy per-user
+    columns (docs/architecture/notifications.md, phase 2a).
+
+    Additive + idempotent: creates the tables, then backfills one
+    ``telegram_dm`` row per (user, alert_type) from ``users.alert_*``
+    and one channel-connection row per user from ``alerts_on`` +
+    ``telegram_id``.  ON CONFLICT DO NOTHING so re-runs and rows the
+    user has since edited are left untouched.  NOTHING reads these
+    tables yet — the reader/writer switch is the separate 2b step — so
+    this cannot change delivery behavior."""
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS notification_pref (
+                account_id     INTEGER NOT NULL,
+                recipient_type TEXT    NOT NULL,
+                recipient_id   TEXT    NOT NULL,
+                channel        TEXT    NOT NULL,
+                alert_type     TEXT    NOT NULL,
+                enabled        INTEGER NOT NULL DEFAULT 1,
+                cadence        TEXT    NOT NULL DEFAULT 'immediate',
+                updated_at     TEXT    NOT NULL DEFAULT '',
+                PRIMARY KEY (account_id, recipient_type, recipient_id, channel, alert_type)
+            )
+        """)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS notification_channel (
+                account_id     INTEGER NOT NULL,
+                recipient_type TEXT    NOT NULL,
+                recipient_id   TEXT    NOT NULL,
+                channel        TEXT    NOT NULL,
+                address        TEXT    NOT NULL DEFAULT '',
+                verified_at    TEXT    NOT NULL DEFAULT '',
+                enabled_master INTEGER NOT NULL DEFAULT 1,
+                updated_at     TEXT    NOT NULL DEFAULT '',
+                PRIMARY KEY (account_id, recipient_type, recipient_id, channel)
+            )
+        """)
+        await conn.commit()
+    except Exception as e:
+        logger.error("notification matrix table create failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        return
+
+    # Backfill personal telegram_dm rows from the legacy alert_* columns.
+    # One statement per alert_type keeps the column list explicit and the
+    # ON CONFLICT guard idempotent.  `now()` timestamp so the rows carry
+    # an updated_at without needing a Python round-trip.
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    _COLS = {
+        "faults": "alert_faults", "health": "alert_health",
+        "fuel": "alert_fuel", "geofence": "alert_geofence",
+        "events": "alert_events", "parking": "alert_parking",
+        "camera": "alert_camera",
+    }
+    try:
+        for atype, col in _COLS.items():
+            await conn.execute(
+                f"""
+                INSERT INTO notification_pref
+                    (account_id, recipient_type, recipient_id, channel,
+                     alert_type, enabled, cadence, updated_at)
+                SELECT account_id, 'user', CAST(id AS TEXT), 'telegram_dm',
+                       ?, CASE WHEN COALESCE({col}, 1) <> 0 THEN 1 ELSE 0 END,
+                       'immediate', ?
+                  FROM users
+                 WHERE is_active = 1
+                ON CONFLICT (account_id, recipient_type, recipient_id, channel, alert_type)
+                DO NOTHING
+                """,
+                (atype, now),
+            )
+        # Channel connection: telegram_id + the alerts_on master switch.
+        await conn.execute(
+            """
+            INSERT INTO notification_channel
+                (account_id, recipient_type, recipient_id, channel,
+                 address, verified_at, enabled_master, updated_at)
+            SELECT account_id, 'user', CAST(id AS TEXT), 'telegram_dm',
+                   CAST(telegram_id AS TEXT), ?,
+                   CASE WHEN COALESCE(alerts_on, 0) <> 0 THEN 1 ELSE 0 END, ?
+              FROM users
+             WHERE is_active = 1 AND telegram_id IS NOT NULL
+            ON CONFLICT (account_id, recipient_type, recipient_id, channel)
+            DO NOTHING
+            """,
+            (now, now),
+        )
+        await conn.commit()
+        logger.info("Migration: backfilled notification matrix (telegram_dm)")
+    except Exception as e:
+        logger.error("notification matrix backfill failed: %s", e)
         try:
             await conn.rollback()
         except Exception:
