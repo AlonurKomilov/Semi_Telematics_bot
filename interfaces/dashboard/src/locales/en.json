@@ -872,6 +872,7 @@
     "uploaded_by": "uploaded by {{name}}"
   },
   "alert_routing": {
+    "subtype_keep_one": "Keep at least one sub-category selected",
     "hint_chatid_short": "In the group, run /chatid:",
     "no_group_chip": "no group",
     "persona_accounting": "Accounting",

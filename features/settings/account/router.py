@@ -667,11 +667,24 @@ async def list_persona_topics(
             ai = await tenant_db.get_account_setting(
                 account_id, f"forum_ai.{key}", default="1",
             )
-            rows.append({
+            row = {
                 "alert_type": key,
                 "enabled": enabled != "0",
                 "ai": ai != "0",
-            })
+            }
+            # Sub-category selection, for types with a real vocabulary
+            # (events today).  selected=None ⇒ ALL (the default).
+            from capabilities.alerting.persona_mapping import ALERT_SUBTYPES
+            vocab = ALERT_SUBTYPES.get(key)
+            if vocab:
+                sel = await tenant_db.get_account_setting(
+                    account_id, f"persona_subtypes.{persona}.{key}", default="",
+                )
+                row["subtypes"] = {
+                    "all": list(vocab),
+                    "selected": sel.split(",") if sel else None,
+                }
+            rows.append(row)
         personas[persona] = rows
     return {
         "personas": personas,
@@ -721,6 +734,69 @@ async def toggle_persona_topic(
         details=f"{body.field}={body.value} ({persona})",
     )
     return {"persona": persona, "alert_type": alert_type, body.field: body.value}
+
+
+class SubtypeSelection(BaseModel):
+    # The sub-categories this role's group should receive for one alert
+    # type.  Empty list (or the full vocabulary) = ALL — stored as the
+    # cleared default so future vocabulary additions flow automatically.
+    selected: list[str] = Field(default_factory=list, max_length=32)
+
+
+@router.put("/alert-routing/persona-topics/{persona}/{alert_type}/subtypes")
+async def set_persona_topic_subtypes(
+    persona: str,
+    alert_type: str,
+    body: SubtypeSelection,
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Select which sub-categories of one alert type route to this
+    role's group (e.g. Safety Events: only crash + braking).  Same
+    permission gate as the other row controls."""
+    from capabilities.alerting.persona_mapping import ALERT_SUBTYPES
+
+    if persona not in _VALID_PERSONAS:
+        raise HTTPException(status_code=400, detail="Unknown persona")
+    if not _may_manage_persona_bot(user, persona):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the owner/admin or this role's manager can change its topics.",
+        )
+    vocab = ALERT_SUBTYPES.get(alert_type)
+    if not vocab:
+        raise HTTPException(
+            status_code=422,
+            detail=f"'{alert_type}' has no sub-categories.",
+        )
+    if alert_type not in await _topics_for(user["account_id"], persona):
+        raise HTTPException(
+            status_code=403,
+            detail="This role's permissions don't include that alert type.",
+        )
+    unknown = [s for s in body.selected if s not in vocab]
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown sub-categories: {unknown}")
+
+    # Full selection == ALL == cleared default (future vocab additions
+    # then flow to this role automatically instead of being silently
+    # excluded by a frozen snapshot).
+    selected = [s for s in vocab if s in set(body.selected)]
+    value = "" if (not selected or len(selected) == len(vocab)) else ",".join(selected)
+    await tenant_db.set_account_setting(
+        user["account_id"], f"persona_subtypes.{persona}.{alert_type}", value,
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "persona_topic_subtypes",
+        target_type="alert_type", target_id=alert_type,
+        details=f"{persona}: {value or 'all'}",
+    )
+    return {
+        "persona": persona,
+        "alert_type": alert_type,
+        "selected": selected if value else None,
+    }
 
 
 # ── Role AI guidance ──────────────────────────────────────────────────────────

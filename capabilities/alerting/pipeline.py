@@ -385,6 +385,7 @@ async def post_alert_to_topic(
     photo_bytes: bytes | None = None,
     video_url: str = "",
     severity: str = "",
+    subtype: str = "",
 ) -> bool:
     """Public group-post helper for alert paths that don't run through
     ``send_alert()`` — maintenance overdue, doc expiry, Samsara sync,
@@ -410,6 +411,7 @@ async def post_alert_to_topic(
     from .routing_resolver import resolve_alert_targets
     targets = await resolve_alert_targets(
         account_id=account_id, alert_type=alert_type, severity=severity,
+        subtype=subtype,
     )
     if not targets:
         return False
@@ -528,6 +530,7 @@ async def _try_post_to_topic(
     event_id: str,
     event_time: str,
     maps_url: str | None = None,
+    subtype: str = "",
 ) -> bool:
     """If a forum route exists for ``(account_id, alert_type)`` post the
     alert there and return True.  Returns False when no route is
@@ -545,6 +548,7 @@ async def _try_post_to_topic(
     sev_value = severity.value if hasattr(severity, "value") else str(severity)
     targets = await resolve_alert_targets(
         account_id=account_id, alert_type=alert_type, severity=sev_value,
+        subtype=subtype,
     )
     if not targets:
         return False
@@ -566,6 +570,7 @@ async def _try_post_to_topic(
             event_id=event_id,
             event_time=event_time,
             maps_url=maps_url,
+            subtype=subtype,
         )
         if ok:
             any_success = True
@@ -832,6 +837,7 @@ async def send_alert(
     ai_note: str = "",
     alert_key_detail: str = "",
     alert_subkey: str = "",
+    subtype: str = "",
     video_url: str = "",
     event_id: str = "",
     event_time: str = "",

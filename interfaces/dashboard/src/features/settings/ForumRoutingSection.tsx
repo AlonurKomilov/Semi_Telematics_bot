@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
+import { FEATURE_GROUPS } from './AlertRoutingSection';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import {
@@ -267,7 +268,19 @@ export default function ForumRoutingSection() {
                 <div className="border border-border rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
                     <tbody>
-                      {state.routes.map(r => {
+                      {/* Grouped under the owning FEATURE — same
+                          hierarchy as the role-mode expanders. */}
+                      {FEATURE_GROUPS.map((g) => {
+                        const groupRows = state.routes.filter((r) => g.types.includes(r.alert_type));
+                        if (!groupRows.length) return null;
+                        return (
+                        <Fragment key={g.label}>
+                          <tr className="bg-muted/40">
+                            <td colSpan={5} className="px-3 py-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                              {g.label}
+                            </td>
+                          </tr>
+                          {groupRows.map(r => {
                         const isAICapable = (AI_CAPABLE_TYPES as readonly string[]).includes(r.alert_type);
                         const aiEnabled = state.settings?.ai_per_type?.[r.alert_type] ?? true;
                         const aiBusy = busyKey === `__ai_${r.alert_type}__`;
@@ -357,6 +370,9 @@ export default function ForumRoutingSection() {
                             )}
                           </td>
                         </tr>
+                        );
+                          })}
+                        </Fragment>
                         );
                       })}
                     </tbody>

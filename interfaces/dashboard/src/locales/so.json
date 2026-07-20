@@ -41,6 +41,7 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "subtype_keep_one": "Ugu yaraan hal qayb dooro",
     "hint_chatid_short": "Guruubka ku socodsii /chatid:",
     "no_group_chip": "guruub ma jiro",
     "persona_accounting": "Xisaabaad",

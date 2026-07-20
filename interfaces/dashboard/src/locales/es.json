@@ -41,6 +41,7 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "subtype_keep_one": "Mantenga al menos una subcategoría seleccionada",
     "hint_chatid_short": "En el grupo, ejecute /chatid:",
     "no_group_chip": "sin grupo",
     "persona_accounting": "Contabilidad",

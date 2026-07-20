@@ -41,6 +41,7 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "subtype_keep_one": "ቢያንስ አንድ ንዑስ ምድብ ይምረጡ",
     "hint_chatid_short": "በቡድኑ ውስጥ /chatid ያሂዱ፦",
     "no_group_chip": "ቡድን የለም",
     "persona_accounting": "ሂሳብ",

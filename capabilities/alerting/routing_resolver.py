@@ -71,6 +71,7 @@ async def resolve_alert_targets(
     account_id: int,
     alert_type: str,
     severity: str = "",
+    subtype: str = "",
 ) -> list[AlertTarget]:
     """Return the targets ``post_alert_to_topic`` / ``send_alert``
     should fan out to.  Empty list ⇒ no group routing configured ⇒
@@ -91,7 +92,7 @@ async def resolve_alert_targets(
 
         if mode == "per_persona_groups":
             targets, primary_present = await _resolve_per_persona(
-                db, account_id, alert_type, sev,
+                db, account_id, alert_type, sev, subtype,
             )
             # Only short-circuit to per-persona targets when the PRIMARY
             # persona group is registered.  An aggregate-only result
@@ -131,7 +132,7 @@ async def _read_routing_mode(db, account_id: int) -> str:
 
 
 async def _resolve_per_persona(
-    db, account_id: int, alert_type: str, sev: str,
+    db, account_id: int, alert_type: str, sev: str, subtype: str = "",
 ) -> tuple[list[AlertTarget], bool]:
     """Per-persona-groups path.  Returns ``(targets, primary_present)``:
 
@@ -196,14 +197,41 @@ async def _resolve_per_persona(
         if home != persona_mapping.OWNER_ADMIN:
             roles_for_type = [home]
 
+    async def _subtype_on(role: str) -> bool:
+        """Per-role sub-category selection (e.g. Safety Events: only
+        crash + braking).  Empty/missing selection = ALL.  Unknown
+        subtype or vocab-less type → deliver (fail-open — filtering
+        must never eat an alert it wasn't told about)."""
+        if not subtype or tenant is None:
+            return True
+        vocab = persona_mapping.ALERT_SUBTYPES.get(key)
+        if not vocab or subtype not in vocab:
+            return True
+        try:
+            sel = await tenant.get_account_setting(
+                account_id, f"persona_subtypes.{role}.{key}", default="",
+            )
+        except Exception:
+            return True
+        if not sel:
+            return True
+        return subtype in sel.split(",")
+
     seen_chats: set[int] = set()
     for role in roles_for_type:
-        if not await _route_on(role):
-            continue
         grp = await db.get_persona_group(account_id, role)
         if grp is None:
             continue
+        # A bound role means the mode IS configured for this type —
+        # even when its toggle or sub-category selection then declines
+        # the post.  Otherwise a declined subtype would fall back to
+        # the LEGACY forum and resurrect alerts the manager filtered
+        # out on purpose.
         primary_present = True
+        if not await _route_on(role):
+            continue
+        if not await _subtype_on(role):
+            continue
         if grp.chat_id in seen_chats:
             continue  # two roles sharing one chat (small fleets)
         seen_chats.add(grp.chat_id)

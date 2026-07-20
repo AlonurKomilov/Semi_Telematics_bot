@@ -41,6 +41,7 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "subtype_keep_one": "Kamida bitta turkum tanlangan bo'lishi kerak",
     "hint_chatid_short": "Guruhda /chatid bajaring:",
     "no_group_chip": "guruh yo'q",
     "persona_accounting": "Buxgalteriya",

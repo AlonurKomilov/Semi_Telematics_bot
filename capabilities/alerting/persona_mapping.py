@@ -113,6 +113,18 @@ ALERT_TYPE_FEATURE_FLAGS: Final[dict[str, tuple[str, ...]]] = {
     "system":      ("can_manage_integrations", "can_manage_account"),
 }
 
+# ── Sub-category vocabularies (feature-truth, not invented) ─────────
+# Per alert type: the REAL subtype values its source emits.  events =
+# Samsara behavior labels (capabilities/formatting/events.py is the
+# display SSOT; this tuple mirrors its keys).  A type absent here has
+# no sub-category filtering.  Adding a future vocabulary (documents by
+# doc type, maintenance by due kind) = one entry + passing ``subtype``
+# at that source's send call.
+ALERT_SUBTYPES: Final[dict[str, tuple[str, ...]]] = {
+    "events": ("crash", "braking", "acceleration", "harshTurn",
+               "rollingStop", "followingDistance", "laneDeparture"),
+}
+
 # Staff roles that can hold a group row on the bot roster.  Drivers get
 # DMs, never a staff group; owner/admin live on the Main row.
 STAFF_ROLES: Final[tuple[str, ...]] = (

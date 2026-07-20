@@ -51,6 +51,9 @@ interface TopicRow {
   alert_type: string;
   enabled: boolean;
   ai: boolean;
+  // Present only for types with a sub-category vocabulary (events).
+  // selected === null ⇒ ALL sub-categories (the default).
+  subtypes?: { all: string[]; selected: string[] | null };
 }
 
 interface PersonaTopicsResponse {
@@ -75,6 +78,27 @@ const TYPE_LABELS: Record<string, string> = {
   camera: 'Cameras', parking: 'Parking', geofence: 'Geofences',
   scorecard: 'Scorecards', maintenance: 'Maintenance',
   documents: 'Driver Documents', system: 'Sync & System',
+};
+
+// Feature hierarchy — topics render grouped under their owning FEATURE
+// (mirrors the product taxonomy: Vehicle telemetry, Safety, …), not as
+// one flat list.  Exported so the single-mode panel groups identically.
+export const FEATURE_GROUPS: { label: string; types: string[] }[] = [
+  { label: 'Vehicle', types: ['faults', 'health', 'fuel'] },
+  { label: 'Safety', types: ['events', 'camera', 'parking'] },
+  { label: 'Geofences', types: ['geofence'] },
+  { label: 'Scorecards', types: ['scorecard'] },
+  { label: 'Maintenance', types: ['maintenance'] },
+  { label: 'Drivers', types: ['documents'] },
+  { label: 'System', types: ['system'] },
+];
+
+// Sub-category display names — mirrors the events formatting SSOT
+// (capabilities/formatting/events.py keys).
+const SUBTYPE_LABELS: Record<string, string> = {
+  crash: 'Crash', braking: 'Harsh Braking', acceleration: 'Harsh Acceleration',
+  harshTurn: 'Harsh Turn', rollingStop: 'Rolling Stop',
+  followingDistance: 'Following Distance', laneDeparture: 'Lane Departure',
 };
 
 export default function AlertRoutingSection({
@@ -231,6 +255,39 @@ export default function AlertRoutingSection({
     }
   };
 
+  const toggleSubtype = async (persona: string, row: TopicRow, sub: string) => {
+    if (busy || !row.subtypes) return;
+    const current = row.subtypes.selected ?? row.subtypes.all;
+    const active = current.includes(sub);
+    const next = active ? current.filter((s) => s !== sub) : [...current, sub];
+    if (!next.length) {
+      toast.error(t('alert_routing.subtype_keep_one'));
+      return;
+    }
+    setBusy(`subtype-${persona}-${row.alert_type}`);
+    try {
+      const res = await apiJSON<{ selected: string[] | null }>(
+        `/admin/alert-routing/persona-topics/${persona}/${row.alert_type}/subtypes`,
+        { method: 'PUT', body: { selected: next } },
+      );
+      setTopics(topics && {
+        ...topics,
+        personas: {
+          ...topics.personas,
+          [persona]: (topics.personas[persona] || []).map((r) =>
+            r.alert_type === row.alert_type && r.subtypes
+              ? { ...r, subtypes: { ...r.subtypes, selected: res.selected } }
+              : r,
+          ),
+        },
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
+    } finally {
+      setBusy('');
+    }
+  };
+
   const showNudge =
     canManageAccount && data.mode === 'single_group'
     && data.vehicle_count > data.nudge_threshold;
@@ -360,32 +417,72 @@ export default function AlertRoutingSection({
           {t('alert_routing.topics_expander')}
         </button>
         {open && (
-          <div className="mt-1.5 ml-4 space-y-1">
-            {rows.map((r) => (
-              <div key={r.alert_type} className="flex items-center gap-3 text-xs">
-                <span className="w-32 shrink-0 text-foreground">
-                  {TYPE_LABELS[r.alert_type] || r.alert_type}
-                </span>
-                <label className={`inline-flex items-center gap-1.5 ${editable ? '' : 'opacity-70'}`}>
-                  <input
-                    type="checkbox"
-                    checked={r.enabled}
-                    disabled={!editable || busy === `topic-${r.alert_type}-enabled`}
-                    onChange={(e) => { void toggleTopic(persona, r.alert_type, 'enabled', e.target.checked); }}
-                  />
-                  <span className="text-muted-foreground">{t('alert_routing.topic_route')}</span>
-                </label>
-                <label className={`inline-flex items-center gap-1.5 ${editable ? '' : 'opacity-70'}`}>
-                  <input
-                    type="checkbox"
-                    checked={r.ai}
-                    disabled={!editable || busy === `topic-${r.alert_type}-ai`}
-                    onChange={(e) => { void toggleTopic(persona, r.alert_type, 'ai', e.target.checked); }}
-                  />
-                  <span className="text-muted-foreground">{t('alert_routing.topic_ai')}</span>
-                </label>
-              </div>
-            ))}
+          <div className="mt-1.5 ml-4 space-y-2">
+            {FEATURE_GROUPS
+              .map((g) => ({ ...g, rows: rows.filter((r) => g.types.includes(r.alert_type)) }))
+              .filter((g) => g.rows.length > 0)
+              .map((g) => (
+                <div key={g.label}>
+                  {/* Feature heading — the topic hierarchy mirrors the
+                      product taxonomy instead of one flat list. */}
+                  <div className="mb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                    {g.label}
+                  </div>
+                  <div className="space-y-1">
+                    {g.rows.map((r) => (
+                      <div key={r.alert_type}>
+                        <div className="flex items-center gap-3 text-xs">
+                          <span className="w-32 shrink-0 text-foreground">
+                            {TYPE_LABELS[r.alert_type] || r.alert_type}
+                          </span>
+                          <label className={`inline-flex items-center gap-1.5 ${editable ? '' : 'opacity-70'}`}>
+                            <input
+                              type="checkbox"
+                              checked={r.enabled}
+                              disabled={!editable || busy === `topic-${r.alert_type}-enabled`}
+                              onChange={(e) => { void toggleTopic(persona, r.alert_type, 'enabled', e.target.checked); }}
+                            />
+                            <span className="text-muted-foreground">{t('alert_routing.topic_route')}</span>
+                          </label>
+                          <label className={`inline-flex items-center gap-1.5 ${editable ? '' : 'opacity-70'}`}>
+                            <input
+                              type="checkbox"
+                              checked={r.ai}
+                              disabled={!editable || busy === `topic-${r.alert_type}-ai`}
+                              onChange={(e) => { void toggleTopic(persona, r.alert_type, 'ai', e.target.checked); }}
+                            />
+                            <span className="text-muted-foreground">{t('alert_routing.topic_ai')}</span>
+                          </label>
+                        </div>
+                        {/* Sub-category chips — pick exactly which kinds
+                            this role's group receives (all on by default). */}
+                        {r.subtypes && r.enabled && (
+                          <div className="mt-1 ml-4 flex flex-wrap items-center gap-1">
+                            {r.subtypes.all.map((s) => {
+                              const active = !r.subtypes!.selected || r.subtypes!.selected.includes(s);
+                              return (
+                                <button
+                                  key={s}
+                                  type="button"
+                                  disabled={!editable || busy === `subtype-${persona}-${r.alert_type}`}
+                                  onClick={() => { void toggleSubtype(persona, r, s); }}
+                                  className={`px-2 py-0.5 rounded-md border text-2xs transition disabled:opacity-60 ${
+                                    active
+                                      ? 'border-primary/40 bg-primary/10 text-primary'
+                                      : 'border-border text-muted-foreground hover:border-ring'
+                                  }`}
+                                >
+                                  {SUBTYPE_LABELS[s] || s}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
           </div>
         )}
       </div>

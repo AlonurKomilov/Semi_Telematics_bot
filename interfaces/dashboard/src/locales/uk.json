@@ -41,6 +41,7 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "subtype_keep_one": "Залиште вибраною хоча б одну підкатегорію",
     "hint_chatid_short": "У групі виконайте /chatid:",
     "no_group_chip": "немає групи",
     "persona_accounting": "Бухгалтерія",

@@ -41,6 +41,7 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "subtype_keep_one": "ਘੱਟੋ-ਘੱਟ ਇੱਕ ਉਪ-ਸ਼੍ਰੇਣੀ ਚੁਣੀ ਰੱਖੋ",
     "hint_chatid_short": "ਗਰੁੱਪ ਵਿੱਚ /chatid ਚਲਾਓ:",
     "no_group_chip": "ਗਰੁੱਪ ਨਹੀਂ",
     "persona_accounting": "ਲੇਖਾ",

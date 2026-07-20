@@ -311,3 +311,82 @@ async def test_permission_matrix_drives_topics(api):
 
         body = (await c.get("/api/admin/alert-routing/persona-topics", headers=owner_h)).json()
         assert "faults" in {r["alert_type"] for r in body["personas"]["accounting"]}
+
+
+async def test_subtype_selection_roundtrip_and_gates(api, monkeypatch):
+    """Sub-category selection (B): events vocabulary rides the topics
+    rows; a role's selection persists; full selection normalizes back
+    to ALL; unknown values 422; other-role managers 403."""
+    app, db = api
+    acct, users = await _seed(db, "Subtype Co")
+    owner_h = _headers(users["owner"], acct, "owner")
+    mgr_h = _headers(users["safety"], acct, "safety", is_manager=True)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        body = (await c.get("/api/admin/alert-routing/persona-topics", headers=owner_h)).json()
+        ev = next(r for r in body["personas"]["safety"] if r["alert_type"] == "events")
+        assert set(ev["subtypes"]["all"]) >= {"crash", "braking", "harshTurn"}
+        assert ev["subtypes"]["selected"] is None      # default = ALL
+
+        # safety manager narrows their own row
+        r = await c.put("/api/admin/alert-routing/persona-topics/safety/events/subtypes",
+                        headers=mgr_h, json={"selected": ["crash", "braking"]})
+        assert r.status_code == 200
+        assert r.json()["selected"] == ["crash", "braking"]
+        body = (await c.get("/api/admin/alert-routing/persona-topics", headers=mgr_h)).json()
+        ev = next(r2 for r2 in body["personas"]["safety"] if r2["alert_type"] == "events")
+        assert ev["subtypes"]["selected"] == ["crash", "braking"]
+
+        # full vocabulary → normalized back to ALL (future subtypes flow)
+        r = await c.put("/api/admin/alert-routing/persona-topics/safety/events/subtypes",
+                        headers=mgr_h, json={"selected": ev["subtypes"]["all"]})
+        assert r.status_code == 200 and r.json()["selected"] is None
+
+        # unknown value 422; vocab-less type 422; other role 403
+        assert (await c.put("/api/admin/alert-routing/persona-topics/safety/events/subtypes",
+                            headers=mgr_h, json={"selected": ["pirates"]})).status_code == 422
+        assert (await c.put("/api/admin/alert-routing/persona-topics/safety/camera/subtypes",
+                            headers=mgr_h, json={"selected": ["crash"]})).status_code == 422
+        assert (await c.put("/api/admin/alert-routing/persona-topics/fleet/events/subtypes",
+                            headers=mgr_h, json={"selected": ["crash"]})).status_code == 403
+
+
+async def test_resolver_subtype_filtering(api):
+    """A role that selected only crash+braking receives crash but not
+    rollingStop — and the filtered-out subtype does NOT fall back to
+    the legacy forum (deliberately-declined ≠ unconfigured)."""
+    from capabilities.alerting.routing_resolver import resolve_alert_targets
+    app, db = api
+    acct, _users = await _seed(db, "Subtype Resolver Co")
+    await db.set_alert_routing_mode(acct.id, "per_persona_groups")
+    await db.upsert_persona_group(account_id=acct.id, persona="safety",
+                                  chat_id=-90001, chat_title="Safety G")
+
+    import infra.services as _svc
+
+    class _Tenant:
+        async def get_account_setting(self, account_id, key, default=""):
+            if key == "persona_subtypes.safety.events":
+                return "crash,braking"
+            return default
+
+    async def _fake_tenant(_account_id):
+        return _Tenant()
+
+    orig = _svc.get_tenant_db
+    _svc.get_tenant_db = _fake_tenant
+    try:
+        crash = await resolve_alert_targets(
+            account_id=acct.id, alert_type="events", severity="info", subtype="crash")
+        rolling = await resolve_alert_targets(
+            account_id=acct.id, alert_type="events", severity="info", subtype="rollingStop")
+        nosub = await resolve_alert_targets(
+            account_id=acct.id, alert_type="events", severity="info")
+    finally:
+        _svc.get_tenant_db = orig
+
+    assert any(t.chat_id == -90001 for t in crash)
+    # excluded subtype: no group target at all, no legacy fallback
+    assert rolling == []
+    # subtype unknown/absent → deliver (fail-open)
+    assert any(t.chat_id == -90001 for t in nosub)
