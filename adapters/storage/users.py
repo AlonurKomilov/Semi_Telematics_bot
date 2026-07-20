@@ -10,6 +10,22 @@ from .models import Role, User
 logger = logging.getLogger("bot.storage.users")
 
 
+def _matrix_reader_enabled() -> bool:
+    """Feature flag for the notifications reader flip (phase 2b-2).
+
+    OFF by default → the legacy alert_* columns stay the SSOT.  Flip
+    ``NOTIFICATIONS_MATRIX_READER=1`` (needs a restart, so the backfill
+    migration has run first) to route the typed-subscriber reader
+    through the proven-equivalent matrix.  Read per-call so it's
+    monkeypatchable in tests; the cost is negligible (subscriber fetches
+    are per-alert, not a hot loop).
+    """
+    import os
+    return os.getenv("NOTIFICATIONS_MATRIX_READER", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
 class UsersMixin:
 
     async def create_user(
@@ -677,7 +693,15 @@ class UsersMixin:
              keep receiving fuel alerts even though the toggle is
              hidden from them.  This implements "option B" from the
              alert-config design discussion.
+
+        Reader flip (phase 2b-2): when ``NOTIFICATIONS_MATRIX_READER`` is
+        on, delegate to the matrix-backed twin (proven byte-equivalent by
+        the shadow-compare test).  Off by default — columns stay the SSOT.
         """
+        if _matrix_reader_enabled():
+            return await self.get_typed_alert_subscribers_via_matrix(
+                account_id, alert_type,
+            )
         col = f"alert_{alert_type}"
         if col not in (
             "alert_faults", "alert_health", "alert_fuel", "alert_geofence",

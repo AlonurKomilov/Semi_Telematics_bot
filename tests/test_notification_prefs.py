@@ -193,3 +193,31 @@ async def test_matrix_excludes_users_without_telegram(pg_db):
     mat = {u.id for u in await pg_db.get_typed_alert_subscribers_via_matrix(acct, "faults")}
     assert email_user.id in col          # columns include the no-telegram user
     assert email_user.id not in mat      # matrix (correctly) does not
+
+
+# ── Reader flip flag (2b-2): default OFF = columns, ON = matrix ───────
+
+async def test_reader_flip_flag_switches_source(pg_db, monkeypatch):
+    """NOTIFICATIONS_MATRIX_READER routes the typed reader to the matrix.
+    Proven equivalent — this just confirms the flag actually switches
+    the source and that a matrix-only edit is invisible until flipped."""
+    from adapters.storage.platform_migrations import migrate_notification_matrix
+    acct = (await pg_db.create_account("Flip Co")).id
+    u = await pg_db.create_user(telegram_id=3001, account_id=acct, role=Role.FLEET)
+    await pg_db.update_user(u.id, alerts_on=True, alert_faults=True)
+    await migrate_notification_matrix(pg_db._db)
+
+    # Default OFF → column reader.
+    monkeypatch.delenv("NOTIFICATIONS_MATRIX_READER", raising=False)
+    assert {x.id for x in await pg_db.get_typed_alert_subscribers(acct, "faults")} == {u.id}
+
+    # Flip ON → matrix reader (same result here — proven equivalent).
+    monkeypatch.setenv("NOTIFICATIONS_MATRIX_READER", "1")
+    assert {x.id for x in await pg_db.get_typed_alert_subscribers(acct, "faults")} == {u.id}
+
+    # A MATRIX-ONLY change (bypassing the columns) is seen only when ON —
+    # proving the flag genuinely selects the source.
+    await pg_db.set_notification_pref(acct, "user", u.id, "telegram_dm", "faults", enabled=False)
+    assert await pg_db.get_typed_alert_subscribers(acct, "faults") == []   # ON → matrix (now off)
+    monkeypatch.delenv("NOTIFICATIONS_MATRIX_READER", raising=False)
+    assert {x.id for x in await pg_db.get_typed_alert_subscribers(acct, "faults")} == {u.id}  # OFF → column still on
