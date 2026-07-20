@@ -666,6 +666,28 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_bot_instances_account
             ON bot_instances(account_id);
 
+        -- User-defined alert topics ("custom topics"): a named routing
+        -- rule inside a role's group — one alert type, optionally
+        -- narrowed to sub-categories, optionally posted into its own
+        -- Telegram forum THREAD (thread_id).  A matching custom topic
+        -- REPLACES the role's default flat post for that alert;
+        -- deleting one deletes only the rule (the Telegram thread and
+        -- its history stay).
+        CREATE TABLE IF NOT EXISTS alert_topics (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id  INTEGER NOT NULL,
+            persona     TEXT    NOT NULL,
+            name        TEXT    NOT NULL,
+            alert_type  TEXT    NOT NULL,
+            subtypes    TEXT    NOT NULL DEFAULT '',
+            thread_id   INTEGER,
+            is_active   INTEGER NOT NULL DEFAULT 1,
+            created_at  TEXT    NOT NULL,
+            updated_at  TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_alert_topics_account
+            ON alert_topics(account_id, persona);
+
         -- System capacity metrics (operator console Capacity page) —
         -- PLATFORM scope: one server, sampled every 60s by the
         -- capabilities/platform/capacity sampler.  Minute = raw short-

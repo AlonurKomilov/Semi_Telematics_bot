@@ -61,6 +61,18 @@ interface PersonaTopicsResponse {
   manageable: string[];
 }
 
+interface CustomTopic {
+  id: number;
+  name: string;
+  alert_type: string;
+  subtypes: string[];
+  has_thread: boolean;
+}
+
+interface CustomTopicsResponse {
+  personas: Record<string, CustomTopic[]>;
+}
+
 export interface BotConfigLite {
   has_bot: boolean;
   bot_username: string;
@@ -116,6 +128,11 @@ export default function AlertRoutingSection({
   const [topics, setTopics] = useState<PersonaTopicsResponse | null>(null);
   const [chatInputs, setChatInputs] = useState<Record<string, string>>({});
   const [tokenInputs, setTokenInputs] = useState<Record<string, string>>({});
+  const [customTopics, setCustomTopics] = useState<CustomTopicsResponse | null>(null);
+  // Add-topic mini-form (one open at a time, keyed by persona)
+  const [ctName, setCtName] = useState('');
+  const [ctType, setCtType] = useState('');
+  const [ctSubs, setCtSubs] = useState<string[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string>('');
   // Which row's group-bind / sub-bot-attach input is open (on-demand
@@ -129,6 +146,8 @@ export default function AlertRoutingSection({
     apiJSON<SubBotsResponse>('/admin/bot-instances').then(setSubBots).catch(() => setSubBots(null));
     apiJSON<PersonaTopicsResponse>('/admin/alert-routing/persona-topics')
       .then(setTopics).catch(() => setTopics(null));
+    apiJSON<CustomTopicsResponse>('/admin/alert-routing/custom-topics')
+      .then(setCustomTopics).catch(() => setCustomTopics(null));
   }, []);
   useEffect(load, [load]);
 
@@ -281,6 +300,52 @@ export default function AlertRoutingSection({
           ),
         },
       });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const createCustomTopic = async (persona: string) => {
+    const name = ctName.trim();
+    if (!name || !ctType || busy) return;
+    setBusy(`ctopic-${persona}`);
+    try {
+      const res = await apiJSON<CustomTopic>('/admin/alert-routing/custom-topics', {
+        method: 'POST',
+        body: { persona, name, alert_type: ctType, subtypes: ctSubs },
+      });
+      setCustomTopics((prev) => ({
+        personas: {
+          ...(prev?.personas ?? {}),
+          [persona]: [...(prev?.personas?.[persona] ?? []), res],
+        },
+      }));
+      setCtName(''); setCtType(''); setCtSubs([]); setOpenInput('');
+      toast.success(res.has_thread
+        ? t('alert_routing.toast_topic_created_thread', { name: res.name })
+        : t('alert_routing.toast_topic_created_flat', { name: res.name }));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const deleteCustomTopic = async (persona: string, topic: CustomTopic) => {
+    if (busy) return;
+    if (!confirm(t('alert_routing.confirm_topic_delete', { name: topic.name }))) return;
+    setBusy(`ctopic-${persona}`);
+    try {
+      await apiJSON(`/admin/alert-routing/custom-topics/${topic.id}`, { method: 'DELETE' });
+      setCustomTopics((prev) => prev && ({
+        personas: {
+          ...prev.personas,
+          [persona]: (prev.personas[persona] ?? []).filter((x) => x.id !== topic.id),
+        },
+      }));
+      toast.success(t('alert_routing.toast_topic_deleted'));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
     } finally {
@@ -483,6 +548,112 @@ export default function AlertRoutingSection({
                   </div>
                 </div>
               ))}
+
+            {/* ── Custom topics — user-defined rules for THIS role ── */}
+            <div>
+              <div className="mb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                {t('alert_routing.custom_topics_title')}
+                <InfoTip label={t('alert_routing.custom_topics_hint')} size={12} />
+              </div>
+              <div className="space-y-1">
+                {(customTopics?.personas?.[persona] ?? []).map((tp) => (
+                  <div key={tp.id} className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="w-32 shrink-0 text-foreground">{tp.name}</span>
+                    <span className="text-muted-foreground">
+                      {TYPE_LABELS[tp.alert_type] || tp.alert_type}
+                      {tp.subtypes.length > 0
+                        ? `: ${tp.subtypes.map((s) => SUBTYPE_LABELS[s] || s).join(', ')}`
+                        : ` · ${t('alert_routing.topic_all_subtypes')}`}
+                    </span>
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md border text-2xs ${
+                      tp.has_thread ? toneClasses('info') : toneClasses('neutral')
+                    }`}>
+                      {tp.has_thread ? t('alert_routing.topic_thread') : t('alert_routing.topic_flat')}
+                    </span>
+                    {editable && (
+                      <button
+                        type="button"
+                        onClick={() => { void deleteCustomTopic(persona, tp); }}
+                        disabled={busy === `ctopic-${persona}`}
+                        className="text-xs text-destructive hover:underline disabled:opacity-50"
+                      >
+                        {t('alert_routing.unbind')}
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {editable && openInput !== `ctopic-${persona}` && (
+                  <button
+                    type="button"
+                    onClick={() => { setOpenInput(`ctopic-${persona}`); setCtName(''); setCtType(''); setCtSubs([]); }}
+                    className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
+                  >
+                    {t('alert_routing.add_topic_btn')}
+                  </button>
+                )}
+                {editable && openInput === `ctopic-${persona}` && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      value={ctName}
+                      onChange={(e) => setCtName(e.target.value)}
+                      placeholder={t('alert_routing.topic_name_ph')}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="w-40 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring"
+                    />
+                    <select
+                      value={ctType}
+                      onChange={(e) => { setCtType(e.target.value); setCtSubs([]); }}
+                      aria-label={t('alert_routing.custom_topics_title')}
+                      className="bg-muted border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring"
+                    >
+                      <option value="">{t('alert_routing.topic_type_ph')}</option>
+                      {rows.map((r) => (
+                        <option key={r.alert_type} value={r.alert_type}>
+                          {TYPE_LABELS[r.alert_type] || r.alert_type}
+                        </option>
+                      ))}
+                    </select>
+                    {(() => {
+                      const vocab = rows.find((r) => r.alert_type === ctType)?.subtypes?.all;
+                      if (!vocab) return null;
+                      return vocab.map((s) => {
+                        const on = ctSubs.includes(s);
+                        return (
+                          <button
+                            key={s}
+                            type="button"
+                            onClick={() => setCtSubs(on ? ctSubs.filter((x) => x !== s) : [...ctSubs, s])}
+                            className={`px-2 py-0.5 rounded-md border text-2xs transition ${
+                              on
+                                ? 'border-primary/40 bg-primary/10 text-primary'
+                                : 'border-border text-muted-foreground hover:border-ring'
+                            }`}
+                          >
+                            {SUBTYPE_LABELS[s] || s}
+                          </button>
+                        );
+                      });
+                    })()}
+                    <button
+                      type="button"
+                      onClick={() => { void createCustomTopic(persona); }}
+                      disabled={busy === `ctopic-${persona}` || !ctName.trim() || !ctType}
+                      className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
+                    >
+                      {busy === `ctopic-${persona}` ? '…' : t('alert_routing.topic_create')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setOpenInput('')}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      {t('alert_routing.cancel')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>

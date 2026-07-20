@@ -750,6 +750,163 @@ async def toggle_persona_topic(
     return {"persona": persona, "alert_type": alert_type, body.field: body.value}
 
 
+# ── Custom topics (user-defined, per role group) ─────────────────────
+# A named routing rule: one alert type, optionally narrowed to sub-
+# categories, optionally posted into its own Telegram forum thread.
+# Matching custom topics REPLACE the role's default flat post (resolver
+# contract).  Deleting one removes only the rule — the Telegram thread
+# and its history stay.
+
+
+class CustomTopicIn(BaseModel):
+    persona: str = Field(..., pattern="^(dispatcher|safety|fleet|hr|accounting|recruiter)$")
+    name: str = Field(..., min_length=1, max_length=60)
+    alert_type: str = Field(..., min_length=1, max_length=32)
+    subtypes: list[str] = Field(default_factory=list, max_length=32)
+
+
+@router.get("/alert-routing/custom-topics")
+async def list_custom_topics(
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+):
+    """Custom topics grouped by role (read open to staff — the roster
+    renders them; writes are gated per persona)."""
+    rows = await platform_db.list_alert_topics(user["account_id"])
+    by_persona: dict[str, list] = {}
+    for r in rows:
+        by_persona.setdefault(r.persona, []).append({
+            "id": r.id,
+            "name": r.name,
+            "alert_type": r.alert_type,
+            "subtypes": r.subtypes.split(",") if r.subtypes else [],
+            "has_thread": r.thread_id is not None,
+        })
+    return {"personas": by_persona}
+
+
+@router.post("/alert-routing/custom-topics")
+async def create_custom_topic(
+    body: CustomTopicIn,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Create a custom topic in the role's group.  Tries to create a
+    real Telegram forum thread (bot must be group admin with topic
+    rights); on failure the topic still works, posting flat."""
+    from capabilities.alerting.persona_mapping import ALERT_SUBTYPES
+
+    if not _may_manage_persona_bot(user, body.persona):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the owner/admin or this role's manager can manage its topics.",
+        )
+    if body.alert_type not in await _topics_for(user["account_id"], body.persona):
+        raise HTTPException(
+            status_code=403,
+            detail="This role's permissions don't include that alert type.",
+        )
+    vocab = ALERT_SUBTYPES.get(body.alert_type)
+    if body.subtypes:
+        if not vocab:
+            raise HTTPException(
+                status_code=422,
+                detail=f"'{body.alert_type}' has no sub-categories.",
+            )
+        unknown = [s for s in body.subtypes if s not in vocab]
+        if unknown:
+            raise HTTPException(status_code=422, detail=f"Unknown sub-categories: {unknown}")
+
+    grp = await platform_db.get_persona_group(user["account_id"], body.persona)
+    if grp is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Bind this role's group before adding custom topics.",
+        )
+
+    # Try to create a real forum thread via the role's SENDER bot
+    # (Sub bot when attached, else primary) — plain Bot-API HTTP, same
+    # pattern as getMe/getChat.  Fail-open: no thread ⇒ flat posts.
+    thread_id = None
+    try:
+        import aiohttp
+        from infra.crypto import decrypt
+        token = None
+        inst = await platform_db.get_bot_instance(user["account_id"], body.persona)
+        if inst is not None:
+            token = decrypt(inst.token_encrypted)
+        else:
+            account = await platform_db.get_account(user["account_id"])
+            if account and account.bot_token_encrypted:
+                token = decrypt(account.bot_token_encrypted)
+        if token:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(
+                    f"https://api.telegram.org/bot{token}/createForumTopic",
+                    params={"chat_id": grp.chat_id, "name": body.name[:128]},
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as resp:
+                    data = await resp.json()
+            if data.get("ok"):
+                thread_id = (data.get("result") or {}).get("message_thread_id")
+    except Exception as e:
+        logger.debug("createForumTopic failed acct=%d persona=%s: %s",
+                     user["account_id"], body.persona, e)
+
+    # Store the selection in vocabulary order (or '' = every sub-category).
+    subtypes_csv = ""
+    if vocab and body.subtypes and len(set(body.subtypes)) < len(vocab):
+        subtypes_csv = ",".join(s for s in vocab if s in set(body.subtypes))
+    row = await platform_db.create_alert_topic(
+        account_id=user["account_id"], persona=body.persona,
+        name=body.name.strip(), alert_type=body.alert_type,
+        subtypes=subtypes_csv, thread_id=thread_id,
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "custom_topic_created",
+        target_type="alert_topic", target_id=str(row.id),
+        details=f"{body.persona}/{body.alert_type}: {row.name} "
+                f"({subtypes_csv or 'all'}; thread={'yes' if thread_id else 'no'})",
+    )
+    return {
+        "id": row.id,
+        "name": row.name,
+        "alert_type": row.alert_type,
+        "subtypes": row.subtypes.split(",") if row.subtypes else [],
+        "has_thread": thread_id is not None,
+    }
+
+
+@router.delete("/alert-routing/custom-topics/{topic_id}")
+async def delete_custom_topic(
+    topic_id: int,
+    user: dict = Depends(get_current_user),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Remove the routing rule.  The Telegram thread (and its message
+    history) is deliberately left in place — alerts just stop landing
+    there and return to the role's default routing."""
+    row = await platform_db.get_alert_topic(user["account_id"], topic_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    if not _may_manage_persona_bot(user, row.persona):
+        raise HTTPException(
+            status_code=403,
+            detail="Only the owner/admin or this role's manager can manage its topics.",
+        )
+    await platform_db.delete_alert_topic(user["account_id"], topic_id)
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "custom_topic_deleted",
+        target_type="alert_topic", target_id=str(topic_id),
+        details=f"{row.persona}/{row.alert_type}: {row.name}",
+    )
+    return {"ok": True}
+
+
 class SubtypeSelection(BaseModel):
     # The sub-categories this role's group should receive for one alert
     # type.  Empty list (or the full vocabulary) = ALL — stored as the

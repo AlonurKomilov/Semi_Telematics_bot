@@ -59,6 +59,7 @@ async def run_all(conn) -> None:
     await migrate_create_account_persona_groups(conn)
     await migrate_add_accounts_alert_routing_mode(conn)
     await migrate_create_bot_instances(conn)
+    await migrate_create_alert_topics(conn)
     # Self-service password reset + email verification + per-user
     # lockout after failed login attempts.  Adds three columns to
     # ``users`` and creates two short-lived token tables.  Safe to
@@ -2275,6 +2276,45 @@ async def migrate_create_bot_instances(conn) -> None:
         logger.info("Created bot_instances table")
     except Exception as e:
         logger.error("bot_instances migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_create_alert_topics(conn) -> None:
+    """Create ``alert_topics`` — user-defined custom topics: a named
+    per-role routing rule (one alert type, optional sub-category
+    narrowing, optional Telegram forum thread).  A matching custom
+    topic replaces the role's default flat post; deleting one removes
+    only the rule, never the Telegram thread's history."""
+    try:
+        cur = await conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='alert_topics'"
+        )
+        if await cur.fetchone():
+            return
+        await conn.execute(
+            """CREATE TABLE alert_topics (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id  INTEGER NOT NULL,
+                persona     TEXT    NOT NULL,
+                name        TEXT    NOT NULL,
+                alert_type  TEXT    NOT NULL,
+                subtypes    TEXT    NOT NULL DEFAULT '',
+                thread_id   INTEGER,
+                is_active   INTEGER NOT NULL DEFAULT 1,
+                created_at  TEXT    NOT NULL,
+                updated_at  TEXT    NOT NULL
+            )"""
+        )
+        await conn.execute(
+            "CREATE INDEX idx_alert_topics_account ON alert_topics(account_id, persona)"
+        )
+        await conn.commit()
+        logger.info("Created alert_topics table")
+    except Exception as e:
+        logger.error("alert_topics migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

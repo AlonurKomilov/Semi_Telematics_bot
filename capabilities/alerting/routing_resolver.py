@@ -217,7 +217,7 @@ async def _resolve_per_persona(
             return True
         return subtype in sel.split(",")
 
-    seen_chats: set[int] = set()
+    seen_dests: set[tuple[int, int | None]] = set()
     for role in roles_for_type:
         grp = await db.get_persona_group(account_id, role)
         if grp is None:
@@ -232,9 +232,41 @@ async def _resolve_per_persona(
             continue
         if not await _subtype_on(role):
             continue
-        if grp.chat_id in seen_chats:
+        # ── Custom topics: a user-defined rule (name + type +
+        # sub-category narrowing + optional forum thread) REPLACES the
+        # role's default flat post when it matches this alert.  A
+        # subtype-narrowed topic only takes subtype-known alerts; an
+        # alert with no matching custom topic falls to the default.
+        matched_topics = []
+        try:
+            for tp in await db.list_alert_topics(account_id, role):
+                if tp.alert_type != key:
+                    continue
+                if tp.subtypes:
+                    if not subtype or subtype not in tp.subtypes.split(","):
+                        continue
+                matched_topics.append(tp)
+        except Exception as e:
+            logger.debug("alert_topics lookup failed acct=%d role=%s: %s",
+                         account_id, role, e)
+
+        if matched_topics:
+            for tp in matched_topics:
+                dest = (grp.chat_id, tp.thread_id)
+                if dest in seen_dests:
+                    continue
+                seen_dests.add(dest)
+                targets.append(AlertTarget(
+                    chat_id=grp.chat_id,
+                    message_thread_id=tp.thread_id,
+                    is_aggregate=False,
+                    persona=role,
+                ))
+            continue
+
+        if (grp.chat_id, None) in seen_dests:
             continue  # two roles sharing one chat (small fleets)
-        seen_chats.add(grp.chat_id)
+        seen_dests.add((grp.chat_id, None))
         targets.append(AlertTarget(
             chat_id=grp.chat_id,
             message_thread_id=None,
@@ -248,8 +280,8 @@ async def _resolve_per_persona(
         owners = await db.get_persona_group(account_id, persona_mapping.OWNER_ADMIN)
         if owners is not None:
             primary_present = True
-            if owners.chat_id not in seen_chats:
-                seen_chats.add(owners.chat_id)
+            if (owners.chat_id, None) not in seen_dests:
+                seen_dests.add((owners.chat_id, None))
                 targets.append(AlertTarget(
                     chat_id=owners.chat_id,
                     message_thread_id=None,
@@ -259,7 +291,7 @@ async def _resolve_per_persona(
     # Cross-post to the owner_admin aggregate ONLY for CRITICAL.
     elif sev == CRITICAL_SEVERITY:
         aggregate = await db.get_persona_group(account_id, persona_mapping.OWNER_ADMIN)
-        if aggregate is not None and aggregate.chat_id not in seen_chats:
+        if aggregate is not None and (aggregate.chat_id, None) not in seen_dests:
             targets.append(AlertTarget(
                 chat_id=aggregate.chat_id,
                 message_thread_id=None,

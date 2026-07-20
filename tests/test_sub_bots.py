@@ -411,3 +411,103 @@ async def test_ai_inclusion_per_role_shared_answer(api):
         fleet_ev = next(x for x in body["personas"]["fleet"] if x["alert_type"] == "events")
         assert safety_ev["ai"] is False          # their inclusion off
         assert fleet_ev["ai"] is True            # others untouched (account default)
+
+
+# ── Custom topics (Phase C) ────────────────────────────────────────
+
+class _FakeCreateTopic:
+    """aiohttp stub: createForumTopic → thread 777; getChat/getMe ok."""
+
+    class _Resp:
+        def __init__(self, payload):
+            self._p = payload
+
+        async def json(self):
+            return self._p
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    def __init__(self, *a, **kw):
+        pass
+
+    def get(self, url, **kw):
+        if "createForumTopic" in url:
+            return self._Resp({"ok": True, "result": {"message_thread_id": 777}})
+        return self._Resp({"ok": True, "result": {"id": 42, "username": "dept_bot", "title": "G"}})
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+
+@pytest.mark.asyncio
+async def test_alert_topics_mixin_roundtrip(db):
+    acct = await db.create_account("Topics Co")
+    row = await db.create_alert_topic(
+        account_id=acct.id, persona="safety", name="Crashes",
+        alert_type="events", subtypes="crash,braking", thread_id=555,
+    )
+    assert row.thread_id == 555 and row.subtypes == "crash,braking"
+    assert (await db.list_alert_topics(acct.id, "safety"))[0].id == row.id
+    assert await db.list_alert_topics(acct.id, "fleet") == []
+    assert await db.delete_alert_topic(acct.id, row.id) is True
+    assert await db.get_alert_topic(acct.id, row.id) is None
+
+
+async def test_custom_topic_api_and_resolver(api, monkeypatch):
+    """Create a subtype-narrowed custom topic → matching alerts post to
+    ITS thread (replacing the role's flat post); non-matching subtypes
+    fall to the default flat post; delete restores the default."""
+    from capabilities.alerting.routing_resolver import resolve_alert_targets
+    app, db = api
+    acct, users = await _seed(db, "Custom Topic Co")
+    from infra.crypto import encrypt
+    await db.update_account(acct.id, bot_token_encrypted=encrypt("999:PRIMARY"),
+                            bot_username="primary_bot")
+    await db.set_alert_routing_mode(acct.id, "per_persona_groups")
+    await db.upsert_persona_group(account_id=acct.id, persona="safety",
+                                  chat_id=-70001, chat_title="Safety G")
+    import aiohttp
+    monkeypatch.setattr(aiohttp, "ClientSession", _FakeCreateTopic)
+
+    mgr_h = _headers(users["safety"], acct, "safety", is_manager=True)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        # unbound role → 400
+        r = await c.post("/api/admin/alert-routing/custom-topics", headers=mgr_h,
+                         json={"persona": "fleet", "name": "X", "alert_type": "faults"})
+        assert r.status_code == 403  # not their persona anyway
+
+        r = await c.post("/api/admin/alert-routing/custom-topics", headers=mgr_h,
+                         json={"persona": "safety", "name": "Crashes only",
+                               "alert_type": "events", "subtypes": ["crash"]})
+        assert r.status_code == 200
+        topic = r.json()
+        assert topic["has_thread"] is True and topic["subtypes"] == ["crash"]
+
+        body = (await c.get("/api/admin/alert-routing/custom-topics", headers=mgr_h)).json()
+        assert body["personas"]["safety"][0]["name"] == "Crashes only"
+
+    # resolver: crash → the topic's THREAD; braking → default flat post
+    crash = await resolve_alert_targets(
+        account_id=acct.id, alert_type="events", severity="info", subtype="crash")
+    braking = await resolve_alert_targets(
+        account_id=acct.id, alert_type="events", severity="info", subtype="braking")
+    crash_t = [t for t in crash if t.chat_id == -70001]
+    braking_t = [t for t in braking if t.chat_id == -70001]
+    assert crash_t and crash_t[0].message_thread_id == 777
+    assert braking_t and braking_t[0].message_thread_id is None
+
+    # delete → rule gone, default restored for crash too
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        assert (await c.delete(f"/api/admin/alert-routing/custom-topics/{topic['id']}",
+                               headers=mgr_h)).status_code == 200
+    crash2 = await resolve_alert_targets(
+        account_id=acct.id, alert_type="events", severity="info", subtype="crash")
+    t2 = [t for t in crash2 if t.chat_id == -70001]
+    assert t2 and t2[0].message_thread_id is None

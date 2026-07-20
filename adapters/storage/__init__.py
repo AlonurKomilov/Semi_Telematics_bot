@@ -46,6 +46,7 @@ from .chats import ChatsMixin
 from .forum_routing import ForumRoutingMixin
 from .account_persona_groups import AccountPersonaGroupsMixin
 from .bot_instances import BotInstancesMixin
+from .alert_topics import AlertTopicsMixin
 from .maintenance import MaintenanceMixin
 from .work_orders import WorkOrdersMixin
 from .vendors import VendorsMixin
@@ -112,6 +113,7 @@ class Database(
     ForumRoutingMixin,
     AccountPersonaGroupsMixin,
     BotInstancesMixin,
+    AlertTopicsMixin,
     MaintenanceMixin,
     WorkOrdersMixin,
     VendorsMixin,

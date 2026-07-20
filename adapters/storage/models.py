@@ -416,6 +416,30 @@ class BotInstance:
 
 
 @dataclass
+class AlertTopic:
+    """A user-defined custom topic: a named routing rule inside one
+    role's group — one alert type, optionally narrowed to sub-
+    categories, optionally posted into its own Telegram forum thread.
+
+    A matching custom topic REPLACES the role's default flat post for
+    that alert.  ``subtypes`` is a csv of selected sub-categories
+    ('' = every sub-category of the type).  ``thread_id`` is the
+    Telegram forum thread when creation succeeded, else None (posts
+    land flat in the group).
+    """
+    id: int
+    account_id: int
+    persona: str
+    name: str
+    alert_type: str
+    subtypes: str
+    thread_id: Optional[int]
+    is_active: bool
+    created_at: str
+    updated_at: str
+
+
+@dataclass
 class Invite:
     id: int
     code: str
