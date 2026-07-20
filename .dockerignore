@@ -28,7 +28,13 @@ mypy.ini
 *.db
 *.db-shm
 *.db-wal
+# Secrets that must NEVER land in an image layer — the Dockerfile's
+# `COPY . .` would otherwise bake them in.  Google service-account keys
+# have been named both semi-telematics-*.json and truck-*.json; a bare
+# *.json is too broad (locale/config files), so match the key shapes.
 semi-telematics-*.json
+truck-*.json
+*-service-account*.json
 
 # Docs, Claude Code config, editor state — never belong in the image
 # build context (the app serves nothing from them; docs/ alone is MBs).
