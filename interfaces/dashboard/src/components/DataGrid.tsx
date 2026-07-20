@@ -2029,11 +2029,13 @@ export default function DataGrid({
           the table body inside the card. */}
       {enableToolbar && (
       <div className="flex flex-wrap items-center justify-between p-3 gap-3 bg-muted border-b border-border">
-        {/* LEFT: page-supplied headerToolbar (filter chips, etc.).
-            The bulk-action bar + the active-filter chips share ONE
-            strip BELOW this row (they swap), matching the reference. */}
+        {/* LEFT: the bulk-action bar when 1+ rows are selected — it
+            lives ON this toolbar line (Search + the filter/sort/
+            columns/export icons stay on the right); otherwise the
+            page-supplied headerToolbar.  The active filter/sort/search
+            CHIPS are a SEPARATE strip below this row. */}
         <div className="flex flex-wrap items-center gap-2 flex-1 min-w-0">
-          {headerToolbar}
+          {selectedRowIds.size > 0 ? selectionBarContent : headerToolbar}
         </div>
         {/* RIGHT: Search input, then a uniform icon cluster —
             Filter · Sort · Columns · Export — then density.  Icons
@@ -2203,16 +2205,10 @@ export default function DataGrid({
       </div>
       )}
 
-      {/* ONE strip below the toolbar, above the table — it SWAPS:
-          the bulk-action bar when 1+ rows are selected, otherwise the
-          active filter/sort/search chips (null when none).  Same
-          location for both, matching the reference; a chrome-free table
-          with nothing active/selected shows nothing. */}
-      {selectedRowIds.size > 0 && (bulkSelection || enableToolbar) ? (
-        <div className="px-3 py-1.5 border-b border-border">
-          {selectionBarContent}
-        </div>
-      ) : filterChipRow}
+      {/* Active filter/sort/search chips — their OWN strip below the
+          toolbar (the bulk-action bar lives ON the toolbar line above,
+          not here).  Self-gated: null when nothing is active. */}
+      {filterChipRow}
 
       <div className="relative">
       <div
