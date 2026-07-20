@@ -152,7 +152,10 @@ export default function AssistantPanel() {
             (Samsara/Gemini), not on the chrome above it — so the title +
             controls read as the top of the chat surface, not a separate
             frame element. */}
-        <div className="h-full p-2">
+        {/* px-2 pb-2 (no TOP pad): the card sits flush below the topbar
+            at the same y as the shells' <main> content card, so the two
+            align — an 8px top gap here read as the chat sitting lower. */}
+        <div className="h-full px-2 pb-2">
           <div className="flex h-full flex-col rounded-xl bg-background text-foreground overflow-hidden">
             {/* Mini header bar — title + New-chat / History (portalled) +
                 Expand + Close, divided from the messages by a border. */}
