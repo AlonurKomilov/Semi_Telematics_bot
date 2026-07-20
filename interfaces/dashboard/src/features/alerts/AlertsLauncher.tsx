@@ -9,7 +9,9 @@
  * badge can never drift from the heroes and adds no extra request.
  *
  * Gated on the alerts permission (view-scoped) like the sidebar item
- * was, and hidden on /alerts itself (you're already there).
+ * was.  Stays visible on /alerts too (a persistent nav affordance —
+ * hiding it there read as the icon vanishing after a click) and shows
+ * an active highlight while you're on the page.
  */
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Bell } from 'lucide-react';
@@ -20,26 +22,32 @@ import { Tip } from '../../components/tooltip';
 const P_ALERTS = ['can_alerts_all', 'can_alerts_vehicle'];
 
 export function AlertsLauncher() {
-  const location = useLocation();
   const { hasAny } = useViewPermissions();
-  // Gate BEFORE the stats query so users without alerts access (or those
-  // already on /alerts) never trigger the /overview/stats fetch.
-  if (location.pathname.startsWith('/alerts') || !hasAny(...P_ALERTS)) return null;
+  // Gate BEFORE the stats query so users without alerts access never
+  // trigger the /overview/stats fetch.
+  if (!hasAny(...P_ALERTS)) return null;
   return <AlertsBell />;
 }
 
 function AlertsBell() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { data } = useShellStats();
   const pending = data?.pending_alerts ?? 0;
   const badge = pending > 99 ? '99+' : String(pending);
+  const active = location.pathname.startsWith('/alerts');
 
   return (
     <Tip label={pending > 0 ? `Alerts — ${pending} pending` : 'Alerts'}>
       <button
         onClick={() => navigate('/alerts')}
         aria-label={pending > 0 ? `Alerts, ${pending} pending` : 'Alerts'}
-        className="relative inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+        aria-current={active ? 'page' : undefined}
+        className={`relative inline-flex size-8 items-center justify-center rounded-md transition-colors ${
+          active
+            ? 'bg-primary/15 text-primary'
+            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+        }`}
       >
         <Bell size={18} aria-hidden />
         {pending > 0 && (
