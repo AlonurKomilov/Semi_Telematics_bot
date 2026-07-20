@@ -146,53 +146,53 @@ export default function AssistantPanel() {
             aria-hidden
           />
         </div>
-        <div className="flex h-full flex-col">
-          {/* The panel's own header sits just BELOW the app topbar (the
-              panel is anchored at top-12), like Samsara/Gemini — a
-              second bar carrying the assistant title + New-chat / History
-              (portalled) + Expand + Close.  h-12 + px-4 matches the
-              topbar's metrics so the two bars stack cleanly. */}
-          <div className="flex h-12 items-center justify-between px-4 flex-shrink-0">
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              <Bot size={16} className="text-primary" aria-hidden />
-              Assistant
-            </span>
-            <div className="flex items-center gap-1">
-              {/* Docked <Chat> portals its New-chat / History controls here. */}
-              <div ref={setHeaderSlot} className="flex items-center gap-1" />
-              <Tip label={panelExpanded ? 'Collapse to side panel' : 'Expand'}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setPanelExpanded(!panelExpanded)}
-                  className="hidden sm:inline-flex shrink-0 text-muted-foreground"
-                  aria-label={panelExpanded ? 'Collapse assistant to side panel' : 'Expand assistant'}
-                  aria-pressed={panelExpanded}
-                >
-                  {panelExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                </Button>
-              </Tip>
-              <Tip label={`Close (${shortcut('J')})`}>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={closePanel}
-                  className="shrink-0 text-muted-foreground"
-                  aria-label="Close assistant"
-                >
-                  <X size={16} />
-                </Button>
-              </Tip>
+        {/* The chat canvas — a rounded content card inside the bg-sidebar
+            chrome (mirrors the shells' <main>).  The assistant's header
+            now lives INSIDE this card as a mini bar with a divider
+            (Samsara/Gemini), not on the chrome above it — so the title +
+            controls read as the top of the chat surface, not a separate
+            frame element. */}
+        <div className="h-full p-2">
+          <div className="flex h-full flex-col rounded-xl bg-background text-foreground overflow-hidden">
+            {/* Mini header bar — title + New-chat / History (portalled) +
+                Expand + Close, divided from the messages by a border. */}
+            <div className="flex h-11 items-center justify-between px-3 border-b border-border shrink-0">
+              <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                <Bot size={16} className="text-primary" aria-hidden />
+                Assistant
+              </span>
+              <div className="flex items-center gap-1">
+                {/* Docked <Chat> portals its New-chat / History controls here. */}
+                <div ref={setHeaderSlot} className="flex items-center gap-1" />
+                <Tip label={panelExpanded ? 'Collapse to side panel' : 'Expand'}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setPanelExpanded(!panelExpanded)}
+                    className="hidden sm:inline-flex shrink-0 text-muted-foreground"
+                    aria-label={panelExpanded ? 'Collapse assistant to side panel' : 'Expand assistant'}
+                    aria-pressed={panelExpanded}
+                  >
+                    {panelExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                  </Button>
+                </Tip>
+                <Tip label={`Close (${shortcut('J')})`}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={closePanel}
+                    className="shrink-0 text-muted-foreground"
+                    aria-label="Close assistant"
+                  >
+                    <X size={16} />
+                  </Button>
+                </Tip>
+              </div>
             </div>
-          </div>
-          {/* The chat canvas — rounded content card inside the chrome,
-              mirroring the shells' <main>.  Only mount the chat while open —
-              a closed panel does no work (no history load, no polling) and
-              re-mounts fresh on reopen. */}
-          <div className="flex-1 min-h-0 mx-2 mb-2 rounded-xl bg-background text-foreground overflow-hidden">
-            {/* Expanded: the chat column centers at a readable measure
-                (Samsara-style) instead of stretching edge-to-edge. */}
-            <div className={`h-full p-3 ${panelExpanded ? 'mx-auto w-full max-w-4xl' : ''}`}>
+            {/* Chat messages.  Only mount while open — a closed panel does
+                no work (no history load / polling) and re-mounts fresh on
+                reopen.  Expanded: centre the column at a readable measure. */}
+            <div className={`flex-1 min-h-0 p-3 ${panelExpanded ? 'mx-auto w-full max-w-4xl' : ''}`}>
               {open && (
                 <Suspense fallback={
                   <div className="flex h-full items-center justify-center">
