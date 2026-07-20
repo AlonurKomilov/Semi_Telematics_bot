@@ -101,8 +101,14 @@ export default function AssistantPanel() {
           wrapper), so a docked panel reads as a second canvas in the SAME
           frame, not a foreign white card floating over it. */}
       <div
-        className={`fixed inset-y-0 right-0 z-40 w-full bg-sidebar text-sidebar-foreground transition-transform duration-200 ${
-          panelExpanded ? 'shadow-none' : 'sm:w-[var(--assistant-w)] shadow-2xl xl:shadow-none'
+        className={`fixed right-0 z-40 bg-sidebar text-sidebar-foreground transition-transform duration-200 ${
+          panelExpanded
+            // Expanded = fill only the CONTENT region: below the h-12
+            // topbar and right of the sidebar (--sidebar-w), leaving the
+            // app chrome visible.  Below lg the sidebar is a drawer, so
+            // no left offset there.
+            ? 'top-12 bottom-0 left-0 lg:left-[var(--sidebar-w)] shadow-none'
+            : 'inset-y-0 w-full sm:w-[var(--assistant-w)] shadow-2xl xl:shadow-none'
         } ${
           open ? 'translate-x-0' : 'translate-x-full pointer-events-none'
         }`}

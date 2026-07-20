@@ -46,6 +46,11 @@ export default function Sidebar() {
     } catch {
       /* localStorage disabled — toggle still works for the session */
     }
+    // Expose the live width so the assistant's expanded overlay can start
+    // at the content edge (right of the sidebar) instead of covering the
+    // rail.  Mirrors the --assistant-w pattern; matches w-14 / w-56.
+    document.documentElement.style.setProperty(
+      '--sidebar-w', collapsed ? '3.5rem' : '14rem');
   }, [collapsed]);
   // ``viewHasAny`` is the active-persona-aware permission check from
   // RoleViewContext.  For non-switchable roles (Fleet/Safety/Dispatcher/
