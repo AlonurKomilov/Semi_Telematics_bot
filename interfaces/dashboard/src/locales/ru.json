@@ -218,7 +218,8 @@
     "severity_all": "Все",
     "severity_critical": "Критично",
     "severity_warning": "Предупреждение",
-    "severity_info": "Информация"
+    "severity_info": "Информация",
+    "notification_prefs": "Настройки уведомлений"
   },
   "vehicles": {
     "page_title": "Транспорт",

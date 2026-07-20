@@ -370,7 +370,8 @@
       "no_video_for_event": "No forward-camera video for this event.",
       "video_unavailable": "Video not available for this event.",
       "video_request_failed": "Video request failed"
-    }
+    },
+    "notification_prefs": "Notification preferences"
   },
   "vehicles": {
     "page_title": "Vehicles",
@@ -934,7 +935,7 @@
   },
   "forum_routing": {
     "section_title": "Alert Routing",
-    "section_desc": "Connect a Telegram forum group so the bot can post each alert to its own topic. Personal DMs are independent — each user sets their own preferences under Avatar → My Notifications.",
+    "section_desc": "Connect a Telegram forum group so the bot can post each alert to its own topic. Personal DMs are independent — each user sets their own preferences under Alerts bell → Notification preferences.",
     "mode_group_title": "Forum group with topics",
     "mode_group_connected": "Connected: {{title}}",
     "mode_group_setup_status": "Status: {{status}}",

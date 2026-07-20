@@ -218,7 +218,8 @@
     "severity_all": "Todas",
     "severity_critical": "Crítica",
     "severity_warning": "Advertencia",
-    "severity_info": "Información"
+    "severity_info": "Información",
+    "notification_prefs": "Preferencias de notificaciones"
   },
   "vehicles": {
     "page_title": "Vehículos",

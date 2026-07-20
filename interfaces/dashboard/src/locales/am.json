@@ -218,7 +218,8 @@
     "severity_all": "ሁሉም",
     "severity_critical": "አሳሳቢ",
     "severity_warning": "ማስጠንቀቂያ",
-    "severity_info": "መረጃ"
+    "severity_info": "መረጃ",
+    "notification_prefs": "የማሳወቂያ ምርጫዎች"
   },
   "vehicles": {
     "page_title": "ተሽከርካሪዎች",

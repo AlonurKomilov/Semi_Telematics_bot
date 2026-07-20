@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserCog, LogOut, Bell } from 'lucide-react';
+import { UserCog, LogOut } from 'lucide-react';
 import { Avatar, AvatarFallback } from './ui/avatar';
 import { useAuth } from '../context/AuthContext';
 
@@ -82,17 +82,6 @@ export function AvatarMenu() {
               icon={<UserCog size={14} />}
               label="My Profile"
               onClick={() => go('/profile')}
-            />
-            {/* "My Notifications" is intentionally placed in this
-                personal menu (not under the admin Alerts page) because
-                each user owns their own DM alert preferences.  Admins
-                still control group/forum routing separately via
-                Account Settings → Forum Routing — the two surfaces
-                don't override each other. */}
-            <MenuButton
-              icon={<Bell size={14} />}
-              label="My Notifications"
-              onClick={() => go('/notifications')}
             />
           </div>
 

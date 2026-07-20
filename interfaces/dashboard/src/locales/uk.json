@@ -207,7 +207,8 @@
     "no_alerts": "Немає сповіщень",
     "occurrences": "{{count}} спрацювань",
     "first_seen": "Уперше",
-    "last_seen": "Востаннє"
+    "last_seen": "Востаннє",
+    "notification_prefs": "Налаштування сповіщень"
   },
   "vehicles": {
     "page_title": "Транспорт",

@@ -191,7 +191,7 @@ export default function ForumRoutingSection() {
       {!loading && state && (
         <div className="space-y-4">
           {/* Single mode now: Forum group with topics.  Personal DMs
-              are a per-user opt-in (Avatar → My Notifications) and
+              are a per-user opt-in (Alerts bell → Notification preferences) and
               always fire on top of group routing, so there's no
               admin-level "DM mode" toggle — connecting a group only
               adds the topic-channel surface, it never replaces DMs. */}
@@ -329,7 +329,7 @@ export default function ForumRoutingSection() {
                           {/* Group-side resolved-notification toggle.
                               Independent from each user's personal
                               alert_resolve_receipts DM preference (set
-                              under Avatar → My Notifications). */}
+                              under Alerts bell → Notification preferences). */}
                           <td className="px-3 py-2 align-top w-40 text-right whitespace-nowrap">
                             {r.is_mapped && (
                               <button

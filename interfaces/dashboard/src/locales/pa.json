@@ -218,7 +218,8 @@
     "severity_all": "ਸਾਰੇ",
     "severity_critical": "ਨਾਜ਼ੁਕ",
     "severity_warning": "ਚੇਤਾਵਨੀ",
-    "severity_info": "ਜਾਣਕਾਰੀ"
+    "severity_info": "ਜਾਣਕਾਰੀ",
+    "notification_prefs": "ਸੂਚਨਾ ਤਰਜੀਹਾਂ"
   },
   "vehicles": {
     "page_title": "ਵਾਹਨ",

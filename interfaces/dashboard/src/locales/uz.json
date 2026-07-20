@@ -208,7 +208,8 @@
     "no_alerts": "Ogohlantirishlar yoʻq",
     "occurrences": "{{count}} marta",
     "first_seen": "Birinchi",
-    "last_seen": "Oxirgi"
+    "last_seen": "Oxirgi",
+    "notification_prefs": "Bildirishnoma sozlamalari"
   },
   "vehicles": {
     "page_title": "Transport",

@@ -218,7 +218,8 @@
     "severity_all": "Dhammaan",
     "severity_critical": "Halis",
     "severity_warning": "Digniin",
-    "severity_info": "Macluumaad"
+    "severity_info": "Macluumaad",
+    "notification_prefs": "Doorbidyada ogeysiiska"
   },
   "vehicles": {
     "page_title": "Gawaarida",

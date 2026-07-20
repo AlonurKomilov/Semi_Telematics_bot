@@ -1,5 +1,5 @@
 /**
- * My Notifications — per-user personal-DM alert preferences.
+ * Notification preferences — per-user personal-DM alert preferences.
  *
  * This page is the dashboard twin of the bot's ``/alerts`` command.
  * Each user owns their own per-alert-type DM toggle plus the new
@@ -16,7 +16,7 @@
  * topic the team chat subscribes to.
  *
  * Reached via the avatar dropdown (top-right of every page) →
- * "My Notifications".
+ * the topbar Alerts bell / board (gear).
  */
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -101,7 +101,7 @@ export default function MyNotifications() {
       <div>
         <PageHeader
           icon={Bell}
-          title="My Notifications"
+          title="Notification preferences"
           description="Choose which alerts arrive in your personal Telegram chat."
         />
         <CardSkeleton message="Loading preferences…" />
@@ -114,7 +114,7 @@ export default function MyNotifications() {
       <div>
         <PageHeader
           icon={Bell}
-          title="My Notifications"
+          title="Notification preferences"
           description="Choose which alerts arrive in your personal Telegram chat."
         />
         <ErrorState
@@ -131,7 +131,7 @@ export default function MyNotifications() {
     <div>
       <PageHeader
         icon={Bell}
-        title="My Notifications"
+        title="Notification preferences"
         description={
           'Personal alert preferences for your Telegram DM. Admins set group / forum routing separately on Settings — the two don’t override each other.'
         }
