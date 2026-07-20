@@ -41,13 +41,14 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "hint_chatid_short": "En el grupo, ejecute /chatid:",
     "no_group_chip": "sin grupo",
     "persona_accounting": "Contabilidad",
     "persona_recruiter": "Reclutamiento",
     "main_group_unbound": "Sin grupo de propietarios — sin copia de críticas",
     "bind_group_btn": "Vincular grupo…",
     "cancel": "Cancelar",
-    "roster_progress": "{{n}} de {{total}} roles tienen su propio grupo",
+    "roster_progress": "{{n}} de {{total}} roles tienen un grupo propio — el bot principal cubre el resto.",
     "routing_label": "Enrutamiento",
     "running": "Activo",
     "configured": "Configurado",

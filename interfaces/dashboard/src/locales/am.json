@@ -41,13 +41,14 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "hint_chatid_short": "በቡድኑ ውስጥ /chatid ያሂዱ፦",
     "no_group_chip": "ቡድን የለም",
     "persona_accounting": "ሂሳብ",
     "persona_recruiter": "ቅጥር",
     "main_group_unbound": "የባለቤቶች ቡድን የለም — ወሳኝ ቅጂዎች ጠፍተዋል",
     "bind_group_btn": "ቡድን አገናኝ…",
     "cancel": "ሰርዝ",
-    "roster_progress": "ከ{{total}} ሚናዎች {{n}} የራሳቸው ቡድን አላቸው",
+    "roster_progress": "ከ{{total}} ሚናዎች {{n}} የተለየ ቡድን አላቸው — ቀሪውን ዋናው ቦት ይሸፍናል።",
     "routing_label": "መስመር",
     "running": "እየሰራ ነው",
     "configured": "ተዘጋጅቷል",

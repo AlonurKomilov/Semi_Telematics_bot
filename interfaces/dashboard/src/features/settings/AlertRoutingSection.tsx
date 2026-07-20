@@ -311,6 +311,11 @@ export default function AlertRoutingSection({
     }
     return (
       <>
+        {/* Visible setup hint — binding is a one-time task; the design
+            rule keeps one-time-form help visible, not behind a tip. */}
+        <span className="text-2xs text-muted-foreground whitespace-nowrap">
+          {t('alert_routing.hint_chatid_short')}
+        </span>
         <input
           value={chatInputs[persona] || ''}
           onChange={(e) => setChatInputs({ ...chatInputs, [persona]: e.target.value })}

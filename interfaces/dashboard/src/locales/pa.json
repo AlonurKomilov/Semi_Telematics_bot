@@ -41,13 +41,14 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "hint_chatid_short": "ਗਰੁੱਪ ਵਿੱਚ /chatid ਚਲਾਓ:",
     "no_group_chip": "ਗਰੁੱਪ ਨਹੀਂ",
     "persona_accounting": "ਲੇਖਾ",
     "persona_recruiter": "ਭਰਤੀ",
     "main_group_unbound": "ਮਾਲਕਾਂ ਦਾ ਗਰੁੱਪ ਨਹੀਂ — ਗੰਭੀਰ ਕਾਪੀਆਂ ਬੰਦ",
     "bind_group_btn": "ਗਰੁੱਪ ਜੋੜੋ…",
     "cancel": "ਰੱਦ ਕਰੋ",
-    "roster_progress": "{{total}} ਵਿੱਚੋਂ {{n}} ਰੋਲਾਂ ਕੋਲ ਆਪਣਾ ਗਰੁੱਪ ਹੈ",
+    "roster_progress": "{{total}} ਵਿੱਚੋਂ {{n}} ਰੋਲਾਂ ਕੋਲ ਸਮਰਪਿਤ ਗਰੁੱਪ ਹੈ — ਬਾਕੀ ਮੁੱਖ ਬੋਟ ਸੰਭਾਲਦਾ ਹੈ।",
     "routing_label": "ਰੂਟਿੰਗ",
     "running": "ਚੱਲ ਰਿਹਾ",
     "configured": "ਸੈੱਟ ਹੈ",

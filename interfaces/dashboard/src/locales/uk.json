@@ -41,13 +41,14 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "hint_chatid_short": "У групі виконайте /chatid:",
     "no_group_chip": "немає групи",
     "persona_accounting": "Бухгалтерія",
     "persona_recruiter": "Рекрутинг",
     "main_group_unbound": "Немає групи власників — критичні копії вимкнено",
     "bind_group_btn": "Прив'язати групу…",
     "cancel": "Скасувати",
-    "roster_progress": "{{n}} із {{total}} ролей мають власну групу",
+    "roster_progress": "{{n}} із {{total}} ролей мають власну групу — решту обслуговує основний бот.",
     "routing_label": "Маршрутизація",
     "running": "Працює",
     "configured": "Налаштовано",

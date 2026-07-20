@@ -41,13 +41,14 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "hint_chatid_short": "В группе выполните /chatid:",
     "no_group_chip": "нет группы",
     "persona_accounting": "Бухгалтерия",
     "persona_recruiter": "Рекрутинг",
     "main_group_unbound": "Нет группы владельцев — критические копии выключены",
     "bind_group_btn": "Привязать группу…",
     "cancel": "Отмена",
-    "roster_progress": "{{n}} из {{total}} ролей имеют свою группу",
+    "roster_progress": "У {{n}} из {{total}} ролей есть своя группа — остальных обслуживает основной бот.",
     "routing_label": "Маршрутизация",
     "running": "Работает",
     "configured": "Настроен",

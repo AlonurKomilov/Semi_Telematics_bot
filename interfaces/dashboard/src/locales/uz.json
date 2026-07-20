@@ -41,13 +41,14 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "hint_chatid_short": "Guruhda /chatid bajaring:",
     "no_group_chip": "guruh yo'q",
     "persona_accounting": "Buxgalteriya",
     "persona_recruiter": "Rekruting",
     "main_group_unbound": "Egalar guruhi yo'q — kritik nusxalar o'chiq",
     "bind_group_btn": "Guruh ulash…",
     "cancel": "Bekor",
-    "roster_progress": "{{total}} roldan {{n}} tasi o'z guruhiga ega",
+    "roster_progress": "{{total}} roldan {{n}} tasida alohida guruh bor — qolganini asosiy bot yuboradi.",
     "routing_label": "Yo'naltirish",
     "running": "Ishlamoqda",
     "configured": "Sozlangan",

@@ -41,13 +41,14 @@
     "am": "አማርኛ"
   },
   "alert_routing": {
+    "hint_chatid_short": "Guruubka ku socodsii /chatid:",
     "no_group_chip": "guruub ma jiro",
     "persona_accounting": "Xisaabaad",
     "persona_recruiter": "Shaqaalaysiin",
     "main_group_unbound": "Guruub milkiile ma jiro — nuqullada halista waa damman yihiin",
     "bind_group_btn": "Xir guruub…",
     "cancel": "Jooji",
-    "roster_progress": "{{total}} door {{n}} ayaa leh guruub u gaar ah",
+    "roster_progress": "{{total}} door {{n}} ayaa leh guruub u gaar ah — inta kale bot-ka guud ayaa qaba.",
     "routing_label": "Jihayn",
     "running": "Shaqaynaya",
     "configured": "La sameeyay",
