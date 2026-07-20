@@ -16,10 +16,12 @@
  * cap) so client-side filter / sort / group / paginate are honest;
  * a truncation notice + the server pager cover the overflow case.
  *
- * Selection state lives in AlertsSelectionContext (shared with the
- * bulk-ack toolbar) — DataGrid just renders the checkboxes via its
- * ``firstColumnLeading`` hooks: per-row, header select-all, and
- * group-level (per-vehicle) with indeterminate states.
+ * Selection is DataGrid's `bulkSelection` (checkbox column + top
+ * bulk-action bar), passed as a CONTROLLED selection so it still lives
+ * in AlertsSelectionContext — shared with LiveAckPanel's sound cue,
+ * AlertsBulkError, and the filter-chip clear.  ``isRowSelectable``
+ * limits checkboxes to un-acknowledged alerts; "Acknowledge" is the
+ * one bulk action.
  *
  * Persona-agnostic — same component for every persona.  Persona-
  * specific summary cards live in dedicated sections (LiveAckPanel,
@@ -27,17 +29,20 @@
  */
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bell } from 'lucide-react';
+import { Bell, CheckCircle2 } from 'lucide-react';
 import {
   EmptyState,
   ErrorState,
   TableSkeleton,
 } from '../../../components/shell';
-import DataGrid from '../../../components/DataGrid';
+import { useQueryClient } from '@tanstack/react-query';
+import { apiJSON } from '../../../api/client';
+import DataGrid, { type BulkAction } from '../../../components/DataGrid';
 import type {
   Alert,
   AlertsResponse,
   AnyColumn,
+  BulkAckResponse,
   VehiclesAlertsResponse,
 } from '../../../types';
 import { formatAlertDescription } from '../../../utils/alertDescription';
@@ -60,8 +65,15 @@ const SEV_RANK: Record<string, number> = { critical: 0, warning: 1, info: 2 };
 export default function AlertsResults() {
   const { t } = useTranslation();
   const tz = useTimezone();
+  const qc = useQueryClient();
   const { ackState, viewMode } = useAlertsFilters();
-  const { selected, setSelected, openDrillIn } = useAlertsSelection();
+  // DataGrid owns the checkbox column + the bulk-action bar now, but
+  // the SELECTION still lives in the shared context (LiveAckPanel's
+  // sound cue, AlertsBulkError, and the filter-chip clear all read it),
+  // so it's passed to DataGrid as a CONTROLLED selection.
+  const {
+    selected, setSelected, openDrillIn, setAcking, setBulkError,
+  } = useAlertsSelection();
   const { data, isLoading, error: queryError, refetch } = useAlertsQuery();
 
   // Discriminate the response shape by what the payload actually
@@ -84,14 +96,47 @@ export default function AlertsResults() {
   const fetchError = queryError instanceof Error ? queryError.message : '';
   const totalCount = data?.count ?? alerts.length;
 
-  const toggleSelect = (id: string | number) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+  // Selection ↔ DataGrid bridge.  DataGrid keys rows by ``id`` string
+  // (getRowId), so the context set is projected to strings in, and
+  // written back as strings out.  ``acking`` is toggled around the POST
+  // so LiveAckPanel's success cue still fires on true→false.
+  const selectedStr = useMemo(
+    () => new Set(Array.from(selected, String)),
+    [selected],
+  );
+
+  const ackSelected = async (rows: Record<string, unknown>[]) => {
+    setAcking(true);
+    setBulkError('');
+    try {
+      // Backend BulkAckRequest expects int ids — coerce or the
+      // validator 422s (Alert.id is widened to string|number).
+      const ids = rows.map((r) => Number((r as unknown as Alert).id));
+      await apiJSON<BulkAckResponse>('/alerts/bulk-ack', {
+        method: 'POST',
+        body: { ids },
+      });
+      await qc.invalidateQueries({ queryKey: ['alerts'] });
+      // Clear the selection as the LAST synchronous statement before
+      // the finally's setAcking(false) — with NO await between them,
+      // React 18 batches both into one commit, so LiveAckPanel's
+      // detector sees "selection 0 AND acking true→false" in the same
+      // render and fires its sound cue.  (An await here would split
+      // them across commits and silently kill the cue.)  DataGrid also
+      // clears post-onRun — a no-op once this has run.
+      setSelected(new Set());
+    } catch (e) {
+      setBulkError(e instanceof Error ? e.message : 'Bulk acknowledge failed');
+      throw e; // keep the selection so the user can retry
+    } finally {
+      setAcking(false);
+    }
   };
+
+  const bulkActions: BulkAction[] = [
+    { label: t('alerts.acknowledge', { defaultValue: 'Acknowledge' }),
+      icon: CheckCircle2, onRun: ackSelected },
+  ];
 
   // Column set — conditional Status column only when the view can
   // contain acknowledged rows ('active' rows are by definition
@@ -268,71 +313,16 @@ export default function AlertsResults() {
         data={alerts as unknown as Record<string, unknown>[]}
         searchKey={['vehicle_name', 'location']}
         searchPlaceholder="Search vehicle or location…"
-        // Ack-selection checkboxes ride the first visible column and
-        // the row-group headers; state lives in AlertsSelectionContext
-        // so the bulk-ack toolbar sees the same set.
-        firstColumnLeading={{
-          header: () => {
-            const ackable = alerts.filter(isAckable);
-            const selCount = ackable.filter(a => selected.has(a.id)).length;
-            const all = ackable.length > 0 && selCount === ackable.length;
-            return (
-              <input
-                type="checkbox"
-                checked={all}
-                disabled={ackable.length === 0}
-                ref={el => { if (el) el.indeterminate = selCount > 0 && !all; }}
-                onClick={e => e.stopPropagation()}
-                onChange={() => {
-                  setSelected(all ? new Set() : new Set(ackable.map(a => a.id)));
-                }}
-                className="cursor-pointer accent-primary disabled:cursor-not-allowed"
-                aria-label="Select all un-acknowledged alerts"
-              />
-            );
-          },
-          cell: (row) => {
-            const a = row as unknown as Alert;
-            const ackable = isAckable(a);
-            return (
-              <input
-                type="checkbox"
-                checked={selected.has(a.id)}
-                disabled={!ackable}
-                onClick={e => e.stopPropagation()}
-                onChange={() => toggleSelect(a.id)}
-                title={ackable ? undefined : 'Already acknowledged'}
-                className="cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-40"
-                aria-label={`Select alert ${a.id}`}
-              />
-            );
-          },
-          groupHeader: (_value, rows) => {
-            const ackable = (rows as unknown as Alert[]).filter(isAckable);
-            if (ackable.length === 0) return null;
-            const selCount = ackable.filter(a => selected.has(a.id)).length;
-            const all = selCount === ackable.length;
-            return (
-              <input
-                type="checkbox"
-                checked={all}
-                ref={el => { if (el) el.indeterminate = selCount > 0 && !all; }}
-                onChange={() => {
-                  setSelected(prev => {
-                    const next = new Set(prev);
-                    for (const a of ackable) {
-                      if (all) next.delete(a.id);
-                      else next.add(a.id);
-                    }
-                    return next;
-                  });
-                }}
-                className="cursor-pointer accent-primary"
-                aria-label="Select all un-acknowledged alerts on this vehicle"
-              />
-            );
-          },
-        }}
+        // Bulk selection is DataGrid's (checkbox column + top bar);
+        // CONTROLLED so the shared context stays the owner.  Only
+        // un-acknowledged alerts are selectable, and Acknowledge is the
+        // one bulk action.
+        bulkSelection
+        selectedIds={selectedStr}
+        onSelectedIdsChange={(next) => setSelected(next as Set<string | number>)}
+        isRowSelectable={(row) => isAckable(row as unknown as Alert)}
+        bulkRowLabel={(row) => `alert ${(row as unknown as Alert).id}`}
+        bulkActions={bulkActions}
         // Rich group header — vehicle name + severity tallies +
         // latest activity, replacing the default "<value> (N)".
         rowGroupHeader={(value, rows) => {

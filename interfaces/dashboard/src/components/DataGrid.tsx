@@ -175,6 +175,12 @@ interface DataGridProps {
    *  checkbox and is excluded from select-all (e.g. Alerts: only
    *  ackable alerts).  Omit → every row is selectable. */
   isRowSelectable?: (row: Record<string, unknown>) => boolean;
+  /** CONTROLLED selection.  Pass BOTH to let a page own the selection
+   *  set (keyed by the row's ``id`` string) — e.g. a shared context
+   *  that other components read.  Omit both for the default
+   *  DataGrid-owned (uncontrolled) selection. */
+  selectedIds?: Set<string>;
+  onSelectedIdsChange?: (next: Set<string>) => void;
   firstColumnLeading?: {
     header: () => React.ReactNode;
     cell: (row: Record<string, unknown>) => React.ReactNode;
@@ -481,7 +487,7 @@ export default function DataGrid({
   headerToolbar, tableId, firstColumnLeading, rowGroupHeader, defaultRowGroup,
   enableToolbar = true, enablePagination = true, segments,
   bulkSelection = false, onBulkSelectionChange, bulkActions, bulkRowLabel,
-  isRowSelectable,
+  isRowSelectable, selectedIds: controlledSelectedIds, onSelectedIdsChange,
 }: DataGridProps) {
   const { t } = useTranslation();
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -972,7 +978,32 @@ export default function DataGrid({
   // action bar offers Copy (TSV → clipboard, ready to paste into
   // Excel / Sheets) and Clear.  Selection is keyed by tanstack
   // ``row.id`` (string), which is stable across filter/sort.
-  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+  // Selection is CONTROLLED when the page passes selectedIds +
+  // onSelectedIdsChange (it owns the set — e.g. Alerts' shared
+  // context); otherwise DataGrid owns it internally.  ``setSelectedRowIds``
+  // routes writes to the right place and accepts the same
+  // value-or-updater shape as a useState setter, so every call site is
+  // unchanged.
+  const [internalSelectedIds, setInternalSelectedIds] = useState<Set<string>>(new Set());
+  const isControlledSelection = controlledSelectedIds !== undefined;
+  const selectedRowIds = isControlledSelection ? controlledSelectedIds : internalSelectedIds;
+  const setSelectedRowIds = useCallback(
+    // NOTE: in controlled mode the updater form reads the render-closure
+    // ``controlledSelectedIds`` (not a live React queue), so calling this
+    // with an updater TWICE synchronously in one event would stomp — fine
+    // for every current caller (each fires once per handler), but a
+    // double-call controlled consumer would need a real prevRef.
+    (updater: Set<string> | ((prev: Set<string>) => Set<string>)) => {
+      if (isControlledSelection) {
+        const next = typeof updater === 'function'
+          ? updater(controlledSelectedIds as Set<string>) : updater;
+        onSelectedIdsChange?.(next);
+      } else {
+        setInternalSelectedIds(updater);
+      }
+    },
+    [isControlledSelection, controlledSelectedIds, onSelectedIdsChange],
+  );
   const lastClickedIdRef = useRef<string | null>(null);
   // Drop selection when the rendered slice no longer contains any
   // of the selected rows (e.g. operator added a filter that hides
