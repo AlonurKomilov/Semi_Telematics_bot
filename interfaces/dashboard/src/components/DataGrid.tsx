@@ -25,6 +25,7 @@ import {
 import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Rows3, Rows2, Rows4,
   Search, X, Columns3, Download, Copy, Filter as FilterIcon, ArrowUpDown,
+  CornerUpRight,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
@@ -1183,8 +1184,9 @@ export default function DataGrid({
   // a second strip below it.
   const selectionBarContent = (
     <div className="flex items-center gap-0.5">
+      <CornerUpRight size={14} className="text-muted-foreground mr-1 shrink-0" aria-hidden="true" />
       <span className="text-xs font-medium text-foreground mr-1">
-        {selectedRowIds.size} selected
+        {selectedRowIds.size} {selectedRowIds.size === 1 ? 'row' : 'rows'} selected
       </span>
       {bulkActions && bulkActions.length > 0 && (
         <span className="h-4 w-px bg-border mx-1.5" aria-hidden="true" />
