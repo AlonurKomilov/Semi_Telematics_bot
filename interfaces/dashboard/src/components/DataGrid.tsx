@@ -25,7 +25,7 @@ import {
 import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Rows3, Rows2, Rows4,
   Search, X, Columns3, Download, Copy, Filter as FilterIcon, ArrowUpDown,
-  CornerUpRight, ListTree, EyeOff,
+  CornerUpRight, ListTree,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
@@ -1485,7 +1485,9 @@ export default function DataGrid({
   // grouping + hidden are view-state chips with their own single ✕.
   const chipCount = columnFilters.length + sorting.length + (trimmedGlobal ? 1 : 0);
   const groupedCol = rowGroupBy ? columns.find(c => c.key === rowGroupBy) : undefined;
-  const hasAnyChip = chipCount > 0 || !!rowGroupBy || hiddenCount > 0;
+  // Hidden columns get NO chip (the manage-columns badge already shows
+  // the count) — only the data constraints + row grouping do.
+  const hasAnyChip = chipCount > 0 || !!rowGroupBy;
   const chipCls =
     'inline-flex items-center gap-1 pl-2 pr-0.5 py-0.5 rounded-md border border-border '
     + 'bg-background text-xs text-foreground';
@@ -1555,20 +1557,10 @@ export default function DataGrid({
           </button>
         </span>
       )}
-      {hiddenCount > 0 && (
-        <span className={chipCls}>
-          <EyeOff size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
-          <span>{hiddenCount} hidden</span>
-          {/* Force EVERY column visible so the count truly clears
-              (a bare {} would leave defaultHidden columns hidden). */}
-          <button type="button"
-            onClick={() => setColumnVisibility(
-              Object.fromEntries(columns.map(c => [c.key, true])))}
-            aria-label="Show hidden columns" className={chipX}>
-            <X size={12} />
-          </button>
-        </span>
-      )}
+      {/* No "N hidden" chip — the column-manager button on the toolbar
+          right already carries the hidden-count badge, so a chip would
+          just duplicate it.  Row grouping keeps its chip because nothing
+          else on the toolbar surfaces that state. */}
       {chipCount >= 2 && (
         <button type="button"
           onClick={() => { setColumnFilters([]); setSorting([]); setGlobalFilter(''); }}
@@ -3004,6 +2996,15 @@ function ColumnHeaderCell({
   // the in-cell UI affordances.
   const isLocked = header.column.getCanHide() === false
     && header.column.getCanPin() === false;
+  // Never let the operator hide the LAST visible data column — a table
+  // with zero columns paints blank and takes its own 3-dot menu with it,
+  // stranding the user (no way back to "Manage columns…").  When one
+  // hideable column is left, its "Hide column" item disables and steers
+  // to the column manager instead.  Locked/structural columns (the
+  // bulk-select checkbox) don't count as data columns here.
+  const canHideThisColumn = header.getContext().table
+    .getVisibleLeafColumns()
+    .filter((c) => c.getCanHide()).length > 1;
   // Controlled-open state for the filter popover — opened ONLY from
   // the 3-dot menu's "Filter…" item.  The column header itself is
   // just text + sort chevron; filter no longer has an inline trigger.
@@ -3228,6 +3229,7 @@ function ColumnHeaderCell({
               onSortDesc={() => header.column.toggleSorting(true)}
               onClearSort={() => header.column.clearSorting()}
               onHide={() => header.column.toggleVisibility(false)}
+              canHide={canHideThisColumn}
               onManage={onOpenManage}
               pinned={pinned === 'left' || pinned === 'right' ? pinned : false}
               onPinLeft={() => header.column.pin('left')}

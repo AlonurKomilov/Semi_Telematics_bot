@@ -36,6 +36,10 @@ interface ColumnHeaderMenuProps {
   onSortDesc: () => void;
   onClearSort: () => void;
   onHide: () => void;
+  /** ``false`` when this is the LAST visible data column — hiding it
+   *  would blank the table (and the 3-dot menu with it), so the item is
+   *  disabled and the operator is steered to "Manage columns…". */
+  canHide: boolean;
   onManage: () => void;
   /** Pin state — ``false`` = unpinned, otherwise the side it's
    *  pinned to.  When unpinned the menu shows a "Pin →" submenu
@@ -76,7 +80,7 @@ interface ColumnHeaderMenuProps {
 }
 
 export default function ColumnHeaderMenu({
-  sorted, canSort, onSortAsc, onSortDesc, onClearSort, onHide, onManage,
+  sorted, canSort, onSortAsc, onSortDesc, onClearSort, onHide, canHide, onManage,
   pinned, onPinLeft, onPinRight, onUnpin,
   canFilter, onFilter, filterActive,
   groupNames, currentGroup, onAssignGroup, onNewGroup, onUngroup,
@@ -304,6 +308,8 @@ export default function ColumnHeaderMenu({
               icon={<EyeOff size={14} />}
               label="Hide column"
               onClick={onHide}
+              disabled={!canHide}
+              hint="last column"
             />
             <MenuItem
               icon={<Columns3 size={14} />}
@@ -318,7 +324,7 @@ export default function ColumnHeaderMenu({
 }
 
 function MenuItem({
-  icon, label, active, onClick, badge,
+  icon, label, active, onClick, badge, disabled, hint,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -328,20 +334,31 @@ function MenuItem({
    *  selection size next to "Filter…" so the menu mirrors what the
    *  inline filter trigger shows. */
   badge?: string;
+  /** Greyed + non-interactive (e.g. "Hide column" on the last visible
+   *  column — hiding it would empty the table). */
+  disabled?: boolean;
+  /** Muted trailing reason shown when disabled (e.g. "last column"). */
+  hint?: string;
 }) {
   return (
     <MenuPrimitive.Item
+      disabled={disabled}
       className={cn(
-        'w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none',
-        'data-[highlighted]:bg-accent',
+        'w-full flex items-center gap-2 px-3 py-1.5 text-xs outline-none',
+        disabled
+          ? 'cursor-not-allowed opacity-50'
+          : 'cursor-pointer data-[highlighted]:bg-accent',
         active && 'text-primary',
       )}
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
     >
       <span className="shrink-0 w-4 flex justify-center text-muted-foreground">
         {icon}
       </span>
       <span className="flex-1 text-foreground">{label}</span>
+      {hint && disabled && (
+        <span className="text-2xs text-muted-foreground">{hint}</span>
+      )}
       {badge && (
         <span className="text-2xs bg-primary/15 text-primary px-1 rounded">
           {badge}

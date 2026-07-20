@@ -51,6 +51,9 @@ interface ManageColumnsMenuProps {
 export default function ManageColumnsMenu({
   options, visibility, onToggle, onReset, open, onOpenChange, anchor,
 }: ManageColumnsMenuProps) {
+  const hideableVisibleCount = options.filter(
+    (o) => !o.alwaysVisible && visibility[o.id] !== false,
+  ).length;
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <PopoverPrimitive.Portal>
@@ -68,7 +71,14 @@ export default function ManageColumnsMenu({
             <div className="max-h-72 overflow-y-auto py-1">
               {options.map((opt) => {
                 const visible = visibility[opt.id] !== false;
-                const disabled = opt.alwaysVisible === true;
+                // Keep at least ONE hideable column on screen — unchecking
+                // the last visible one would blank the table (and strand
+                // the operator, since the 3-dot menu vanishes with it).
+                // The last-standing checkbox locks like a required column.
+                const isLastVisible = visible
+                  && !opt.alwaysVisible
+                  && hideableVisibleCount <= 1;
+                const disabled = opt.alwaysVisible === true || isLastVisible;
                 return (
                   <button
                     key={opt.id}
@@ -81,7 +91,13 @@ export default function ManageColumnsMenu({
                         ? 'opacity-60 cursor-not-allowed'
                         : 'hover:bg-accent',
                     )}
-                    title={disabled ? 'Required column' : undefined}
+                    title={
+                      opt.alwaysVisible
+                        ? 'Required column'
+                        : isLastVisible
+                          ? 'At least one column must stay visible'
+                          : undefined
+                    }
                   >
                     <span
                       className={cn(

@@ -144,10 +144,18 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   `AlertsSelectionContext`). Active view state auto-renders as removable
   chips inline on the toolbar line, after the bulk bar / headerToolbar
   (nothing to wire per page — driven by the grid's own state): filter ·
-  sort · search · row-grouping ("Grouped by X") · hidden-columns ("N
-  hidden"). Pin and column-bracket grouping intentionally get NO chip
-  (pin is visually self-evident; the bracket group is column-config, not
-  a per-session toggle).
+  sort · search · row-grouping ("Grouped by X"). Deliberately NO chip
+  for: hidden columns (the manage-columns toolbar button already carries
+  the hidden-count badge — a chip would duplicate it), pin (visually
+  self-evident), and the column-bracket group (column-config, not a
+  per-session toggle).
+- **A grid can never be hidden down to zero columns.** The last visible
+  hideable column locks: its "Hide column" item (per-column 3-dot menu)
+  disables with a "last column" hint, and its checkbox in the
+  Manage-columns popover disables like a required column. An empty grid
+  paints blank AND takes its own 3-dot menu with it, so the operator
+  would have no way back — the floor is enforced on BOTH hide paths, not
+  just the one you're touching.
 - **Column `filterable` = by cardinality, not by reflex.** Set
   `filterable: true` on a column when the dropdown will actually help
   an operator narrow the list. Two supported filter modes on the
