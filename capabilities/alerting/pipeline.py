@@ -531,6 +531,8 @@ async def _try_post_to_topic(
     event_time: str,
     maps_url: str | None = None,
     subtype: str = "",
+    send_text_plain: str | None = None,
+    ai_account_default: bool = True,
 ) -> bool:
     """If a forum route exists for ``(account_id, alert_type)`` post the
     alert there and return True.  Returns False when no route is
@@ -571,6 +573,8 @@ async def _try_post_to_topic(
             event_time=event_time,
             maps_url=maps_url,
             subtype=subtype,
+            send_text_plain=_group_text_plain,
+            ai_account_default=_include_ai_in_group,
         )
         if ok:
             any_success = True
@@ -593,6 +597,8 @@ async def _post_one_target(
     event_id: str,
     event_time: str,
     maps_url: str | None,
+    send_text_plain: str | None = None,
+    ai_account_default: bool = True,
 ) -> bool:
     """Post one alert message to a single resolved target (chat ±
     thread).  Returns True on success.  Extracted from
@@ -611,6 +617,24 @@ async def _post_one_target(
     # Role Sub bot when attached; the caller's primary otherwise.
     # Every send below rides this pick.
     bot_app = _pick_sender(bot_app, account_id, target)
+
+    # Shared-AI contract (owner decision): the AI answer is generated
+    # ONCE per alert; each role's toggle only chooses whether THEIR
+    # post includes it.  persona_ai.{role}.{key} falls back to the
+    # account-wide forum_ai default; the aggregate follows the default.
+    if send_text_plain is not None and send_text_plain != send_text:
+        _persona = getattr(target, "persona", "") or ""
+        if _persona and not getattr(target, "is_aggregate", False):
+            try:
+                _t = await get_tenant_db(account_id)
+                _v = await _t.get_account_setting(
+                    account_id, f"persona_ai.{_persona}.{route_key}", default="",
+                )
+                _include_ai = ai_account_default if not _v else _v != "0"
+            except Exception:
+                _include_ai = ai_account_default
+            if not _include_ai:
+                send_text = send_text_plain
 
     # CRITICAL-only @-mention for per-persona-mode primary targets.
     # Composed by the shared helper so the lite ``post_alert_to_topic``
@@ -1062,11 +1086,15 @@ async def send_alert(
             flags=_re.DOTALL,
         )
 
+    # ONE shared AI answer (ai_note is generated once per alert); each
+    # target only chooses whether ITS post includes it.  Compose both
+    # variants here so the per-target pick costs nothing extra.
     _group_text = (
         _group_alert_text
         + ((ai_note or "") if _include_ai_in_group else "")
         + history_footer
     )
+    _group_text_plain = _group_alert_text + history_footer
     posted_to_topic = False
     with _obs.time_block(timings, "group_post"):
         posted_to_topic = await _try_post_to_topic(
@@ -1083,6 +1111,9 @@ async def send_alert(
             event_id=event_id,
             event_time=event_time,
             maps_url=maps_url,
+            subtype=subtype,
+            send_text_plain=_group_text_plain,
+            ai_account_default=_include_ai_in_group,
         )
 
     # If the group post succeeded AND this isn't a CRITICAL we're

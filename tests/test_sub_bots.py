@@ -390,3 +390,24 @@ async def test_resolver_subtype_filtering(api):
     assert rolling == []
     # subtype unknown/absent → deliver (fail-open)
     assert any(t.chat_id == -90001 for t in nosub)
+
+
+async def test_ai_inclusion_per_role_shared_answer(api):
+    """Owner decision: ONE AI answer per alert, shared; a role's AI
+    toggle controls only inclusion in THAT role's post.  Safety turning
+    AI off must not touch Fleet's flag nor the account default."""
+    app, db = api
+    acct, users = await _seed(db, "Shared AI Co")
+    owner_h = _headers(users["owner"], acct, "owner")
+    mgr_h = _headers(users["safety"], acct, "safety", is_manager=True)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        r = await c.put("/api/admin/alert-routing/persona-topics/safety/events",
+                        headers=mgr_h, json={"field": "ai", "value": False})
+        assert r.status_code == 200
+
+        body = (await c.get("/api/admin/alert-routing/persona-topics", headers=owner_h)).json()
+        safety_ev = next(x for x in body["personas"]["safety"] if x["alert_type"] == "events")
+        fleet_ev = next(x for x in body["personas"]["fleet"] if x["alert_type"] == "events")
+        assert safety_ev["ai"] is False          # their inclusion off
+        assert fleet_ev["ai"] is True            # others untouched (account default)

@@ -664,9 +664,17 @@ async def list_persona_topics(
                 enabled = await tenant_db.get_account_setting(
                     account_id, f"persona_route.{key}", default="1",
                 )
-            ai = await tenant_db.get_account_setting(
+            # Shared-AI contract: ONE generated answer per alert; the
+            # per-role flag only controls inclusion in that role's post.
+            ai_default = await tenant_db.get_account_setting(
                 account_id, f"forum_ai.{key}", default="1",
             )
+            if persona == "owner_admin":
+                ai = ai_default
+            else:
+                ai = await tenant_db.get_account_setting(
+                    account_id, f"persona_ai.{persona}.{key}", default="",
+                ) or ai_default
             row = {
                 "alert_type": key,
                 "enabled": enabled != "0",
@@ -722,8 +730,14 @@ async def toggle_persona_topic(
 
     if body.field == "enabled":
         setting_key = f"persona_route.{persona}.{alert_type}"
-    else:
+    elif persona == "owner_admin":
+        # The Main row edits the account-wide default (single-mode's
+        # forum panel writes the same key).
         setting_key = f"forum_ai.{alert_type}"
+    else:
+        # Per-role INCLUSION of the one shared AI answer — never a
+        # second generation (owner decision).
+        setting_key = f"persona_ai.{persona}.{alert_type}"
     await tenant_db.set_account_setting(
         user["account_id"], setting_key, "1" if body.value else "0",
     )
