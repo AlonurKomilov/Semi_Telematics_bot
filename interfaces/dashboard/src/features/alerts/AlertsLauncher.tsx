@@ -1,23 +1,24 @@
 /**
  * Topbar Alerts bell — Alerts as a cross-cutting monitoring SERVICE in
  * the topbar cluster (beside the AI + theme icons), not a sidebar
- * feature row.  Click navigates to the /alerts page; a badge shows the
- * pending (unacknowledged) count.
+ * feature row.  Clicking opens the notification-centre DROPDOWN (a quick
+ * recent-alerts glance); the full board + the preferences gear live one
+ * click away inside it.  This is the SINGLE gate for alerts + prefs.
  *
- * The count reuses useShellStats() — the SAME shared query the persona
- * heroes read (one deduped /overview/stats fetch, 60s stale), so the
- * badge can never drift from the heroes and adds no extra request.
+ * The badge count reuses useShellStats() — the SAME shared query the
+ * persona heroes read (one deduped /overview/stats fetch, 60s stale), so
+ * the badge can never drift from the heroes and adds no extra request.
+ * The recent-feed itself is fetched lazily, only while the dropdown is
+ * open (see useRecentAlerts) — the closed bell costs nothing.
  *
- * Gated on the alerts permission (view-scoped) like the sidebar item
- * was.  Stays visible on /alerts too (a persistent nav affordance —
- * hiding it there read as the icon vanishing after a click) and shows
- * an active highlight while you're on the page.
+ * Gated on the alerts permission (view-scoped) like the sidebar item was.
  */
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
+import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
 import { Bell } from 'lucide-react';
 import { useShellStats } from '../../shells/heroes/useShellStats';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
-import { Tip } from '../../components/tooltip';
+import { NotificationsPanel } from './NotificationsPanel';
 
 const P_ALERTS = ['can_alerts_all', 'can_alerts_vehicle'];
 
@@ -30,21 +31,18 @@ export function AlertsLauncher() {
 }
 
 function AlertsBell() {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const [open, setOpen] = useState(false);
   const { data } = useShellStats();
   const pending = data?.pending_alerts ?? 0;
   const badge = pending > 99 ? '99+' : String(pending);
-  const active = location.pathname.startsWith('/alerts');
+  const label = pending > 0 ? `Alerts, ${pending} pending` : 'Alerts';
 
   return (
-    <Tip label={pending > 0 ? `Alerts — ${pending} pending` : 'Alerts'}>
-      <button
-        onClick={() => navigate('/alerts')}
-        aria-label={pending > 0 ? `Alerts, ${pending} pending` : 'Alerts'}
-        aria-current={active ? 'page' : undefined}
+    <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
+      <PopoverPrimitive.Trigger
+        aria-label={label}
         className={`relative inline-flex size-8 items-center justify-center rounded-md transition-colors ${
-          active
+          open
             ? 'bg-primary/15 text-primary'
             : 'text-muted-foreground hover:bg-muted hover:text-foreground'
         }`}
@@ -58,8 +56,20 @@ function AlertsBell() {
             {badge}
           </span>
         )}
-      </button>
-    </Tip>
+      </PopoverPrimitive.Trigger>
+      <PopoverPrimitive.Portal>
+        <PopoverPrimitive.Positioner
+          side="bottom"
+          align="end"
+          sideOffset={8}
+          className="z-50 outline-none"
+        >
+          <PopoverPrimitive.Popup className="w-80 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg overflow-hidden">
+            <NotificationsPanel onClose={() => setOpen(false)} />
+          </PopoverPrimitive.Popup>
+        </PopoverPrimitive.Positioner>
+      </PopoverPrimitive.Portal>
+    </PopoverPrimitive.Root>
   );
 }
 
