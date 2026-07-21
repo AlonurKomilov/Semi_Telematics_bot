@@ -180,9 +180,14 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   `defaultAggregation={{ key: fn }}` starts it on. The total reduces over
   the **filtered** set (all pages), and the function name shows as a
   muted micro-label under the header (MUI's "Gross / sum"). Do NOT
-  hand-roll a totals row under a grid — this is the SSOT. (Phase 1:
-  footer only. Per-group totals + custom functions are planned Phase
-  2/3.)
+  hand-roll a totals row under a grid — this is the SSOT. When row
+  grouping is ALSO active, each group row shows that group's totals
+  aligned under their columns (the group identity stays pinned at the
+  left edge during horizontal scroll), while the footer keeps the grand
+  total — matching MUI. This per-group render is skipped when the page
+  supplies a custom `rowGroupHeader` or `firstColumnLeading.groupHeader`
+  (those own the group row) and keeps the classic full-width label.
+  (Phases 1+2 shipped: footer + per-group. Custom functions = Phase 3.)
 - **Column `filterable` = by cardinality, not by reflex.** Set
   `filterable: true` on a column when the dropdown will actually help
   an operator narrow the list. Two supported filter modes on the

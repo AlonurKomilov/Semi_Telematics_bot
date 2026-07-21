@@ -2061,11 +2061,32 @@ export default function DataGrid({
     setUserWidths({});
   };
 
+  // Reduce ONE column over a set of rows and format the result — shared
+  // by the grand-total footer (whole filtered set) and each group row
+  // (that group's leaves), so a group total and the footer total always
+  // agree on how a column is summed + formatted.
+  const renderAggCell = useCallback((
+    key: string, fn: AggFn, originals: Record<string, unknown>[],
+  ): React.ReactNode => {
+    const col = columns.find(c => c.key === key);
+    if (!col) return null;
+    const nums = fn === 'count'
+      ? []
+      : originals
+          .map(o => (col.aggValue ? col.aggValue(o) : Number(o[key])))
+          .filter((n): n is number => Number.isFinite(n));
+    const value = computeAggregate(fn, nums, originals.length);
+    return value == null
+      ? '—'
+      : col.aggFormat
+        ? col.aggFormat(value, fn)
+        : formatAggDefault(value, fn);
+  }, [columns]);
+
   // Footer totals — one value per aggregated column, reduced over the
   // FILTERED leaf rows (all pages, so the total reflects the whole
   // narrowed set, not just the current page).  Recomputes only when the
-  // model, the columns, or the filtered inputs change.  ``{}`` → the
-  // footer row doesn't render at all.
+  // model or the filtered inputs change.  ``{}`` → no footer row.
   const footerAgg = useMemo<Record<string, React.ReactNode>>(() => {
     if (Object.keys(aggregationModel).length === 0) return {};
     const originals = table.getFilteredRowModel().rows
@@ -2073,24 +2094,23 @@ export default function DataGrid({
       .map(r => r.original as Record<string, unknown>);
     const out: Record<string, React.ReactNode> = {};
     for (const [key, fn] of Object.entries(aggregationModel)) {
-      const col = columns.find(c => c.key === key);
-      if (!col) continue;
-      const nums = fn === 'count'
-        ? []
-        : originals
-            .map(o => (col.aggValue ? col.aggValue(o) : Number(o[key])))
-            .filter((n): n is number => Number.isFinite(n));
-      const value = computeAggregate(fn, nums, originals.length);
-      out[key] = value == null
-        ? '—'
-        : col.aggFormat
-          ? col.aggFormat(value, fn)
-          : formatAggDefault(value, fn);
+      out[key] = renderAggCell(key, fn, originals);
     }
     return out;
     // ``data`` + filter/search state are the inputs that reshape the
     // filtered row set; ``table`` is stable.
-  }, [aggregationModel, columns, table, data, columnFilters, globalFilter]);
+  }, [aggregationModel, renderAggCell, table, data, columnFilters, globalFilter]);
+
+  // Group rows show per-group aggregates aligned under their columns
+  // (MUI's grouped-aggregation look) ONLY when a model is active AND the
+  // page owns neither a custom ``rowGroupHeader`` (owns the whole group
+  // row as one summary cell — e.g. Alerts) NOR a custom
+  // ``firstColumnLeading.groupHeader`` (custom leading content the
+  // per-column path has no slot for).  Either → keep the classic
+  // full-width colSpan group row, which renders both.
+  const groupAggActive = Object.keys(aggregationModel).length > 0
+    && !rowGroupHeader
+    && !firstColumnLeading?.groupHeader;
 
   // Manage-columns options — derived from the full column list (NOT
   // the rendered header list) so the popover always lists every
@@ -2555,6 +2575,91 @@ export default function DataGrid({
                   const leafOriginals = row.subRows.map(
                     r => r.original as Record<string, unknown>,
                   );
+                  // Per-column group aggregates (aligned under their
+                  // columns).  One real <td> per visible column — the
+                  // select column carries the group checkbox, the first
+                  // DATA column carries the chevron + value + count, and
+                  // each aggregated column shows this group's total.  Uses
+                  // ``pinnedStyle`` so pinned + select columns stay
+                  // aligned; a solid ``bg-muted`` keeps them opaque over
+                  // horizontally-scrolled content (like the footer).
+                  if (groupAggActive) {
+                    const cols = table.getVisibleLeafColumns();
+                    const firstDataIdx = Math.max(
+                      0, cols.findIndex(c => c.id !== SELECT_COL_ID));
+                    return (
+                      <TableRow
+                        key={row.id}
+                        onClick={() => row.toggleExpanded()}
+                        className="cursor-pointer"
+                      >
+                        {cols.map((col, i) => {
+                          const aggFn = aggregationModel[col.id];
+                          const isLabelCell = i === firstDataIdx;
+                          // Keep the group identity (chevron + value +
+                          // count) pinned at the left edge while scrolling
+                          // right to the aggregate columns — the old
+                          // colSpan row did this with a sticky-left inner
+                          // span; the per-column label lives in a real
+                          // cell, so pin THAT cell (just after the pinned
+                          // cluster) when its column isn't already
+                          // operator-pinned.  Otherwise the label scrolls
+                          // away and you lose track of which group's
+                          // totals you're reading.
+                          const labelSticky = isLabelCell && !col.getIsPinned();
+                          const cellStyle: React.CSSProperties = labelSticky
+                            ? {
+                                position: 'sticky',
+                                left: pinnedLeftWidth,
+                                zIndex: 3,
+                                width: hasUserWidths ? col.getSize() : undefined,
+                              }
+                            : {
+                                ...pinnedStyle(col, false),
+                                width: hasUserWidths ? col.getSize() : undefined,
+                              };
+                          return (
+                            <td
+                              key={col.id}
+                              style={cellStyle}
+                              className={cn(DENSITY_GROUP_ROW[density], 'bg-muted')}
+                            >
+                              {col.id === SELECT_COL_ID ? (
+                                bulkSelection && (
+                                  <span onClick={(e) => e.stopPropagation()}>
+                                    {renderGroupBox(row.subRows
+                                      .filter(r => !isRowSelectable || isRowSelectable(r.original as Record<string, unknown>))
+                                      .map(r => r.id))}
+                                  </span>
+                                )
+                              ) : i === firstDataIdx ? (
+                                <span className="inline-flex items-center gap-2 min-w-0">
+                                  <ChevronRight
+                                    size={14}
+                                    aria-hidden="true"
+                                    className={cn(
+                                      'shrink-0 text-muted-foreground transition-transform',
+                                      row.getIsExpanded() && 'rotate-90',
+                                    )}
+                                  />
+                                  <span className="font-medium text-foreground truncate">
+                                    {String(value ?? '—')}
+                                  </span>
+                                  <span className="shrink-0 text-xs text-muted-foreground">
+                                    ({row.subRows.length})
+                                  </span>
+                                </span>
+                              ) : aggFn ? (
+                                <span className="font-semibold text-primary tabular-nums whitespace-nowrap">
+                                  {renderAggCell(col.id, aggFn, leafOriginals)}
+                                </span>
+                              ) : null}
+                            </td>
+                          );
+                        })}
+                      </TableRow>
+                    );
+                  }
                   return (
                     <TableRow
                       key={row.id}
