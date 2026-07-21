@@ -351,7 +351,7 @@ export default function ForumRoutingSection() {
                               </button>
                             )}
                           </td>
-                          <td className="px-3 py-2 align-top w-28 text-right">
+                          <td className="px-3 py-2 align-top w-28 text-right whitespace-nowrap">
                             {r.is_mapped && (
                               <button
                                 disabled={busyKey === r.alert_type}

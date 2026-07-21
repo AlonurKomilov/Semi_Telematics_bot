@@ -864,7 +864,7 @@ export default function AlertRoutingSection({
                           placeholder={t('alert_routing.subbot_token_ph')}
                           autoComplete="off"
                           spellCheck={false}
-                          className="w-48 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground font-mono focus:outline-none focus:border-ring"
+                          className="w-64 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground font-mono focus:outline-none focus:border-ring"
                         />
                         <button
                           type="button"
