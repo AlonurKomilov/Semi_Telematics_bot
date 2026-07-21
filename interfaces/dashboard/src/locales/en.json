@@ -950,7 +950,9 @@
     "subtype_prefix_all": "kinds — all on:",
     "subtype_prefix_some": "kinds — {{n}} of {{total}} on:",
     "custom_topics_empty": "Route chosen kinds into their own Telegram thread — e.g. only Crash + Harsh Braking.",
-    "topics_needs_group": "Takes effect once a group is bound."
+    "topics_needs_group": "Takes effect once a group is bound.",
+    "load_error": "Couldn't load bot routing. Check your connection and retry.",
+    "topics_error": "Couldn't load role alert settings — the list below may be incomplete."
   },
   "forum_routing": {
     "section_title": "Alert group & topics",
@@ -987,7 +989,8 @@
     "receipt_off": "Resolved: Off",
     "routing_on": "Routing: On",
     "routing_off": "Routing: Off",
-    "status_ready": "Topics created"
+    "status_ready": "Topics created",
+    "load_error": "Couldn't load the group's topic settings. Check your connection and retry."
   },
   "knowledge": {
     "new_article": "New article",

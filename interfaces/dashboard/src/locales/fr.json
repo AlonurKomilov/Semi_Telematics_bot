@@ -118,7 +118,9 @@
     "subtype_prefix_all": "types — tous actifs:",
     "subtype_prefix_some": "types — {{n}} sur {{total}} actifs:",
     "custom_topics_empty": "Envoyez certains types dans leur propre fil Telegram — p. ex. seulement Collision + Freinage brusque.",
-    "topics_needs_group": "S'applique une fois un groupe lié."
+    "topics_needs_group": "S'applique une fois un groupe lié.",
+    "load_error": "Impossible de charger le routage du bot. Vérifiez votre connexion et réessayez.",
+    "topics_error": "Impossible de charger les réglages d'alertes par rôle — la liste ci-dessous peut être incomplète."
   },
   "nav": {
     "overview": "Aperçu",

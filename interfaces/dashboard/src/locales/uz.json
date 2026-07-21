@@ -118,7 +118,9 @@
     "subtype_prefix_all": "turlar — hammasi yoniq:",
     "subtype_prefix_some": "turlar — {{total}} tadan {{n}} tasi yoniq:",
     "custom_topics_empty": "Tanlangan turlarni alohida Telegram mavzusiga yo'naltiring — masalan, faqat Avariya + Keskin tormoz.",
-    "topics_needs_group": "Guruh ulangach ishga tushadi."
+    "topics_needs_group": "Guruh ulangach ishga tushadi.",
+    "load_error": "Bot yo'naltirishini yuklab bo'lmadi. Ulanishni tekshirib, qayta urining.",
+    "topics_error": "Rol bo'yicha ogohlantirish sozlamalarini yuklab bo'lmadi — quyidagi ro'yxat to'liq bo'lmasligi mumkin."
   },
   "nav": {
     "overview": "Bosh sahifa",

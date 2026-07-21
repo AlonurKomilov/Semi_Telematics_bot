@@ -6,6 +6,7 @@ import { toneClasses } from '../../lib/status';
 import { Check, ChevronDown, ChevronRight, Info, X } from 'lucide-react';
 import { InfoTip } from '../../components/tooltip';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
+import { ErrorState } from '../../components/shell';
 
 // The Telegram Bot card's body controller.  The Routing selector sits
 // at the TOP of the card (it's the bot-topology decision, not an
@@ -155,18 +156,38 @@ export default function AlertRoutingSection({
   const [nudgeDismissed, setNudgeDismissed] = useState(
     () => localStorage.getItem('tg_routing_nudge_dismissed') === '1',
   );
+  // The mode-driving fetch has its own loading/error state: the card
+  // CANNOT know which mode to render until /alert-routing resolves, so
+  // failing to it must be an honest error — not a silent fall-through
+  // to the single-mode body (which mislabels a Sub-bots account).
+  const [loading, setLoading] = useState(true);
+  const [dataError, setDataError] = useState(false);
+  // Topics drive per-role row visibility; a failed fetch would hide
+  // unbound roles and read as "empty by permission" — track it so the
+  // roster can say so instead of lying.
+  const [topicsError, setTopicsError] = useState(false);
+  // Inline confirm target (replaces window.confirm — the settings
+  // feature's established rule; matches the card's other two-step
+  // confirms).  One at a time: "unbind-<p>" | "detach-<p>" | "rm-<id>".
+  const [confirming, setConfirming] = useState<string>('');
 
   const load = useCallback(() => {
-    apiJSON<AlertRoutingResponse>('/admin/alert-routing').then(setData).catch(() => setData(null));
+    setLoading(true); setDataError(false); setTopicsError(false);
+    apiJSON<AlertRoutingResponse>('/admin/alert-routing')
+      .then(setData).catch(() => setDataError(true)).finally(() => setLoading(false));
     apiJSON<SubBotsResponse>('/admin/bot-instances').then(setSubBots).catch(() => setSubBots(null));
     apiJSON<PersonaTopicsResponse>('/admin/alert-routing/persona-topics')
-      .then(setTopics).catch(() => setTopics(null));
+      .then(setTopics).catch(() => setTopicsError(true));
     apiJSON<CustomTopicsResponse>('/admin/alert-routing/custom-topics')
       .then(setCustomTopics).catch(() => setCustomTopics(null));
   }, []);
   useEffect(load, [load]);
 
-  if (!data) return <>{singleBody}</>;
+  if (!data) {
+    if (dataError) return <ErrorState message={t('alert_routing.load_error')} onRetry={load} />;
+    if (loading) return <p className="py-3 text-sm text-muted-foreground">{t('common.loading')}</p>;
+    return <>{singleBody}</>;
+  }
 
   const manageable = subBots?.manageable ?? [];
   const canManage = (persona: string) =>
@@ -213,13 +234,8 @@ export default function AlertRoutingSection({
 
   const unbind = async (persona: string) => {
     if (busy) return;
-    // Named stakes: unbinding silently stops this role's group posts
-    // (no legacy-forum fallback by design), so the confirm says what
-    // actually changes before the click lands.
-    const msg = persona === 'owner_admin'
-      ? t('alert_routing.confirm_unbind_main')
-      : t('alert_routing.confirm_unbind', { role: t(`alert_routing.persona_${persona}`) });
-    if (!confirm(msg)) return;
+    // Keep the confirm cluster mounted through the request (its Yes
+    // button shows the in-place spinner); clear it in finally.
     setBusy(persona);
     try {
       await apiJSON(`/admin/alert-routing/persona-groups/${persona}`, { method: 'DELETE' });
@@ -228,7 +244,7 @@ export default function AlertRoutingSection({
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
     } finally {
-      setBusy('');
+      setBusy(''); setConfirming('');
     }
   };
 
@@ -258,8 +274,6 @@ export default function AlertRoutingSection({
 
   const detachSubBot = async (persona: string) => {
     if (busy) return;
-    const sub = subBots?.personas?.[persona];
-    if (!confirm(t('alert_routing.confirm_detach', { username: sub?.bot_username ?? '' }))) return;
     setBusy(`sub-${persona}`);
     try {
       await apiJSON(`/admin/bot-instances/${persona}`, { method: 'DELETE' });
@@ -271,7 +285,7 @@ export default function AlertRoutingSection({
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
     } finally {
-      setBusy('');
+      setBusy(''); setConfirming('');
     }
   };
 
@@ -359,7 +373,6 @@ export default function AlertRoutingSection({
 
   const deleteCustomTopic = async (persona: string, topic: CustomTopic) => {
     if (busy) return;
-    if (!confirm(t('alert_routing.confirm_topic_delete', { name: topic.name }))) return;
     setBusy(`ctopic-${persona}`);
     try {
       await apiJSON(`/admin/alert-routing/custom-topics/${topic.id}`, { method: 'DELETE' });
@@ -373,7 +386,7 @@ export default function AlertRoutingSection({
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
     } finally {
-      setBusy('');
+      setBusy(''); setConfirming('');
     }
   };
 
@@ -406,6 +419,36 @@ export default function AlertRoutingSection({
     );
   };
 
+  // Inline two-step confirm — replaces window.confirm() so every
+  // destructive action on the card shares ONE themed grammar (the
+  // settings feature bans the native dialog; the card's Disconnect Bot
+  // / Unlink group already confirm inline).  Shows the stakes → Yes/Cancel.
+  const confirmCluster = (
+    prompt: string,
+    yesLabel: string,
+    onYes: () => void,
+    busyKey: string,
+  ) => (
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <span className="text-2xs text-muted-foreground">{prompt}</span>
+      <button
+        type="button"
+        onClick={onYes}
+        disabled={busy === busyKey}
+        className="text-xs font-medium text-destructive hover:underline disabled:opacity-50"
+      >
+        {busy === busyKey ? '…' : yesLabel}
+      </button>
+      <button
+        type="button"
+        onClick={() => setConfirming('')}
+        className="text-xs text-muted-foreground hover:text-foreground"
+      >
+        {t('alert_routing.cancel')}
+      </button>
+    </span>
+  );
+
   const groupCell = (persona: string) => {
     const bound = data.personas[persona];
     const editable = canManage(persona);
@@ -421,14 +464,25 @@ export default function AlertRoutingSection({
             {bound.chat_title || bound.chat_id}
           </span>
           {editable && (
-            <button
-              type="button"
-              onClick={() => { void unbind(persona); }}
-              disabled={busy === persona}
-              className="text-xs text-destructive hover:underline disabled:opacity-50"
-            >
-              {t('alert_routing.unbind')}
-            </button>
+            confirming === `unbind-${persona}` ? (
+              confirmCluster(
+                isMain
+                  ? t('alert_routing.confirm_unbind_main')
+                  : t('alert_routing.confirm_unbind', { role: t(`alert_routing.persona_${persona}`) }),
+                t('alert_routing.unbind'),
+                () => { void unbind(persona); },
+                persona,
+              )
+            ) : (
+              <button
+                type="button"
+                onClick={() => setConfirming(`unbind-${persona}`)}
+                disabled={busy === persona}
+                className="text-xs text-destructive hover:underline disabled:opacity-50"
+              >
+                {t('alert_routing.unbind')}
+              </button>
+            )
           )}
         </>
       );
@@ -646,14 +700,23 @@ export default function AlertRoutingSection({
                       {tp.has_thread ? t('alert_routing.topic_thread') : t('alert_routing.topic_flat')}
                     </span>
                     {editable && (
-                      <button
-                        type="button"
-                        onClick={() => { void deleteCustomTopic(persona, tp); }}
-                        disabled={busy === `ctopic-${persona}`}
-                        className="text-xs text-destructive hover:underline disabled:opacity-50"
-                      >
-                        {t('alert_routing.remove')}
-                      </button>
+                      confirming === `rm-${tp.id}` ? (
+                        confirmCluster(
+                          t('alert_routing.confirm_topic_delete', { name: tp.name }),
+                          t('alert_routing.remove'),
+                          () => { void deleteCustomTopic(persona, tp); },
+                          `ctopic-${persona}`,
+                        )
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirming(`rm-${tp.id}`)}
+                          disabled={busy === `ctopic-${persona}`}
+                          className="text-xs text-destructive hover:underline disabled:opacity-50"
+                        >
+                          {t('alert_routing.remove')}
+                        </button>
+                      )
                     )}
                   </div>
                 ))}
@@ -801,6 +864,21 @@ export default function AlertRoutingSection({
         singleBody
       ) : (
         <div className="space-y-3">
+          {/* Topics drive row visibility — if that fetch failed, say so
+              instead of rendering a roster that looks empty-by-permission. */}
+          {topicsError && (
+            <div className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${toneClasses('warn')}`}>
+              <Info size={14} className="mt-0.5 shrink-0" />
+              <span>{t('alert_routing.topics_error')}</span>
+              <button
+                type="button"
+                onClick={load}
+                className="ml-auto shrink-0 font-medium underline hover:opacity-70"
+              >
+                {t('common.retry')}
+              </button>
+            </div>
+          )}
           {/* Completion cue — how much of the roster is set up. */}
           <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             {t('alert_routing.roster_progress', { n: boundCount, total: destinations.length })}
@@ -898,14 +976,23 @@ export default function AlertRoutingSection({
                           @{sub.bot_username}
                         </span>
                         {editable && (
-                          <button
-                            type="button"
-                            onClick={() => { void detachSubBot(persona); }}
-                            disabled={busy === `sub-${persona}`}
-                            className="text-xs text-destructive hover:underline disabled:opacity-50"
-                          >
-                            {t('alert_routing.subbot_detach')}
-                          </button>
+                          confirming === `detach-${persona}` ? (
+                            confirmCluster(
+                              t('alert_routing.confirm_detach', { username: sub.bot_username }),
+                              t('alert_routing.subbot_detach'),
+                              () => { void detachSubBot(persona); },
+                              `sub-${persona}`,
+                            )
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setConfirming(`detach-${persona}`)}
+                              disabled={busy === `sub-${persona}`}
+                              className="text-xs text-destructive hover:underline disabled:opacity-50"
+                            >
+                              {t('alert_routing.subbot_detach')}
+                            </button>
+                          )
                         )}
                       </>
                     ) : !editable ? (

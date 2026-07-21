@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { FEATURE_GROUPS } from './AlertRoutingSection';
+import { ErrorState } from '../../components/shell';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import {
@@ -90,17 +91,20 @@ export default function ForumRoutingSection() {
   const tz = useTimezone();
   const [state, setState] = useState<RoutingState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [showMapping, setShowMapping] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const data = await apiJSON<RoutingState>('/admin/forum-routing');
       setState(data);
     } catch {
       setState(null);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -186,6 +190,12 @@ export default function ForumRoutingSection() {
 
       {loading && (
         <p className="text-sm text-muted-foreground">{t('forum_routing.loading')}</p>
+      )}
+
+      {/* Failed fetch must SAY so — the old code rendered nothing,
+          leaving just the heading + description over blank space. */}
+      {!loading && loadError && (
+        <ErrorState message={t('forum_routing.load_error')} onRetry={() => { void load(); }} />
       )}
 
       {!loading && state && (

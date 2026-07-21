@@ -118,7 +118,9 @@
     "subtype_prefix_all": "tipos — todos activos:",
     "subtype_prefix_some": "tipos — {{n}} de {{total}} activos:",
     "custom_topics_empty": "Envía ciertos tipos a su propio hilo de Telegram — p. ej. solo Choque + Frenado brusco.",
-    "topics_needs_group": "Se aplica cuando se vincula un grupo."
+    "topics_needs_group": "Se aplica cuando se vincula un grupo.",
+    "load_error": "No se pudo cargar el enrutamiento del bot. Revisa tu conexión y reintenta.",
+    "topics_error": "No se pudieron cargar los ajustes de alertas por rol — la lista de abajo puede estar incompleta."
   },
   "nav": {
     "overview": "Resumen",
