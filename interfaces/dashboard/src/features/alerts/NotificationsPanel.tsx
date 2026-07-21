@@ -103,7 +103,7 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
             <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} aria-hidden />
           </button>
           <button
-            onClick={() => goto('/notifications')}
+            onClick={() => goto('/alerts/preferences')}
             aria-label="Notification preferences"
             className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           >

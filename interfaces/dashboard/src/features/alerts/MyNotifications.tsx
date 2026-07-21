@@ -24,6 +24,7 @@ import { Bell, BellOff, CheckCircle2 } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { PageHeader, ErrorState, CardSkeleton } from '@/components/shell';
 import EmailChannelCard from './EmailChannelCard';
+import { AlertsTabs } from './AlertsTabs';
 
 interface AlertPrefsResponse {
   alerts_on: boolean;
@@ -100,10 +101,11 @@ export default function MyNotifications() {
   if (loading) {
     return (
       <div>
+        <AlertsTabs />
         <PageHeader
           icon={Bell}
           title="Notification preferences"
-          description="Choose which alerts arrive in your personal Telegram chat."
+          description="Choose which alerts reach you and where — your Telegram DM and email."
         />
         <CardSkeleton message="Loading preferences…" />
       </div>
@@ -113,10 +115,11 @@ export default function MyNotifications() {
   if (!prefs) {
     return (
       <div>
+        <AlertsTabs />
         <PageHeader
           icon={Bell}
           title="Notification preferences"
-          description="Choose which alerts arrive in your personal Telegram chat."
+          description="Choose which alerts reach you and where — your Telegram DM and email."
         />
         <ErrorState
           title="Couldn’t load preferences"
@@ -130,6 +133,7 @@ export default function MyNotifications() {
 
   return (
     <div>
+      <AlertsTabs />
       <PageHeader
         icon={Bell}
         title="Notification preferences"
