@@ -149,12 +149,30 @@ word/element" — switch to tree depth. This is the atomic-design idea
 applied as an audit: decompose, judge every node, then reassemble the
 whole image.
 
-1. **Map the tree first.** From the real component source (and the
-   rendered UI when available), draw the target's component tree:
-   surface → sections → blocks → controls → atoms (labels, chips,
-   inputs, icons, placeholder texts). Print the tree — it is the
-   audit's table of contents and the user's map. Skip pure layout
-   wrappers; every node a user can SEE or CLICK is in scope.
+1. **Component census first — COLLECT everything before judging
+   anything.** Walk the real component source (and the rendered
+   UI/screenshots when available) and inventory every user-perceivable
+   piece into seven fixed categories:
+   - **Texts** — headings, labels, captions, hints, placeholders, legends
+   - **Actions** — buttons, links, expanders, menu items
+   - **Inputs** — fields, selects, checkboxes, filter chips
+   - **Status & feedback** — chips, badges, banners, counters, toasts, confirms
+   - **Structure** — sections, group headings, separators, column alignment
+   - **Hidden states** — everything that appears only on a trigger:
+     loading, empty, error/failure, busy, disabled, unconfigured.
+     Screenshots NEVER show these — find them in the code: every
+     conditional render (`&&`, ternary, early return, `catch → null`)
+     is a state some user WILL eventually see.
+   - **Overlays** — tooltips/toggletips, dialogs, dropdowns
+   Print the census as a short table with counts, then draw the
+   component tree from it (surface → sections → blocks → controls →
+   atoms). The tree is the audit's table of contents; the census is
+   its completeness proof. Cross-check BOTH directions before
+   auditing: everything visible in the screenshot must appear in the
+   census, and every conditional branch in the code must map to a
+   Hidden-states entry. Any census item not covered by a card must be
+   listed at the end under **"Not audited"** — a silent skip is the
+   exact failure this step exists to prevent.
 2. **One audit card per node**, descending layer by layer — finish a
    section's nodes before entering the next section; never jump
    around the tree. Fixed checks per card:
