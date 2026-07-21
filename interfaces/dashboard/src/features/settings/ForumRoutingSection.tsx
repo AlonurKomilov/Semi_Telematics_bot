@@ -306,19 +306,20 @@ export default function ForumRoutingSection() {
                           </td>
                           {/* AI Analysis toggle column — only for AI-capable types.
                               Non-AI types render an empty cell so the
-                              Enable/Disable column stays aligned across rows. */}
+                              state-toggle column stays aligned across rows.
+                              All three toggles read as STATE ("AI: On") with
+                              one uniform treatment — tinted = on, muted =
+                              off; the border marks them interactive vs the
+                              flat status chips (UX-audit grammar rule). */}
                           <td className="px-3 py-2 align-top w-28 text-right whitespace-nowrap">
                             {isAICapable && r.is_mapped && (
                               <button
                                 disabled={aiBusy}
                                 onClick={() => handleToggleAIForType(r.alert_type, !aiEnabled)}
-                                title={aiEnabled
-                                  ? t('forum_routing.ai_status_on')
-                                  : t('forum_routing.ai_status_off')}
-                                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition ${
+                                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition ${
                                   aiEnabled
                                     ? toneClasses('info')
-                                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                    : 'bg-muted text-muted-foreground border-border hover:bg-muted/80'
                                 }`}
                               >
                                 <Sparkles size={12} />
@@ -335,19 +336,18 @@ export default function ForumRoutingSection() {
                               <button
                                 disabled={busyKey === `__rr_${r.alert_type}__`}
                                 onClick={() => handleToggleReceipt(r.alert_type, !r.send_resolve_receipt)}
-                                title={r.send_resolve_receipt
-                                  ? 'Group receives a RESOLVED message when this alert auto-clears'
-                                  : 'Group does NOT receive a resolved-notification for this alert type'}
-                                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition ${
+                                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition ${
                                   r.send_resolve_receipt
                                     ? toneClasses('ok')
-                                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                    : 'bg-muted text-muted-foreground border-border hover:bg-muted/80'
                                 }`}
                               >
                                 {r.send_resolve_receipt
                                   ? <CheckCircle2 size={12} />
                                   : <BellOff size={12} />}
-                                {r.send_resolve_receipt ? 'Resolved notif.' : 'No notif.'}
+                                {r.send_resolve_receipt
+                                  ? t('forum_routing.receipt_on')
+                                  : t('forum_routing.receipt_off')}
                               </button>
                             )}
                           </td>
@@ -356,16 +356,16 @@ export default function ForumRoutingSection() {
                               <button
                                 disabled={busyKey === r.alert_type}
                                 onClick={() => handleToggle(r.alert_type, !r.is_active)}
-                                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition ${
+                                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition ${
                                   r.is_active
                                     ? toneClasses('ok')
-                                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                                    : 'bg-muted text-muted-foreground border-border hover:bg-muted/80'
                                 }`}
                               >
                                 {r.is_active ? <Check size={12} /> : <X size={12} />}
                                 {r.is_active
-                                  ? t('forum_routing.btn_toggle_disable')
-                                  : t('forum_routing.btn_toggle_enable')}
+                                  ? t('forum_routing.routing_on')
+                                  : t('forum_routing.routing_off')}
                               </button>
                             )}
                           </td>
@@ -378,11 +378,13 @@ export default function ForumRoutingSection() {
                     </tbody>
                   </table>
                   <p className="text-xs text-muted-foreground px-3 py-2 border-t border-border/40 bg-muted/20">
-                    <strong className="font-medium text-foreground">AI</strong> = toggle AI Analysis inclusion for that topic.
+                    Each button shows its current state — click to switch it.
                     <span className="mx-1">·</span>
-                    <strong className="font-medium text-foreground">Resolved notif.</strong> = post a confirmation message to the group when an alert auto-resolves.
+                    <strong className="font-medium text-foreground">AI</strong> = include the AI analysis in this topic's posts.
                     <span className="mx-1">·</span>
-                    <strong className="font-medium text-foreground">Disable</strong> = stop routing this alert type to the group (per-user DMs still fire based on each user’s preferences).
+                    <strong className="font-medium text-foreground">Resolved</strong> = post a confirmation when an alert auto-resolves.
+                    <span className="mx-1">·</span>
+                    <strong className="font-medium text-foreground">Routing</strong> = post this alert type to the group at all (personal DMs are unaffected).
                   </p>
                 </div>
               )}

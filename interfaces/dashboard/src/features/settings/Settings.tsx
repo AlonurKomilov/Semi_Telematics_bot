@@ -431,7 +431,7 @@ export default function Settings() {
                 </a>
                 {showBotDisconnect ? (
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-muted-foreground">Disconnect this bot?</span>
+                    <span className="text-sm text-muted-foreground">Disconnect this bot? Alert posting and Telegram login stop for everyone until a new bot is connected.</span>
                     <button onClick={handleDisconnectBot} disabled={botSaving}
                       className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 disabled:opacity-50 rounded text-xs font-medium text-destructive-foreground transition">
                       {botSaving ? 'Disconnecting...' : 'Yes, Disconnect'}
@@ -465,8 +465,12 @@ export default function Settings() {
               <div className="flex items-end gap-3">
                 <div className="flex-1">
                   <label className="block text-xs text-muted-foreground mb-1">Bot Token</label>
-                  <input type="password" value={botToken} onChange={e => setBotToken(e.target.value)}
+                  {/* type=text, not password — a password field here
+                      attracts saved-credential autofill (seen live on
+                      the roster inputs; same fix applied there). */}
+                  <input type="text" value={botToken} onChange={e => setBotToken(e.target.value)}
                     placeholder="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+                    autoComplete="off" spellCheck={false}
                     className="w-full bg-muted border border-border rounded px-3 py-2 text-sm focus:outline-none focus:border-ring font-mono" />
                 </div>
                 <button onClick={handleConnectBot} disabled={botSaving || botToken.length < 30}

@@ -15,8 +15,8 @@ import { InfoTip } from '../../components/tooltip';
 //                        (passed in as ``singleBody`` from Settings)
 //     Sub bot per role → the bot ROSTER: Main row first (identity +
 //                        Owner & Admins group + fallback sender), then
-//                        one row per role: status · Sub bot · group ·
-//                        ▸ topics & settings
+//                        one row per role: name · group (setup step 1)
+//                        · sender bot (right) · ▸ alerts for this group
 //
 // A role MANAGER sees this same card (route opened via
 // can_manage_role_bot) — the server's ``manageable`` list drives which
@@ -198,6 +198,13 @@ export default function AlertRoutingSection({
 
   const unbind = async (persona: string) => {
     if (busy) return;
+    // Named stakes: unbinding silently stops this role's group posts
+    // (no legacy-forum fallback by design), so the confirm says what
+    // actually changes before the click lands.
+    const msg = persona === 'owner_admin'
+      ? t('alert_routing.confirm_unbind_main')
+      : t('alert_routing.confirm_unbind', { role: t(`alert_routing.persona_${persona}`) });
+    if (!confirm(msg)) return;
     setBusy(persona);
     try {
       await apiJSON(`/admin/alert-routing/persona-groups/${persona}`, { method: 'DELETE' });
@@ -236,6 +243,8 @@ export default function AlertRoutingSection({
 
   const detachSubBot = async (persona: string) => {
     if (busy) return;
+    const sub = subBots?.personas?.[persona];
+    if (!confirm(t('alert_routing.confirm_detach', { username: sub?.bot_username ?? '' }))) return;
     setBusy(`sub-${persona}`);
     try {
       await apiJSON(`/admin/bot-instances/${persona}`, { method: 'DELETE' });
@@ -388,7 +397,10 @@ export default function AlertRoutingSection({
     if (bound) {
       return (
         <>
-          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs border ${toneClasses('ok')}`}>
+          {/* Status chips render FLAT (no border) — border + hover is
+              reserved for actions so state vs click-me reads at a
+              glance (component-grammar rule from the UX audit). */}
+          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs ${toneClasses('ok')}`}>
             <Check size={12} />
             {bound.chat_title || bound.chat_id}
           </span>
@@ -423,7 +435,7 @@ export default function AlertRoutingSection({
           <button
             type="button"
             onClick={() => setOpenInput(`group-${persona}`)}
-            className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
+            className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
           >
             {t('alert_routing.bind_group_btn')}
           </button>
@@ -451,7 +463,7 @@ export default function AlertRoutingSection({
           type="button"
           onClick={() => { void bind(persona).then(() => setOpenInput('')); }}
           disabled={busy === persona || !(chatInputs[persona] || '').trim()}
-          className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
+          className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
         >
           {busy === persona ? '…' : t('alert_routing.bind')}
         </button>
@@ -483,6 +495,16 @@ export default function AlertRoutingSection({
         </button>
         {open && (
           <div className="mt-1.5 ml-4 space-y-2">
+            {/* Column headers once — the per-row repeated checkbox
+                labels were a scanning wall; a matrix reads by column. */}
+            <div className="flex items-center gap-3 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="w-32 shrink-0" />
+              <span className="w-16 inline-flex items-center justify-center gap-0.5">
+                {t('alert_routing.col_route')}
+                <InfoTip label={t('alert_routing.topic_route_note')} size={12} />
+              </span>
+              <span className="w-16 text-center">{t('alert_routing.col_ai')}</span>
+            </div>
             {FEATURE_GROUPS
               .map((g) => ({ ...g, rows: rows.filter((r) => g.types.includes(r.alert_type)) }))
               .filter((g) => g.rows.length > 0)
@@ -500,23 +522,25 @@ export default function AlertRoutingSection({
                           <span className="w-32 shrink-0 text-foreground">
                             {TYPE_LABELS[r.alert_type] || r.alert_type}
                           </span>
-                          <label className={`inline-flex items-center gap-1.5 ${editable ? '' : 'opacity-70'}`}>
+                          {/* label-wrapped so the whole cell stays a
+                              click target, not just the checkbox box */}
+                          <label className={`w-16 text-center ${editable ? 'cursor-pointer' : 'opacity-70'}`}>
                             <input
                               type="checkbox"
+                              aria-label={`${TYPE_LABELS[r.alert_type] || r.alert_type} — ${t('alert_routing.topic_route')}`}
                               checked={r.enabled}
                               disabled={!editable || busy === `topic-${r.alert_type}-enabled`}
                               onChange={(e) => { void toggleTopic(persona, r.alert_type, 'enabled', e.target.checked); }}
                             />
-                            <span className="text-muted-foreground">{t('alert_routing.topic_route')}</span>
                           </label>
-                          <label className={`inline-flex items-center gap-1.5 ${editable ? '' : 'opacity-70'}`}>
+                          <label className={`w-16 text-center ${editable ? 'cursor-pointer' : 'opacity-70'}`}>
                             <input
                               type="checkbox"
+                              aria-label={`${TYPE_LABELS[r.alert_type] || r.alert_type} — ${t('alert_routing.topic_ai')}`}
                               checked={r.ai}
                               disabled={!editable || busy === `topic-${r.alert_type}-ai`}
                               onChange={(e) => { void toggleTopic(persona, r.alert_type, 'ai', e.target.checked); }}
                             />
-                            <span className="text-muted-foreground">{t('alert_routing.topic_ai')}</span>
                           </label>
                         </div>
                         {/* Sub-category chips — pick exactly which kinds
@@ -565,7 +589,7 @@ export default function AlertRoutingSection({
                         ? `: ${tp.subtypes.map((s) => SUBTYPE_LABELS[s] || s).join(', ')}`
                         : ` · ${t('alert_routing.topic_all_subtypes')}`}
                     </span>
-                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md border text-2xs ${
+                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-2xs ${
                       tp.has_thread ? toneClasses('info') : toneClasses('neutral')
                     }`}>
                       {tp.has_thread ? t('alert_routing.topic_thread') : t('alert_routing.topic_flat')}
@@ -577,7 +601,7 @@ export default function AlertRoutingSection({
                         disabled={busy === `ctopic-${persona}`}
                         className="text-xs text-destructive hover:underline disabled:opacity-50"
                       >
-                        {t('alert_routing.unbind')}
+                        {t('alert_routing.remove')}
                       </button>
                     )}
                   </div>
@@ -586,7 +610,7 @@ export default function AlertRoutingSection({
                   <button
                     type="button"
                     onClick={() => { setOpenInput(`ctopic-${persona}`); setCtName(''); setCtType(''); setCtSubs([]); }}
-                    className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
+                    className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
                   >
                     {t('alert_routing.add_topic_btn')}
                   </button>
@@ -617,7 +641,7 @@ export default function AlertRoutingSection({
                     {(() => {
                       const vocab = rows.find((r) => r.alert_type === ctType)?.subtypes?.all;
                       if (!vocab) return null;
-                      return vocab.map((s) => {
+                      const chips = vocab.map((s) => {
                         const on = ctSubs.includes(s);
                         return (
                           <button
@@ -634,12 +658,20 @@ export default function AlertRoutingSection({
                           </button>
                         );
                       });
+                      return (
+                        <>
+                          {chips}
+                          <span className="text-2xs text-muted-foreground">
+                            {t('alert_routing.topic_subs_hint')}
+                          </span>
+                        </>
+                      );
                     })()}
                     <button
                       type="button"
                       onClick={() => { void createCustomTopic(persona); }}
                       disabled={busy === `ctopic-${persona}` || !ctName.trim() || !ctType}
-                      className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
+                      className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
                     >
                       {busy === `ctopic-${persona}` ? '…' : t('alert_routing.topic_create')}
                     </button>
@@ -662,6 +694,13 @@ export default function AlertRoutingSection({
 
   const roleMode = data.mode === 'per_persona_groups';
 
+  // Destinations = the Main (owner_admin) group + every permission-
+  // visible role.  Counting Main keeps the progress honest AND above
+  // a demotivating flat zero once anything at all is bound.
+  const visibleRoles = ROLE_ORDER.filter((p) => (topics?.personas?.[p]?.length ?? 0) > 0);
+  const destinations = ['owner_admin', ...(visibleRoles.length ? visibleRoles : [...ROLE_ORDER])];
+  const boundCount = destinations.filter((p) => data.personas[p]).length;
+
   return (
     <div>
       {/* Routing — the topology decision, top of the card. */}
@@ -681,6 +720,13 @@ export default function AlertRoutingSection({
           {modeOption('per_persona_groups',
             t('alert_routing.mode_multi_title'), t('alert_routing.mode_multi_desc'))}
         </div>
+        {/* The switch rebuilds the card body — say up front that it's
+            reversible so exploring the other mode feels safe. */}
+        {canManageAccount && (
+          <p className="mt-1.5 text-2xs text-muted-foreground">
+            {t('alert_routing.mode_switch_safe')}
+          </p>
+        )}
       </div>
 
       {!roleMode ? (
@@ -689,33 +735,53 @@ export default function AlertRoutingSection({
         <div className="space-y-3">
           {/* Completion cue — how much of the roster is set up. */}
           <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-            {t('alert_routing.roster_progress', {
-              n: ROLE_ORDER.filter((p) => data.personas[p] && (topics?.personas?.[p]?.length ?? 0) > 0).length,
-              total: ROLE_ORDER.filter((p) => (topics?.personas?.[p]?.length ?? 0) > 0).length || ROLE_ORDER.length,
-            })}
+            {t('alert_routing.roster_progress', { n: boundCount, total: destinations.length })}
             <InfoTip label={`${t('alert_routing.subbot_hint')} ${t('alert_routing.fallback_note')}`} size={12} />
           </p>
+
+          {/* First-run path — VISIBLE until the first group is bound
+              (one-time setup help stays out from behind tips).  Step 1
+              is pre-checked by the bot connection itself. */}
+          {boundCount === 0 && (
+            <div className="rounded-lg border border-border px-3 py-2 space-y-1 text-xs">
+              <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                {t('alert_routing.setup_title')}
+              </p>
+              <p className="flex items-center gap-1.5 text-muted-foreground">
+                <Check size={12} className="text-ok shrink-0" />
+                {t('alert_routing.setup_step_bot', { username: botConfig.bot_username })}
+              </p>
+              <p className="text-foreground">{t('alert_routing.setup_step_group')}</p>
+              <p className="text-foreground">{t('alert_routing.setup_step_chatid')}</p>
+              <p className="text-foreground">{t('alert_routing.setup_step_bind')}</p>
+            </div>
+          )}
 
           {/* Main row — the identity bot.  Same spot the single-mode
               header occupies; label states its three jobs. */}
           <div className="border border-border rounded-lg px-3 py-2">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="font-medium text-foreground">{t('alert_routing.main_row_label')}</span>
-              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs border ${
-                botConfig.is_running !== false ? toneClasses('ok') : toneClasses('warn')
-              }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${botConfig.is_running !== false ? 'bg-ok animate-pulse' : 'bg-warn'}`} />
-                {botConfig.is_running !== false ? t('alert_routing.running') : t('alert_routing.configured')}
-              </span>
-              <a
-                href={`https://t.me/${botConfig.bot_username}`}
-                target="_blank" rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                @{botConfig.bot_username}
-              </a>
-              <span className="inline-flex items-center gap-2 ml-auto">
+              {/* GROUP cell right after the name — the destination is
+                  setup step 1 on every row; the sender bot is metadata
+                  on the right.  One grammar for Main and role rows. */}
+              <span className="inline-flex items-center gap-2">
                 {groupCell('owner_admin')}
+              </span>
+              <span className="inline-flex items-center gap-2 ml-auto">
+                <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs ${
+                  botConfig.is_running !== false ? toneClasses('ok') : toneClasses('warn')
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${botConfig.is_running !== false ? 'bg-ok animate-pulse' : 'bg-warn'}`} />
+                  {botConfig.is_running !== false ? t('alert_routing.running') : t('alert_routing.configured')}
+                </span>
+                <a
+                  href={`https://t.me/${botConfig.bot_username}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="text-primary hover:underline"
+                >
+                  @{botConfig.bot_username}
+                </a>
               </span>
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
@@ -744,11 +810,18 @@ export default function AlertRoutingSection({
                     {t(`alert_routing.persona_${persona}`)}
                   </span>
 
-                  {/* BOT cell — same slot as the Main row's status/username */}
+                  {/* GROUP cell first — binding the group IS setup
+                      step 1; the visual order now matches it. */}
                   <span className="inline-flex items-center gap-2">
+                    {groupCell(persona)}
+                  </span>
+
+                  {/* BOT cell — who SENDS to this group; metadata on
+                      the right, same slot as the Main row's identity. */}
+                  <span className="inline-flex items-center gap-2 ml-auto">
                     {sub ? (
                       <>
-                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs border ${
+                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs ${
                           sub.is_running ? toneClasses('ok') : toneClasses('neutral')
                         }`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${sub.is_running ? 'bg-ok' : 'bg-muted-foreground'}`} />
@@ -766,18 +839,18 @@ export default function AlertRoutingSection({
                         )}
                       </>
                     ) : !editable ? (
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs border ${toneClasses('neutral')}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs ${toneClasses('neutral')}`}>
                         {t('alert_routing.main_sends')}
                       </span>
                     ) : openInput !== `token-${persona}` ? (
                       <>
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs border ${toneClasses('neutral')}`}>
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs ${toneClasses('neutral')}`}>
                           {t('alert_routing.main_sends')}
                         </span>
                         <button
                           type="button"
                           onClick={() => setOpenInput(`token-${persona}`)}
-                          className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
+                          className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
                         >
                           {t('alert_routing.subbot_attach')}
                         </button>
@@ -797,7 +870,7 @@ export default function AlertRoutingSection({
                           type="button"
                           onClick={() => { void attachSubBot(persona).then(() => setOpenInput('')); }}
                           disabled={busy === `sub-${persona}` || (tokenInputs[persona] || '').trim().length < 30}
-                          className="px-2.5 py-1 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
+                          className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
                         >
                           {busy === `sub-${persona}` ? '…' : t('alert_routing.subbot_attach')}
                         </button>
@@ -810,11 +883,6 @@ export default function AlertRoutingSection({
                         </button>
                       </>
                     )}
-                  </span>
-
-                  {/* GROUP cell — right-aligned, same slot as Main */}
-                  <span className="inline-flex items-center gap-2 ml-auto">
-                    {groupCell(persona)}
                   </span>
                 </div>
                 {topicsExpander(persona)}

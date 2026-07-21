@@ -67,7 +67,9 @@ Decided 2026-07-17 (owner + advisor consult). Status: ACCEPTED, shipped.
 
 ## Per-role topic settings (shipped 2026-07-17, second increment)
 
-Each role row on Settings → Telegram Bot carries "▸ topics & settings":
+Each role row on Settings → Telegram Bot carries "▸ alerts for this
+group" (formerly "topics & settings" — renamed so "topic" means only a
+real Telegram thread):
 per-alert-type **Route to group** and **AI analysis** toggles, filtered
 to the types that route to that role (`canonical_types_for_persona` —
 the persona mapping is the SSOT, so a role only ever sees its own
