@@ -65,7 +65,7 @@
     "roster_progress": "{{total}} ਵਿੱਚੋਂ {{n}} ਗਰੁੱਪ ਜੁੜੇ ਹਨ — ਜਿਸ ਰੋਲ ਦਾ ਆਪਣਾ ਗਰੁੱਪ ਨਹੀਂ, ਉਸ ਲਈ ਮੁੱਖ ਬੋਟ ਭੇਜਦਾ ਹੈ।",
     "routing_label": "ਡਿਲੀਵਰੀ",
     "running": "ਚੱਲ ਰਿਹਾ",
-    "configured": "ਸੈੱਟ ਹੈ",
+    "configured": "ਚੱਲ ਨਹੀਂ ਰਿਹਾ",
     "main_row_label": "ਮੁੱਖ · ਮਾਲਕ ਅਤੇ ਐਡਮਿਨ",
     "main_row_caption": "ਰਜਿਸਟ੍ਰੇਸ਼ਨ, ਲਾਗਇਨ ਅਤੇ ਕਮਾਂਡਾਂ ਇਸ ਬੋਟ 'ਤੇ ਰਹਿੰਦੀਆਂ ਹਨ। ਇਹ ਮਾਲਕਾਂ ਦੇ ਗਰੁੱਪ ਵਿੱਚ ਵੀ ਭੇਜਦਾ ਹੈ ਅਤੇ ਬਿਨਾਂ ਸਬ ਬੋਟ ਵਾਲੇ ਹਰ ਰੋਲ ਲਈ ਭੇਜਦਾ ਹੈ।",
     "main_sends": "ਮੁੱਖ ਬੋਟ ਭੇਜਦਾ ਹੈ",
@@ -84,7 +84,7 @@
     "nudge": "ਤੁਹਾਡਾ ਫਲੀਟ ({{count}} ਵਾਹਨ) ਇੰਨੇ ਅਲਰਟ ਬਣਾਉਂਦਾ ਹੈ ਕਿ ਇੱਕ ਗਰੁੱਪ ਭਰ ਸਕਦਾ ਹੈ — ਹਰ ਰੋਲ ਲਈ ਵੱਖ ਗਰੁੱਪ ਬਾਰੇ ਸੋਚੋ।",
     "mode_single_title": "ਇੱਕ ਬੋਟ",
     "mode_single_desc": "ਇੱਕ ਬੋਟ, ਇੱਕ ਫੋਰਮ ਗਰੁੱਪ, ਹਰ ਕਿਸਮ ਲਈ ਟਾਪਿਕ।",
-    "mode_multi_title": "ਰੋਲ ਅਨੁਸਾਰ ਸਬ ਬੋਟ",
+    "mode_multi_title": "Sub bots",
     "mode_multi_desc": "ਹਰ ਰੋਲ ਨੂੰ ਆਪਣਾ ਗਰੁੱਪ ਮਿਲਦਾ ਹੈ; ਗੰਭੀਰ ਅਲਰਟ ਮਾਲਕ ਦੇ ਗਰੁੱਪ ਨੂੰ ਵੀ ਜਾਂਦੇ ਹਨ। ਰੋਲ ਮੈਨੇਜਰ ਆਪਣਾ ਸਬ ਬੋਟ ਜੋੜ ਸਕਦੇ ਹਨ।",
     "hint_chatid": "ਆਪਣੇ ਬੋਟ ਨੂੰ ਰੋਲ ਦੇ Telegram ਗਰੁੱਪ ਵਿੱਚ ਸ਼ਾਮਲ ਕਰੋ, ਉੱਥੇ /chatid ਚਲਾਓ, ਫਿਰ id ਹੇਠਾਂ ਪੇਸਟ ਕਰੋ।",
     "persona_dispatcher": "ਡਿਸਪੈਚ",
@@ -113,7 +113,10 @@
     "setup_step_bind": "4. chat id ਨੂੰ «ਗਰੁੱਪ ਜੋੜੋ…» ਹੇਠ ਪੇਸਟ ਕਰੋ — Sub bot ਵਿਕਲਪਿਕ ਹੈ; ਜਦ ਤੱਕ ਨਹੀਂ ਜੁੜਦਾ, ਮੁੱਖ ਬੋਟ ਭੇਜਦਾ ਹੈ",
     "confirm_unbind": "{{role}} ਦਾ ਗਰੁੱਪ ਹਟਾਉਣਾ ਹੈ? ਅਲਰਟ ਉੱਥੇ ਜਾਣੇ ਬੰਦ ਹੋ ਜਾਣਗੇ; ਗੰਭੀਰ ਅਲਰਟ ਹਾਲੇ ਵੀ ਮੁੱਖ ਗਰੁੱਪ ਵਿੱਚ ਪਹੁੰਚਦੇ ਹਨ।",
     "confirm_unbind_main": "ਮਾਲਕ ਅਤੇ ਐਡਮਿਨ ਗਰੁੱਪ ਹਟਾਉਣਾ ਹੈ? ਨਵਾਂ ਗਰੁੱਪ ਜੁੜਨ ਤੱਕ ਗੰਭੀਰ ਸੁਨੇਹੇ ਰੁਕ ਜਾਣਗੇ।",
-    "confirm_detach": "@{{username}} ਹਟਾਉਣਾ ਹੈ? ਇਸ ਰੋਲ ਲਈ ਭੇਜਣਾ ਮੁੱਖ ਬੋਟ ਸੰਭਾਲ ਲਵੇਗਾ।"
+    "confirm_detach": "@{{username}} ਹਟਾਉਣਾ ਹੈ? ਇਸ ਰੋਲ ਲਈ ਭੇਜਣਾ ਮੁੱਖ ਬੋਟ ਸੰਭਾਲ ਲਵੇਗਾ।",
+    "dismiss": "ਹਟਾਓ",
+    "subtype_prefix_all": "ਕਿਸਮਾਂ — ਸਾਰੀਆਂ ਚਾਲੂ:",
+    "subtype_prefix_some": "ਕਿਸਮਾਂ — {{total}} ਵਿੱਚੋਂ {{n}} ਚਾਲੂ:"
   },
   "nav": {
     "overview": "ਸੰਖੇਪ",
@@ -743,5 +746,25 @@
     "badge_bounced": "Bounced",
     "badge_complained": "Reported as spam",
     "badge_soft_delivery": "Delivery issues"
+  },
+  "bot_card": {
+    "title": "Telegram ਬੋਟ",
+    "bot_name": "ਬੋਟ ਦਾ ਨਾਮ",
+    "username": "ਯੂਜ਼ਰਨੇਮ",
+    "bot_id": "ਬੋਟ ID",
+    "open_telegram": "Telegram ਵਿੱਚ ਖੋਲ੍ਹੋ",
+    "disconnect": "ਬੋਟ ਡਿਸਕਨੈਕਟ ਕਰੋ",
+    "disconnect_confirm": "ਇਹ ਬੋਟ ਡਿਸਕਨੈਕਟ ਕਰਨਾ ਹੈ? ਨਵਾਂ ਬੋਟ ਜੁੜਨ ਤੱਕ ਅਲਰਟ ਭੇਜਣਾ ਅਤੇ Telegram ਲਾਗਇਨ ਸਭ ਲਈ ਰੁਕ ਜਾਣਗੇ।",
+    "disconnect_yes": "ਹਾਂ, ਡਿਸਕਨੈਕਟ ਕਰੋ",
+    "disconnecting": "ਡਿਸਕਨੈਕਟ ਹੋ ਰਿਹਾ ਹੈ…",
+    "connect_intro_pre": "ਆਪਣਾ Telegram ਬੋਟ ਜੋੜੋ। ਇਸਨੂੰ ਬਣਾਓ",
+    "connect_intro_post": " ਫਿਰ ਟੋਕਨ ਹੇਠਾਂ ਪੇਸਟ ਕਰੋ।",
+    "token_label": "ਬੋਟ ਟੋਕਨ",
+    "validate": "ਤਸਦੀਕ ਕਰੋ ਅਤੇ ਜੋੜੋ",
+    "validating": "ਤਸਦੀਕ ਹੋ ਰਹੀ ਹੈ…",
+    "toast_connected": "@{{username}} ਜੁੜ ਗਿਆ",
+    "toast_disconnected": "ਬੋਟ ਡਿਸਕਨੈਕਟ ਹੋਇਆ",
+    "toast_connect_error": "ਟੋਕਨ ਤਸਦੀਕ ਨਹੀਂ ਹੋ ਸਕਿਆ",
+    "toast_disconnect_error": "ਡਿਸਕਨੈਕਟ ਨਹੀਂ ਹੋ ਸਕਿਆ"
   }
 }

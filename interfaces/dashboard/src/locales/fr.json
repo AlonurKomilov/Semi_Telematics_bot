@@ -65,10 +65,10 @@
     "roster_progress": "{{n}} groupe(s) sur {{total}} connecté(s) — le bot principal envoie pour les rôles sans groupe.",
     "routing_label": "Distribution",
     "running": "Actif",
-    "configured": "Configuré",
+    "configured": "Arrêté",
     "main_row_label": "Principal · Propriétaire et admins",
     "main_row_caption": "L'inscription, la connexion et les commandes vivent sur ce bot. Il publie aussi le groupe propriétaires et envoie pour tout rôle sans Sub bot.",
-    "main_sends": "le bot principal envoie",
+    "main_sends": "Le bot principal envoie",
     "fallback_note": "Le groupe forum unique reste en secours — passez en Bot unique pour gérer ses sujets.",
     "topics_expander": "alertes de ce groupe",
     "topic_route": "Vers le groupe",
@@ -84,7 +84,7 @@
     "nudge": "Votre flotte ({{count}} véhicules) génère assez d'alertes pour saturer un seul groupe — envisagez un groupe par rôle.",
     "mode_single_title": "Bot unique",
     "mode_single_desc": "Un bot, un groupe forum, un sujet par type d'alerte.",
-    "mode_multi_title": "Sub bot par rôle",
+    "mode_multi_title": "Sub bots",
     "mode_multi_desc": "Chaque rôle a son propre groupe ; les alertes critiques arrivent aussi au groupe du propriétaire. Les managers de rôle peuvent attacher leur propre Sub bot.",
     "hint_chatid": "Ajoutez votre bot au groupe Telegram du rôle, lancez /chatid, puis collez l'id ci-dessous.",
     "persona_dispatcher": "Dispatch",
@@ -113,7 +113,10 @@
     "setup_step_bind": "4. Collez le chat id sous « Lier un groupe… » — le Sub bot est optionnel ; le bot principal envoie tant qu'aucun n'est attaché",
     "confirm_unbind": "Détacher le groupe {{role}} ? Les alertes n'y seront plus publiées ; les alertes critiques atteignent toujours le groupe principal.",
     "confirm_unbind_main": "Détacher le groupe Propriétaire et admins ? Les envois critiques s'arrêtent jusqu'à la liaison d'un nouveau groupe.",
-    "confirm_detach": "Détacher @{{username}} ? Le bot principal reprend l'envoi pour ce rôle."
+    "confirm_detach": "Détacher @{{username}} ? Le bot principal reprend l'envoi pour ce rôle.",
+    "dismiss": "Ignorer",
+    "subtype_prefix_all": "types — tous actifs:",
+    "subtype_prefix_some": "types — {{n}} sur {{total}} actifs:"
   },
   "nav": {
     "overview": "Aperçu",
@@ -959,5 +962,25 @@
     "badge_bounced": "Rejetée",
     "badge_complained": "Signalée comme spam",
     "badge_soft_delivery": "Problèmes de livraison"
+  },
+  "bot_card": {
+    "title": "Bot Telegram",
+    "bot_name": "Nom du bot",
+    "username": "Nom d'utilisateur",
+    "bot_id": "ID du bot",
+    "open_telegram": "Ouvrir dans Telegram",
+    "disconnect": "Déconnecter le bot",
+    "disconnect_confirm": "Déconnecter ce bot ? L'envoi d'alertes et la connexion Telegram s'arrêtent pour tous jusqu'à la connexion d'un nouveau bot.",
+    "disconnect_yes": "Oui, déconnecter",
+    "disconnecting": "Déconnexion…",
+    "connect_intro_pre": "Connectez votre propre bot Telegram. Créez-le via",
+    "connect_intro_post": " puis collez le token ci-dessous.",
+    "token_label": "Token du bot",
+    "validate": "Valider et connecter",
+    "validating": "Validation…",
+    "toast_connected": "Connecté @{{username}}",
+    "toast_disconnected": "Bot déconnecté",
+    "toast_connect_error": "Impossible de valider le token",
+    "toast_disconnect_error": "Impossible de déconnecter"
   }
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Settings as SettingsIcon } from 'lucide-react';
 import { apiJSON } from '../../api/client';
@@ -100,11 +101,11 @@ export default function Settings() {
   // Track editable settings
   const [edits, setEdits] = useState<Record<string, string>>({});
 
-  // Bot configuration (owner only)
+  // Bot configuration (owner only).  Feedback rides the same toast
+  // channel as every other action on the bot card — the old inline
+  // botSuccess/botError texts were the card's second feedback system.
   const [botToken, setBotToken] = useState('');
   const [botSaving, setBotSaving] = useState(false);
-  const [botSuccess, setBotSuccess] = useState('');
-  const [botError, setBotError] = useState('');
   const [showBotDisconnect, setShowBotDisconnect] = useState(false);
 
   // Schedule form
@@ -135,26 +136,26 @@ export default function Settings() {
   const setBotConfig = (next: BotConfig | null) => qc.setQueryData(['admin-bot-config'], next);
 
   const handleConnectBot = async () => {
-    setBotSaving(true); setBotError(''); setBotSuccess('');
+    setBotSaving(true);
     try {
       const res = await apiJSON<{ ok: boolean; bot_username: string; bot_id?: number; first_name?: string }>('/admin/bot-config', {
         method: 'PUT', body: { bot_token: botToken },
       });
       setBotConfig({ has_bot: true, bot_username: res.bot_username, bot_id: res.bot_id, first_name: res.first_name, is_running: true });
       setBotToken('');
-      setBotSuccess(`Connected @${res.bot_username}`);
-    } catch (e) { setBotError(e instanceof Error ? e.message : 'Failed to validate token'); }
+      toast.success(t('bot_card.toast_connected', { username: res.bot_username }));
+    } catch (e) { toast.error(e instanceof Error ? e.message : t('bot_card.toast_connect_error')); }
     finally { setBotSaving(false); }
   };
 
   const handleDisconnectBot = async () => {
-    setBotSaving(true); setBotError(''); setBotSuccess('');
+    setBotSaving(true);
     try {
       await apiJSON('/admin/bot-config', { method: 'DELETE' });
       setBotConfig({ has_bot: false, bot_username: '' });
       setShowBotDisconnect(false);
-      setBotSuccess('Bot disconnected');
-    } catch (e) { setBotError(e instanceof Error ? e.message : 'Failed to disconnect'); }
+      toast.success(t('bot_card.toast_disconnected'));
+    } catch (e) { toast.error(e instanceof Error ? e.message : t('bot_card.toast_disconnect_error')); }
     finally { setBotSaving(false); }
   };
 
@@ -374,9 +375,7 @@ export default function Settings() {
       {/* Telegram Bot (owner only) */}
       {(isOwner || canManageRoleBot) && (
         <section className="bg-card border border-border rounded-xl p-5">
-          <h2 className="text-lg font-semibold mb-3">Telegram Bot</h2>
-          {botSuccess && <p className="text-ok text-sm mb-3">{botSuccess}</p>}
-          {botError && <p className="text-destructive text-sm mb-3">{botError}</p>}
+          <h2 className="text-lg font-semibold mb-3">{t('bot_card.title')}</h2>
 
           {botConfig?.has_bot ? (
             <AlertRoutingSection
@@ -384,25 +383,28 @@ export default function Settings() {
               canManageAccount={canManageAccount}
               singleBody={<div>
               <div className="flex items-center gap-3 mb-4">
-                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium border ${
+                {/* Flat status chip (no border) — border is the action
+                    marker on this card.  Labels reuse the roster's
+                    running/not-running pair. */}
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${
                   botConfig.is_running !== false
                     ? toneClasses('ok')
                     : toneClasses('warn')
                 }`}>
                   <span className={`w-2 h-2 rounded-full ${botConfig.is_running !== false ? 'bg-ok animate-pulse' : 'bg-warn'}`} />
-                  {botConfig.is_running !== false ? 'Running' : 'Configured'}
+                  {botConfig.is_running !== false ? t('alert_routing.running') : t('alert_routing.configured')}
                 </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
                 {botConfig.first_name && (
                   <div>
-                    <dt className="text-xs text-muted-foreground mb-0.5">Bot Name</dt>
+                    <dt className="text-xs text-muted-foreground mb-0.5">{t('bot_card.bot_name')}</dt>
                     <dd className="text-sm font-medium">{botConfig.first_name}</dd>
                   </div>
                 )}
                 <div>
-                  <dt className="text-xs text-muted-foreground mb-0.5">Username</dt>
+                  <dt className="text-xs text-muted-foreground mb-0.5">{t('bot_card.username')}</dt>
                   <dd className="text-sm">
                     <a href={`https://t.me/${botConfig.bot_username}`} target="_blank" rel="noopener noreferrer"
                       className="text-primary hover:underline">@{botConfig.bot_username}</a>
@@ -410,41 +412,35 @@ export default function Settings() {
                 </div>
                 {botConfig.bot_id && (
                   <div>
-                    <dt className="text-xs text-muted-foreground mb-0.5">Bot ID</dt>
+                    <dt className="text-xs text-muted-foreground mb-0.5">{t('bot_card.bot_id')}</dt>
                     <dd className="text-sm font-mono text-foreground/80">{botConfig.bot_id}</dd>
                   </div>
                 )}
-                <div>
-                  <dt className="text-xs text-muted-foreground mb-0.5">Status</dt>
-                  <dd className="text-sm">
-                    {botConfig.is_running !== false
-                      ? <span className="text-ok">Active &amp; receiving messages</span>
-                      : <span className="text-warn">Token saved, bot not running</span>}
-                  </dd>
-                </div>
+                {/* No "Status" row — the chip above already carries the
+                    running state; saying it twice was audit finding D1. */}
               </div>
 
               <div className="flex items-center gap-3 flex-wrap">
                 <a href={`https://t.me/${botConfig.bot_username}`} target="_blank" rel="noopener noreferrer"
-                  className="px-3 py-1.5 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition">
-                  Open in Telegram
+                  className="px-3 py-1.5 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition">
+                  {t('bot_card.open_telegram')}
                 </a>
                 {showBotDisconnect ? (
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-muted-foreground">Disconnect this bot? Alert posting and Telegram login stop for everyone until a new bot is connected.</span>
+                    <span className="text-sm text-muted-foreground">{t('bot_card.disconnect_confirm')}</span>
                     <button onClick={handleDisconnectBot} disabled={botSaving}
                       className="px-3 py-1.5 bg-destructive hover:bg-destructive/90 disabled:opacity-50 rounded text-xs font-medium text-destructive-foreground transition">
-                      {botSaving ? 'Disconnecting...' : 'Yes, Disconnect'}
+                      {botSaving ? t('bot_card.disconnecting') : t('bot_card.disconnect_yes')}
                     </button>
                     <button onClick={() => setShowBotDisconnect(false)}
                       className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded text-xs font-medium transition">
-                      Cancel
+                      {t('common.cancel')}
                     </button>
                   </div>
                 ) : (
                   <button onClick={() => setShowBotDisconnect(true)}
                     className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded text-xs font-medium transition">
-                    Disconnect Bot
+                    {t('bot_card.disconnect')}
                   </button>
                 )}
               </div>
@@ -460,11 +456,11 @@ export default function Settings() {
           ) : (
             <div>
               <p className="text-sm text-muted-foreground mb-3">
-                Connect your own Telegram bot. Create one via <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">@BotFather</a>, then paste the token below.
+                {t('bot_card.connect_intro_pre')} <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">@BotFather</a>{t('bot_card.connect_intro_post')}
               </p>
               <div className="flex items-end gap-3">
                 <div className="flex-1">
-                  <label className="block text-xs text-muted-foreground mb-1">Bot Token</label>
+                  <label className="block text-xs text-muted-foreground mb-1">{t('bot_card.token_label')}</label>
                   {/* type=text, not password — a password field here
                       attracts saved-credential autofill (seen live on
                       the roster inputs; same fix applied there). */}
@@ -475,7 +471,7 @@ export default function Settings() {
                 </div>
                 <button onClick={handleConnectBot} disabled={botSaving || botToken.length < 30}
                   className="px-4 py-2 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-sm font-medium transition whitespace-nowrap">
-                  {botSaving ? 'Validating...' : 'Validate & Connect'}
+                  {botSaving ? t('bot_card.validating') : t('bot_card.validate')}
                 </button>
               </div>
             </div>

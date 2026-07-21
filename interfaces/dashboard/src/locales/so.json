@@ -65,10 +65,10 @@
     "roster_progress": "{{total}} kooxood {{n}} ayaa ku xiran — rol aan koox u lahayn, bot-ka weyn ayaa u dira.",
     "routing_label": "Gaarsiin",
     "running": "Shaqaynaya",
-    "configured": "La sameeyay",
+    "configured": "Ma socdo",
     "main_row_label": "Guud · Milkiile & maamul",
     "main_row_caption": "Diiwaangelinta, gelitaanka iyo amarradu waxay ku nool yihiin bot-kan. Wuxuu kaloo daabacaa guruubka milkiilaha wuxuuna u diraa door kasta oo aan lahayn Sub bot.",
-    "main_sends": "bot-ka guud ayaa dira",
+    "main_sends": "Bot-ka guud ayaa dira",
     "fallback_note": "Guruubka forum ee keliya wuxuu ahaanayaa kayd — u beddel Hal bot si aad u maamusho mowduucyadiisa.",
     "topics_expander": "digniinaha kooxdan",
     "topic_route": "U dir guruubka",
@@ -84,7 +84,7 @@
     "nudge": "Gaadiidkaagu ({{count}} gaari) wuxuu abuuraa digniino badan oo hal guruub buuxin kara — tixgeli guruub door kasta.",
     "mode_single_title": "Hal bot",
     "mode_single_desc": "Hal bot, hal guruub forum, mowduuc nooc kasta.",
-    "mode_multi_title": "Sub bot door kasta",
+    "mode_multi_title": "Sub bots",
     "mode_multi_desc": "Door kastaa wuxuu helaa guruub u gaar ah; digniinaha halista ahna waxay gaaraan guruubka milkiilaha. Maamulayaasha doorku waxay ku xiri karaan Sub bot u gaar ah.",
     "hint_chatid": "Ku dar botkaaga guruubka Telegram ee doorka, halkaas ku socodsii /chatid, kadib ku dheji id-ga hoos.",
     "persona_dispatcher": "Dirid",
@@ -113,7 +113,10 @@
     "setup_step_bind": "4. Chat id ku dheji «Xir guruub…» — Sub bot waa ikhtiyaari; inta aan la xidhin, bot-ka weyn ayaa dira",
     "confirm_unbind": "Ma furaysaa kooxda {{role}}? Digniinuhu halkaas ma tegi doonaan; kuwa halista ah wali waxay gaaraan kooxda weyn.",
     "confirm_unbind_main": "Ma furaysaa kooxda mulkiilaha iyo maamulka? Fariimaha halista ah way istaagayaan ilaa koox cusub la xidho.",
-    "confirm_detach": "Ma furaysaa @{{username}}? Diridda rolkan waxaa la wareegaya bot-ka weyn."
+    "confirm_detach": "Ma furaysaa @{{username}}? Diridda rolkan waxaa la wareegaya bot-ka weyn.",
+    "dismiss": "Iska dhaaf",
+    "subtype_prefix_all": "noocyada — dhammaan shidan:",
+    "subtype_prefix_some": "noocyada — {{total}} ka mid ah {{n}} shidan:"
   },
   "nav": {
     "overview": "Guudmar",
@@ -743,5 +746,25 @@
     "badge_bounced": "Bounced",
     "badge_complained": "Reported as spam",
     "badge_soft_delivery": "Delivery issues"
+  },
+  "bot_card": {
+    "title": "Bot-ka Telegram",
+    "bot_name": "Magaca bot-ka",
+    "username": "Magaca isticmaale",
+    "bot_id": "ID-ga bot-ka",
+    "open_telegram": "Ku fur Telegram",
+    "disconnect": "Bot-ka jar",
+    "disconnect_confirm": "Ma jaraysaa bot-kan? Dirista digniinaha iyo gelitaanka Telegram way istaagayaan dhammaan ilaa bot cusub la xidho.",
+    "disconnect_yes": "Haa, jar",
+    "disconnecting": "Waa la jarayaa…",
+    "connect_intro_pre": "Ku xir bot-kaaga Telegram. Ku samee",
+    "connect_intro_post": " kadibna token-ka hoos dheji.",
+    "token_label": "Token-ka bot-ka",
+    "validate": "Xaqiiji oo xir",
+    "validating": "Waa la xaqiijinayaa…",
+    "toast_connected": "@{{username}} waa ku xiran",
+    "toast_disconnected": "Bot-ka waa la jaray",
+    "toast_connect_error": "Token-ka lama xaqiijin karin",
+    "toast_disconnect_error": "Lama jari karin"
   }
 }

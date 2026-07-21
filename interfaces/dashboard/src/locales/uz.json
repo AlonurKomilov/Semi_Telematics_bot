@@ -65,10 +65,10 @@
     "roster_progress": "{{total}} guruhdan {{n}} tasi ulangan — o'z guruhi yo'q rollar uchun asosiy bot yuboradi.",
     "routing_label": "Yetkazish",
     "running": "Ishlamoqda",
-    "configured": "Sozlangan",
+    "configured": "Ishlamayapti",
     "main_row_label": "Asosiy · Egasi va adminlar",
     "main_row_caption": "Ro'yxatdan o'tish, kirish va buyruqlar shu botda yashaydi. U egalar guruhini ham yuritadi va Sub botsiz har qanday rol uchun yuboradi.",
-    "main_sends": "asosiy bot yuboradi",
+    "main_sends": "Asosiy bot yuboradi",
     "fallback_note": "Yagona forum guruh zaxira bo'lib qoladi — mavzularini boshqarish uchun Bitta botga o'ting.",
     "topics_expander": "bu guruh ogohlantirishlari",
     "topic_route": "Guruhga yuborish",
@@ -84,7 +84,7 @@
     "nudge": "Avtoparkingiz ({{count}} mashina) bitta guruhni to'ldiradigan darajada ogohlantirish yaratadi — har rol uchun alohida guruhni ko'rib chiqing.",
     "mode_single_title": "Bitta bot",
     "mode_single_desc": "Bitta bot, bitta forum guruh, har tur uchun mavzu.",
-    "mode_multi_title": "Rol uchun Sub bot",
+    "mode_multi_title": "Sub bots",
     "mode_multi_desc": "Har rol o'z guruhini oladi; kritik ogohlantirishlar egasiga ham boradi. Rol menejerlari o'z Sub botini ulashi mumkin.",
     "hint_chatid": "Botni rolning Telegram guruhiga qo'shing, u yerda /chatid bajaring va id ni pastga joylashtiring.",
     "persona_dispatcher": "Dispetcher",
@@ -113,7 +113,10 @@
     "setup_step_bind": "4. Chat id ni «Guruh ulash…» tugmasiga joylang — Sub bot ixtiyoriy; ulanmaguncha asosiy bot yuboradi",
     "confirm_unbind": "{{role}} guruhini uzasizmi? Ogohlantirishlar u yerga chiqmay qo'yadi; kritik ogohlantirishlar baribir Asosiy guruhga boradi.",
     "confirm_unbind_main": "Egalar va adminlar guruhini uzasizmi? Yangi guruh ulanmaguncha kritik nusxalar to'xtaydi.",
-    "confirm_detach": "@{{username}} botini uzasizmi? Bu rol uchun yuborishni asosiy bot o'z zimmasiga oladi."
+    "confirm_detach": "@{{username}} botini uzasizmi? Bu rol uchun yuborishni asosiy bot o'z zimmasiga oladi.",
+    "dismiss": "Yopish",
+    "subtype_prefix_all": "turlar — hammasi yoniq:",
+    "subtype_prefix_some": "turlar — {{total}} tadan {{n}} tasi yoniq:"
   },
   "nav": {
     "overview": "Bosh sahifa",
@@ -588,5 +591,25 @@
     "recipient_email": "Qabul qiluvchi email",
     "recipient_email_placeholder": "driver@company.com",
     "recipient_email_hint": "Bir taklifnomaga bir qabul qiluvchi. Havola zaxira sifatida buferga ham nusxalanadi."
+  },
+  "bot_card": {
+    "title": "Telegram bot",
+    "bot_name": "Bot nomi",
+    "username": "Foydalanuvchi nomi",
+    "bot_id": "Bot ID",
+    "open_telegram": "Telegramda ochish",
+    "disconnect": "Botni uzish",
+    "disconnect_confirm": "Bu botni uzasizmi? Yangi bot ulanmaguncha ogohlantirishlar yuborish va Telegram orqali kirish hamma uchun to'xtaydi.",
+    "disconnect_yes": "Ha, uzish",
+    "disconnecting": "Uzilmoqda…",
+    "connect_intro_pre": "O'z Telegram botingizni ulang. Uni yarating:",
+    "connect_intro_post": " so'ng tokenni quyiga joylang.",
+    "token_label": "Bot tokeni",
+    "validate": "Tekshirish va ulash",
+    "validating": "Tekshirilmoqda…",
+    "toast_connected": "@{{username}} ulandi",
+    "toast_disconnected": "Bot uzildi",
+    "toast_connect_error": "Tokenni tekshirib bo'lmadi",
+    "toast_disconnect_error": "Uzib bo'lmadi"
   }
 }

@@ -229,7 +229,13 @@ export default function ForumRoutingSection() {
                   {t('forum_routing.mode_group_connected', { title: state.chat_title })}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {t('forum_routing.mode_group_setup_status', { status: state.setup_status })}
+                  {t('forum_routing.mode_group_setup_status', {
+                    // Task language, not system language: "provisioned"
+                    // is the backend's word, the user reads "Topics created".
+                    status: state.setup_status === 'provisioned'
+                      ? t('forum_routing.status_ready')
+                      : state.setup_status,
+                  })}
                   {state.last_setup_at && (
                     ' · ' + t('forum_routing.mode_group_last_setup', {
                       when: formatDate(state.last_setup_at, { timeZone: tz }),
@@ -240,8 +246,10 @@ export default function ForumRoutingSection() {
                   {t('forum_routing.mode_group_chat_id', { id: state.chat_id })}
                 </p>
                 <p className="text-xs text-muted-foreground mt-2">
+                  {/* Count PROVISIONED threads only — a deliberately
+                      disabled type must not read as missing/broken. */}
                   {t('forum_routing.topics_mapped', {
-                    mapped: state.routes.filter(r => r.is_mapped && r.is_active).length,
+                    mapped: state.routes.filter(r => r.is_mapped).length,
                     total: state.routes.length,
                   })}
                 </p>
@@ -312,6 +320,11 @@ export default function ForumRoutingSection() {
                               off; the border marks them interactive vs the
                               flat status chips (UX-audit grammar rule). */}
                           <td className="px-3 py-2 align-top w-28 text-right whitespace-nowrap">
+                            {/* Non-AI-capable rows show a muted dash:
+                                "not applicable", not "missing". */}
+                            {!isAICapable && r.is_mapped && (
+                              <span className="text-xs text-muted-foreground/50">—</span>
+                            )}
                             {isAICapable && r.is_mapped && (
                               <button
                                 disabled={aiBusy}

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
-import { Check, ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { Check, ChevronDown, ChevronRight, Info, X } from 'lucide-react';
 import { InfoTip } from '../../components/tooltip';
 
 // The Telegram Bot card's body controller.  The Routing selector sits
@@ -140,6 +140,12 @@ export default function AlertRoutingSection({
   // permanently-rendered bare input attracted saved emails/passwords,
   // seen live on the owner's account).
   const [openInput, setOpenInput] = useState<string>('');
+  // Nudge dismissal is per-browser deliberately: it's advice, not
+  // account config — a declined recommendation must not nag forever,
+  // and reappearing once on a new device is acceptable.
+  const [nudgeDismissed, setNudgeDismissed] = useState(
+    () => localStorage.getItem('tg_routing_nudge_dismissed') === '1',
+  );
 
   const load = useCallback(() => {
     apiJSON<AlertRoutingResponse>('/admin/alert-routing').then(setData).catch(() => setData(null));
@@ -364,7 +370,8 @@ export default function AlertRoutingSection({
 
   const showNudge =
     canManageAccount && data.mode === 'single_group'
-    && data.vehicle_count > data.nudge_threshold;
+    && data.vehicle_count > data.nudge_threshold
+    && !nudgeDismissed;
 
   const modeOption = (
     mode: AlertRoutingResponse['mode'],
@@ -527,6 +534,7 @@ export default function AlertRoutingSection({
                           <label className={`w-16 text-center ${editable ? 'cursor-pointer' : 'opacity-70'}`}>
                             <input
                               type="checkbox"
+                              className="accent-primary"
                               aria-label={`${TYPE_LABELS[r.alert_type] || r.alert_type} — ${t('alert_routing.topic_route')}`}
                               checked={r.enabled}
                               disabled={!editable || busy === `topic-${r.alert_type}-enabled`}
@@ -536,6 +544,7 @@ export default function AlertRoutingSection({
                           <label className={`w-16 text-center ${editable ? 'cursor-pointer' : 'opacity-70'}`}>
                             <input
                               type="checkbox"
+                              className="accent-primary"
                               aria-label={`${TYPE_LABELS[r.alert_type] || r.alert_type} — ${t('alert_routing.topic_ai')}`}
                               checked={r.ai}
                               disabled={!editable || busy === `topic-${r.alert_type}-ai`}
@@ -547,6 +556,16 @@ export default function AlertRoutingSection({
                             this role's group receives (all on by default). */}
                         {r.subtypes && r.enabled && (
                           <div className="mt-1 ml-4 flex flex-wrap items-center gap-1">
+                            {/* The chip row needs a name — unlabeled
+                                pills read as decoration, not filters. */}
+                            <span className="text-2xs text-muted-foreground">
+                              {!r.subtypes.selected
+                                ? t('alert_routing.subtype_prefix_all')
+                                : t('alert_routing.subtype_prefix_some', {
+                                    n: r.subtypes.selected.length,
+                                    total: r.subtypes.all.length,
+                                  })}
+                            </span>
                             {r.subtypes.all.map((s) => {
                               const active = !r.subtypes!.selected || r.subtypes!.selected.includes(s);
                               return (
@@ -712,6 +731,17 @@ export default function AlertRoutingSection({
           <div className={`mb-2 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${toneClasses('info')}`}>
             <Info size={14} className="mt-0.5 shrink-0" />
             <span>{t('alert_routing.nudge', { count: data.vehicle_count })}</span>
+            <button
+              type="button"
+              aria-label={t('alert_routing.dismiss')}
+              onClick={() => {
+                localStorage.setItem('tg_routing_nudge_dismissed', '1');
+                setNudgeDismissed(true);
+              }}
+              className="ml-auto shrink-0 hover:opacity-70"
+            >
+              <X size={14} />
+            </button>
           </div>
         )}
         <div className="flex flex-col sm:flex-row gap-2">
@@ -761,7 +791,9 @@ export default function AlertRoutingSection({
               header occupies; label states its three jobs. */}
           <div className="border border-border rounded-lg px-3 py-2">
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-medium text-foreground">{t('alert_routing.main_row_label')}</span>
+              {/* One w-40 name column on EVERY row (Main included) so
+                  the group cells align vertically down the roster. */}
+              <span className="font-medium text-foreground w-40 shrink-0">{t('alert_routing.main_row_label')}</span>
               {/* GROUP cell right after the name — the destination is
                   setup step 1 on every row; the sender bot is metadata
                   on the right.  One grammar for Main and role rows. */}
@@ -806,7 +838,7 @@ export default function AlertRoutingSection({
             return (
               <div key={persona} className="border border-border rounded-lg px-3 py-2">
                 <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="font-medium text-foreground w-20 shrink-0">
+                  <span className="font-medium text-foreground w-40 shrink-0">
                     {t(`alert_routing.persona_${persona}`)}
                   </span>
 

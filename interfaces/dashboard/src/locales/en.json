@@ -897,10 +897,10 @@
     "roster_progress": "{{n}} of {{total}} groups connected — the main bot sends for any role without its own.",
     "routing_label": "Delivery",
     "running": "Running",
-    "configured": "Configured",
+    "configured": "Not running",
     "main_row_label": "Main · Owner & Admins",
     "main_row_caption": "Registration, login and commands live on this bot. It also posts the Owner & Admins group and sends for any role without its own Sub bot.",
-    "main_sends": "main bot sends",
+    "main_sends": "Main bot sends",
     "fallback_note": "The single forum group stays as fallback — switch to Single bot to manage its topics.",
     "topics_expander": "alerts for this group",
     "topic_route": "Route to group",
@@ -916,7 +916,7 @@
     "nudge": "Your fleet ({{count}} vehicles) generates enough alerts that one group can get crowded — consider a group per role.",
     "mode_single_title": "Single bot",
     "mode_single_desc": "One bot, one forum group, a topic per alert type.",
-    "mode_multi_title": "Sub bot per role",
+    "mode_multi_title": "Sub bots",
     "mode_multi_desc": "Each role gets its own group; critical alerts also reach the owner group. Role managers can attach their own Sub bot.",
     "hint_chatid": "Add your bot to the role's Telegram group, run /chatid there, then paste the id below.",
     "persona_dispatcher": "Dispatch",
@@ -945,7 +945,10 @@
     "setup_step_bind": "4. Paste the chat id under “Bind group…” — a Sub bot is optional; the main bot sends until one is attached",
     "confirm_unbind": "Unlink the {{role}} group? Alerts stop posting there; critical alerts still reach the Main group.",
     "confirm_unbind_main": "Unlink the Owner & Admins group? Critical alert cross-posts stop until a group is bound again.",
-    "confirm_detach": "Detach @{{username}}? The main bot takes over sending for this role."
+    "confirm_detach": "Detach @{{username}}? The main bot takes over sending for this role.",
+    "dismiss": "Dismiss",
+    "subtype_prefix_all": "kinds — all on:",
+    "subtype_prefix_some": "kinds — {{n}} of {{total}} on:"
   },
   "forum_routing": {
     "section_title": "Alert group & topics",
@@ -981,7 +984,8 @@
     "receipt_on": "Resolved: On",
     "receipt_off": "Resolved: Off",
     "routing_on": "Routing: On",
-    "routing_off": "Routing: Off"
+    "routing_off": "Routing: Off",
+    "status_ready": "Topics created"
   },
   "knowledge": {
     "new_article": "New article",
@@ -1208,5 +1212,25 @@
     "just_now": "just now",
     "ago": "ago",
     "yesterday": "yesterday"
+  },
+  "bot_card": {
+    "title": "Telegram Bot",
+    "bot_name": "Bot Name",
+    "username": "Username",
+    "bot_id": "Bot ID",
+    "open_telegram": "Open in Telegram",
+    "disconnect": "Disconnect Bot",
+    "disconnect_confirm": "Disconnect this bot? Alert posting and Telegram login stop for everyone until a new bot is connected.",
+    "disconnect_yes": "Yes, Disconnect",
+    "disconnecting": "Disconnecting…",
+    "connect_intro_pre": "Connect your own Telegram bot. Create one via",
+    "connect_intro_post": ", then paste the token below.",
+    "token_label": "Bot Token",
+    "validate": "Validate & Connect",
+    "validating": "Validating…",
+    "toast_connected": "Connected @{{username}}",
+    "toast_disconnected": "Bot disconnected",
+    "toast_connect_error": "Failed to validate token",
+    "toast_disconnect_error": "Failed to disconnect"
   }
 }

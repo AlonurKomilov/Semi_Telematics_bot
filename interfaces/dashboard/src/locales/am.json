@@ -65,7 +65,7 @@
     "roster_progress": "ከ{{total}} ቡድኖች {{n}} ተገናኝተዋል — የራሱ ቡድን የሌለው ሚና ዋናው ቦት ይልክለታል።",
     "routing_label": "አደራረስ",
     "running": "እየሰራ ነው",
-    "configured": "ተዘጋጅቷል",
+    "configured": "አልተነሳም",
     "main_row_label": "ዋና · ባለቤት እና አስተዳዳሪዎች",
     "main_row_caption": "ምዝገባ፣ መግቢያ እና ትዕዛዞች በዚህ ቦት ላይ ይኖራሉ። የባለቤቶችን ቡድንም ይለጥፋል፣ የራሱ ንዑስ ቦት ለሌለው ሚናም ይልካል።",
     "main_sends": "ዋናው ቦት ይልካል",
@@ -84,7 +84,7 @@
     "nudge": "የተሽከርካሪ ብዛትዎ ({{count}}) አንድ ቡድን የሚሞላ ማንቂያ ይፈጥራል — ለእያንዳንዱ ሚና የተለየ ቡድን ያስቡ።",
     "mode_single_title": "አንድ ቦት",
     "mode_single_desc": "አንድ ቦት፣ አንድ ፎረም ቡድን፣ ለእያንዳንዱ አይነት ርዕስ።",
-    "mode_multi_title": "በሚና ንዑስ ቦት",
+    "mode_multi_title": "Sub bots",
     "mode_multi_desc": "እያንዳንዱ ሚና የራሱ ቡድን ያገኛል፤ ወሳኝ ማንቂያዎች ለባለቤቱም ይደርሳሉ። የሚና አስተዳዳሪዎች የራሳቸውን ንዑስ ቦት ማገናኘት ይችላሉ።",
     "hint_chatid": "ቦትዎን ወደ ሚናው Telegram ቡድን ያክሉ፣ እዚያ /chatid ያሂዱ፣ ከዚያ id ውን ከታች ይለጥፉ።",
     "persona_dispatcher": "መላክ",
@@ -113,7 +113,10 @@
     "setup_step_bind": "4. chat id ን በ«ቡድን አገናኝ…» ውስጥ ያስገቡ — Sub bot አማራጭ ነው፤ እስከዚያው ዋናው ቦት ይልካል",
     "confirm_unbind": "የ{{role}} ቡድን ይፈታ? ማንቂያዎች እዚያ መላክ ያቆማሉ፤ ወሳኝ ማንቂያዎች አሁንም ወደ ዋናው ቡድን ይደርሳሉ።",
     "confirm_unbind_main": "የባለቤትና አስተዳዳሪዎች ቡድን ይፈታ? አዲስ ቡድን እስኪታሰር ድረስ ወሳኝ መልዕክቶች ይቆማሉ።",
-    "confirm_detach": "@{{username}} ይፈታ? ለዚህ ሚና መላክን ዋናው ቦት ይረከባል።"
+    "confirm_detach": "@{{username}} ይፈታ? ለዚህ ሚና መላክን ዋናው ቦት ይረከባል።",
+    "dismiss": "አሰናብት",
+    "subtype_prefix_all": "ዓይነቶች — ሁሉም በርተዋል:",
+    "subtype_prefix_some": "ዓይነቶች — ከ{{total}} {{n}} በርተዋል:"
   },
   "nav": {
     "overview": "አጠቃላይ እይታ",
@@ -743,5 +746,25 @@
     "badge_bounced": "Bounced",
     "badge_complained": "Reported as spam",
     "badge_soft_delivery": "Delivery issues"
+  },
+  "bot_card": {
+    "title": "የTelegram ቦት",
+    "bot_name": "የቦት ስም",
+    "username": "የተጠቃሚ ስም",
+    "bot_id": "የቦት መለያ",
+    "open_telegram": "በTelegram ክፈት",
+    "disconnect": "ቦቱን አቋርጥ",
+    "disconnect_confirm": "ይህን ቦት ማቋረጥ ይፈልጋሉ? አዲስ ቦት እስኪገናኝ ድረስ የማንቂያ መላክና በTelegram መግባት ለሁሉም ይቆማል።",
+    "disconnect_yes": "አዎ፣ አቋርጥ",
+    "disconnecting": "በማቋረጥ ላይ…",
+    "connect_intro_pre": "የራስዎን የTelegram ቦት ያገናኙ። ይፍጠሩት በ",
+    "connect_intro_post": " ከዚያ ቶክኑን ከታች ይለጥፉ።",
+    "token_label": "የቦት ቶክን",
+    "validate": "አረጋግጥ እና አገናኝ",
+    "validating": "በማረጋገጥ ላይ…",
+    "toast_connected": "@{{username}} ተገናኝቷል",
+    "toast_disconnected": "ቦቱ ተቋርጧል",
+    "toast_connect_error": "ቶክኑን ማረጋገጥ አልተቻለም",
+    "toast_disconnect_error": "ማቋረጥ አልተቻለም"
   }
 }
