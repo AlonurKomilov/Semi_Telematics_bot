@@ -936,7 +936,7 @@
     "remove": "Remove",
     "topic_subs_hint": "none selected = all kinds",
     "topic_route_note": "Off = this alert type stops posting to this group. Personal DMs still follow each user's own preferences.",
-    "col_route": "Route",
+    "col_route": "Routing",
     "col_ai": "AI",
     "setup_title": "First-time setup",
     "setup_step_bot": "1. Bot connected — @{{username}}",
@@ -948,7 +948,9 @@
     "confirm_detach": "Detach @{{username}}? The main bot takes over sending for this role.",
     "dismiss": "Dismiss",
     "subtype_prefix_all": "kinds — all on:",
-    "subtype_prefix_some": "kinds — {{n}} of {{total}} on:"
+    "subtype_prefix_some": "kinds — {{n}} of {{total}} on:",
+    "custom_topics_empty": "Route chosen kinds into their own Telegram thread — e.g. only Crash + Harsh Braking.",
+    "topics_needs_group": "Takes effect once a group is bound."
   },
   "forum_routing": {
     "section_title": "Alert group & topics",

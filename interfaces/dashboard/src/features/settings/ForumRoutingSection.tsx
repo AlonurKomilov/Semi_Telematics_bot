@@ -283,11 +283,16 @@ export default function ForumRoutingSection() {
                         if (!groupRows.length) return null;
                         return (
                         <Fragment key={g.label}>
-                          <tr className="bg-muted/40">
-                            <td colSpan={5} className="px-3 py-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-                              {g.label}
-                            </td>
-                          </tr>
+                          {/* Skip the caps heading for single-row groups
+                              (Geofences, Scorecards…) — same rule as the
+                              role-mode expander, so the two modes match. */}
+                          {groupRows.length > 1 && (
+                            <tr className="bg-muted/40">
+                              <td colSpan={5} className="px-3 py-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                                {g.label}
+                              </td>
+                            </tr>
+                          )}
                           {groupRows.map(r => {
                         const isAICapable = (AI_CAPABLE_TYPES as readonly string[]).includes(r.alert_type);
                         const aiEnabled = state.settings?.ai_per_type?.[r.alert_type] ?? true;

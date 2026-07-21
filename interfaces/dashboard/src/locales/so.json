@@ -116,7 +116,9 @@
     "confirm_detach": "Ma furaysaa @{{username}}? Diridda rolkan waxaa la wareegaya bot-ka weyn.",
     "dismiss": "Iska dhaaf",
     "subtype_prefix_all": "noocyada — dhammaan shidan:",
-    "subtype_prefix_some": "noocyada — {{total}} ka mid ah {{n}} shidan:"
+    "subtype_prefix_some": "noocyada — {{total}} ka mid ah {{n}} shidan:",
+    "custom_topics_empty": "U dir noocyada la doortay dun Telegram u gaar ah — tusaale ahaan Shil + Bareeg adag oo keliya.",
+    "topics_needs_group": "Wuxuu shaqaynayaa marka koox la xidho."
   },
   "nav": {
     "overview": "Guudmar",

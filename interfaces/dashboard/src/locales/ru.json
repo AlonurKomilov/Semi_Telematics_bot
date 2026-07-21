@@ -116,7 +116,9 @@
     "confirm_detach": "Отключить @{{username}}? Отправку для этой роли возьмёт на себя основной бот.",
     "dismiss": "Скрыть",
     "subtype_prefix_all": "виды — все вкл:",
-    "subtype_prefix_some": "виды — {{n}} из {{total}} вкл:"
+    "subtype_prefix_some": "виды — {{n}} из {{total}} вкл:",
+    "custom_topics_empty": "Направляйте выбранные виды в отдельную тему Telegram — например, только Авария + Резкое торможение.",
+    "topics_needs_group": "Заработает после привязки группы."
   },
   "nav": {
     "overview": "Главная",

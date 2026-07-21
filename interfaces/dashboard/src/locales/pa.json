@@ -116,7 +116,9 @@
     "confirm_detach": "@{{username}} ਹਟਾਉਣਾ ਹੈ? ਇਸ ਰੋਲ ਲਈ ਭੇਜਣਾ ਮੁੱਖ ਬੋਟ ਸੰਭਾਲ ਲਵੇਗਾ।",
     "dismiss": "ਹਟਾਓ",
     "subtype_prefix_all": "ਕਿਸਮਾਂ — ਸਾਰੀਆਂ ਚਾਲੂ:",
-    "subtype_prefix_some": "ਕਿਸਮਾਂ — {{total}} ਵਿੱਚੋਂ {{n}} ਚਾਲੂ:"
+    "subtype_prefix_some": "ਕਿਸਮਾਂ — {{total}} ਵਿੱਚੋਂ {{n}} ਚਾਲੂ:",
+    "custom_topics_empty": "ਚੁਣੀਆਂ ਕਿਸਮਾਂ ਨੂੰ ਆਪਣੇ Telegram ਥਰਿੱਡ ਵਿੱਚ ਭੇਜੋ — ਜਿਵੇਂ ਸਿਰਫ਼ ਕਰੈਸ਼ + ਹਾਰਸ਼ ਬ੍ਰੇਕਿੰਗ।",
+    "topics_needs_group": "ਗਰੁੱਪ ਜੁੜਨ 'ਤੇ ਲਾਗੂ ਹੁੰਦਾ ਹੈ।"
   },
   "nav": {
     "overview": "ਸੰਖੇਪ",

@@ -116,7 +116,9 @@
     "confirm_detach": "Від'єднати @{{username}}? Надсилання для цієї ролі перебере основний бот.",
     "dismiss": "Приховати",
     "subtype_prefix_all": "види — всі увімк:",
-    "subtype_prefix_some": "види — {{n}} із {{total}} увімк:"
+    "subtype_prefix_some": "види — {{n}} із {{total}} увімк:",
+    "custom_topics_empty": "Спрямовуйте вибрані види в окрему тему Telegram — наприклад, лише Аварія + Різке гальмування.",
+    "topics_needs_group": "Запрацює після прив'язки групи."
   },
   "nav": {
     "overview": "Головна",

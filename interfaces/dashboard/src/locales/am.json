@@ -116,7 +116,9 @@
     "confirm_detach": "@{{username}} ይፈታ? ለዚህ ሚና መላክን ዋናው ቦት ይረከባል።",
     "dismiss": "አሰናብት",
     "subtype_prefix_all": "ዓይነቶች — ሁሉም በርተዋል:",
-    "subtype_prefix_some": "ዓይነቶች — ከ{{total}} {{n}} በርተዋል:"
+    "subtype_prefix_some": "ዓይነቶች — ከ{{total}} {{n}} በርተዋል:",
+    "custom_topics_empty": "የተመረጡ ዓይነቶችን ወደ የራሳቸው Telegram ክር ይምሩ — ለምሳሌ ግጭት + ኃይለኛ ብሬክ ብቻ።",
+    "topics_needs_group": "ቡድን ከታሰረ በኋላ ተግባራዊ ይሆናል።"
   },
   "nav": {
     "overview": "አጠቃላይ እይታ",

@@ -116,7 +116,9 @@
     "confirm_detach": "Détacher @{{username}} ? Le bot principal reprend l'envoi pour ce rôle.",
     "dismiss": "Ignorer",
     "subtype_prefix_all": "types — tous actifs:",
-    "subtype_prefix_some": "types — {{n}} sur {{total}} actifs:"
+    "subtype_prefix_some": "types — {{n}} sur {{total}} actifs:",
+    "custom_topics_empty": "Envoyez certains types dans leur propre fil Telegram — p. ex. seulement Collision + Freinage brusque.",
+    "topics_needs_group": "S'applique une fois un groupe lié."
   },
   "nav": {
     "overview": "Aperçu",

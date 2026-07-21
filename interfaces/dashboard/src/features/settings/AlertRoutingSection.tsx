@@ -5,6 +5,7 @@ import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { Check, ChevronDown, ChevronRight, Info, X } from 'lucide-react';
 import { InfoTip } from '../../components/tooltip';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 
 // The Telegram Bot card's body controller.  The Routing selector sits
 // at the TOP of the card (it's the bot-topology decision, not an
@@ -492,14 +493,23 @@ export default function AlertRoutingSection({
     const editable = canManage(persona);
     return (
       <div className="w-full">
-        <button
-          type="button"
-          onClick={() => setExpanded({ ...expanded, [persona]: !open })}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-        >
-          {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          {t('alert_routing.topics_expander')}
-        </button>
+        <span className="inline-flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => setExpanded({ ...expanded, [persona]: !open })}
+            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+          >
+            {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {t('alert_routing.topics_expander')}
+          </button>
+          {/* Settings apply to a group that isn't bound yet — say so,
+              so the toggles below don't read as already-live. */}
+          {!data.personas[persona] && (
+            <span className="text-2xs text-muted-foreground">
+              {t('alert_routing.topics_needs_group')}
+            </span>
+          )}
+        </span>
         {open && (
           <div className="mt-1.5 ml-4 space-y-2">
             {/* Column headers once — the per-row repeated checkbox
@@ -518,10 +528,14 @@ export default function AlertRoutingSection({
               .map((g) => (
                 <div key={g.label}>
                   {/* Feature heading — the topic hierarchy mirrors the
-                      product taxonomy instead of one flat list. */}
-                  <div className="mb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-                    {g.label}
-                  </div>
+                      product taxonomy.  Skip it for single-row groups
+                      (Geofences, Scorecards…): a caps heading over one
+                      row whose label repeats it is pure duplication. */}
+                  {g.rows.length > 1 && (
+                    <div className="mb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {g.label}
+                    </div>
+                  )}
                   <div className="space-y-1">
                     {g.rows.map((r) => (
                       <div key={r.alert_type}>
@@ -574,12 +588,15 @@ export default function AlertRoutingSection({
                                   type="button"
                                   disabled={!editable || busy === `subtype-${persona}-${r.alert_type}`}
                                   onClick={() => { void toggleSubtype(persona, r, s); }}
-                                  className={`px-2 py-0.5 rounded-md border text-2xs transition disabled:opacity-60 ${
+                                  className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md border text-2xs transition disabled:opacity-60 ${
                                     active
                                       ? 'border-primary/40 bg-primary/10 text-primary'
                                       : 'border-border text-muted-foreground hover:border-ring'
                                   }`}
                                 >
+                                  {/* ✓ marks a SELECTED filter so it can't
+                                      be mistaken for a pressable action. */}
+                                  {active && <Check size={12} />}
                                   {SUBTYPE_LABELS[s] || s}
                                 </button>
                               );
@@ -594,10 +611,17 @@ export default function AlertRoutingSection({
 
             {/* ── Custom topics — user-defined rules for THIS role ── */}
             <div>
-              <div className="mb-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+              <div className="mb-1 inline-flex items-center gap-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                 {t('alert_routing.custom_topics_title')}
                 <InfoTip label={t('alert_routing.custom_topics_hint')} size={12} />
               </div>
+              {/* Empty state sells the feature — a bare heading + button
+                  hides the "why" inside the ⓘ nobody clicks. */}
+              {!(customTopics?.personas?.[persona] ?? []).length && (
+                <p className="mb-1 text-2xs text-muted-foreground">
+                  {t('alert_routing.custom_topics_empty')}
+                </p>
+              )}
               <div className="space-y-1">
                 {(customTopics?.personas?.[persona] ?? []).map((tp) => (
                   <div key={tp.id} className="flex flex-wrap items-center gap-2 text-xs">
@@ -644,19 +668,25 @@ export default function AlertRoutingSection({
                       spellCheck={false}
                       className="w-40 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring"
                     />
-                    <select
-                      value={ctType}
-                      onChange={(e) => { setCtType(e.target.value); setCtSubs([]); }}
-                      aria-label={t('alert_routing.custom_topics_title')}
-                      className="bg-muted border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring"
+                    <Select
+                      value={ctType || undefined}
+                      onValueChange={(v) => { setCtType(v); setCtSubs([]); }}
                     >
-                      <option value="">{t('alert_routing.topic_type_ph')}</option>
-                      {rows.map((r) => (
-                        <option key={r.alert_type} value={r.alert_type}>
-                          {TYPE_LABELS[r.alert_type] || r.alert_type}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger
+                        size="sm"
+                        aria-label={t('alert_routing.custom_topics_title')}
+                        className="text-xs"
+                      >
+                        <SelectValue placeholder={t('alert_routing.topic_type_ph')} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {rows.map((r) => (
+                          <SelectItem key={r.alert_type} value={r.alert_type} className="text-xs">
+                            {TYPE_LABELS[r.alert_type] || r.alert_type}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {(() => {
                       const vocab = rows.find((r) => r.alert_type === ctType)?.subtypes?.all;
                       if (!vocab) return null;

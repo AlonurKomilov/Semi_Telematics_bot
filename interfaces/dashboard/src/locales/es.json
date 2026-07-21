@@ -116,7 +116,9 @@
     "confirm_detach": "¿Desconectar @{{username}}? El bot principal asume el envío para este rol.",
     "dismiss": "Descartar",
     "subtype_prefix_all": "tipos — todos activos:",
-    "subtype_prefix_some": "tipos — {{n}} de {{total}} activos:"
+    "subtype_prefix_some": "tipos — {{n}} de {{total}} activos:",
+    "custom_topics_empty": "Envía ciertos tipos a su propio hilo de Telegram — p. ej. solo Choque + Frenado brusco.",
+    "topics_needs_group": "Se aplica cuando se vincula un grupo."
   },
   "nav": {
     "overview": "Resumen",

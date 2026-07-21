@@ -116,7 +116,9 @@
     "confirm_detach": "@{{username}} botini uzasizmi? Bu rol uchun yuborishni asosiy bot o'z zimmasiga oladi.",
     "dismiss": "Yopish",
     "subtype_prefix_all": "turlar — hammasi yoniq:",
-    "subtype_prefix_some": "turlar — {{total}} tadan {{n}} tasi yoniq:"
+    "subtype_prefix_some": "turlar — {{total}} tadan {{n}} tasi yoniq:",
+    "custom_topics_empty": "Tanlangan turlarni alohida Telegram mavzusiga yo'naltiring — masalan, faqat Avariya + Keskin tormoz.",
+    "topics_needs_group": "Guruh ulangach ishga tushadi."
   },
   "nav": {
     "overview": "Bosh sahifa",
