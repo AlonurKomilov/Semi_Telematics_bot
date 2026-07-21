@@ -45,22 +45,47 @@ def test_personal_vs_shared_split():
     assert personal.isdisjoint(shared)
 
 
+_NOTIF_MODULES = (
+    "capabilities.notifications",
+    "capabilities.notifications.channels",
+    "capabilities.notifications.telegram",
+    "capabilities.notifications.email",
+    "capabilities.notifications.service",
+    "capabilities.notifications.lifecycle",
+    "capabilities.notifications.tokens",
+    "capabilities.notifications.retention",
+    "capabilities.notifications.router",
+)
+
+
 def test_does_not_import_alerting():
     # Layering guard: the delivery layer must not depend on an event
     # source, or alerting → notifications later would cycle.  Check only
     # actual import LINES (docstrings mention 'alerting' deliberately).
     import inspect
     import importlib
-    for m in ("capabilities.notifications",
-              "capabilities.notifications.channels",
-              "capabilities.notifications.telegram",
-              "capabilities.notifications.email",
-              "capabilities.notifications.service"):
+    for m in _NOTIF_MODULES:
         mod = importlib.import_module(m)
         for line in inspect.getsource(mod).splitlines():
             s = line.strip()
             if s.startswith(("import ", "from ")):
                 assert "capabilities.alerting" not in s, (m, line)
+
+
+def test_only_router_imports_interfaces():
+    """The delivery core stays framework-free: ONLY router.py may reach
+    into interfaces.api (deps/rate_limit).  Everything else would couple
+    the capability to the web layer."""
+    import inspect
+    import importlib
+    for m in _NOTIF_MODULES:
+        if m.endswith(".router"):
+            continue
+        mod = importlib.import_module(m)
+        for line in inspect.getsource(mod).splitlines():
+            s = line.strip()
+            if s.startswith(("import ", "from ")):
+                assert "interfaces.api" not in s, (m, line)
 
 
 # ── Telegram DM (personal) transport ─────────────────────────────────

@@ -31,6 +31,7 @@ from capabilities.permissions import router as permissions_routes
 from interfaces.api.routes import webhooks as webhooks_routes
 # Hub + platform-capability routers live WITH their domain:
 from capabilities.alerting import router as alerts
+from capabilities.notifications import router as notifications_routes
 from capabilities.reporting import router as reports_routes
 from capabilities.ai import router as ai_routes
 from features.scorecards import router as scorecards_routes
@@ -435,6 +436,7 @@ def create_api() -> FastAPI:
         app.include_router(geofences.router, prefix=prefix)
         app.include_router(alerts.router, prefix=prefix)
         app.include_router(alerts.user_router, prefix=prefix)
+        app.include_router(notifications_routes.router, prefix=prefix)
         app.include_router(parking_routes.router, prefix=prefix)
         app.include_router(dispatch_routes.router, prefix=prefix)
         app.include_router(scorecards_routes.router, prefix=prefix)

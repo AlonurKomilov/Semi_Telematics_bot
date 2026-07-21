@@ -34,3 +34,17 @@ from capabilities.notifications import telegram as _telegram  # noqa: F401,E402
 from capabilities.notifications.email import EmailChannel  # noqa: E402
 
 register_channel(EmailChannel())
+
+# Boot-time visibility: email links are signed with a dedicated secret;
+# without it the email channel's connect/verify/unsubscribe fail closed.
+# A warning (not a boot failure) — the feature is opt-in and inert until a
+# user connects an address.
+from capabilities.notifications.tokens import signing_secret_ok  # noqa: E402
+
+if not signing_secret_ok():
+    import logging as _logging
+
+    _logging.getLogger("bot.notifications").warning(
+        "NOTIFICATION_SIGNING_SECRET is unset or too short — email "
+        "notification links are disabled until it is set "
+        "(openssl rand -hex 32).")

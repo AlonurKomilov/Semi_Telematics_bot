@@ -139,6 +139,43 @@ class NotificationPrefsMixin(_MixinBase):
         )
         await self._db.commit()
 
+    async def verify_notification_channel(
+        self, account_id: int, recipient_type: str, recipient_id: str,
+        channel: str, address: str,
+    ) -> bool:
+        """Mark a channel connection verified — ONLY if the stored address
+        still matches the one the verification link was issued for.  A user
+        who changed their address after requesting verification must
+        re-verify the new one (the stale link can't silently verify it)."""
+        now = self._now()
+        cur = await self._db.execute(
+            """UPDATE notification_channel
+                  SET verified_at = ?, updated_at = ?
+                WHERE account_id = ? AND recipient_type = ?
+                  AND recipient_id = ? AND channel = ? AND address = ?""",
+            (now, now, account_id, recipient_type, str(recipient_id),
+             channel, address),
+        )
+        await self._db.commit()
+        return (cur.rowcount or 0) > 0
+
+    async def disable_notification_channel(
+        self, account_id: int, recipient_type: str, recipient_id: str,
+        channel: str,
+    ) -> bool:
+        """Flip the channel master switch off (the one-click unsubscribe
+        target).  Address + per-type prefs are kept, so re-enabling later
+        doesn't lose the user's choices."""
+        cur = await self._db.execute(
+            """UPDATE notification_channel
+                  SET enabled_master = 0, updated_at = ?
+                WHERE account_id = ? AND recipient_type = ?
+                  AND recipient_id = ? AND channel = ?""",
+            (self._now(), account_id, recipient_type, str(recipient_id), channel),
+        )
+        await self._db.commit()
+        return (cur.rowcount or 0) > 0
+
     async def get_notification_channel(
         self, account_id: int, recipient_type: str, recipient_id: str,
         channel: str,

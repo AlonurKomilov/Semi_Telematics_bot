@@ -156,7 +156,10 @@ def send_email(
 
     msg = EmailMessage()
     msg["From"] = from_header
-    msg["To"] = to
+    # Strip CR/LF from the recipient too — the only header that wasn't,
+    # and an unstripped newline here would otherwise raise mid-send. CR/LF
+    # is never valid in an address, so stripping can't harm a real one.
+    msg["To"] = _strip_crlf(to) or to
     msg["Subject"] = _strip_crlf(subject) or subject
     # Message-ID gives Outlook / Exchange Online a stable identity to
     # group retries by and avoids 'missing Message-ID' as a soft

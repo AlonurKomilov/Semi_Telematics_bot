@@ -25,6 +25,10 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 # every issued JWT).  Tests don't authenticate real users so the value
 # is deterministic and only used to import auth-touching modules.
 os.environ.setdefault("JWT_SECRET", "test-jwt-secret-not-for-production-use-only")
+# Notification email links are signed with their OWN secret (decoupled
+# from JWT_SECRET so JWT rotation can't break in-inbox unsubscribe links).
+os.environ.setdefault(
+    "NOTIFICATION_SIGNING_SECRET", "test-notification-signing-secret-32b+")
 
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402

@@ -42,12 +42,12 @@ def _base_url() -> str:
 
 
 def _unsubscribe_url(recipient: Recipient) -> str:
-    """Per-recipient unsubscribe destination.  4a points at the
-    notification-preferences page (a valid manage/disable destination
-    that survives login); 4b swaps in the signed one-click endpoint that
-    the ``List-Unsubscribe-Post`` header wants — the URL shape stays the
-    same so the header does not need to change."""
-    return f"{_base_url()}/alerts?prefs=1&ch=email"
+    """Per-recipient signed one-click unsubscribe link — the target the
+    ``List-Unsubscribe-Post`` header points at.  Turns this channel off
+    without a login (4b)."""
+    from capabilities.notifications.lifecycle import unsubscribe_url
+    return unsubscribe_url(
+        recipient.account_id, recipient.type, recipient.id, "email")
 
 
 def _brand() -> str:
