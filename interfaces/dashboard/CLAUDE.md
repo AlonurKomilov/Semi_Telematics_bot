@@ -132,12 +132,17 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   status ▾"), passing the chosen value to `onRun`. `bulkRowLabel` gives
   per-row a11y; `isRowSelectable(row)` gates which rows get a checkbox
   (e.g. only ackable alerts); `onBulkSelectionChange` mirrors the set
-  out (e.g. AI page-context). Do NOT re-implement a `selectedIds` Set,
-  checkbox `<input>`s via `firstColumnLeading`, or a `fixed bottom-4`
-  bar on a page — that's the old copy-pasted pattern this replaced.
-  `firstColumnLeading` remains ONLY for genuinely non-selection leading
-  content. Checkbox selection and Ctrl/Cmd-click Copy share one set +
-  one bar. Controlled selection: pass `selectedIds` + `onSelectedIdsChange`
+  out (e.g. AI page-context). The checkbox lives in its OWN dedicated
+  column (a synthetic locked, force-pinned-left, 44px column — id
+  `__select__`), NOT riding inside the first data cell — so the select
+  box never crowds the Vehicle/Name value. Do NOT re-implement a
+  `selectedIds` Set, checkbox `<input>`s via `firstColumnLeading`, or a
+  `fixed bottom-4` bar on a page — that's the old copy-pasted pattern
+  this replaced. `firstColumnLeading` remains ONLY for genuinely
+  non-selection leading content (expand toggle, row-number); when
+  `bulkSelection` is also on it attaches to the first DATA column, one
+  slot right of the select column. Checkbox selection and Ctrl/Cmd-click
+  Copy share one set + one bar. Controlled selection: pass `selectedIds` + `onSelectedIdsChange`
   when a page must OWN the set (e.g. Alerts' shared context); omit both
   for the default DataGrid-owned selection (Alerts Results is the
   controlled example — its selection lives in a shared
@@ -149,9 +154,11 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   active view constraint — surfacing it in either a chip OR a count badge
   reads as an unresolved "notification" to clear), pin (visually
   self-evident), and the column-bracket group (column-config, not a
-  per-session toggle). The Filter/Sort toolbar buttons DO keep count
-  badges (those are active constraints); the Manage-columns button is a
-  plain icon.
+  per-session toggle). There are NO toolbar Filter/Sort buttons — they
+  were pure redundancy (their popovers only viewed/cleared active state,
+  which the chips now do, and never ADDED a filter). Adding a filter/sort
+  is the column ⋮ 3-dot menu; the chips are the active-state display; the
+  Manage-columns button is a plain icon (no badge).
 - **A grid can never be hidden down to zero columns.** The last visible
   hideable column locks: its "Hide column" item (per-column 3-dot menu)
   disables with a "last column" hint, and its checkbox in the

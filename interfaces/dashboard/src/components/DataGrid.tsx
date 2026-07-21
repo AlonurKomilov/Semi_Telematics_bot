@@ -28,7 +28,6 @@ import {
   CornerUpRight, ListTree,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
 import { createPortal } from 'react-dom';
 import {
@@ -86,6 +85,13 @@ const DENSITY_GROUP_ROW: Record<Density, string> = {
   default: 'py-2',
   roomy: 'py-3',
 };
+// Synthetic id for the dedicated bulk-select column.  Double-underscore
+// so it can never collide with a real data key.  It's a genuine (locked,
+// force-pinned-left, non-resizable) tanstack column rather than a
+// checkbox riding inside the first data cell — the select box gets its
+// own narrow column, and tanstack computes its sticky offset for free.
+const SELECT_COL_ID = '__select__';
+
 const DENSITY_CYCLE: readonly Density[] = ['compact', 'default', 'roomy'];
 const DENSITY_ICONS: Record<Density, typeof Rows3> = {
   compact: Rows4,
@@ -753,8 +759,8 @@ export default function DataGrid({
   }, [columns, tableId]);
 
   const tableColumns = useMemo<ColumnDef<Record<string, unknown>>[]>(
-    () =>
-      columns.map((col) => {
+    () => {
+      const dataCols = columns.map((col) => {
         const def: ColumnDef<Record<string, unknown>> = {
           id: col.key,
           accessorKey: col.key,
@@ -841,8 +847,30 @@ export default function DataGrid({
           };
         }
         return def;
-      }),
-    [columns],
+      });
+      if (!bulkSelection) return dataCols;
+      // Prepend the dedicated bulk-select column.  Its checkbox is
+      // injected via ``leadingContent`` in the render loops (which close
+      // over live selection state) — the def itself is a stable, empty
+      // shell so this memo never rebuilds on selection change.  Locked +
+      // non-hideable/pinnable/resizable so it behaves like a structural
+      // column: force-pinned leftmost, no 3-dot menu, no drag/resize.
+      const selectCol: ColumnDef<Record<string, unknown>> = {
+        id: SELECT_COL_ID,
+        header: '',
+        cell: () => null,
+        enableSorting: false,
+        enableColumnFilter: false,
+        enableHiding: false,
+        enablePinning: false,
+        enableResizing: false,
+        size: 44,
+        minSize: 44,
+        maxSize: 44,
+      };
+      return [selectCol, ...dataCols];
+    },
+    [columns, bulkSelection],
   );
 
   const searchKeys = useMemo(() => {
@@ -861,13 +889,18 @@ export default function DataGrid({
     [columns],
   );
   const effectivePinning = useMemo<ColumnPinningState>(() => {
-    if (lockedLeftIds.length === 0) return columnPinning;
-    const userLeft = (columnPinning.left ?? []).filter(id => !lockedLeftIds.includes(id));
+    // The bulk-select column pins leftmost of ALL — before any locked
+    // data column and before the operator's own left pins.
+    const forcedLeft = bulkSelection
+      ? [SELECT_COL_ID, ...lockedLeftIds]
+      : lockedLeftIds;
+    if (forcedLeft.length === 0) return columnPinning;
+    const userLeft = (columnPinning.left ?? []).filter(id => !forcedLeft.includes(id));
     return {
-      left: [...lockedLeftIds, ...userLeft],
+      left: [...forcedLeft, ...userLeft],
       right: columnPinning.right ?? [],
     };
-  }, [columnPinning, lockedLeftIds]);
+  }, [columnPinning, lockedLeftIds, bulkSelection]);
 
   const table = useReactTable({
     data,
@@ -914,7 +947,8 @@ export default function DataGrid({
       setColumnPinning(prev => {
         const next = typeof updater === 'function' ? updater(prev) : updater;
         return {
-          left: (next.left ?? []).filter(id => !lockedLeftIds.includes(id)),
+          left: (next.left ?? []).filter(
+            id => id !== SELECT_COL_ID && !lockedLeftIds.includes(id)),
           right: next.right ?? [],
         };
       });
@@ -1441,15 +1475,6 @@ export default function DataGrid({
   // entry point opens it.
   const [manageOpen, setManageOpen] = useState(false);
   const manageAnchorRef = useRef<HTMLButtonElement | null>(null);
-  // Toolbar Filter / Sort popovers — list the ACTIVE filters / sorts
-  // with per-item clear + clear-all, mirroring the Columns pattern so
-  // operators have one place to see and undo everything narrowing
-  // the table.
-  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
-  const filterBtnRef = useRef<HTMLButtonElement | null>(null);
-  const [sortMenuOpen, setSortMenuOpen] = useState(false);
-  const sortBtnRef = useRef<HTMLButtonElement | null>(null);
-
   // Human-readable one-liner for an active column filter, matching
   // the filter's mode: selected labels for select mode, bounds for
   // range / date-range.
@@ -1660,7 +1685,14 @@ export default function DataGrid({
     ]);
     if (groupRuns[fromIdx].memberIds.some(id => immovable.has(id))) return;
     if (groupRuns[toIdx].memberIds.some(id => immovable.has(id))) return;
-    const newVisible = arrayMove(groupRuns, fromIdx, toIdx).flatMap(r => r.memberIds);
+    // Drop the synthetic select column — it lives in ``tableColumns``
+    // (hence in ``groupRuns``) but NOT in the ``columns`` prop that
+    // ``base`` is rebuilt from.  Leaving it in would make ``newVisible``
+    // one longer than the real slots, baking ``__select__`` into a real
+    // column's position and shifting a real key off the persisted order.
+    const newVisible = arrayMove(groupRuns, fromIdx, toIdx)
+      .flatMap(r => r.memberIds)
+      .filter(id => id !== SELECT_COL_ID);
     setColumnOrder(prev => {
       const base = prev.length ? prev : columns.map(c => c.key);
       const visibleSet = new Set(newVisible);
@@ -2081,48 +2113,13 @@ export default function DataGrid({
           ) : null}
           {tableId && (
             <>
-              <Tip label="Active filters">
-              <Button
-                ref={filterBtnRef}
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => setFilterMenuOpen(o => !o)}
-                aria-label="Active filters"
-                className={cn(
-                  'relative',
-                  columnFilters.length > 0 && 'text-primary border-primary/30 bg-primary/10',
-                )}
-              >
-                <FilterIcon />
-                {columnFilters.length > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-3xs font-semibold inline-flex items-center justify-center">
-                    {columnFilters.length}
-                  </span>
-                )}
-              </Button>
-              </Tip>
-              <Tip label="Active sort">
-              <Button
-                ref={sortBtnRef}
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => setSortMenuOpen(o => !o)}
-                aria-label="Active sort"
-                className={cn(
-                  'relative',
-                  sorting.length > 0 && 'text-primary border-primary/30 bg-primary/10',
-                )}
-              >
-                <ArrowUpDown />
-                {sorting.length > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-3xs font-semibold inline-flex items-center justify-center">
-                    {sorting.length}
-                  </span>
-                )}
-              </Button>
-              </Tip>
+              {/* No toolbar Filter / Sort buttons.  They were pure
+                  redundancy: the popovers only VIEWED / removed / cleared
+                  active filters + sorts — exactly what the left-side chips
+                  now do — and never actually ADDED one (they punted to the
+                  column ⋮ menu, which remains the real add path).  A
+                  dead-end funnel that tells you to go elsewhere is worse
+                  than no funnel; the chips are the honest active-state UI. */}
               {/* Plain icon — NO hidden-count badge.  Hiding a column is a
                   deliberate act the operator already knows they did; a
                   persistent number here read as an unresolved "notification"
@@ -2383,13 +2380,17 @@ export default function DataGrid({
                         tableId={tableId}
                         onOpenManage={() => setManageOpen(true)}
                         onMeasureWidth={reportColumnWidth}
-                        // Leading content (e.g. bulk-select master
-                        // checkbox) goes on the FIRST visible header
-                        // — when the operator pins / reorders, the
-                        // checkbox moves with the new first column.
-                        leadingContent={hIdx === 0
-                          ? (bulkSelection ? renderSelectAll() : firstColumnLeading?.header())
-                          : undefined}
+                        // The bulk-select master checkbox renders into the
+                        // dedicated select column (always hIdx 0 when on).
+                        // ``firstColumnLeading`` (expand toggle, row-number)
+                        // attaches to the first DATA column, which sits one
+                        // slot right when the select column is present.
+                        leadingContent={
+                          bulkSelection && hIdx === 0
+                            ? renderSelectAll()
+                            : hIdx === (bulkSelection ? 1 : 0)
+                              ? firstColumnLeading?.header()
+                              : undefined}
                         groupNames={groupNames}
                         currentGroup={effectiveGroupByKey.get(header.column.id) ?? null}
                         onAssignGroup={(name) => assignGroup(header.column.id, name)}
@@ -2536,22 +2537,22 @@ export default function DataGrid({
                         padding={padding}
                         selected={isSelected}
                         zebra={isZebra}
-                        // Indent the first cell of leaf rows under an
-                        // expanded group so children read as nested.
-                        indent={cIdx === 0 && !!rowGroupBy}
-                        // Same first-visible-column rule — the per-row
-                        // checkbox is rendered into whichever cell is
-                        // currently leftmost.
+                        // Indent the first DATA cell of leaf rows under an
+                        // expanded group so children read as nested (the
+                        // select column, when present, keeps its fixed
+                        // width — indenting it would just shift checkboxes).
+                        indent={cIdx === (bulkSelection ? 1 : 0) && !!rowGroupBy}
+                        // The per-row checkbox renders into the dedicated
+                        // select column (cIdx 0 when on); firstColumnLeading
+                        // rides the first DATA column, one slot right.
                         leadingContent={
-                          cIdx !== 0
-                            ? undefined
-                            : bulkSelection
-                              ? (isRowSelectable && !isRowSelectable(row.original)
-                                  ? undefined
-                                  : renderRowBox(row.id, row.original))
-                              : firstColumnLeading?.cell
-                                ? firstColumnLeading.cell(row.original)
-                                : undefined
+                          bulkSelection && cIdx === 0
+                            ? (isRowSelectable && !isRowSelectable(row.original)
+                                ? undefined
+                                : renderRowBox(row.id, row.original))
+                            : cIdx === (bulkSelection ? 1 : 0)
+                              ? firstColumnLeading?.cell?.(row.original)
+                              : undefined
                         }
                       />
                     ))}
@@ -2670,116 +2671,6 @@ export default function DataGrid({
           Columns popover, so "what's limiting my view?" always has a
           single place to look. */}
       {tableId && enableToolbar && (
-        <ToolbarPopover
-          open={filterMenuOpen}
-          onOpenChange={setFilterMenuOpen}
-          anchor={filterBtnRef.current}
-          icon={<FilterIcon size={14} className="text-muted-foreground" />}
-          title="Active filters"
-        >
-          {columnFilters.length === 0 ? (
-            <p className="px-3 py-3 text-2xs text-muted-foreground italic">
-              No active filters — open a column's ⋮ menu and pick
-              Filter… to narrow the list.
-            </p>
-          ) : (
-            <>
-              <div className="max-h-72 overflow-y-auto py-1">
-                {columnFilters.map((f) => {
-                  const col = columns.find(c => c.key === f.id);
-                  return (
-                    <div key={f.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
-                      <span className="shrink-0 font-medium text-foreground">
-                        {col?.label || f.id}
-                      </span>
-                      <Tip label={describeFilter(f.id, f.value)}>
-                      <span className="flex-1 truncate text-muted-foreground">
-                        {describeFilter(f.id, f.value)}
-                      </span>
-                      </Tip>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setColumnFilters(prev => prev.filter(x => x.id !== f.id))}
-                        aria-label={`Clear ${col?.label || f.id} filter`}
-                        className="shrink-0 p-0.5 text-muted-foreground hover:text-foreground"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => { setColumnFilters([]); setFilterMenuOpen(false); }}
-                  className="w-full px-3 py-2 text-2xs text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center justify-center gap-1"
-                >
-                  <X size={12} aria-hidden="true" />
-                  Clear all filters
-                </button>
-              </div>
-            </>
-          )}
-        </ToolbarPopover>
-      )}
-      {/* Active-sort popover — same pattern for the sort state. */}
-      {tableId && enableToolbar && (
-        <ToolbarPopover
-          open={sortMenuOpen}
-          onOpenChange={setSortMenuOpen}
-          anchor={sortBtnRef.current}
-          icon={<ArrowUpDown size={14} className="text-muted-foreground" />}
-          title="Active sort"
-        >
-          {sorting.length === 0 ? (
-            <p className="px-3 py-3 text-2xs text-muted-foreground italic">
-              No active sort — open a column's ⋮ menu and pick Sort.
-            </p>
-          ) : (
-            <>
-              <div className="py-1">
-                {sorting.map((s) => {
-                  const col = columns.find(c => c.key === s.id);
-                  return (
-                    <div key={s.id} className="flex items-center gap-2 px-3 py-1.5 text-xs">
-                      <span className="shrink-0 font-medium text-foreground">
-                        {col?.label || s.id}
-                      </span>
-                      <span className="flex-1 inline-flex items-center gap-1 text-muted-foreground">
-                        {s.desc
-                          ? <><ChevronDown size={12} aria-hidden="true" /> Descending</>
-                          : <><ChevronUp size={12} aria-hidden="true" /> Ascending</>}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setSorting(prev => prev.filter(x => x.id !== s.id))}
-                        aria-label={`Clear ${col?.label || s.id} sort`}
-                        className="shrink-0 p-0.5 text-muted-foreground hover:text-foreground"
-                      >
-                        <X size={12} />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => { setSorting([]); setSortMenuOpen(false); }}
-                  className="w-full px-3 py-2 text-2xs text-muted-foreground hover:text-foreground hover:bg-accent inline-flex items-center justify-center gap-1"
-                >
-                  <X size={12} aria-hidden="true" />
-                  Clear sort
-                </button>
-              </div>
-            </>
-          )}
-        </ToolbarPopover>
-      )}
-      {tableId && enableToolbar && (
         <ManageColumnsMenu
           options={manageOptions}
           visibility={effectiveVisibility}
@@ -2806,43 +2697,6 @@ export default function DataGrid({
       {/* The selection action bar is the TOP strip above the table
           (see near the toolbar) — no floating bottom bar. */}
     </div>
-  );
-}
-
-// ── Toolbar popover shell ───────────────────────────────────
-//
-// Shared skeleton for the toolbar's Filter / Sort popovers — same
-// visual shell as ManageColumnsMenu (header strip + content), anchored
-// to the toolbar button that opened it.
-function ToolbarPopover({
-  open, onOpenChange, anchor, icon, title, children,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  anchor: HTMLElement | null;
-  icon: React.ReactNode;
-  title: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <PopoverPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <PopoverPrimitive.Portal>
-        <PopoverPrimitive.Positioner
-          anchor={anchor ?? undefined}
-          align="end"
-          sideOffset={6}
-          className="z-50 outline-none"
-        >
-          <PopoverPrimitive.Popup className="w-64 bg-popover text-popover-foreground border border-border rounded-md shadow-lg overflow-hidden">
-            <div className="px-3 py-2 border-b border-border flex items-center gap-2">
-              {icon}
-              <span className="text-xs font-medium text-foreground">{title}</span>
-            </div>
-            {children}
-          </PopoverPrimitive.Popup>
-        </PopoverPrimitive.Positioner>
-      </PopoverPrimitive.Portal>
-    </PopoverPrimitive.Root>
   );
 }
 
