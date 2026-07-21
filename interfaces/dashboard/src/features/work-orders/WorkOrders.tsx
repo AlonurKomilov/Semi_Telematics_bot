@@ -135,10 +135,22 @@ function makeColumns(tz: string): AnyColumn[] {
   {
     key: 'service_date', label: 'Service Date', sortable: true,
     filterable: true, filterMode: 'date-range',
+    // Date aggregation: earliest / latest service across the filtered
+    // (or grouped) work orders.
+    aggregable: true, aggType: 'date',
     render: (v) => v ? formatDay(String(v), { timeZone: tz }) : <span className="text-muted-foreground">—</span>,
   },
   { key: 'total_cost', label: 'Total', sortable: true,
     filterable: true, filterMode: 'range', filterRange: { min: 0, step: 100, unit: '$' },
+    // Aggregable: total / average / max WO cost across the filtered (or
+    // grouped-by-vehicle) set.  Formats through MoneyCell like the cells;
+    // count renders as a plain number, not a dollar amount.
+    aggregable: true,
+    aggFns: ['sum', 'avg', 'max', 'count'],
+    aggValue: (row) => Number((row as { total_cost?: number }).total_cost),
+    aggFormat: (value, fn) => fn === 'count'
+      ? <span className="tabular-nums">{value.toLocaleString()}</span>
+      : <MoneyCell value={value} />,
     render: (v) => <MoneyCell value={v} /> },
   { key: 'status', label: 'Status', sortable: true, filterable: true,
     filterValue: (row) => String((row as { status?: string }).status ?? ''),

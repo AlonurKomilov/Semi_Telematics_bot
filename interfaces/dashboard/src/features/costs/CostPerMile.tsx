@@ -18,21 +18,37 @@ const CpmChart = lazy(() => import('@/features/costs/CpmChart'));
 const cols: AnyColumn[] = [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
   {
-    key: 'total_miles', label: 'Miles', sortable: true,
+    // Key must match the API/CPMVehicle field, which is ``miles`` (was
+    // wrongly ``total_miles`` — the cell read undefined and the render
+    // would throw once an account had CPM data).
+    key: 'miles', label: 'Miles', sortable: true,
     filterable: true, filterMode: 'range', filterRange: { min: 0, step: 500, unit: 'mi' },
+    // Fleet total (or per-group) miles — this is a per-vehicle breakdown,
+    // so summing the column gives the fleet figure.
+    aggregable: true, aggFns: ['sum', 'max'],
+    aggFormat: (value) => `${value.toLocaleString()}`,
     render: (v) => `${(v as number).toLocaleString()}`,
   },
   {
-    key: 'total_gallons', label: 'Gallons', sortable: true,
+    key: 'gallons', label: 'Gallons', sortable: true,   // was 'total_gallons' (undefined)
+    aggregable: true, aggFns: ['sum', 'avg', 'max'],
+    aggFormat: (value) => value.toFixed(1),
     render: (v) => (v as number).toFixed(1),
   },
   {
     key: 'total_cost', label: 'Total Cost', sortable: true,
     filterable: true, filterMode: 'range', filterRange: { min: 0, step: 100, unit: '$' },
+    aggregable: true, aggFns: ['sum', 'avg', 'max'],
+    aggValue: (row) => Number((row as { total_cost?: number }).total_cost),
+    aggFormat: (value) => `$${value.toLocaleString()}`,
     render: (v) => `$${(v as number).toLocaleString()}`,
   },
   {
     key: 'cpm', label: 'Cost per Mile', sortable: true,
+    // NOT aggregable — cpm/mpg are RATIOS.  A flat sum/avg of per-truck
+    // ratios is misleading (the true fleet cpm is sum(cost)/sum(miles),
+    // not avg of the column); the correct weighted figures already show
+    // in the header tiles.
     // The triage filter: "which trucks cost more than $0.60/mi?"
     filterable: true, filterMode: 'range', filterRange: { min: 0, step: 0.05, unit: '$' },
     render: (v) => {

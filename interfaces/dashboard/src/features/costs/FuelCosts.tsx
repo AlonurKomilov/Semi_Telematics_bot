@@ -20,19 +20,30 @@ import type {
 const entryCols: AnyColumn[] = [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
   { key: 'date', label: 'Date', sortable: true,
-    filterable: true, filterMode: 'date-range' },
+    filterable: true, filterMode: 'date-range',
+    // Earliest / latest fill-up in the filtered (or grouped) set.
+    aggregable: true, aggType: 'date' },
   { key: 'gallons', label: 'Gallons', sortable: true,
-    filterable: true, filterMode: 'range', filterRange: { min: 0, step: 10 } },
+    filterable: true, filterMode: 'range', filterRange: { min: 0, step: 10 },
+    aggregable: true, aggFns: ['sum', 'avg', 'max'],
+    aggFormat: (value) => value.toFixed(1) },
   {
     key: 'price_per_gallon', label: '$/Gal', sortable: true,
+    // avg = typical price paid; min/max = cheapest / priciest fill.
+    aggregable: true, aggFns: ['avg', 'min', 'max'],
+    aggFormat: (value) => `$${value.toFixed(3)}`,
     render: (v) => `$${(v as number).toFixed(3)}`,
   },
   {
     key: 'total_cost', label: 'Total', sortable: true,
     filterable: true, filterMode: 'range', filterRange: { min: 0, step: 50, unit: '$' },
+    aggregable: true, aggFns: ['sum', 'avg', 'max'],
+    aggFormat: (value) => `$${value.toFixed(2)}`,
     render: (v) => `$${(v as number).toFixed(2)}`,
   },
   {
+    // NOT aggregable — an odometer READING is cumulative, not a quantity;
+    // summing readings is meaningless.
     key: 'odometer_miles', label: 'Odometer', sortable: true,
     render: (v) => `${(v as number).toLocaleString()} mi`,
   },
@@ -40,13 +51,21 @@ const entryCols: AnyColumn[] = [
 
 const summaryCols: AnyColumn[] = [
   { key: 'vehicle_name', label: 'Vehicle', sortable: true },
-  { key: 'entries', label: 'Entries', sortable: true },
-  { key: 'total_gallons', label: 'Gallons', sortable: true },
+  { key: 'entries', label: 'Entries', sortable: true,
+    aggregable: true, aggFns: ['sum', 'max'] },
+  { key: 'total_gallons', label: 'Gallons', sortable: true,
+    aggregable: true, aggFns: ['sum', 'avg', 'max'],
+    aggFormat: (value) => value.toFixed(1) },
   {
     key: 'total_cost', label: 'Total Cost', sortable: true,
+    aggregable: true, aggFns: ['sum', 'avg', 'max'],
+    aggFormat: (value) => `$${value.toFixed(2)}`,
     render: (v) => `$${(v as number).toFixed(2)}`,
   },
   {
+    // NOT aggregable — this is already a per-vehicle AVERAGE; averaging
+    // averages is misleading (the true fleet $/gal is weighted by
+    // gallons).  Sum the Gallons + Total Cost columns instead.
     key: 'avg_price', label: 'Avg $/Gal', sortable: true,
     render: (v) => `$${(v as number).toFixed(3)}`,
   },
