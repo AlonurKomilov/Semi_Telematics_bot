@@ -14,6 +14,7 @@ os.environ.setdefault("JWT_SECRET", "test-jwt-secret-not-for-production-use-only
 os.environ.setdefault(
     "NOTIFICATION_SIGNING_SECRET", "test-notification-signing-secret-32b+")
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
@@ -186,9 +187,21 @@ async def test_email_prefs_roundtrip(api):
 
 # ── Web push: vapid key + subscribe/unsubscribe + prefs (6-2) ────────
 
+@pytest.fixture(autouse=True)
+def _public_dns(monkeypatch):
+    """The anti-SSRF gate resolves endpoint hosts; test endpoints are
+    fake, so resolve them to a public address (the private-IP rejection
+    has its own dedicated test)."""
+    monkeypatch.setattr(
+        "capabilities.notifications.push_endpoint._resolve_host",
+        lambda host, port: ["93.184.216.34"])
+
+
 def _sub_body(n: int) -> dict:
+    # Real-shaped keys: p256dh ~87 chars, auth ~22 (the endpoint enforces
+    # plausible minimums so a broken client can't store a dead device).
     return {"endpoint": f"https://push.example/ep{n}",
-            "keys": {"p256dh": f"p{n}", "auth": f"a{n}"}}
+            "keys": {"p256dh": "B" + "x" * 86, "auth": "a" * 22}}
 
 
 async def test_push_subscribe_requires_auth(api):
@@ -220,9 +233,61 @@ async def test_push_subscribe_rejects_bad_endpoint(api):
     async with _client(api) as c:
         r = await c.post(f"{API}/push/subscribe",
                          json={"endpoint": "http://not-https.example",
-                               "keys": {"p256dh": "p", "auth": "a"}},
+                               "keys": _sub_body(1)["keys"]},
                          headers=_h(api["token"]))
     assert r.json() == {"ok": False, "error": "bad_endpoint"}
+
+
+async def test_push_subscribe_rejects_private_endpoint(api, monkeypatch):
+    """The SSRF gate: an endpoint resolving to an internal address is
+    refused — the server must never POST into its own network."""
+    monkeypatch.setattr(
+        "capabilities.notifications.push_endpoint._resolve_host",
+        lambda host, port: ["10.0.0.5"])
+    async with _client(api) as c:
+        r = await c.post(f"{API}/push/subscribe", json=_sub_body(1),
+                         headers=_h(api["token"]))
+    assert r.json() == {"ok": False, "error": "private_endpoint"}
+    assert await api["db"].list_push_subscriptions(api["acct"], api["uid"]) == []
+
+
+async def test_push_subscribe_rejects_implausible_keys(api):
+    """Empty/short keys would store a device that 'counts' in the UI but
+    can never deliver."""
+    async with _client(api) as c:
+        r = await c.post(f"{API}/push/subscribe",
+                         json={"endpoint": "https://push.example/epk",
+                               "keys": {"p256dh": "", "auth": ""}},
+                         headers=_h(api["token"]))
+    assert r.json() == {"ok": False, "error": "bad_keys"}
+
+
+@pytest.fixture
+def _no_rate_limit():
+    """The device-cap test needs 12 requests — more than the route's own
+    10/min per-IP limit (which is correct in production and covered by
+    slowapi itself, not re-tested here)."""
+    from interfaces.api.rate_limit import limiter
+    limiter.enabled = False
+    yield
+    limiter.enabled = True
+
+
+async def test_push_subscribe_device_cap(api, _no_rate_limit):
+    from capabilities.notifications.push_endpoint import MAX_DEVICES_PER_USER
+    async with _client(api) as c:
+        for n in range(MAX_DEVICES_PER_USER):
+            r = await c.post(f"{API}/push/subscribe", json=_sub_body(100 + n),
+                             headers=_h(api["token"]))
+            assert r.json()["ok"] is True
+        # One more NEW endpoint → capped.
+        r = await c.post(f"{API}/push/subscribe", json=_sub_body(999),
+                         headers=_h(api["token"]))
+        assert r.json() == {"ok": False, "error": "device_limit"}
+        # Re-subscribing an EXISTING endpoint still works (key refresh).
+        r = await c.post(f"{API}/push/subscribe", json=_sub_body(100),
+                         headers=_h(api["token"]))
+        assert r.json()["ok"] is True
 
 
 async def test_push_unsubscribe_last_device_unverifies(api):

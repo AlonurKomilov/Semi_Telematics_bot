@@ -1,29 +1,27 @@
 /**
- * Notification preferences — per-user personal-DM alert preferences.
+ * Notification preferences — the per-user page under the Alerts tab.
  *
- * This page is the dashboard twin of the bot's ``/alerts`` command.
- * Each user owns their own per-alert-type DM toggle plus the new
- * "🟢 Resolve receipts" opt-in.  The visible toggle list is
- * role-tailored on the server side — a Safety user doesn't see a
- * Fuel toggle, a Dispatcher doesn't see Health, etc.  See
- * ``capabilities/alerting/relevance.py`` for the role→alert-type
- * mapping.
+ * Layout (phase 6-3, the matrix-grid consolidation):
+ *   1. CHANNEL cards — one per personal channel, each managing its own
+ *      CONNECTION: Telegram (master switch + resolve receipts), Email
+ *      (connect → verify → cadence), Push (per-device enable).
+ *   2. The "Notify me when" MATRIX — rows = role-tailored alert types,
+ *      columns = the three channels.  One checkbox per (type × channel);
+ *      a column stays disabled until its channel is connected.
  *
- * Group/forum routing (which alert types post to which Telegram
- * topic) is controlled by admins on Account Settings → Forum
- * Routing.  The two surfaces are independent: turning OFF your
- * personal DM for Fuel doesn't stop alerts landing in the Fuel
- * topic the team chat subscribes to.
- *
- * Reached via the avatar dropdown (top-right of every page) →
- * the topbar Alerts bell / board (gear).
+ * Telegram's toggles still live on the legacy ``users.alert_*`` columns
+ * (via /user/me/alerts, with the write-also mirror into the matrix);
+ * Email/Push live on the notification matrix directly.  Group/forum
+ * routing stays an admin surface on Settings — independent of this page.
  */
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Bell, BellOff, CheckCircle2 } from 'lucide-react';
+import { Bell, BellOff, CheckCircle2, Send } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { PageHeader, ErrorState, CardSkeleton } from '@/components/shell';
 import EmailChannelCard from './EmailChannelCard';
+import PushChannelCard from './PushChannelCard';
+import NotifyMatrix from './NotifyMatrix';
 import { AlertsTabs } from './AlertsTabs';
 
 interface AlertPrefsResponse {
@@ -33,33 +31,14 @@ interface AlertPrefsResponse {
   toggles: Record<string, boolean>;
 }
 
-// Human-friendly labels for each alert type.  Keys mirror the
-// ``alert_<type>`` column names so we can derive labels from a
-// single mapping rather than threading them through the API.
-const TYPE_LABEL: Record<string, string> = {
-  alert_faults:   'Engine Faults',
-  alert_health:   'Vehicle Health',
-  alert_fuel:     'Fuel & DEF',
-  alert_geofence: 'Geofence Entry/Exit',
-  alert_events:   'Safety Events',
-  alert_camera:   'Camera Issues',
-  alert_parking:  'Unsafe Parking',
-};
-
-const TYPE_DESCRIPTION: Record<string, string> = {
-  alert_faults:   'SPN/FMI fault codes the engine ECU emits.',
-  alert_health:   'Mechanical telemetry: oil, coolant, battery, DEF.',
-  alert_fuel:     'Low fuel + DEF level + efficiency events.',
-  alert_geofence: 'Vehicle enters or leaves a platform zone.',
-  alert_events:   'Harsh braking, cornering, speeding, etc.',
-  alert_camera:   'Dashcam tampering / obstruction detected.',
-  alert_parking:  'Unauthorised long stop in an unsafe location.',
-};
-
 export default function MyNotifications() {
   const [prefs, setPrefs] = useState<AlertPrefsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  // Bumped by the channel cards after connect/verify/device changes so
+  // the matrix refetches its column enable-states.
+  const [refreshKey, setRefreshKey] = useState(0);
+  const bump = useCallback(() => setRefreshKey(k => k + 1), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,10 +55,7 @@ export default function MyNotifications() {
     return () => { cancelled = true; };
   }, []);
 
-  // Optimistic update so the checkbox feels instant; rolls back on
-  // server error.  The server echoes the post-update state back so
-  // we re-sync from authoritative storage rather than trust our
-  // local change.
+  // Optimistic update; the server echoes authoritative state back.
   const setField = async (field: string, value: boolean) => {
     if (!prefs) return;
     const prev = prefs;
@@ -93,6 +69,7 @@ export default function MyNotifications() {
     } catch (e) {
       setPrefs(prev);
       toast.error(e instanceof Error ? e.message : 'Save failed');
+      throw e;
     } finally {
       setSaving(null);
     }
@@ -105,7 +82,7 @@ export default function MyNotifications() {
         <PageHeader
           icon={Bell}
           title="Notification preferences"
-          description="Choose which alerts reach you and where — your Telegram DM and email."
+          description="Choose which alerts reach you and where — Telegram, email, and push."
         />
         <CardSkeleton message="Loading preferences…" />
       </div>
@@ -119,7 +96,7 @@ export default function MyNotifications() {
         <PageHeader
           icon={Bell}
           title="Notification preferences"
-          description="Choose which alerts reach you and where — your Telegram DM and email."
+          description="Choose which alerts reach you and where — Telegram, email, and push."
         />
         <ErrorState
           title="Couldn’t load preferences"
@@ -129,8 +106,6 @@ export default function MyNotifications() {
     );
   }
 
-  const masterOff = !prefs.alerts_on;
-
   return (
     <div>
       <AlertsTabs />
@@ -138,105 +113,72 @@ export default function MyNotifications() {
         icon={Bell}
         title="Notification preferences"
         description={
-          'Choose which alerts reach you and where — your Telegram DM and email. Admins set group / forum routing separately on Settings; the two don’t override each other.'
+          'Connect your channels, then pick which alerts go where in the grid below. Admins set group / forum routing separately on Settings; the two don’t override each other.'
         }
       />
 
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-        Telegram
+        Channels
       </p>
-
-      {/* Master switch */}
-      <section className="bg-card border border-border rounded-xl p-4 mb-4">
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={prefs.alerts_on}
-            disabled={saving === 'alerts_on'}
-            onChange={e => setField('alerts_on', e.target.checked)}
-            className="accent-primary cursor-pointer mt-0.5"
-          />
-          <div className="flex-1 min-w-0">
-            <p className="text-base font-semibold inline-flex items-center gap-2">
-              {prefs.alerts_on
-                ? <Bell size={16} />
-                : <BellOff size={16} />}
-              Personal alerts enabled
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Master switch. When off, no alerts arrive in your Telegram DM regardless of the per-category toggles below.
-            </p>
-          </div>
-        </label>
-      </section>
-
-      {/* Per-type toggles (role-tailored by the server) */}
-      <section className="bg-card border border-border rounded-xl p-4 mb-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-3">
-          Alert categories
-        </p>
-        {prefs.relevant_types.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            Your role doesn&apos;t have any alert categories configured.
+      <div className="grid gap-4 lg:grid-cols-3 mb-6 items-start">
+        {/* Telegram — master switch + resolve receipts */}
+        <section className="bg-card border border-border rounded-xl p-4">
+          <p className="text-base font-semibold inline-flex items-center gap-2 mb-1">
+            <Send size={16} /> Telegram
           </p>
-        ) : (
-          <div className="divide-y divide-border/60">
-            {prefs.relevant_types.map(atype => {
-              const field = `alert_${atype}`;
-              const on = !!prefs.toggles[field];
-              return (
-                <label
-                  key={atype}
-                  className={`flex items-start gap-3 py-2.5 cursor-pointer ${
-                    masterOff ? 'opacity-50' : ''
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={on}
-                    disabled={masterOff || saving === field}
-                    onChange={e => setField(field, e.target.checked)}
-                    className="accent-primary cursor-pointer mt-0.5"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm">{TYPE_LABEL[field] || atype}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {TYPE_DESCRIPTION[field] || ''}
-                    </p>
-                  </div>
-                </label>
-              );
-            })}
-          </div>
-        )}
-      </section>
+          <p className="text-xs text-muted-foreground mb-3">
+            Direct messages from the bot to your personal chat.
+          </p>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={prefs.alerts_on}
+              disabled={saving === 'alerts_on'}
+              onChange={e => { void setField('alerts_on', e.target.checked).catch(() => {}); }}
+              className="accent-primary cursor-pointer mt-0.5"
+            />
+            <span className="flex-1 min-w-0">
+              <span className="text-sm inline-flex items-center gap-1.5">
+                {prefs.alerts_on ? <Bell size={14} /> : <BellOff size={14} />}
+                Personal alerts enabled
+              </span>
+              <span className="block text-xs text-muted-foreground mt-0.5">
+                Master switch for your Telegram DM alerts.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 cursor-pointer mt-3 pt-3 border-t border-border/60">
+            <input
+              type="checkbox"
+              checked={prefs.alert_resolve_receipts}
+              disabled={saving === 'alert_resolve_receipts'}
+              onChange={e => { void setField('alert_resolve_receipts', e.target.checked).catch(() => {}); }}
+              className="accent-primary cursor-pointer mt-0.5"
+            />
+            <span className="flex-1 min-w-0">
+              <span className="text-sm inline-flex items-center gap-1.5">
+                <CheckCircle2 size={14} className="text-ok" />
+                Resolved-alert receipts
+              </span>
+              <span className="block text-xs text-muted-foreground mt-0.5">
+                DM me when an alert auto-resolves (a fault clears, a parked
+                truck moves). Off by default to reduce noise.
+              </span>
+            </span>
+          </label>
+        </section>
 
-      {/* Resolve-receipt toggle (always shown regardless of role) */}
-      <section className="bg-card border border-border rounded-xl p-4">
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={prefs.alert_resolve_receipts}
-            disabled={saving === 'alert_resolve_receipts'}
-            onChange={e => setField('alert_resolve_receipts', e.target.checked)}
-            className="accent-primary cursor-pointer mt-0.5"
-          />
-          <div className="flex-1 min-w-0">
-            <p className="text-base font-semibold inline-flex items-center gap-2">
-              <CheckCircle2 size={16} className="text-ok" />
-              Resolved-alert notifications
-            </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              When an alert auto-resolves (e.g. a parked truck starts moving, a fault clears), send me a DM confirming it cleared. Off by default to reduce chat noise; turn on if you want closure-loop confirmations.
-            </p>
-          </div>
-        </label>
-      </section>
+        <EmailChannelCard onChanged={bump} />
+        <PushChannelCard onChanged={bump} />
+      </div>
 
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mt-6 mb-2">
-        Email
-      </p>
-      <EmailChannelCard />
+      <NotifyMatrix
+        relevantTypes={prefs.relevant_types}
+        telegramMasterOn={prefs.alerts_on}
+        telegramToggles={prefs.toggles}
+        onTelegramToggle={setField}
+        refreshKey={refreshKey}
+      />
     </div>
   );
 }

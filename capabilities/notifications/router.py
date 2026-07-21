@@ -262,21 +262,54 @@ async def push_subscribe(
     soon as one device exists.  The user's master switch is preserved —
     adding a device must not silently re-enable a channel they turned
     off."""
+    import asyncio
+    from urllib.parse import urlsplit
+
     from infra.platform import get_platform_db
+
+    from capabilities.notifications.push_endpoint import (
+        MAX_DEVICES_PER_USER,
+        validate_push_endpoint,
+    )
     db = get_platform_db()
     db_user = await get_current_db_user(user, db)
     if not db_user:
         return {"ok": False, "error": "user_not_found"}
     ep = body.endpoint.strip()
-    if not ep.startswith("https://") or len(ep) > 1024:
-        return {"ok": False, "error": "bad_endpoint"}
-    if len(body.keys.p256dh) > 512 or len(body.keys.auth) > 512:
+    # Anti-SSRF gate (https-only, no userinfo, every resolved IP must be
+    # globally routable) — DNS is blocking, so run it in a thread.
+    err = await asyncio.to_thread(validate_push_endpoint, ep)
+    if err:
+        return {"ok": False, "error": err}
+    # Real keys are ~87 (p256dh) / ~22 (auth) chars — a missing key would
+    # store a device that "counts" in the UI but can never deliver.
+    if not (32 <= len(body.keys.p256dh) <= 512) or not (8 <= len(body.keys.auth) <= 512):
         return {"ok": False, "error": "bad_keys"}
 
-    await db.add_push_subscription(
+    devices = await db.list_push_subscriptions(db_user.account_id, db_user.id)
+    if (len(devices) >= MAX_DEVICES_PER_USER
+            and ep not in {d["endpoint"] for d in devices}):
+        return {"ok": False, "error": "device_limit"}
+
+    # Distinct-host telemetry — the data for a vendor allowlist should
+    # this ever show abuse.
+    logger.info("push subscribe host=%s account=%s",
+                urlsplit(ep).hostname, db_user.account_id)
+
+    moved = await db.add_push_subscription(
         db_user.account_id, db_user.id, endpoint=ep,
         p256dh=body.keys.p256dh, auth=body.keys.auth,
         device_label=_device_label(request))
+    if moved:
+        # Shared-device handoff: the endpoint moved to this caller and the
+        # previous owner's channel state was repaired in the same
+        # transaction.  Cross-ACCOUNT moves get warning level — the
+        # forensic trail for tenant-boundary questions.
+        log = logger.warning if moved["account_id"] != db_user.account_id else logger.info
+        log("push endpoint reassigned: account %s user %s -> account %s user %s",
+            moved["account_id"], moved["user_id"],
+            db_user.account_id, db_user.id)
+
     existing = await db.get_notification_channel(
         db_user.account_id, "user", db_user.id, "web_push")
     await db.upsert_notification_channel(

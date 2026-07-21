@@ -72,6 +72,97 @@ async def test_subscription_roundtrip_and_upsert(pg_db):
     assert len(await pg_db.list_push_subscriptions(acct, uid)) == 1
 
 
+# ── Endpoint validation (the anti-SSRF gate) ─────────────────────────
+
+def test_validator_rejects_non_https_userinfo_and_private(monkeypatch):
+    from capabilities.notifications import push_endpoint as pe
+
+    monkeypatch.setattr(pe, "_resolve_host", lambda h, p: ["93.184.216.34"])
+    assert pe.validate_push_endpoint("https://fcm.googleapis.com/wp/x") is None
+    assert pe.validate_push_endpoint("http://fcm.googleapis.com/x") == "bad_endpoint"
+    assert pe.validate_push_endpoint("https://a:b@evil.example/x") == "bad_endpoint"
+    assert pe.validate_push_endpoint("") == "bad_endpoint"
+    assert pe.validate_push_endpoint("https://x/" + "a" * 1100) == "bad_endpoint"
+
+    # ANY private/loopback/link-local/metadata answer → rejected.
+    for ip in ("10.0.0.5", "127.0.0.1", "169.254.169.254", "192.168.1.1",
+               "fd00::1", "100.64.0.1"):
+        monkeypatch.setattr(pe, "_resolve_host", lambda h, p, ip=ip: [ip])
+        assert pe.validate_push_endpoint("https://host.example/x") == "private_endpoint", ip
+
+    # Mixed public+private (rebinding-style) → still rejected.
+    monkeypatch.setattr(pe, "_resolve_host",
+                        lambda h, p: ["93.184.216.34", "10.0.0.5"])
+    assert pe.validate_push_endpoint("https://host.example/x") == "private_endpoint"
+
+    monkeypatch.setattr(pe, "_resolve_host",
+                        lambda h, p: (_ for _ in ()).throw(OSError("nx")))
+    assert pe.validate_push_endpoint("https://nx.example/x") == "unresolvable"
+
+
+async def test_send_time_validation_prunes_now_private_endpoint(pg_db):
+    """DNS-rebinding blunt: an endpoint that turned private after
+    subscribe is refused at send time AND pruned as dead."""
+    acct, uid = await _seed(pg_db)
+    await pg_db.add_push_subscription(acct, uid, **_sub(1))
+    with patch("capabilities.notifications.push_endpoint._resolve_host",
+               lambda h, p: ["10.0.0.5"]):
+        res = await _send(pg_db, acct, uid)
+    assert not res.ok
+    assert await pg_db.list_push_subscriptions(acct, uid) == []   # pruned
+
+
+# ── Reassign-with-repair (shared cab tablet) ─────────────────────────
+
+async def test_endpoint_reassignment_repairs_previous_owner(pg_db):
+    """Push API reuses one subscription per browser: on a shared tablet
+    the endpoint legitimately moves to whoever enabled last.  The
+    dispossessed owner must NOT stay 'verified' with zero devices — that
+    would be a silent notification blackout."""
+    acct_a = (await pg_db.create_account("Tablet Co A")).id
+    user_a = (await pg_db.create_user(telegram_id=9401, account_id=acct_a,
+                                      role=Role.FLEET)).id
+    acct_b = (await pg_db.create_account("Tablet Co B")).id
+    user_b = (await pg_db.create_user(telegram_id=9402, account_id=acct_b,
+                                      role=Role.FLEET)).id
+
+    # A owns the endpoint; channel verified.
+    moved = await pg_db.add_push_subscription(acct_a, user_a, **_sub(7))
+    assert moved is None
+    await pg_db.upsert_notification_channel(
+        acct_a, "user", user_a, "web_push", address="devices", verified=True)
+
+    # B (different ACCOUNT — same physical browser) takes the endpoint.
+    moved = await pg_db.add_push_subscription(acct_b, user_b, **_sub(7))
+    assert moved == {"account_id": acct_a, "user_id": user_a}
+
+    # Row moved to B; A has zero devices and their channel un-verified —
+    # the delivery gate closes honestly instead of silently failing.
+    assert await pg_db.list_push_subscriptions(acct_a, user_a) == []
+    assert len(await pg_db.list_push_subscriptions(acct_b, user_b)) == 1
+    ch_a = await pg_db.get_notification_channel(acct_a, "user", user_a, "web_push")
+    assert ch_a["verified"] is False
+
+    # Same-user re-subscribe is NOT a move.
+    assert await pg_db.add_push_subscription(acct_b, user_b, **_sub(7)) is None
+
+
+async def test_reassignment_keeps_owner_verified_with_other_devices(pg_db):
+    """Losing ONE of several devices must not un-verify the channel."""
+    acct, uid = await _seed(pg_db)
+    other = (await pg_db.create_user(telegram_id=9403, account_id=acct,
+                                     role=Role.FLEET)).id
+    await pg_db.add_push_subscription(acct, uid, **_sub(1))
+    await pg_db.add_push_subscription(acct, uid, **_sub(2))
+    await pg_db.upsert_notification_channel(
+        acct, "user", uid, "web_push", address="devices", verified=True)
+
+    moved = await pg_db.add_push_subscription(acct, other, **_sub(1))
+    assert moved == {"account_id": acct, "user_id": uid}
+    ch = await pg_db.get_notification_channel(acct, "user", uid, "web_push")
+    assert ch["verified"] is True     # still one device left
+
+
 # ── VAPID keypair (zero-config, persisted) ───────────────────────────
 
 async def test_vapid_generated_once_and_persisted(pg_db):

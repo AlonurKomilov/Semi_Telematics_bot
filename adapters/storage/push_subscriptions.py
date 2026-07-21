@@ -29,8 +29,30 @@ class PushSubscriptionsMixin(_MixinBase):
     async def add_push_subscription(
         self, account_id: int, user_id: int, *, endpoint: str,
         p256dh: str, auth: str, device_label: str = "",
-    ) -> None:
-        """Store (or refresh) one device subscription."""
+    ) -> dict | None:
+        """Store (or refresh) one device subscription.
+
+        REASSIGN-WITH-REPAIR (advisor-settled): the endpoint is globally
+        unique and the Push API reuses one subscription per browser
+        profile, so on a shared cab tablet the SAME endpoint legitimately
+        moves to whoever enabled push last.  The upsert therefore
+        reassigns ownership — but in the same transaction it repairs the
+        DISPOSSESSED owner: if this was their last device, their
+        ``web_push`` channel row is un-verified so the delivery gate
+        closes honestly instead of leaving them "connected" with silent
+        delivery failures forever.  (Their master on/off choice is
+        untouched.)
+
+        Returns ``{"account_id", "user_id"}`` of the previous owner when
+        ownership actually moved (the router logs it — warning-level on a
+        cross-ACCOUNT move, the forensic trail for tenant-boundary
+        questions), else ``None``.
+        """
+        cur = await self._db.execute(
+            "SELECT account_id, user_id FROM push_subscriptions WHERE endpoint = ?",
+            (endpoint,),
+        )
+        prev = await cur.fetchone()
         now = self._now()
         await self._db.execute(
             """INSERT INTO push_subscriptions
@@ -44,7 +66,29 @@ class PushSubscriptionsMixin(_MixinBase):
              device_label[:120], now,
              account_id, user_id, p256dh, auth, device_label[:120]),
         )
+
+        moved = None
+        if prev is not None and (prev[0], prev[1]) != (account_id, user_id):
+            moved = {"account_id": prev[0], "user_id": prev[1]}
+            cur = await self._db.execute(
+                "SELECT COUNT(*) FROM push_subscriptions"
+                " WHERE account_id = ? AND user_id = ?",
+                (prev[0], prev[1]),
+            )
+            left = (await cur.fetchone())[0]
+            if not left:
+                # Direct UPDATE (not the mixin helper) so the repair is in
+                # THIS transaction — no window where the previous owner is
+                # verified with zero devices.
+                await self._db.execute(
+                    """UPDATE notification_channel
+                          SET verified_at = '', updated_at = ?
+                        WHERE account_id = ? AND recipient_type = 'user'
+                          AND recipient_id = ? AND channel = 'web_push'""",
+                    (now, prev[0], str(prev[1])),
+                )
         await self._db.commit()
+        return moved
 
     async def list_push_subscriptions(
         self, account_id: int, user_id: int,

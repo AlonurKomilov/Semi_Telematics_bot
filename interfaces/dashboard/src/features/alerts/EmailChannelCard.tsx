@@ -31,16 +31,6 @@ interface EmailPrefs {
   };
 }
 
-const TYPE_LABEL: Record<string, string> = {
-  faults: 'Engine Faults',
-  health: 'Vehicle Health',
-  fuel: 'Fuel & DEF',
-  geofence: 'Geofence Entry/Exit',
-  events: 'Safety Events',
-  camera: 'Camera Issues',
-  parking: 'Unsafe Parking',
-};
-
 const CADENCE_LABEL: Record<string, string> = {
   immediate: 'Immediately',
   hourly: 'Hourly digest',
@@ -49,13 +39,12 @@ const CADENCE_LABEL: Record<string, string> = {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export default function EmailChannelCard() {
+export default function EmailChannelCard({ onChanged }: { onChanged: () => void }) {
   const [prefs, setPrefs] = useState<EmailPrefs | null>(null);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [saving, setSaving] = useState<string | null>(null);
 
   const load = async () => {
     try {
@@ -90,30 +79,11 @@ export default function EmailChannelCard() {
       setEditing(false);
       setDraft('');
       await load();
+      onChanged();                       // matrix column state may have changed
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Failed to connect email');
     } finally {
       setBusy(false);
-    }
-  };
-
-  const toggleType = async (type: string, enabled: boolean) => {
-    if (!prefs) return;
-    setPrefs(p => p && ({ ...p, email: { ...p.email, types: { ...p.email.types, [type]: enabled } } }));
-    setSaving(type);
-    try {
-      // Cadence is derived server-side (kept uniform per channel) — the
-      // client no longer sends it, so it can't desync the channel value.
-      await apiJSON('/notifications/prefs/email/type', {
-        method: 'PUT', body: { alert_type: type, enabled },
-      });
-    } catch (e) {
-      // Roll back ONLY this field — restoring a whole stale snapshot would
-      // clobber a concurrent toggle that already succeeded.
-      setPrefs(p => p && ({ ...p, email: { ...p.email, types: { ...p.email.types, [type]: !enabled } } }));
-      toast.error(e instanceof Error ? e.message : 'Save failed');
-    } finally {
-      setSaving(null);
     }
   };
 
@@ -140,7 +110,7 @@ export default function EmailChannelCard() {
   }
   if (!prefs) return null;
 
-  const { email, relevant_types } = prefs;
+  const { email } = prefs;
   const showForm = editing || !email.connected;
 
   return (
@@ -207,7 +177,8 @@ export default function EmailChannelCard() {
       {email.connected && !email.verified && !showForm && (
         <p className="text-xs text-muted-foreground mt-2">
           We sent a confirmation link to <span className="font-medium">{email.address}</span>. Click it to start receiving email alerts.{' '}
-          <button className="text-primary hover:underline" onClick={() => void load()}>
+          <button className="text-primary hover:underline"
+                  onClick={() => { void load().then(onChanged); }}>
             Already confirmed? Refresh
           </button>. Didn’t arrive?{' '}
           <button className="text-primary hover:underline disabled:opacity-50" disabled={busy}
@@ -238,32 +209,9 @@ export default function EmailChannelCard() {
               </SelectContent>
             </Select>
           </div>
-
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-              Send these to email
-            </p>
-            {relevant_types.length === 0 ? (
-              <p className="text-xs text-muted-foreground">
-                Your role doesn’t have any alert categories configured.
-              </p>
-            ) : (
-              <div className="divide-y divide-border/60">
-                {relevant_types.map(type => (
-                  <label key={type} className="flex items-center gap-3 py-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={!!email.types[type]}
-                      disabled={saving === type}
-                      onChange={e => void toggleType(type, e.target.checked)}
-                      className="accent-primary cursor-pointer"
-                    />
-                    <span className="text-sm">{TYPE_LABEL[type] || type}</span>
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
+          {/* WHICH alert types go to email is chosen in the "Notify me
+              when" matrix below — this card only manages the connection
+              and the delivery cadence. */}
         </div>
       )}
     </section>

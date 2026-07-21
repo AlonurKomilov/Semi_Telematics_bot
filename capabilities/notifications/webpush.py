@@ -34,10 +34,17 @@ class WebPushChannel:
         body = (content.body or "").split("\n", 1)[0].strip()
         if len(body) > _BODY_MAX:
             body = body[:_BODY_MAX - 1] + "…"
+        # Same-origin only: the service worker navigates to this URL on
+        # click, so an absolute URL from a future content source must
+        # never become an off-site redirect.  Relative paths only —
+        # and "//host" is protocol-relative (absolute), so it's excluded.
+        url = content.url if (
+            content.url.startswith("/") and not content.url.startswith("//")
+        ) else "/alerts"
         return Payload(
             text=body, subject=content.title.strip(), parse_mode="",
             extra={
-                "url": content.url or "/alerts",
+                "url": url,
                 "severity": content.severity,
                 # One tag per alert type → a newer notification of the same
                 # type replaces the old one instead of stacking forever.
@@ -91,7 +98,16 @@ def _push_one(sub: dict, data: str, private_pem: str) -> tuple[bool, bool]:
     """One blocking send.  Returns (delivered, endpoint_is_dead)."""
     from pywebpush import WebPushException, webpush
 
+    from capabilities.notifications.push_endpoint import validate_push_endpoint
     from capabilities.notifications.vapid import vapid_claims_sub
+
+    # Re-validate at SEND time (already in a worker thread, so the DNS
+    # lookup is fine here) — blunts DNS rebinding: an endpoint that
+    # resolved public at subscribe time but private now is refused and
+    # treated as dead so it gets pruned.
+    if validate_push_endpoint(sub["endpoint"]) is not None:
+        logger.warning("web push: endpoint failed send-time validation — pruning")
+        return False, True
 
     try:
         webpush(
@@ -103,6 +119,13 @@ def _push_one(sub: dict, data: str, private_pem: str) -> tuple[bool, bool]:
             vapid_private_key=private_pem,
             # pywebpush mutates the claims dict (adds aud/exp) — fresh per call.
             vapid_claims={"sub": vapid_claims_sub()},
+            # Bounded: an unresponsive push service must not pin a worker
+            # thread from the shared pool indefinitely.
+            timeout=10,
+            # Queue for devices that are asleep/offline rather than the
+            # default drop-if-not-connected (ttl=0) — an OS notification an
+            # hour late still beats one that never arrives.
+            ttl=3600,
         )
         return True, False
     except WebPushException as e:
@@ -111,6 +134,8 @@ def _push_one(sub: dict, data: str, private_pem: str) -> tuple[bool, bool]:
             return False, True
         logger.warning("web push send failed (%s): %s", status, e)
         return False, False
-    except Exception as e:              # transport must never crash fan-out
-        logger.warning("web push send failed: %s", e)
+    except Exception:                   # transport must never crash fan-out —
+        # but keep the traceback: this branch would otherwise also swallow
+        # genuine bugs (an AttributeError from a bad refactor) silently.
+        logger.exception("web push send failed")
         return False, False

@@ -56,6 +56,22 @@ class PlatformSettingsMixin:
         await self._db.commit()
         _settings_cache.pop(key, None)  # this process sees it instantly
 
+    async def set_platform_setting_if_absent(self, key: str, value: str) -> bool:
+        """Single-writer-wins insert: stores ``value`` only when the key
+        doesn't exist yet and returns whether THIS call created it.  For
+        generate-once artifacts (e.g. the VAPID keypair) where two
+        concurrent first-callers must converge on ONE persisted value —
+        the loser re-reads instead of clobbering."""
+        cur = await self._db.execute(
+            "INSERT INTO platform_settings (key, value, updated_at) "
+            "VALUES (?, ?, ?) "
+            "ON CONFLICT (key) DO NOTHING",
+            (key, value, self._now()),
+        )
+        await self._db.commit()
+        _settings_cache.pop(key, None)
+        return (cur.rowcount or 0) > 0
+
     async def market_intel_enabled(self) -> bool:
         """THE market-intel launch gate — console switch first, env as
         emergency override.  Every reader (feature endpoints, nightly
