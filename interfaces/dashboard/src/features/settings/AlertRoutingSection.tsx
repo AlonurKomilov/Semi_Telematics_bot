@@ -86,6 +86,14 @@ const ROLE_ORDER = ['dispatcher', 'safety', 'fleet', 'hr', 'accounting', 'recrui
 
 // Display names for the canonical alert types — same English catalog
 // the single-forum panel shows (its names come from the backend spec).
+//
+// TYPE_LABELS, FEATURE_GROUPS, and SUBTYPE_LABELS are intentionally
+// English in ALL locales: alert-type / feature / kind names are fixed
+// PRODUCT VOCABULARY (owner decision 2026-07-21).  Single-bot mode
+// draws the same names + descriptions straight from the backend
+// catalog (English), so translating only these frontend constants
+// would DESYNC the two modes — do not localize them without also
+// localizing the backend catalog.  Not a bug; don't "fix" it.
 const TYPE_LABELS: Record<string, string> = {
   faults: 'Faults', health: 'Health', fuel: 'Fuel', events: 'Safety Events',
   camera: 'Cameras', parking: 'Parking', geofence: 'Geofences',
