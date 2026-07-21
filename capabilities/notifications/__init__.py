@@ -32,8 +32,10 @@ from capabilities.notifications.service import (  # noqa: F401,E402
 # Register the built-in transports (their module-load @register_channel).
 from capabilities.notifications import telegram as _telegram  # noqa: F401,E402
 from capabilities.notifications.email import EmailChannel  # noqa: E402
+from capabilities.notifications.webpush import WebPushChannel  # noqa: E402
 
 register_channel(EmailChannel())
+register_channel(WebPushChannel())
 
 # Boot-time visibility: email links are signed with NOTIFICATION_SIGNING_
 # SECRET if set, else JWT_SECRET.  This only warns when BOTH are absent

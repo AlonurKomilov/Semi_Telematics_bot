@@ -195,6 +195,7 @@ async def run_all(conn) -> None:
     await migrate_ai_conversation_workspace(conn)
     await migrate_notification_matrix(conn)
     await migrate_notification_digest_queue(conn)
+    await migrate_push_subscriptions(conn)
     # Capacity monitoring (operator console): platform metric history +
     # per-account request metering.
     await migrate_system_capacity_tables(conn)
@@ -484,6 +485,37 @@ async def migrate_notification_matrix(conn) -> None:
         logger.info("Migration: backfilled notification matrix (telegram_dm)")
     except Exception as e:
         logger.error("notification matrix backfill failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_push_subscriptions(conn) -> None:
+    """Create ``push_subscriptions`` — per-DEVICE web-push endpoints
+    (notifications phase 6).  Additive; nothing writes until a user
+    enables push on a device."""
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS push_subscriptions (
+                id           SERIAL PRIMARY KEY,
+                account_id   INTEGER NOT NULL,
+                user_id      INTEGER NOT NULL,
+                endpoint     TEXT    NOT NULL UNIQUE,
+                p256dh       TEXT    NOT NULL,
+                auth         TEXT    NOT NULL,
+                device_label TEXT    NOT NULL DEFAULT '',
+                created_at   TEXT    NOT NULL,
+                last_ok_at   TEXT    NOT NULL DEFAULT ''
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_push_subs_user"
+            " ON push_subscriptions(account_id, user_id)"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.error("push subscriptions migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

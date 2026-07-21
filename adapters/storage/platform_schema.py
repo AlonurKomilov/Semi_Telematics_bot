@@ -424,6 +424,25 @@ async def create_tables(conn) -> None:
             ON notification_digest_queue(cadence, account_id, recipient_type,
                                          recipient_id, channel, id);
 
+        -- Web-push device subscriptions: PER-DEVICE (a user can have
+        -- push on the laptop but not the phone), so they are sub-entities
+        -- of the user rather than a single notification_channel address.
+        -- endpoint is the browser-issued push URL (globally unique per
+        -- subscription); p256dh/auth are the client encryption keys.
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id   INTEGER NOT NULL,
+            user_id      INTEGER NOT NULL,
+            endpoint     TEXT    NOT NULL UNIQUE,
+            p256dh       TEXT    NOT NULL,
+            auth         TEXT    NOT NULL,
+            device_label TEXT    NOT NULL DEFAULT '',
+            created_at   TEXT    NOT NULL,
+            last_ok_at   TEXT    NOT NULL DEFAULT ''
+        );
+        CREATE INDEX IF NOT EXISTS idx_push_subs_user
+            ON push_subscriptions(account_id, user_id);
+
         CREATE TABLE IF NOT EXISTS knowledge_base (
             id              INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id      INTEGER NOT NULL,

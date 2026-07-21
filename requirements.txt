@@ -57,6 +57,7 @@ asyncpg>=0.29
 
 # Stripe billing (optional — only needed when BILLING_PROVIDER=stripe)
 stripe>=8.0
+pywebpush>=2.3          # Web Push (VAPID + RFC 8291 encryption) — notifications phase 6
 
 # Testing
 pytest>=8.0
