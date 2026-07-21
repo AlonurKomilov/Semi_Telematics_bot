@@ -983,15 +983,12 @@
     "loading": "Loading routing settings…",
     "settings_header": "AI Analysis in group alerts",
     "ai_per_type_desc": "Choose which alert types include the bot's AI diagnosis when posted to the group's topics. Per-user DM fallbacks still respect each subscriber's personal AI toggle.",
-    "ai_on": "AI: On",
-    "ai_off": "AI: Off",
-    "receipt_on": "Resolved: On",
-    "receipt_off": "Resolved: Off",
-    "routing_on": "Routing: On",
-    "routing_off": "Routing: Off",
     "status_ready": "Topics created",
     "load_error": "Couldn't load the group's topic settings. Check your connection and retry.",
-    "toggle_legend_lead": "Each button shows its current state — click to switch it."
+    "toggle_legend_lead": "Switch each setting on or off:",
+    "col_ai": "AI",
+    "col_resolved": "Resolved",
+    "col_routing": "Routing"
   },
   "knowledge": {
     "new_article": "New article",

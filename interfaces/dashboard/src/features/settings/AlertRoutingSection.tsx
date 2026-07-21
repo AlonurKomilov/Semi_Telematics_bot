@@ -6,6 +6,7 @@ import { toneClasses } from '../../lib/status';
 import { Check, ChevronDown, ChevronRight, Info, X } from 'lucide-react';
 import { InfoTip } from '../../components/tooltip';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
+import { Switch } from '../../components/ui/switch';
 import { ErrorState } from '../../components/shell';
 
 // The Telegram Bot card's body controller.  The Routing selector sits
@@ -605,28 +606,27 @@ export default function AlertRoutingSection({
                           <span className="w-32 shrink-0 text-foreground">
                             {TYPE_LABELS[r.alert_type] || r.alert_type}
                           </span>
-                          {/* label-wrapped so the whole cell stays a
-                              click target, not just the checkbox box */}
-                          <label className={`w-16 text-center ${editable ? 'cursor-pointer' : 'opacity-70'}`}>
-                            <input
-                              type="checkbox"
-                              className="accent-primary"
+                          {/* Switch controls — same on/off grammar the
+                              single-bot topic table uses, so both modes
+                              read identically (audit: matched controls). */}
+                          <span className="w-16 flex justify-center">
+                            <Switch
+                              size="sm"
                               aria-label={`${TYPE_LABELS[r.alert_type] || r.alert_type} — ${t('alert_routing.topic_route')}`}
                               checked={r.enabled}
                               disabled={!editable || busy === `topic-${r.alert_type}-enabled`}
-                              onChange={(e) => { void toggleTopic(persona, r.alert_type, 'enabled', e.target.checked); }}
+                              onCheckedChange={(v) => { void toggleTopic(persona, r.alert_type, 'enabled', v); }}
                             />
-                          </label>
-                          <label className={`w-16 text-center ${editable ? 'cursor-pointer' : 'opacity-70'}`}>
-                            <input
-                              type="checkbox"
-                              className="accent-primary"
+                          </span>
+                          <span className="w-16 flex justify-center">
+                            <Switch
+                              size="sm"
                               aria-label={`${TYPE_LABELS[r.alert_type] || r.alert_type} — ${t('alert_routing.topic_ai')}`}
                               checked={r.ai}
                               disabled={!editable || busy === `topic-${r.alert_type}-ai`}
-                              onChange={(e) => { void toggleTopic(persona, r.alert_type, 'ai', e.target.checked); }}
+                              onCheckedChange={(v) => { void toggleTopic(persona, r.alert_type, 'ai', v); }}
                             />
-                          </label>
+                          </span>
                         </div>
                         {/* Sub-category chips — pick exactly which kinds
                             this role's group receives (all on by default). */}

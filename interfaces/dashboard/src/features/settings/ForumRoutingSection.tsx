@@ -2,22 +2,19 @@ import { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
-import { toneClasses } from '../../lib/status';
 import { FEATURE_GROUPS } from './AlertRoutingSection';
+import { Switch } from '../../components/ui/switch';
 import { ErrorState } from '../../components/shell';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import {
-  ChevronDown, ChevronRight, Check, X,
+  ChevronDown, ChevronRight, Check,
   // Per-alert-type row icons.  The backend still ships `icon_emoji`
   // (used inside Telegram message bodies, where emoji is data not
   // UI), but the dashboard renders these lucide equivalents so the
   // table reads as a professional admin tool.
   AlertTriangle, HeartPulse, Fuel, ShieldAlert, Camera, ParkingSquare,
   MapPin, BarChart3, Wrench, FileText, RefreshCw,
-  // Button glyphs (replaced 🤖 and 🟢 emoji per design.md "no emoji
-  // as UI icons" — section.7 / hard-rules).
-  Sparkles, CheckCircle2, BellOff,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -298,6 +295,16 @@ export default function ForumRoutingSection() {
                   </p>
                   <table className="w-full text-sm">
                     <tbody>
+                      {/* Column headers — switches aren't self-labeling,
+                          so the setting name lives once at the top
+                          (same column-matrix grammar as role mode). */}
+                      <tr className="border-b border-border/40">
+                        <td />
+                        <td />
+                        <td className="px-3 py-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground text-right">{t('forum_routing.col_ai')}</td>
+                        <td className="px-3 py-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground text-right">{t('forum_routing.col_resolved')}</td>
+                        <td className="px-3 py-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground text-right">{t('forum_routing.col_routing')}</td>
+                      </tr>
                       {/* Grouped under the owning FEATURE — same
                           hierarchy as the role-mode expanders. */}
                       {FEATURE_GROUPS.map((g) => {
@@ -339,74 +346,50 @@ export default function ForumRoutingSection() {
                               </p>
                             )}
                           </td>
-                          {/* AI Analysis toggle column — only for AI-capable types.
-                              Non-AI types render an empty cell so the
-                              state-toggle column stays aligned across rows.
-                              All three toggles read as STATE ("AI: On") with
-                              one uniform treatment — tinted = on, muted =
-                              off; the border marks them interactive vs the
-                              flat status chips (UX-audit grammar rule). */}
-                          <td className="px-3 py-2 align-top w-28 text-right whitespace-nowrap">
+                          {/* AI / Resolved / Routing are on/off SWITCHES —
+                              one control grammar shared with role mode.
+                              The column header names each; a switch can't
+                              be mistaken for a status badge (UX audit). */}
+                          <td className="px-3 py-2 align-top w-20 text-right whitespace-nowrap">
                             {/* Non-AI-capable rows show a muted dash:
                                 "not applicable", not "missing". */}
                             {!isAICapable && r.is_mapped && (
                               <span className="text-xs text-muted-foreground/50">—</span>
                             )}
                             {isAICapable && r.is_mapped && (
-                              <button
+                              <Switch
+                                size="sm"
+                                aria-label={`${r.name} — ${t('forum_routing.col_ai')}`}
+                                checked={aiEnabled}
                                 disabled={aiBusy}
-                                onClick={() => handleToggleAIForType(r.alert_type, !aiEnabled)}
-                                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition ${
-                                  aiEnabled
-                                    ? toneClasses('info')
-                                    : 'bg-muted text-muted-foreground border-border hover:bg-muted/80'
-                                }`}
-                              >
-                                <Sparkles size={12} />
-                                {aiEnabled ? t('forum_routing.ai_on') : t('forum_routing.ai_off')}
-                              </button>
+                                onCheckedChange={(v) => handleToggleAIForType(r.alert_type, v)}
+                              />
                             )}
                           </td>
                           {/* Group-side resolved-notification toggle.
                               Independent from each user's personal
                               alert_resolve_receipts DM preference (set
                               under Alerts bell → Notification preferences). */}
-                          <td className="px-3 py-2 align-top w-40 text-right whitespace-nowrap">
+                          <td className="px-3 py-2 align-top w-20 text-right whitespace-nowrap">
                             {r.is_mapped && (
-                              <button
+                              <Switch
+                                size="sm"
+                                aria-label={`${r.name} — ${t('forum_routing.col_resolved')}`}
+                                checked={r.send_resolve_receipt}
                                 disabled={busyKey === `__rr_${r.alert_type}__`}
-                                onClick={() => handleToggleReceipt(r.alert_type, !r.send_resolve_receipt)}
-                                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition ${
-                                  r.send_resolve_receipt
-                                    ? toneClasses('ok')
-                                    : 'bg-muted text-muted-foreground border-border hover:bg-muted/80'
-                                }`}
-                              >
-                                {r.send_resolve_receipt
-                                  ? <CheckCircle2 size={12} />
-                                  : <BellOff size={12} />}
-                                {r.send_resolve_receipt
-                                  ? t('forum_routing.receipt_on')
-                                  : t('forum_routing.receipt_off')}
-                              </button>
+                                onCheckedChange={(v) => handleToggleReceipt(r.alert_type, v)}
+                              />
                             )}
                           </td>
-                          <td className="px-3 py-2 align-top w-28 text-right whitespace-nowrap">
+                          <td className="px-3 py-2 align-top w-20 text-right whitespace-nowrap">
                             {r.is_mapped && (
-                              <button
+                              <Switch
+                                size="sm"
+                                aria-label={`${r.name} — ${t('forum_routing.col_routing')}`}
+                                checked={r.is_active}
                                 disabled={busyKey === r.alert_type}
-                                onClick={() => handleToggle(r.alert_type, !r.is_active)}
-                                className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium border transition ${
-                                  r.is_active
-                                    ? toneClasses('ok')
-                                    : 'bg-muted text-muted-foreground border-border hover:bg-muted/80'
-                                }`}
-                              >
-                                {r.is_active ? <Check size={12} /> : <X size={12} />}
-                                {r.is_active
-                                  ? t('forum_routing.routing_on')
-                                  : t('forum_routing.routing_off')}
-                              </button>
+                                onCheckedChange={(v) => handleToggle(r.alert_type, v)}
+                              />
                             )}
                           </td>
                         </tr>
