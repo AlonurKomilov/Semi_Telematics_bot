@@ -968,7 +968,7 @@
     "setup_step_3": "Send /setupforum inside the group — the bot will create the 11 alert topics automatically.",
     "topics_mapped": "Topics: {{mapped}} of {{total}} mapped",
     "topic_status_active": "Routing alerts to this topic",
-    "topic_status_inactive": "Disabled — alerts of this type fall back to DM",
+    "topic_status_inactive": "Off — not sent to this group (personal DMs are unaffected)",
     "topic_status_missing": "Not provisioned — run /repairforum",
     "btn_show_mapping": "Show topic mapping",
     "btn_hide_mapping": "Hide topic mapping",
@@ -990,7 +990,8 @@
     "routing_on": "Routing: On",
     "routing_off": "Routing: Off",
     "status_ready": "Topics created",
-    "load_error": "Couldn't load the group's topic settings. Check your connection and retry."
+    "load_error": "Couldn't load the group's topic settings. Check your connection and retry.",
+    "toggle_legend_lead": "Each button shows its current state — click to switch it."
   },
   "knowledge": {
     "new_article": "New article",

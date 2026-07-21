@@ -284,6 +284,18 @@ export default function ForumRoutingSection() {
 
               {showMapping && (
                 <div className="border border-border rounded-lg overflow-hidden">
+                  {/* Legend ABOVE the controls it explains — the "click
+                      to switch" affordance must be read BEFORE the
+                      toggles, not discovered as trailing fine print. */}
+                  <p className="text-xs text-muted-foreground px-3 py-2 border-b border-border/40 bg-muted/20">
+                    {t('forum_routing.toggle_legend_lead')}
+                    <span className="mx-1">·</span>
+                    <strong className="font-medium text-foreground">AI</strong> = include the AI analysis in this topic's posts.
+                    <span className="mx-1">·</span>
+                    <strong className="font-medium text-foreground">Resolved</strong> = post a confirmation when an alert auto-resolves.
+                    <span className="mx-1">·</span>
+                    <strong className="font-medium text-foreground">Routing</strong> = post this alert type to the group at all (personal DMs are unaffected).
+                  </p>
                   <table className="w-full text-sm">
                     <tbody>
                       {/* Grouped under the owning FEATURE — same
@@ -405,15 +417,6 @@ export default function ForumRoutingSection() {
                       })}
                     </tbody>
                   </table>
-                  <p className="text-xs text-muted-foreground px-3 py-2 border-t border-border/40 bg-muted/20">
-                    Each button shows its current state — click to switch it.
-                    <span className="mx-1">·</span>
-                    <strong className="font-medium text-foreground">AI</strong> = include the AI analysis in this topic's posts.
-                    <span className="mx-1">·</span>
-                    <strong className="font-medium text-foreground">Resolved</strong> = post a confirmation when an alert auto-resolves.
-                    <span className="mx-1">·</span>
-                    <strong className="font-medium text-foreground">Routing</strong> = post this alert type to the group at all (personal DMs are unaffected).
-                  </p>
                 </div>
               )}
 
