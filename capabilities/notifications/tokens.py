@@ -13,21 +13,24 @@ retention sweep — the signature IS the proof.  ``purpose`` is folded into
 the signed material for domain separation, so a verify token can never be
 replayed as an unsubscribe token even though they share a key.
 
-The key is a DEDICATED ``NOTIFICATION_SIGNING_SECRET`` — deliberately NOT
-``JWT_SECRET``.  Decoupling the blast radii is the point: rotating
-JWT_SECRET (a routine session-compromise response) must not silently
-break every in-inbox unsubscribe link, and a JWT_SECRET leak must not let
-anyone forge notification tokens.  Rotating THIS secret invalidates all
-outstanding verify + unsubscribe tokens by design (containment); future
-mail self-heals via fresh per-message links, and an invalid link falls
-through to the graceful "manage preferences" page.
+Key resolution: a dedicated ``NOTIFICATION_SIGNING_SECRET`` if set, else
+``JWT_SECRET`` (already fail-fast-required at boot).  The single-secret
+fallback is the operator default — one less thing to configure — with a
+known, accepted trade-off: rotating ``JWT_SECRET`` (a routine
+session-compromise response) then also invalidates every outstanding
+verify + unsubscribe link, and a ``JWT_SECRET`` leak could forge
+notification links.  A deployment that wants those blast radii separated
+just sets the dedicated secret and it quietly takes over — isolating
+notification signing from session-key rotation, no code change.
 
-Failure posture: this secret gates only the email-notification links (an
-inert, opt-in feature), so a missing/weak secret fails the token path
-CLOSED (raises here, no token minted or accepted) rather than refusing
-boot the way JWT_SECRET does — downing the whole API over one env var
-would be disproportionate to the blast radius.  A boot-time warning gives
-operators visibility.  Read from env so this stays in the capability
+Either way an invalidated link isn't catastrophic: verify + unsubscribe
+tokens self-heal via fresh per-message links on future mail, and an
+invalid link falls through to the graceful "manage preferences" page.
+
+Failure posture: if NEITHER secret is set the token path fails CLOSED
+(raises here — no token minted or accepted) rather than refusing boot;
+since ``JWT_SECRET`` is required at boot, that only happens in a
+misconfigured environment.  Read from env so this stays in the capability
 layer, never importing ``interfaces``.
 """
 
@@ -49,24 +52,29 @@ VERIFY_TTL_SECONDS = 24 * 60 * 60
 _MIN_SECRET_LEN = 32
 
 
+def _resolved_secret() -> str:
+    # Dedicated secret wins; otherwise reuse JWT_SECRET (the operator
+    # default — no separate secret to manage).
+    return (os.getenv("NOTIFICATION_SIGNING_SECRET")
+            or os.getenv("JWT_SECRET") or "").strip()
+
+
 def _secret() -> bytes:
-    s = (os.getenv("NOTIFICATION_SIGNING_SECRET") or "").strip()
-    if len(s) < _MIN_SECRET_LEN:
-        # Fail CLOSED (never mint/accept a token under a weak/absent key —
-        # a never-expiring token gives brute-force unlimited time), but
-        # scoped to this feature, not the whole process.
+    s = _resolved_secret()
+    if not s:
+        # Fail CLOSED — never mint/accept a token without a key.  Only
+        # reachable if BOTH secrets are unset, which can't happen once
+        # JWT_SECRET's own boot fail-fast has run.
         raise RuntimeError(
-            "NOTIFICATION_SIGNING_SECRET is unset or shorter than "
-            f"{_MIN_SECRET_LEN} chars — email notification links are disabled "
-            "until it is set (openssl rand -hex 32). It is separate from "
-            "JWT_SECRET on purpose and must not be rotated casually.")
+            "no signing secret — set JWT_SECRET (or NOTIFICATION_SIGNING_SECRET)")
     return s.encode()
 
 
 def signing_secret_ok() -> bool:
-    """Whether the signing secret is present + strong enough — lets the API
-    warn at boot without importing token internals or raising."""
-    return len((os.getenv("NOTIFICATION_SIGNING_SECRET") or "").strip()) >= _MIN_SECRET_LEN
+    """Whether a usable signing secret is present (dedicated or the
+    JWT_SECRET fallback) — lets the API warn at boot without importing
+    token internals or raising."""
+    return len(_resolved_secret()) >= _MIN_SECRET_LEN
 
 
 def _b64e(b: bytes) -> str:

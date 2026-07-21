@@ -61,6 +61,23 @@ def test_token_tamper_is_rejected():
     assert tokens.verify_token(UNSUB_PURPOSE, "") is None
 
 
+def test_signing_falls_back_to_jwt_secret(monkeypatch):
+    """No dedicated NOTIFICATION_SIGNING_SECRET → sign with JWT_SECRET, so
+    a deployment needs zero extra config.  A dedicated secret, when set,
+    takes over (and invalidates tokens signed under the fallback)."""
+    monkeypatch.delenv("NOTIFICATION_SIGNING_SECRET", raising=False)
+    monkeypatch.setenv("JWT_SECRET", "jwt-only-secret-at-least-32-chars-long!!")
+    assert tokens.signing_secret_ok() is True
+    t = make_token(UNSUB_PURPOSE, account_id=1, recipient_type="user",
+                   recipient_id="7", channel="email")
+    assert tokens.verify_token(UNSUB_PURPOSE, t) is not None    # fallback signs+verifies
+
+    # A dedicated secret takes precedence → the JWT-signed token no longer verifies.
+    monkeypatch.setenv("NOTIFICATION_SIGNING_SECRET",
+                       "dedicated-secret-at-least-32-chars-long!!")
+    assert tokens.verify_token(UNSUB_PURPOSE, t) is None
+
+
 def test_unsubscribe_token_does_not_expire():
     """The one-click link lives in an inbox forever — it must keep working
     (no ttl)."""
