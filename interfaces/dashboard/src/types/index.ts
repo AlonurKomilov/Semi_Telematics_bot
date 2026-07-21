@@ -564,19 +564,34 @@ export interface Column<T = Record<string, unknown>> {
    *  guessing.  The operator picks the function from the ⋮ menu; the
    *  choice persists per-user. */
   aggregable?: boolean;
-  /** Which functions the ⋮ menu offers for this column.  Defaults to
-   *  all five (sum/avg/min/max/count).  Narrow it when only some make
-   *  sense (e.g. a timestamp column → ``['min','max','count']``). */
+  /** What kind of values this column aggregates — drives which functions
+   *  are offered and how the result is read + formatted:
+   *   * ``'number'`` (default) — sum/avg/min/max/count over numbers.
+   *   * ``'date'`` — min (earliest) / max (latest) / count over
+   *     dates/timestamps.  The menu hides sum/avg (meaningless on dates),
+   *     ``aggValue`` may return a Date / ISO string / ms number, and the
+   *     footer formats the result as a day (override with ``aggFormat``).
+   *     A bare ``YYYY-MM-DD`` value is treated as a calendar day (shown
+   *     tz-neutrally); a full timestamp is an instant (its day shown in
+   *     the account timezone). */
+  aggType?: 'number' | 'date';
+  /** Which functions the ⋮ menu offers for this column.  Defaults by
+   *  ``aggType``: number → all five; date → ``['min','max','count']``.
+   *  Set it to narrow further. */
   aggFns?: AggFn[];
-  /** Numeric value the aggregation reduces over — defaults to the raw
-   *  cell value at ``key`` coerced to a number.  Set it when the cell
-   *  renders something formatted (``"$2,847"``) but the true value
-   *  lives elsewhere on the row (``row.gross_cents``). ``count`` ignores
-   *  this (it counts rows). */
-  aggValue?: (row: T) => number;
-  /** Format the aggregated total for the footer cell (currency, units,
-   *  etc.).  Receives the computed number and the function used.
-   *  Defaults to a locale number string (2 decimals for ``avg``). */
+  /** Value the aggregation reduces over — defaults to the raw cell value
+   *  at ``key`` (coerced to a number for ``'number'`` columns, parsed as
+   *  a date for ``'date'`` columns).  Set it when the cell renders
+   *  something formatted (``"$2,847"``) but the true value lives
+   *  elsewhere on the row (``row.gross_cents``).  For a date column it
+   *  may return a Date, an ISO string, or a ms timestamp.  ``count``
+   *  ignores this (it counts rows). */
+  aggValue?: (row: T) => number | string | Date;
+  /** Format the aggregated total for the footer / group cell (currency,
+   *  units, a specific date format, …).  Receives the computed value
+   *  (a number, or a ms timestamp for a ``'date'`` column) and the
+   *  function used.  Defaults to a locale number string (2 decimals for
+   *  ``avg``) or, for a date column, a date in the account timezone. */
   aggFormat?: (value: number, fn: AggFn) => React.ReactNode;
 }
 

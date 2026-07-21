@@ -46,6 +46,8 @@ import {
 import { cn } from '../lib/utils';
 import type { AnyColumn, AggFn } from '../types';
 import { AGG_FN_LABELS, AGG_FN_ORDER } from '../types';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatDay } from '../utils/datetime';
 import ColumnFilterMenu from './ColumnFilterMenu';
 import ColumnHeaderMenu from './ColumnHeaderMenu';
 import ManageColumnsMenu from './ManageColumnsMenu';
@@ -116,6 +118,24 @@ function formatAggDefault(value: number, fn: AggFn): string {
   return value.toLocaleString(undefined, {
     maximumFractionDigits: fn === 'avg' ? 2 : 0,
   });
+}
+
+// Normalize a date column's raw value (Date / ISO string / ms number)
+// to a comparable ms timestamp.  Unparseable → NaN, dropped downstream
+// by the ``Number.isFinite`` filter.
+function toAggTimestamp(v: number | string | Date): number {
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === 'number') return v;
+  return new Date(v).getTime();
+}
+
+// Date columns only offer earliest / latest / count — summing or
+// averaging dates is meaningless.  Number columns offer all five.
+const DATE_AGG_FNS: readonly AggFn[] = ['min', 'max', 'count'];
+function offeredAggFns(col?: AnyColumn): readonly AggFn[] {
+  if (!col) return AGG_FN_ORDER;
+  if (col.aggFns) return col.aggFns;
+  return col.aggType === 'date' ? DATE_AGG_FNS : AGG_FN_ORDER;
 }
 
 const DENSITY_CYCLE: readonly Density[] = ['compact', 'default', 'roomy'];
@@ -532,6 +552,11 @@ export default function DataGrid({
   isRowSelectable, selectedIds: controlledSelectedIds, onSelectedIdsChange,
 }: DataGridProps) {
   const { t } = useTranslation();
+  // Account timezone — used to format ``aggType: 'date'`` aggregates
+  // (earliest / latest) in the footer + group rows per the dashboard's
+  // date SSOT.  DataGrid only ever renders inside the authed dashboard,
+  // so useTimezone → useAuth is always inside a provider here.
+  const timeZone = useTimezone();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
@@ -755,11 +780,12 @@ export default function DataGrid({
     const out: Record<string, AggFn> = {};
     for (const [key, fn] of Object.entries(aggregationPref)) {
       const col = columns.find(c => c.key === key);
-      // ``fn in AGG_FN_LABELS`` — the pref is a raw JSON blob with no
-      // server-side schema check; a stale / hand-edited / future-renamed
-      // function name must never reach the label lookup (which would
-      // ``undefined.toLowerCase()`` and crash the header render).
-      if (col?.aggregable && fn in AGG_FN_LABELS) out[key] = fn;
+      // The pref is a raw JSON blob with no server-side schema check —
+      // keep an entry only if the column still offers that function.
+      // This drops a stale / hand-edited / future-renamed name (so the
+      // label lookup can never ``undefined.toLowerCase()`` and crash the
+      // header) AND a now-invalid pairing like ``sum`` on a date column.
+      if (col?.aggregable && offeredAggFns(col).includes(fn)) out[key] = fn;
     }
     return out;
   }, [aggregationPref, columns]);
@@ -2070,18 +2096,46 @@ export default function DataGrid({
   ): React.ReactNode => {
     const col = columns.find(c => c.key === key);
     if (!col) return null;
-    const nums = fn === 'count'
-      ? []
-      : originals
-          .map(o => (col.aggValue ? col.aggValue(o) : Number(o[key])))
-          .filter((n): n is number => Number.isFinite(n));
-    const value = computeAggregate(fn, nums, originals.length);
-    return value == null
-      ? '—'
-      : col.aggFormat
-        ? col.aggFormat(value, fn)
-        : formatAggDefault(value, fn);
-  }, [columns]);
+    const isDate = col.aggType === 'date';
+    // sum / avg are meaningless on dates — never compute them (the menu
+    // doesn't offer them either, this is defence for a stale pref).
+    if (isDate && (fn === 'sum' || fn === 'avg')) return null;
+
+    let value: number | null;
+    // A date column is CALENDAR-DAY (``YYYY-MM-DD``, no instant/tz) vs an
+    // INSTANT (a full timestamp).  ``new Date('2026-07-20')`` parses to
+    // UTC midnight, so a calendar-day value MUST also be formatted in UTC
+    // or a viewer west of UTC sees the previous day.  An instant is a
+    // real point in time → format its day in the account tz.  Decide by
+    // the raw values' shape (a column is homogeneous in practice).
+    let dateOnly = false;
+    if (fn === 'count') {
+      value = originals.length;
+    } else if (isDate) {
+      const raws = originals.map(o =>
+        (col.aggValue ? col.aggValue(o) : o[key]) as number | string | Date);
+      dateOnly = raws.every(r =>
+        r == null || r === ''
+        || (typeof r === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r)));
+      const ts = raws.map(toAggTimestamp)
+        .filter((n): n is number => Number.isFinite(n));
+      value = computeAggregate(fn, ts, originals.length);
+    } else {
+      const nums = originals
+        .map(o => Number(col.aggValue ? col.aggValue(o) : o[key]))
+        .filter((n): n is number => Number.isFinite(n));
+      value = computeAggregate(fn, nums, originals.length);
+    }
+
+    if (value == null) return '—';
+    if (col.aggFormat) return col.aggFormat(value, fn);
+    // Date min/max → render the DAY (a column needing time precision
+    // passes its own ``aggFormat``).  ``count`` stays a number.
+    if (isDate && fn !== 'count') {
+      return formatDay(value, { timeZone: dateOnly ? 'UTC' : timeZone });
+    }
+    return formatAggDefault(value, fn);
+  }, [columns, timeZone]);
 
   // Footer totals — one value per aggregated column, reduced over the
   // FILTERED leaf rows (all pages, so the total reflects the whole
@@ -2528,7 +2582,7 @@ export default function DataGrid({
                         rowGrouped={rowGroupBy === header.column.id}
                         onRowGroup={() => toggleRowGroup(header.column.id)}
                         aggCurrent={aggregationModel[header.column.id] ?? null}
-                        aggFns={columns.find(c => c.key === header.column.id)?.aggFns ?? AGG_FN_ORDER}
+                        aggFns={offeredAggFns(columns.find(c => c.key === header.column.id))}
                         onSetAgg={(fn) => setColumnAgg(header.column.id, fn)}
                         fixedWidths={hasUserWidths}
                         onAutosize={() => autosizeColumn(header.column.id)}

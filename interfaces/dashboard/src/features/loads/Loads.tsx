@@ -66,7 +66,15 @@ const COLUMNS: AnyColumn[] = [
   { key: 'company_code', label: 'Company', sortable: true, filterable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   { key: 'pickup_location', label: 'Pickup', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   { key: 'delivery_location', label: 'Delivery', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
-  { key: 'delivery_date', label: 'DEL date', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
+  {
+    key: 'delivery_date', label: 'DEL date', sortable: true,
+    // Date aggregation: earliest / latest delivery across the filtered
+    // (or grouped) loads.  aggType 'date' hides sum/avg from the menu
+    // and formats the min/max as a day in the account timezone.
+    aggregable: true,
+    aggType: 'date',
+    render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>),
+  },
   {
     key: 'total_rate', label: 'Rate', sortable: true,
     // Aggregable: operators total / average the rate across the filtered

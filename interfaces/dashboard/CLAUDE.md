@@ -174,8 +174,14 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   `aggValue: (row) => number` when the cell renders something formatted
   (`"$2,847"`) but the true value lives elsewhere on the row, and
   `aggFormat: (value, fn) => node` to format the total (currency, units)
-  — **switch on `fn`** so `count` doesn't render as `$`. Narrow the
-  offered functions with `aggFns` (default = all five). The chosen model
+  — **switch on `fn`** so `count` doesn't render as `$`. For a
+  date/timestamp column set `aggType: 'date'` — the menu then offers only
+  Min (earliest) / Max (latest) / Count, `aggValue` may return a
+  Date/ISO-string/ms-number, and the result formats as a day (a bare
+  `YYYY-MM-DD` is treated as a tz-neutral calendar day; a full timestamp's
+  day is shown in the account tz). Narrow the offered functions further
+  with `aggFns` (default: number → all five, date → min/max/count). The
+  chosen model
   persists per-user (`table.<id>.aggregation`, so it needs `tableId`);
   `defaultAggregation={{ key: fn }}` starts it on. The total reduces over
   the **filtered** set (all pages), and the function name shows as a
