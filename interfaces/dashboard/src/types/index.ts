@@ -451,6 +451,24 @@ export interface GeofencesResponse {
 
 // ── DataGrid ────────────────────────────────────────────────
 
+/** Aggregation functions offered in the column ⋮ menu.  ``count`` is
+ *  MUI's ``size`` — it counts rows and needs no numeric accessor; the
+ *  other four reduce over ``aggValue(row)`` (or the raw cell number). */
+export type AggFn = 'sum' | 'avg' | 'min' | 'max' | 'count';
+
+/** Display names for the aggregation functions — shared by the ⋮-menu
+ *  submenu and the under-header micro-label so they never drift. */
+export const AGG_FN_LABELS: Record<AggFn, string> = {
+  sum: 'Sum',
+  avg: 'Average',
+  min: 'Min',
+  max: 'Max',
+  count: 'Count',
+};
+
+/** Canonical order the functions appear in the menu. */
+export const AGG_FN_ORDER: readonly AggFn[] = ['sum', 'avg', 'min', 'max', 'count'];
+
 export interface Column<T = Record<string, unknown>> {
   key: string;
   label: string;
@@ -539,6 +557,27 @@ export interface Column<T = Record<string, unknown>> {
    *  enum-style columns (priority, status) where alphabetical order
    *  doesn't match operator expectations. */
   sortKey?: (row: T) => number | string;
+  /** Opt this column into AGGREGATION — a total (sum/avg/min/max/count)
+   *  rendered in a footer row.  Explicit by design: we have no column
+   *  type system, so a column declares that its values are meaningfully
+   *  combinable (money, mileage, hours, counts) rather than the grid
+   *  guessing.  The operator picks the function from the ⋮ menu; the
+   *  choice persists per-user. */
+  aggregable?: boolean;
+  /** Which functions the ⋮ menu offers for this column.  Defaults to
+   *  all five (sum/avg/min/max/count).  Narrow it when only some make
+   *  sense (e.g. a timestamp column → ``['min','max','count']``). */
+  aggFns?: AggFn[];
+  /** Numeric value the aggregation reduces over — defaults to the raw
+   *  cell value at ``key`` coerced to a number.  Set it when the cell
+   *  renders something formatted (``"$2,847"``) but the true value
+   *  lives elsewhere on the row (``row.gross_cents``). ``count`` ignores
+   *  this (it counts rows). */
+  aggValue?: (row: T) => number;
+  /** Format the aggregated total for the footer cell (currency, units,
+   *  etc.).  Receives the computed number and the function used.
+   *  Defaults to a locale number string (2 decimals for ``avg``). */
+  aggFormat?: (value: number, fn: AggFn) => React.ReactNode;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

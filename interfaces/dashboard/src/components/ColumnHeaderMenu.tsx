@@ -4,9 +4,10 @@ import {
   Pin, PinOff, Filter as FilterIcon, ArrowUpDown, ChevronRight,
   ArrowLeftToLine, ArrowRightToLine,
   Group as GroupIcon, Ungroup as UngroupIcon, Plus, Check, ListTree,
-  MoveHorizontal,
+  MoveHorizontal, Sigma,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { type AggFn, AGG_FN_LABELS } from '../types';
 
 /**
  * 3-dot column actions menu.  Sits at the right edge of every
@@ -73,6 +74,14 @@ interface ColumnHeaderMenuProps {
    *  = this column is the active row-group key. */
   rowGrouped: boolean;
   onRowGroup: () => void;
+  /** AGGREGATION — a "Σ Aggregate →" submenu offering the functions in
+   *  ``aggFns`` (Sum / Average / Min / Max / Count) plus "None".  Only
+   *  rendered when ``aggregable`` is true.  ``aggCurrent`` is the
+   *  column's active function (null = not aggregated). */
+  aggregable: boolean;
+  aggFns: readonly AggFn[];
+  aggCurrent: AggFn | null;
+  onSetAgg: (fn: AggFn | null) => void;
   /** Fit the column's width to its widest rendered cell. */
   onAutosize: () => void;
   /** Aria label for the trigger — operators using screen readers. */
@@ -85,6 +94,7 @@ export default function ColumnHeaderMenu({
   canFilter, onFilter, filterActive,
   groupNames, currentGroup, onAssignGroup, onNewGroup, onUngroup,
   rowGrouped, onRowGroup, onAutosize,
+  aggregable, aggFns, aggCurrent, onSetAgg,
   columnLabel,
 }: ColumnHeaderMenuProps) {
   return (
@@ -298,6 +308,63 @@ export default function ColumnHeaderMenu({
               active={rowGrouped}
               onClick={onRowGroup}
             />
+            {/* Aggregate → submenu: pick a footer total function for
+                this column (only on columns that opted in via
+                ``aggregable``).  Mirrors the Sort submenu shape. */}
+            {aggregable && (
+              <MenuPrimitive.SubmenuRoot>
+                <MenuPrimitive.SubmenuTrigger
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none',
+                    'data-[highlighted]:bg-accent data-[popup-open]:bg-accent',
+                    aggCurrent && 'text-primary',
+                  )}
+                >
+                  <span className="shrink-0 w-4 flex justify-center text-muted-foreground">
+                    <Sigma size={14} />
+                  </span>
+                  <span className="flex-1 text-foreground text-left">Aggregate</span>
+                  {aggCurrent && (
+                    <span className="text-2xs text-muted-foreground">
+                      {AGG_FN_LABELS[aggCurrent]}
+                    </span>
+                  )}
+                  <ChevronRight size={12} className="text-muted-foreground" aria-hidden="true" />
+                </MenuPrimitive.SubmenuTrigger>
+                <MenuPrimitive.Portal>
+                  <MenuPrimitive.Positioner
+                    side="inline-end"
+                    align="start"
+                    sideOffset={4}
+                    className="z-50 outline-none"
+                  >
+                    <MenuPrimitive.Popup className="min-w-44 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+                      {aggFns.map((fn) => (
+                        <MenuItem
+                          key={fn}
+                          icon={fn === aggCurrent
+                            ? <Check size={14} />
+                            : <Sigma size={14} />}
+                          label={AGG_FN_LABELS[fn]}
+                          active={fn === aggCurrent}
+                          onClick={() => onSetAgg(fn)}
+                        />
+                      ))}
+                      {aggCurrent && (
+                        <>
+                          <div className="my-1 border-t border-border" />
+                          <MenuItem
+                            icon={<X size={14} />}
+                            label="None"
+                            onClick={() => onSetAgg(null)}
+                          />
+                        </>
+                      )}
+                    </MenuPrimitive.Popup>
+                  </MenuPrimitive.Positioner>
+                </MenuPrimitive.Portal>
+              </MenuPrimitive.SubmenuRoot>
+            )}
             <MenuItem
               icon={<MoveHorizontal size={14} />}
               label="Autosize column"

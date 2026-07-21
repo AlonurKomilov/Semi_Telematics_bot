@@ -69,6 +69,20 @@ const COLUMNS: AnyColumn[] = [
   { key: 'delivery_date', label: 'DEL date', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   {
     key: 'total_rate', label: 'Rate', sortable: true,
+    // Aggregable: operators total / average the rate across the filtered
+    // loads via the ⋮ menu → footer total.  No ``|| 0`` on aggValue — a
+    // load with no rate yet yields NaN, which DataGrid's Number.isFinite
+    // filter drops from sum/avg/min/max (so it never counts as a $0 trip
+    // in the Average); ``count`` still counts every filtered row.
+    aggregable: true,
+    aggFns: ['sum', 'avg', 'max', 'count'],
+    aggValue: (row) => Number((row as { total_rate?: number | null }).total_rate),
+    // Money for the numeric totals; a plain count for ``count`` (else
+    // a row count would render as a dollar amount).
+    aggFormat: (value, fn) =>
+      fn === 'count'
+        ? <span className="tabular-nums">{value.toLocaleString()}</span>
+        : <MoneyCell value={value} />,
     render: (v, row) => {
       const extra = Number((row as { other_pay?: number | null }).other_pay || 0);
       return (

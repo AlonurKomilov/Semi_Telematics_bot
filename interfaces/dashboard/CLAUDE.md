@@ -166,6 +166,23 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   paints blank AND takes its own 3-dot menu with it, so the operator
   would have no way back — the floor is enforced on BOTH hide paths, not
   just the one you're touching.
+- **Aggregation = footer totals, opt-in per column.** A column earns a
+  footer total (sum / avg / min / max / count, picked by the operator
+  from the ⋮ menu → **Aggregate**) by declaring `aggregable: true` on
+  its Column config — explicit by design, because the grid has no column
+  type system to infer "this is a number" from. Pair it with
+  `aggValue: (row) => number` when the cell renders something formatted
+  (`"$2,847"`) but the true value lives elsewhere on the row, and
+  `aggFormat: (value, fn) => node` to format the total (currency, units)
+  — **switch on `fn`** so `count` doesn't render as `$`. Narrow the
+  offered functions with `aggFns` (default = all five). The chosen model
+  persists per-user (`table.<id>.aggregation`, so it needs `tableId`);
+  `defaultAggregation={{ key: fn }}` starts it on. The total reduces over
+  the **filtered** set (all pages), and the function name shows as a
+  muted micro-label under the header (MUI's "Gross / sum"). Do NOT
+  hand-roll a totals row under a grid — this is the SSOT. (Phase 1:
+  footer only. Per-group totals + custom functions are planned Phase
+  2/3.)
 - **Column `filterable` = by cardinality, not by reflex.** Set
   `filterable: true` on a column when the dropdown will actually help
   an operator narrow the list. Two supported filter modes on the

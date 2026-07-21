@@ -44,7 +44,8 @@ import {
   TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from './ui/table';
 import { cn } from '../lib/utils';
-import type { AnyColumn } from '../types';
+import type { AnyColumn, AggFn } from '../types';
+import { AGG_FN_LABELS, AGG_FN_ORDER } from '../types';
 import ColumnFilterMenu from './ColumnFilterMenu';
 import ColumnHeaderMenu from './ColumnHeaderMenu';
 import ManageColumnsMenu from './ManageColumnsMenu';
@@ -91,6 +92,31 @@ const DENSITY_GROUP_ROW: Record<Density, string> = {
 // checkbox riding inside the first data cell — the select box gets its
 // own narrow column, and tanstack computes its sticky offset for free.
 const SELECT_COL_ID = '__select__';
+
+// Reduce a column's numeric values to a single aggregate.  ``count``
+// ignores the values and returns the row count (MUI's ``size``); the
+// rest fold over the finite numbers.  min/max use reduce (not
+// ``Math.min(...values)``) so a large filtered set can't blow the call
+// stack via argument spread.
+function computeAggregate(fn: AggFn, values: number[], rowCount: number): number | null {
+  if (fn === 'count') return rowCount;
+  if (values.length === 0) return null;
+  switch (fn) {
+    case 'sum': return values.reduce((a, b) => a + b, 0);
+    case 'avg': return values.reduce((a, b) => a + b, 0) / values.length;
+    case 'min': return values.reduce((a, b) => Math.min(a, b), Infinity);
+    case 'max': return values.reduce((a, b) => Math.max(a, b), -Infinity);
+    default: return null;
+  }
+}
+
+// Fallback footer formatting when a column declares no ``aggFormat`` —
+// a plain locale number, with decimals only for a (non-integer) average.
+function formatAggDefault(value: number, fn: AggFn): string {
+  return value.toLocaleString(undefined, {
+    maximumFractionDigits: fn === 'avg' ? 2 : 0,
+  });
+}
 
 const DENSITY_CYCLE: readonly Density[] = ['compact', 'default', 'roomy'];
 const DENSITY_ICONS: Record<Density, typeof Rows3> = {
@@ -209,6 +235,12 @@ interface DataGridProps {
    *  Alerts "by vehicle" view to open pre-grouped on vehicle_name.
    *  Reset-to-defaults returns to this, not to ungrouped. */
   defaultRowGroup?: string;
+  /** Aggregation the table starts with — a ``{ columnKey: fn }`` map
+   *  rendered as a footer total row (until the operator changes it via
+   *  the column ⋮ menu; their choice persists per-user and wins).
+   *  Only affects columns marked ``aggregable``.  Reset-to-defaults
+   *  returns to this. */
+  defaultAggregation?: Record<string, AggFn>;
   /** Toggle the toolbar strip (Search / Export / Columns / density).
    *  Set ``false`` on tables that are pure display surfaces (billing
    *  summary lines, form-embedded parts tables, small settings rows)
@@ -251,6 +283,8 @@ const groupsKey     = (id: string | undefined) =>
   id ? `table.${id}.groups` : '';
 const rowGroupKey   = (id: string | undefined) =>
   id ? `table.${id}.rowGroup` : '';
+const aggregationKey = (id: string | undefined) =>
+  id ? `table.${id}.aggregation` : '';
 const colWidthsKey  = (id: string | undefined) =>
   id ? `table.${id}.colWidths` : '';
 
@@ -492,6 +526,7 @@ function rowPassesColFilter(
 export default function DataGrid({
   columns, data: sourceData, onRowClick, searchKey, stickyHeader, searchPlaceholder,
   headerToolbar, tableId, firstColumnLeading, rowGroupHeader, defaultRowGroup,
+  defaultAggregation,
   enableToolbar = true, enablePagination = true, segments,
   bulkSelection = false, onBulkSelectionChange, bulkActions, bulkRowLabel,
   isRowSelectable, selectedIds: controlledSelectedIds, onSelectedIdsChange,
@@ -701,6 +736,41 @@ export default function DataGrid({
     setRowGroupPref(prev => (prev === key ? null : key));
     setExpanded({});
   }, [setRowGroupPref]);
+
+  // ── Aggregation ──────────────────────────────────────────────
+  //
+  // A ``{ columnKey: fn }`` map → a footer total row.  Persists per-user
+  // like the row-group choice; the operator sets it from each column's
+  // ⋮ menu.  The EFFECTIVE model drops any entry whose column no longer
+  // exists or isn't ``aggregable`` (a page could revoke aggregability
+  // after a stale pref was saved), so a bad pref can never render a
+  // total on a column that shouldn't have one.
+  const {
+    value: aggregationPref,
+    setValue: setAggregationPref,
+  } = useUserPreference<Record<string, AggFn>>(
+    aggregationKey(tableId), defaultAggregation ?? {},
+  );
+  const aggregationModel = useMemo<Record<string, AggFn>>(() => {
+    const out: Record<string, AggFn> = {};
+    for (const [key, fn] of Object.entries(aggregationPref)) {
+      const col = columns.find(c => c.key === key);
+      // ``fn in AGG_FN_LABELS`` — the pref is a raw JSON blob with no
+      // server-side schema check; a stale / hand-edited / future-renamed
+      // function name must never reach the label lookup (which would
+      // ``undefined.toLowerCase()`` and crash the header render).
+      if (col?.aggregable && fn in AGG_FN_LABELS) out[key] = fn;
+    }
+    return out;
+  }, [aggregationPref, columns]);
+  const setColumnAgg = useCallback((key: string, fn: AggFn | null) => {
+    setAggregationPref(prev => {
+      const next = { ...prev };
+      if (fn === null) delete next[key];
+      else next[key] = fn;
+      return next;
+    });
+  }, [setAggregationPref]);
 
   // ── Pagination ───────────────────────────────────────────────
   //
@@ -1985,9 +2055,42 @@ export default function DataGrid({
     // Row grouping back to the table's configured default (or off).
     setRowGroupPref(defaultRowGroup ?? null);
     setExpanded({});
+    // Aggregation back to the table's configured default (or none).
+    setAggregationPref(defaultAggregation ?? {});
     // Column widths back to auto layout.
     setUserWidths({});
   };
+
+  // Footer totals — one value per aggregated column, reduced over the
+  // FILTERED leaf rows (all pages, so the total reflects the whole
+  // narrowed set, not just the current page).  Recomputes only when the
+  // model, the columns, or the filtered inputs change.  ``{}`` → the
+  // footer row doesn't render at all.
+  const footerAgg = useMemo<Record<string, React.ReactNode>>(() => {
+    if (Object.keys(aggregationModel).length === 0) return {};
+    const originals = table.getFilteredRowModel().rows
+      .filter(r => !r.getIsGrouped())
+      .map(r => r.original as Record<string, unknown>);
+    const out: Record<string, React.ReactNode> = {};
+    for (const [key, fn] of Object.entries(aggregationModel)) {
+      const col = columns.find(c => c.key === key);
+      if (!col) continue;
+      const nums = fn === 'count'
+        ? []
+        : originals
+            .map(o => (col.aggValue ? col.aggValue(o) : Number(o[key])))
+            .filter((n): n is number => Number.isFinite(n));
+      const value = computeAggregate(fn, nums, originals.length);
+      out[key] = value == null
+        ? '—'
+        : col.aggFormat
+          ? col.aggFormat(value, fn)
+          : formatAggDefault(value, fn);
+    }
+    return out;
+    // ``data`` + filter/search state are the inputs that reshape the
+    // filtered row set; ``table`` is stable.
+  }, [aggregationModel, columns, table, data, columnFilters, globalFilter]);
 
   // Manage-columns options — derived from the full column list (NOT
   // the rendered header list) so the popover always lists every
@@ -2404,6 +2507,9 @@ export default function DataGrid({
                         onUngroup={() => ungroupColumn(header.column.id)}
                         rowGrouped={rowGroupBy === header.column.id}
                         onRowGroup={() => toggleRowGroup(header.column.id)}
+                        aggCurrent={aggregationModel[header.column.id] ?? null}
+                        aggFns={columns.find(c => c.key === header.column.id)?.aggFns ?? AGG_FN_ORDER}
+                        onSetAgg={(fn) => setColumnAgg(header.column.id, fn)}
                         fixedWidths={hasUserWidths}
                         onAutosize={() => autosizeColumn(header.column.id)}
                         densityClass={DENSITY_HEADER[density]}
@@ -2561,6 +2667,38 @@ export default function DataGrid({
               })
             )}
           </TableBody>
+          {/* Aggregation footer — one total row, rendered only when a
+              model is active.  Cells reuse ``pinnedStyle`` so they stay
+              column-aligned under pinned + select columns during
+              horizontal scroll.  Kept in normal vertical flow (not
+              sticky-bottom) so it behaves the same whether the page
+              scrolls or the body scrolls inside a stickyHeader
+              container — a solid ``bg-muted`` on every cell keeps pinned
+              footer cells opaque over scrolled content.  Gate on a
+              VISIBLE aggregated column (not the raw key count) so hiding
+              the last aggregated column doesn't leave an empty totals
+              bar with its divider and nothing in it. */}
+          {table.getVisibleLeafColumns().some(c => c.id in footerAgg) && (
+            <tfoot>
+              <tr className="border-t-2 border-border">
+                {table.getVisibleLeafColumns().map((col) => (
+                  <td
+                    key={col.id}
+                    style={{
+                      ...pinnedStyle(col, false),
+                      width: hasUserWidths ? col.getSize() : undefined,
+                    }}
+                    className={cn(
+                      padding,
+                      'bg-muted font-semibold text-primary tabular-nums whitespace-nowrap',
+                    )}
+                  >
+                    {footerAgg[col.id] ?? null}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
       {/* Custom horizontal scrollbar — anchored to the bottom of the
@@ -2797,6 +2935,12 @@ interface ColumnHeaderCellProps {
    *  toggle handler. */
   rowGrouped: boolean;
   onRowGroup: () => void;
+  /** Aggregation — the column's active footer function (null = none),
+   *  the functions offered, and the setter.  ``aggregable`` gates
+   *  whether the ⋮ menu shows the Aggregate submenu at all. */
+  aggCurrent: AggFn | null;
+  aggFns: readonly AggFn[];
+  onSetAgg: (fn: AggFn | null) => void;
   /** True once the operator has manually sized any column — the
    *  table is in fixed-layout mode and each header applies its
    *  explicit width. */
@@ -2814,7 +2958,8 @@ function ColumnHeaderCell({
   header, stickyHeader, colConfig, uniques, rangeBounds, dateBounds, tableId,
   onOpenManage, onMeasureWidth, leadingContent,
   groupNames, currentGroup, onAssignGroup, onNewGroup, onUngroup,
-  rowGrouped, onRowGroup, fixedWidths, onAutosize, densityClass,
+  rowGrouped, onRowGroup, aggCurrent, aggFns, onSetAgg,
+  fixedWidths, onAutosize, densityClass,
 }: ColumnHeaderCellProps) {
   const canSort = header.column.getCanSort();
   const sortedRaw = header.column.getIsSorted();
@@ -2967,8 +3112,19 @@ function ColumnHeaderCell({
       {/* The label is the ONLY part allowed to give up width — it
           ellipsizes; checkbox / sort chevron keep their full size.
           ``data-col-label`` marks it for autosize, which reads its
-          ``scrollWidth`` (full text even while ellipsized). */}
-      <span className="truncate" data-col-label>{labelNode}</span>
+          ``scrollWidth`` (full text even while ellipsized).  When the
+          column is aggregated, the function name sits as a muted
+          micro-label directly beneath (MUI's "Gross / sum" pattern). */}
+      {aggCurrent ? (
+        <span className="inline-flex flex-col min-w-0 leading-tight">
+          <span className="truncate" data-col-label>{labelNode}</span>
+          <span className="text-3xs font-normal text-muted-foreground normal-case">
+            {AGG_FN_LABELS[aggCurrent].toLowerCase()}
+          </span>
+        </span>
+      ) : (
+        <span className="truncate" data-col-label>{labelNode}</span>
+      )}
       {sortIndicator && <span className="shrink-0 inline-flex">{sortIndicator}</span>}
     </span>
   );
@@ -3090,6 +3246,10 @@ function ColumnHeaderCell({
               onUngroup={onUngroup}
               rowGrouped={rowGrouped}
               onRowGroup={onRowGroup}
+              aggregable={colConfig?.aggregable === true}
+              aggFns={aggFns}
+              aggCurrent={aggCurrent}
+              onSetAgg={onSetAgg}
               onAutosize={onAutosize}
             />
           </span>
