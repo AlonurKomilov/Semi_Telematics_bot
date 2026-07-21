@@ -59,12 +59,18 @@ _NOTIF_MODULES = (
 
 
 def test_does_not_import_alerting():
-    # Layering guard: the delivery layer must not depend on an event
-    # source, or alerting → notifications later would cycle.  Check only
-    # actual import LINES (docstrings mention 'alerting' deliberately).
+    # Layering guard: the delivery CORE must not depend on an event source,
+    # or alerting → notifications later would cycle.  router.py is exempt —
+    # it's the HTTP composition skin (already exempt from the interfaces
+    # guard below), a leaf only app.py imports, so it may reference alerting
+    # relevance for role-gating without forming the delivery-core cycle.
+    # Check only actual import LINES (docstrings mention 'alerting'
+    # deliberately).
     import inspect
     import importlib
     for m in _NOTIF_MODULES:
+        if m.endswith(".router"):
+            continue
         mod = importlib.import_module(m)
         for line in inspect.getsource(mod).splitlines():
             s = line.strip()

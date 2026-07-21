@@ -65,6 +65,26 @@ class NotificationPrefsMixin(_MixinBase):
         )
         await self._db.commit()
 
+    async def set_channel_cadence(
+        self, account_id: int, recipient_type: str, recipient_id: str,
+        channel: str, cadence: str,
+    ) -> int:
+        """Set the delivery cadence for EVERY per-type rule on a channel at
+        once — the UI models cadence as a channel-level choice (one 'send
+        email as a daily digest' control), while the matrix stores it
+        per-row.  Returns rows updated."""
+        if cadence not in _VALID_CADENCES:
+            raise ValueError(f"unknown cadence {cadence!r}")
+        cur = await self._db.execute(
+            """UPDATE notification_pref SET cadence = ?, updated_at = ?
+                WHERE account_id = ? AND recipient_type = ?
+                  AND recipient_id = ? AND channel = ?""",
+            (cadence, self._now(), account_id, recipient_type,
+             str(recipient_id), channel),
+        )
+        await self._db.commit()
+        return cur.rowcount or 0
+
     async def list_recipient_notification_prefs(
         self, account_id: int, recipient_type: str, recipient_id: str,
     ) -> list[dict]:
@@ -91,7 +111,17 @@ class NotificationPrefsMixin(_MixinBase):
         address, cadence}``.
 
         A ``'*'`` pref row (all types) also matches.  This is the query
-        the dispatch fan-out will use once 2b wires it in.
+        the dispatch fan-out uses.
+
+        Role-relevance is re-checked at delivery for ``user`` recipients —
+        the SAME defence-in-depth the Telegram subscriber readers apply
+        (``get_typed_alert_subscribers`` + its matrix twin): a pref row for
+        a type the recipient's CURRENT role can't receive (e.g. left over
+        after a role downgrade) must not keep firing, and the settings UI
+        that would let them turn it off only renders their current role's
+        types.  Non-user recipients (shared topics) have no single role and
+        pass through; a non-alert notification type (not in the alert
+        relevance map) is not role-gated.
         """
         cur = await self._db.execute(
             """SELECT p.recipient_type, p.recipient_id, c.address, p.cadence
@@ -109,11 +139,41 @@ class NotificationPrefsMixin(_MixinBase):
                   AND c.address <> ''""",
             (account_id, channel, alert_type),
         )
-        return [
+        rows = [
             {"recipient_type": r[0], "recipient_id": r[1],
              "address": r[2], "cadence": r[3]}
             for r in await cur.fetchall()
         ]
+
+        # Local import: keeps capabilities.alerting out of this module's
+        # cold-start import graph (same idiom as the users.py readers).
+        from capabilities.alerting.relevance import (
+            ALERT_TYPE_REQUIRED_PERM,
+            role_can_receive_alert,
+        )
+        if alert_type not in ALERT_TYPE_REQUIRED_PERM:
+            return rows            # not an alert type → nothing to role-gate
+
+        user_ids = [
+            int(r["recipient_id"]) for r in rows
+            if r["recipient_type"] == "user"
+            and str(r["recipient_id"]).lstrip("-").isdigit()
+        ]
+        roles: dict[int, str] = {}
+        if user_ids:
+            ph = ", ".join("?" for _ in user_ids)
+            cur = await self._db.execute(
+                f"SELECT id, role FROM users WHERE id IN ({ph})", tuple(user_ids))
+            roles = {row[0]: row[1] for row in await cur.fetchall()}
+
+        def _keep(r: dict) -> bool:
+            if r["recipient_type"] != "user":
+                return True
+            role = roles.get(int(r["recipient_id"])) \
+                if str(r["recipient_id"]).lstrip("-").isdigit() else None
+            return role is not None and role_can_receive_alert(role, alert_type)
+
+        return [r for r in rows if _keep(r)]
 
     # ── Channel connection ───────────────────────────────────────────
 

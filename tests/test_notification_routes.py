@@ -149,3 +149,49 @@ async def test_unsubscribe_confirmed_post_mutates(api):
     assert r.status_code == 200 and "unsubscribed" in r.text.lower()
     ch = await api["db"].get_notification_channel(api["acct"], "user", api["uid"], "email")
     assert ch["enabled_master"] is False
+
+
+# ── Email per-type preferences (5b) ──────────────────────────────────
+
+async def test_email_prefs_requires_auth(api):
+    async with _client(api) as c:
+        r = await c.get(f"{API}/prefs/email")
+    assert r.status_code == 401
+
+
+async def test_email_prefs_roundtrip(api):
+    async with _client(api) as c:
+        # Initial: role-tailored types, none on, default daily, disconnected.
+        r = await c.get(f"{API}/prefs/email", headers=_h(api["token"]))
+        body = r.json()
+        assert body["relevant_types"] and body["email"]["connected"] is False
+        assert body["email"]["cadence"] == "daily"
+        a_type = body["relevant_types"][0]
+        assert body["email"]["types"][a_type] is False
+
+        # Enable one type → reflected on re-read.
+        r = await c.put(f"{API}/prefs/email/type", headers=_h(api["token"]),
+                        json={"alert_type": a_type, "enabled": True})
+        assert r.json()["ok"] is True
+        body = (await c.get(f"{API}/prefs/email", headers=_h(api["token"]))).json()
+        assert body["email"]["types"][a_type] is True
+
+        # Change cadence → applies to the enabled row.
+        r = await c.put(f"{API}/prefs/email/cadence", headers=_h(api["token"]),
+                        json={"cadence": "hourly"})
+        assert r.json()["ok"] is True
+        body = (await c.get(f"{API}/prefs/email", headers=_h(api["token"]))).json()
+        assert body["email"]["cadence"] == "hourly"
+
+
+async def test_email_type_rejects_irrelevant_and_bad_cadence(api):
+    async with _client(api) as c:
+        r = await c.put(f"{API}/prefs/email/type", headers=_h(api["token"]),
+                        json={"alert_type": "not_a_real_type", "enabled": True})
+        assert r.json() == {"ok": False, "error": "irrelevant_type"}
+
+        # cadence is a Literal → an unknown value is a 422 at the schema
+        # layer, never reaching the DB.
+        r = await c.put(f"{API}/prefs/email/cadence", headers=_h(api["token"]),
+                        json={"cadence": "weekly"})
+        assert r.status_code == 422

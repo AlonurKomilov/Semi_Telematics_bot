@@ -94,6 +94,35 @@ async def test_wildcard_pref_matches_any_type(pg_db):
         assert len(await pg_db.get_notification_subscribers(acct, atype, "telegram_dm")) == 1
 
 
+async def test_subscribers_apply_delivery_role_filter(pg_db):
+    """A pref row for a type the recipient's CURRENT role can't receive is
+    dropped at delivery — the same defence-in-depth the Telegram readers
+    apply, so a row left over after a role downgrade can't keep firing."""
+    from capabilities.alerting.relevance import (
+        ALERT_TYPE_REQUIRED_PERM, alert_types_for_role)
+    acct = (await pg_db.create_account("RoleGate Co")).id
+    role = Role.DRIVER
+    allowed = set(alert_types_for_role(role))
+    disallowed = [t for t in ALERT_TYPE_REQUIRED_PERM if t not in allowed]
+    assert disallowed, "expected a role with at least one non-receivable type"
+    bad = disallowed[0]
+
+    u = await pg_db.create_user(telegram_id=4242, account_id=acct, role=role)
+    await pg_db.set_notification_pref(acct, "user", u.id, "email", bad, enabled=True)
+    await pg_db.upsert_notification_channel(
+        acct, "user", u.id, "email", address="d@x.com", verified=True)
+
+    # Pref + verified channel both present, but the role can't receive it.
+    assert await pg_db.get_notification_subscribers(acct, bad, "email") == []
+
+    # A type the role CAN receive is delivered normally.
+    if allowed:
+        good = sorted(allowed)[0]
+        await pg_db.set_notification_pref(acct, "user", u.id, "email", good, enabled=True)
+        subs = await pg_db.get_notification_subscribers(acct, good, "email")
+        assert [s["recipient_id"] for s in subs] == [str(u.id)]
+
+
 # ── Backfill migration ───────────────────────────────────────────────
 
 async def test_backfill_from_legacy_columns(pg_db):

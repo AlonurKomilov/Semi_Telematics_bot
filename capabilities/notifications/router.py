@@ -15,6 +15,7 @@ bad tokens, so a guesser learns nothing.
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
@@ -84,6 +85,113 @@ async def list_channels(request: Request, user: dict = Depends(get_current_user)
             db_user.account_id, "user", db_user.id, ch)
         out[ch] = conn or {"address": "", "verified": False, "enabled_master": True}
     return {"channels": out}
+
+
+# ── Per-type preferences for matrix channels (email today) ───────────
+
+# Email defaults to a batched cadence: per-alert email at fleet volume is
+# unusable, so a newly-enabled type digests daily until the user says
+# otherwise (docs §8).
+_EMAIL_DEFAULT_CADENCE = "daily"
+
+
+@router.get("/prefs/email")
+@limiter.limit("30/minute")
+async def get_email_prefs(request: Request, user: dict = Depends(get_current_user)):
+    """The caller's EMAIL channel preferences for the settings page: the
+    role-tailored alert types, which are on for email, the channel
+    cadence, and the connection state."""
+    from capabilities.alerting.relevance import alert_types_for_role
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    db_user = await get_current_db_user(user, db)
+    if not db_user:
+        return {"relevant_types": [], "email": {}}
+
+    relevant = alert_types_for_role(db_user.role)
+    rows = await db.list_recipient_notification_prefs(
+        db_user.account_id, "user", db_user.id)
+    email_rows = [r for r in rows if r["channel"] == "email"]
+    types = {r["alert_type"]: bool(r["enabled"]) for r in email_rows}
+    # Channel cadence = the shared cadence of the email rows (kept uniform
+    # by set_channel_cadence); default when nothing is enabled yet.
+    cadence = next((r["cadence"] for r in email_rows), _EMAIL_DEFAULT_CADENCE)
+    conn = await db.get_notification_channel(
+        db_user.account_id, "user", db_user.id, "email")
+
+    return {
+        "relevant_types": relevant,
+        "email": {
+            "connected": bool(conn),
+            "verified": bool(conn and conn.get("verified")),
+            "address": (conn or {}).get("address", ""),
+            "enabled_master": bool(conn.get("enabled_master")) if conn else True,
+            "cadence": cadence,
+            "types": {t: types.get(t, False) for t in relevant},
+        },
+    }
+
+
+class EmailTypeRequest(BaseModel):
+    alert_type: str
+    enabled: bool
+
+
+@router.put("/prefs/email/type")
+@limiter.limit("60/minute")
+async def set_email_type(
+    request: Request, body: EmailTypeRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Toggle one alert type for the caller's email channel.  Role-gated:
+    a type the caller's role can't see is silently dropped (defence in
+    depth — the UI wouldn't render it).
+
+    Cadence is NOT taken from the client: a new type inherits the channel's
+    CURRENT cadence (or the default) so every email row stays uniform — the
+    UI models cadence as one channel-level choice, and letting a per-type
+    override slip in would desync that."""
+    from capabilities.alerting.relevance import alert_types_for_role
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    db_user = await get_current_db_user(user, db)
+    if not db_user:
+        return {"ok": False, "error": "user_not_found"}
+    if body.alert_type not in alert_types_for_role(db_user.role):
+        return {"ok": False, "error": "irrelevant_type"}
+    rows = await db.list_recipient_notification_prefs(
+        db_user.account_id, "user", db_user.id)
+    cadence = next((r["cadence"] for r in rows if r["channel"] == "email"),
+                   _EMAIL_DEFAULT_CADENCE)
+    await db.set_notification_pref(
+        db_user.account_id, "user", db_user.id, "email",
+        body.alert_type, enabled=body.enabled, cadence=cadence)
+    return {"ok": True}
+
+
+class EmailCadenceRequest(BaseModel):
+    cadence: Literal["immediate", "hourly", "daily"]
+
+
+@router.put("/prefs/email/cadence")
+@limiter.limit("60/minute")
+async def set_email_cadence(
+    request: Request, body: EmailCadenceRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Set the caller's email delivery cadence (applies to every email
+    type at once)."""
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    db_user = await get_current_db_user(user, db)
+    if not db_user:
+        return {"ok": False, "error": "user_not_found"}
+    try:
+        await db.set_channel_cadence(
+            db_user.account_id, "user", db_user.id, "email", body.cadence)
+    except ValueError:
+        return {"ok": False, "error": "bad_cadence"}
+    return {"ok": True, "cadence": body.cadence}
 
 
 # ── Verify (public — the token authorizes) ───────────────────────────

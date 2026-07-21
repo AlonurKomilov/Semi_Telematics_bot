@@ -1,0 +1,271 @@
+/**
+ * Email notification channel — the settings surface for the email
+ * delivery lifecycle (connect → verify → choose types + cadence).
+ *
+ * A user's alert email is its OWN address (not their login email), so it
+ * carries its own connect + verification.  Until it's verified nothing
+ * sends, so the card walks: enter address → "check your inbox" → verified,
+ * then reveals the per-type toggles + the delivery cadence.  Email
+ * defaults to a daily digest — per-alert email at fleet volume is
+ * unusable.
+ */
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { Mail, CheckCircle2, Clock } from 'lucide-react';
+import { apiJSON } from '@/api/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+
+interface EmailPrefs {
+  relevant_types: string[];
+  email: {
+    connected: boolean;
+    verified: boolean;
+    address: string;
+    enabled_master: boolean;
+    cadence: string;
+    types: Record<string, boolean>;
+  };
+}
+
+const TYPE_LABEL: Record<string, string> = {
+  faults: 'Engine Faults',
+  health: 'Vehicle Health',
+  fuel: 'Fuel & DEF',
+  geofence: 'Geofence Entry/Exit',
+  events: 'Safety Events',
+  camera: 'Camera Issues',
+  parking: 'Unsafe Parking',
+};
+
+const CADENCE_LABEL: Record<string, string> = {
+  immediate: 'Immediately',
+  hourly: 'Hourly digest',
+  daily: 'Daily digest',
+};
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export default function EmailChannelCard() {
+  const [prefs, setPrefs] = useState<EmailPrefs | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [draft, setDraft] = useState('');
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      const data = await apiJSON<EmailPrefs>('/notifications/prefs/email');
+      setPrefs(data);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to load email settings');
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { void load(); }, []);
+
+  // One path for connect / change / resend — the backend upsert is
+  // idempotent, so a resend is just a re-submit of the known address.
+  const submit = async (address: string, isResend = false) => {
+    address = address.trim();
+    if (!EMAIL_RE.test(address)) {
+      toast.error('Enter a valid email address');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await apiJSON<{ ok: boolean; sent?: boolean; already_verified?: boolean }>(
+        '/notifications/channels/email', { method: 'POST', body: { address } });
+      if (!res.ok) throw new Error('Could not save address');
+      toast.success(
+        res.already_verified ? 'Already verified'
+          : !res.sent ? 'Address saved — but the confirmation email couldn’t be sent. Check email settings.'
+          : isResend ? `Verification link re-sent to ${address}`
+          : `Verification link sent to ${address}`);
+      setEditing(false);
+      setDraft('');
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to connect email');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleType = async (type: string, enabled: boolean) => {
+    if (!prefs) return;
+    setPrefs(p => p && ({ ...p, email: { ...p.email, types: { ...p.email.types, [type]: enabled } } }));
+    setSaving(type);
+    try {
+      // Cadence is derived server-side (kept uniform per channel) — the
+      // client no longer sends it, so it can't desync the channel value.
+      await apiJSON('/notifications/prefs/email/type', {
+        method: 'PUT', body: { alert_type: type, enabled },
+      });
+    } catch (e) {
+      // Roll back ONLY this field — restoring a whole stale snapshot would
+      // clobber a concurrent toggle that already succeeded.
+      setPrefs(p => p && ({ ...p, email: { ...p.email, types: { ...p.email.types, [type]: !enabled } } }));
+      toast.error(e instanceof Error ? e.message : 'Save failed');
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const setCadence = async (cadence: string) => {
+    if (!prefs) return;
+    const prevCadence = prefs.email.cadence;
+    setPrefs(p => p && ({ ...p, email: { ...p.email, cadence } }));
+    try {
+      await apiJSON('/notifications/prefs/email/cadence', {
+        method: 'PUT', body: { cadence },
+      });
+    } catch (e) {
+      setPrefs(p => p && ({ ...p, email: { ...p.email, cadence: prevCadence } }));
+      toast.error(e instanceof Error ? e.message : 'Save failed');
+    }
+  };
+
+  if (loading) {
+    return (
+      <section className="bg-card border border-border rounded-xl p-4">
+        <p className="text-sm text-muted-foreground">Loading email settings…</p>
+      </section>
+    );
+  }
+  if (!prefs) return null;
+
+  const { email, relevant_types } = prefs;
+  const showForm = editing || !email.connected;
+
+  return (
+    <section className="bg-card border border-border rounded-xl p-4">
+      {/* Channel header + status */}
+      <div className="flex items-center justify-between gap-2 mb-1">
+        <p className="text-base font-semibold inline-flex items-center gap-2">
+          <Mail size={16} /> Email
+        </p>
+        {email.connected && (
+          email.verified
+            ? <span className="inline-flex items-center gap-1 text-xs font-medium text-ok">
+                <CheckCircle2 size={14} /> Verified
+              </span>
+            : <span className="inline-flex items-center gap-1 text-xs font-medium text-warn">
+                <Clock size={14} /> Pending
+              </span>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        Get the alerts you choose by email, on your own schedule. Separate from your login email.
+      </p>
+
+      {/* Connect / change form */}
+      {showForm ? (
+        <div className="flex flex-col gap-2">
+          {editing && email.verified && (
+            <p className="text-xs text-warn">
+              Changing your address pauses email alerts until you confirm the new one.
+            </p>
+          )}
+          <div className="flex flex-col sm:flex-row gap-2">
+          <Input
+            type="email"
+            inputMode="email"
+            placeholder="you@company.com"
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') void submit(draft); }}
+            className="flex-1"
+          />
+          <div className="flex gap-2">
+            <Button onClick={() => void submit(draft)} disabled={busy}>
+              {busy ? 'Sending…' : 'Send verification link'}
+            </Button>
+            {email.connected && (
+              <Button variant="ghost" onClick={() => { setEditing(false); setDraft(''); }}>
+                Cancel
+              </Button>
+            )}
+          </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm truncate">{email.address}</span>
+          <Button variant="ghost" size="sm" onClick={() => { setEditing(true); setDraft(email.address); }}>
+            Change
+          </Button>
+        </div>
+      )}
+
+      {/* Pending hint */}
+      {email.connected && !email.verified && !showForm && (
+        <p className="text-xs text-muted-foreground mt-2">
+          We sent a confirmation link to <span className="font-medium">{email.address}</span>. Click it to start receiving email alerts.{' '}
+          <button className="text-primary hover:underline" onClick={() => void load()}>
+            Already confirmed? Refresh
+          </button>. Didn’t arrive?{' '}
+          <button className="text-primary hover:underline disabled:opacity-50" disabled={busy}
+                  onClick={() => void submit(email.address, true)}>
+            Resend
+          </button>.
+        </p>
+      )}
+
+      {/* Verified → cadence + per-type toggles */}
+      {email.verified && (
+        <div className="mt-4 pt-4 border-t border-border/60 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-sm font-medium">Delivery</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                How often email alerts are grouped and sent.
+              </p>
+            </div>
+            <Select value={email.cadence} onValueChange={v => void setCadence(v)}>
+              <SelectTrigger className="w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {['immediate', 'hourly', 'daily'].map(c => (
+                  <SelectItem key={c} value={c}>{CADENCE_LABEL[c]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+              Send these to email
+            </p>
+            {relevant_types.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Your role doesn’t have any alert categories configured.
+              </p>
+            ) : (
+              <div className="divide-y divide-border/60">
+                {relevant_types.map(type => (
+                  <label key={type} className="flex items-center gap-3 py-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={!!email.types[type]}
+                      disabled={saving === type}
+                      onChange={e => void toggleType(type, e.target.checked)}
+                      className="accent-primary cursor-pointer"
+                    />
+                    <span className="text-sm">{TYPE_LABEL[type] || type}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}

@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { Bell, BellOff, CheckCircle2 } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { PageHeader, ErrorState, CardSkeleton } from '@/components/shell';
+import EmailChannelCard from './EmailChannelCard';
 
 interface AlertPrefsResponse {
   alerts_on: boolean;
@@ -133,9 +134,13 @@ export default function MyNotifications() {
         icon={Bell}
         title="Notification preferences"
         description={
-          'Personal alert preferences for your Telegram DM. Admins set group / forum routing separately on Settings — the two don’t override each other.'
+          'Choose which alerts reach you and where — your Telegram DM and email. Admins set group / forum routing separately on Settings; the two don’t override each other.'
         }
       />
+
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
+        Telegram
+      </p>
 
       {/* Master switch */}
       <section className="bg-card border border-border rounded-xl p-4 mb-4">
@@ -223,6 +228,11 @@ export default function MyNotifications() {
           </div>
         </label>
       </section>
+
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mt-6 mb-2">
+        Email
+      </p>
+      <EmailChannelCard />
     </div>
   );
 }
