@@ -81,6 +81,42 @@ async def test_single_group_returns_empty_when_no_route(_patch_platform_db, seed
 
 
 @pytest.mark.asyncio
+async def test_disabled_route_can_be_re_enabled(_patch_platform_db, seeded_db):
+    """Regression: toggling a route OFF then back ON must not 404.
+
+    ``get_alert_route`` hides ``is_active=0`` rows (the pipeline treats
+    them as "fall back to DM"), so the admin toggle endpoints must use
+    ``get_alert_route_any`` for their existence check — otherwise
+    re-enabling a route the user just turned off reports the misleading
+    "No route exists for 'faults'".
+    """
+    db = _patch_platform_db
+    acct = seeded_db["account"]
+
+    await db.upsert_forum_group(
+        account_id=acct.id, chat_id=-100999, chat_title="forum",
+        is_forum_enabled=True, created_by_user_id=seeded_db["owner"].id,
+        setup_status="provisioned",
+    )
+    await db.upsert_alert_route(
+        account_id=acct.id, alert_type="faults",
+        chat_id=-100999, message_thread_id=42, topic_name_snapshot="Faults",
+    )
+
+    # Disable → the active-filtered getter can no longer see it…
+    await db.set_alert_route_active(acct.id, "faults", False)
+    assert await db.get_alert_route(acct.id, "faults") is None
+    # …but the existence-check getter still finds the inactive row, so
+    # the toggle endpoint's 404 guard passes and re-enable proceeds.
+    any_row = await db.get_alert_route_any(acct.id, "faults")
+    assert any_row is not None
+    assert not any_row.is_active
+
+    await db.set_alert_route_active(acct.id, "faults", True)
+    assert await db.get_alert_route(acct.id, "faults") is not None
+
+
+@pytest.mark.asyncio
 async def test_per_persona_warning_returns_primary_only(_patch_platform_db, seeded_db):
     db = _patch_platform_db
     acct = seeded_db["account"]

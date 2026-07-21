@@ -193,6 +193,27 @@ class ForumRoutingMixin:
         row = await cur.fetchone()
         return self._row_to_alert_route(row) if row else None
 
+    async def get_alert_route_any(
+        self, account_id: int, alert_type: str,
+    ) -> Optional[AlertRoute]:
+        """Lookup a route REGARDLESS of active state.
+
+        ``get_alert_route`` hides soft-disabled rows on purpose — the
+        pipeline treats ``is_active = 0`` as "fall back to DM".  But the
+        admin toggle endpoints need the row even when inactive: to
+        RE-ENABLE a route they must first find the disabled row.  Using
+        the active-filtered getter as an existence check 404s exactly
+        the row the user is trying to switch back on.
+        """
+        cur = await self._db.execute(
+            """SELECT * FROM alert_routing
+               WHERE account_id = ? AND alert_type = ?
+               LIMIT 1""",
+            (account_id, alert_type),
+        )
+        row = await cur.fetchone()
+        return self._row_to_alert_route(row) if row else None
+
     async def list_alert_routes(self, account_id: int) -> list[AlertRoute]:
         """Return every route (active OR inactive) for an account.
 

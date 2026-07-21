@@ -188,11 +188,13 @@ async def toggle_forum_route(
         raise HTTPException(status_code=422, detail=f"Unknown alert_type: {alert_type}")
 
     account_id = user["account_id"]
-    route = await platform_db.get_alert_route(account_id, alert_type)
+    # Existence check must see INACTIVE rows too — otherwise re-enabling
+    # a route the admin just turned off 404s (get_alert_route hides
+    # is_active=0 rows for the pipeline's benefit, not this endpoint's).
+    route = await platform_db.get_alert_route_any(account_id, alert_type)
     if route is None:
-        # Soft-toggle only works for an existing (possibly inactive)
-        # row.  If the row doesn't exist at all the admin needs to
-        # run /setupforum or /repairforum first.
+        # If the row doesn't exist at all the admin needs to run
+        # /setupforum or /repairforum first.
         raise HTTPException(
             status_code=404,
             detail=f"No route exists for '{alert_type}'. Run /setupforum or /repairforum first.",
@@ -238,7 +240,9 @@ async def toggle_forum_route_receipt(
         raise HTTPException(status_code=422, detail=f"Unknown alert_type: {alert_type}")
 
     account_id = user["account_id"]
-    route = await platform_db.get_alert_route(account_id, alert_type)
+    # See toggle_forum_route: an inactive route still has a receipt
+    # setting to flip, so the existence check must include is_active=0.
+    route = await platform_db.get_alert_route_any(account_id, alert_type)
     if route is None:
         raise HTTPException(
             status_code=404,
