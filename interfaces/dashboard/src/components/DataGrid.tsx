@@ -561,8 +561,8 @@ export default function DataGrid({
   // the operator's persisted choices.  Persisted always wins where
   // set, so unhiding a defaultHidden column sticks; Reset clears
   // persisted and the defaults reappear.  All downstream reads
-  // (tanstack state, hiddenCount badge, manage popover, ColumnHeader
-  // toggle logic) use this rather than the raw persisted map.
+  // (tanstack state, manage popover, ColumnHeader toggle logic) use
+  // this rather than the raw persisted map.
   const effectiveVisibility = useMemo<VisibilityState>(() => {
     const defaults: VisibilityState = {};
     for (const col of columns) {
@@ -1468,11 +1468,6 @@ export default function DataGrid({
     const opts = uniquesByCol[id]?.options ?? [];
     return vals.map(v => opts.find(o => o.value === v)?.label ?? v).join(', ');
   }, [columns, uniquesByCol]);
-  const hiddenCount = useMemo(
-    () => columns.filter(c => effectiveVisibility[c.key] === false).length,
-    [columns, effectiveVisibility],
-  );
-
   // ── Active filters / sort / search as removable chips ─────────────
   //
   // A row of pills below the toolbar (auto-shown only when something is
@@ -2128,6 +2123,11 @@ export default function DataGrid({
                 )}
               </Button>
               </Tip>
+              {/* Plain icon — NO hidden-count badge.  Hiding a column is a
+                  deliberate act the operator already knows they did; a
+                  persistent number here read as an unresolved "notification"
+                  to clear.  Filter/Sort keep their badges (those ARE active
+                  view constraints); "columns hidden" is just layout. */}
               <Tip label="Show / hide columns">
               <Button
                 ref={manageAnchorRef}
@@ -2136,17 +2136,8 @@ export default function DataGrid({
                 size="icon"
                 onClick={() => setManageOpen((o) => !o)}
                 aria-label="Manage columns"
-                className={cn(
-                  'relative',
-                  hiddenCount > 0 && 'text-primary border-primary/30 bg-primary/10',
-                )}
               >
                 <Columns3 />
-                {hiddenCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-4 h-4 px-1 rounded-full bg-primary text-primary-foreground text-3xs font-semibold inline-flex items-center justify-center">
-                    {hiddenCount}
-                  </span>
-                )}
               </Button>
               </Tip>
               {/* Export scope picker — "this page" vs "everything

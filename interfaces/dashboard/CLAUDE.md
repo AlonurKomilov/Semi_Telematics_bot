@@ -145,10 +145,13 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   chips inline on the toolbar line, after the bulk bar / headerToolbar
   (nothing to wire per page — driven by the grid's own state): filter ·
   sort · search · row-grouping ("Grouped by X"). Deliberately NO chip
-  for: hidden columns (the manage-columns toolbar button already carries
-  the hidden-count badge — a chip would duplicate it), pin (visually
+  for: hidden columns (hiding a column is a deliberate layout act, not an
+  active view constraint — surfacing it in either a chip OR a count badge
+  reads as an unresolved "notification" to clear), pin (visually
   self-evident), and the column-bracket group (column-config, not a
-  per-session toggle).
+  per-session toggle). The Filter/Sort toolbar buttons DO keep count
+  badges (those are active constraints); the Manage-columns button is a
+  plain icon.
 - **A grid can never be hidden down to zero columns.** The last visible
   hideable column locks: its "Hide column" item (per-column 3-dot menu)
   disables with a "last column" hint, and its checkbox in the
