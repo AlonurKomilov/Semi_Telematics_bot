@@ -87,70 +87,87 @@ async def list_channels(request: Request, user: dict = Depends(get_current_user)
     return {"channels": out}
 
 
-# ── Per-type preferences for matrix channels (email today) ───────────
+# ── Per-type preferences for matrix channels (email + web push) ──────
 
-# Email defaults to a batched cadence: per-alert email at fleet volume is
-# unusable, so a newly-enabled type digests daily until the user says
-# otherwise (docs §8).
-_EMAIL_DEFAULT_CADENCE = "daily"
+# Per-channel default cadence.  Email defaults to a batched digest —
+# per-alert email at fleet volume is unusable (docs §8); push is a glance
+# channel like Telegram, so it defaults to immediate.  This dict is ALSO
+# the allowlist of matrix channels these endpoints may touch —
+# telegram_dm stays on the legacy /user/me/alerts path until the matrix
+# reader flip.
+_CHANNEL_DEFAULT_CADENCE = {"email": "daily", "web_push": "immediate"}
+_EMAIL_DEFAULT_CADENCE = _CHANNEL_DEFAULT_CADENCE["email"]
+
+MatrixChannel = Literal["email", "web_push"]
 
 
-@router.get("/prefs/email")
+@router.get("/prefs/{channel}")
 @limiter.limit("30/minute")
-async def get_email_prefs(request: Request, user: dict = Depends(get_current_user)):
-    """The caller's EMAIL channel preferences for the settings page: the
-    role-tailored alert types, which are on for email, the channel
-    cadence, and the connection state."""
+async def get_channel_prefs(
+    request: Request, channel: MatrixChannel,
+    user: dict = Depends(get_current_user),
+):
+    """The caller's preferences for one matrix channel: the role-tailored
+    alert types, which are on, the channel cadence, and the connection
+    state.  The state is returned under the channel's own key (``email`` /
+    ``web_push``) so each channel card reads ``body[channel]``."""
     from capabilities.alerting.relevance import alert_types_for_role
     from infra.platform import get_platform_db
     db = get_platform_db()
     db_user = await get_current_db_user(user, db)
     if not db_user:
-        return {"relevant_types": [], "email": {}}
+        return {"relevant_types": [], channel: {}}
 
     relevant = alert_types_for_role(db_user.role)
     rows = await db.list_recipient_notification_prefs(
         db_user.account_id, "user", db_user.id)
-    email_rows = [r for r in rows if r["channel"] == "email"]
-    types = {r["alert_type"]: bool(r["enabled"]) for r in email_rows}
-    # Channel cadence = the shared cadence of the email rows (kept uniform
-    # by set_channel_cadence); default when nothing is enabled yet.
-    cadence = next((r["cadence"] for r in email_rows), _EMAIL_DEFAULT_CADENCE)
+    ch_rows = [r for r in rows if r["channel"] == channel]
+    types = {r["alert_type"]: bool(r["enabled"]) for r in ch_rows}
+    # Channel cadence = the shared cadence of the channel's rows (kept
+    # uniform by set_channel_cadence); default when nothing is enabled yet.
+    cadence = next((r["cadence"] for r in ch_rows),
+                   _CHANNEL_DEFAULT_CADENCE[channel])
     conn = await db.get_notification_channel(
-        db_user.account_id, "user", db_user.id, "email")
+        db_user.account_id, "user", db_user.id, channel)
 
-    return {
-        "relevant_types": relevant,
-        "email": {
-            "connected": bool(conn),
-            "verified": bool(conn and conn.get("verified")),
-            "address": (conn or {}).get("address", ""),
-            "enabled_master": bool(conn.get("enabled_master")) if conn else True,
-            "cadence": cadence,
-            "types": {t: types.get(t, False) for t in relevant},
-        },
+    state = {
+        "connected": bool(conn),
+        "verified": bool(conn and conn.get("verified")),
+        "address": (conn or {}).get("address", ""),
+        "enabled_master": bool(conn.get("enabled_master")) if conn else True,
+        "cadence": cadence,
+        "types": {t: types.get(t, False) for t in relevant},
     }
+    if channel == "web_push":
+        devices = await db.list_push_subscriptions(db_user.account_id, db_user.id)
+        state["devices"] = [
+            {"id": d["id"], "endpoint": d["endpoint"],
+             "device_label": d["device_label"], "created_at": d["created_at"],
+             "last_ok_at": d["last_ok_at"]}
+            for d in devices
+        ]
+    return {"relevant_types": relevant, channel: state}
 
 
-class EmailTypeRequest(BaseModel):
+class ChannelTypeRequest(BaseModel):
     alert_type: str
     enabled: bool
 
 
-@router.put("/prefs/email/type")
+@router.put("/prefs/{channel}/type")
 @limiter.limit("60/minute")
-async def set_email_type(
-    request: Request, body: EmailTypeRequest,
+async def set_channel_type(
+    request: Request, channel: MatrixChannel, body: ChannelTypeRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Toggle one alert type for the caller's email channel.  Role-gated:
-    a type the caller's role can't see is silently dropped (defence in
-    depth — the UI wouldn't render it).
+    """Toggle one alert type for a matrix channel.  Role-gated: a type the
+    caller's role can't see is rejected (defence in depth — the UI
+    wouldn't render it).
 
-    Cadence is NOT taken from the client: a new type inherits the channel's
-    CURRENT cadence (or the default) so every email row stays uniform — the
-    UI models cadence as one channel-level choice, and letting a per-type
-    override slip in would desync that."""
+    Cadence is NOT taken from the client: a new type inherits the
+    channel's CURRENT cadence (or its default) so every row stays uniform
+    — the UI models cadence as one channel-level choice, and letting a
+    per-type override slip in would desync that."""
     from capabilities.alerting.relevance import alert_types_for_role
     from infra.platform import get_platform_db
     db = get_platform_db()
@@ -161,26 +178,26 @@ async def set_email_type(
         return {"ok": False, "error": "irrelevant_type"}
     rows = await db.list_recipient_notification_prefs(
         db_user.account_id, "user", db_user.id)
-    cadence = next((r["cadence"] for r in rows if r["channel"] == "email"),
-                   _EMAIL_DEFAULT_CADENCE)
+    cadence = next((r["cadence"] for r in rows if r["channel"] == channel),
+                   _CHANNEL_DEFAULT_CADENCE[channel])
     await db.set_notification_pref(
-        db_user.account_id, "user", db_user.id, "email",
+        db_user.account_id, "user", db_user.id, channel,
         body.alert_type, enabled=body.enabled, cadence=cadence)
     return {"ok": True}
 
 
-class EmailCadenceRequest(BaseModel):
+class ChannelCadenceRequest(BaseModel):
     cadence: Literal["immediate", "hourly", "daily"]
 
 
-@router.put("/prefs/email/cadence")
+@router.put("/prefs/{channel}/cadence")
 @limiter.limit("60/minute")
-async def set_email_cadence(
-    request: Request, body: EmailCadenceRequest,
+async def set_channel_cadence_route(
+    request: Request, channel: MatrixChannel, body: ChannelCadenceRequest,
     user: dict = Depends(get_current_user),
 ):
-    """Set the caller's email delivery cadence (applies to every email
-    type at once)."""
+    """Set a matrix channel's delivery cadence (applies to every one of
+    its types at once)."""
     from infra.platform import get_platform_db
     db = get_platform_db()
     db_user = await get_current_db_user(user, db)
@@ -188,10 +205,118 @@ async def set_email_cadence(
         return {"ok": False, "error": "user_not_found"}
     try:
         await db.set_channel_cadence(
-            db_user.account_id, "user", db_user.id, "email", body.cadence)
+            db_user.account_id, "user", db_user.id, channel, body.cadence)
     except ValueError:
         return {"ok": False, "error": "bad_cadence"}
     return {"ok": True, "cadence": body.cadence}
+
+
+# ── Web push: device subscribe / unsubscribe (authed) ────────────────
+
+def _device_label(request: Request) -> str:
+    """Human-ish device name from the User-Agent — server-derived so the
+    label can't be spoofed into something misleading, and good enough for
+    a 'which device is this' list."""
+    ua = request.headers.get("user-agent", "")
+    browser = next((b for b in ("Edg", "OPR", "Firefox", "Chrome", "Safari")
+                    if b in ua), "Browser")
+    browser = {"Edg": "Edge", "OPR": "Opera"}.get(browser, browser)
+    os_name = next((o for o, marker in (
+        ("Android", "Android"), ("iPhone", "iPhone"), ("iPad", "iPad"),
+        ("Windows", "Windows"), ("macOS", "Mac OS X"), ("Linux", "Linux"),
+    ) if marker in ua), "device")
+    return f"{browser} · {os_name}"
+
+
+@router.get("/push/vapid-key")
+@limiter.limit("30/minute")
+async def get_vapid_key(request: Request, user: dict = Depends(get_current_user)):
+    """The application-server public key the browser needs to subscribe.
+    Generated once and stable forever (subscriptions are bound to it)."""
+    from infra.platform import get_platform_db
+
+    from capabilities.notifications.vapid import ensure_vapid
+    vapid = await ensure_vapid(get_platform_db())
+    return {"public_key": vapid["public_key"]}
+
+
+class PushKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+
+class PushSubscribeRequest(BaseModel):
+    endpoint: str
+    keys: PushKeys
+
+
+@router.post("/push/subscribe")
+@limiter.limit("10/minute")
+async def push_subscribe(
+    request: Request, body: PushSubscribeRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Store this browser's push subscription for the caller.  The
+    permission grant in the browser IS the verification (unlike email
+    there is no address to prove), so the channel row goes verified as
+    soon as one device exists.  The user's master switch is preserved —
+    adding a device must not silently re-enable a channel they turned
+    off."""
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    db_user = await get_current_db_user(user, db)
+    if not db_user:
+        return {"ok": False, "error": "user_not_found"}
+    ep = body.endpoint.strip()
+    if not ep.startswith("https://") or len(ep) > 1024:
+        return {"ok": False, "error": "bad_endpoint"}
+    if len(body.keys.p256dh) > 512 or len(body.keys.auth) > 512:
+        return {"ok": False, "error": "bad_keys"}
+
+    await db.add_push_subscription(
+        db_user.account_id, db_user.id, endpoint=ep,
+        p256dh=body.keys.p256dh, auth=body.keys.auth,
+        device_label=_device_label(request))
+    existing = await db.get_notification_channel(
+        db_user.account_id, "user", db_user.id, "web_push")
+    await db.upsert_notification_channel(
+        db_user.account_id, "user", db_user.id, "web_push",
+        address="devices", verified=True,
+        enabled_master=existing.get("enabled_master", True) if existing else True)
+    return {"ok": True}
+
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str
+
+
+@router.post("/push/unsubscribe")
+@limiter.limit("10/minute")
+async def push_unsubscribe(
+    request: Request, body: PushUnsubscribeRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Remove one device (scoped to the caller — you can only ever drop
+    your own).  When the LAST device goes, the channel row un-verifies so
+    the delivery gate stops selecting this user (nothing left to push to,
+    and no digest items buffering for a device-less channel)."""
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    db_user = await get_current_db_user(user, db)
+    if not db_user:
+        return {"ok": False, "error": "user_not_found"}
+    removed = await db.remove_push_subscription(
+        db_user.account_id, db_user.id, body.endpoint.strip())
+    remaining = await db.list_push_subscriptions(db_user.account_id, db_user.id)
+    if not remaining:
+        existing = await db.get_notification_channel(
+            db_user.account_id, "user", db_user.id, "web_push")
+        if existing:
+            await db.upsert_notification_channel(
+                db_user.account_id, "user", db_user.id, "web_push",
+                address="devices", verified=False,
+                enabled_master=existing.get("enabled_master", True))
+    return {"ok": True, "removed": removed, "devices_left": len(remaining)}
 
 
 # ── Verify (public — the token authorizes) ───────────────────────────
