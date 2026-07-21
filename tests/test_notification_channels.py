@@ -56,6 +56,7 @@ _NOTIF_MODULES = (
     "capabilities.notifications.retention",
     "capabilities.notifications.webpush",
     "capabilities.notifications.vapid",
+    "capabilities.notifications.push_endpoint",
     "capabilities.notifications.router",
 )
 
