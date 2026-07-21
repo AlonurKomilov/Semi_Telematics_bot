@@ -1,10 +1,13 @@
-"""Digest engine (phase 3) — the batched-cadence buffer, the cadence
-branch in dispatch(), and the flush that turns N buffered items into ONE
-message per (recipient, channel).
+"""Digest engine (phase 3) + the semantic content/render model (phase 4).
+
+The batched-cadence buffer, the cadence branch in dispatch(), and the
+flush that turns N buffered items into ONE message per (recipient,
+channel).  Phase 4 made dispatch take semantic ``NotificationContent``
+and render per-channel, so these also prove the digest groups RAW fields
+and renders exactly once.
 
 This is the gate before Email: at fleet alert volume a per-alert email is
-unusable, so the digest path has to be proven before a channel that needs
-it goes live.  Nothing here touches the live Telegram pipeline (Telegram
+unusable.  Nothing here touches the live Telegram pipeline (Telegram
 stays 'immediate' and never enqueues).
 """
 
@@ -18,6 +21,7 @@ import pytest
 
 from capabilities.notifications.channels import (
     DeliveryResult,
+    NotificationContent,
     Payload,
     Recipient,
     register_channel,
@@ -25,19 +29,26 @@ from capabilities.notifications.channels import (
 from capabilities.notifications.service import (
     MAX_DIGEST_CHARS,
     MAX_DIGEST_LINES,
+    build_digest_content,
     dispatch,
     flush_digests,
-    render_digest,
 )
 from capabilities.permissions.roles import Role
 
 
 class FakeChannel:
-    """A recording transport — proves WHAT was sent without a network."""
+    """A recording transport — renders content to a Payload (carrying the
+    original content in ``extra`` so tests can assert on semantic fields)
+    and records what it 'sent' without a network."""
 
     def __init__(self, key: str, *, personal: bool = True, ok: bool = True):
         self.key, self.personal, self._ok = key, personal, ok
         self.sent: list[tuple[Recipient, Payload]] = []
+
+    def render(self, recipient, content) -> Payload:
+        text = content.title + (f"\n{content.body}" if content.body else "")
+        return Payload(text=text, subject=content.title,
+                       extra={"content": content})
 
     async def send(self, recipient, payload) -> DeliveryResult:
         self.sent.append((recipient, payload))
@@ -49,6 +60,11 @@ def fake_channel():
     ch = FakeChannel("fake_test")
     register_channel(ch)
     return ch
+
+
+def _content(title, alert_type="fuel", body="", severity="info"):
+    return NotificationContent(title=title, body=body,
+                               alert_type=alert_type, severity=severity)
 
 
 async def _seed(pg_db, name="Digest Co"):
@@ -70,13 +86,15 @@ async def test_enqueue_fetch_clear_roundtrip(pg_db):
     acct, uid = await _seed(pg_db)
     for t in ("fuel", "faults"):
         await pg_db.enqueue_digest_item(
-            acct, "user", uid, "email", "daily", t, f"{t} on Truck 22", "me@x.com")
+            acct, "user", uid, "email", "daily", t, f"{t} on Truck 22",
+            "me@x.com", severity="warning")
 
     assert await pg_db.fetch_due_digest_items("hourly") == []   # cadence-scoped
     items = await pg_db.fetch_due_digest_items("daily")
     assert len(items) == 2
     assert {i["alert_type"] for i in items} == {"fuel", "faults"}
     assert items[0]["address"] == "me@x.com"
+    assert items[0]["severity"] == "warning"
 
     assert await pg_db.clear_digest_items([i["id"] for i in items]) == 2
     assert await pg_db.fetch_due_digest_items("daily") == []
@@ -85,39 +103,42 @@ async def test_enqueue_fetch_clear_roundtrip(pg_db):
 
 # ── Cadence branch in dispatch ───────────────────────────────────────
 
-async def test_immediate_sends_now_and_queues_nothing(pg_db, fake_channel):
+async def test_immediate_renders_and_sends_now(pg_db, fake_channel):
     acct, uid = await _seed(pg_db)
     await _subscribe(pg_db, acct, uid, "fake_test", "fuel", "immediate")
 
-    res = await dispatch(pg_db, acct, "fuel", Payload(text="Low fuel · Truck 22"),
+    res = await dispatch(pg_db, acct, _content("Low fuel · Truck 22"),
                          channels=["fake_test"])
 
     assert [r.ok for r in res] == [True]
-    assert fake_channel.sent[0][0].address == "me@x.com"
-    assert fake_channel.sent[0][1].text == "Low fuel · Truck 22"
+    rcpt, payload = fake_channel.sent[0]
+    assert rcpt.address == "me@x.com"
+    assert payload.text == "Low fuel · Truck 22"           # rendered from content
+    assert payload.extra["content"].alert_type == "fuel"   # channel saw raw content
     assert await pg_db.fetch_due_digest_items("daily") == []
 
 
-async def test_batched_cadence_queues_instead_of_sending(pg_db, fake_channel):
+async def test_batched_cadence_queues_raw_summary(pg_db, fake_channel):
     acct, uid = await _seed(pg_db)
     await _subscribe(pg_db, acct, uid, "fake_test", "fuel", "daily")
 
-    await dispatch(pg_db, acct, "fuel",
-                   Payload(text="Low fuel · Truck 22\nsecond line"),
+    await dispatch(pg_db, acct,
+                   _content("Low fuel · Truck 22", body="second line",
+                            severity="warning"),
                    channels=["fake_test"])
 
     assert fake_channel.sent == []                      # nothing delivered now
     items = await pg_db.fetch_due_digest_items("daily")
     assert len(items) == 1
-    assert items[0]["summary"] == "Low fuel · Truck 22"  # first line by default
+    assert items[0]["summary"] == "Low fuel · Truck 22"  # title = one-line summary
+    assert items[0]["severity"] == "warning"             # raw severity stored
     assert items[0]["channel"] == "fake_test"
 
 
 async def test_unknown_channel_is_skipped_not_fatal(pg_db, fake_channel):
     acct, uid = await _seed(pg_db)
     await _subscribe(pg_db, acct, uid, "fake_test", "fuel", "immediate")
-    res = await dispatch(pg_db, acct, "fuel", Payload(text="x"),
-                         channels=["nope", "fake_test"])
+    res = await dispatch(pg_db, acct, _content("x"), channels=["nope", "fake_test"])
     assert len(res) == 1 and res[0].ok        # the good channel still went out
 
 
@@ -126,35 +147,58 @@ async def test_non_subscriber_gets_nothing(pg_db, fake_channel):
     DIFFERENT type doesn't leak."""
     acct, uid = await _seed(pg_db)
     await _subscribe(pg_db, acct, uid, "fake_test", "faults", "immediate")
-    await dispatch(pg_db, acct, "fuel", Payload(text="x"), channels=["fake_test"])
+    await dispatch(pg_db, acct, _content("x", alert_type="fuel"), channels=["fake_test"])
     assert fake_channel.sent == []
 
 
-# ── Rendering ────────────────────────────────────────────────────────
+# ── Digest content building (raw, grouped, capped) ───────────────────
 
-def test_render_groups_counts_and_caps():
-    items = [{"alert_type": "fuel", "summary": f"fuel {i}"} for i in range(3)]
-    items += [{"alert_type": "faults", "summary": "fault A"}]
-    text = render_digest(items, "daily")
-    assert "4 notifications" in text
-    assert "1 faults, 3 fuel" in text          # grouped counts
-    assert text.count("•") == 4
+def test_build_digest_groups_counts_and_severity():
+    items = [{"alert_type": "fuel", "summary": f"fuel {i}", "severity": "info"}
+             for i in range(3)]
+    items += [{"alert_type": "faults", "summary": "fault A", "severity": "critical"}]
+    content = build_digest_content(items, "daily")
+    assert content.alert_type == "digest"
+    assert content.severity == "critical"          # max across items
+    assert "4 notifications" in content.title
+    assert "1 faults, 3 fuel" in content.body      # grouped counts
+    assert content.body.count("•") == 4
 
-    many = [{"alert_type": "fuel", "summary": f"s{i}"}
+
+def test_build_digest_stays_under_the_transport_limit():
+    """A digest longer than the transport cap would be rejected on every
+    run, wedging the queue.  Long summaries are dropped by COUNT."""
+    fat = [{"alert_type": "fuel", "summary": "x" * 500, "severity": "info"}
+           for _ in range(MAX_DIGEST_LINES)]
+    content = build_digest_content(fat, "daily")
+    assert len(content.body) <= MAX_DIGEST_CHARS
+    assert "more" in content.body                  # remainder reported
+
+    many = [{"alert_type": "fuel", "summary": f"s{i}", "severity": "info"}
             for i in range(MAX_DIGEST_LINES + 5)]
-    capped = render_digest(many, "hourly")
-    assert capped.count("•") == MAX_DIGEST_LINES
-    assert "and 5 more" in capped              # overflow counted, not hidden
+    capped = build_digest_content(many, "hourly")
+    assert capped.body.count("•") <= MAX_DIGEST_LINES
+    assert "more" in capped.body
 
 
-# ── Flush ────────────────────────────────────────────────────────────
+def test_build_digest_body_is_raw_not_escaped():
+    """The digest content is RAW — escaping happens in each channel's
+    render, exactly once.  Storing an already-escaped body here would
+    double-escape on the Telegram path."""
+    content = build_digest_content(
+        [{"alert_type": "fuel", "summary": "Truck A & B", "severity": "info"}],
+        "daily")
+    assert "Truck A & B" in content.body           # literal ampersand, unescaped
+    assert "&amp;" not in content.body
+
+
+# ── Flush (renders per channel) ──────────────────────────────────────
 
 async def test_flush_sends_one_message_per_recipient_and_clears(pg_db, fake_channel):
     acct, uid = await _seed(pg_db)
     await _subscribe(pg_db, acct, uid, "fake_test", "*", "daily")
     for i in range(3):
-        await dispatch(pg_db, acct, "fuel", Payload(text=f"alert {i}"),
-                       channels=["fake_test"])
+        await dispatch(pg_db, acct, _content(f"alert {i}"), channels=["fake_test"])
     assert len(await pg_db.fetch_due_digest_items("daily")) == 3
 
     sent = await flush_digests(pg_db, "daily")
@@ -162,9 +206,10 @@ async def test_flush_sends_one_message_per_recipient_and_clears(pg_db, fake_chan
     assert sent == 1                                   # 3 items → ONE message
     rcpt, payload = fake_channel.sent[0]
     assert rcpt.id == str(uid) and rcpt.address == "me@x.com"
+    body = payload.extra["content"].body
     assert "3 notifications" in payload.text
     for i in range(3):
-        assert f"alert {i}" in payload.text
+        assert f"alert {i}" in body
     assert await pg_db.fetch_due_digest_items("daily") == []   # drained
 
 
@@ -174,8 +219,7 @@ async def test_flush_separates_recipients(pg_db, fake_channel):
     await _subscribe(pg_db, acct, uid, "fake_test", "*", "daily")
     await _subscribe(pg_db, acct, other, "fake_test", "*", "daily")
 
-    await dispatch(pg_db, acct, "fuel", Payload(text="shared alert"),
-                   channels=["fake_test"])
+    await dispatch(pg_db, acct, _content("shared alert"), channels=["fake_test"])
     assert await flush_digests(pg_db, "daily") == 2      # one digest each
     assert {r.id for r, _ in fake_channel.sent} == {str(uid), str(other)}
 
@@ -186,7 +230,7 @@ async def test_failed_send_keeps_items_for_next_run(pg_db):
     register_channel(broken)
     acct, uid = await _seed(pg_db)
     await _subscribe(pg_db, acct, uid, "fake_broken", "*", "hourly")
-    await dispatch(pg_db, acct, "fuel", Payload(text="alert"), channels=["fake_broken"])
+    await dispatch(pg_db, acct, _content("alert"), channels=["fake_broken"])
 
     assert await flush_digests(pg_db, "hourly") == 0
     assert len(await pg_db.fetch_due_digest_items("hourly")) == 1   # still buffered
@@ -203,37 +247,16 @@ async def test_flush_empty_queue_is_a_noop(pg_db, fake_channel):
 
 # ── Wedge / poison-pill guards ───────────────────────────────────────
 
-def test_render_stays_under_the_transport_limit():
-    """A digest longer than the transport's cap would be rejected on every
-    run, and since items clear only on success that wedges the recipient's
-    queue forever.  Long summaries must be dropped by COUNT, not blindly
-    concatenated."""
-    fat = [{"alert_type": "fuel", "summary": "x" * 500}
-           for _ in range(MAX_DIGEST_LINES)]
-    text = render_digest(fat, "daily")
-    assert len(text) <= MAX_DIGEST_CHARS
-    assert "more" in text                       # the remainder is reported
-
-
-def test_render_does_not_double_escape():
-    """Summaries arrive already transport-safe (the dispatch text
-    contract).  Re-escaping here would turn 'A & B' into 'A &amp;amp; B'."""
-    text = render_digest(
-        [{"alert_type": "fuel", "summary": "Truck A &amp; B"}], "daily")
-    assert "&amp; B" in text and "&amp;amp;" not in text
-
-
-async def test_unknown_cadence_is_delivered_not_buried(pg_db, fake_channel, monkeypatch):
+async def test_unknown_cadence_is_delivered_not_buried(pg_db, fake_channel):
     """No flush job drains an unrecognised cadence, so enqueueing would be
     a black hole — dispatch sends instead."""
     acct, uid = await _seed(pg_db)
     await _subscribe(pg_db, acct, uid, "fake_test", "fuel", "immediate")
-    # Force a bad cadence past the write-boundary guard.
     await pg_db._db.execute(
         "UPDATE notification_pref SET cadence = 'weekly' WHERE account_id = ?", (acct,))
     await pg_db._db.commit()
 
-    await dispatch(pg_db, acct, "fuel", Payload(text="x"), channels=["fake_test"])
+    await dispatch(pg_db, acct, _content("x"), channels=["fake_test"])
     assert len(fake_channel.sent) == 1                      # delivered
     assert await pg_db.fetch_due_digest_items("weekly") == []   # not buried
 
@@ -258,7 +281,7 @@ async def test_revoked_consent_drops_the_backlog(pg_db, fake_channel):
     off meanwhile, the buffered backlog must NOT arrive afterwards."""
     acct, uid = await _seed(pg_db)
     await _subscribe(pg_db, acct, uid, "fake_test", "*", "daily")
-    await dispatch(pg_db, acct, "fuel", Payload(text="alert"), channels=["fake_test"])
+    await dispatch(pg_db, acct, _content("alert"), channels=["fake_test"])
 
     await pg_db.upsert_notification_channel(
         acct, "user", uid, "fake_test", address="me@x.com",
@@ -272,7 +295,7 @@ async def test_revoked_consent_drops_the_backlog(pg_db, fake_channel):
 async def test_flush_uses_current_address_not_the_enqueued_one(pg_db, fake_channel):
     acct, uid = await _seed(pg_db)
     await _subscribe(pg_db, acct, uid, "fake_test", "*", "daily")
-    await dispatch(pg_db, acct, "fuel", Payload(text="alert"), channels=["fake_test"])
+    await dispatch(pg_db, acct, _content("alert"), channels=["fake_test"])
     await pg_db.upsert_notification_channel(
         acct, "user", uid, "fake_test", address="corrected@x.com", verified=True)
 
@@ -289,13 +312,11 @@ async def test_flush_never_merges_across_accounts(pg_db, fake_channel):
     await _subscribe(pg_db, a1, u1, "fake_test", "*", "daily")
     await _subscribe(pg_db, a2, u2, "fake_test", "*", "daily")
 
-    await dispatch(pg_db, a1, "fuel", Payload(text="tenant one alert"),
-                   channels=["fake_test"])
-    await dispatch(pg_db, a2, "fuel", Payload(text="tenant two alert"),
-                   channels=["fake_test"])
+    await dispatch(pg_db, a1, _content("tenant one alert"), channels=["fake_test"])
+    await dispatch(pg_db, a2, _content("tenant two alert"), channels=["fake_test"])
 
     assert await flush_digests(pg_db, "daily") == 2
-    by_acct = {r.account_id: p.text for r, p in fake_channel.sent}
+    by_acct = {r.account_id: p.extra["content"].body for r, p in fake_channel.sent}
     assert "tenant one alert" in by_acct[a1] and "tenant two" not in by_acct[a1]
     assert "tenant two alert" in by_acct[a2] and "tenant one" not in by_acct[a2]
 

@@ -12,6 +12,7 @@ Importing this package registers the built-in channels.
 from capabilities.notifications.channels import (  # noqa: F401
     Channel,
     DeliveryResult,
+    NotificationContent,
     Payload,
     Recipient,
     get_channel,
@@ -23,10 +24,13 @@ from capabilities.notifications.channels import (  # noqa: F401
 
 from capabilities.notifications.service import (  # noqa: F401,E402
     DIGEST_CADENCES,
+    build_digest_content,
     dispatch,
     flush_digests,
-    render_digest,
 )
 
 # Register the built-in transports (their module-load @register_channel).
 from capabilities.notifications import telegram as _telegram  # noqa: F401,E402
+from capabilities.notifications.email import EmailChannel  # noqa: E402
+
+register_channel(EmailChannel())

@@ -416,6 +416,7 @@ async def create_tables(conn) -> None:
             cadence        TEXT    NOT NULL,      -- 'hourly' | 'daily'
             alert_type     TEXT    NOT NULL,
             summary        TEXT    NOT NULL DEFAULT '',
+            severity       TEXT    NOT NULL DEFAULT 'info',
             address        TEXT    NOT NULL DEFAULT '',
             created_at     TEXT    NOT NULL
         );

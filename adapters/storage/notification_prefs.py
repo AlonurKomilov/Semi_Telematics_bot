@@ -161,17 +161,19 @@ class NotificationPrefsMixin(_MixinBase):
     async def enqueue_digest_item(
         self, account_id: int, recipient_type: str, recipient_id: str,
         channel: str, cadence: str, alert_type: str,
-        summary: str, address: str = "",
+        summary: str, address: str = "", *, severity: str = "info",
     ) -> None:
-        """Buffer one notification for a batched cadence.  Flushed as part
-        of a single summary by :meth:`fetch_due_digest_items`' consumer."""
+        """Buffer one notification for a batched cadence.  Stores RAW
+        semantic fields (``summary`` is unescaped one-line text, plus
+        ``severity``) so the flush renders per-channel exactly once —
+        never a pre-rendered string."""
         await self._db.execute(
             """INSERT INTO notification_digest_queue
                  (account_id, recipient_type, recipient_id, channel,
-                  cadence, alert_type, summary, address, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                  cadence, alert_type, summary, severity, address, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, recipient_type, str(recipient_id), channel,
-             cadence, alert_type, summary[:500], address, self._now()),
+             cadence, alert_type, summary[:500], severity, address, self._now()),
         )
         await self._db.commit()
 
@@ -182,7 +184,7 @@ class NotificationPrefsMixin(_MixinBase):
         (account, recipient, channel) in one pass."""
         cur = await self._db.execute(
             """SELECT id, account_id, recipient_type, recipient_id, channel,
-                      alert_type, summary, address
+                      alert_type, summary, address, severity
                  FROM notification_digest_queue
                 WHERE cadence = ?
                 ORDER BY account_id, recipient_type, recipient_id, channel, id
@@ -192,7 +194,7 @@ class NotificationPrefsMixin(_MixinBase):
         return [
             {"id": r[0], "account_id": r[1], "recipient_type": r[2],
              "recipient_id": r[3], "channel": r[4], "alert_type": r[5],
-             "summary": r[6], "address": r[7]}
+             "summary": r[6], "address": r[7], "severity": r[8]}
             for r in await cur.fetchall()
         ]
 

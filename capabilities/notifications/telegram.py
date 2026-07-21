@@ -22,9 +22,73 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from .channels import DeliveryResult, Payload, Recipient, register_channel
+from .channels import (
+    DeliveryResult,
+    NotificationContent,
+    Payload,
+    Recipient,
+    register_channel,
+)
 
 logger = logging.getLogger("bot.notifications")
+
+# Severity → the emoji the pipeline already uses, so a notification-layer
+# Telegram message reads the same as a live alert.  Keys are validated
+# against channels.SEVERITIES by a test so the three severity dicts
+# (icon / subject-prefix / rank) can't drift apart.
+_SEV_ICON = {"critical": "🔴", "warning": "🟡", "info": "🔵"}
+
+# Telegram's hard limits: 4096 for a message, 1024 for a photo caption.
+_TELEGRAM_TEXT_MAX = 4096
+_TELEGRAM_CAPTION_MAX = 1024
+
+
+def _clamp(text: str, limit: int) -> str:
+    """Truncate to Telegram's limit without splitting an HTML entity.
+
+    The bound in ``build_digest_content`` is on RAW length, but escaping
+    grows it (``&`` → ``&amp;``), so a digest full of ampersands could
+    still exceed the transport cap and — because items clear only on a
+    successful send — wedge that recipient's queue forever.  This is the
+    final, transport-shaped safety net.  Because content is escaped with
+    plain ``html.escape``, the only multi-char sequences are ``&…;``
+    entities, so backing off to before a dangling ``&`` guarantees valid
+    HTML that Telegram will parse."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit - 1]              # room for the ellipsis
+    amp, semi = cut.rfind("&"), cut.rfind(";")
+    if amp > semi:                      # mid-entity — drop the partial entity
+        cut = cut[:amp]
+    return cut + "…"
+
+
+def render_telegram(content: NotificationContent) -> Payload:
+    """Semantic content → a Telegram HTML :class:`Payload`.
+
+    The ONE place raw content gets escaped for Telegram — with plain
+    ``html.escape`` (NOT the alerting pipeline's allow-list
+    ``escape_html``): ``NotificationContent`` is documented raw plain
+    text, so a literal ``<a href>`` in it must render as inert text, never
+    a live link.  Escape exactly once (``html.escape`` handles ``&`` /
+    ``<`` / ``>``); the ``<b>`` framing is added AFTER escaping.  Both
+    Telegram channels share this: a DM and a group topic render
+    identically; only the destination differs."""
+    import html as _html
+
+    icon = _SEV_ICON.get(content.severity, "")
+    head = f"{icon} <b>{_html.escape(content.title)}</b>" if icon \
+        else f"<b>{_html.escape(content.title)}</b>"
+    parts = [head]
+    if content.body:
+        parts.append(_html.escape(content.body))
+    if content.url:
+        parts.append(_html.escape(content.url))
+    limit = _TELEGRAM_CAPTION_MAX if content.photo_bytes else _TELEGRAM_TEXT_MAX
+    return Payload(
+        text=_clamp("\n".join(parts), limit), parse_mode="HTML",
+        photo_bytes=content.photo_bytes,
+    )
 
 
 async def _tg_send_with_retry(send, *, what: str):
@@ -97,6 +161,9 @@ class TelegramDmChannel:
     key = "telegram_dm"
     personal = True
 
+    def render(self, recipient: Recipient, content: NotificationContent) -> Payload:
+        return render_telegram(content)
+
     async def send(self, recipient: Recipient, payload: Payload) -> DeliveryResult:
         raw = recipient.address or recipient.id
         try:
@@ -117,6 +184,9 @@ class TelegramTopicChannel:
     cross-post uses the primary bot, not the persona bot)."""
     key = "telegram_topic"
     personal = False
+
+    def render(self, recipient: Recipient, content: NotificationContent) -> Payload:
+        return render_telegram(content)
 
     async def send(self, recipient: Recipient, payload: Payload,
                    *, sender_app=None) -> DeliveryResult:

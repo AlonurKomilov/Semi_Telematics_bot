@@ -505,10 +505,18 @@ async def migrate_notification_digest_queue(conn) -> None:
                 cadence        TEXT    NOT NULL,
                 alert_type     TEXT    NOT NULL,
                 summary        TEXT    NOT NULL DEFAULT '',
+                severity       TEXT    NOT NULL DEFAULT 'info',
                 address        TEXT    NOT NULL DEFAULT '',
                 created_at     TEXT    NOT NULL
             )
         """)
+        # ``severity`` was added with the Email channel (digest envelope
+        # takes the max severity of its items) — additive for installs
+        # that got the table before it.
+        await conn.execute(
+            "ALTER TABLE notification_digest_queue "
+            "ADD COLUMN IF NOT EXISTS severity TEXT NOT NULL DEFAULT 'info'"
+        )
         await conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_notification_digest_due"
             " ON notification_digest_queue(cadence, account_id, recipient_type,"

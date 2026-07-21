@@ -26,8 +26,9 @@ from collections import defaultdict
 from typing import Any, Iterable
 
 from capabilities.notifications.channels import (
+    SEVERITY_RANK,
     DeliveryResult,
-    Payload,
+    NotificationContent,
     Recipient,
     get_channel,
     list_channels,
@@ -36,6 +37,11 @@ from capabilities.notifications.channels import (
 logger = logging.getLogger(__name__)
 
 IMMEDIATE = "immediate"
+
+# Severity rank (SSOT: channels.SEVERITY_RANK) — the digest envelope takes
+# the MAX of its items so a batch containing a critical still reads as
+# critical (drives the email subject prefix, etc.).
+_SEV_RANK = SEVERITY_RANK
 
 # Batched cadences and the flush job that drains each.  Adding a cadence
 # = one entry here + one scheduler job; the queue itself is generic.
@@ -56,29 +62,21 @@ MAX_DIGEST_CHARS = 3500        # Telegram's hard cap is 4096 — leave headroom
 async def dispatch(
     db: Any,
     account_id: int,
-    alert_type: str,
-    payload: Payload,
+    content: NotificationContent,
     *,
     channels: Iterable[str] | None = None,
-    digest_summary: str | None = None,
 ) -> list[DeliveryResult]:
-    """Deliver one event to every subscriber on every channel.
+    """Deliver one semantic event to every subscriber on every channel.
 
-    ``channels`` restricts the fan-out (default: every registered
-    channel).  ``digest_summary`` is the one-line form buffered for
-    batched recipients — falls back to the payload's first line.
-
-    TEXT CONTRACT: ``payload.text`` and ``digest_summary`` must ALREADY be
-    transport-safe — i.e. run through
-    ``capabilities.formatting.helpers.escape_html`` by whoever rendered
-    them, the same contract ``Payload`` states.  The digest cannot escape
-    them for you: ``escape_html`` is not idempotent for ``&``, so
-    re-escaping already-rendered text would turn every "Truck A & B" into
-    "A &amp;amp; B".  Escape once, at render time, like the rest of the
-    alerting code does.
+    Each channel RENDERS ``content`` its own way (escape once, at render
+    time) — Telegram HTML, an email subject+body, later a short SMS — then
+    sends the result.  ``content`` stays RAW: it must NOT be pre-escaped,
+    since ``escape_html`` is not idempotent for ``&`` and rendering is
+    where escaping belongs.  ``channels`` restricts the fan-out (default:
+    every registered channel).  ``content.alert_type`` selects subscribers.
     """
     keys = list(channels) if channels is not None else [c.key for c in list_channels()]
-    line = (digest_summary or payload.text.split("\n", 1)[0]).strip()
+    line = (content.title or content.body).split("\n", 1)[0].strip()
     results: list[DeliveryResult] = []
 
     for key in keys:
@@ -87,7 +85,8 @@ async def dispatch(
             logger.warning("dispatch: unknown channel %r", key)
             continue
         try:
-            subs = await db.get_notification_subscribers(account_id, alert_type, key)
+            subs = await db.get_notification_subscribers(
+                account_id, content.alert_type, key)
         except Exception as e:                      # a broken channel query
             logger.error("dispatch: subscriber lookup failed (%s): %s", key, e)
             continue
@@ -105,7 +104,8 @@ async def dispatch(
                 try:
                     await db.enqueue_digest_item(
                         account_id, s["recipient_type"], s["recipient_id"],
-                        key, cadence, alert_type, line, s.get("address", ""),
+                        key, cadence, content.alert_type, line,
+                        s.get("address", ""), severity=content.severity,
                     )
                 except Exception as e:
                     logger.error("dispatch: enqueue failed (%s): %s", key, e)
@@ -115,6 +115,7 @@ async def dispatch(
                 id=str(s["recipient_id"]), address=s.get("address", ""),
             )
             try:
+                payload = channel.render(rcpt, content)
                 results.append(await channel.send(rcpt, payload))
             except Exception as e:                  # one bad address ≠ dead fan-out
                 logger.error("dispatch: send failed (%s): %s", key, e)
@@ -122,35 +123,51 @@ async def dispatch(
     return results
 
 
-def render_digest(items: list[dict], cadence: str) -> str:
-    """One grouped summary from a recipient's buffered items."""
+def build_digest_content(items: list[dict], cadence: str) -> NotificationContent:
+    """Group a recipient's buffered items into ONE semantic digest.
+
+    Returns RAW content (title + bullet body) that each channel renders
+    its own way — so a digest becomes escaped Telegram HTML or a multipart
+    email through the SAME ``render`` path as a single event, no second
+    renderer.  The body is bounded by BOTH a line cap and a conservative
+    char cap: a digest over the transport's message limit would be
+    rejected on every run, and since items clear only on success that
+    would wedge the recipient's queue.  The overflow is COUNTED, never
+    silently dropped.  (The char cap is Telegram-shaped for now; a
+    per-channel limit is the SMS-day refinement.)
+    """
     label = {"hourly": "Hourly", "daily": "Daily"}.get(cadence, cadence.title())
     n = len(items)
     by_type: dict[str, int] = defaultdict(int)
+    sev = "info"
     for it in items:
         by_type[it["alert_type"]] += 1
+        if _SEV_RANK.get(it.get("severity", "info"), 0) > _SEV_RANK.get(sev, 0):
+            sev = it.get("severity", "info")
     counts = ", ".join(
         f"{c} {t.replace('_', ' ')}" for t, c in sorted(by_type.items())
     )
-    lines = [f"<b>{label} summary — {n} notification{'s' if n != 1 else ''}</b>"]
-    if counts:
-        lines.append(counts)
-    lines.append("")
+    title = f"{label} summary — {n} notification{'s' if n != 1 else ''}"
 
-    # Fill against BOTH caps.  Whichever runs out first stops the body;
-    # the remainder is reported as a count so nothing vanishes silently.
-    used = sum(len(x) + 1 for x in lines)
+    body_lines: list[str] = []
+    if counts:
+        body_lines.append(counts)
+        body_lines.append("")
+    used = len(title) + sum(len(x) + 1 for x in body_lines)
     shown = 0
     for it in items[:MAX_DIGEST_LINES]:
         line = f"• {it['summary']}"
         if used + len(line) + 1 > MAX_DIGEST_CHARS - 40:   # reserve the tail
             break
-        lines.append(line)
+        body_lines.append(line)
         used += len(line) + 1
         shown += 1
     if n > shown:
-        lines.append(f"…and {n - shown} more")
-    return "\n".join(lines)
+        body_lines.append(f"…and {n - shown} more")
+    return NotificationContent(
+        title=title, body="\n".join(body_lines),
+        alert_type="digest", severity=sev,
+    )
 
 
 async def flush_digests(db: Any, cadence: str, *, limit: int = 2000) -> int:
@@ -201,7 +218,8 @@ async def flush_digests(db: Any, cadence: str, *, limit: int = 2000) -> int:
             or next((g["address"] for g in group if g["address"]), ""),
         )
         try:
-            res = await channel.send(rcpt, Payload(text=render_digest(group, cadence)))
+            content = build_digest_content(group, cadence)
+            res = await channel.send(rcpt, channel.render(rcpt, content))
         except Exception as e:
             logger.error("flush_digests: send failed (%s): %s", chan_key, e)
             continue

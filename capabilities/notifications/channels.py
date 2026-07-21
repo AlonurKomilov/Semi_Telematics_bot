@@ -32,6 +32,12 @@ from typing import Any, Awaitable, Protocol, runtime_checkable
 # recipient scope — 'user' is personal; 'account'/'topic' are shared.
 RecipientType = str  # 'user' | 'account' | 'topic'
 
+# Canonical severity vocabulary, ORDERED low→high.  One SSOT so the
+# per-transport severity maps (Telegram icon, email subject prefix,
+# digest rank) can't drift; a test asserts each keys only these.
+SEVERITIES: tuple[str, ...] = ("info", "warning", "critical")
+SEVERITY_RANK: dict[str, int] = {s: i for i, s in enumerate(SEVERITIES)}
+
 
 @dataclass
 class Recipient:
@@ -51,13 +57,42 @@ class Recipient:
 
 
 @dataclass
+class NotificationContent:
+    """The SEMANTIC message — what happened, not how any one channel shows
+    it.  This is the seam every channel binds to (docs §5): ``render()``
+    turns it into a channel-specific :class:`Payload`.
+
+    ``title`` and ``body`` are RAW, UNESCAPED plain text.  Escaping /
+    markup happens exactly once, inside each channel's ``render`` — so
+    the same content becomes escaped Telegram HTML, a multipart email
+    (subject from ``title``), or one day a ≤160-char SMS, with no lossy
+    round-trip through another channel's already-rendered string.
+
+    ``severity`` is a plain string ("critical"/"warning"/"info") — the
+    alerting layer's enum maps to it at the call site, keeping alerting's
+    types on alerting's side of the seam.  ``meta`` carries optional
+    channel hints (e.g. a Telegram keyboard spec) without polluting the
+    semantic core.
+    """
+    title: str
+    body: str = ""
+    alert_type: str = ""
+    severity: str = "info"
+    url: str = ""
+    photo_bytes: bytes | None = None
+    meta: dict = field(default_factory=dict)
+
+
+@dataclass
 class Payload:
-    """A transport-level message (caller-rendered for now — see module
-    docstring).  ``parse_mode`` / ``photo_bytes`` / ``markup`` are
+    """A transport-level message — the OUTPUT of a channel's ``render``.
+    ``parse_mode`` / ``photo_bytes`` / ``markup`` / ``subject`` are
     honored by channels that support them and ignored by those that
-    don't (email/sms will ignore ``markup``)."""
+    don't (email uses ``subject`` + ``extra['html']``; telegram ignores
+    ``subject``; email/sms ignore ``markup``)."""
     text: str
     parse_mode: str = "HTML"
+    subject: str = ""           # email subject line; ignored by chat channels
     photo_bytes: bytes | None = None
     markup: Any = None          # channel-specific reply markup (opaque here)
     extra: dict = field(default_factory=dict)
@@ -74,9 +109,19 @@ class DeliveryResult:
 class Channel(Protocol):
     """A delivery transport.  ``key`` is the stable id used by prefs +
     the registry; ``personal`` splits per-user channels from shared
-    destinations."""
+    destinations.
+
+    Two responsibilities, kept separate so the semantic layer never
+    speaks a transport's dialect:
+      • ``render`` turns :class:`NotificationContent` into this channel's
+        :class:`Payload` (escape, format, subject, short-form …).
+      • ``send`` pushes a rendered ``Payload`` to a recipient.
+    """
     key: str
     personal: bool
+
+    def render(self, recipient: Recipient, content: NotificationContent) -> Payload:
+        ...
 
     def send(self, recipient: Recipient, payload: Payload) -> Awaitable[DeliveryResult]:
         ...
