@@ -1,6 +1,6 @@
 ---
 name: ux-psychology-audit
-description: Full UX audit of any user-facing feature, flow, screen, or service — TWO parts in one run. Part P audits behavioral psychology (Smart Defaults, Goal Gradient, Reciprocity, IKEA Effect, Loss Aversion, Contrast Effect + ethics gate). Part C audits comprehension clarity for a NEW user (C1 object map / OOUX coherence, C2 component grammar / interface inventory, C3 cognitive walkthrough of first-run tasks). Use when the user asks for a "UX audit", "psychology review", "clarity audit", "UX check", says a screen is confusing / not understandable / components look alike, or when wrapping up work on a user-facing feature and the project instructions call for a UX pass. Works on ANY surface type in any product domain; can also audit the live rendered UI when browser/screenshot tools are available. Report is delivered IN CHAT (no files by default).
+description: Full UX audit of any user-facing feature, flow, screen, or service — TWO parts in one run. Part P audits behavioral psychology (Smart Defaults, Goal Gradient, Reciprocity, IKEA Effect, Loss Aversion, Contrast Effect + ethics gate). Part C audits comprehension clarity for a NEW user (C1 object map / OOUX coherence, C2 component grammar / interface inventory, C3 cognitive walkthrough of first-run tasks). On explicit request ("deep audit", "component by component", "tree audit", "audit every word/element") switch to Part T — a component-tree deep audit that decomposes the target into its component tree and audits every node (wording, control choice, visual form, behavior, sibling consistency) before synthesizing the whole image. Use when the user asks for a "UX audit", "psychology review", "clarity audit", "UX check", says a screen is confusing / not understandable / components look alike, or when wrapping up work on a user-facing feature and the project instructions call for a UX pass. Works on ANY surface type in any product domain; can also audit the live rendered UI when browser/screenshot tools are available. Report is delivered IN CHAT (no files by default).
 ---
 
 # UX Audit — psychology + clarity
@@ -140,6 +140,80 @@ what to do next? (b) will they find the control? (c) will they understand the
 feedback after acting? Every hesitation is a finding.
 - Audit questions: When the surface starts unconfigured, is there a visible ordered path (step 1 → 2 → 3), or all controls at once? After a mode/state switch, does the layout keep a shared skeleton so learning transfers, or does the page rebuild? Is feedback after each action immediate and specific? Are error/edge states explained in task language ("bot needs admin rights in the group") rather than system language?
 - Typical fixes: numbered setup checklist visible until configured; shared layout skeleton across modes; disable-with-reason instead of hide; success feedback that names what changed.
+
+## Deep mode — Part T: component-tree audit (on explicit request)
+
+Parts P and C audit whole SURFACES. When the user asks to go deeper —
+"deep audit", "component by component", "tree audit", "audit every
+word/element" — switch to tree depth. This is the atomic-design idea
+applied as an audit: decompose, judge every node, then reassemble the
+whole image.
+
+1. **Map the tree first.** From the real component source (and the
+   rendered UI when available), draw the target's component tree:
+   surface → sections → blocks → controls → atoms (labels, chips,
+   inputs, icons, placeholder texts). Print the tree — it is the
+   audit's table of contents and the user's map. Skip pure layout
+   wrappers; every node a user can SEE or CLICK is in scope.
+2. **One audit card per node**, descending layer by layer — finish a
+   section's nodes before entering the next section; never jump
+   around the tree. Fixed checks per card:
+   - **T1 Wording** — is the label the SHORTEST accurate one for
+     first-view scanning? Parallel grammar with siblings (a pair like
+     "Single bot / Sub bots" scans; "Single bot / Sub bot per role"
+     doesn't)? Detail belongs in the description line, never the
+     label. Placeholders and hints fit without truncation at real
+     widths.
+   - **T2 Control choice** — is this primitive the right one for the
+     interaction (two exclusive modes → option cards vs segmented
+     toggle vs radios; pick-many → chips vs checkboxes)? Name the
+     strongest alternative and say why the current one stays or goes.
+     "Current is correct" is a valid verdict — justify it, don't
+     invent change.
+   - **T3 Visual form** — would an icon add recognition or just
+     noise? Is prominence proportional to importance? Are all states
+     drawn (hover, selected, disabled, busy, empty)? No wrapping or
+     truncation at the sizes really rendered.
+   - **T4 Behavior & feedback** — what exactly a click does; is
+     feedback immediate and specific; are consequences visible BEFORE
+     destructive or hard-to-reverse actions.
+   - **T5 Sibling consistency** — same-level nodes share one grammar
+     (cell order, chip shape, verb style, capitalization).
+
+   Card format (terse, mergeable):
+   ```
+   ### <tree path, e.g. Mode selector → "Sub bot per role" option>
+   - T1 Wording — OK | ISSUE: <finding + concrete fix> `Impact · Effort`
+   - T2 Control — …
+   - T3 Visual — …
+   - T4 Behavior — …
+   - T5 Siblings — …
+   ```
+   Only ISSUE lines need prose; OK may carry a ≤1-line reason.
+3. **Synthesis — the whole image.** After all cards: a consistency
+   matrix of repeated patterns (chips, buttons, labels) across
+   branches; the surface-level Part P table (P runs once per surface —
+   it is about user moments, not atoms; Part C's checks are folded
+   into T1–T5); and ONE ranked Top-actions list. The synthesis is
+   where component-level findings become page-level decisions.
+
+### Splitting across sub-agents (large trees only)
+
+Up to ~15 audit-worthy nodes: ONE session audits the whole tree —
+cross-node comparison lives in one context and costs nothing extra.
+Larger scope (a whole page family, several surfaces): the MAIN session
+builds the tree itself, then may fan out one sub-agent per BRANCH
+(never per atom), each given: the branch's file paths, the card format
+above verbatim, and the T1–T5 vocabulary. Two rules survive any split:
+
+- The main session always writes the synthesis itself — sibling
+  consistency and whole-image findings are cross-branch by nature; no
+  branch agent can see them.
+- Branch agents return CARDS only (no prose reports), so the merge is
+  mechanical and nothing is lost in paraphrase.
+
+Fan-out spends real tokens — confirm with the user before launching
+more than ~3 branch agents, and always tell them the planned split.
 
 ## Step 4 — Ethics gate (mandatory)
 
