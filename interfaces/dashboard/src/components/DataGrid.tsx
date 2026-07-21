@@ -121,9 +121,12 @@ function formatAggDefault(value: number, fn: AggFn): string {
 }
 
 // Normalize a date column's raw value (Date / ISO string / ms number)
-// to a comparable ms timestamp.  Unparseable → NaN, dropped downstream
-// by the ``Number.isFinite`` filter.
-function toAggTimestamp(v: number | string | Date): number {
+// to a comparable ms timestamp.  Null / undefined / '' → NaN so a
+// missing date is DROPPED by the ``Number.isFinite`` filter — NOT folded
+// in as epoch 0 (``new Date(null)`` / ``new Date(0)`` both yield
+// 1970-01-01, which would masquerade as the "earliest" min).
+function toAggTimestamp(v: number | string | Date | null | undefined): number {
+  if (v == null || v === '') return NaN;
   if (v instanceof Date) return v.getTime();
   if (typeof v === 'number') return v;
   return new Date(v).getTime();
@@ -2113,7 +2116,8 @@ export default function DataGrid({
       value = originals.length;
     } else if (isDate) {
       const raws = originals.map(o =>
-        (col.aggValue ? col.aggValue(o) : o[key]) as number | string | Date);
+        (col.aggValue ? col.aggValue(o) : o[key]) as
+          number | string | Date | null | undefined);
       dateOnly = raws.every(r =>
         r == null || r === ''
         || (typeof r === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r)));
