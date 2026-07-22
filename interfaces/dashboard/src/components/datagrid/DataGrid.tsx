@@ -25,7 +25,7 @@ import {
 import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Rows3, Rows2, Rows4,
   Search, X, Columns3, Download, Copy, Filter as FilterIcon, ArrowUpDown,
-  CornerUpRight, ListTree, Plus, MoreVertical, Pencil, RefreshCw, Trash2,
+  CornerUpRight, ListTree, Plus, MoreVertical, Pencil, Trash2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
@@ -55,8 +55,9 @@ import ColumnFilterMenu from './ColumnFilterMenu';
 import ColumnHeaderMenu from './ColumnHeaderMenu';
 import ManageColumnsMenu from './ManageColumnsMenu';
 import {
-  type SavedView, rowPassesColFilter, viewMatch, viewIsEmpty,
+  type SavedView, rowPassesColFilter, viewMatch,
 } from './savedViews';
+import SavedViewDialog from './SavedViewDialog';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../ui/select';
@@ -599,42 +600,30 @@ export default function DataGrid({
     return sourceData.filter(activeSegment.match);
   }, [sourceData, activeSegment]);
 
-  // ── view CRUD (capture from the live filters) ────────────────────
-  const saveCurrentView = useCallback(() => {
-    const search = hasSearch ? globalFilter.trim() : '';
-    if (viewIsEmpty(columnFilters, search)) {
-      window.alert('Apply a filter or a search first — an empty view would just show everything.');
-      return;
+  // ── view CRUD ────────────────────────────────────────────────────
+  // The New / Edit dialog owns the name + filter picking; these just
+  // persist what it returns.  ``viewDialog`` = null (closed), 'new', or
+  // the view being edited.
+  const [viewDialog, setViewDialog] = useState<SavedView | 'new' | null>(null);
+  const commitView = useCallback((name: string, filters: ColumnFiltersState, search: string) => {
+    if (viewDialog === 'new') {
+      const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      // Compose with the built-in segment we're inside (Active/Archive) —
+      // not the implicit "All" tab or another view.
+      const cur = segmentPref;
+      const baseSegment = cur && cur !== ALL_KEY && !cur.startsWith(VIEW_PREFIX)
+        ? cur : undefined;
+      setSavedViewList(prev => [...prev, {
+        id, name, filters, search: search || undefined, baseSegment,
+      }]);
+      setSegmentPref(VIEW_PREFIX + id);
+    } else if (viewDialog) {
+      const editId = viewDialog.id;
+      setSavedViewList(prev => prev.map(v => (
+        v.id === editId ? { ...v, name, filters, search: search || undefined } : v
+      )));
     }
-    const name = window.prompt('Name this view')?.trim();
-    if (!name) return;
-    const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-    // Remember the built-in segment we're inside (Active/Archive) so the
-    // view composes with it — but NOT the implicit "All" tab or another
-    // view (a view built on a view would nest scopes confusingly).
-    const cur = segmentPref;
-    const baseSegment = cur && cur !== ALL_KEY && !cur.startsWith(VIEW_PREFIX)
-      ? cur : undefined;
-    setSavedViewList(prev => [...prev, {
-      id, name, filters: columnFilters, search: search || undefined, baseSegment,
-    }]);
-    setSegmentPref(VIEW_PREFIX + id);
-  }, [columnFilters, globalFilter, hasSearch, setSavedViewList, segmentPref]);
-  const renameView = useCallback((id: string, current: string) => {
-    const name = window.prompt('Rename view', current)?.trim();
-    if (!name) return;
-    setSavedViewList(prev => prev.map(v => (v.id === id ? { ...v, name } : v)));
-  }, [setSavedViewList]);
-  const updateView = useCallback((id: string) => {
-    const search = hasSearch ? globalFilter.trim() : '';
-    if (viewIsEmpty(columnFilters, search)) {
-      window.alert('Apply a filter or a search first, then Update.');
-      return;
-    }
-    setSavedViewList(prev => prev.map(v => (
-      v.id === id ? { ...v, filters: columnFilters, search: search || undefined } : v
-    )));
-  }, [columnFilters, globalFilter, hasSearch, setSavedViewList]);
+  }, [viewDialog, segmentPref, setSavedViewList]);
   const deleteView = useCallback((id: string) => {
     setSavedViewList(prev => prev.filter(v => v.id !== id));
     setSegmentPref(prev => (prev === VIEW_PREFIX + id ? (segments?.[0]?.key ?? ALL_KEY) : prev));
@@ -2302,7 +2291,7 @@ export default function DataGrid({
                           onClick={(e) => { e.stopPropagation(); props.onClick?.(e); }}
                           className="self-center mb-1 -ml-1.5 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted inline-flex"
                         >
-                          <MoreVertical size={13} />
+                          <MoreVertical size={14} />
                         </button>
                       )}
                     />
@@ -2310,16 +2299,13 @@ export default function DataGrid({
                       <MenuPrimitive.Positioner align="start" sideOffset={4} className="z-50 outline-none">
                         <MenuPrimitive.Popup className="min-w-48 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
                           <MenuPrimitive.Item
-                            onClick={() => renameView(viewId, seg.label)}
+                            onClick={() => {
+                              const v = savedViewList.find(x => x.id === viewId);
+                              if (v) setViewDialog(v);
+                            }}
                             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground"
                           >
-                            <Pencil size={14} className="text-muted-foreground" /> Rename
-                          </MenuPrimitive.Item>
-                          <MenuPrimitive.Item
-                            onClick={() => updateView(viewId)}
-                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground"
-                          >
-                            <RefreshCw size={14} className="text-muted-foreground" /> Update to current filters
+                            <Pencil size={14} className="text-muted-foreground" /> Edit view
                           </MenuPrimitive.Item>
                           <div className="my-1 border-t border-border" />
                           <MenuPrimitive.Item
@@ -2350,10 +2336,10 @@ export default function DataGrid({
           {savedViewsEnabled && (
             <button
               type="button"
-              onClick={saveCurrentView}
+              onClick={() => setViewDialog('new')}
               className="self-center mb-1 ml-1 inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
             >
-              <Plus size={13} /> New view
+              <Plus size={14} /> New view
             </button>
           )}
         </div>
@@ -3110,6 +3096,20 @@ export default function DataGrid({
           open={manageOpen}
           onOpenChange={setManageOpen}
           anchor={manageAnchorRef.current}
+        />
+      )}
+      {savedViewsEnabled && viewDialog && (
+        <SavedViewDialog
+          open
+          onOpenChange={(o) => { if (!o) setViewDialog(null); }}
+          columns={columns}
+          data={sourceData}
+          title={viewDialog === 'new' ? 'New view' : 'Edit view'}
+          saveLabel={viewDialog === 'new' ? 'Save view' : 'Save changes'}
+          initialName={viewDialog === 'new' ? '' : viewDialog.name}
+          initialFilters={viewDialog === 'new' ? columnFilters : viewDialog.filters}
+          initialSearch={viewDialog === 'new' ? (hasSearch ? globalFilter : '') : (viewDialog.search ?? '')}
+          onSave={commitView}
         />
       )}
       {/* The selection action bar is the TOP strip above the table

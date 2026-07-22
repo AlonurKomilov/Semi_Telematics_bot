@@ -119,3 +119,89 @@ export function viewMatch(
 export function viewIsEmpty(filters: ColumnFiltersState, search: string): boolean {
   return filters.length === 0 && search.trim() === '';
 }
+
+/** A column's available filter choices — computed once over the FULL
+ *  dataset so the New-view builder can offer any value / the real bounds
+ *  (not just the current scope's).  Shape matches ``ColumnFilterMenu``. */
+export interface ColFacet {
+  options: { value: string; label: string }[];   // select mode
+  counts: Record<string, number>;                 // select mode
+  numeric?: { min: number; max: number };         // range mode
+  dates?: { min: string; max: string };           // date-range mode
+}
+
+/** Compute per-column facets for the filterable columns. */
+export function computeFacets(
+  columns: AnyColumn[],
+  rows: Record<string, unknown>[],
+): Record<string, ColFacet> {
+  const out: Record<string, ColFacet> = {};
+  for (const col of columns) {
+    if (!col.filterable) continue;
+    if (col.filterMode === 'range') {
+      // Honour an author-set ``filterRange.min/max`` (e.g. a 0–100 %),
+      // only data-scanning the side left unset — mirrors the grid's own
+      // rangesByCol so the dialog's hint matches the header filter.
+      const scanMin = col.filterRange?.min == null;
+      const scanMax = col.filterRange?.max == null;
+      let min = col.filterRange?.min ?? Infinity;
+      let max = col.filterRange?.max ?? -Infinity;
+      if (scanMin || scanMax) {
+        for (const r of rows) {
+          const raw = r[col.key];
+          if (raw == null) continue;   // null ≠ 0: don't drag the min to 0
+          const n = Number(raw);
+          if (!Number.isFinite(n)) continue;
+          if (scanMin && n < min) min = n;
+          if (scanMax && n > max) max = n;
+        }
+      }
+      out[col.key] = {
+        options: [], counts: {},
+        numeric: {
+          min: Number.isFinite(min) ? min : 0,
+          max: Number.isFinite(max) ? max : 0,
+        },
+      };
+    } else if (col.filterMode === 'date-range') {
+      let min = '';
+      let max = '';
+      for (const r of rows) {
+        const v = r[col.key];
+        if (!v) continue;
+        const day = String(v).slice(0, 10);
+        const t = new Date(day).getTime();
+        if (!Number.isFinite(t)) continue;
+        if (!min || t < new Date(min).getTime()) min = day;
+        if (!max || t > new Date(max).getTime()) max = day;
+      }
+      out[col.key] = { options: [], counts: {}, dates: { min, max } };
+    } else {
+      const counts: Record<string, number> = {};
+      const labelByValue: Record<string, string> = {};
+      for (const r of rows) {
+        const v = col.filterValue ? col.filterValue(r) : String(r[col.key] ?? '');
+        if (v === '') continue;
+        counts[v] = (counts[v] ?? 0) + 1;
+        if (!(v in labelByValue)) labelByValue[v] = col.filterLabel ? col.filterLabel(r) : v;
+      }
+      out[col.key] = {
+        options: Object.keys(counts).sort((a, b) =>
+          (labelByValue[a] || a).localeCompare(labelByValue[b] || b),
+        ).map(v => ({ value: v, label: labelByValue[v] })),
+        counts,
+      };
+    }
+  }
+  return out;
+}
+
+/** Is a single column's captured filter value "empty" (contributes no
+ *  constraint)?  Used to strip no-op rows before saving. */
+export function isFilterValueEmpty(mode: string | undefined, value: unknown): boolean {
+  if (mode === 'range' || mode === 'date-range') {
+    const r = value as [unknown, unknown] | undefined;
+    return !r || (r[0] == null || r[0] === '') && (r[1] == null || r[1] === '');
+  }
+  return !Array.isArray(value) || value.length === 0;
+}
