@@ -176,11 +176,16 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   `aggFormat: (value, fn) => node` to format the total (currency, units)
   — **switch on `fn`** so `count` doesn't render as `$`. For a
   date/timestamp column set `aggType: 'date'` — the menu then offers only
-  Min (earliest) / Max (latest) / Count, `aggValue` may return a
+  Min (earliest) / Max (latest), `aggValue` may return a
   Date/ISO-string/ms-number, and the result formats as a day (a bare
   `YYYY-MM-DD` is treated as a tz-neutral calendar day; a full timestamp's
-  day is shown in the account tz). Narrow the offered functions further
-  with `aggFns` (default: number → all five, date → min/max/count). The
+  day is shown in the account tz). Date columns deliberately do NOT offer
+  Count — it's the whole-view row count, not "how many rows have a date",
+  so on a nullable column (`reviewed_at`) it misleads; put Count on a
+  count column or read the pagination total. Narrow further with `aggFns`
+  (default: number → all five, date → min/max). A missing numeric
+  (null/undefined/'') is EXCLUDED from sum/avg/min/max, never folded in as
+  0. The
   chosen model
   persists per-user (`table.<id>.aggregation`, so it needs `tableId`);
   `defaultAggregation={{ key: fn }}` starts it on. The total reduces over

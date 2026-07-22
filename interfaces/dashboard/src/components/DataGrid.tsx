@@ -132,9 +132,12 @@ function toAggTimestamp(v: number | string | Date | null | undefined): number {
   return new Date(v).getTime();
 }
 
-// Date columns only offer earliest / latest / count — summing or
-// averaging dates is meaningless.  Number columns offer all five.
-const DATE_AGG_FNS: readonly AggFn[] = ['min', 'max', 'count'];
+// Date columns only offer earliest / latest — summing or averaging dates
+// is meaningless, and ``count`` on a date is ambiguous (it's the whole-
+// view ROW count, NOT "how many rows have a date", so on a mostly-null
+// column like ``reviewed_at`` it misleads).  Row counts belong on a
+// count column or the pagination total.  Number columns offer all five.
+const DATE_AGG_FNS: readonly AggFn[] = ['min', 'max'];
 function offeredAggFns(col?: AnyColumn): readonly AggFn[] {
   if (!col) return AGG_FN_ORDER;
   if (col.aggFns) return col.aggFns;
@@ -2126,7 +2129,14 @@ export default function DataGrid({
       value = computeAggregate(fn, ts, originals.length);
     } else {
       const nums = originals
-        .map(o => Number(col.aggValue ? col.aggValue(o) : o[key]))
+        .map(o => {
+          const raw = col.aggValue ? col.aggValue(o) : o[key];
+          // Missing (null / undefined / '') is EXCLUDED, not folded in as
+          // 0 — ``Number(null) === 0`` would otherwise let an absent
+          // odometer or a null unit price drag an average down or
+          // masquerade as the minimum.  (``Number('') === 0`` too.)
+          return raw == null || raw === '' ? NaN : Number(raw);
+        })
         .filter((n): n is number => Number.isFinite(n));
       value = computeAggregate(fn, nums, originals.length);
     }
