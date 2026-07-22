@@ -14,11 +14,14 @@ import type { AlertsResponse } from '../../types';
 
 const RECENT_LIMIT = 12;
 
-export function useRecentAlerts(enabled: boolean) {
+export function useRecentAlerts(enabled: boolean, refetchInterval?: number) {
   return useQuery({
     queryKey: ['alerts', 'recent'],
     enabled,
     staleTime: 30_000,
+    // The live-banner watcher passes a background poll interval; the bell
+    // (no interval) shares the SAME cache entry, so one fetch serves both.
+    refetchInterval: enabled ? (refetchInterval ?? false) : false,
     queryFn: () =>
       apiJSON<AlertsResponse>(
         `/alerts/pending?page_size=${RECENT_LIMIT}&days=7`,

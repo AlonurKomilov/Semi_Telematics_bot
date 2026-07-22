@@ -4,6 +4,7 @@ import { useAuth } from './context/AuthContext';
 import { isSafeReturnTo, APEX_DOMAIN, explicitSignoutActive } from './lib/safeReturnTo';
 import AppRouter from './router';
 import PendingInviteBanner from './components/PendingInviteBanner';
+import LiveAlertWatcher from './features/alerts/LiveAlertWatcher';
 import Login from './pages/Login';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
@@ -272,6 +273,9 @@ export default function App() {
   return (
     <>
       <PendingInviteBanner />
+      {/* App-wide, authed-only: pops new alerts on screen (gated inside on
+          the alerts permission + the user's level preference). */}
+      <LiveAlertWatcher />
       <AppRouter />
     </>
   );

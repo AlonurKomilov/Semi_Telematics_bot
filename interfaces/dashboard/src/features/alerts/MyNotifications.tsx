@@ -23,6 +23,7 @@ import EmailChannelCard from './EmailChannelCard';
 import PushChannelCard from './PushChannelCard';
 import NotifyMatrix from './NotifyMatrix';
 import BannerSettingsCard from './BannerSettingsCard';
+import BannerLevelCard from './BannerLevelCard';
 import { AlertsTabs } from './AlertsTabs';
 
 interface AlertPrefsResponse {
@@ -184,7 +185,10 @@ export default function MyNotifications() {
       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mt-6 mb-2">
         In-app
       </p>
-      <BannerSettingsCard />
+      <div className="grid gap-4 lg:grid-cols-2 items-start">
+        <BannerLevelCard />
+        <BannerSettingsCard />
+      </div>
     </div>
   );
 }
