@@ -361,6 +361,31 @@ def _norm_work_order(rec: dict[str, Any]) -> dict[str, Any]:
         or []
     )
     line_items = [_norm_task(t) for t in tasks_raw if isinstance(t, dict)]
+    # Datatruck's OpenAPI never sends tax/fees as their own fields
+    # (payload audit 2026-07: no tax_total_price / tax / fee key in any
+    # synced WO) — but it DOES roll them into ``total_price``.  So the
+    # combined tax-and-fees amount is recoverable as
+    # ``total_price − Σ(line totals)``: whatever the invoice charged
+    # beyond the itemized work.  Prefer an explicit field if Datatruck
+    # ever ships one; else derive.  Clamped at 0 so a discount (total <
+    # subtotal) never yields a negative tax.  Keeping tax out of
+    # parts_cost here is what lets the WO's breakdown (parts + tax)
+    # reconcile to Datatruck's own total downstream.
+    _total = _money(_first(
+        rec, "total_price", "total_cost", "totalCost", "total", "cost",
+    )) or 0.0
+    _lines_sum = round(sum(li["total"] for li in line_items), 2)
+    _explicit_tax = _money(_first(rec, "tax_total_price", "tax_amount", "tax"))
+    if _explicit_tax is not None:
+        _tax = _explicit_tax
+    elif _lines_sum > 0.005:
+        # Line items exist and the total exceeds them → the excess is
+        # tax + fees.  Only derive when there IS an itemization: a WO
+        # with no line items but a total is a lump sum we can't split,
+        # so calling all of it "tax" would be wrong — leave it 0.
+        _tax = round(max(0.0, _total - _lines_sum), 2)
+    else:
+        _tax = 0.0
     # The WO carries EITHER a ``truck`` or a ``trailer`` (the other is None);
     # in the v2 detail each is a dict ({unit_number, plate_number, …}), in the
     # list shape it can be a bare string.  Capture which kind it is so the WO
@@ -386,9 +411,7 @@ def _norm_work_order(rec: dict[str, Any]) -> dict[str, Any]:
         "closed_at":    _as_text(_first(
             rec, "closed_at", "completed_at", "completedAt", "due_date",
         )),
-        "total_cost":   _money(_first(
-            rec, "total_price", "total_cost", "totalCost", "total", "cost",
-        )),
+        "total_cost":   _total,
         # ── Enrichment promoted onto the Work Orders module ──
         "invoice_number": _as_text(_first(
             rec, "invoice_id", "invoice_number", "invoiceId",
@@ -419,9 +442,7 @@ def _norm_work_order(rec: dict[str, Any]) -> dict[str, Any]:
             rec, "payment_type", "payment_method", "paymentType",
         )),
         "note":           _as_text(_first(rec, "note")),
-        "tax_amount":     _money(_first(
-            rec, "tax_total_price", "tax_amount", "tax",
-        )),
+        "tax_amount":     _tax,
         "odometer":       _as_float(rec.get("odometer")),
         # Carrier MC number — the openapi list gives the bare number string;
         # used to match the WO to one of the account's Companies (which own

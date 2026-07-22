@@ -180,6 +180,53 @@ def test_norm_work_order_v2_detail_shape():
     assert item["total"] == 20.0
 
 
+def test_norm_work_order_derives_tax_from_total_minus_lines():
+    """Datatruck's OpenAPI sends no tax field but rolls tax+fees into
+    total_price — so with line items present, tax = total − Σ line
+    totals (this is the real shape: 580-payload audit found zero tax
+    keys)."""
+    out = _norm_work_order({
+        "id": 1273, "total_price": 1674.43,
+        "work_order_tasks": [
+            {"custom_task": "MECHANICAL HOURLY LABOR", "labor_price": 142.99,
+             "labor_hours": 3, "total_price": 500.47},
+            {"custom_task": "TRANS OIL COOLER", "parts_price": 911.24,
+             "parts_quantity": 1, "total_price": 911.24},
+            {"custom_task": "SHOP SUPPLY/ENVIRONMENTAL FEE", "parts_price": 33,
+             "parts_quantity": 1, "total_price": 33.0},
+            {"custom_task": "DT12 TRANS", "parts_price": 12.99,
+             "parts_quantity": 2, "total_price": 25.98},
+            {"custom_task": "COOLANT SYSTEM PRESSURE TEST", "labor_price": 54.99,
+             "labor_hours": 1, "total_price": 54.99},
+        ],
+    })
+    # Lines sum to 1525.68; total 1674.43 → derived tax 148.75.
+    assert out["total_cost"] == 1674.43
+    assert out["tax_amount"] == 148.75
+    # And the breakdown reconciles: Σ lines + tax == total.
+    assert round(sum(li["total"] for li in out["line_items"]) + out["tax_amount"], 2) == 1674.43
+
+
+def test_norm_work_order_no_lineitems_never_fabricates_tax():
+    """A lump-sum WO (total but no itemization) can't be split, so the
+    whole total must NOT become 'tax'."""
+    out = _norm_work_order({"id": 99, "total_price": 700.0, "work_order_tasks": []})
+    assert out["total_cost"] == 700.0
+    assert out["tax_amount"] == 0.0
+
+
+def test_norm_work_order_discount_never_negative_tax():
+    """total < Σ lines (a discount) clamps derived tax to 0."""
+    out = _norm_work_order({
+        "id": 100, "total_price": 90.0,
+        "work_order_tasks": [
+            {"custom_task": "Part", "parts_price": 100.0,
+             "parts_quantity": 1, "total_price": 100.0},
+        ],
+    })
+    assert out["tax_amount"] == 0.0
+
+
 def test_norm_work_order_trailer_unit():
     """When the WO is on a trailer, the unit comes from ``trailer``."""
     out = _norm_work_order({

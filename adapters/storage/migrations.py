@@ -6717,3 +6717,44 @@ async def migrate_parts_public_link(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 155: parts_catalog public-link columns ready")
+
+
+@_register("156_datatruck_derived_tax_backfill")
+async def migrate_datatruck_derived_tax_backfill(conn) -> None:
+    """Backfill the tax-and-fees amount on already-synced Datatruck
+    work orders.
+
+    Datatruck's OpenAPI never sent tax/fees as fields, so historical
+    synced WOs stored ``tax_amount = 0`` while ``total_cost`` already
+    carried Datatruck's tax-inclusive total — leaving the breakdown
+    (parts + tax) short of the total.  The gap ``total_cost −
+    parts_cost − labor_cost`` IS the combined tax + fees (same
+    derivation the normalizer now applies going forward).
+
+    Guarded so it's safe + idempotent:
+      * only ``source = 'datatruck'`` rows,
+      * only where ``tax_amount`` is still 0 (never clobber a value an
+        operator or a newer sync already set),
+      * only where the gap is positive (a discount/rounding WO where
+        total < subtotal stays untouched — no negative tax),
+      * only where line items exist (``parts_cost > 0``) — a WO with a
+        total but no itemization is a lump sum we can't split, so
+        attributing all of it to tax would be wrong,
+      * REAL columns cast to numeric for ROUND (float ROUND has no
+        2-arg form in Postgres).
+    """
+    await conn.execute(
+        """
+        UPDATE work_orders
+        SET tax_amount = ROUND(
+                (total_cost - parts_cost - labor_cost)::numeric, 2
+            ),
+            updated_at = updated_at
+        WHERE source = 'datatruck'
+          AND tax_amount = 0
+          AND parts_cost > 0.005
+          AND (total_cost - parts_cost - labor_cost) > 0.005
+        """
+    )
+    await conn.commit()
+    logger.info("Migration 156: Datatruck derived tax/fees backfilled")
