@@ -27,14 +27,21 @@ export function useRecentAlerts(enabled: boolean) {
 }
 
 /** Acknowledge one or more alerts, then refresh the feed, the board cache,
- * and the shared stats the badge reads. */
+ * and the shared stats the badge reads.
+ *
+ * ``keepalive`` is the staged-action tab-close hint: it lets the browser
+ * finish the POST even though the page is unloading (a plain fetch can be
+ * aborted mid-unload). The cache invalidation is skipped then — there is
+ * no page left to repaint. */
 export function useAckAlerts() {
   const qc = useQueryClient();
-  return async (ids: (string | number)[]) => {
+  return async (ids: (string | number)[], opts?: { keepalive?: boolean }) => {
     await apiJSON('/alerts/bulk-ack', {
       method: 'POST',
       body: { ids: ids.map((id) => Number(id)) },
+      keepalive: opts?.keepalive,
     });
+    if (opts?.keepalive) return;
     await Promise.all([
       qc.invalidateQueries({ queryKey: ['alerts'] }),
       qc.invalidateQueries({ queryKey: ['shell', 'overview-stats'] }),

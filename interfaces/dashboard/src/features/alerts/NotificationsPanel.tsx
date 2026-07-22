@@ -21,7 +21,9 @@ import type { Alert, AlertSeverity } from '../../types';
 import type { Tone } from '../../lib/status';
 import { toneText } from '../../lib/status';
 import { formatAgoShort } from '../../utils/datetime';
+import { stagedAction } from '../../components/banners';
 import { useRecentAlerts, useAckAlerts } from './useRecentAlerts';
+import { addStagedAcks, removeStagedAcks, useStagedAckIds } from './stagedAcks';
 
 const SEVERITY_TONE: Record<AlertSeverity, Tone> = {
   critical: 'danger',
@@ -53,10 +55,16 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
 
   const { data, isLoading, isFetching, refetch } = useRecentAlerts(true);
   const ackAlerts = useAckAlerts();
+  // Ids inside a pending "Acknowledge all" window — module-level store, so
+  // the hide survives this panel unmounting when the dropdown closes (a
+  // reopened panel must NOT resurface rows that are mid-countdown, and
+  // must not allow a second overlapping stage of the same ids).
+  const stagedIds = useStagedAckIds();
 
   const alerts = useMemo(
-    () => (data?.alerts ?? []).filter((a) => !acked.has(String(a.id))),
-    [data, acked],
+    () => (data?.alerts ?? []).filter(
+      (a) => !acked.has(String(a.id)) && !stagedIds.has(String(a.id))),
+    [data, acked, stagedIds],
   );
   const criticalCount = useMemo(
     () => alerts.filter((a) => a.severity === 'critical').length,
@@ -85,6 +93,34 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  // Bulk ack is a STAGED action (the pending-action primitive's worked
+  // example): acknowledging N alerts writes N accountability records
+  // under this user's name, so it gets a cancel window — the request
+  // fires only when the countdown ends.  Single-row acks stay instant
+  // (one deliberate click on one row).  Hide-state lives in the
+  // module-level stagedAcks store, NOT component state — this panel
+  // unmounts when the dropdown closes, and the window must survive that.
+  const ackAllStaged = (ids: (string | number)[]) => {
+    if (!ids.length || busy) return;
+    const strIds = ids.map(String);
+    addStagedAcks(strIds);                               // hide during window
+    stagedAction({
+      label: `Acknowledging ${ids.length} alert${ids.length !== 1 ? 's' : ''}`,
+      detail: 'Each acknowledgement is recorded under your name.',
+      commit: async (hint) => {
+        try {
+          await ackAlerts(ids, hint);
+        } finally {
+          // Success: rows are truly acked (the refetch confirms).
+          // Failure: rows REAPPEAR honestly while the banner offers Retry.
+          removeStagedAcks(strIds);
+        }
+      },
+      successMessage: `Acknowledged ${ids.length} alert${ids.length !== 1 ? 's' : ''}`,
+      onCancel: () => removeStagedAcks(strIds),          // rows come back
+    });
   };
 
   return (
@@ -143,7 +179,7 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
       {/* Footer — bulk ack + the board */}
       <div className="flex items-center justify-between px-3 py-2 border-t border-border">
         <button
-          onClick={() => ack(shown.map((a) => a.id))}
+          onClick={() => ackAllStaged(shown.map((a) => a.id))}
           disabled={busy || shown.length === 0}
           className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors"
         >

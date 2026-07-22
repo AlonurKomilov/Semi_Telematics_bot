@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { Toaster, toast } from 'sonner';
+import { useNotifPosition } from './components/banners';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { RoleViewProvider } from './context/RoleViewContext';
@@ -13,6 +14,14 @@ import { applyPublicFormTheme } from './features/applications/public/theme';
 import MaintenanceOverlay from './components/MaintenanceOverlay';
 import './i18n';  // initialise i18next before any component renders
 import './index.css';
+
+/** The MAIN app's toast/banner lane — position follows the user's
+ * notification-position preference (the public-apply mount keeps a fixed
+ * top-right: one-time visitors have no preferences). */
+function AppToaster() {
+  const position = useNotifPosition();
+  return <Toaster richColors position={position} closeButton />;
+}
 
 // Single shared QueryClient.  ``staleTime: 60s`` matches the server-side
 // 120-second Samsara cache: by the time the user comes back to a tab the
@@ -100,7 +109,7 @@ if (_isApply) {
                 overlay must cover that state too, not just signed-in. */}
             <MaintenanceOverlay />
           </TooltipProvider>
-          <Toaster richColors position="top-right" closeButton />
+          <AppToaster />
           {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
         </QueryClientProvider>
       </ThemeProvider>

@@ -22,6 +22,7 @@ import { PageHeader, ErrorState, CardSkeleton } from '@/components/shell';
 import EmailChannelCard from './EmailChannelCard';
 import PushChannelCard from './PushChannelCard';
 import NotifyMatrix from './NotifyMatrix';
+import BannerSettingsCard from './BannerSettingsCard';
 import { AlertsTabs } from './AlertsTabs';
 
 interface AlertPrefsResponse {
@@ -179,6 +180,11 @@ export default function MyNotifications() {
         onTelegramToggle={setField}
         refreshKey={refreshKey}
       />
+
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mt-6 mb-2">
+        In-app
+      </p>
+      <BannerSettingsCard />
     </div>
   );
 }
