@@ -985,6 +985,9 @@
     "toast_connected": "Conectado @{{username}}",
     "toast_disconnected": "Bot desconectado",
     "toast_connect_error": "No se pudo validar el token",
-    "toast_disconnect_error": "No se pudo desconectar"
+    "toast_disconnect_error": "No se pudo desconectar",
+    "routing_moved_pre": "El enrutamiento de grupos — qué alertas van a qué grupo y tema de Telegram — ahora está en",
+    "routing_moved_link": "Alertas → Entrega por grupo",
+    "routing_moved_post": "."
   }
 }

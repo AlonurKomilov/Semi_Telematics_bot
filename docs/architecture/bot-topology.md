@@ -88,6 +88,26 @@ through the manager tier (TIER_GRANTS for fleet/safety/dispatcher/hr),
 never a base-role seed; the API re-checks `is_manager` + role per
 persona regardless (UI reachability ≠ authorization).
 
+## UI home: routing lives on Alerts, credential on Settings (2026-07-22)
+
+The whole routing surface — mode selector (Single ↔ Sub bots), group
+bind/unbind, Sub bot attach/detach, per-type switches, kind filtering,
+custom topics — moved OFF Settings → Telegram Bot onto a new
+**Alerts → Group delivery** tab (`/alerts/group-delivery`,
+`features/alerts/GroupDelivery.tsx` wrapping the relocated
+AlertRoutingSection + ForumRoutingSection). Reason: a role manager must
+configure their OWN role's group in one place without asking an owner —
+"where do OUR alerts go" belongs next to "where do MY alerts go"
+(Notification preferences), both under Alerts.
+
+Settings → Telegram Bot now holds ONLY the account bot CREDENTIAL
+(connect/disconnect + token, owner-only) and cross-links to the tab.
+The old `can_manage_role_bot`-opens-Settings special case is gone —
+managers never need Settings; the tab is gated `can_manage_account`
+(full, incl. the mode selector) OR `can_manage_role_bot` (own row only,
+enforced by the API `manageable` list). Zero backend change — the move
+is purely UI re-homing; every gate/endpoint is unchanged.
+
 Deferred (revisit on demand): real Telegram forum THREADS inside each
 role group (today role groups are flat chats with per-type dashboard
 controls; the single_group mode keeps its thread-per-alert-type forum).

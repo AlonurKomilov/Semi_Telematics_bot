@@ -985,6 +985,9 @@
     "toast_connected": "Подключён @{{username}}",
     "toast_disconnected": "Бот отключён",
     "toast_connect_error": "Не удалось проверить токен",
-    "toast_disconnect_error": "Не удалось отключить"
+    "toast_disconnect_error": "Не удалось отключить",
+    "routing_moved_pre": "Групповая маршрутизация — какие оповещения идут в какую группу и тему Telegram — теперь на вкладке",
+    "routing_moved_link": "Оповещения → Доставка в группы",
+    "routing_moved_post": "."
   }
 }

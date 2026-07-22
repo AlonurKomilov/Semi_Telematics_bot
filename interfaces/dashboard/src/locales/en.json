@@ -1251,6 +1251,9 @@
     "toast_connected": "Connected @{{username}}",
     "toast_disconnected": "Bot disconnected",
     "toast_connect_error": "Failed to validate token",
-    "toast_disconnect_error": "Failed to disconnect"
+    "toast_disconnect_error": "Failed to disconnect",
+    "routing_moved_pre": "Group routing — which alerts go to which Telegram group and topic — is now on",
+    "routing_moved_link": "Alerts → Group delivery",
+    "routing_moved_post": "."
   }
 }

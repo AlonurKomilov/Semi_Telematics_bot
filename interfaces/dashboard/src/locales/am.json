@@ -769,6 +769,9 @@
     "toast_connected": "@{{username}} ተገናኝቷል",
     "toast_disconnected": "ቦቱ ተቋርጧል",
     "toast_connect_error": "ቶክኑን ማረጋገጥ አልተቻለም",
-    "toast_disconnect_error": "ማቋረጥ አልተቻለም"
+    "toast_disconnect_error": "ማቋረጥ አልተቻለም",
+    "routing_moved_pre": "የቡድን አቅጣጫ — የትኞቹ ማንቂያዎች ወደ የትኛው Telegram ቡድንና ርዕስ እንደሚሄዱ — አሁን በ",
+    "routing_moved_link": "ማንቂያዎች → የቡድን አደራረስ",
+    "routing_moved_post": " ላይ ነው።"
   }
 }

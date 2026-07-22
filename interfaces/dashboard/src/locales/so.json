@@ -769,6 +769,9 @@
     "toast_connected": "@{{username}} waa ku xiran",
     "toast_disconnected": "Bot-ka waa la jaray",
     "toast_connect_error": "Token-ka lama xaqiijin karin",
-    "toast_disconnect_error": "Lama jari karin"
+    "toast_disconnect_error": "Lama jari karin",
+    "routing_moved_pre": "Hagida kooxda — digniintee tegayaan kooxda iyo mowduuca Telegram — hadda waxay ku taallaa",
+    "routing_moved_link": "Digniinaha → Gaarsiinta kooxda",
+    "routing_moved_post": "."
   }
 }

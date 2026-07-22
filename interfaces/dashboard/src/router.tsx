@@ -105,6 +105,7 @@ const AuditLog         = lazyWithReload(() => import('./features/settings/AuditL
 const Settings         = lazyWithReload(() => import('./features/settings/Settings'));
 const Profile          = lazyWithReload(() => import('./pages/Profile'));
 const MyNotifications  = lazyWithReload(() => import('./features/alerts/MyNotifications'));
+const GroupDelivery    = lazyWithReload(() => import('./features/alerts/GroupDelivery'));
 const Storage          = lazyWithReload(() => import('./features/storage/Storage'));
 const WorkHours        = lazyWithReload(() => import('./features/settings/WorkHours'));
 const Invites          = lazyWithReload(() => import('./features/settings/Invites'));
@@ -265,13 +266,14 @@ export default function AppRouter() {
         <Route path="audit" element={L(<P perm="can_manage_users"><AuditLog /></P>)} />
         <Route path="work-hours" element={L(<P perm="can_manage_work_hours"><WorkHours /></P>)} />
         <Route path="invites" element={L(<P perm="can_invite"><Invites /></P>)} />
-        <Route path="settings" element={L(<P perm={["can_manage_account", "can_manage_role_bot"]}><Settings /></P>)} />
+        <Route path="settings" element={L(<P perm="can_manage_account"><Settings /></P>)} />
         {/* Personal preferences — accessible to every authenticated
             user regardless of role. */}
         <Route path="profile" element={L(<Profile />)} />
         {/* Notification preferences live UNDER Alerts (the single gate) as a
             tab; the old standalone path 301s into it so bookmarks survive. */}
         <Route path="alerts/preferences" element={L(<MyNotifications />)} />
+        <Route path="alerts/group-delivery" element={L(<GroupDelivery />)} />
         <Route path="notifications" element={<Navigate to="/alerts/preferences" replace />} />
         <Route path="storage"  element={L(<P perm="can_manage_storage"><Storage /></P>)} />
         <Route path="permissions" element={L(<P perm="can_manage_permissions"><Permissions /></P>)} />

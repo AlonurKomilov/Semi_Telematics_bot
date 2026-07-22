@@ -7,7 +7,6 @@ import { apiJSON } from '../../api/client';
 import type { SettingsResponse, WorkSchedule, User, BotConfig, AnyColumn } from '../../types';
 import DataGrid from '../../components/datagrid';
 import { useAuth } from '../../context/AuthContext';
-import { useShellConfig } from '../../hooks/useShellConfig';
 import {
   PageHeader,
   ErrorState,
@@ -16,8 +15,7 @@ import {
 import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../../utils/timezones';
 import { useNow } from '../../hooks/useNow';
 import { rollupByDisplayLabel } from '../../features/ai/helpers';
-import ForumRoutingSection from './ForumRoutingSection';
-import AlertRoutingSection from './AlertRoutingSection';
+import { Link } from 'react-router-dom';
 import DangerZoneSection from './DangerZoneSection';
 import { toneClasses } from '../../lib/status';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
@@ -46,10 +44,6 @@ export default function Settings() {
   const [accountTzSaving, setAccountTzSaving] = useState(false);
   const [accountTzSuccess, setAccountTzSuccess] = useState('');
   const canManageAccount = !!authUser?.permissions?.can_manage_account;
-  // Role MANAGERS reach this page via can_manage_role_bot (their own
-  // row on the Telegram Bot roster).  They see ONLY the bot card —
-  // every other section is account administration.
-  const canManageRoleBot = !!(authUser?.permissions as Record<string, unknown> | undefined)?.can_manage_role_bot;
 
   // Vendor-directory contribution consent (UX audit 2026-07-16): the
   // auto-pipeline default (ON) becomes inspectable + owner-editable.
@@ -125,13 +119,13 @@ export default function Settings() {
   // Sync edits to fetched settings whenever they arrive.
   useEffect(() => { if (data) setEdits(data.settings || {}); }, [data]);
 
-  // Bot config — only fetched for owners. Mutations write into the cache
-  // directly so we don't need a separate `setBotConfig` setter.
-  const { isOwner } = useShellConfig();
+  // Bot config — fetched for account admins (the bot card's audience).
+  // Mutations write into the cache directly so we don't need a separate
+  // `setBotConfig` setter.
   const { data: botConfig } = useQuery({
     queryKey: ['admin-bot-config'],
     queryFn: () => apiJSON<BotConfig>('/admin/bot-config'),
-    enabled: isOwner || canManageRoleBot,
+    enabled: canManageAccount,
   });
   const setBotConfig = (next: BotConfig | null) => qc.setQueryData(['admin-bot-config'], next);
 
@@ -372,16 +366,18 @@ export default function Settings() {
         </section>
       )}
 
-      {/* Telegram Bot (owner only) */}
-      {(isOwner || canManageRoleBot) && (
+      {/* Telegram Bot — the account bot CREDENTIAL only.  Gated on
+          can_manage_account (owner + full-admin), matching the backend
+          /admin/bot-config PUT/DELETE gate.  All alert routing (mode,
+          groups, Sub bots, topics) moved to Alerts → Group delivery so
+          role managers configure their own group there without needing
+          Settings access. */}
+      {canManageAccount && (
         <section className="bg-card border border-border rounded-xl p-5">
           <h2 className="text-lg font-semibold mb-3">{t('bot_card.title')}</h2>
 
           {botConfig?.has_bot ? (
-            <AlertRoutingSection
-              botConfig={botConfig}
-              canManageAccount={canManageAccount}
-              singleBody={<div>
+            <div>
               <div className="flex items-center gap-3 mb-4">
                 {/* Flat status chip (no border) — border is the action
                     marker on this card.  Labels reuse the roster's
@@ -445,14 +441,17 @@ export default function Settings() {
                 )}
               </div>
 
-              {/* Inline alert-routing sections — only visible once the
-                  bot is connected, since routing requires a working
-                  bot account to talk to Telegram.  Mode + per-department
-                  groups first; the per-topic table below it keeps
-                  serving single_group mode and the fallback route. */}
-              <ForumRoutingSection />
-            </div>}
-            />
+              {/* Alert routing lives on Alerts → Group delivery now —
+                  this card is just the bot credential. */}
+              <div className="mt-4 pt-4 border-t border-border">
+                <p className="text-xs text-muted-foreground">
+                  {t('bot_card.routing_moved_pre')}{' '}
+                  <Link to="/alerts/group-delivery" className="text-primary hover:underline">
+                    {t('bot_card.routing_moved_link')}
+                  </Link>{t('bot_card.routing_moved_post')}
+                </p>
+              </div>
+            </div>
           ) : (
             <div>
               <p className="text-sm text-muted-foreground mb-3">

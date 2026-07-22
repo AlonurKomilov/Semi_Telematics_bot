@@ -12,7 +12,8 @@
  * Telegram's toggles still live on the legacy ``users.alert_*`` columns
  * (via /user/me/alerts, with the write-also mirror into the matrix);
  * Email/Push live on the notification matrix directly.  Group/forum
- * routing stays an admin surface on Settings — independent of this page.
+ * routing is a separate admin surface — the sibling Group delivery tab,
+ * independent of this personal page.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -115,7 +116,7 @@ export default function MyNotifications() {
         icon={Bell}
         title="Notification preferences"
         description={
-          'Connect your channels, then pick which alerts go where in the grid below. Admins set group / forum routing separately on Settings; the two don’t override each other.'
+          'Connect your channels, then pick which alerts go where in the grid below. Admins set group / forum routing on the Group delivery tab; the two don’t override each other.'
         }
       />
 

@@ -769,6 +769,9 @@
     "toast_connected": "@{{username}} ਜੁੜ ਗਿਆ",
     "toast_disconnected": "ਬੋਟ ਡਿਸਕਨੈਕਟ ਹੋਇਆ",
     "toast_connect_error": "ਟੋਕਨ ਤਸਦੀਕ ਨਹੀਂ ਹੋ ਸਕਿਆ",
-    "toast_disconnect_error": "ਡਿਸਕਨੈਕਟ ਨਹੀਂ ਹੋ ਸਕਿਆ"
+    "toast_disconnect_error": "ਡਿਸਕਨੈਕਟ ਨਹੀਂ ਹੋ ਸਕਿਆ",
+    "routing_moved_pre": "ਗਰੁੱਪ ਰੂਟਿੰਗ — ਕਿਹੜੇ ਅਲਰਟ ਕਿਹੜੇ Telegram ਗਰੁੱਪ ਅਤੇ ਵਿਸ਼ੇ ਵਿੱਚ ਜਾਂਦੇ ਹਨ — ਹੁਣ",
+    "routing_moved_link": "ਅਲਰਟ → ਗਰੁੱਪ ਡਿਲੀਵਰੀ",
+    "routing_moved_post": " ਉੱਤੇ ਹੈ।"
   }
 }

@@ -39,10 +39,15 @@ function Tab({ to, end, children }: {
 export function AlertsTabs() {
   const { hasAny } = useViewPermissions();
   const canBoard = hasAny(...P_ALERTS);
+  // Group delivery (where account alerts route) — owner/admin, or a role
+  // manager (who manages only their own row).  Personal DMs stay on the
+  // Preferences tab; this is the admin/group side.
+  const canDelivery = hasAny('can_manage_account', 'can_manage_role_bot');
   return (
     <div className="flex items-center gap-1 border-b border-border mb-4">
       {canBoard && <Tab to="/alerts" end>Board</Tab>}
       <Tab to="/alerts/preferences">Notification preferences</Tab>
+      {canDelivery && <Tab to="/alerts/group-delivery">Group delivery</Tab>}
     </div>
   );
 }
