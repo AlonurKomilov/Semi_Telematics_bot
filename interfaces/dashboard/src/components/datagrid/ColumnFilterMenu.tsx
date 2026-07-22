@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
 import { Search, X, Check } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '../../lib/utils';
 
 /**
  * Per-column filter dropdown — opened from a plain-label header.

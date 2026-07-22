@@ -8,7 +8,7 @@ import {
 import { apiJSON } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import type { AnyColumn } from '../../types';
 
 /**

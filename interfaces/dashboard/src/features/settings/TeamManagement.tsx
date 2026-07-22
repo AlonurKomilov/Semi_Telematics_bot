@@ -10,7 +10,7 @@ import { Button } from '../../components/ui/button';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toast } from 'sonner';
-import DataGrid, { type DataGridSegment } from '../../components/DataGrid';
+import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
 import { useTeamMembersQuery } from './useTeamMembers';
 import StatusBadge from '../../components/StatusBadge';

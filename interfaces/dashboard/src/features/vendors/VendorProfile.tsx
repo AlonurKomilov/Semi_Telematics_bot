@@ -10,7 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Store, ArrowLeft, Merge, Globe, Link2Off, Pencil, Star, TrendingUp } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import { PageHeader, ErrorState, TableSkeleton } from '../../components/shell';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,

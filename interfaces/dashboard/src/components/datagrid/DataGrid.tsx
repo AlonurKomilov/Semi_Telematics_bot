@@ -39,25 +39,25 @@ import {
   type SortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Input } from './ui/input';
+import { Input } from '../ui/input';
 import {
   TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from './ui/table';
-import { cn } from '../lib/utils';
-import type { AnyColumn, AggFn } from '../types';
-import { AGG_FN_LABELS, AGG_FN_ORDER } from '../types';
-import { useTimezone } from '../hooks/useTimezone';
-import { formatDay } from '../utils/datetime';
+} from '../ui/table';
+import { cn } from '../../lib/utils';
+import type { AnyColumn, AggFn } from '../../types';
+import { AGG_FN_LABELS, AGG_FN_ORDER } from '../../types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay } from '../../utils/datetime';
 import ColumnFilterMenu from './ColumnFilterMenu';
 import ColumnHeaderMenu from './ColumnHeaderMenu';
 import ManageColumnsMenu from './ManageColumnsMenu';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
-} from './ui/select';
-import { Button } from './ui/button';
-import { Tip } from './tooltip';
-import { exportRowsAsCsv, buildTsv, writeToClipboard } from '../lib/csv';
-import { useUserPreference } from '../hooks/useUserPreference';
+} from '../ui/select';
+import { Button } from '../ui/button';
+import { Tip } from '../tooltip';
+import { exportRowsAsCsv, buildTsv, writeToClipboard } from '../../lib/csv';
+import { useUserPreference } from '../../hooks/useUserPreference';
 
 type Density = 'compact' | 'default' | 'roomy';
 

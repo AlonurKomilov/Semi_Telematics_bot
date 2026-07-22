@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { usePublishContext } from '../ai/PageContext';
-import DataGrid, { type DataGridSegment, type BulkAction } from '../../components/DataGrid';
+import DataGrid, { type DataGridSegment, type BulkAction } from '../../components/datagrid';
 import {
   useMaintenanceTasksQuery, makeUrgencyClassifier, classifyTaskBuckets,
 } from './useMaintenanceTasks';

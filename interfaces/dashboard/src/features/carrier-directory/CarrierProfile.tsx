@@ -12,7 +12,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import type { AnyColumn } from '../../types';
 import { useRoleView } from '../../context/RoleViewContext';
 import { useTimezone } from '../../hooks/useTimezone';

@@ -12,7 +12,7 @@ import { statusClasses, toneClasses } from '../../lib/status';
 import { APEX_DOMAIN } from '../../lib/safeReturnTo';
 import { formatDate } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
-import DataGrid, { type DataGridSegment, type BulkAction } from '../../components/DataGrid';
+import DataGrid, { type DataGridSegment, type BulkAction } from '../../components/datagrid';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../components/ui/select';

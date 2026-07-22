@@ -11,7 +11,7 @@ import { apiJSON } from '../../api/client';
 import PageHeader from '../../components/shell/PageHeader';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import type { AnyColumn } from '../../types';
 import { useRoleView } from '../../context/RoleViewContext';
 import { toneClasses } from '../../lib/status';

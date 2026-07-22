@@ -37,7 +37,7 @@ import {
 } from '../../../components/shell';
 import { useQueryClient } from '@tanstack/react-query';
 import { apiJSON } from '../../../api/client';
-import DataGrid, { type BulkAction } from '../../../components/DataGrid';
+import DataGrid, { type BulkAction } from '../../../components/datagrid';
 import type {
   Alert,
   AlertsResponse,

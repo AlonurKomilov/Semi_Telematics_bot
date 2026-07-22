@@ -7,7 +7,7 @@ import { apiJSON } from '../../api/client';
 import { formatDate } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
 import { toneClasses, type Tone } from '../../lib/status';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import EventVideoModal from '@/features/safety-events/EventVideoModal';
 import {
   PageHeader,

@@ -1,6 +1,6 @@
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
 import { Check, RotateCcw, Columns3 } from 'lucide-react';
-import { cn } from '../lib/utils';
+import { cn } from '../../lib/utils';
 
 /**
  * "Manage columns" popover — bulk visibility editor.

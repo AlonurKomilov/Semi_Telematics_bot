@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Settings as SettingsIcon } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import type { SettingsResponse, WorkSchedule, User, BotConfig, AnyColumn } from '../../types';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import { useAuth } from '../../context/AuthContext';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import {

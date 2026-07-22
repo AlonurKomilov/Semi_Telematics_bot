@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, Package, Plus } from 'lucide-react';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
 } from '../../components/shell';

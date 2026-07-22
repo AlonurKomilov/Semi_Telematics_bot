@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Pencil, Plus, Truck } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import StatusBadge from '../../components/StatusBadge';
 import { Freshness, InfoTip, Tip } from '../../components/tooltip';
 import { useInventoryAlerts } from './inventory/useInventory';

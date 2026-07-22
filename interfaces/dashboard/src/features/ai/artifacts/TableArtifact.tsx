@@ -4,7 +4,7 @@
  * theme).  Minimal chrome: no toolbar / pagination (it's a glance, not a
  * managed list).  Registered at module load via the artifacts barrel.
  */
-import DataGrid from '../../../components/DataGrid';
+import DataGrid from '../../../components/datagrid';
 import type { AnyColumn } from '../../../types';
 import { registerArtifact } from './registry';
 import { isTable, type Artifact } from './types';

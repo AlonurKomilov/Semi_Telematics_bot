@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Camera, Filter } from 'lucide-react';
 import { apiFetch, apiJSON } from '../../api/client';
 import { toneClasses, toneText, type Tone } from '../../lib/status';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import {
   PageHeader,
   EmptyState,

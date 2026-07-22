@@ -11,7 +11,7 @@ import { buildSignupInviteUrl, useSignupBase } from '../../lib/inviteUrl';
 import { Button } from '../../components/ui/button';
 import { InfoTip } from '../../components/tooltip';
 import { toneClasses, toneText } from '../../lib/status';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import {
   PageHeader,

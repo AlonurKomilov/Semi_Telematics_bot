@@ -6,8 +6,8 @@ import {
   Group as GroupIcon, Ungroup as UngroupIcon, Plus, Check, ListTree,
   MoveHorizontal, Sigma,
 } from 'lucide-react';
-import { cn } from '../lib/utils';
-import { type AggFn, AGG_FN_LABELS } from '../types';
+import { cn } from '../../lib/utils';
+import { type AggFn, AGG_FN_LABELS } from '../../types';
 
 /**
  * 3-dot column actions menu.  Sits at the right edge of every

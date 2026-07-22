@@ -6,7 +6,7 @@ import { apiJSON, apiFetch } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 
 // ── Types ─────────────────────────────────────────────────────────

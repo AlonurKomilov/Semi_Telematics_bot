@@ -16,7 +16,7 @@ import type { WorkOrderCostRow, AnyColumn } from '../../types';
 import { TASK_TYPE_OPTIONS } from '../maintenance/badges';
 import type { ReportsLayoutOutletContext } from './ReportsLayout';
 import { chartColor } from '../../lib/status';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import { Tip } from '../../components/tooltip';
 
 // Backend response envelopes for each /reports/* endpoint.

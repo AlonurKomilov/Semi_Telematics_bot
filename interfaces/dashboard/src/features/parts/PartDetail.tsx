@@ -22,7 +22,7 @@ import {
 } from 'recharts';
 import { ArrowLeft, Cog, Globe, Link2Off, Merge, Pencil, TriangleAlert } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import { PageHeader, EmptyState, ErrorState, TableSkeleton } from '../../components/shell';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,

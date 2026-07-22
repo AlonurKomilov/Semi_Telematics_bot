@@ -12,7 +12,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Boxes, Plus } from 'lucide-react';
 import { apiJSON } from '../../../api/client';
-import DataGrid from '../../../components/DataGrid';
+import DataGrid from '../../../components/datagrid';
 import { Button } from '../../../components/ui/button';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import { AddItemDialog, ItemDialog } from './ItemDialog';

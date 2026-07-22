@@ -7,7 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTimezone } from '../../hooks/useTimezone';
 import { todayInTimeZone } from '../../utils/datetime';
 import { PageHeader, CardSkeleton } from '../../components/shell';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import { Button } from '../../components/ui/button';
 import StatementDrawer from './StatementDrawer';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';

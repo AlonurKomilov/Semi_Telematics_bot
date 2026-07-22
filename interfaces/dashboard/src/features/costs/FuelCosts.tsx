@@ -4,7 +4,7 @@ import { Fuel, Plus } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { todayInTimeZone } from '../../utils/datetime';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import {
   PageHeader,
   EmptyState,

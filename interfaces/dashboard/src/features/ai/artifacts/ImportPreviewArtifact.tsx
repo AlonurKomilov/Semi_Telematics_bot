@@ -16,7 +16,7 @@
  */
 import { useState } from 'react';
 import { AlertTriangle, Info, Pencil, X, Check } from 'lucide-react';
-import DataGrid from '../../../components/DataGrid';
+import DataGrid from '../../../components/datagrid';
 import {
   aiGetActionRows, aiEditActionRow, aiRemoveActionRow,
 } from '../../../api/client';

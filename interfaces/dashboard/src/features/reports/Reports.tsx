@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useOutletContext, useSearchParams } from 'react-router-dom';
 import { Download, Sparkles, FileText } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import StatusBadge from '../../components/StatusBadge';
 import {
   EmptyState,

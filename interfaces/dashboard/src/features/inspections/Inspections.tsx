@@ -6,7 +6,7 @@ import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import {
   PageHeader,
   EmptyState,

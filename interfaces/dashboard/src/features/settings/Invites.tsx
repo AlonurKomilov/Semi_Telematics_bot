@@ -12,7 +12,7 @@ import {
 } from '../../components/ui/dropdown-menu';
 import { apiJSON, ApiError } from '../../api/client';
 import type { InviteInfo, InvitesResponse } from '../../types';
-import DataGrid, { type DataGridSegment } from '../../components/DataGrid';
+import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import RoleBadge, { ROLE_LABEL, ASSIGNABLE_ROLES } from '../../components/RoleBadge';
 import {
   PageHeader,

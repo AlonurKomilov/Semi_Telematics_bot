@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus, X, KeyRound, Upload, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiJSON, apiFetch } from '../../api/client';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import {
   PageHeader,
   EmptyState,

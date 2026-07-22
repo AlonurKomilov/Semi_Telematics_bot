@@ -11,7 +11,7 @@ import { formatDay } from '../../utils/datetime';
 import { PageHeader, CardSkeleton } from '../../components/shell';
 import { toneClasses } from '../../lib/status';
 import { rollupByDisplayLabel } from '../../features/ai/helpers';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import type { AnyColumn } from '../../types';
 
 // ── Types ─────────────────────────────────────────────────────────

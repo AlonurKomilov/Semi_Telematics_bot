@@ -17,7 +17,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Globe, MapPin, Plus, Star, Store } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import { PageHeader, EmptyState, ErrorState, TableSkeleton } from '../../components/shell';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,

@@ -9,7 +9,7 @@ import {
 } from 'recharts';
 import { apiJSON, apiJSONSlow } from '../../api/client';
 import { toneClasses, toneText, chartColor, type Tone } from '../../lib/status';
-import DataGrid from '../../components/DataGrid';
+import DataGrid from '../../components/datagrid';
 import DriverInsights from '@/features/scorecards/DriverInsights';
 import {
   PageHeader,
