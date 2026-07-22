@@ -207,6 +207,10 @@ class WorkOrdersMixin:
                 company_code = _co[0] if _co else ""
                 assigned_to = str(r.get("assigned_to") or "")
                 invoice_number = str(r.get("invoice_number") or "")
+                # The source system's human-readable reference
+                # (Datatruck "WO-00983") — shown as a hover tip on the
+                # Source badge.  Distinct from external_id (internal id).
+                external_number = str(r.get("number") or "")
                 vendor_name = str(r.get("vendor_name") or "")
                 vendor_address = str(r.get("vendor_address") or "")
                 vendor_phone = str(r.get("vendor_phone") or "")
@@ -261,14 +265,14 @@ class WorkOrdersMixin:
                     await self._db.execute(
                         "UPDATE work_orders SET vehicle_name = ?, "
                         "vehicle_type = ?, company_code = ?, assigned_to = ?, "
-                        "invoice_number = ?, vendor_name = ?, "
+                        "invoice_number = ?, external_number = ?, vendor_name = ?, "
                         "vendor_address = ?, vendor_phone = ?, vendor_id = ?, "
                         "payment_method = ?, service_date = ?, "
                         "odometer_at_service = ?, labor_cost = ?, "
                         "parts_cost = ?, tax_amount = ?, total_cost = ?, "
                         "updated_at = ? WHERE id = ? AND account_id = ?",
                         (vehicle_name, vehicle_type, company_code, assigned_to,
-                         invoice_number, vendor_name,
+                         invoice_number, external_number, vendor_name,
                          vendor_address, vendor_phone, vendor_id, payment_method,
                          service_date, odometer, labor_cost, parts_cost,
                          tax, total, now, wo_id, account_id),
@@ -286,18 +290,18 @@ class WorkOrdersMixin:
                         vendor_id, service_date, odometer_at_service,
                         engine_hours_at_service,
                         labor_cost, parts_cost, tax_amount, total_cost,
-                        invoice_number, payment_method, payment_status,
+                        invoice_number, external_number, payment_method, payment_status,
                         status, notes, assigned_to, source, external_id,
                         created_by, created_at, updated_at)
                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT (account_id, source, external_id)
                        WHERE external_id <> '' DO NOTHING""",
                     (account_id, company_code, "", vehicle_name,
                      vehicle_type, vendor_name, vendor_address, vendor_phone,
                      vendor_id, service_date, odometer, None,
                      labor_cost, parts_cost, tax, total,
-                     invoice_number, payment_method, payment_status,
+                     invoice_number, external_number, payment_method, payment_status,
                      "submitted", str(r.get("note") or ""), assigned_to, source, ext,
                      0, now, now),
                 )

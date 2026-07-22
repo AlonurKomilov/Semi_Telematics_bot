@@ -1540,6 +1540,11 @@ async def migrate_work_orders_skeleton(conn) -> None:
                 notes                    TEXT    NOT NULL DEFAULT '',
                 source                   TEXT    NOT NULL DEFAULT 'manual',
                 external_id             TEXT    NOT NULL DEFAULT '',
+                -- Human-readable reference from the source system
+                -- (Datatruck "WO-00983") — distinct from external_id
+                -- (its internal numeric id).  Shown as a hover tip on
+                -- the Source badge; generic across future integrations.
+                external_number          TEXT    NOT NULL DEFAULT '',
                 assigned_to                 TEXT    NOT NULL DEFAULT '',
                 created_by               BIGINT  NOT NULL,
                 created_at               TEXT    NOT NULL,
@@ -6758,3 +6763,34 @@ async def migrate_datatruck_derived_tax_backfill(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 156: Datatruck derived tax/fees backfilled")
+
+
+@_register("157_work_orders_external_number")
+async def migrate_work_orders_external_number(conn) -> None:
+    """Add ``work_orders.external_number`` (the source system's
+    human-readable reference, e.g. Datatruck "WO-00983" — distinct from
+    ``external_id`` which is its internal numeric id) and backfill it
+    for already-synced Datatruck rows from the ELT staging table.
+
+    Data-only backfill, idempotent (only fills blank external_number on
+    source='datatruck' rows).  The projection keeps it fresh going
+    forward.
+    """
+    await conn.execute(
+        "ALTER TABLE work_orders "
+        "ADD COLUMN IF NOT EXISTS external_number TEXT NOT NULL DEFAULT ''"
+    )
+    await conn.execute(
+        """
+        UPDATE work_orders w
+        SET external_number = d.number
+        FROM datatruck_work_orders d
+        WHERE w.source = 'datatruck'
+          AND w.external_number = ''
+          AND w.account_id = d.account_id
+          AND w.external_id = d.external_id
+          AND COALESCE(d.number, '') <> ''
+        """
+    )
+    await conn.commit()
+    logger.info("Migration 157: work_orders.external_number added + backfilled")

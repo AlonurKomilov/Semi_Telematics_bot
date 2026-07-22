@@ -1558,6 +1558,9 @@ export interface WorkOrder {
   source?: string;
   /** Upstream id for integration-sourced rows; '' for manual. */
   external_id?: string;
+  /** Source system's human reference (Datatruck "WO-00983"); '' for
+   *  manual or when the integration exposes none. */
+  external_number?: string;
   created_by: number;
   created_at: string;
   updated_at: string;

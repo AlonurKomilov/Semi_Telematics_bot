@@ -55,6 +55,9 @@ async def test_project_inserts_full_datatruck_detail(db):
     assert wo["vehicle_name"] == "T100"
     # invoice_number maps from invoice_id, NOT the WO number.
     assert wo["invoice_number"] == "INV-1001"
+    # external_number IS the WO number (the source's human reference,
+    # surfaced as the Source-badge hover tip).
+    assert wo["external_number"] == "WO-1"
     assert wo["vendor_name"] == "Roadside Repair Co"
     assert wo["vendor_address"] == "100 Example Rd, Springfield, IL 62701"
     assert wo["vendor_phone"] == "(555) 010-0100"

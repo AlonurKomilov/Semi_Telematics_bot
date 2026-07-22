@@ -9,6 +9,7 @@ import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
 } from '../../components/shell';
 import type { WorkOrder, WorkOrdersResponse, AnyColumn } from '../../types';
+import { Tip } from '../../components/tooltip';
 
 // Payment lifecycle tabs (B3 phase 1).  Evidence from live data: every
 // WO is status='submitted' — the ONE dominant lifecycle dimension is
@@ -104,16 +105,22 @@ function MoneyCell({ value }: { value: unknown }) {
 
 // Source provenance cell.  'manual' (or empty) reads as a quiet dash;
 // any integration source ('datatruck') gets an info pill so synced
-// rows are distinguishable from hand-entered ones at a glance.
-function SourceCell({ value }: { value: unknown }) {
+// rows are distinguishable from hand-entered ones at a glance.  When
+// the source system carries a human reference (Datatruck "WO-00983"),
+// a hover tip surfaces it — generic across integrations.
+function SourceCell({ value, externalNumber }: { value: unknown; externalNumber?: string }) {
   const v = String(value || 'manual').toLowerCase();
   if (v === 'manual') return <span className="text-muted-foreground">—</span>;
   const label = v.charAt(0).toUpperCase() + v.slice(1);
-  return (
+  const pill = (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses('info')}`}>
       {label}
     </span>
   );
+  const ref = (externalNumber || '').trim();
+  return ref
+    ? <Tip label={`${label} reference: ${ref}`}>{pill}</Tip>
+    : pill;
 }
 
 // Title-case a snake_case code for the filter dropdown ("in_progress"
@@ -176,7 +183,7 @@ function makeColumns(tz: string): AnyColumn[] {
   { key: 'source', label: 'Source', sortable: true, filterable: true,
     filterValue: (row) => String((row as { source?: string }).source || 'manual'),
     filterLabel: (row) => titleCase(String((row as { source?: string }).source || 'manual')),
-    render: (v) => <SourceCell value={v} /> },
+    render: (v, row) => <SourceCell value={v} externalNumber={(row as { external_number?: string }).external_number} /> },
   // Invoice number is the operator's primary cross-reference to their
   // own bookkeeping system — surface it as a distinct column.
   { key: 'invoice_number', label: 'Invoice #', render: (v) => (v ? <span className="font-mono text-xs">{String(v)}</span> : <span className="text-muted-foreground">—</span>) },
