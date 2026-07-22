@@ -25,7 +25,7 @@ import {
 import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Rows3, Rows2, Rows4,
   Search, X, Columns3, Download, Copy, Filter as FilterIcon, ArrowUpDown,
-  CornerUpRight, ListTree,
+  CornerUpRight, ListTree, Plus, MoreVertical, Pencil, RefreshCw, Trash2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
@@ -54,6 +54,9 @@ import { formatDay } from '../../utils/datetime';
 import ColumnFilterMenu from './ColumnFilterMenu';
 import ColumnHeaderMenu from './ColumnHeaderMenu';
 import ManageColumnsMenu from './ManageColumnsMenu';
+import {
+  type SavedView, rowPassesColFilter, viewMatch, viewIsEmpty,
+} from './savedViews';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../ui/select';
@@ -242,6 +245,15 @@ interface DataGridProps {
    *  Pass a module-level constant (not an inline literal) so the
    *  array identity is stable across renders. */
   segments?: DataGridSegment[];
+  /** Enable user-managed "saved views" — personal tabs an operator
+   *  builds from the current filters (a "+ New view" affordance beside
+   *  the tabs).  Each view applies as an ISOLATED scope, exactly like a
+   *  built-in segment, and persists per-user (``table.<id>.views``).
+   *  Requires ``tableId``.  Views sit AFTER any built-in ``segments``;
+   *  on a grid with no segments an implicit "All" tab leads.  A view
+   *  saved while on a built-in segment (Active) COMPOSES with it, so it
+   *  scopes within that lifecycle slice, not across all of them. */
+  savedViews?: boolean;
 }
 
 // ── Server-side preference keys ───────────────────────────────
@@ -263,6 +275,14 @@ const groupsKey     = (id: string | undefined) =>
   id ? `table.${id}.groups` : '';
 const rowGroupKey   = (id: string | undefined) =>
   id ? `table.${id}.rowGroup` : '';
+const viewsKey      = (id: string | undefined) =>
+  id ? `table.${id}.views` : '';
+// Saved-view segment keys are prefixed so a view tab is never confused
+// with a code-defined segment.  ``__all__`` is the implicit "everything"
+// tab shown when a grid has no built-in segments.
+const VIEW_PREFIX = 'view:';
+const ALL_KEY = '__all__';
+const NO_VIEWS: SavedView[] = [];
 const aggregationKey = (id: string | undefined) =>
   id ? `table.${id}.aggregation` : '';
 const colWidthsKey  = (id: string | undefined) =>
@@ -304,13 +324,15 @@ export interface DataGridSegment {
  *  curve into a clean concave sweep tangent to both the vertical wall
  *  and the horizontal card border. */
 function SegmentTab({
-  label, count, showCount, active, onClick,
+  label, count, showCount, active, onClick, dot,
 }: {
   label: string;
   count: number;
   showCount: boolean;
   active: boolean;
   onClick: () => void;
+  /** Small accent dot before the label — marks a personal saved view. */
+  dot?: boolean;
 }) {
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
@@ -423,6 +445,9 @@ function SegmentTab({
         </svg>
       )}
       <span className="relative z-10 inline-flex items-center gap-1.5">
+        {dot && (
+          <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+        )}
         {label}
         {showCount && (
           <span
@@ -458,56 +483,12 @@ type GroupRun = {
 // holding) and the insertion indicator (where it will land).
 const noShiftStrategy: SortingStrategy = () => null;
 
-// Does ``row`` pass ``col``'s active filter value?  Mirrors the
-// tanstack ``filterFn`` wiring inside the component (select /
-// range / date-range shapes) but works on RAW data rows — used by
-// the faceted-options computation, which needs to ask "which rows
-// survive every OTHER column's filter" without going through the
-// table instance.  Keep the two in sync when filter semantics
-// change.
-function rowPassesColFilter(
-  row: Record<string, unknown>,
-  col: AnyColumn,
-  fv: unknown,
-): boolean {
-  if (col.filterMode === 'range') {
-    const range = fv as [number | null, number | null] | undefined;
-    if (!range || (range[0] == null && range[1] == null)) return true;
-    const raw = row[col.key];
-    const n = typeof raw === 'number' ? raw : Number(raw);
-    if (!Number.isFinite(n)) return false;
-    if (range[0] != null && n < range[0]) return false;
-    if (range[1] != null && n > range[1]) return false;
-    return true;
-  }
-  if (col.filterMode === 'date-range') {
-    const range = fv as [string | null, string | null] | undefined;
-    if (!range || (!range[0] && !range[1])) return true;
-    const t = new Date(String(row[col.key] ?? '')).getTime();
-    if (!Number.isFinite(t)) return false;
-    if (range[0]) {
-      const fromT = new Date(range[0]).getTime();
-      if (Number.isFinite(fromT) && t < fromT) return false;
-    }
-    if (range[1]) {
-      const toT = new Date(range[1] + 'T23:59:59.999').getTime();
-      if (Number.isFinite(toT) && t > toT) return false;
-    }
-    return true;
-  }
-  const selected = fv as string[] | undefined;
-  if (!selected || selected.length === 0) return true;
-  const hay = col.filterValue
-    ? col.filterValue(row)
-    : String(row[col.key] ?? '');
-  return selected.includes(hay);
-}
-
 export default function DataGrid({
   columns, data: sourceData, onRowClick, searchKey, stickyHeader, searchPlaceholder,
   headerToolbar, tableId, firstColumnLeading, rowGroupHeader, defaultRowGroup,
   defaultAggregation,
   enableToolbar = true, enablePagination = true, segments,
+  savedViews: savedViewsEnabled = false,
   bulkSelection = false, onBulkSelectionChange, bulkActions, bulkRowLabel,
   isRowSelectable, selectedIds: controlledSelectedIds, onSelectedIdsChange,
 }: DataGridProps) {
@@ -550,27 +531,114 @@ export default function DataGrid({
   // which reads as data loss, not as a remembered preference.
   // Column layout / density stay persisted; WHICH SLICE you're
   // looking at resets to the default like the page's filters do.
-  const [segmentPref, setSegmentPref] = useState<string>(segments?.[0]?.key ?? '');
+  // ``searchKeys`` lives up here (ahead of the table) because a saved
+  // view's scope predicate matches on the SAME global-search keys the
+  // live grid uses.
+  const searchKeys = useMemo(() => {
+    if (!searchKey) return [];
+    return Array.isArray(searchKey) ? searchKey : [searchKey];
+  }, [searchKey]);
+  const hasSearch = searchKeys.length > 0;
+
+  // Personal saved views — persisted per-user (no-op store when the
+  // feature or tableId is off).  Each becomes a SEGMENT whose ``match``
+  // is the view's captured filters, so it flows through the identical
+  // scoping (``sourceData.filter(match)``), counting, and tab rendering
+  // as a code-defined segment — isolated, no cross-tab leak, for free.
+  const {
+    value: savedViewList,
+    setValue: setSavedViewList,
+  } = useUserPreference<SavedView[]>(
+    savedViewsEnabled ? viewsKey(tableId) : '', NO_VIEWS,
+  );
+  const viewSegments = useMemo<DataGridSegment[]>(() => {
+    if (!savedViewsEnabled) return [];
+    return savedViewList.map(v => {
+      const own = viewMatch(v, columns, searchKeys);
+      // Compose with the segment the view was captured under, if it still
+      // exists — so the view stays inside that lifecycle scope (a stale
+      // baseSegment simply drops to the view's own filters).
+      const base = v.baseSegment
+        ? (segments ?? []).find(s => s.key === v.baseSegment)?.match
+        : undefined;
+      return {
+        key: VIEW_PREFIX + v.id,
+        label: v.name,
+        match: base ? (row) => base(row) && own(row) : own,
+      };
+    });
+  }, [savedViewsEnabled, savedViewList, columns, searchKeys, segments]);
+  const effectiveSegments = useMemo<DataGridSegment[]>(() => {
+    const builtIn = segments ?? [];
+    if (!savedViewsEnabled) return builtIn;
+    // No built-in segments → an implicit "All" tab leads so the operator
+    // can always leave a view and see the full set again.
+    const base = builtIn.length ? builtIn : [{ key: ALL_KEY, label: 'All' }];
+    return [...base, ...viewSegments];
+  }, [segments, savedViewsEnabled, viewSegments]);
+
+  const [segmentPref, setSegmentPref] = useState<string>(effectiveSegments[0]?.key ?? '');
   const activeSegment = useMemo(() => {
-    if (!segments?.length) return null;
-    // Selected key may reference a tab that no longer exists
-    // (config changed) — fall back to the first.
-    return segments.find(s => s.key === segmentPref) ?? segments[0];
-  }, [segments, segmentPref]);
+    if (!effectiveSegments.length) return null;
+    // Selected key may reference a tab that no longer exists (a view was
+    // deleted, config changed) — fall back to the first.
+    return effectiveSegments.find(s => s.key === segmentPref) ?? effectiveSegments[0];
+  }, [effectiveSegments, segmentPref]);
   const segmentCounts = useMemo(() => {
-    if (!segments?.length) return {};
+    if (!effectiveSegments.length) return {};
     const counts: Record<string, number> = {};
-    for (const seg of segments) {
+    for (const seg of effectiveSegments) {
       counts[seg.key] = seg.match
         ? sourceData.filter(seg.match).length
         : sourceData.length;
     }
     return counts;
-  }, [segments, sourceData]);
+  }, [effectiveSegments, sourceData]);
   const data = useMemo(() => {
     if (!activeSegment?.match) return sourceData;
     return sourceData.filter(activeSegment.match);
   }, [sourceData, activeSegment]);
+
+  // ── view CRUD (capture from the live filters) ────────────────────
+  const saveCurrentView = useCallback(() => {
+    const search = hasSearch ? globalFilter.trim() : '';
+    if (viewIsEmpty(columnFilters, search)) {
+      window.alert('Apply a filter or a search first — an empty view would just show everything.');
+      return;
+    }
+    const name = window.prompt('Name this view')?.trim();
+    if (!name) return;
+    const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+    // Remember the built-in segment we're inside (Active/Archive) so the
+    // view composes with it — but NOT the implicit "All" tab or another
+    // view (a view built on a view would nest scopes confusingly).
+    const cur = segmentPref;
+    const baseSegment = cur && cur !== ALL_KEY && !cur.startsWith(VIEW_PREFIX)
+      ? cur : undefined;
+    setSavedViewList(prev => [...prev, {
+      id, name, filters: columnFilters, search: search || undefined, baseSegment,
+    }]);
+    setSegmentPref(VIEW_PREFIX + id);
+  }, [columnFilters, globalFilter, hasSearch, setSavedViewList, segmentPref]);
+  const renameView = useCallback((id: string, current: string) => {
+    const name = window.prompt('Rename view', current)?.trim();
+    if (!name) return;
+    setSavedViewList(prev => prev.map(v => (v.id === id ? { ...v, name } : v)));
+  }, [setSavedViewList]);
+  const updateView = useCallback((id: string) => {
+    const search = hasSearch ? globalFilter.trim() : '';
+    if (viewIsEmpty(columnFilters, search)) {
+      window.alert('Apply a filter or a search first, then Update.');
+      return;
+    }
+    setSavedViewList(prev => prev.map(v => (
+      v.id === id ? { ...v, filters: columnFilters, search: search || undefined } : v
+    )));
+  }, [columnFilters, globalFilter, hasSearch, setSavedViewList]);
+  const deleteView = useCallback((id: string) => {
+    setSavedViewList(prev => prev.filter(v => v.id !== id));
+    setSegmentPref(prev => (prev === VIEW_PREFIX + id ? (segments?.[0]?.key ?? ALL_KEY) : prev));
+  }, [setSavedViewList, segments]);
 
   // ── Column-layout state (visibility / order / pinning) ─────
   //
@@ -865,6 +933,12 @@ export default function DataGrid({
           //     day, not midnight-only.
           const isRange = col.filterMode === 'range';
           const isDateRange = col.filterMode === 'date-range';
+          // NOTE: this is the tanstack-Row form of the same logic that
+          // ``rowPassesColFilter`` (savedViews.ts) applies to raw rows —
+          // keep the two in sync so a saved view scopes exactly like the
+          // live filter it was captured from.  (They match today because
+          // every column uses ``accessorKey``, so ``row.getValue(key)``
+          // equals ``row.original[key]``.)
           def.filterFn = (row, _colId, filterValue) => {
             if (isRange) {
               const range = filterValue as [number | null, number | null] | undefined;
@@ -928,12 +1002,6 @@ export default function DataGrid({
     },
     [columns, bulkSelection],
   );
-
-  const searchKeys = useMemo(() => {
-    if (!searchKey) return [];
-    return Array.isArray(searchKey) ? searchKey : [searchKey];
-  }, [searchKey]);
-  const hasSearch = searchKeys.length > 0;
 
   // Effective pinning = operator's choices + locked columns prepended
   // to the left side.  Locked columns (e.g. a bulk-select checkbox)
@@ -2180,7 +2248,7 @@ export default function DataGrid({
           into the card's toolbar surface; inactive tabs are
           transparent, so the card border runs straight under them —
           reading as "closed" folders. */}
-      {segments && segments.length > 0 && (
+      {effectiveSegments.length > 0 && (
         <div
           role="tablist"
           aria-label="Data segments"
@@ -2191,28 +2259,103 @@ export default function DataGrid({
           // lumpy S instead of two clean shapes.
           className="relative z-10 -mb-px flex items-end gap-1 px-6"
         >
-          {segments.map((seg, i) => {
+          {effectiveSegments.map((seg, i) => {
             const active = seg.key === activeSegment?.key;
-            const prevActive = i > 0 && segments[i - 1].key === activeSegment?.key;
+            const prev = i > 0 ? effectiveSegments[i - 1] : undefined;
+            const prevActive = prev?.key === activeSegment?.key;
+            const isView = seg.key.startsWith(VIEW_PREFIX);
+            const prevIsView = prev?.key.startsWith(VIEW_PREFIX);
+            const viewId = isView ? seg.key.slice(VIEW_PREFIX.length) : '';
             return (
               <Fragment key={seg.key}>
-                {/* Hairline separator between two INACTIVE neighbours
-                    only — it disappears next to the active tab so the
-                    folder silhouette stays clean (browser-tab rule).
-                    Dormant with 2 tabs; earns its keep at 3+. */}
-                {i > 0 && !active && !prevActive && (
+                {/* A firmer divider marks the boundary between the
+                    code-defined segments and the operator's personal
+                    views; a hairline otherwise separates two INACTIVE
+                    neighbours (it vanishes next to the active tab so the
+                    folder silhouette stays clean). */}
+                {isView && !prevIsView && i > 0 ? (
+                  <span aria-hidden className="self-center w-px h-5 bg-border mx-1.5 mb-1" />
+                ) : i > 0 && !active && !prevActive && (
                   <span aria-hidden className="self-center w-px h-4 bg-border" />
                 )}
-                <SegmentTab
-                  label={seg.label}
-                  count={segmentCounts[seg.key] ?? 0}
-                  showCount={seg.showCount !== false}
-                  active={active}
-                  onClick={() => setSegmentPref(seg.key)}
-                />
+                {isView ? (
+                  // The ⋮ options button is a SIBLING of the tab (a real
+                  // <button>), never nested inside the tab's own <button>
+                  // — nesting interactive-in-interactive is invalid HTML
+                  // and broke keyboard activation.
+                  <span className="relative inline-flex items-end">
+                    <SegmentTab
+                      dot
+                      label={seg.label}
+                      count={segmentCounts[seg.key] ?? 0}
+                      showCount={seg.showCount !== false}
+                      active={active}
+                      onClick={() => setSegmentPref(seg.key)}
+                    />
+                  <MenuPrimitive.Root>
+                    <MenuPrimitive.Trigger
+                      render={(props) => (
+                        <button
+                          {...props}
+                          type="button"
+                          aria-label={`Options for ${seg.label}`}
+                          onClick={(e) => { e.stopPropagation(); props.onClick?.(e); }}
+                          className="self-center mb-1 -ml-1.5 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted inline-flex"
+                        >
+                          <MoreVertical size={13} />
+                        </button>
+                      )}
+                    />
+                    <MenuPrimitive.Portal>
+                      <MenuPrimitive.Positioner align="start" sideOffset={4} className="z-50 outline-none">
+                        <MenuPrimitive.Popup className="min-w-48 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
+                          <MenuPrimitive.Item
+                            onClick={() => renameView(viewId, seg.label)}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground"
+                          >
+                            <Pencil size={14} className="text-muted-foreground" /> Rename
+                          </MenuPrimitive.Item>
+                          <MenuPrimitive.Item
+                            onClick={() => updateView(viewId)}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground"
+                          >
+                            <RefreshCw size={14} className="text-muted-foreground" /> Update to current filters
+                          </MenuPrimitive.Item>
+                          <div className="my-1 border-t border-border" />
+                          <MenuPrimitive.Item
+                            onClick={() => deleteView(viewId)}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-danger"
+                          >
+                            <Trash2 size={14} /> Delete view
+                          </MenuPrimitive.Item>
+                        </MenuPrimitive.Popup>
+                      </MenuPrimitive.Positioner>
+                    </MenuPrimitive.Portal>
+                  </MenuPrimitive.Root>
+                  </span>
+                ) : (
+                  <SegmentTab
+                    label={seg.label}
+                    count={segmentCounts[seg.key] ?? 0}
+                    showCount={seg.showCount !== false}
+                    active={active}
+                    onClick={() => setSegmentPref(seg.key)}
+                  />
+                )}
               </Fragment>
             );
           })}
+          {/* "+ New view" — captures the current filters as a personal
+              scoped tab.  Only when the feature is on. */}
+          {savedViewsEnabled && (
+            <button
+              type="button"
+              onClick={saveCurrentView}
+              className="self-center mb-1 ml-1 inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+            >
+              <Plus size={13} /> New view
+            </button>
+          )}
         </div>
       )}
       {/* One card holds everything — toolbar, table, pagination — so

@@ -244,6 +244,21 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   computation), so its numbers can't drift from the page's. Worked
   examples: `features/maintenance` (useMaintenanceTasks + MaintenanceHero)
   and `features/applications` (useApplications + ApplicationsHero).
+- **User-managed tabs = the `savedViews` prop (personal scope tabs).**
+  Opt a `tableId` grid in with `savedViews`, and a "+ New view" affordance
+  lets an operator save the CURRENT filters + search as a named tab. Key
+  design: a view applies as an ISOLATED SCOPE, not a removable filter — it
+  becomes a `DataGridSegment` whose `match` is the captured filters, so it
+  flows through the exact `sourceData.filter(match)` scoping as Active/
+  Archive (no cross-tab leak; sort/export/select-all stay inside). The
+  matching reuses `rowPassesColFilter` (in
+  [`datagrid/savedViews.ts`](src/components/datagrid/savedViews.ts), pure +
+  tested) so a view scopes identically to its live filters. Views persist
+  per-user (`table.<id>.views`), sit after built-in `segments` (an implicit
+  "All" leads when there are none), and a view saved on a built-in segment
+  COMPOSES with it. Don't hand-roll saved-filter tabs on a page — this is
+  the SSOT. (Phase 1: filter+search views. Sort/group/column capture,
+  reorder, and account-shared views are later phases.)
 - **Charts/maps** can't use classes: charts → `chartColor(n)` (the
   `--chart-1..5` tokens); map hex → a shared config constant, never inline.
 
