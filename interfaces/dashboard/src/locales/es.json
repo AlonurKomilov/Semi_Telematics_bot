@@ -120,7 +120,9 @@
     "custom_topics_empty": "Envía ciertos tipos a su propio hilo de Telegram — p. ej. solo Choque + Frenado brusco.",
     "topics_needs_group": "Se aplica cuando se vincula un grupo.",
     "load_error": "No se pudo cargar el enrutamiento del bot. Revisa tu conexión y reintenta.",
-    "topics_error": "No se pudieron cargar los ajustes de alertas por rol — la lista de abajo puede estar incompleta."
+    "topics_error": "No se pudieron cargar los ajustes de alertas por rol — la lista de abajo puede estar incompleta.",
+    "mode_indicator": "Modo de entrega: {{mode}}",
+    "mode_change_link": "cambiar en Ajustes"
   },
   "nav": {
     "overview": "Resumen",

@@ -16,6 +16,7 @@ import { TIMEZONE_OPTIONS, timezoneLabelWithTime } from '../../utils/timezones';
 import { useNow } from '../../hooks/useNow';
 import { rollupByDisplayLabel } from '../../features/ai/helpers';
 import { Link } from 'react-router-dom';
+import DeliveryModeSelector from '../alerts/DeliveryModeSelector';
 import DangerZoneSection from './DangerZoneSection';
 import { toneClasses } from '../../lib/status';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
@@ -378,6 +379,11 @@ export default function Settings() {
 
           {botConfig?.has_bot ? (
             <div>
+              {/* Delivery mode — the owner's topology choice, on top.
+                  The operational routing (groups, topics) lives on
+                  Alerts → Group delivery (linked below). */}
+              <DeliveryModeSelector canManageAccount={canManageAccount} />
+
               <div className="flex items-center gap-3 mb-4">
                 {/* Flat status chip (no border) — border is the action
                     marker on this card.  Labels reuse the roster's

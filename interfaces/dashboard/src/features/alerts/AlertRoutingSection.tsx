@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
-import { Check, ChevronDown, ChevronRight, Info, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Check, ChevronDown, ChevronRight, Info } from 'lucide-react';
 import { InfoTip } from '../../components/tooltip';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { Switch } from '../../components/ui/switch';
@@ -114,12 +115,6 @@ export default function AlertRoutingSection({
   // permanently-rendered bare input attracted saved emails/passwords,
   // seen live on the owner's account).
   const [openInput, setOpenInput] = useState<string>('');
-  // Nudge dismissal is per-browser deliberately: it's advice, not
-  // account config — a declined recommendation must not nag forever,
-  // and reappearing once on a new device is acceptable.
-  const [nudgeDismissed, setNudgeDismissed] = useState(
-    () => localStorage.getItem('tg_routing_nudge_dismissed') === '1',
-  );
   // The mode-driving fetch has its own loading/error state: the card
   // CANNOT know which mode to render until /alert-routing resolves, so
   // failing to it must be an honest error — not a silent fall-through
@@ -156,20 +151,6 @@ export default function AlertRoutingSection({
   const manageable = subBots?.manageable ?? [];
   const canManage = (persona: string) =>
     canManageAccount || manageable.includes(persona);
-
-  const setMode = async (mode: AlertRoutingResponse['mode']) => {
-    if (mode === data.mode || busy || !canManageAccount) return;
-    setBusy('mode');
-    try {
-      await apiJSON('/admin/alert-routing', { method: 'PUT', body: { mode } });
-      setData({ ...data, mode });
-      toast.success(t('alert_routing.toast_mode_saved'));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
-    } finally {
-      setBusy('');
-    }
-  };
 
   const bind = async (persona: string) => {
     const raw = (chatInputs[persona] || '').trim();
@@ -352,35 +333,6 @@ export default function AlertRoutingSection({
     } finally {
       setBusy(''); setConfirming('');
     }
-  };
-
-  const showNudge =
-    canManageAccount && data.mode === 'single_group'
-    && data.vehicle_count > data.nudge_threshold
-    && !nudgeDismissed;
-
-  const modeOption = (
-    mode: AlertRoutingResponse['mode'],
-    title: string,
-    desc: string,
-  ) => {
-    const selected = data.mode === mode;
-    return (
-      <button
-        type="button"
-        onClick={() => { void setMode(mode); }}
-        disabled={busy === 'mode' || !canManageAccount}
-        className={`flex-1 text-left border rounded-lg px-3 py-2 transition ${
-          selected ? 'border-primary bg-primary/5' : 'border-border hover:border-ring'
-        } ${!canManageAccount ? 'opacity-70 cursor-default' : ''}`}
-      >
-        <span className="flex items-center gap-2 text-sm font-medium text-foreground">
-          {selected && <Check size={14} className="text-primary shrink-0" />}
-          {title}
-        </span>
-        <span className="block text-xs text-muted-foreground mt-0.5">{desc}</span>
-      </button>
-    );
   };
 
   // Inline two-step confirm — replaces window.confirm() so every
@@ -786,42 +738,22 @@ export default function AlertRoutingSection({
 
   return (
     <div>
-      {/* Routing — the topology decision, top of the card. */}
-      <div className="mb-3">
-        <div className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-          {t('alert_routing.routing_label')}
-        </div>
-        {showNudge && (
-          <div className={`mb-2 flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${toneClasses('info')}`}>
-            <Info size={14} className="mt-0.5 shrink-0" />
-            <span>{t('alert_routing.nudge', { count: data.vehicle_count })}</span>
-            <button
-              type="button"
-              aria-label={t('alert_routing.dismiss')}
-              onClick={() => {
-                localStorage.setItem('tg_routing_nudge_dismissed', '1');
-                setNudgeDismissed(true);
-              }}
-              className="ml-auto shrink-0 hover:opacity-70"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-        <div className="flex flex-col sm:flex-row gap-2">
-          {modeOption('single_group',
-            t('alert_routing.mode_single_title'), t('alert_routing.mode_single_desc'))}
-          {modeOption('per_persona_groups',
-            t('alert_routing.mode_multi_title'), t('alert_routing.mode_multi_desc'))}
-        </div>
-        {/* The switch rebuilds the card body — say up front that it's
-            reversible so exploring the other mode feels safe. */}
+      {/* The delivery MODE is the owner's topology choice, set on
+          Settings → Telegram Bot; this surface reflects it and routes
+          accordingly (no selector here). */}
+      <p className="mb-3 text-xs text-muted-foreground">
+        {t('alert_routing.mode_indicator', {
+          mode: t(roleMode ? 'alert_routing.mode_multi_title' : 'alert_routing.mode_single_title'),
+        })}
         {canManageAccount && (
-          <p className="mt-1.5 text-2xs text-muted-foreground">
-            {t('alert_routing.mode_switch_safe')}
-          </p>
+          <>
+            {' · '}
+            <Link to="/settings" className="text-primary hover:underline">
+              {t('alert_routing.mode_change_link')}
+            </Link>
+          </>
         )}
-      </div>
+      </p>
 
       {!roleMode ? (
         singleBody

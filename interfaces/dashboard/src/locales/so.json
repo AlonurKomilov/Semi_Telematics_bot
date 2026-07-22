@@ -120,7 +120,9 @@
     "custom_topics_empty": "U dir noocyada la doortay dun Telegram u gaar ah — tusaale ahaan Shil + Bareeg adag oo keliya.",
     "topics_needs_group": "Wuxuu shaqaynayaa marka koox la xidho.",
     "load_error": "Lama soo rari karin hagida bot-ka. Hubi xiriirkaaga oo mar kale isku day.",
-    "topics_error": "Lama soo rari karin dejinta digniinta doorka — liiska hoose wuxuu noqon karaa mid aan dhammaystirnayn."
+    "topics_error": "Lama soo rari karin dejinta digniinta doorka — liiska hoose wuxuu noqon karaa mid aan dhammaystirnayn.",
+    "mode_indicator": "Habka gaarsiinta: {{mode}}",
+    "mode_change_link": "ka beddel Dejinta"
   },
   "nav": {
     "overview": "Guudmar",

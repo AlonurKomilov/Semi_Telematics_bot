@@ -120,7 +120,9 @@
     "custom_topics_empty": "Envoyez certains types dans leur propre fil Telegram — p. ex. seulement Collision + Freinage brusque.",
     "topics_needs_group": "S'applique une fois un groupe lié.",
     "load_error": "Impossible de charger le routage du bot. Vérifiez votre connexion et réessayez.",
-    "topics_error": "Impossible de charger les réglages d'alertes par rôle — la liste ci-dessous peut être incomplète."
+    "topics_error": "Impossible de charger les réglages d'alertes par rôle — la liste ci-dessous peut être incomplète.",
+    "mode_indicator": "Mode de distribution : {{mode}}",
+    "mode_change_link": "modifier dans Paramètres"
   },
   "nav": {
     "overview": "Aperçu",

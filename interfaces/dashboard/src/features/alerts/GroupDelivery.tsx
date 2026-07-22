@@ -5,9 +5,11 @@
  * configures their OWN role's group here — binding the group, attaching a
  * Sub bot, tuning topics — instead of asking an owner to do it in Settings.
  *
- * The bot CREDENTIAL (connect/disconnect the account bot + token) stays on
- * Settings → Telegram Bot; this tab is pure routing: Single ↔ Sub bots
- * mode, group binding, Sub bots, per-type switches, kinds, custom topics.
+ * The bot CREDENTIAL (connect/disconnect the account bot + token) AND the
+ * Single ↔ Sub bots mode selector stay on Settings → Telegram Bot (both
+ * owner topology decisions); this tab is the operational routing that
+ * FOLLOWS the mode: group binding, Sub bots, per-type switches, kinds,
+ * custom topics.
  *
  * Access: can_manage_account (owner/admin — full, incl. the mode selector)
  * OR can_manage_role_bot (a role manager — sees only their own row, which

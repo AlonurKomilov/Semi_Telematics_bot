@@ -90,18 +90,25 @@ persona regardless (UI reachability ≠ authorization).
 
 ## UI home: routing lives on Alerts, credential on Settings (2026-07-22)
 
-The whole routing surface — mode selector (Single ↔ Sub bots), group
-bind/unbind, Sub bot attach/detach, per-type switches, kind filtering,
-custom topics — moved OFF Settings → Telegram Bot onto a new
-**Alerts → Group delivery** tab (`/alerts/group-delivery`,
-`features/alerts/GroupDelivery.tsx` wrapping the relocated
-AlertRoutingSection + ForumRoutingSection). Reason: a role manager must
-configure their OWN role's group in one place without asking an owner —
-"where do OUR alerts go" belongs next to "where do MY alerts go"
-(Notification preferences), both under Alerts.
+The OPERATIONAL routing surface — group bind/unbind, Sub bot
+attach/detach, per-type switches, kind filtering, custom topics — moved
+OFF Settings → Telegram Bot onto a new **Alerts → Group delivery** tab
+(`/alerts/group-delivery`, `features/alerts/GroupDelivery.tsx` wrapping
+the relocated AlertRoutingSection + ForumRoutingSection). Reason: a role
+manager must configure their OWN role's group in one place without
+asking an owner — "where do OUR alerts go" belongs next to "where do MY
+alerts go" (Notification preferences), both under Alerts.
 
-Settings → Telegram Bot now holds ONLY the account bot CREDENTIAL
-(connect/disconnect + token, owner-only) and cross-links to the tab.
+The delivery MODE selector (Single ↔ Sub bots) is the owner's topology
+decision, so it stays on **Settings → Telegram Bot** with the bot
+credential (`features/alerts/DeliveryModeSelector.tsx`, owner-gated) —
+NOT on the operational tab where managers work. The Group delivery body
+reads the mode and shows a read-only indicator with a "change in
+Settings" link for owners.
+
+Settings → Telegram Bot holds the account bot CREDENTIAL
+(connect/disconnect + token) PLUS the mode selector, gated
+`can_manage_account`, and cross-links to the tab for routing.
 The old `can_manage_role_bot`-opens-Settings special case is gone —
 managers never need Settings; the tab is gated `can_manage_account`
 (full, incl. the mode selector) OR `can_manage_role_bot` (own row only,

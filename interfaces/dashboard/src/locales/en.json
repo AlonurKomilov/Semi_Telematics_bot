@@ -952,7 +952,9 @@
     "custom_topics_empty": "Route chosen kinds into their own Telegram thread — e.g. only Crash + Harsh Braking.",
     "topics_needs_group": "Takes effect once a group is bound.",
     "load_error": "Couldn't load bot routing. Check your connection and retry.",
-    "topics_error": "Couldn't load role alert settings — the list below may be incomplete."
+    "topics_error": "Couldn't load role alert settings — the list below may be incomplete.",
+    "mode_indicator": "Delivery mode: {{mode}}",
+    "mode_change_link": "change in Settings"
   },
   "forum_routing": {
     "section_title": "Alert group & topics",
