@@ -96,6 +96,7 @@ class WebPushChannel:
 
 def _push_one(sub: dict, data: str, private_pem: str) -> tuple[bool, bool]:
     """One blocking send.  Returns (delivered, endpoint_is_dead)."""
+    import requests
     from pywebpush import WebPushException, webpush
 
     from capabilities.notifications.push_endpoint import validate_push_endpoint
@@ -109,33 +110,42 @@ def _push_one(sub: dict, data: str, private_pem: str) -> tuple[bool, bool]:
         logger.warning("web push: endpoint failed send-time validation — pruning")
         return False, True
 
-    try:
-        webpush(
-            subscription_info={
-                "endpoint": sub["endpoint"],
-                "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
-            },
-            data=data,
-            vapid_private_key=private_pem,
-            # pywebpush mutates the claims dict (adds aud/exp) — fresh per call.
-            vapid_claims={"sub": vapid_claims_sub()},
-            # Bounded: an unresponsive push service must not pin a worker
-            # thread from the shared pool indefinitely.
-            timeout=10,
-            # Queue for devices that are asleep/offline rather than the
-            # default drop-if-not-connected (ttl=0) — an OS notification an
-            # hour late still beats one that never arrives.
-            ttl=3600,
-        )
-        return True, False
-    except WebPushException as e:
-        status = getattr(getattr(e, "response", None), "status_code", None)
-        if status in (404, 410):
-            return False, True
-        logger.warning("web push send failed (%s): %s", status, e)
-        return False, False
-    except Exception:                   # transport must never crash fan-out —
-        # but keep the traceback: this branch would otherwise also swallow
-        # genuine bugs (an AttributeError from a bad refactor) silently.
-        logger.exception("web push send failed")
-        return False, False
+    # Anti-SSRF: the endpoint is a client-supplied URL, so the transport
+    # must NOT follow redirects — otherwise a "public" endpoint could 302
+    # the server-side POST to an internal host, sidestepping the is_global
+    # gate that only ever sees the literal endpoint.  A fresh Session per
+    # call (max_redirects=0 → any 3xx raises) keeps this thread-safe under
+    # the fan-out's worker pool; the `with` closes its connection pool.
+    with requests.Session() as session:
+        session.max_redirects = 0
+        try:
+            webpush(
+                subscription_info={
+                    "endpoint": sub["endpoint"],
+                    "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
+                },
+                data=data,
+                vapid_private_key=private_pem,
+                # pywebpush mutates the claims dict (adds aud/exp) — fresh per call.
+                vapid_claims={"sub": vapid_claims_sub()},
+                # Bounded: an unresponsive push service must not pin a worker
+                # thread from the shared pool indefinitely.
+                timeout=10,
+                # Queue for devices that are asleep/offline rather than the
+                # default drop-if-not-connected (ttl=0) — an OS notification
+                # an hour late still beats one that never arrives.
+                ttl=3600,
+                requests_session=session,
+            )
+            return True, False
+        except WebPushException as e:
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            if status in (404, 410):
+                return False, True
+            logger.warning("web push send failed (%s): %s", status, e)
+            return False, False
+        except Exception:               # transport must never crash fan-out —
+            # but keep the traceback: this branch would otherwise also
+            # swallow genuine bugs (a bad refactor's AttributeError) silently.
+            logger.exception("web push send failed")
+            return False, False

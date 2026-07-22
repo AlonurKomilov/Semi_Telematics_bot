@@ -30,6 +30,12 @@ MAX_ENDPOINT_LEN = 1024
 # (and the serial send latency per event).
 MAX_DEVICES_PER_USER = 10
 
+# NAT64 well-known prefix (RFC 6052): 64:ff9b::/96 embeds an IPv4 in its
+# low 32 bits.  ``is_global`` reports such an address as global, so
+# without a decode an attacker could smuggle an internal v4 (e.g. the
+# 169.254.169.254 metadata address) past the IP gate on a NAT64 network.
+_NAT64_WELL_KNOWN = ipaddress.ip_network("64:ff9b::/96")
+
 
 def _resolve_host(host: str, port: int) -> list[str]:
     """All A/AAAA answers for the host (patchable seam for tests)."""
@@ -67,4 +73,10 @@ def validate_push_endpoint(endpoint: str) -> str | None:
             # Loopback / private / link-local / metadata / CGNAT / ULA —
             # never a real push vendor, always a probe.
             return "private_endpoint"
+        # NAT64-embedded internal IPv4 reads as global — decode + re-check
+        # the embedded address so it can't smuggle 169.254.169.254 etc.
+        if ip.version == 6 and ip in _NAT64_WELL_KNOWN:
+            embedded = ipaddress.ip_address(int(ip) & 0xFFFFFFFF)
+            if not embedded.is_global:
+                return "private_endpoint"
     return None

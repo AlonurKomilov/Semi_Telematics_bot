@@ -95,6 +95,14 @@ def test_validator_rejects_non_https_userinfo_and_private(monkeypatch):
                         lambda h, p: ["93.184.216.34", "10.0.0.5"])
     assert pe.validate_push_endpoint("https://host.example/x") == "private_endpoint"
 
+    # NAT64-embedded internal IPv4 (64:ff9b::169.254.169.254) reads as
+    # is_global True but decodes to the metadata address → rejected.
+    monkeypatch.setattr(pe, "_resolve_host", lambda h, p: ["64:ff9b::a9fe:a9fe"])
+    assert pe.validate_push_endpoint("https://host.example/x") == "private_endpoint"
+    # NAT64-embedded PUBLIC v4 (64:ff9b::93.184.216.34) is legitimately fine.
+    monkeypatch.setattr(pe, "_resolve_host", lambda h, p: ["64:ff9b::5db8:d822"])
+    assert pe.validate_push_endpoint("https://host.example/x") is None
+
     monkeypatch.setattr(pe, "_resolve_host",
                         lambda h, p: (_ for _ in ()).throw(OSError("nx")))
     assert pe.validate_push_endpoint("https://nx.example/x") == "unresolvable"
@@ -254,6 +262,28 @@ async def test_send_prunes_dead_endpoint_and_still_delivers(pg_db):
     assert res.ok
     subs = await pg_db.list_push_subscriptions(acct, uid)
     assert [s["endpoint"] for s in subs] == [_sub(2)["endpoint"]]   # self-healed
+
+
+def test_push_one_passes_a_no_redirect_session():
+    """Anti-SSRF: the real send hands pywebpush a session that refuses
+    redirects, so a 'public' endpoint can't 302 the server-side POST to an
+    internal host past the is_global gate."""
+    from capabilities.notifications import webpush as wp
+    captured: dict = {}
+
+    def fake_webpush(**kw):
+        captured.update(kw)
+        return object()
+
+    with patch("pywebpush.webpush", fake_webpush), \
+         patch("capabilities.notifications.push_endpoint.validate_push_endpoint",
+               return_value=None), \
+         patch("capabilities.notifications.vapid.vapid_claims_sub",
+               return_value="mailto:x@y.z"):
+        ok, dead = wp._push_one(_sub(1), "{}", "PEM")
+
+    assert ok and not dead
+    assert captured["requests_session"].max_redirects == 0
 
 
 async def test_send_all_failed_reports_failure_keeps_devices(pg_db):
