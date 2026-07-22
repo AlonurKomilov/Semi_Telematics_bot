@@ -114,12 +114,18 @@ const buildColumns = (tz?: string): AnyColumn[] => [
     render: (v) => <span className="capitalize">{String(v ?? '—')}</span> },
   { key: 'submitted_at',  label: 'Submitted', sortable: true,
     filterable: true, filterMode: 'date-range',
+    aggregable: true, aggType: 'date',
     render: (v) => _formatDate(typeof v === 'string' ? v : null, tz) },
   { key: 'due_by',        label: 'Due', sortable: true,
     filterable: true, filterMode: 'date-range',
+    aggregable: true, aggType: 'date',
     render: (v) => _formatDate(typeof v === 'string' ? v : null, tz) },
   { key: 'defects_count', label: 'Defects', sortable: true,
     filterable: true, filterMode: 'range', filterRange: { min: 0, step: 1 },
+    // Total defects across the queue (or per group).  Footer is a plain
+    // number — DefectsCell needs the whole row, not a value.
+    aggregable: true, aggFns: ['sum', 'avg', 'max'],
+    aggFormat: (value) => <span className="tabular-nums font-medium">{value.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>,
     render: (_v, row) => <DefectsCell row={row as PTIInspectionRow} /> },
   { key: 'status',        label: 'Status', sortable: true, filterable: true,
     filterValue: (row) => String((row as PTIInspectionRow).status ?? ''),
@@ -128,7 +134,9 @@ const buildColumns = (tz?: string): AnyColumn[] => [
       return s ? s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '(none)';
     },
     render: (_v, row) => <StatusChip row={row as PTIInspectionRow} /> },
-  { key: 'reviewed_at',   label: 'Reviewed',
+  { key: 'reviewed_at',   label: 'Reviewed', sortable: true,
+    // Date agg — earliest / latest review date (nulls drop out).
+    aggregable: true, aggType: 'date',
     render: (v) => _formatDate(typeof v === 'string' ? v : null, tz) },
 ];
 

@@ -123,18 +123,25 @@ export default function PartDetail() {
     { key: 'vehicle_name', label: 'Vehicle', sortable: true },
     {
       key: 'usage_count', label: 'Uses', sortable: true,
+      aggregable: true, aggFns: ['sum', 'avg', 'max'],
       render: (v) => <span className="tabular-nums">{String(v ?? 0)}</span>,
     },
     {
       key: 'total_quantity', label: 'Qty', sortable: true,
+      aggregable: true, aggFns: ['sum', 'avg', 'max'],
+      aggFormat: (value) => value.toLocaleString(undefined, { maximumFractionDigits: 2 }),
       render: (v) => <span className="tabular-nums">{Number(v ?? 0).toLocaleString()}</span>,
     },
     {
       key: 'total_spent', label: 'Spent', sortable: true,
+      aggregable: true, aggFns: ['sum', 'avg', 'max'],
+      aggFormat: (value) => money(value),
       render: (v) => <span className="tabular-nums font-medium">{money(v)}</span>,
     },
     {
       key: 'last_date', label: 'Last Service', sortable: true,
+      // Most-recent service across vehicles (max) / earliest (min).
+      aggregable: true, aggType: 'date',
       render: (v) => (v ? formatDay(String(v), { timeZone: tz }) : <span className="text-muted-foreground">—</span>),
     },
     {
@@ -177,29 +184,41 @@ export default function PartDetail() {
     },
     {
       key: 'purchases', label: 'Purchases', sortable: true,
+      aggregable: true, aggFns: ['sum', 'avg', 'max'],
       render: (v) => <span className="tabular-nums">{String(v ?? 0)}</span>,
     },
     {
+      // NOT aggregable — a per-vendor AVERAGE; averaging averages is
+      // unweighted/misleading (blended price = sum(spent)/sum(qty)).
       key: 'avg_unit_price', label: 'Avg Price', sortable: true,
       render: (v) => (v == null ? <span className="text-muted-foreground">—</span>
         : <span className="tabular-nums font-medium">{money(v, 2)}</span>),
     },
     {
+      // min-of-mins = the true lowest price any vendor charged.
       key: 'min_unit_price', label: 'Min', sortable: true,
+      aggregable: true, aggFns: ['min'],
+      aggFormat: (value) => money(value, 2),
       render: (v) => (v == null ? <span className="text-muted-foreground">—</span>
         : <span className="tabular-nums">{money(v, 2)}</span>),
     },
     {
+      // max-of-maxes = the true highest price paid.
       key: 'max_unit_price', label: 'Max', sortable: true,
+      aggregable: true, aggFns: ['max'],
+      aggFormat: (value) => money(value, 2),
       render: (v) => (v == null ? <span className="text-muted-foreground">—</span>
         : <span className="tabular-nums">{money(v, 2)}</span>),
     },
     {
       key: 'total_spent', label: 'Spent', sortable: true,
+      aggregable: true, aggFns: ['sum', 'avg', 'max'],
+      aggFormat: (value) => money(value),
       render: (v) => <span className="tabular-nums font-medium">{money(v)}</span>,
     },
     {
       key: 'last_date', label: 'Last Purchase', sortable: true,
+      aggregable: true, aggType: 'date',
       render: (v) => (v ? formatDay(String(v), { timeZone: tz }) : <span className="text-muted-foreground">—</span>),
     },
   ], [tz, navigate]);
@@ -207,6 +226,8 @@ export default function PartDetail() {
   const purchaseColumns: AnyColumn[] = useMemo(() => [
     {
       key: 'service_date', label: 'Date', sortable: true,
+      // Earliest / latest purchase line in the filtered (or grouped) set.
+      aggregable: true, aggType: 'date',
       render: (v) => (v ? formatDay(String(v), { timeZone: tz }) : '—'),
     },
     { key: 'vehicle_name', label: 'Vehicle', sortable: true },
@@ -217,15 +238,22 @@ export default function PartDetail() {
     },
     {
       key: 'quantity', label: 'Qty', sortable: true,
+      aggregable: true, aggFns: ['sum', 'avg', 'max'],
+      aggFormat: (value) => value.toLocaleString(undefined, { maximumFractionDigits: 2 }),
       render: (v) => <span className="tabular-nums">{Number(v ?? 0).toLocaleString()}</span>,
     },
     {
+      // Per-line unit price is a RATIO — avg/min/max, never sum.
       key: 'effective_unit_price', label: 'Unit Price', sortable: true,
+      aggregable: true, aggFns: ['avg', 'min', 'max'],
+      aggFormat: (value) => money(value, 2),
       render: (v) => (v == null ? <span className="text-muted-foreground">—</span>
         : <span className="tabular-nums">{money(v, 2)}</span>),
     },
     {
       key: 'total_cost', label: 'Total', sortable: true,
+      aggregable: true, aggFns: ['sum', 'avg', 'max'],
+      aggFormat: (value) => money(value, 2),
       render: (v) => <span className="tabular-nums font-medium">{money(v, 2)}</span>,
     },
   ], [tz]);

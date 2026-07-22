@@ -53,10 +53,13 @@ const partColumns: AnyColumn[] = [
   },
   {
     key: 'usage_count', label: 'Uses', sortable: true,
+    aggregable: true, aggFns: ['sum', 'avg', 'max'],
     render: (v) => <span className="tabular-nums">{String(v ?? 0)}</span>,
   },
   {
     key: 'total_spent', label: 'Total Spent', sortable: true,
+    aggregable: true, aggFns: ['sum', 'avg', 'max'],
+    aggFormat: (value) => money(value),
     render: (v) => <span className="tabular-nums font-medium">{money(v)}</span>,
   },
   {

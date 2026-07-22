@@ -475,6 +475,11 @@ function makeColumns(
     key: 'score', label: 'Score', sortable: true,
     filterable: true, filterMode: 'range',
     filterRange: { min: 0, max: 100, step: 1 },
+    // Score is a 0–100 INDEX, not additive — offer avg (the fleet-average
+    // KPI) + min/max (best/worst), never sum.  Footer shows a rounded
+    // number, not the tier badge.
+    aggregable: true, aggFns: ['avg', 'min', 'max'],
+    aggFormat: (value) => <span className="tabular-nums font-bold">{Math.round(value)}</span>,
     // Insufficient-data drivers ride the same gauge as everyone else;
     // surface the provisional state inline so a "100 Platinum" cell
  // with thin telemetry doesn't read as authoritative.
@@ -578,10 +583,16 @@ function makeColumns(
   },
   {
     key: 'bonus_total', label: 'Bonuses', sortable: true,
+    // Bonus POINTS — additive.  sum (fleet total) / avg per driver.
+    aggregable: true, aggFns: ['sum', 'avg', 'max'],
+    aggFormat: (value) => <span className={`font-medium ${toneText('ok')}`}>+{Math.round(value)}</span>,
     render: (v) => <span className={`font-medium ${toneText('ok')}`}>+{v as number}</span>,
   },
   {
     key: 'penalty_total', label: 'Penalties', sortable: true,
+    // Penalty POINTS (already ≤ 0) — sum / avg; min = worst driver.
+    aggregable: true, aggFns: ['sum', 'avg', 'min'],
+    aggFormat: (value) => <span className={`font-medium ${toneText('danger')}`}>{Math.round(value)}</span>,
     render: (v) => <span className={`font-medium ${toneText('danger')}`}>{v as number}</span>,
   },
   ];

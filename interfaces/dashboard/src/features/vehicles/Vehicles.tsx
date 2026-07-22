@@ -166,6 +166,8 @@ const ALL_COLUMNS: AnyColumn[] = [
     filterable: true,
     filterMode: 'range',
     filterRange: { min: 0, step: 1 },
+    // Total active faults fleet-wide (or per group).
+    aggregable: true, aggFns: ['sum', 'avg', 'max'],
     render: (v) => (v as number) > 0 ? <span className="text-warn font-medium">{v as number}</span> : '0',
   },
   {
@@ -175,6 +177,10 @@ const ALL_COLUMNS: AnyColumn[] = [
     filterable: true,
     filterMode: 'range',
     filterRange: { min: 0, step: 1000, unit: 'mi' },
+    // Odometer is a READING, not a quantity — summing readings is
+    // meaningless.  Offer max (highest-mileage truck) + avg (fleet avg).
+    aggregable: true, aggFns: ['max', 'avg'],
+    aggFormat: (value) => `${Math.round(value).toLocaleString()} mi`,
     render: (v) => v != null
       ? `${Math.round(v as number).toLocaleString()} mi`
       : <span className="text-muted-foreground">—</span>,
@@ -186,6 +192,9 @@ const ALL_COLUMNS: AnyColumn[] = [
     filterable: true,
     filterMode: 'range',
     filterRange: { min: 0, step: 100, unit: 'h' },
+    // Also a meter READING — max / avg, never sum.
+    aggregable: true, aggFns: ['max', 'avg'],
+    aggFormat: (value) => `${Math.round(value).toLocaleString()} h`,
     render: (v) => v != null
       ? `${Math.round(v as number).toLocaleString()} h`
       : <span className="text-muted-foreground">—</span>,
