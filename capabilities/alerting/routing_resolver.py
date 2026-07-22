@@ -104,7 +104,7 @@ async def resolve_alert_targets(
             if primary_present:
                 return targets
 
-        return await _resolve_single_group(db, account_id, alert_type)
+        return await _resolve_single_group(db, account_id, alert_type, subtype)
     except Exception as e:
         logger.warning(
             "routing_resolver failed acct=%d type=%s sev=%s — "
@@ -129,6 +129,55 @@ async def _read_routing_mode(db, account_id: int) -> str:
     if account is None:
         return "single_group"
     return getattr(account, "alert_routing_mode", "single_group") or "single_group"
+
+
+async def _subtype_selected(
+    tenant, account_id: int, settings_key: str, subtype: str, route_key: str,
+) -> bool:
+    """Sub-category gate, fully fail-open.
+
+    Returns True (deliver) unless the account has an explicit
+    sub-category selection for ``route_key`` that EXCLUDES ``subtype``.
+    Empty/missing selection = ALL.  No subtype, no tenant handle,
+    vocab-less type, unknown subtype, or a settings read failure all
+    deliver — filtering must never eat an alert it wasn't told about.
+
+    ``settings_key`` is the full account_setting key so each caller
+    supplies its own namespace: ``persona_subtypes.{role}.{key}`` for
+    role mode, ``forum_subtypes.{key}`` for single mode.
+    """
+    if not subtype or tenant is None:
+        return True
+    vocab = persona_mapping.ALERT_SUBTYPES.get(route_key)
+    if not vocab or subtype not in vocab:
+        return True
+    try:
+        sel = await tenant.get_account_setting(
+            account_id, settings_key, default="",
+        )
+    except Exception:
+        return True
+    if not sel:
+        return True
+    return subtype in sel.split(",")
+
+
+def _match_topics(topics, route_key: str, subtype: str) -> list:
+    """Custom topics matching this alert (pure — no I/O).
+
+    A topic matches when its ``alert_type`` equals ``route_key`` and,
+    if it narrows by sub-category, ``subtype`` is one of its kinds.  A
+    subtype-narrowed topic never takes a subtype-less alert.
+    """
+    out = []
+    for tp in topics:
+        if tp.alert_type != route_key:
+            continue
+        if tp.subtypes:
+            if not subtype or subtype not in tp.subtypes.split(","):
+                continue
+        out.append(tp)
+    return out
 
 
 async def _resolve_per_persona(
@@ -197,26 +246,6 @@ async def _resolve_per_persona(
         if home != persona_mapping.OWNER_ADMIN:
             roles_for_type = [home]
 
-    async def _subtype_on(role: str) -> bool:
-        """Per-role sub-category selection (e.g. Safety Events: only
-        crash + braking).  Empty/missing selection = ALL.  Unknown
-        subtype or vocab-less type → deliver (fail-open — filtering
-        must never eat an alert it wasn't told about)."""
-        if not subtype or tenant is None:
-            return True
-        vocab = persona_mapping.ALERT_SUBTYPES.get(key)
-        if not vocab or subtype not in vocab:
-            return True
-        try:
-            sel = await tenant.get_account_setting(
-                account_id, f"persona_subtypes.{role}.{key}", default="",
-            )
-        except Exception:
-            return True
-        if not sel:
-            return True
-        return subtype in sel.split(",")
-
     seen_dests: set[tuple[int, int | None]] = set()
     for role in roles_for_type:
         grp = await db.get_persona_group(account_id, role)
@@ -230,7 +259,9 @@ async def _resolve_per_persona(
         primary_present = True
         if not await _route_on(role):
             continue
-        if not await _subtype_on(role):
+        if not await _subtype_selected(
+            tenant, account_id, f"persona_subtypes.{role}.{key}", subtype, key,
+        ):
             continue
         # ── Custom topics: a user-defined rule (name + type +
         # sub-category narrowing + optional forum thread) REPLACES the
@@ -239,13 +270,9 @@ async def _resolve_per_persona(
         # alert with no matching custom topic falls to the default.
         matched_topics = []
         try:
-            for tp in await db.list_alert_topics(account_id, role):
-                if tp.alert_type != key:
-                    continue
-                if tp.subtypes:
-                    if not subtype or subtype not in tp.subtypes.split(","):
-                        continue
-                matched_topics.append(tp)
+            matched_topics = _match_topics(
+                await db.list_alert_topics(account_id, role), key, subtype,
+            )
         except Exception as e:
             logger.debug("alert_topics lookup failed acct=%d role=%s: %s",
                          account_id, role, e)
@@ -329,15 +356,66 @@ _PIPELINE_TO_ROUTE_KEY: dict[str, str] = {
 
 
 async def _resolve_single_group(
-    db, account_id: int, alert_type: str,
+    db, account_id: int, alert_type: str, subtype: str = "",
 ) -> list[AlertTarget]:
-    """Legacy ``alert_routing`` lookup — returns at most one target."""
+    """``alert_routing`` lookup — one default target, at parity with the
+    per-persona path's two advanced features:
+
+      • an account-wide sub-category selection (``forum_subtypes.{key}``)
+        gates the post (declined subtype → [] → DM fallback, exactly
+        what role mode does);
+      • a matching custom topic (``alert_topics`` under the
+        ``FORUM_SENTINEL`` persona) REPLACES the default forum post,
+        routing the alert to its own thread instead.
+    """
     route_key = _PIPELINE_TO_ROUTE_KEY.get(alert_type)
     if route_key is None:
         return []
     route = await db.get_alert_route(account_id, route_key)
     if route is None:
         return []
+
+    tenant = None
+    try:
+        from infra.services import get_tenant_db
+        tenant = await get_tenant_db(account_id)
+    except Exception as e:
+        logger.debug("tenant handle unavailable acct=%d: %s", account_id, e)
+
+    # Sub-category gate (gates the default AND custom topics — same
+    # gate-before-topics ordering as the per-persona path).
+    if not await _subtype_selected(
+        tenant, account_id, f"forum_subtypes.{route_key}", subtype, route_key,
+    ):
+        return []
+
+    # Custom topics REPLACE the default forum post when one matches.
+    matched_topics = []
+    try:
+        matched_topics = _match_topics(
+            await db.list_alert_topics(account_id, persona_mapping.FORUM_SENTINEL),
+            route_key, subtype,
+        )
+    except Exception as e:
+        logger.debug("alert_topics lookup failed acct=%d (forum): %s",
+                     account_id, e)
+
+    if matched_topics:
+        seen: set[tuple[int, int | None]] = set()
+        out: list[AlertTarget] = []
+        for tp in matched_topics:
+            dest = (route.chat_id, tp.thread_id)
+            if dest in seen:
+                continue
+            seen.add(dest)
+            out.append(AlertTarget(
+                chat_id=route.chat_id,
+                message_thread_id=tp.thread_id,
+                is_aggregate=False,
+                persona="",
+            ))
+        return out
+
     return [AlertTarget(
         chat_id=route.chat_id,
         message_thread_id=route.message_thread_id,

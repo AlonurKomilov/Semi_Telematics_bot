@@ -8,6 +8,7 @@ import { InfoTip } from '../../components/tooltip';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { Switch } from '../../components/ui/switch';
 import { ErrorState } from '../../components/shell';
+import { TYPE_LABELS, FEATURE_GROUPS, SUBTYPE_LABELS } from './alertRoutingConstants';
 
 // The Telegram Bot card's body controller.  The Routing selector sits
 // at the TOP of the card (it's the bot-topology decision, not an
@@ -85,44 +86,6 @@ export interface BotConfigLite {
 
 // Operational roles; the owner_admin aggregate renders as the Main row.
 const ROLE_ORDER = ['dispatcher', 'safety', 'fleet', 'hr', 'accounting', 'recruiter'] as const;
-
-// Display names for the canonical alert types — same English catalog
-// the single-forum panel shows (its names come from the backend spec).
-//
-// TYPE_LABELS, FEATURE_GROUPS, and SUBTYPE_LABELS are intentionally
-// English in ALL locales: alert-type / feature / kind names are fixed
-// PRODUCT VOCABULARY (owner decision 2026-07-21).  Single-bot mode
-// draws the same names + descriptions straight from the backend
-// catalog (English), so translating only these frontend constants
-// would DESYNC the two modes — do not localize them without also
-// localizing the backend catalog.  Not a bug; don't "fix" it.
-const TYPE_LABELS: Record<string, string> = {
-  faults: 'Faults', health: 'Health', fuel: 'Fuel', events: 'Safety Events',
-  camera: 'Cameras', parking: 'Parking', geofence: 'Geofences',
-  scorecard: 'Scorecards', maintenance: 'Maintenance',
-  documents: 'Driver Documents', system: 'Sync & System',
-};
-
-// Feature hierarchy — topics render grouped under their owning FEATURE
-// (mirrors the product taxonomy: Vehicle telemetry, Safety, …), not as
-// one flat list.  Exported so the single-mode panel groups identically.
-export const FEATURE_GROUPS: { label: string; types: string[] }[] = [
-  { label: 'Vehicle', types: ['faults', 'health', 'fuel'] },
-  { label: 'Safety', types: ['events', 'camera', 'parking'] },
-  { label: 'Geofences', types: ['geofence'] },
-  { label: 'Scorecards', types: ['scorecard'] },
-  { label: 'Maintenance', types: ['maintenance'] },
-  { label: 'Drivers', types: ['documents'] },
-  { label: 'System', types: ['system'] },
-];
-
-// Sub-category display names — mirrors the events formatting SSOT
-// (capabilities/formatting/events.py keys).
-const SUBTYPE_LABELS: Record<string, string> = {
-  crash: 'Crash', braking: 'Harsh Braking', acceleration: 'Harsh Acceleration',
-  harshTurn: 'Harsh Turn', rollingStop: 'Rolling Stop',
-  followingDistance: 'Following Distance', laneDeparture: 'Lane Departure',
-};
 
 export default function AlertRoutingSection({
   botConfig,

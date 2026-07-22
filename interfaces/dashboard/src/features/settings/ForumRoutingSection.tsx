@@ -2,9 +2,11 @@ import { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
-import { FEATURE_GROUPS } from './AlertRoutingSection';
+import { FEATURE_GROUPS, SUBTYPE_LABELS } from './alertRoutingConstants';
 import { Switch } from '../../components/ui/switch';
 import { ErrorState } from '../../components/shell';
+import { InfoTip } from '../../components/tooltip';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import {
@@ -54,6 +56,17 @@ interface RouteRow extends CatalogRow {
    *  receipt is suppressed but the underlying alert_history row
    *  still flips to resolved — dashboard monitoring stays accurate. */
   send_resolve_receipt: boolean;
+  /** Sub-category vocabulary + selection, only on types that have one
+   *  (events).  ``selected === null`` ⇒ ALL kinds (the default). */
+  subtypes?: { all: string[]; selected: string[] | null };
+}
+
+interface CustomTopic {
+  id: number;
+  name: string;
+  alert_type: string;
+  subtypes: string[];
+  has_thread: boolean;
 }
 
 interface RoutingState {
@@ -65,6 +78,7 @@ interface RoutingState {
   last_repair_at?: string | null;
   catalog: CatalogRow[];
   routes: RouteRow[];
+  custom_topics?: CustomTopic[];
   settings?: {
     ai_per_type: Record<string, boolean>;
   };
@@ -92,6 +106,13 @@ export default function ForumRoutingSection() {
   const [showMapping, setShowMapping] = useState(false);
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const [busyKey, setBusyKey] = useState<string | null>(null);
+  // Custom-topics add form + inline delete confirm (native confirm() is
+  // banned in this feature — matches the card's other two-step confirms).
+  const [showAddTopic, setShowAddTopic] = useState(false);
+  const [ctName, setCtName] = useState('');
+  const [ctType, setCtType] = useState('');
+  const [ctSubs, setCtSubs] = useState<string[]>([]);
+  const [confirmTopic, setConfirmTopic] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -170,6 +191,63 @@ export default function ForumRoutingSection() {
         body: { ai_per_type: { [alertType]: next } },
       });
       toast.success(t('forum_routing.toast_settings_saved'));
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('forum_routing.toast_error'));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  // Sub-category selection for a type's group topic (e.g. Safety Events
+  // → only crash + braking).  Empty selection is guarded; a full set
+  // normalizes to ALL server-side.
+  const toggleSubtype = async (r: RouteRow, sub: string) => {
+    if (!r.subtypes || busyKey) return;
+    const current = r.subtypes.selected ?? r.subtypes.all;
+    const active = current.includes(sub);
+    const next = active ? current.filter((s) => s !== sub) : [...current, sub];
+    if (!next.length) {
+      toast.error(t('forum_routing.subtype_keep_one'));
+      return;
+    }
+    setBusyKey(`__st_${r.alert_type}__`);
+    try {
+      await apiJSON(`/admin/forum-routing/${r.alert_type}/subtypes`, {
+        method: 'PUT', body: { selected: next },
+      });
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('forum_routing.toast_error'));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const createTopic = async () => {
+    const name = ctName.trim();
+    if (!name || !ctType || busyKey) return;
+    setBusyKey('__ctopic__');
+    try {
+      const res = await apiJSON<CustomTopic>('/admin/forum-routing/custom-topics', {
+        method: 'POST', body: { name, alert_type: ctType, subtypes: ctSubs },
+      });
+      setCtName(''); setCtType(''); setCtSubs([]); setShowAddTopic(false);
+      toast.success(t('forum_routing.toast_topic_created', { name: res.name }));
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : t('forum_routing.toast_error'));
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const deleteTopic = async (topic: CustomTopic) => {
+    setBusyKey('__ctopic__');
+    try {
+      await apiJSON(`/admin/forum-routing/custom-topics/${topic.id}`, { method: 'DELETE' });
+      setConfirmTopic(null);
+      toast.success(t('forum_routing.toast_topic_deleted'));
       await load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('forum_routing.toast_error'));
@@ -328,7 +406,8 @@ export default function ForumRoutingSection() {
                         const aiBusy = busyKey === `__ai_${r.alert_type}__`;
                         const TypeIcon = TYPE_ICON[r.alert_type] ?? AlertTriangle;
                         return (
-                        <tr key={r.alert_type} className="border-b border-border/40 last:border-0">
+                        <Fragment key={r.alert_type}>
+                        <tr className="border-b border-border/40 last:border-0">
                           <td className="px-3 py-2 align-top w-10">
                             <TypeIcon size={16} className="text-muted-foreground" />
                           </td>
@@ -393,6 +472,45 @@ export default function ForumRoutingSection() {
                             )}
                           </td>
                         </tr>
+                        {/* Sub-category chips — pick which kinds of this
+                            type reach the group (all on by default). */}
+                        {r.subtypes && r.is_mapped && r.is_active && (
+                          <tr>
+                            <td />
+                            <td colSpan={4} className="px-3 pb-2">
+                              <div className="ml-1 flex flex-wrap items-center gap-1">
+                                <span className="text-2xs text-muted-foreground">
+                                  {!r.subtypes.selected
+                                    ? t('forum_routing.subtype_prefix_all')
+                                    : t('forum_routing.subtype_prefix_some', {
+                                        n: r.subtypes.selected.length,
+                                        total: r.subtypes.all.length,
+                                      })}
+                                </span>
+                                {r.subtypes.all.map((s) => {
+                                  const active = !r.subtypes!.selected || r.subtypes!.selected.includes(s);
+                                  return (
+                                    <button
+                                      key={s}
+                                      type="button"
+                                      disabled={busyKey === `__st_${r.alert_type}__`}
+                                      onClick={() => { void toggleSubtype(r, s); }}
+                                      className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md border text-2xs transition disabled:opacity-60 ${
+                                        active
+                                          ? 'border-primary/40 bg-primary/10 text-primary'
+                                          : 'border-border text-muted-foreground hover:border-ring'
+                                      }`}
+                                    >
+                                      {active && <Check size={12} />}
+                                      {SUBTYPE_LABELS[s] || s}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        </Fragment>
                         );
                           })}
                         </Fragment>
@@ -402,6 +520,114 @@ export default function ForumRoutingSection() {
                   </table>
                 </div>
               )}
+
+              {/* ── Custom topics — user-defined threads in the forum ── */}
+              <div>
+                <div className="mb-1 inline-flex items-center gap-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {t('forum_routing.custom_topics_title')}
+                  <InfoTip label={t('forum_routing.custom_topics_hint')} size={12} />
+                </div>
+                {!(state.custom_topics ?? []).length && (
+                  <p className="mb-1 text-2xs text-muted-foreground">
+                    {t('forum_routing.custom_topics_empty')}
+                  </p>
+                )}
+                <div className="space-y-1">
+                  {(state.custom_topics ?? []).map((tp) => {
+                    const label = state.routes.find((r) => r.alert_type === tp.alert_type)?.name || tp.alert_type;
+                    return (
+                    <div key={tp.id} className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="w-40 shrink-0 text-foreground">{tp.name}</span>
+                      <span className="text-muted-foreground">
+                        {label}
+                        {tp.subtypes.length > 0
+                          ? `: ${tp.subtypes.map((s) => SUBTYPE_LABELS[s] || s).join(', ')}`
+                          : ` · ${t('forum_routing.topic_all_kinds')}`}
+                      </span>
+                      {confirmTopic === tp.id ? (
+                        <span className="inline-flex flex-wrap items-center gap-1.5">
+                          <span className="text-2xs text-muted-foreground">
+                            {t('forum_routing.confirm_topic_delete', { name: tp.name })}
+                          </span>
+                          <button type="button" onClick={() => { void deleteTopic(tp); }}
+                            disabled={busyKey === '__ctopic__'}
+                            className="text-xs font-medium text-destructive hover:underline disabled:opacity-50">
+                            {busyKey === '__ctopic__' ? '…' : t('forum_routing.topic_remove')}
+                          </button>
+                          <button type="button" onClick={() => setConfirmTopic(null)}
+                            className="text-xs text-muted-foreground hover:text-foreground">
+                            {t('forum_routing.btn_cancel')}
+                          </button>
+                        </span>
+                      ) : (
+                        <button type="button" onClick={() => setConfirmTopic(tp.id)}
+                          className="text-xs text-destructive hover:underline">
+                          {t('forum_routing.topic_remove')}
+                        </button>
+                      )}
+                    </div>
+                    );
+                  })}
+
+                  {!showAddTopic ? (
+                    <button type="button"
+                      onClick={() => { setShowAddTopic(true); setCtName(''); setCtType(''); setCtSubs([]); }}
+                      className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition">
+                      {t('forum_routing.add_topic_btn')}
+                    </button>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        value={ctName}
+                        onChange={(e) => setCtName(e.target.value)}
+                        placeholder={t('forum_routing.topic_name_ph')}
+                        autoComplete="off" spellCheck={false}
+                        className="w-40 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring"
+                      />
+                      <Select value={ctType || undefined} onValueChange={(v) => { setCtType(v); setCtSubs([]); }}>
+                        <SelectTrigger size="sm" aria-label={t('forum_routing.custom_topics_title')} className="text-xs">
+                          <SelectValue placeholder={t('forum_routing.topic_type_ph')} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {state.routes.filter((r) => r.is_mapped).map((r) => (
+                            <SelectItem key={r.alert_type} value={r.alert_type} className="text-xs">{r.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {(() => {
+                        const vocab = state.routes.find((r) => r.alert_type === ctType)?.subtypes?.all;
+                        if (!vocab) return null;
+                        return (
+                          <>
+                            {vocab.map((s) => {
+                              const on = ctSubs.includes(s);
+                              return (
+                                <button key={s} type="button"
+                                  onClick={() => setCtSubs(on ? ctSubs.filter((x) => x !== s) : [...ctSubs, s])}
+                                  className={`px-2 py-0.5 rounded-md border text-2xs transition ${
+                                    on ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border text-muted-foreground hover:border-ring'
+                                  }`}>
+                                  {SUBTYPE_LABELS[s] || s}
+                                </button>
+                              );
+                            })}
+                            <span className="text-2xs text-muted-foreground">{t('forum_routing.topic_subs_hint')}</span>
+                          </>
+                        );
+                      })()}
+                      <button type="button" onClick={() => { void createTopic(); }}
+                        disabled={busyKey === '__ctopic__' || !ctName.trim() || !ctType}
+                        className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50">
+                        {busyKey === '__ctopic__' ? '…' : t('forum_routing.topic_create')}
+                      </button>
+                      <button type="button" onClick={() => setShowAddTopic(false)}
+                        className="text-xs text-muted-foreground hover:text-foreground">
+                        {t('forum_routing.btn_cancel')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
 
               <div>
                 {!confirmDisconnect ? (
@@ -427,7 +653,7 @@ export default function ForumRoutingSection() {
                       onClick={() => setConfirmDisconnect(false)}
                       className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded text-xs font-medium transition"
                     >
-                      {t('forum_routing.btn_disconnect_cancel')}
+                      {t('forum_routing.btn_cancel')}
                     </button>
                   </div>
                 )}

@@ -66,12 +66,14 @@ async def get_forum_routing(
             "routes": [],
         }
 
+    from capabilities.alerting.persona_mapping import ALERT_SUBTYPES, FORUM_SENTINEL
+
     routes = await platform_db.list_alert_routes(account_id)
     by_key = {r.alert_type: r for r in routes}
     route_rows = []
     for spec in FORUM_TOPIC_SPEC:
         r = by_key.get(spec.key)
-        route_rows.append({
+        row = {
             "alert_type":          spec.key,
             "name":                spec.name,
             "icon_emoji":          spec.icon_emoji,
@@ -87,7 +89,29 @@ async def get_forum_routing(
             # Defaults to True on legacy rows; admin flips via the
             # ForumRoutingSection on the dashboard.
             "send_resolve_receipt": bool(r.send_resolve_receipt) if r else True,
-        })
+        }
+        # Sub-category selection (only types with a vocabulary, e.g.
+        # events).  ``selected=None`` ⇒ ALL kinds (the default).
+        vocab = ALERT_SUBTYPES.get(spec.key)
+        if vocab:
+            sel = await platform_db.get_account_setting(
+                account_id, f"forum_subtypes.{spec.key}", default="",
+            )
+            row["subtypes"] = {
+                "all": list(vocab),
+                "selected": (sel.split(",") if sel else None),
+            }
+        route_rows.append(row)
+
+    # Custom topics for single mode live under the FORUM_SENTINEL persona.
+    custom_topics = [
+        {
+            "id": tp.id, "name": tp.name, "alert_type": tp.alert_type,
+            "subtypes": tp.subtypes.split(",") if tp.subtypes else [],
+            "has_thread": tp.thread_id is not None,
+        }
+        for tp in await platform_db.list_alert_topics(account_id, FORUM_SENTINEL)
+    ]
 
     # Account-level group-routing settings.  Per-alert-type AI
     # toggles let admins enable AI for some categories (e.g. Parking
@@ -111,6 +135,7 @@ async def get_forum_routing(
         "last_repair_at": group.last_repair_at,
         "catalog":        catalog,
         "routes":         route_rows,
+        "custom_topics":  custom_topics,
         "settings": {
             "ai_per_type": ai_per_type,
         },
@@ -262,6 +287,166 @@ async def toggle_forum_route_receipt(
         "send_resolve_receipt": body.send_resolve_receipt,
         "ok": ok,
     }
+
+
+# ── Sub-category (kind) selection — single-mode parity with role mode ─
+# Stored as account_setting ``forum_subtypes.{key}`` (csv, ""=ALL); the
+# resolver's single-group path gates on it.  Owner/admin only.
+
+
+class ForumSubtypeSelection(BaseModel):
+    selected: list[str]
+
+
+@router.put("/forum-routing/{alert_type}/subtypes")
+async def set_forum_subtypes(
+    alert_type: str,
+    body: ForumSubtypeSelection,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Narrow which sub-categories of an alert type reach the group
+    (e.g. Safety Events → only crash + braking).  A full or empty
+    selection normalizes to ALL (stored as "")."""
+    from capabilities.alerting.persona_mapping import ALERT_SUBTYPES
+
+    vocab = ALERT_SUBTYPES.get(alert_type)
+    if not vocab:
+        raise HTTPException(status_code=422, detail=f"'{alert_type}' has no sub-categories.")
+    unknown = [s for s in body.selected if s not in vocab]
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown sub-categories: {unknown}")
+
+    sel = set(body.selected)
+    csv = "" if (not sel or len(sel) >= len(vocab)) else ",".join(s for s in vocab if s in sel)
+    await tenant_db.set_account_setting(user["account_id"], f"forum_subtypes.{alert_type}", csv)
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "forum_subtypes_set",
+        target_type="alert_type", target_id=alert_type,
+        details=f"selected={csv or 'all'}",
+    )
+    return {"alert_type": alert_type, "selected": (csv.split(",") if csv else None)}
+
+
+# ── Custom topics (single mode) — sentinel-keyed, PRIMARY-bot thread ──
+
+
+class ForumCustomTopicIn(BaseModel):
+    # No persona field: single mode is role-less, the server keys these
+    # under FORUM_SENTINEL.  The gate is can_manage_account (owner/admin).
+    name: str = Field(min_length=1, max_length=128)
+    alert_type: str
+    subtypes: list[str] = Field(default_factory=list)
+
+
+@router.post("/forum-routing/custom-topics")
+async def create_forum_custom_topic(
+    body: ForumCustomTopicIn,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Create a custom topic in the single-bot forum group: a named
+    Telegram thread that a chosen alert type (optionally narrowed by
+    sub-category) posts to, replacing its default type-topic."""
+    from adapters.storage.models import ALERT_TYPE_KEYS
+    from capabilities.alerting.persona_mapping import ALERT_SUBTYPES, FORUM_SENTINEL
+
+    if body.alert_type not in ALERT_TYPE_KEYS:
+        raise HTTPException(status_code=422, detail=f"Unknown alert_type: {body.alert_type}")
+    vocab = ALERT_SUBTYPES.get(body.alert_type)
+    if body.subtypes:
+        if not vocab:
+            raise HTTPException(status_code=422, detail=f"'{body.alert_type}' has no sub-categories.")
+        unknown = [s for s in body.subtypes if s not in vocab]
+        if unknown:
+            raise HTTPException(status_code=422, detail=f"Unknown sub-categories: {unknown}")
+
+    group = await platform_db.get_forum_group(user["account_id"])
+    if group is None:
+        raise HTTPException(status_code=400, detail="Connect a forum group before adding custom topics.")
+
+    account = await platform_db.get_account(user["account_id"])
+    if not (account and account.bot_token_encrypted):
+        raise HTTPException(status_code=400, detail="No bot is configured for this account.")
+    from infra.crypto import decrypt
+    token = decrypt(account.bot_token_encrypted)
+
+    # Create the real forum thread via the PRIMARY bot.  DELIBERATE
+    # divergence from the per-role contract: in the single forum a
+    # threadless topic would REPLACE the type-topic and dump into
+    # General (silent downgrade), so we FAIL rather than persist a flat
+    # row — the row is only written once the thread exists.
+    thread_id = None
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"https://api.telegram.org/bot{token}/createForumTopic",
+                params={"chat_id": group.chat_id, "name": body.name[:128]},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                data = await resp.json()
+        if data.get("ok"):
+            thread_id = (data.get("result") or {}).get("message_thread_id")
+    except Exception as e:
+        # Log the error TYPE, never the raw exception — this block holds
+        # the decrypted bot token; a stringified error must not risk it.
+        logger.warning("createForumTopic failed acct=%d: %s",
+                       user["account_id"], type(e).__name__)
+    if thread_id is None:
+        raise HTTPException(
+            status_code=502,
+            detail="Couldn't create the Telegram topic — the bot needs admin rights with "
+                   "'Manage Topics' in the group. Fix that and try again.",
+        )
+
+    subtypes_csv = ""
+    if vocab and body.subtypes and len(set(body.subtypes)) < len(vocab):
+        subtypes_csv = ",".join(s for s in vocab if s in set(body.subtypes))
+    row = await platform_db.create_alert_topic(
+        account_id=user["account_id"], persona=FORUM_SENTINEL,
+        name=body.name.strip(), alert_type=body.alert_type,
+        subtypes=subtypes_csv, thread_id=thread_id,
+    )
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "forum_custom_topic_created",
+        target_type="alert_topic", target_id=str(row.id),
+        details=f"{body.alert_type}: {row.name} ({subtypes_csv or 'all'}; thread={thread_id})",
+    )
+    return {
+        "id": row.id, "name": row.name, "alert_type": row.alert_type,
+        "subtypes": row.subtypes.split(",") if row.subtypes else [],
+        "has_thread": True,
+    }
+
+
+@router.delete("/forum-routing/custom-topics/{topic_id}")
+async def delete_forum_custom_topic(
+    topic_id: int,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Remove the routing rule.  The Telegram thread and its history are
+    deliberately left in place — alerts return to the default type-topic."""
+    from capabilities.alerting.persona_mapping import FORUM_SENTINEL
+
+    row = await platform_db.get_alert_topic(user["account_id"], topic_id)
+    # Guard the sentinel: a per-role topic must never be deletable here.
+    if row is None or row.persona != FORUM_SENTINEL:
+        raise HTTPException(status_code=404, detail="Topic not found")
+    await platform_db.delete_alert_topic(user["account_id"], topic_id)
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "forum_custom_topic_deleted",
+        target_type="alert_topic", target_id=str(topic_id),
+        details=f"{row.alert_type}: {row.name}",
+    )
+    return {"ok": True}
 
 
 @router.post("/forum-routing/disconnect")

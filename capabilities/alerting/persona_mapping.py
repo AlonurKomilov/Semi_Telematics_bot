@@ -33,6 +33,16 @@ SAFETY: Final[str] = "safety"
 FLEET: Final[str] = "fleet"
 HR: Final[str] = "hr"
 
+# Sentinel "persona" for single_group mode's custom topics.  Single
+# mode has no role, but its custom topics live in the same
+# ``alert_topics`` table — keyed by this dunder value so exact-match
+# ``list_alert_topics(account_id, FORUM_SENTINEL)`` isolates them from
+# every real persona (role slugs are plain words; a dunder can never
+# collide, and CustomTopicIn's persona regex can't mint one).  The
+# aggregate ``list_alert_topics(account_id)`` (no persona) MUST filter
+# ``persona.startswith("__")`` so these never leak into the per-role UI.
+FORUM_SENTINEL: Final[str] = "__forum__"
+
 # Persona keys recognised by ``account_persona_groups.persona``.
 # Listed for assertion-style validation in tests.
 PERSONAS: Final[tuple[str, ...]] = (

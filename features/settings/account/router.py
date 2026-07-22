@@ -775,6 +775,11 @@ async def list_custom_topics(
     rows = await platform_db.list_alert_topics(user["account_id"])
     by_persona: dict[str, list] = {}
     for r in rows:
+        # Sentinel-scoped rows (single_group mode's custom topics, keyed
+        # by a "__…" persona) are managed on the single-bot surface, not
+        # the per-role roster — keep them out of this persona view.
+        if r.persona.startswith("__"):
+            continue
         by_persona.setdefault(r.persona, []).append({
             "id": r.id,
             "name": r.name,
@@ -890,7 +895,10 @@ async def delete_custom_topic(
     history) is deliberately left in place — alerts just stop landing
     there and return to the role's default routing."""
     row = await platform_db.get_alert_topic(user["account_id"], topic_id)
-    if row is None:
+    # Sentinel-scoped ("__…") rows belong to the single-bot forum surface
+    # and are managed via /forum-routing — this per-role endpoint must not
+    # touch them (keeps the scope guard symmetric with list_custom_topics).
+    if row is None or row.persona.startswith("__"):
         raise HTTPException(status_code=404, detail="Topic not found")
     if not _may_manage_persona_bot(user, row.persona):
         raise HTTPException(

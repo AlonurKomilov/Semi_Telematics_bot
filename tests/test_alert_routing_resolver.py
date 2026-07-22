@@ -116,6 +116,77 @@ async def test_disabled_route_can_be_re_enabled(_patch_platform_db, seeded_db):
     assert await db.get_alert_route(acct.id, "faults") is not None
 
 
+async def _seed_single_events(db, seeded_db):
+    acct = seeded_db["account"]
+    await db.upsert_forum_group(
+        account_id=acct.id, chat_id=-100999, chat_title="forum",
+        is_forum_enabled=True, created_by_user_id=seeded_db["owner"].id,
+        setup_status="provisioned",
+    )
+    await db.upsert_alert_route(
+        account_id=acct.id, alert_type="events",
+        chat_id=-100999, message_thread_id=10, topic_name_snapshot="Safety Events",
+    )
+    return acct
+
+
+@pytest.mark.asyncio
+async def test_single_group_custom_topic_replaces_default(_patch_platform_db, seeded_db):
+    """Single-mode parity: a subtype-narrowed custom topic (keyed by the
+    FORUM_SENTINEL persona) REPLACES the default forum post for a
+    matching alert; a non-matching subtype keeps the default type-topic."""
+    from capabilities.alerting.persona_mapping import FORUM_SENTINEL
+    db = _patch_platform_db
+    acct = await _seed_single_events(db, seeded_db)
+    await db.create_alert_topic(
+        account_id=acct.id, persona=FORUM_SENTINEL, name="Crashes only",
+        alert_type="events", subtypes="crash", thread_id=777,
+    )
+
+    crash = await resolve_alert_targets(
+        account_id=acct.id, alert_type="events", severity="info", subtype="crash")
+    braking = await resolve_alert_targets(
+        account_id=acct.id, alert_type="events", severity="info", subtype="braking")
+
+    # crash matches the custom topic → its thread REPLACES the default
+    assert len(crash) == 1 and crash[0].chat_id == -100999
+    assert crash[0].message_thread_id == 777
+    # braking doesn't match → the default type-topic (thread 10)
+    assert len(braking) == 1 and braking[0].message_thread_id == 10
+
+
+@pytest.mark.asyncio
+async def test_single_group_subtype_gate_declines_to_dm(_patch_platform_db, seeded_db):
+    """Single-mode parity: an account-wide sub-category selection that
+    EXCLUDES a subtype returns [] (→ pipeline DM fallback) — exactly what
+    role mode does, never a legacy resurrection of the filtered kind."""
+    import infra.services as _svc
+    db = _patch_platform_db
+    acct = await _seed_single_events(db, seeded_db)
+
+    class _Tenant:
+        async def get_account_setting(self, account_id, key, default=""):
+            return "crash" if key == "forum_subtypes.events" else default
+
+    async def _fake_tenant(_account_id):
+        return _Tenant()
+
+    orig = _svc.get_tenant_db
+    _svc.get_tenant_db = _fake_tenant
+    try:
+        crash = await resolve_alert_targets(
+            account_id=acct.id, alert_type="events", severity="info", subtype="crash")
+        braking = await resolve_alert_targets(
+            account_id=acct.id, alert_type="events", severity="info", subtype="braking")
+    finally:
+        _svc.get_tenant_db = orig
+
+    # selected kind delivers to the default topic…
+    assert len(crash) == 1 and crash[0].message_thread_id == 10
+    # …excluded kind is declined entirely (DM fallback), not resurrected
+    assert braking == []
+
+
 @pytest.mark.asyncio
 async def test_per_persona_warning_returns_primary_only(_patch_platform_db, seeded_db):
     db = _patch_platform_db

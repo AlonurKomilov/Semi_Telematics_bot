@@ -147,3 +147,109 @@ async def test_requires_manage_account_permission(api):
         assert (await c.get("/api/admin/alert-routing", headers=h)).status_code == 200
         assert (await c.put("/api/admin/alert-routing", headers=h,
                             json={"mode": "single_group"})).status_code == 403
+
+
+class _FakeCreateTopic:
+    """aiohttp.ClientSession stub — createForumTopic returns a thread."""
+
+    class _Resp:
+        def __init__(self, payload):
+            self._p = payload
+
+        async def json(self):
+            return self._p
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return False
+
+    ok = True
+
+    def __init__(self, *a, **kw):
+        pass
+
+    def get(self, url, **kw):
+        if "createForumTopic" in url and _FakeCreateTopic.ok:
+            return self._Resp({"ok": True, "result": {"message_thread_id": 4242}})
+        return self._Resp({"ok": False, "description": "not enough rights"})
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+
+async def _seed_single_forum(db, owner, acct):
+    from infra.crypto import encrypt
+    await db.update_account(acct.id, bot_token_encrypted=encrypt("123:ABC"),
+                            bot_username="primary_bot")
+    await db.upsert_forum_group(
+        account_id=acct.id, chat_id=-100777, chat_title="Forum",
+        is_forum_enabled=True, created_by_user_id=owner.id,
+        setup_status="provisioned",
+    )
+
+
+async def test_forum_custom_topics_and_subtypes(api, monkeypatch):
+    """Single-mode custom topics: create needs a real thread (502 without
+    one), the row is sentinel-isolated from the per-role view, and the
+    sub-category selection round-trips."""
+    app, db = api
+    acct, owner = await _seed_owner(db, "Forum Topics Co")
+    await _seed_single_forum(db, owner, acct)
+    import aiohttp
+    monkeypatch.setattr(aiohttp, "ClientSession", _FakeCreateTopic)
+    h = _headers(owner, acct)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+        # createForumTopic fails → 502, nothing persisted.
+        _FakeCreateTopic.ok = False
+        r = await c.post("/api/admin/forum-routing/custom-topics", headers=h,
+                         json={"name": "Crashes", "alert_type": "events", "subtypes": ["crash"]})
+        assert r.status_code == 502
+        body = (await c.get("/api/admin/forum-routing", headers=h)).json()
+        assert body["custom_topics"] == []
+
+        # thread creates → 200 with a thread; row appears in the forum view.
+        _FakeCreateTopic.ok = True
+        r = await c.post("/api/admin/forum-routing/custom-topics", headers=h,
+                         json={"name": "Crashes only", "alert_type": "events", "subtypes": ["crash"]})
+        assert r.status_code == 200, r.text
+        topic = r.json()
+        assert topic["has_thread"] is True and topic["subtypes"] == ["crash"]
+
+        body = (await c.get("/api/admin/forum-routing", headers=h)).json()
+        assert len(body["custom_topics"]) == 1
+        # events row carries the sub-category vocabulary for the chips.
+        ev = next(rr for rr in body["routes"] if rr["alert_type"] == "events")
+        assert set(ev["subtypes"]["all"]) >= {"crash", "braking"}
+
+        # SENTINEL ISOLATION — the forum topic must NOT leak into the
+        # per-role custom-topics view…
+        persona_view = (await c.get("/api/admin/alert-routing/custom-topics", headers=h)).json()
+        assert all(not p.startswith("__") for p in persona_view["personas"])
+        # …and the per-role DELETE endpoint must refuse the sentinel row
+        # (scope guard is symmetric — can't delete a forum topic there).
+        assert (await c.delete(f"/api/admin/alert-routing/custom-topics/{topic['id']}",
+                               headers=h)).status_code == 404
+
+        # sub-category selection round-trips; full set normalizes to ALL.
+        r = await c.put("/api/admin/forum-routing/events/subtypes", headers=h,
+                        json={"selected": ["crash", "braking"]})
+        assert r.status_code == 200 and r.json()["selected"] == ["crash", "braking"]
+        body = (await c.get("/api/admin/forum-routing", headers=h)).json()
+        ev = next(rr for rr in body["routes"] if rr["alert_type"] == "events")
+        assert ev["subtypes"]["selected"] == ["crash", "braking"]
+
+        r = await c.put("/api/admin/forum-routing/events/subtypes", headers=h,
+                        json={"selected": ev["subtypes"]["all"]})
+        assert r.json()["selected"] is None  # full = ALL
+
+        # delete returns the alert to its default type-topic.
+        assert (await c.delete(f"/api/admin/forum-routing/custom-topics/{topic['id']}",
+                               headers=h)).status_code == 200
+        body = (await c.get("/api/admin/forum-routing", headers=h)).json()
+        assert body["custom_topics"] == []
