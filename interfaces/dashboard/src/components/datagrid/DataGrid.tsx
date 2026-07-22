@@ -1561,6 +1561,21 @@ export default function DataGrid({
   // grouping + hidden are view-state chips with their own single ✕.
   const chipCount = columnFilters.length + sorting.length + (trimmedGlobal ? 1 : 0);
   const groupedCol = rowGroupBy ? columns.find(c => c.key === rowGroupBy) : undefined;
+  // A group-header label should read like the CELLS, not the raw code:
+  // group by Type and the header must say "Oil Change", not "oil".  Every
+  // leaf in a group shares the grouped value, so a representative leaf
+  // drives the column's own display — its ``render`` (the rich cell:
+  // icon + label) first, then ``filterLabel`` (the value→label text used
+  // by the filter dropdown), then the raw value as a last resort.
+  const renderGroupValue = useCallback(
+    (value: unknown, leaf: Record<string, unknown> | undefined): React.ReactNode => {
+      if (value == null || value === '') return '—';
+      if (groupedCol?.render && leaf) return groupedCol.render(value, leaf);
+      if (groupedCol?.filterLabel && leaf) return groupedCol.filterLabel(leaf);
+      return String(value);
+    },
+    [groupedCol],
+  );
   // Hidden columns get NO chip (the manage-columns badge already shows
   // the count) — only the data constraints + row grouping do.
   const hasAnyChip = chipCount > 0 || !!rowGroupBy;
@@ -2660,7 +2675,7 @@ export default function DataGrid({
                                     )}
                                   />
                                   <span className="font-medium text-foreground truncate">
-                                    {String(value ?? '—')}
+                                    {renderGroupValue(value, leafOriginals[0])}
                                   </span>
                                   <span className="shrink-0 text-xs text-muted-foreground">
                                     ({row.subRows.length})
@@ -2717,7 +2732,7 @@ export default function DataGrid({
                           ) : (
                             <>
                               <span className="font-medium text-foreground">
-                                {String(value ?? '—')}
+                                {renderGroupValue(value, leafOriginals[0])}
                               </span>
                               <span className="text-xs text-muted-foreground">
                                 ({row.subRows.length})
