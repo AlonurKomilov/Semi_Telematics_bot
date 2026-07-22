@@ -45,7 +45,10 @@ import {
 } from '../ui/table';
 import { cn } from '../../lib/utils';
 import type { AnyColumn, AggFn } from '../../types';
-import { AGG_FN_LABELS, AGG_FN_ORDER } from '../../types';
+import { AGG_FN_LABELS } from '../../types';
+import {
+  computeAggregate, formatAggDefault, toAggNumber, toAggTimestamp, offeredAggFns,
+} from './aggregation';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import ColumnFilterMenu from './ColumnFilterMenu';
@@ -94,55 +97,6 @@ const DENSITY_GROUP_ROW: Record<Density, string> = {
 // checkbox riding inside the first data cell — the select box gets its
 // own narrow column, and tanstack computes its sticky offset for free.
 const SELECT_COL_ID = '__select__';
-
-// Reduce a column's numeric values to a single aggregate.  ``count``
-// ignores the values and returns the row count (MUI's ``size``); the
-// rest fold over the finite numbers.  min/max use reduce (not
-// ``Math.min(...values)``) so a large filtered set can't blow the call
-// stack via argument spread.
-function computeAggregate(fn: AggFn, values: number[], rowCount: number): number | null {
-  if (fn === 'count') return rowCount;
-  if (values.length === 0) return null;
-  switch (fn) {
-    case 'sum': return values.reduce((a, b) => a + b, 0);
-    case 'avg': return values.reduce((a, b) => a + b, 0) / values.length;
-    case 'min': return values.reduce((a, b) => Math.min(a, b), Infinity);
-    case 'max': return values.reduce((a, b) => Math.max(a, b), -Infinity);
-    default: return null;
-  }
-}
-
-// Fallback footer formatting when a column declares no ``aggFormat`` —
-// a plain locale number, with decimals only for a (non-integer) average.
-function formatAggDefault(value: number, fn: AggFn): string {
-  return value.toLocaleString(undefined, {
-    maximumFractionDigits: fn === 'avg' ? 2 : 0,
-  });
-}
-
-// Normalize a date column's raw value (Date / ISO string / ms number)
-// to a comparable ms timestamp.  Null / undefined / '' → NaN so a
-// missing date is DROPPED by the ``Number.isFinite`` filter — NOT folded
-// in as epoch 0 (``new Date(null)`` / ``new Date(0)`` both yield
-// 1970-01-01, which would masquerade as the "earliest" min).
-function toAggTimestamp(v: number | string | Date | null | undefined): number {
-  if (v == null || v === '') return NaN;
-  if (v instanceof Date) return v.getTime();
-  if (typeof v === 'number') return v;
-  return new Date(v).getTime();
-}
-
-// Date columns only offer earliest / latest — summing or averaging dates
-// is meaningless, and ``count`` on a date is ambiguous (it's the whole-
-// view ROW count, NOT "how many rows have a date", so on a mostly-null
-// column like ``reviewed_at`` it misleads).  Row counts belong on a
-// count column or the pagination total.  Number columns offer all five.
-const DATE_AGG_FNS: readonly AggFn[] = ['min', 'max'];
-function offeredAggFns(col?: AnyColumn): readonly AggFn[] {
-  if (!col) return AGG_FN_ORDER;
-  if (col.aggFns) return col.aggFns;
-  return col.aggType === 'date' ? DATE_AGG_FNS : AGG_FN_ORDER;
-}
 
 const DENSITY_CYCLE: readonly Density[] = ['compact', 'default', 'roomy'];
 const DENSITY_ICONS: Record<Density, typeof Rows3> = {
@@ -2129,14 +2083,9 @@ export default function DataGrid({
       value = computeAggregate(fn, ts, originals.length);
     } else {
       const nums = originals
-        .map(o => {
-          const raw = col.aggValue ? col.aggValue(o) : o[key];
-          // Missing (null / undefined / '') is EXCLUDED, not folded in as
-          // 0 — ``Number(null) === 0`` would otherwise let an absent
-          // odometer or a null unit price drag an average down or
-          // masquerade as the minimum.  (``Number('') === 0`` too.)
-          return raw == null || raw === '' ? NaN : Number(raw);
-        })
+        // ``toAggNumber`` maps missing (null/undefined/'') → NaN so it's
+        // excluded here, not folded in as 0 (see aggregation.ts).
+        .map(o => toAggNumber(col.aggValue ? col.aggValue(o) : o[key]))
         .filter((n): n is number => Number.isFinite(n));
       value = computeAggregate(fn, nums, originals.length);
     }
