@@ -258,7 +258,9 @@ export default function ForumRoutingSection() {
 
   return (
     <div className="border-t border-border mt-5 pt-5">
-      <h3 className="text-sm font-semibold mb-2">{t('forum_routing.section_title')}</h3>
+      {/* No section heading — the "Group delivery" tab title + the
+          delivery-mode indicator above already frame this.  (Dropped
+          "Alert group & topics" to end the group-noun pile-up.) */}
       <p className="text-xs text-muted-foreground mb-4">
         {t('forum_routing.section_desc')}
       </p>

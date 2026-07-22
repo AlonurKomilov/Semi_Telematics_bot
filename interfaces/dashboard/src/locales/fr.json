@@ -122,7 +122,8 @@
     "load_error": "Impossible de charger le routage du bot. Vérifiez votre connexion et réessayez.",
     "topics_error": "Impossible de charger les réglages d'alertes par rôle — la liste ci-dessous peut être incomplète.",
     "mode_indicator": "Mode de distribution : {{mode}}",
-    "mode_change_link": "modifier dans Paramètres"
+    "mode_change_link": "modifier dans Paramètres → Bot Telegram",
+    "single_owner_only": "Ce compte utilise un bot partagé — son groupe et ses sujets sont gérés par un propriétaire."
   },
   "nav": {
     "overview": "Aperçu",
@@ -988,8 +989,7 @@
     "toast_disconnected": "Bot déconnecté",
     "toast_connect_error": "Impossible de valider le token",
     "toast_disconnect_error": "Impossible de déconnecter",
-    "routing_moved_pre": "Le routage de groupe — quelles alertes vont vers quel groupe et sujet Telegram — est désormais sur",
-    "routing_moved_link": "Alertes → Diffusion par groupe",
-    "routing_moved_post": "."
+    "configure_routing": "Configurer le routage",
+    "connection_label": "Connexion"
   }
 }

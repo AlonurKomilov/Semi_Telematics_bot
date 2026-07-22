@@ -122,7 +122,8 @@
     "load_error": "Bot yo'naltirishini yuklab bo'lmadi. Ulanishni tekshirib, qayta urining.",
     "topics_error": "Rol bo'yicha ogohlantirish sozlamalarini yuklab bo'lmadi — quyidagi ro'yxat to'liq bo'lmasligi mumkin.",
     "mode_indicator": "Yetkazish rejimi: {{mode}}",
-    "mode_change_link": "Sozlamalarda o‘zgartirish"
+    "mode_change_link": "Sozlamalar → Telegram bot da o‘zgartirish",
+    "single_owner_only": "Bu hisob bitta umumiy botdan foydalanadi — uning guruhi va mavzularini egasi boshqaradi."
   },
   "nav": {
     "overview": "Bosh sahifa",
@@ -617,8 +618,7 @@
     "toast_disconnected": "Bot uzildi",
     "toast_connect_error": "Tokenni tekshirib bo'lmadi",
     "toast_disconnect_error": "Uzib bo'lmadi",
-    "routing_moved_pre": "Guruhga yo‘naltirish — qaysi ogohlantirish qaysi Telegram guruhi va mavzusiga borishi — endi",
-    "routing_moved_link": "Ogohlantirishlar → Guruhga yetkazish",
-    "routing_moved_post": " bo‘limida."
+    "configure_routing": "Yo‘naltirishni sozlash",
+    "connection_label": "Ulanish"
   }
 }

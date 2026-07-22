@@ -756,7 +756,15 @@ export default function AlertRoutingSection({
       </p>
 
       {!roleMode ? (
-        singleBody
+        // Single mode has ONE owner-managed forum group; a role manager
+        // (no can_manage_account) can't configure it — and the forum GET
+        // is account-gated, so rendering singleBody would 403 into a
+        // misleading "couldn't load, retry" error.  Show an honest note.
+        canManageAccount ? singleBody : (
+          <p className="text-sm text-muted-foreground">
+            {t('alert_routing.single_owner_only')}
+          </p>
+        )
       ) : (
         <div className="space-y-3">
           {/* Topics drive row visibility — if that fetch failed, say so

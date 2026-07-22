@@ -954,12 +954,12 @@
     "load_error": "Couldn't load bot routing. Check your connection and retry.",
     "topics_error": "Couldn't load role alert settings — the list below may be incomplete.",
     "mode_indicator": "Delivery mode: {{mode}}",
-    "mode_change_link": "change in Settings"
+    "mode_change_link": "change in Settings → Telegram Bot",
+    "single_owner_only": "This account uses one shared bot — its group and topics are managed by an owner."
   },
   "forum_routing": {
-    "section_title": "Alert group & topics",
     "section_desc": "Connect a Telegram forum group so the bot can post each alert to its own topic. Personal DMs are independent — each user sets their own preferences under Alerts bell → Notification preferences.",
-    "mode_group_title": "Forum group with topics",
+    "mode_group_title": "Connected group",
     "mode_group_connected": "Connected: {{title}}",
     "mode_group_setup_status": "Status: {{status}}",
     "mode_group_last_setup": "Last setup: {{when}}",
@@ -1254,8 +1254,7 @@
     "toast_disconnected": "Bot disconnected",
     "toast_connect_error": "Failed to validate token",
     "toast_disconnect_error": "Failed to disconnect",
-    "routing_moved_pre": "Group routing — which alerts go to which Telegram group and topic — is now on",
-    "routing_moved_link": "Alerts → Group delivery",
-    "routing_moved_post": "."
+    "configure_routing": "Configure routing",
+    "connection_label": "Connection"
   }
 }

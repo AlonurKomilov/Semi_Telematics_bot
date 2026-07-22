@@ -122,7 +122,8 @@
     "load_error": "No se pudo cargar el enrutamiento del bot. Revisa tu conexión y reintenta.",
     "topics_error": "No se pudieron cargar los ajustes de alertas por rol — la lista de abajo puede estar incompleta.",
     "mode_indicator": "Modo de entrega: {{mode}}",
-    "mode_change_link": "cambiar en Ajustes"
+    "mode_change_link": "cambiar en Ajustes → Bot de Telegram",
+    "single_owner_only": "Esta cuenta usa un bot compartido — su grupo y temas los gestiona un propietario."
   },
   "nav": {
     "overview": "Resumen",
@@ -988,8 +989,7 @@
     "toast_disconnected": "Bot desconectado",
     "toast_connect_error": "No se pudo validar el token",
     "toast_disconnect_error": "No se pudo desconectar",
-    "routing_moved_pre": "El enrutamiento de grupos — qué alertas van a qué grupo y tema de Telegram — ahora está en",
-    "routing_moved_link": "Alertas → Entrega por grupo",
-    "routing_moved_post": "."
+    "configure_routing": "Configurar enrutamiento",
+    "connection_label": "Conexión"
   }
 }

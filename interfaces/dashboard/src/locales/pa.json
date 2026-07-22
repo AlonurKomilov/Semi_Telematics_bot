@@ -122,7 +122,8 @@
     "load_error": "ਬੋਟ ਰੂਟਿੰਗ ਲੋਡ ਨਹੀਂ ਹੋ ਸਕੀ। ਆਪਣਾ ਕਨੈਕਸ਼ਨ ਜਾਂਚੋ ਅਤੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।",
     "topics_error": "ਰੋਲ ਅਲਰਟ ਸੈਟਿੰਗਾਂ ਲੋਡ ਨਹੀਂ ਹੋ ਸਕੀਆਂ — ਹੇਠਾਂ ਦਿੱਤੀ ਸੂਚੀ ਅਧੂਰੀ ਹੋ ਸਕਦੀ ਹੈ।",
     "mode_indicator": "ਡਿਲੀਵਰੀ ਮੋਡ: {{mode}}",
-    "mode_change_link": "ਸੈਟਿੰਗਾਂ ਵਿੱਚ ਬਦਲੋ"
+    "mode_change_link": "ਸੈਟਿੰਗਾਂ → Telegram ਬੋਟ ਵਿੱਚ ਬਦਲੋ",
+    "single_owner_only": "ਇਹ ਖਾਤਾ ਇੱਕ ਸਾਂਝਾ ਬੋਟ ਵਰਤਦਾ ਹੈ — ਇਸਦੇ ਗਰੁੱਪ ਅਤੇ ਵਿਸ਼ੇ ਇੱਕ ਮਾਲਕ ਪ੍ਰਬੰਧਿਤ ਕਰਦਾ ਹੈ।"
   },
   "nav": {
     "overview": "ਸੰਖੇਪ",
@@ -772,8 +773,7 @@
     "toast_disconnected": "ਬੋਟ ਡਿਸਕਨੈਕਟ ਹੋਇਆ",
     "toast_connect_error": "ਟੋਕਨ ਤਸਦੀਕ ਨਹੀਂ ਹੋ ਸਕਿਆ",
     "toast_disconnect_error": "ਡਿਸਕਨੈਕਟ ਨਹੀਂ ਹੋ ਸਕਿਆ",
-    "routing_moved_pre": "ਗਰੁੱਪ ਰੂਟਿੰਗ — ਕਿਹੜੇ ਅਲਰਟ ਕਿਹੜੇ Telegram ਗਰੁੱਪ ਅਤੇ ਵਿਸ਼ੇ ਵਿੱਚ ਜਾਂਦੇ ਹਨ — ਹੁਣ",
-    "routing_moved_link": "ਅਲਰਟ → ਗਰੁੱਪ ਡਿਲੀਵਰੀ",
-    "routing_moved_post": " ਉੱਤੇ ਹੈ।"
+    "configure_routing": "ਰੂਟਿੰਗ ਸੰਰਚੋ",
+    "connection_label": "ਕਨੈਕਸ਼ਨ"
   }
 }

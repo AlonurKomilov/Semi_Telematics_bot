@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Settings as SettingsIcon } from 'lucide-react';
+import { Settings as SettingsIcon, ArrowRight } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import type { SettingsResponse, WorkSchedule, User, BotConfig, AnyColumn } from '../../types';
 import DataGrid from '../../components/datagrid';
@@ -384,6 +384,22 @@ export default function Settings() {
                   Alerts → Group delivery (linked below). */}
               <DeliveryModeSelector canManageAccount={canManageAccount} />
 
+              {/* The operational routing (bind groups, topics) lives on
+                  the Alerts tab — make that next step a real action, not
+                  a footnote (UX audit A2/P2). */}
+              <Link
+                to="/alerts/group-delivery"
+                className="inline-flex items-center gap-1 mb-5 px-3 py-1.5 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
+              >
+                {t('bot_card.configure_routing')}
+                <ArrowRight size={14} />
+              </Link>
+
+              {/* CONNECTION — the bot-credential half of the card,
+                  labeled so it reads as a distinct section from DELIVERY. */}
+              <div className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                {t('bot_card.connection_label')}
+              </div>
               <div className="flex items-center gap-3 mb-4">
                 {/* Flat status chip (no border) — border is the action
                     marker on this card.  Labels reuse the roster's
@@ -445,17 +461,6 @@ export default function Settings() {
                     {t('bot_card.disconnect')}
                   </button>
                 )}
-              </div>
-
-              {/* Alert routing lives on Alerts → Group delivery now —
-                  this card is just the bot credential. */}
-              <div className="mt-4 pt-4 border-t border-border">
-                <p className="text-xs text-muted-foreground">
-                  {t('bot_card.routing_moved_pre')}{' '}
-                  <Link to="/alerts/group-delivery" className="text-primary hover:underline">
-                    {t('bot_card.routing_moved_link')}
-                  </Link>{t('bot_card.routing_moved_post')}
-                </p>
               </div>
             </div>
           ) : (

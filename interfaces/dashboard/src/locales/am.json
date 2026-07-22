@@ -122,7 +122,8 @@
     "load_error": "የቦት አቅጣጫን መጫን አልተቻለም። ግንኙነትዎን አረጋግጠው እንደገና ይሞክሩ።",
     "topics_error": "የሚና ማንቂያ ቅንብሮችን መጫን አልተቻለም — ከታች ያለው ዝርዝር ያልተሟላ ሊሆን ይችላል።",
     "mode_indicator": "የአደራረስ ሁናቴ፦ {{mode}}",
-    "mode_change_link": "በቅንብሮች ይቀይሩ"
+    "mode_change_link": "በቅንብሮች → Telegram ቦት ይቀይሩ",
+    "single_owner_only": "ይህ መለያ አንድ የጋራ ቦት ይጠቀማል — ቡድኑና ርዕሶቹ በባለቤት ይተዳደራሉ።"
   },
   "nav": {
     "overview": "አጠቃላይ እይታ",
@@ -772,8 +773,7 @@
     "toast_disconnected": "ቦቱ ተቋርጧል",
     "toast_connect_error": "ቶክኑን ማረጋገጥ አልተቻለም",
     "toast_disconnect_error": "ማቋረጥ አልተቻለም",
-    "routing_moved_pre": "የቡድን አቅጣጫ — የትኞቹ ማንቂያዎች ወደ የትኛው Telegram ቡድንና ርዕስ እንደሚሄዱ — አሁን በ",
-    "routing_moved_link": "ማንቂያዎች → የቡድን አደራረስ",
-    "routing_moved_post": " ላይ ነው።"
+    "configure_routing": "አቅጣጫን አዋቅር",
+    "connection_label": "ግንኙነት"
   }
 }

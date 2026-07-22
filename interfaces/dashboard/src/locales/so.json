@@ -122,7 +122,8 @@
     "load_error": "Lama soo rari karin hagida bot-ka. Hubi xiriirkaaga oo mar kale isku day.",
     "topics_error": "Lama soo rari karin dejinta digniinta doorka — liiska hoose wuxuu noqon karaa mid aan dhammaystirnayn.",
     "mode_indicator": "Habka gaarsiinta: {{mode}}",
-    "mode_change_link": "ka beddel Dejinta"
+    "mode_change_link": "ka beddel Dejinta → Bot-ka Telegram",
+    "single_owner_only": "Akoonkani wuxuu isticmaalaa hal bot wadaag ah — kooxdiisa iyo mowduucyadiisa waxaa maamula milkiile."
   },
   "nav": {
     "overview": "Guudmar",
@@ -772,8 +773,7 @@
     "toast_disconnected": "Bot-ka waa la jaray",
     "toast_connect_error": "Token-ka lama xaqiijin karin",
     "toast_disconnect_error": "Lama jari karin",
-    "routing_moved_pre": "Hagida kooxda — digniintee tegayaan kooxda iyo mowduuca Telegram — hadda waxay ku taallaa",
-    "routing_moved_link": "Digniinaha → Gaarsiinta kooxda",
-    "routing_moved_post": "."
+    "configure_routing": "Habee hagida",
+    "connection_label": "Xiriir"
   }
 }
