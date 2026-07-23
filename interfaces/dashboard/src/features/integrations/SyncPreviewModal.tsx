@@ -74,6 +74,17 @@ export default function SyncPreviewModal({
         </div>
 
         <div className="overflow-y-auto p-4 space-y-4">
+          {/* No silent caps: a page-budget-limited fetch must never
+              let "0 changes" read as full-window coverage. */}
+          {preview.truncated && (
+            <div className={`rounded-md border px-3 py-2 text-xs ${toneClasses('warn')}`}>
+              Checked the first {(preview.fetched ?? 0).toLocaleString()} of{' '}
+              {(preview.total_upstream ?? 0).toLocaleString()} records in this
+              window — the rest weren't compared. Accept this batch, then run
+              the preview again (or pick a smaller window) to cover the
+              remainder.
+            </div>
+          )}
           {diff.kind === 'vehicles' && (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

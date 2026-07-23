@@ -348,3 +348,44 @@ async def test_project_stores_assigned_to(db):
     }]
     await db.project_external_work_orders(42, rows, source="datatruck")
     assert (await db.list_work_orders(42))[0]["assigned_to"] == "Pat Driver"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_projects_orphaned_snapshot_rows(db):
+    """Self-heal: a snapshot row that never reached the work_orders
+    module (synced before the projection existed, or in a window later
+    syncs moved past) gets projected from its stored payload.  Audit
+    2026-07-23 found 114 such orphans in production."""
+    from capabilities.integrations.datatruck.sync import (
+        _norm_work_order, reconcile_work_orders_projection,
+    )
+
+    raw = {
+        "id": 9901, "number": "WO-ORPHAN-1", "status": "completed",
+        "vendor": "Orphan Repair Co", "trailer": "TL9",
+        "scheduled_on_date": "2026-05-01T00:00:00Z",
+        "total_price": 150.0, "balance": 0.0, "paid_amount": 150.0,
+        "work_order_tasks": [
+            {"custom_task": "Mudflap", "parts_price": 75.0,
+             "parts_quantity": 2, "total_price": 150.0},
+        ],
+    }
+    # Stage the snapshot WITHOUT projecting — the orphan state.
+    n = await db.upsert_datatruck_work_orders(77, [_norm_work_order(raw)])
+    assert n == 1
+    assert await db.list_work_orders(77) == []
+
+    healed = await reconcile_work_orders_projection(77, db)
+    assert healed == 1
+    rows = await db.list_work_orders(77)
+    assert len(rows) == 1
+    wo = rows[0]
+    assert wo["external_id"] == "9901"
+    assert wo["external_number"] == "WO-ORPHAN-1"
+    assert wo["vendor_name"] == "Orphan Repair Co"
+    assert wo["payment_status"] == "paid"      # balance-cleared seed
+    parts = await db.list_work_order_parts(wo["id"])
+    assert [p["part_name"] for p in parts] == ["Mudflap"]
+
+    # Idempotent: nothing left to heal on the second pass.
+    assert await reconcile_work_orders_projection(77, db) == 0

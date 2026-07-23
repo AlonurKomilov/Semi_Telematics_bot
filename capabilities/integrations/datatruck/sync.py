@@ -810,9 +810,42 @@ async def _persist_rows(
     return written
 
 
+async def reconcile_work_orders_projection(
+    account_id: int, tenant: Any, *, vehicle_lookup: dict | None = None,
+) -> int:
+    """Self-heal the work-orders projection from the snapshot table.
+
+    The regular path only projects rows the CURRENT fetch window
+    returns — a row synced before the projection existed (or in a
+    window later syncs moved past) sits in ``datatruck_work_orders``
+    forever without ever reaching the Work Orders page.  Audit
+    2026-07-23 found 114 such orphans.  This re-normalizes the stored
+    payloads of every unprojected row and projects them; cheap when
+    nothing is missing (one indexed anti-join).  Best-effort like the
+    projections themselves."""
+    try:
+        payloads = await tenant.datatruck_wo_payloads_missing_projection(account_id)
+        if not payloads:
+            return 0
+        rows = [_norm_work_order(p) for p in payloads]
+        n = await tenant.project_external_work_orders(
+            account_id, rows, source=_PROVIDER_ID, vehicle_lookup=vehicle_lookup,
+        )
+        logger.info(
+            "datatruck WO projection reconcile acct=%d: %d orphaned rows projected",
+            account_id, n,
+        )
+        return n
+    except Exception as e:
+        logger.warning(
+            "datatruck WO projection reconcile failed acct=%d: %s", account_id, e,
+        )
+        return 0
+
+
 async def fetch_normalized(
     account_id: int, resource: str, *, days: int | None = None,
-    on_progress: Any = None,
+    on_progress: Any = None, max_pages: int | None = None,
 ) -> tuple[list[dict], int | None]:
     """Fetch + normalize every page of a resource WITHOUT writing.
 
@@ -820,7 +853,9 @@ async def fetch_normalized(
     compute the diff, and cache it so apply commits the very same rows.
     Returns ``(rows, total_upstream)``.  ``on_progress`` (optional
     async ``(fetched, total) -> None``) fires after each page so a
-    long rate-gated fetch can report itself.
+    long rate-gated fetch can report itself; ``max_pages`` overrides
+    the spec's cap (the preview grants a bigger budget than the
+    frequent scheduled sync).
     """
     spec = RESOURCES.get(resource)
     if spec is None:
@@ -831,7 +866,7 @@ async def fetch_normalized(
     rows: list[dict] = []
     total: int | None = None
     async for page in client.iter_pages(
-        spec.path, params, max_pages=spec.max_pages,
+        spec.path, params, max_pages=max_pages or spec.max_pages,
     ):
         if total is None:
             total = page.get("count")
@@ -854,6 +889,12 @@ async def fetch_normalized(
 # (drivers) and the huge append-only orders feed skip it.
 _PREVIEWABLE = ("trucks", "trailers", "work_orders")
 _PREVIEW_TTL_SEC = 600
+# The manual preview may spend more of the rate budget than the
+# 30-minute scheduled sync: 100 pages ≈ 1000 records ≈ 5.5 min behind
+# the 18 req/min gate — fine now that progress streams live.  (The
+# audit case: 583 upstream WOs vs the spec's 30-page cap = a preview
+# that silently checked only 300 and declared "up to date".)
+_PREVIEW_MAX_PAGES = {"work_orders": 100}
 
 
 def _preview_key(account_id: int, resource: str, preview_id: str) -> str:
@@ -923,6 +964,7 @@ async def run_preview(
 
         rows, total = await fetch_normalized(
             account_id, resource, days=days, on_progress=_progress,
+            max_pages=_PREVIEW_MAX_PAGES.get(resource),
         )
         # Fetch done — the roster lookup + diff planning are the last
         # (shorter) stretch; a distinct phase keeps the poller honest.
@@ -945,6 +987,10 @@ async def run_preview(
         payload = {
             "state": "ready", "resource": resource, "preview_id": preview_id,
             "fetched": len(rows), "total_upstream": total, "diff": diff,
+            # No silent caps: when the window holds more than the page
+            # budget fetched, the modal must SAY so instead of letting
+            # "0 changes" read as full coverage.
+            "truncated": bool(total is not None and len(rows) < total),
             "error": None, "rows": rows, "days": days,
             "vehicle_lookup": vehicle_lookup,
         }
@@ -1017,6 +1063,12 @@ async def apply_resource(
             account_id, spec, rows, tenant,
             vehicle_lookup=cached.get("vehicle_lookup"),
         )
+        # Heal projection orphans on the accept path too.
+        if spec.project_work_orders:
+            await reconcile_work_orders_projection(
+                account_id, tenant,
+                vehicle_lookup=cached.get("vehicle_lookup"),
+            )
         status["pages_done"] = 1
         status["state"] = "completed"
         # One-shot: drop the cache so a stale preview can't be re-applied.
@@ -1135,6 +1187,13 @@ async def sync_resource(
             # Per-page heartbeat keeps the 5-min staleness timer fed
             # on slow tenants (rate gate can stretch a big sync).
             await _publish(account_id, resource, status)
+
+        # Snapshot rows the window no longer covers still deserve a
+        # page presence — heal any projection orphans once per run.
+        if spec.project_work_orders:
+            await reconcile_work_orders_projection(
+                account_id, tenant, vehicle_lookup=wo_lookup,
+            )
 
         status["state"] = "completed"
     except Exception as e:

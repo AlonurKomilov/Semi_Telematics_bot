@@ -80,3 +80,34 @@ class DatatruckWorkOrdersMixin(_MixinBase):
 
     async def datatruck_work_orders_stats(self, account_id: int) -> dict:
         return await resource_stats(self, _SPEC, account_id)
+
+    async def datatruck_wo_payloads_missing_projection(
+        self, account_id: int, limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Raw payloads of staged work orders that never made it into
+        the ``work_orders`` module table.
+
+        This is the self-heal source for the projection reconcile:
+        rows synced before the projection existed — or fetched in a
+        window a later sync no longer covers — sit in the snapshot
+        forever without ever re-syncing, so the regular
+        fetch→project path can never pick them up again."""
+        import json
+        cur = await self._db.execute(
+            "SELECT d.payload FROM datatruck_work_orders d "
+            "LEFT JOIN work_orders w "
+            "  ON w.account_id = d.account_id AND w.source = 'datatruck' "
+            " AND w.external_id = d.external_id "
+            "WHERE d.account_id = ? AND w.id IS NULL "
+            f"LIMIT {int(limit)}",
+            (account_id,),
+        )
+        out: list[dict[str, Any]] = []
+        for r in await cur.fetchall():
+            try:
+                p = json.loads(dict(r)["payload"] or "{}")
+                if isinstance(p, dict) and p:
+                    out.append(p)
+            except (ValueError, TypeError):
+                continue
+        return out

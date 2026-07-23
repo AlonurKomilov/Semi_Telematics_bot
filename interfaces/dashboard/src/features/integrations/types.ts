@@ -263,6 +263,10 @@ export interface DatatruckPreviewStatus {
   phase?: 'fetching' | 'planning';
   fetched?: number;
   total_upstream?: number | null;
+  /** True when the window held more records than the page budget
+   *  fetched — the modal shows a coverage warning so "0 changes"
+   *  never reads as a full-window verdict. */
+  truncated?: boolean;
   diff?: SyncDiff;
   error?: string | null;
 }
