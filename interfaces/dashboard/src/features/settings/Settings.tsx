@@ -6,7 +6,7 @@ import { Settings as SettingsIcon, ArrowRight, Link2, Clock } from 'lucide-react
 import { apiJSON } from '../../api/client';
 import type { SettingsResponse, WorkSchedule, User, BotConfig, AnyColumn } from '../../types';
 import DataGrid from '../../components/datagrid';
-import { useAuth } from '../../context/AuthContext';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 import {
   PageHeader,
   ErrorState,
@@ -29,7 +29,7 @@ const HOUR_ITEMS = HOURS.map((h) => ({ value: String(h), label: `${String(h).pad
 
 export default function Settings() {
   const { t } = useTranslation();
-  const { user: authUser } = useAuth();
+  const { has: viewHas } = useViewPermissions();
   const qc = useQueryClient();
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -45,13 +45,19 @@ export default function Settings() {
   const [accountTz, setAccountTz] = useState('America/New_York');
   const [accountTzSaving, setAccountTzSaving] = useState(false);
   const [accountTzSuccess, setAccountTzSuccess] = useState('');
-  const canManageAccount = !!authUser?.permissions?.can_manage_account;
+  // VIEW-AWARE permissions (useViewPermissions, not the raw logged-in
+  // user): the page must render the PREVIEWED persona's Settings under
+  // View-As — an owner previewing "Fleet · Manager" sees the manager's
+  // scoped page, not their own.  Backend enforcement is independent
+  // (every owner section's endpoint re-checks can_manage_account /
+  // primary-owner server-side).
+  const canManageAccount = viewHas('can_manage_account');
   // Role MANAGERS reach Settings for the Telegram Bot card ONLY (their
   // own role's Sub bot).  The page renders just that card for them — no
   // /admin/settings fetch, so they never hit its can_manage_account 403.
-  const canManageRoleBot = !!authUser?.permissions?.can_manage_role_bot;
-  const canInvite = !!authUser?.permissions?.can_invite;
-  const canManageWorkHours = !!authUser?.permissions?.can_manage_work_hours;
+  const canManageRoleBot = viewHas('can_manage_role_bot');
+  const canInvite = viewHas('can_invite');
+  const canManageWorkHours = viewHas('can_manage_work_hours');
 
   // Vendor-directory contribution consent (UX audit 2026-07-16): the
   // auto-pipeline default (ON) becomes inspectable + owner-editable.

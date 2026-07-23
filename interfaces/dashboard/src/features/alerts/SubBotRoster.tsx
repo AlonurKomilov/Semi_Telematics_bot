@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { InfoTip } from '../../components/tooltip';
+import { useRoleView } from '../../context/RoleViewContext';
 import { ROLE_ORDER } from './alertRoutingConstants';
 
 interface SubBotRow { persona: string; bot_username: string; is_running: boolean; }
@@ -24,6 +25,12 @@ interface ModeResp { mode: 'single_group' | 'per_persona_groups'; }
 
 export default function SubBotRoster({ canManageAccount }: { canManageAccount: boolean }) {
   const { t } = useTranslation();
+  // View-As faithfulness: the server's `manageable` reflects the REAL
+  // caller (an owner → every persona), so an owner previewing
+  // "Fleet · Manager" would still see all rows.  While previewing a
+  // persona without account rights, restrict to that persona's row —
+  // what the real manager gets.
+  const { isPreviewing, activeView } = useRoleView();
   const [subBots, setSubBots] = useState<SubBotsResponse | null>(null);
   const [mode, setMode] = useState<ModeResp['mode'] | null>(null);
   const [tokenInputs, setTokenInputs] = useState<Record<string, string>>({});
@@ -42,8 +49,10 @@ export default function SubBotRoster({ canManageAccount }: { canManageAccount: b
 
   const manageable = subBots.manageable ?? [];
   const canManage = (p: string) => canManageAccount || manageable.includes(p);
-  // Owner sees every role; a manager sees only the ones they manage.
-  const rows = ROLE_ORDER.filter((p) => canManage(p));
+  // Owner sees every role; a manager sees only the ones they manage;
+  // a manager-tier PREVIEW sees only the previewed role's row.
+  const rows = ROLE_ORDER.filter((p) =>
+    canManage(p) && (!isPreviewing || canManageAccount || p === activeView));
   if (!rows.length) return null;
 
   const attach = async (persona: string) => {

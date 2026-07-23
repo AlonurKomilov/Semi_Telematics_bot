@@ -9,6 +9,7 @@ import { InfoTip } from '../../components/tooltip';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { Switch } from '../../components/ui/switch';
 import { ErrorState } from '../../components/shell';
+import { useRoleView } from '../../context/RoleViewContext';
 import { ROLE_ORDER, TYPE_LABELS, FEATURE_GROUPS, SUBTYPE_LABELS } from './alertRoutingConstants';
 
 // The Telegram Bot card's body controller.  The Routing selector sits
@@ -96,6 +97,7 @@ export default function AlertRoutingSection({
   singleBody: ReactNode;
 }) {
   const { t } = useTranslation();
+  const { isPreviewing, activeView } = useRoleView();
   const [data, setData] = useState<AlertRoutingResponse | null>(null);
   const [subBots, setSubBots] = useState<SubBotsResponse | null>(null);
   const [topics, setTopics] = useState<PersonaTopicsResponse | null>(null);
@@ -146,8 +148,13 @@ export default function AlertRoutingSection({
   }
 
   const manageable = subBots?.manageable ?? [];
+  // View-As faithfulness: the server's `manageable` reflects the REAL
+  // caller (owner → every persona), so while previewing a persona
+  // without account rights only that persona's row is editable — what
+  // the real manager gets.  (canManageAccount is already view-aware.)
   const canManage = (persona: string) =>
-    canManageAccount || manageable.includes(persona);
+    (canManageAccount || manageable.includes(persona))
+    && (!isPreviewing || canManageAccount || persona === activeView);
 
   const bind = async (persona: string) => {
     const raw = (chatInputs[persona] || '').trim();
