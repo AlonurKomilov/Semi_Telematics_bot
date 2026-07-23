@@ -20,9 +20,9 @@ export default function AlertsHeader() {
   const { t } = useTranslation();
   const { dataUpdatedAt, isFetching, refetch } = useAlertsQuery();
 
-  // Notification preferences moved to the "Notification preferences" TAB
-  // (AlertsTabs) — the single Alerts gate now reaches the board and the
-  // prefs as sibling tabs, so this header's redundant gear button is gone.
+  // Notification preferences live on their own top-level door
+  // (/notifications/preferences, via the topbar Notifications bell's gear),
+  // not under Alerts — so this header carries no prefs gear.
   return (
     <PageHeader
       icon={Bell}

@@ -349,3 +349,61 @@ async def test_email_type_rejects_irrelevant_and_bad_cadence(api):
         r = await c.put(f"{API}/prefs/email/cadence", headers=_h(api["token"]),
                         json={"cadence": "weekly"})
         assert r.status_code == 422
+
+
+# ── Account activity — targeted (opt-out) category prefs (N4) ─────────
+# team.invite_accepted is registered when the invites feature imports.
+import features.settings.invites  # noqa: E402,F401
+
+
+async def test_account_activity_lists_targeted_categories_on_by_default(api):
+    async with _client(api) as c:
+        r = await c.get(f"{API}/preferences/account-activity", headers=_h(api["token"]))
+    assert r.status_code == 200
+    body = r.json()
+    cats = {c["key"]: c for c in body["categories"]}
+    assert "team.invite_accepted" in cats            # the first non-alert source
+    cat = cats["team.invite_accepted"]
+    assert cat["source"] == "team"
+    assert cat["mandatory"] is False
+    # Opt-out: ON for every personal channel until muted.
+    assert cat["channels"] == {"telegram_dm": True, "email": True, "web_push": True}
+    # Channel connection states ride along so the UI can grey a column.
+    assert set(body["channels"]) == {"telegram_dm", "email", "web_push"}
+    # A brand-new user hasn't connected anything (alerts_on defaults off, so
+    # the telegram_dm channel isn't provisioned yet) — nothing is "ready".
+    assert all(ch["ready"] is False for ch in body["channels"].values())
+
+
+async def test_account_activity_mute_then_reflected(api):
+    async with _client(api) as c:
+        # Mute invite-accepted on email only.
+        r = await c.put(f"{API}/preferences/account-activity", headers=_h(api["token"]),
+                        json={"category": "team.invite_accepted",
+                              "channel": "email", "enabled": False})
+        assert r.json() == {"ok": True}
+
+        body = (await c.get(f"{API}/preferences/account-activity",
+                            headers=_h(api["token"]))).json()
+    cat = next(c for c in body["categories"] if c["key"] == "team.invite_accepted")
+    assert cat["channels"]["email"] is False          # muted
+    assert cat["channels"]["telegram_dm"] is True     # others untouched
+    assert cat["channels"]["web_push"] is True
+    # A real pref row was written for the mute.
+    prefs = await api["db"].get_pref_categories(api["acct"], "user", api["uid"], "email")
+    assert prefs.get("team.invite_accepted") is False
+
+
+async def test_account_activity_rejects_broadcast_category(api):
+    async with _client(api) as c:
+        # alert.faults is BROADCAST — it belongs to the matrix, not here.
+        r = await c.put(f"{API}/preferences/account-activity", headers=_h(api["token"]),
+                        json={"category": "alert.faults",
+                              "channel": "email", "enabled": False})
+    assert r.json() == {"ok": False, "error": "unknown_category"}
+
+
+async def test_account_activity_requires_auth(api):
+    async with _client(api) as c:
+        r = await c.get(f"{API}/preferences/account-activity")
+    assert r.status_code == 401

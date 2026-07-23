@@ -18,10 +18,14 @@ import { useQuery } from '@tanstack/react-query';
 import { apiJSON } from '../../api/client';
 import type { DashboardStats } from '../../types';
 
-export function useShellStats() {
+export function useShellStats(enabled = true) {
   return useQuery<DashboardStats>({
     queryKey: ['shell', 'overview-stats'],
     queryFn: () => apiJSON<DashboardStats>('/overview/stats'),
+    // Callers with no use for the stats (e.g. the Notifications bell for a
+    // role with no alerts access) pass enabled=false so they don't trigger
+    // the /overview/stats fetch just to compute a badge forced to 0.
+    enabled,
     // 60s stale matches Overview.tsx's policy.  The hero is persistent
     // background context, not a tab the user actively watches, so a
     // minute of staleness is fine; eyes-on-the-data live in the page

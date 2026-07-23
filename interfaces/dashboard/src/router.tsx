@@ -270,11 +270,14 @@ export default function AppRouter() {
         {/* Personal preferences — accessible to every authenticated
             user regardless of role. */}
         <Route path="profile" element={L(<Profile />)} />
-        {/* Notification preferences live UNDER Alerts (the single gate) as a
-            tab; the old standalone path 301s into it so bookmarks survive. */}
-        <Route path="alerts/preferences" element={L(<MyNotifications />)} />
+        {/* Notifications are a cross-source PERSONAL surface on their own
+            door (the topbar bell's gear), not an Alerts sub-tab. The alert
+            BOARD stays at /alerts; the old /alerts/preferences path 301s
+            here so bookmarks survive. */}
+        <Route path="notifications/preferences" element={L(<MyNotifications />)} />
+        <Route path="notifications" element={<Navigate to="/notifications/preferences" replace />} />
+        <Route path="alerts/preferences" element={<Navigate to="/notifications/preferences" replace />} />
         <Route path="alerts/group-delivery" element={L(<GroupDelivery />)} />
-        <Route path="notifications" element={<Navigate to="/alerts/preferences" replace />} />
         <Route path="storage"  element={L(<P perm="can_manage_storage"><Storage /></P>)} />
         <Route path="permissions" element={L(<P perm="can_manage_permissions"><Permissions /></P>)} />
         <Route path="scorecard-rules" element={L(<P perm="can_manage_scorecard_rules"><ScorecardRules /></P>)} />

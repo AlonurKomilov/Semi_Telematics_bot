@@ -1,19 +1,22 @@
 /**
- * Notification preferences — the per-user page under the Alerts tab.
+ * Notification preferences — the top-level personal page at
+ * /notifications/preferences (reached from the topbar Notifications bell's
+ * gear).  Notifications are a cross-SOURCE personal concern, not an alerts
+ * sub-feature, so this lives on its own door — the alert BOARD stays at
+ * /alerts.
  *
- * Layout (phase 6-3, the matrix-grid consolidation):
- *   1. CHANNEL cards — one per personal channel, each managing its own
- *      CONNECTION: Telegram (master switch + resolve receipts), Email
- *      (connect → verify → cadence), Push (per-device enable).
- *   2. The "Notify me when" MATRIX — rows = role-tailored alert types,
- *      columns = the three channels.  One checkbox per (type × channel);
- *      a column stays disabled until its channel is connected.
+ * Structured by SOURCE so each kind of notification has a home:
+ *   • Channels        — connect Telegram / Email / Push (the "where").
+ *   • Alerts          — BROADCAST + opt-IN matrix (which alerts, where).
+ *   • Account activity — TARGETED + opt-OUT notices (invite accepted …).
+ *   • System           — platform notices (placeholder until a source
+ *                        registers system.* categories).
+ *   • In-app           — on-screen banner level + position.
  *
- * Telegram's toggles still live on the legacy ``users.alert_*`` columns
- * (via /user/me/alerts, with the write-also mirror into the matrix);
- * Email/Push live on the notification matrix directly.  Group/forum
- * routing is a separate admin surface — the sibling Group delivery tab,
- * independent of this personal page.
+ * Telegram's alert toggles still live on the legacy ``users.alert_*``
+ * columns (via /user/me/alerts, mirrored into the matrix); Email/Push and
+ * every targeted category live on the notification matrix directly.
+ * Group/forum routing is a separate admin surface under /alerts.
  */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -23,9 +26,18 @@ import { PageHeader, ErrorState, CardSkeleton } from '@/components/shell';
 import EmailChannelCard from './EmailChannelCard';
 import PushChannelCard from './PushChannelCard';
 import NotifyMatrix from './NotifyMatrix';
+import AccountActivitySection from './AccountActivitySection';
 import BannerSettingsCard from './BannerSettingsCard';
 import BannerLevelCard from './BannerLevelCard';
-import { AlertsTabs } from './AlertsTabs';
+
+/** Small uppercase source divider — the per-source rhythm of the page. */
+function SourceLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2 mt-6 first:mt-0">
+      {children}
+    </p>
+  );
+}
 
 interface AlertPrefsResponse {
   alerts_on: boolean;
@@ -81,11 +93,10 @@ export default function MyNotifications() {
   if (loading) {
     return (
       <div>
-        <AlertsTabs />
         <PageHeader
           icon={Bell}
-          title="Notification preferences"
-          description="Choose which alerts reach you and where — Telegram, email, and push."
+          title="Notifications"
+          description="Choose what reaches you and where — Telegram, email, and push."
         />
         <CardSkeleton message="Loading preferences…" />
       </div>
@@ -95,15 +106,14 @@ export default function MyNotifications() {
   if (!prefs) {
     return (
       <div>
-        <AlertsTabs />
         <PageHeader
           icon={Bell}
-          title="Notification preferences"
-          description="Choose which alerts reach you and where — Telegram, email, and push."
+          title="Notifications"
+          description="Choose what reaches you and where — Telegram, email, and push."
         />
         <ErrorState
           title="Couldn’t load preferences"
-          message="The server didn’t respond when fetching your alert settings. Try again in a moment."
+          message="The server didn’t respond when fetching your settings. Try again in a moment."
         />
       </div>
     );
@@ -111,19 +121,16 @@ export default function MyNotifications() {
 
   return (
     <div>
-      <AlertsTabs />
       <PageHeader
         icon={Bell}
-        title="Notification preferences"
+        title="Notifications"
         description={
-          'Connect your channels, then pick which alerts go where in the grid below. Admins set group / forum routing on the Group delivery tab; the two don’t override each other.'
+          'Connect your channels once, then choose what reaches you and where. Admins set group / forum routing under Alerts; that doesn’t override these personal choices.'
         }
       />
 
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mb-2">
-        Channels
-      </p>
-      <div className="grid gap-4 lg:grid-cols-3 mb-6 items-start">
+      <SourceLabel>Channels</SourceLabel>
+      <div className="grid gap-4 lg:grid-cols-3 items-start">
         {/* Telegram — master switch + resolve receipts */}
         <section className="bg-card border border-border rounded-xl p-4">
           <p className="text-base font-semibold inline-flex items-center gap-2 mb-1">
@@ -175,6 +182,7 @@ export default function MyNotifications() {
         <PushChannelCard onChanged={bump} />
       </div>
 
+      <SourceLabel>Alerts</SourceLabel>
       <NotifyMatrix
         relevantTypes={prefs.relevant_types}
         telegramMasterOn={prefs.alerts_on}
@@ -183,9 +191,18 @@ export default function MyNotifications() {
         refreshKey={refreshKey}
       />
 
-      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground mt-6 mb-2">
-        In-app
-      </p>
+      <SourceLabel>Account activity</SourceLabel>
+      <AccountActivitySection refreshKey={refreshKey} />
+
+      <SourceLabel>System</SourceLabel>
+      <section className="bg-card border border-border rounded-xl p-4">
+        <p className="text-sm text-muted-foreground">
+          Platform notices — billing, security, and account changes — will
+          appear here. Nothing to configure yet.
+        </p>
+      </section>
+
+      <SourceLabel>In-app</SourceLabel>
       <div className="grid gap-4 lg:grid-cols-2 items-start">
         <BannerLevelCard />
         <BannerSettingsCard />

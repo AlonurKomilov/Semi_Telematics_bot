@@ -1,15 +1,12 @@
 /**
- * Alerts area tabs — the SINGLE gate's sub-navigation (docs §13).
- *
- * Alerts is the mother surface: the operational Board and the personal
- * Notification-preferences live under it as tabs, reached from the one
- * topbar bell (its dropdown gear deep-links the Preferences tab).  Both
- * the board page and the preferences page render this strip, so switching
- * keeps a shared skeleton instead of feeling like two separate pages.
+ * Alerts area tabs — the operational Board and the admin Group-delivery
+ * routing.  Personal notification PREFERENCES no longer live here: they
+ * moved to their own top-level door (/notifications/preferences, reached
+ * from the topbar Notifications bell's gear), because notifications are a
+ * cross-source personal concern, not an Alerts sub-feature.
  *
  * The Board tab is gated on the alerts view permission (like the bell);
- * Preferences is self-scoped, so every role that can reach this area sees
- * it.
+ * Group delivery is owner/admin (or a role manager for their own row).
  */
 import { NavLink } from 'react-router-dom';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
@@ -46,7 +43,6 @@ export function AlertsTabs() {
   return (
     <div className="flex items-center gap-1 border-b border-border mb-4">
       {canBoard && <Tab to="/alerts" end>Board</Tab>}
-      <Tab to="/alerts/preferences">Notification preferences</Tab>
       {canDelivery && <Tab to="/alerts/group-delivery">Group delivery</Tab>}
     </div>
   );

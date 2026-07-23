@@ -215,6 +215,117 @@ async def set_channel_cadence_route(
     return {"ok": True, "cadence": body.cadence}
 
 
+# ── Account activity — the TARGETED (opt-out) sources ────────────────
+# Alerts are broadcast + opt-IN (the matrix above).  Targeted categories
+# (team.invite_accepted, future account/system notices) are opt-OUT: they
+# reach every personal channel the user has connected UNLESS muted.  These
+# two endpoints drive the "Account activity" section of the preferences
+# page — one row per category, a toggle per personal channel, defaulting
+# ON.  Telegram is a personal channel here too (targeted notices honour
+# the per-category mute in the matrix), so all three columns appear.
+
+# Personal channels, including telegram_dm — unlike the alert matrix,
+# which routes Telegram through the legacy per-user columns.
+AccountActivityChannel = Literal["telegram_dm", "email", "web_push"]
+
+
+@router.get("/preferences/account-activity")
+@limiter.limit("30/minute")
+async def get_account_activity_prefs(
+    request: Request, user: dict = Depends(get_current_user),
+):
+    """Targeted categories with each personal channel's on/off + connection
+    state.  Opt-out: a category is ON for a channel unless a pref row
+    explicitly disables it.  Mandatory categories report ``mandatory:true``
+    so the UI can lock their toggles on."""
+    from infra.platform import get_platform_db
+    from capabilities.notifications.categories import list_categories, TARGETED
+    from capabilities.notifications.channels import personal_channels
+
+    db = get_platform_db()
+    db_user = await get_current_db_user(user, db)
+    if not db_user:
+        return {"categories": [], "channels": {}}
+
+    chans = personal_channels()
+    # Connection state + the explicit-pref map, fetched ONCE per channel.
+    # ``ready`` = the channel can actually deliver right now, using each
+    # channel's own readiness rule (so the UI can grey out a column that
+    # would otherwise lie): email needs a verified address, web push needs
+    # at least one enabled device, Telegram needs its master switch on.
+    channels: dict = {}
+    pref_by_channel: dict[str, dict[str, bool]] = {}
+    for ch in chans:
+        conn = await db.get_notification_channel(
+            db_user.account_id, "user", db_user.id, ch.key)
+        verified = bool(conn and conn.get("verified"))
+        master = bool(conn.get("enabled_master")) if conn else True
+        if ch.key == "web_push":
+            devices = await db.list_push_subscriptions(
+                db_user.account_id, db_user.id)
+            ready = bool(devices) and master
+        else:
+            ready = verified and master
+        channels[ch.key] = {
+            "connected": bool(conn), "verified": verified,
+            "enabled_master": master, "ready": ready,
+        }
+        pref_by_channel[ch.key] = await db.get_pref_categories(
+            db_user.account_id, "user", db_user.id, ch.key)
+
+    cats = [c for c in list_categories() if c.kind == TARGETED]
+    cats.sort(key=lambda c: (c.source, c.label))
+    out = []
+    for c in cats:
+        per_channel = {}
+        for ch in chans:
+            specific = pref_by_channel[ch.key].get(c.key)   # None | True | False
+            # Opt-out: ON by default; mandatory can't be turned off.
+            per_channel[ch.key] = True if c.mandatory else (specific is not False)
+        out.append({
+            "key": c.key, "label": c.label, "source": c.source,
+            "mandatory": c.mandatory, "channels": per_channel,
+        })
+    return {"categories": out, "channels": channels}
+
+
+class AccountActivityRequest(BaseModel):
+    category: str
+    channel: AccountActivityChannel
+    enabled: bool
+
+
+@router.put("/preferences/account-activity")
+@limiter.limit("60/minute")
+async def set_account_activity_pref(
+    request: Request, body: AccountActivityRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Mute / un-mute one targeted category on one personal channel.
+
+    Guards: the category must be a REGISTERED targeted one (defence in
+    depth — a broadcast alert type belongs to the matrix, not here), and a
+    mandatory category can't be muted."""
+    from infra.platform import get_platform_db
+    from capabilities.notifications.categories import get_category, TARGETED
+
+    db = get_platform_db()
+    db_user = await get_current_db_user(user, db)
+    if not db_user:
+        return {"ok": False, "error": "user_not_found"}
+    cat = get_category(body.category)
+    if cat is None or cat.kind != TARGETED:
+        return {"ok": False, "error": "unknown_category"}
+    if cat.mandatory:
+        return {"ok": False, "error": "mandatory"}
+    # Targeted notices are immediate (no digest); keep the row's cadence
+    # uniform with that so the delivery path never batches an FYI.
+    await db.set_notification_pref(
+        db_user.account_id, "user", db_user.id, body.channel,
+        body.category, enabled=body.enabled, cadence="immediate")
+    return {"ok": True}
+
+
 # ── Web push: device subscribe / unsubscribe (authed) ────────────────
 
 def _device_label(request: Request) -> str:

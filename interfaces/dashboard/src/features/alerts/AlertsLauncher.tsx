@@ -24,18 +24,21 @@ const P_ALERTS = ['can_alerts_all', 'can_alerts_vehicle'];
 
 export function AlertsLauncher() {
   const { hasAny } = useViewPermissions();
-  // Gate BEFORE the stats query so users without alerts access never
-  // trigger the /overview/stats fetch.
-  if (!hasAny(...P_ALERTS)) return null;
-  return <AlertsBell />;
+  // The bell is the universal Notifications door — every authenticated user
+  // gets it (even vehicle-less roles like recruiter/HR who have no alerts,
+  // so they can still reach their notification preferences).  Its alert
+  // GLANCE stays permission-scoped inside the panel.
+  return <AlertsBell canAlerts={hasAny(...P_ALERTS)} />;
 }
 
-function AlertsBell() {
+function AlertsBell({ canAlerts }: { canAlerts: boolean }) {
   const [open, setOpen] = useState(false);
-  const { data } = useShellStats();
-  const pending = data?.pending_alerts ?? 0;
+  // Only fetch the stats when they'd mean something — a no-alerts role's
+  // badge is forced to 0, so don't pay for the query.
+  const { data } = useShellStats(canAlerts);
+  const pending = canAlerts ? (data?.pending_alerts ?? 0) : 0;
   const badge = pending > 99 ? '99+' : String(pending);
-  const label = pending > 0 ? `Alerts, ${pending} pending` : 'Alerts';
+  const label = pending > 0 ? `Notifications, ${pending} pending` : 'Notifications';
 
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
@@ -65,7 +68,7 @@ function AlertsBell() {
           className="z-50 outline-none"
         >
           <PopoverPrimitive.Popup className="w-80 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg overflow-hidden">
-            <NotificationsPanel onClose={() => setOpen(false)} />
+            <NotificationsPanel onClose={() => setOpen(false)} canAlerts={canAlerts} />
           </PopoverPrimitive.Popup>
         </PopoverPrimitive.Positioner>
       </PopoverPrimitive.Portal>

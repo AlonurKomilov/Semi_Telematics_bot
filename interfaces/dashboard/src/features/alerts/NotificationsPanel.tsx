@@ -45,7 +45,9 @@ const TYPE_ICON: Record<string, typeof Wrench> = {
 
 type Tab = 'all' | 'critical';
 
-export function NotificationsPanel({ onClose }: { onClose: () => void }) {
+export function NotificationsPanel(
+  { onClose, canAlerts }: { onClose: () => void; canAlerts: boolean },
+) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<Tab>('all');
   // Locally hide alerts the moment they're acked so the row doesn't linger
@@ -53,7 +55,10 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
   const [acked, setAcked] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
 
-  const { data, isLoading, isFetching, refetch } = useRecentAlerts(true);
+  // A vehicle-less role (recruiter, HR) has no alerts access — the bell is
+  // still their Notifications door (the gear → all preferences), it just
+  // shows no alert glance.  Don't fetch a feed they can't read.
+  const { data, isLoading, isFetching, refetch } = useRecentAlerts(canAlerts);
   const ackAlerts = useAckAlerts();
   // Ids inside a pending "Acknowledge all" window — module-level store, so
   // the hide survives this panel unmounting when the dropdown closes (a
@@ -127,19 +132,22 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
     <div className="flex flex-col max-h-[32rem]">
       {/* Header — title + refresh + preferences gear (the ONE settings door) */}
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-border">
-        {/* Titled "Alerts" (not "Notifications") so the object keeps ONE
-            name across the bell, this panel, and the board it links to. */}
-        <p className="text-base font-semibold">Alerts</p>
+        {/* The bell is the Notifications door; this panel is its glance.
+            Alerts are one source shown here — "Open Alerts" leads to the
+            board, the gear leads to all notification preferences. */}
+        <p className="text-base font-semibold">Notifications</p>
         <div className="flex items-center gap-0.5">
+          {canAlerts && (
+            <button
+              onClick={() => refetch()}
+              aria-label="Refresh"
+              className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} aria-hidden />
+            </button>
+          )}
           <button
-            onClick={() => refetch()}
-            aria-label="Refresh"
-            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          >
-            <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} aria-hidden />
-          </button>
-          <button
-            onClick={() => goto('/alerts/preferences')}
+            onClick={() => goto('/notifications/preferences')}
             aria-label="Notification preferences"
             className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
           >
@@ -148,50 +156,67 @@ export function NotificationsPanel({ onClose }: { onClose: () => void }) {
         </div>
       </div>
 
-      {/* Tabs — filter the glance (All / Critical) */}
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-border">
-        <TabPill active={tab === 'all'} onClick={() => setTab('all')}>
-          All{alerts.length ? ` ${alerts.length}` : ''}
-        </TabPill>
-        <TabPill active={tab === 'critical'} onClick={() => setTab('critical')}>
-          Critical{criticalCount ? ` ${criticalCount}` : ''}
-        </TabPill>
-      </div>
-
-      {/* Feed */}
-      <div className="flex-1 overflow-y-auto min-h-0">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-10 text-muted-foreground">
-            <Loader2 size={18} className="animate-spin" aria-hidden />
+      {canAlerts ? (
+        <>
+          {/* Tabs — filter the glance (All / Critical) */}
+          <div className="flex items-center gap-1 px-3 py-2 border-b border-border">
+            <TabPill active={tab === 'all'} onClick={() => setTab('all')}>
+              All{alerts.length ? ` ${alerts.length}` : ''}
+            </TabPill>
+            <TabPill active={tab === 'critical'} onClick={() => setTab('critical')}>
+              Critical{criticalCount ? ` ${criticalCount}` : ''}
+            </TabPill>
           </div>
-        ) : shown.length === 0 ? (
-          <EmptyState critical={tab === 'critical'} />
-        ) : (
-          <ul className="divide-y divide-border/60">
-            {shown.map((a) => (
-              <AlertRow key={String(a.id)} alert={a} onAck={() => ack([a.id])}
-                        onOpen={() => goto('/alerts')} busy={busy} />
-            ))}
-          </ul>
-        )}
-      </div>
 
-      {/* Footer — bulk ack + the board */}
-      <div className="flex items-center justify-between px-3 py-2 border-t border-border">
-        <button
-          onClick={() => ackAllStaged(shown.map((a) => a.id))}
-          disabled={busy || shown.length === 0}
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors"
-        >
-          <CheckCheck size={14} aria-hidden /> Acknowledge all
-        </button>
-        <button
-          onClick={() => goto('/alerts')}
-          className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-        >
-          Open Alerts <ArrowRight size={14} aria-hidden />
-        </button>
-      </div>
+          {/* Feed */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {isLoading ? (
+              <div className="flex items-center justify-center py-10 text-muted-foreground">
+                <Loader2 size={18} className="animate-spin" aria-hidden />
+              </div>
+            ) : shown.length === 0 ? (
+              <EmptyState critical={tab === 'critical'} />
+            ) : (
+              <ul className="divide-y divide-border/60">
+                {shown.map((a) => (
+                  <AlertRow key={String(a.id)} alert={a} onAck={() => ack([a.id])}
+                            onOpen={() => goto('/alerts')} busy={busy} />
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Footer — bulk ack + the board */}
+          <div className="flex items-center justify-between px-3 py-2 border-t border-border">
+            <button
+              onClick={() => ackAllStaged(shown.map((a) => a.id))}
+              disabled={busy || shown.length === 0}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors"
+            >
+              <CheckCheck size={14} aria-hidden /> Acknowledge all
+            </button>
+            <button
+              onClick={() => goto('/alerts')}
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              Open Alerts <ArrowRight size={14} aria-hidden />
+            </button>
+          </div>
+        </>
+      ) : (
+        /* No alerts access — the bell is still the Notifications door. */
+        <div className="px-4 py-8 text-center">
+          <p className="text-sm text-muted-foreground">
+            No alerts for your role.
+          </p>
+          <button
+            onClick={() => goto('/notifications/preferences')}
+            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            Manage notification preferences <ArrowRight size={14} aria-hidden />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
