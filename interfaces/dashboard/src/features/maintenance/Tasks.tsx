@@ -1685,7 +1685,7 @@ export default function Tasks() {
             segments={TASK_SEGMENTS}
             // Personal scope tabs sit after Active/Archive (e.g. a saved
             // "Critical" or "Oil changes" view), per-user + isolated.
-            savedViews
+            savedTabs
             data={gridTasks as unknown as Record<string, unknown>[]}
             searchKey={['vehicle_name', 'company_code', 'description', 'task_type']}
             searchPlaceholder="Search…"

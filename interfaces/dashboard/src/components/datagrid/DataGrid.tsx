@@ -55,9 +55,9 @@ import ColumnFilterMenu from './ColumnFilterMenu';
 import ColumnHeaderMenu from './ColumnHeaderMenu';
 import ManageColumnsMenu from './ManageColumnsMenu';
 import {
-  type SavedView, rowPassesColFilter, viewMatch,
-} from './savedViews';
-import SavedViewDialog from './SavedViewDialog';
+  type SavedTab, rowPassesColFilter, tabMatch,
+} from './savedTabs';
+import SavedTabDialog from './SavedTabDialog';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../ui/select';
@@ -247,14 +247,14 @@ interface DataGridProps {
    *  array identity is stable across renders. */
   segments?: DataGridSegment[];
   /** Enable user-managed "saved views" — personal tabs an operator
-   *  builds from the current filters (a "+ New view" affordance beside
+   *  builds from the current filters (a "+ New tab" affordance beside
    *  the tabs).  Each view applies as an ISOLATED scope, exactly like a
    *  built-in segment, and persists per-user (``table.<id>.views``).
    *  Requires ``tableId``.  Views sit AFTER any built-in ``segments``;
    *  on a grid with no segments an implicit "All" tab leads.  A view
    *  saved while on a built-in segment (Active) COMPOSES with it, so it
    *  scopes within that lifecycle slice, not across all of them. */
-  savedViews?: boolean;
+  savedTabs?: boolean;
 }
 
 // ── Server-side preference keys ───────────────────────────────
@@ -276,16 +276,16 @@ const groupsKey     = (id: string | undefined) =>
   id ? `table.${id}.groups` : '';
 const rowGroupKey   = (id: string | undefined) =>
   id ? `table.${id}.rowGroup` : '';
-const viewsKey      = (id: string | undefined) =>
+const tabsKey      = (id: string | undefined) =>
   id ? `table.${id}.views` : '';
-const defaultViewKey = (id: string | undefined) =>
+const defaultTabKey = (id: string | undefined) =>
   id ? `table.${id}.defaultView` : '';
 // Saved-view segment keys are prefixed so a view tab is never confused
 // with a code-defined segment.  ``__all__`` is the implicit "everything"
 // tab shown when a grid has no built-in segments.
-const VIEW_PREFIX = 'view:';
+const TAB_PREFIX = 'tab:';
 const ALL_KEY = '__all__';
-const NO_VIEWS: SavedView[] = [];
+const NO_TABS: SavedTab[] = [];
 const aggregationKey = (id: string | undefined) =>
   id ? `table.${id}.aggregation` : '';
 const colWidthsKey  = (id: string | undefined) =>
@@ -491,7 +491,7 @@ export default function DataGrid({
   headerToolbar, tableId, firstColumnLeading, rowGroupHeader, defaultRowGroup,
   defaultAggregation,
   enableToolbar = true, enablePagination = true, segments,
-  savedViews: savedViewsEnabled = false,
+  savedTabs: savedTabsEnabled = false,
   bulkSelection = false, onBulkSelectionChange, bulkActions, bulkRowLabel,
   isRowSelectable, selectedIds: controlledSelectedIds, onSelectedIdsChange,
 }: DataGridProps) {
@@ -549,16 +549,16 @@ export default function DataGrid({
   // scoping (``sourceData.filter(match)``), counting, and tab rendering
   // as a code-defined segment — isolated, no cross-tab leak, for free.
   const {
-    value: savedViewList,
-    setValue: setSavedViewList,
-    hydrated: viewsHydrated,
-  } = useUserPreference<SavedView[]>(
-    savedViewsEnabled ? viewsKey(tableId) : '', NO_VIEWS,
+    value: savedTabList,
+    setValue: setSavedTabList,
+    hydrated: tabsHydrated,
+  } = useUserPreference<SavedTab[]>(
+    savedTabsEnabled ? tabsKey(tableId) : '', NO_TABS,
   );
-  const viewSegments = useMemo<DataGridSegment[]>(() => {
-    if (!savedViewsEnabled) return [];
-    return savedViewList.map(v => {
-      const own = viewMatch(v, columns, searchKeys);
+  const tabSegments = useMemo<DataGridSegment[]>(() => {
+    if (!savedTabsEnabled) return [];
+    return savedTabList.map(v => {
+      const own = tabMatch(v, columns, searchKeys);
       // Compose with the segment the view was captured under, if it still
       // exists — so the view stays inside that lifecycle scope (a stale
       // baseSegment simply drops to the view's own filters).
@@ -566,20 +566,20 @@ export default function DataGrid({
         ? (segments ?? []).find(s => s.key === v.baseSegment)?.match
         : undefined;
       return {
-        key: VIEW_PREFIX + v.id,
+        key: TAB_PREFIX + v.id,
         label: v.name,
         match: base ? (row) => base(row) && own(row) : own,
       };
     });
-  }, [savedViewsEnabled, savedViewList, columns, searchKeys, segments]);
+  }, [savedTabsEnabled, savedTabList, columns, searchKeys, segments]);
   const effectiveSegments = useMemo<DataGridSegment[]>(() => {
     const builtIn = segments ?? [];
-    if (!savedViewsEnabled) return builtIn;
+    if (!savedTabsEnabled) return builtIn;
     // No built-in segments → an implicit "All" tab leads so the operator
     // can always leave a view and see the full set again.
     const base = builtIn.length ? builtIn : [{ key: ALL_KEY, label: 'All' }];
-    return [...base, ...viewSegments];
-  }, [segments, savedViewsEnabled, viewSegments]);
+    return [...base, ...tabSegments];
+  }, [segments, savedTabsEnabled, tabSegments]);
 
   const [segmentPref, setSegmentPref] = useState<string>(effectiveSegments[0]?.key ?? '');
   const activeSegment = useMemo(() => {
@@ -592,11 +592,11 @@ export default function DataGrid({
   // A view can be the DEFAULT tab (opens on load).  Stored as the view
   // id per-user; applied once, after the views have loaded.
   const {
-    value: defaultView,
-    setValue: setDefaultView,
+    value: defaultTab,
+    setValue: setDefaultTab,
     hydrated: defaultHydrated,
   } = useUserPreference<string>(
-    savedViewsEnabled ? defaultViewKey(tableId) : '', '',
+    savedTabsEnabled ? defaultTabKey(tableId) : '', '',
   );
   const appliedDefault = useRef(false);
   useEffect(() => {
@@ -604,29 +604,29 @@ export default function DataGrid({
     // Wait for the server value to land — on a fresh device the pref is
     // '' until the fetch resolves; deciding "no default" before then
     // would permanently skip applying it.
-    if (!defaultHydrated || !viewsHydrated) return;
-    if (!defaultView) { appliedDefault.current = true; return; }
-    const key = VIEW_PREFIX + defaultView;
+    if (!defaultHydrated || !tabsHydrated) return;
+    if (!defaultTab) { appliedDefault.current = true; return; }
+    const key = TAB_PREFIX + defaultTab;
     if (effectiveSegments.some(s => s.key === key)) {
       setSegmentPref(key);
     }
     // Whether or not the (possibly-deleted) default view resolved, the
     // one-shot is spent once both prefs are hydrated.
     appliedDefault.current = true;
-  }, [defaultHydrated, viewsHydrated, defaultView, effectiveSegments]);
+  }, [defaultHydrated, tabsHydrated, defaultTab, effectiveSegments]);
 
   // Applying a view's captured SORT when it becomes the active tab (click
   // or default-on-load).  Keyed only on the active VIEW id, so it fires
   // when you SWITCH views — not while you re-sort within one — and never
   // for a built-in tab.  A view with no captured sort leaves sort as-is.
-  const activeViewId = activeSegment?.key.startsWith(VIEW_PREFIX)
-    ? activeSegment.key.slice(VIEW_PREFIX.length) : null;
+  const activeTabId = activeSegment?.key.startsWith(TAB_PREFIX)
+    ? activeSegment.key.slice(TAB_PREFIX.length) : null;
   useEffect(() => {
-    if (!activeViewId) return;
-    const v = savedViewList.find(x => x.id === activeViewId);
+    if (!activeTabId) return;
+    const v = savedTabList.find(x => x.id === activeTabId);
     if (v?.sort) setSorting(v.sort);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeViewId]);
+  }, [activeTabId]);
   const segmentCounts = useMemo(() => {
     if (!effectiveSegments.length) return {};
     const counts: Record<string, number> = {};
@@ -644,45 +644,45 @@ export default function DataGrid({
 
   // ── view CRUD ────────────────────────────────────────────────────
   // The New / Edit dialog owns the name + filter picking; these just
-  // persist what it returns.  ``viewDialog`` = null (closed), 'new', or
+  // persist what it returns.  ``tabDialog`` = null (closed), 'new', or
   // the view being edited.
-  const [viewDialog, setViewDialog] = useState<SavedView | 'new' | null>(null);
-  const commitView = useCallback((name: string, filters: ColumnFiltersState, search: string) => {
+  const [tabDialog, setTabDialog] = useState<SavedTab | 'new' | null>(null);
+  const commitTab = useCallback((name: string, filters: ColumnFiltersState, search: string) => {
     // The live ``sorting`` belongs to the ACTIVE tab.  Grouping + column
     // layout stay the grid's global per-user settings; a view doesn't
     // touch them.
     const liveSort = sorting.length ? sorting : undefined;
-    if (viewDialog === 'new') {
+    if (tabDialog === 'new') {
       const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
       // Compose with the built-in segment we're inside (Active/Archive) —
       // not the implicit "All" tab or another view.
       const cur = segmentPref;
-      const baseSegment = cur && cur !== ALL_KEY && !cur.startsWith(VIEW_PREFIX)
+      const baseSegment = cur && cur !== ALL_KEY && !cur.startsWith(TAB_PREFIX)
         ? cur : undefined;
-      setSavedViewList(prev => [...prev, {
+      setSavedTabList(prev => [...prev, {
         id, name, filters, search: search || undefined, sort: liveSort, baseSegment,
       }]);
-      setSegmentPref(VIEW_PREFIX + id);
-    } else if (viewDialog) {
-      const editId = viewDialog.id;
+      setSegmentPref(TAB_PREFIX + id);
+    } else if (tabDialog) {
+      const editId = tabDialog.id;
       // Only re-capture the live sort when editing the view you're
       // actually ON — otherwise ``sorting`` is some OTHER tab's sort and
       // would stomp this view's saved one.  Keep its own sort otherwise.
-      const sort = editId === activeViewId ? liveSort : viewDialog.sort;
-      setSavedViewList(prev => prev.map(v => (
+      const sort = editId === activeTabId ? liveSort : tabDialog.sort;
+      setSavedTabList(prev => prev.map(v => (
         v.id === editId ? { ...v, name, filters, search: search || undefined, sort } : v
       )));
     }
-  }, [viewDialog, segmentPref, setSavedViewList, sorting, activeViewId]);
-  const deleteView = useCallback((id: string) => {
-    setSavedViewList(prev => prev.filter(v => v.id !== id));
-    setSegmentPref(prev => (prev === VIEW_PREFIX + id ? (segments?.[0]?.key ?? ALL_KEY) : prev));
-    setDefaultView(prev => (prev === id ? '' : prev));   // don't leave a dangling default
-  }, [setSavedViewList, segments, setDefaultView]);
+  }, [tabDialog, segmentPref, setSavedTabList, sorting, activeTabId]);
+  const deleteTab = useCallback((id: string) => {
+    setSavedTabList(prev => prev.filter(v => v.id !== id));
+    setSegmentPref(prev => (prev === TAB_PREFIX + id ? (segments?.[0]?.key ?? ALL_KEY) : prev));
+    setDefaultTab(prev => (prev === id ? '' : prev));   // don't leave a dangling default
+  }, [setSavedTabList, segments, setDefaultTab]);
   // Reorder personal views (⋮ → Move left / right) — swap with the
   // neighbour in the saved list.
-  const moveView = useCallback((id: string, dir: -1 | 1) => {
-    setSavedViewList(prev => {
+  const moveTab = useCallback((id: string, dir: -1 | 1) => {
+    setSavedTabList(prev => {
       const i = prev.findIndex(v => v.id === id);
       const j = i + dir;
       if (i < 0 || j < 0 || j >= prev.length) return prev;
@@ -690,7 +690,7 @@ export default function DataGrid({
       [next[i], next[j]] = [next[j], next[i]];
       return next;
     });
-  }, [setSavedViewList]);
+  }, [setSavedTabList]);
 
   // ── Column-layout state (visibility / order / pinning) ─────
   //
@@ -986,7 +986,7 @@ export default function DataGrid({
           const isRange = col.filterMode === 'range';
           const isDateRange = col.filterMode === 'date-range';
           // NOTE: this is the tanstack-Row form of the same logic that
-          // ``rowPassesColFilter`` (savedViews.ts) applies to raw rows —
+          // ``rowPassesColFilter`` (savedTabs.ts) applies to raw rows —
           // keep the two in sync so a saved view scopes exactly like the
           // live filter it was captured from.  (They match today because
           // every column uses ``accessorKey``, so ``row.getValue(key)``
@@ -2315,9 +2315,9 @@ export default function DataGrid({
             const active = seg.key === activeSegment?.key;
             const prev = i > 0 ? effectiveSegments[i - 1] : undefined;
             const prevActive = prev?.key === activeSegment?.key;
-            const isView = seg.key.startsWith(VIEW_PREFIX);
-            const prevIsView = prev?.key.startsWith(VIEW_PREFIX);
-            const viewId = isView ? seg.key.slice(VIEW_PREFIX.length) : '';
+            const isTab = seg.key.startsWith(TAB_PREFIX);
+            const prevIsTab = prev?.key.startsWith(TAB_PREFIX);
+            const tabId = isTab ? seg.key.slice(TAB_PREFIX.length) : '';
             return (
               <Fragment key={seg.key}>
                 {/* A firmer divider marks the boundary between the
@@ -2325,12 +2325,12 @@ export default function DataGrid({
                     views; a hairline otherwise separates two INACTIVE
                     neighbours (it vanishes next to the active tab so the
                     folder silhouette stays clean). */}
-                {isView && !prevIsView && i > 0 ? (
+                {isTab && !prevIsTab && i > 0 ? (
                   <span aria-hidden className="self-center w-px h-5 bg-border mx-1.5 mb-1" />
                 ) : i > 0 && !active && !prevActive && (
                   <span aria-hidden className="self-center w-px h-4 bg-border" />
                 )}
-                {isView ? (
+                {isTab ? (
                   // The ⋮ options button is a SIBLING of the tab (a real
                   // <button>), never nested inside the tab's own <button>
                   // — nesting interactive-in-interactive is invalid HTML
@@ -2363,40 +2363,40 @@ export default function DataGrid({
                         <MenuPrimitive.Popup className="min-w-48 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
                           <MenuPrimitive.Item
                             onClick={() => {
-                              const v = savedViewList.find(x => x.id === viewId);
-                              if (v) setViewDialog(v);
+                              const v = savedTabList.find(x => x.id === tabId);
+                              if (v) setTabDialog(v);
                             }}
                             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground"
                           >
-                            <Pencil size={14} className="text-muted-foreground" /> Edit view
+                            <Pencil size={14} className="text-muted-foreground" /> Edit tab
                           </MenuPrimitive.Item>
                           <MenuPrimitive.Item
-                            onClick={() => setDefaultView(defaultView === viewId ? '' : viewId)}
+                            onClick={() => setDefaultTab(defaultTab === tabId ? '' : tabId)}
                             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground"
                           >
-                            <Star size={14} className={defaultView === viewId ? 'text-primary fill-current' : 'text-muted-foreground'} />
-                            {defaultView === viewId ? 'Default tab · clear' : 'Set as default tab'}
+                            <Star size={14} className={defaultTab === tabId ? 'text-primary fill-current' : 'text-muted-foreground'} />
+                            {defaultTab === tabId ? 'Default tab · clear' : 'Set as default tab'}
                           </MenuPrimitive.Item>
                           <MenuPrimitive.Item
-                            disabled={savedViewList.findIndex(v => v.id === viewId) <= 0}
-                            onClick={() => moveView(viewId, -1)}
+                            disabled={savedTabList.findIndex(v => v.id === tabId) <= 0}
+                            onClick={() => moveTab(tabId, -1)}
                             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed"
                           >
                             <ChevronLeft size={14} className="text-muted-foreground" /> Move left
                           </MenuPrimitive.Item>
                           <MenuPrimitive.Item
-                            disabled={savedViewList.findIndex(v => v.id === viewId) >= savedViewList.length - 1}
-                            onClick={() => moveView(viewId, 1)}
+                            disabled={savedTabList.findIndex(v => v.id === tabId) >= savedTabList.length - 1}
+                            onClick={() => moveTab(tabId, 1)}
                             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed"
                           >
                             <ChevronRight size={14} className="text-muted-foreground" /> Move right
                           </MenuPrimitive.Item>
                           <div className="my-1 border-t border-border" />
                           <MenuPrimitive.Item
-                            onClick={() => deleteView(viewId)}
+                            onClick={() => deleteTab(tabId)}
                             className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-danger"
                           >
-                            <Trash2 size={14} /> Delete view
+                            <Trash2 size={14} /> Delete tab
                           </MenuPrimitive.Item>
                         </MenuPrimitive.Popup>
                       </MenuPrimitive.Positioner>
@@ -2415,16 +2415,20 @@ export default function DataGrid({
               </Fragment>
             );
           })}
-          {/* "+ New view" — captures the current filters as a personal
-              scoped tab.  Only when the feature is on. */}
-          {savedViewsEnabled && (
-            <button
-              type="button"
-              onClick={() => setViewDialog('new')}
-              className="self-center mb-1 ml-1 inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
-            >
-              <Plus size={14} /> New view
-            </button>
+          {/* New-tab "+" — an icon-only affordance after the last tab,
+              like a browser's new-tab button.  Opens the build-a-tab
+              dialog.  Only when the feature is on. */}
+          {savedTabsEnabled && (
+            <Tip label="New tab">
+              <button
+                type="button"
+                onClick={() => setTabDialog('new')}
+                aria-label="New tab"
+                className="self-center mb-1 ml-1 inline-flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+              >
+                <Plus size={16} />
+              </button>
+            </Tip>
           )}
         </div>
       )}
@@ -3182,29 +3186,29 @@ export default function DataGrid({
           anchor={manageAnchorRef.current}
         />
       )}
-      {savedViewsEnabled && viewDialog && (
-        <SavedViewDialog
+      {savedTabsEnabled && tabDialog && (
+        <SavedTabDialog
           open
-          onOpenChange={(o) => { if (!o) setViewDialog(null); }}
+          onOpenChange={(o) => { if (!o) setTabDialog(null); }}
           columns={columns}
           data={sourceData}
-          title={viewDialog === 'new' ? 'New view' : 'Edit view'}
-          saveLabel={viewDialog === 'new' ? 'Save view' : 'Save changes'}
-          initialName={viewDialog === 'new' ? '' : viewDialog.name}
-          initialFilters={viewDialog === 'new' ? columnFilters : viewDialog.filters}
-          initialSearch={viewDialog === 'new' ? (hasSearch ? globalFilter : '') : (viewDialog.search ?? '')}
+          title={tabDialog === 'new' ? 'New tab' : 'Edit tab'}
+          saveLabel={tabDialog === 'new' ? 'Save tab' : 'Save changes'}
+          initialName={tabDialog === 'new' ? '' : tabDialog.name}
+          initialFilters={tabDialog === 'new' ? columnFilters : tabDialog.filters}
+          initialSearch={tabDialog === 'new' ? (hasSearch ? globalFilter : '') : (tabDialog.search ?? '')}
           capturedSort={(() => {
-            // Mirror EXACTLY what commitView will persist, so the note
-            // never disagrees: live sort for a new view or the active
-            // view; otherwise the view's own saved sort.
-            const useLive = viewDialog === 'new' || viewDialog.id === activeViewId;
-            const s = useLive ? sorting : (viewDialog.sort ?? []);
+            // Mirror EXACTLY what commitTab will persist, so the note
+            // never disagrees: live sort for a new tab or the active
+            // tab; otherwise the tab's own saved sort.
+            const useLive = tabDialog === 'new' || tabDialog.id === activeTabId;
+            const s = useLive ? sorting : (tabDialog.sort ?? []);
             if (!s.length) return undefined;
             const c = columns.find(col => col.key === s[0].id);
             return `sorted by ${c?.label ?? s[0].id} ${s[0].desc ? '↓' : '↑'}`
               + (s.length > 1 ? ` +${s.length - 1}` : '');
           })()}
-          onSave={commitView}
+          onSave={commitTab}
         />
       )}
       {/* The selection action bar is the TOP strip above the table

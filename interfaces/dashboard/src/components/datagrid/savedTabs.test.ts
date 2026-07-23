@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { AnyColumn } from '../../types';
 import {
-  rowPassesColFilter, rowMatchesSearch, viewMatch, viewIsEmpty, type SavedView,
-} from './savedViews';
+  rowPassesColFilter, rowMatchesSearch, tabMatch, tabIsEmpty, type SavedTab,
+} from './savedTabs';
 
 const col = (over: Partial<AnyColumn>): AnyColumn =>
   ({ key: 'k', label: 'K', ...over } as AnyColumn);
@@ -62,7 +62,7 @@ describe('rowMatchesSearch', () => {
   });
 });
 
-describe('viewMatch — the scope predicate (isolation)', () => {
+describe('tabMatch — the scope predicate (isolation)', () => {
   const columns = [
     col({ key: 'category' }),
     col({ key: 'priority' }),
@@ -75,8 +75,8 @@ describe('viewMatch — the scope predicate (isolation)', () => {
   ];
 
   it('scopes to a single column filter — nothing else can leak in', () => {
-    const view: SavedView = { id: '1', name: 'Cameras', filters: [{ id: 'category', value: ['Camera'] }] };
-    const match = viewMatch(view, columns, []);
+    const view: SavedTab = { id: '1', name: 'Cameras', filters: [{ id: 'category', value: ['Camera'] }] };
+    const match = tabMatch(view, columns, []);
     const scoped = rows.filter(match);
     expect(scoped.map(r => r.name)).toEqual(['Cam A', 'Cam B']);
     // the isolation guarantee: a Tablet/ELD is NOT in the scoped set at all
@@ -84,37 +84,37 @@ describe('viewMatch — the scope predicate (isolation)', () => {
   });
 
   it('ANDs multiple filters', () => {
-    const view: SavedView = {
+    const view: SavedTab = {
       id: '2', name: 'Critical cameras',
       filters: [{ id: 'category', value: ['Camera'] }, { id: 'priority', value: ['Critical'] }],
     };
-    const scoped = rows.filter(viewMatch(view, columns, []));
+    const scoped = rows.filter(tabMatch(view, columns, []));
     expect(scoped.map(r => r.name)).toEqual(['Cam A']);
   });
 
   it('combines filters with the captured search', () => {
-    const view: SavedView = {
+    const view: SavedTab = {
       id: '3', name: 'Critical A', filters: [{ id: 'priority', value: ['Critical'] }], search: 'cam',
     };
-    const scoped = rows.filter(viewMatch(view, columns, ['name']));
+    const scoped = rows.filter(tabMatch(view, columns, ['name']));
     expect(scoped.map(r => r.name)).toEqual(['Cam A']); // Critical AND name~cam
   });
 
   it('ignores a filter for a column that no longer exists (stale view still scopes)', () => {
-    const view: SavedView = {
+    const view: SavedTab = {
       id: '4', name: 'Old',
       filters: [{ id: 'category', value: ['Camera'] }, { id: 'gone', value: ['x'] }],
     };
-    const scoped = rows.filter(viewMatch(view, columns, []));
+    const scoped = rows.filter(tabMatch(view, columns, []));
     expect(scoped.map(r => r.name)).toEqual(['Cam A', 'Cam B']); // 'gone' filter ignored
   });
 });
 
-describe('viewIsEmpty', () => {
+describe('tabIsEmpty', () => {
   it('blocks saving a view that constrains nothing', () => {
-    expect(viewIsEmpty([], '')).toBe(true);
-    expect(viewIsEmpty([], '   ')).toBe(true);
-    expect(viewIsEmpty([{ id: 'category', value: ['Camera'] }], '')).toBe(false);
-    expect(viewIsEmpty([], 'search')).toBe(false);
+    expect(tabIsEmpty([], '')).toBe(true);
+    expect(tabIsEmpty([], '   ')).toBe(true);
+    expect(tabIsEmpty([{ id: 'category', value: ['Camera'] }], '')).toBe(false);
+    expect(tabIsEmpty([], 'search')).toBe(false);
   });
 });

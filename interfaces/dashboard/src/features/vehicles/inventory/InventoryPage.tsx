@@ -179,9 +179,9 @@ export default function InventoryPage() {
           tableId="vehicle-inventory-fleet"
           columns={COLUMNS}
           data={rows}
-          // Personal scope tabs: filter e.g. Category = Camera, "+ New
-          // view" → a saved "Cameras" tab (per-user, isolated).
-          savedViews
+          // Personal scope tabs: filter e.g. Category = Camera, the "+"
+          // new-tab button → a saved "Cameras" tab (per-user, isolated).
+          savedTabs
           searchKey={['label', 'identifier', 'unit_number']}
           // Row click manages the item right here — the same dialog the
           // truck card opens (verify / status / transfer / remove /

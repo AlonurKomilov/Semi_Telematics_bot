@@ -16,7 +16,7 @@
 import type { ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import type { AnyColumn } from '../../types';
 
-export interface SavedView {
+export interface SavedTab {
   /** Stable id (also the segment key, prefixed) — kept out of the label
    *  so a rename never breaks the active-tab reference. */
   id: string;
@@ -103,8 +103,8 @@ export function rowMatchesSearch(
  * the captured search.  Filters referencing a column that no longer
  * exists are ignored (a stale view still scopes on its live criteria).
  */
-export function viewMatch(
-  view: SavedView,
+export function tabMatch(
+  view: SavedTab,
   columns: AnyColumn[],
   searchKeys: string[],
 ): (row: Record<string, unknown>) => boolean {
@@ -121,7 +121,7 @@ export function viewMatch(
 
 /** Does a view actually constrain anything?  An empty view (no filters,
  *  no search) would scope to "everything" — we block saving those. */
-export function viewIsEmpty(filters: ColumnFiltersState, search: string): boolean {
+export function tabIsEmpty(filters: ColumnFiltersState, search: string): boolean {
   return filters.length === 0 && search.trim() === '';
 }
 

@@ -12,7 +12,7 @@ import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../ui/select';
 import ColumnFilterMenu from './ColumnFilterMenu';
-import { computeFacets, isFilterValueEmpty, viewIsEmpty } from './savedViews';
+import { computeFacets, isFilterValueEmpty, tabIsEmpty } from './savedTabs';
 
 /**
  * Build-a-view dialog.  The whole view is defined HERE — a name plus
@@ -41,7 +41,7 @@ function summarize(col: AnyColumn, value: unknown, facet: { options: { value: st
   return labels.length <= 2 ? labels.join(', ') : `${labels.slice(0, 2).join(', ')} +${labels.length - 2}`;
 }
 
-interface SavedViewDialogProps {
+interface SavedTabDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   columns: AnyColumn[];
@@ -59,11 +59,11 @@ interface SavedViewDialogProps {
   onSave: (name: string, filters: ColumnFiltersState, search: string) => void;
 }
 
-export default function SavedViewDialog({
+export default function SavedTabDialog({
   open, onOpenChange, columns, data,
-  initialName, initialFilters, initialSearch, saveLabel = 'Save view',
-  title = 'New view', capturedSort, onSave,
-}: SavedViewDialogProps) {
+  initialName, initialFilters, initialSearch, saveLabel = 'Save tab',
+  title = 'New tab', capturedSort, onSave,
+}: SavedTabDialogProps) {
   const filterable = useMemo(() => columns.filter(c => c.filterable), [columns]);
   const facets = useMemo(() => computeFacets(filterable, data), [filterable, data]);
   const byKey = useMemo(() => new Map(filterable.map(c => [c.key, c])), [filterable]);
@@ -115,7 +115,7 @@ export default function SavedViewDialog({
     const col = byKey.get(f.id);
     return col && !isFilterValueEmpty(col.filterMode, f.value);
   });
-  const canSave = name.trim() !== '' && !viewIsEmpty(cleaned, search);
+  const canSave = name.trim() !== '' && !tabIsEmpty(cleaned, search);
 
   const handleSave = () => {
     if (!canSave) return;

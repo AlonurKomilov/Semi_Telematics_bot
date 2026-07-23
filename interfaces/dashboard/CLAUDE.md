@@ -244,8 +244,8 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   computation), so its numbers can't drift from the page's. Worked
   examples: `features/maintenance` (useMaintenanceTasks + MaintenanceHero)
   and `features/applications` (useApplications + ApplicationsHero).
-- **User-managed tabs = the `savedViews` prop (personal scope tabs).**
-  Opt a `tableId` grid in with `savedViews`, and a "+ New view" affordance
+- **User-managed tabs = the `savedTabs` prop (personal scope tabs).**
+  Opt a `tableId` grid in with `savedTabs`, and a "+ New tab" affordance
   lets an operator save the CURRENT filters + search as a named tab. Key
   design: a view applies as an ISOLATED SCOPE, not a removable filter — it
   becomes a `DataGridSegment` whose `match` is the captured filters, so it
