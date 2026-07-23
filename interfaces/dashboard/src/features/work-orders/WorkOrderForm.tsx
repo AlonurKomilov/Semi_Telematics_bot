@@ -1082,42 +1082,25 @@ export default function WorkOrderForm() {
               ↻ {t('work_orders_page.parts_hint')}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={addTaskGroup}
-              className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-muted hover:bg-muted/80 border border-border rounded"
-            >
-              <Plus size={12} />
-              {t('work_orders_page.add_task_group')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setParts(prev => [...prev, blankPart()])}
-              className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-muted hover:bg-muted/80 border border-border rounded"
-            >
-              <Plus size={12} />
-              {t('work_orders_page.add_part')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setLaborLines(prev => [...prev, blankLabor()])}
-              className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-muted hover:bg-muted/80 border border-border rounded"
-            >
-              <Plus size={12} />
-              {t('work_orders_page.add_labor', { defaultValue: 'Add labor' })}
-            </button>
-          </div>
+          {/* Only "Add service task" lives at the section level — it
+              creates a new task group.  Parts and labor are added
+              INSIDE each task (including the General bucket below), so
+              a line always has an owning task. */}
+          <button
+            type="button"
+            onClick={addTaskGroup}
+            className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-muted hover:bg-muted/80 border border-border rounded"
+          >
+            <Plus size={12} />
+            {t('work_orders_page.add_task_group')}
+          </button>
         </div>
         {/* Shared suggestion list for every part-name input (native
             datalist: zero JS, browser-rendered dropdown). */}
         <datalist id="wo-parts-catalog">
           {catalogParts.map(cp => <option key={cp.id} value={cp.name} />)}
         </datalist>
-        {parts.length === 0 && laborLines.length === 0 && taskGroups.length === 0 ? (
-          <p className="text-xs text-muted-foreground">{t('work_orders_page.no_parts')}</p>
-        ) : (
-          <div className="space-y-4">
+        <div className="space-y-4">
             {taskGroups.map((gv) => (
               <div key={gv} className="border border-border rounded-lg overflow-hidden">
                 <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/60 border-b border-border">
@@ -1168,7 +1151,7 @@ export default function WorkOrderForm() {
             ))}
             {(entriesFor('').length > 0 || laborEntriesFor('').length > 0 || taskGroups.length === 0) && (
               <div className="border border-border rounded-lg overflow-hidden">
-                <div className="flex items-center gap-2 px-3 py-2 bg-muted/60 border-b border-border">
+                <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/60 border-b border-border">
                   <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                     {t('work_orders_page.group_general')}
                   </span>
@@ -1178,13 +1161,32 @@ export default function WorkOrderForm() {
                       <> · {t('work_orders_page.group_labor', { defaultValue: 'labor' })} ${groupLaborSubtotal('').toFixed(2)}</>
                     )}
                   </span>
+                  {/* General bucket gets its own Add part / Add labor,
+                      same as every named task. */}
+                  <span className="ml-auto inline-flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setParts(prev => [...prev, blankPart('')])}
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded"
+                    >
+                      <Plus size={12} />
+                      {t('work_orders_page.add_part')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLaborLines(prev => [...prev, blankLabor('')])}
+                      className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-card hover:bg-muted border border-border rounded"
+                    >
+                      <Plus size={12} />
+                      {t('work_orders_page.add_labor', { defaultValue: 'Add labor' })}
+                    </button>
+                  </span>
                 </div>
                 {renderPartsTable(entriesFor(''))}
                 {renderLaborTable(laborEntriesFor(''))}
               </div>
             )}
           </div>
-        )}
       </section>
 
       {/* ── Cost summary block ─────────────────────────────────── */}
