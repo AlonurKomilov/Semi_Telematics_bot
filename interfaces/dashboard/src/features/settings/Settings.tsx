@@ -390,6 +390,11 @@ export default function Settings() {
       {(canManageAccount || canManageRoleBot) && (
         <section className="bg-card border border-border rounded-xl p-5">
           <h2 className="text-lg font-semibold mb-3">{t('bot_card.title')}</h2>
+          {/* Manager card has no account-bot identity — say what it IS
+              for them (UX audit A/C1). */}
+          {!canManageAccount && (
+            <p className="-mt-2 mb-3 text-xs text-muted-foreground">{t('bot_card.manager_subtitle')}</p>
+          )}
 
           {botConfig?.has_bot ? (
             <div>
@@ -401,11 +406,14 @@ export default function Settings() {
                   a real action, not a footnote (UX audit A2/P2). */}
               <Link
                 to="/alerts/group-delivery"
-                className="inline-flex items-center gap-1 mb-5 px-3 py-1.5 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
+                className="inline-flex items-center gap-1 mb-2 px-3 py-1.5 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
               >
                 {t('bot_card.configure_routing')}
                 <ArrowRight size={14} />
               </Link>
+              {/* Binding a group there is the REQUIRED step; the Sub bot
+                  below is optional (UX audit A/C3 — essential vs optional). */}
+              <p className="mb-5 text-xs text-muted-foreground">{t('bot_card.routing_required_hint')}</p>
 
               {/* Sub bots — attach the per-role SENDER bot.  Owner sees
                   every role; a manager sees only their own row.  The

@@ -698,6 +698,10 @@ export default function AlertRoutingSection({
   const visibleRoles = ROLE_ORDER.filter((p) => (topics?.personas?.[p]?.length ?? 0) > 0);
   const destinations = ['owner_admin', ...(visibleRoles.length ? visibleRoles : [...ROLE_ORDER])];
   const boundCount = destinations.filter((p) => data.personas[p]).length;
+  // The single role a manager manages — used to scope their own
+  // first-run setup help (the account-wide checklist is owner-only).
+  const managedRoles = ROLE_ORDER.filter((p) => canManage(p));
+  const managerRole = !canManageAccount && managedRoles.length === 1 ? managedRoles[0] : null;
 
   return (
     <div>
@@ -769,6 +773,21 @@ export default function AlertRoutingSection({
                 {t('alert_routing.setup_step_bot', { username: botConfig.bot_username })}
               </p>
               <p className="text-foreground">{t('alert_routing.setup_step_group')}</p>
+              <p className="text-foreground">{t('alert_routing.setup_step_chatid')}</p>
+              <p className="text-foreground">{t('alert_routing.setup_step_bind')}</p>
+            </div>
+          )}
+
+          {/* Manager: scoped setup help for their OWN unbound row.  The
+              account-wide checklist above is owner-only, but a first-time
+              manager still needs create-group → /chatid → bind — the
+              audit fix that closed the leak had over-clipped this. */}
+          {managerRole && !data.personas[managerRole] && (
+            <div className="rounded-lg border border-border px-3 py-2 space-y-1 text-xs">
+              <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                {t('alert_routing.setup_title')}
+              </p>
+              <p className="text-foreground">{t('alert_routing.setup_step_group_bot', { username: botConfig.bot_username })}</p>
               <p className="text-foreground">{t('alert_routing.setup_step_chatid')}</p>
               <p className="text-foreground">{t('alert_routing.setup_step_bind')}</p>
             </div>

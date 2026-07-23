@@ -960,7 +960,8 @@
     "mode_indicator": "Delivery mode: {{mode}}",
     "mode_change_link": "change in Settings → Telegram Bot",
     "single_owner_only": "This account uses one shared bot — its group and topics are managed by an owner.",
-    "subbots_label": "Sub bots"
+    "subbots_label": "Sub bots",
+    "setup_step_group_bot": "Create a Telegram group and add @{{username}} to it."
   },
   "forum_routing": {
     "section_desc": "Connect a Telegram forum group so the bot can post each alert to its own topic. Personal DMs are independent — each user sets their own preferences under Alerts bell → Notification preferences.",
@@ -1265,6 +1266,8 @@
     "card_invites": "Send invites",
     "card_invites_desc": "Invite new members to this account.",
     "card_work_hours": "Working hours",
-    "card_work_hours_desc": "Set the shift schedules for your team."
+    "card_work_hours_desc": "Set the shift schedules for your team.",
+    "routing_required_hint": "Alerts route once you bind a group there. A Sub bot below is optional — the main bot sends until you attach one.",
+    "manager_subtitle": "Your role's alert bot and where its alerts route."
   }
 }

@@ -124,7 +124,8 @@
     "mode_indicator": "የአደራረስ ሁናቴ፦ {{mode}}",
     "mode_change_link": "በቅንብሮች → Telegram ቦት ይቀይሩ",
     "single_owner_only": "ይህ መለያ አንድ የጋራ ቦት ይጠቀማል — ቡድኑና ርዕሶቹ በባለቤት ይተዳደራሉ።",
-    "subbots_label": "Sub bots"
+    "subbots_label": "Sub bots",
+    "setup_step_group_bot": "የTelegram ቡድን ይፍጠሩ እና @{{username}} ን ያክሉ።"
   },
   "nav": {
     "overview": "አጠቃላይ እይታ",
@@ -780,6 +781,8 @@
     "card_invites": "ግብዣዎችን ላክ",
     "card_invites_desc": "አዳዲስ አባላትን ወደዚህ መለያ ይጋብዙ።",
     "card_work_hours": "የስራ ሰዓታት",
-    "card_work_hours_desc": "የቡድንዎን ፈረቃዎች ያዘጋጁ።"
+    "card_work_hours_desc": "የቡድንዎን ፈረቃዎች ያዘጋጁ።",
+    "routing_required_hint": "ማንቂያዎች እዚያ ቡድን ሲታሰር ይመራሉ። ከታች ያለው Sub bot አማራጭ ነው — እስኪያያዙ ድረስ ዋናው ቦት ይልካል።",
+    "manager_subtitle": "የሚናዎ የማንቂያ ቦት እና ማንቂያዎቹ የት እንደሚመሩ።"
   }
 }

@@ -124,7 +124,8 @@
     "mode_indicator": "Habka gaarsiinta: {{mode}}",
     "mode_change_link": "ka beddel Dejinta → Bot-ka Telegram",
     "single_owner_only": "Akoonkani wuxuu isticmaalaa hal bot wadaag ah — kooxdiisa iyo mowduucyadiisa waxaa maamula milkiile.",
-    "subbots_label": "Sub bots"
+    "subbots_label": "Sub bots",
+    "setup_step_group_bot": "Samee koox Telegram oo ku dar @{{username}}."
   },
   "nav": {
     "overview": "Guudmar",
@@ -780,6 +781,8 @@
     "card_invites": "Dir casumaad",
     "card_invites_desc": "Ku casuumo xubno cusub akoonkan.",
     "card_work_hours": "Saacadaha shaqada",
-    "card_work_hours_desc": "Deji jadwalka shaqada kooxdaada."
+    "card_work_hours_desc": "Deji jadwalka shaqada kooxdaada.",
+    "routing_required_hint": "Digniinuhu waxay marayaan marka aad koox halkaas ku xidho. Sub bot-ka hoose waa ikhtiyaari — ilaa aad xidho, bot-ka guud ayaa dira.",
+    "manager_subtitle": "Bot-ka digniinta doorkaaga iyo meesha digniinuhu u maraan."
   }
 }

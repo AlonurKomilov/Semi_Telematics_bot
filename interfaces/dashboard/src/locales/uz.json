@@ -124,7 +124,8 @@
     "mode_indicator": "Yetkazish rejimi: {{mode}}",
     "mode_change_link": "Sozlamalar → Telegram bot da o‘zgartirish",
     "single_owner_only": "Bu hisob bitta umumiy botdan foydalanadi — uning guruhi va mavzularini egasi boshqaradi.",
-    "subbots_label": "Sub bots"
+    "subbots_label": "Sub bots",
+    "setup_step_group_bot": "Telegram guruh yarating va unga @{{username}} ni qo‘shing."
   },
   "nav": {
     "overview": "Bosh sahifa",
@@ -625,6 +626,8 @@
     "card_invites": "Takliflar yuborish",
     "card_invites_desc": "Hisobga yangi a'zolarni taklif qiling.",
     "card_work_hours": "Ish soatlari",
-    "card_work_hours_desc": "Jamoangiz smenalarini sozlang."
+    "card_work_hours_desc": "Jamoangiz smenalarini sozlang.",
+    "routing_required_hint": "Ogohlantirishlar u yerda guruh ulangach yo‘naltiriladi. Quyidagi Sub bot ixtiyoriy — ulanmaguncha asosiy bot yuboradi.",
+    "manager_subtitle": "Rolingizning ogohlantirish boti va uning ogohlantirishlari qayerga boradi."
   }
 }

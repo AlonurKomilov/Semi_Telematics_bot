@@ -124,7 +124,8 @@
     "mode_indicator": "Modo de entrega: {{mode}}",
     "mode_change_link": "cambiar en Ajustes → Bot de Telegram",
     "single_owner_only": "Esta cuenta usa un bot compartido — su grupo y temas los gestiona un propietario.",
-    "subbots_label": "Sub bots"
+    "subbots_label": "Sub bots",
+    "setup_step_group_bot": "Crea un grupo de Telegram y añade @{{username}}."
   },
   "nav": {
     "overview": "Resumen",
@@ -996,6 +997,8 @@
     "card_invites": "Enviar invitaciones",
     "card_invites_desc": "Invita a nuevos miembros a esta cuenta.",
     "card_work_hours": "Horario laboral",
-    "card_work_hours_desc": "Define los turnos de tu equipo."
+    "card_work_hours_desc": "Define los turnos de tu equipo.",
+    "routing_required_hint": "Las alertas se enrutan cuando vinculas un grupo allí. El Sub bot de abajo es opcional — el bot principal envía hasta que conectes uno.",
+    "manager_subtitle": "El bot de alertas de tu rol y a dónde se enrutan."
   }
 }
