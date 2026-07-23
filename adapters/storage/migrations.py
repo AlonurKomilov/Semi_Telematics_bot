@@ -6794,3 +6794,32 @@ async def migrate_work_orders_external_number(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 157: work_orders.external_number added + backfilled")
+
+
+@_register("158_datatruck_stale_payment_ratchet")
+async def migrate_datatruck_stale_payment_ratchet(conn) -> None:
+    """One-time application of the payment ratchet to already-synced
+    rows: work orders still 'unpaid' whose freshest staged payload
+    shows a cleared balance become 'paid'.
+
+    The projection used to seed payment on INSERT only, so 110 rows
+    sat "Unpaid" forever after their upstream balance cleared.  The
+    refresh path now ratchets forward on every sync; this catches the
+    backlog (including rows that drifted out of the sync window).
+    Idempotent; never touches paid/partial/void or manual rows.
+    """
+    await conn.execute(
+        """
+        UPDATE work_orders w
+        SET payment_status = 'paid', updated_at = updated_at
+        FROM datatruck_work_orders d
+        WHERE w.source = 'datatruck'
+          AND w.payment_status = 'unpaid'
+          AND w.account_id = d.account_id
+          AND w.external_id = d.external_id
+          AND w.total_cost > 0.005
+          AND COALESCE((d.payload::jsonb->>'balance')::numeric, 1) <= 0.005
+        """
+    )
+    await conn.commit()
+    logger.info("Migration 158: stale Datatruck payment statuses ratcheted to paid")

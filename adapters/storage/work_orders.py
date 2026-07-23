@@ -249,7 +249,13 @@ class WorkOrdersMixin:
                 # openapi token can see — payment_type/invoice live in the
                 # v2 detail view it can't reach).  paid when the balance is
                 # cleared or the paid amount covers the total; else unpaid.
-                # Seeded on INSERT only — the operator owns it afterward.
+                # Seeded on insert AND ratcheted forward on refresh: for a
+                # synced invoice the money actually moves in Datatruck
+                # (EFS/bank), so a cleared balance upstream MARKS the row
+                # paid here — one-way only (a paid or void row is never
+                # demoted back to unpaid by a lagging feed).  The audit
+                # case: 110 rows sat "Unpaid" forever because payment was
+                # seed-once while their upstream balance had long cleared.
                 _bal = r.get("balance")
                 _paid = r.get("paid_amount")
                 payment_status = "unpaid"
@@ -261,7 +267,9 @@ class WorkOrdersMixin:
 
                 wo_id = existing.get(ext)
                 if wo_id is not None:
-                    # Refresh Datatruck-owned fields only.
+                    # Refresh Datatruck-owned fields only (+ the payment
+                    # ratchet: unpaid/partial may become paid, never the
+                    # reverse; operator void always sticks).
                     await self._db.execute(
                         "UPDATE work_orders SET vehicle_name = ?, "
                         "vehicle_type = ?, company_code = ?, assigned_to = ?, "
@@ -270,12 +278,16 @@ class WorkOrdersMixin:
                         "payment_method = ?, service_date = ?, "
                         "odometer_at_service = ?, labor_cost = ?, "
                         "parts_cost = ?, tax_amount = ?, total_cost = ?, "
+                        "payment_status = CASE "
+                        "    WHEN payment_status IN ('paid', 'void') THEN payment_status "
+                        "    WHEN ? = 'paid' THEN 'paid' "
+                        "    ELSE payment_status END, "
                         "updated_at = ? WHERE id = ? AND account_id = ?",
                         (vehicle_name, vehicle_type, company_code, assigned_to,
                          invoice_number, external_number, vendor_name,
                          vendor_address, vendor_phone, vendor_id, payment_method,
                          service_date, odometer, labor_cost, parts_cost,
-                         tax, total, now, wo_id, account_id),
+                         tax, total, payment_status, now, wo_id, account_id),
                     )
                     written += 1
                     continue

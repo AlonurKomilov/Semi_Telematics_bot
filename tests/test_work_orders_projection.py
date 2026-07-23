@@ -389,3 +389,24 @@ async def test_reconcile_projects_orphaned_snapshot_rows(db):
 
     # Idempotent: nothing left to heal on the second pass.
     assert await reconcile_work_orders_projection(77, db) == 0
+
+
+@pytest.mark.asyncio
+async def test_payment_ratchets_forward_from_tms_balance(db):
+    """Synced invoices are PAID in Datatruck (EFS/bank), so a cleared
+    upstream balance marks the row paid on refresh — one-way only:
+    a paid (or void) row is never demoted by a lagging feed.  Audit
+    2026-07-23: 110 rows sat "Unpaid" forever under seed-once."""
+    row = {**_WO_ROWS[0], "balance": 124.0}       # open balance → unpaid
+    await db.project_external_work_orders(43, [row], source="datatruck")
+    assert (await db.list_work_orders(43))[0]["payment_status"] == "unpaid"
+
+    # Upstream balance clears → the refresh ratchets it to paid.
+    await db.project_external_work_orders(
+        43, [{**row, "balance": 0.0}], source="datatruck",
+    )
+    assert (await db.list_work_orders(43))[0]["payment_status"] == "paid"
+
+    # One-way: re-syncing an open balance never demotes a paid row.
+    await db.project_external_work_orders(43, [row], source="datatruck")
+    assert (await db.list_work_orders(43))[0]["payment_status"] == "paid"

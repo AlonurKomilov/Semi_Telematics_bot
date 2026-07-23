@@ -887,7 +887,9 @@ export default function WorkOrderForm() {
               className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
             />
           </Field>
-          <Field label={t('work_orders_page.field_status')}>
+          <Field label={t('work_orders_page.field_status')}
+            tip={t('work_orders_page.tip_status', { defaultValue:
+              'The record\u2019s lifecycle: Draft = still being prepared, Submitted = a real invoice, Void = cancelled (excluded from all cost reports). Whether it\u2019s paid lives in Payment status below.' })}>
             <Select value={wo.status || 'draft'} onValueChange={(v) => setField('status', v)} items={statusItems}>
               <SelectTrigger className="w-full capitalize" aria-label={t('work_orders_page.field_status')}><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -895,7 +897,9 @@ export default function WorkOrderForm() {
               </SelectContent>
             </Select>
           </Field>
-          <Field label={t('work_orders_page.field_repair_priority', { defaultValue: 'Repair priority' })}>
+          <Field label={t('work_orders_page.field_repair_priority', { defaultValue: 'Repair priority' })}
+            tip={t('work_orders_page.tip_repair_priority', { defaultValue:
+              'How this repair came about: Scheduled = planned maintenance, Non-scheduled = unplanned but not urgent, Emergency = roadside/breakdown. Used to break down repair spend by plannability.' })}>
             <Select value={wo.repair_priority || ''} onValueChange={(v) => setField('repair_priority', v)} items={priorityItems}>
               <SelectTrigger className="w-full" aria-label={t('work_orders_page.field_repair_priority', { defaultValue: 'Repair priority' })}><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -1224,7 +1228,9 @@ export default function WorkOrderForm() {
               className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring"
             />
           </Field>
-          <Field label={t('work_orders_page.field_payment_status')}>
+          <Field label={t('work_orders_page.field_payment_status')}
+            tip={t('work_orders_page.tip_payment_status', { defaultValue:
+              'The money state: has this invoice been paid? Void here means the CHARGE was cancelled/written off \u2014 different from voiding the record itself (Status). Synced invoices update to Paid automatically when the integration reports a cleared balance.' })}>
             <Select value={wo.payment_status || 'unpaid'} onValueChange={(v) => setField('payment_status', v)} items={paymentStatusItems}>
               <SelectTrigger className="w-full capitalize" aria-label={t('work_orders_page.field_payment_status')}><SelectValue /></SelectTrigger>
               <SelectContent>
