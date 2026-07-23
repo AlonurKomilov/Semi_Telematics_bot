@@ -156,10 +156,17 @@ export default function Sidebar() {
           // Collapsed icon rail has no nesting — flatten children so
           // every destination stays one click away.
           const baseItems = collapsed
-            ? group.items.flatMap((i) => [i, ...(i.children ?? [])])
+            // Include the collapsible parent in the icon rail — it's a
+            // real destination (/settings), not just a folder.
+            ? [...(group.parentItem ? [group.parentItem] : []),
+               ...group.items.flatMap((i) => [i, ...(i.children ?? [])])]
             : group.items;
           const items = filterItems(baseItems);
-          if (items.length === 0) return null;
+          // A collapsible group whose PARENT is visible must render even
+          // with zero children — a role manager holds only the parent
+          // (/settings); dropping the group hid Settings from them.
+          const hasVisibleParent = !collapsed && !!group.parentItem;
+          if (items.length === 0 && !hasVisibleParent) return null;
           // The Settings feature renders as one parent row that expands to
           // its permitted components.  While a child route is active the
           // group stays open so the active pill is never hidden.  In the
@@ -202,7 +209,9 @@ export default function Sidebar() {
                   >
                     <SettingsIcon size={16} className="shrink-0" />
                     <span className="flex-1">{label}</span>
-                    {chevron}
+                    {/* No children (a role manager holds only the parent) →
+                        no expand arrow over nothing. */}
+                    {items.length > 0 && chevron}
                   </NavLink>
                 ) : (
                   <div className="flex items-center gap-3 pl-3 pr-1 mx-2 my-0.5 rounded-md py-1.5 text-sm text-muted-foreground">

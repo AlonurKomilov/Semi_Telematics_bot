@@ -776,6 +776,10 @@
     "toast_disconnect_error": "ማቋረጥ አልተቻለም",
     "configure_routing": "አቅጣጫን አዋቅር",
     "connection_label": "ግንኙነት",
-    "no_bot_manager": "እስካሁን የTelegram ቦት አልተገናኘም — ባለቤትን እንዲያገናኝ ይጠይቁ።"
+    "no_bot_manager": "እስካሁን የTelegram ቦት አልተገናኘም — ባለቤትን እንዲያገናኝ ይጠይቁ።",
+    "card_invites": "ግብዣዎችን ላክ",
+    "card_invites_desc": "አዳዲስ አባላትን ወደዚህ መለያ ይጋብዙ።",
+    "card_work_hours": "የስራ ሰዓታት",
+    "card_work_hours_desc": "የቡድንዎን ፈረቃዎች ያዘጋጁ።"
   }
 }

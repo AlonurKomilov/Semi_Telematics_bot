@@ -621,6 +621,10 @@
     "toast_disconnect_error": "Uzib bo'lmadi",
     "configure_routing": "Yo‘naltirishni sozlash",
     "connection_label": "Ulanish",
-    "no_bot_manager": "Hali Telegram bot ulanmagan — egasidan ulashini so‘rang."
+    "no_bot_manager": "Hali Telegram bot ulanmagan — egasidan ulashini so‘rang.",
+    "card_invites": "Takliflar yuborish",
+    "card_invites_desc": "Hisobga yangi a'zolarni taklif qiling.",
+    "card_work_hours": "Ish soatlari",
+    "card_work_hours_desc": "Jamoangiz smenalarini sozlang."
   }
 }

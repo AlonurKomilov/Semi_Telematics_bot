@@ -1257,6 +1257,10 @@
     "toast_disconnect_error": "Failed to disconnect",
     "configure_routing": "Configure routing",
     "connection_label": "Connection",
-    "no_bot_manager": "No Telegram bot is connected yet — ask an owner to connect one."
+    "no_bot_manager": "No Telegram bot is connected yet — ask an owner to connect one.",
+    "card_invites": "Send invites",
+    "card_invites_desc": "Invite new members to this account.",
+    "card_work_hours": "Working hours",
+    "card_work_hours_desc": "Set the shift schedules for your team."
   }
 }

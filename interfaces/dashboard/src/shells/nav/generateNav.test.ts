@@ -88,3 +88,21 @@ describe('generateNav — item-level children (Settings-style nesting)', () => {
     expect(all.map((i) => i.path)).toContain('/vehicles/inventory');
   });
 });
+
+describe('generateNav — role manager reaches Settings (parent-only group)', () => {
+  it('a fleet manager with can_manage_role_bot gets the settings group with /settings as parentItem', () => {
+    const nav = generateNav('fleet', grants('can_manage_role_bot', 'can_vehicle_all'), undefined);
+    const settingsGroup = nav.find((g) => g.collapsible);
+    // The group must exist and carry the parent even with ZERO children —
+    // the Sidebar renders parentItem; dropping the group hid Settings
+    // from every role manager (live bug 2026-07-22).
+    expect(settingsGroup).toBeDefined();
+    expect(settingsGroup?.parentItem?.path).toBe('/settings');
+    expect(settingsGroup?.items).toHaveLength(0);
+  });
+
+  it('an employee without the flag gets no settings group at all', () => {
+    const nav = generateNav('fleet', grants('can_vehicle_all'), undefined);
+    expect(nav.find((g) => g.collapsible)).toBeUndefined();
+  });
+});

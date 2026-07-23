@@ -776,6 +776,10 @@
     "toast_disconnect_error": "Lama jari karin",
     "configure_routing": "Habee hagida",
     "connection_label": "Xiriir",
-    "no_bot_manager": "Weli bot Telegram lama xirin — weydiiso milkiile inuu mid xiro."
+    "no_bot_manager": "Weli bot Telegram lama xirin — weydiiso milkiile inuu mid xiro.",
+    "card_invites": "Dir casumaad",
+    "card_invites_desc": "Ku casuumo xubno cusub akoonkan.",
+    "card_work_hours": "Saacadaha shaqada",
+    "card_work_hours_desc": "Deji jadwalka shaqada kooxdaada."
   }
 }

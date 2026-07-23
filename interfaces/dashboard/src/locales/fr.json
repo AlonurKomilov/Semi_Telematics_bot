@@ -992,6 +992,10 @@
     "toast_disconnect_error": "Impossible de déconnecter",
     "configure_routing": "Configurer le routage",
     "connection_label": "Connexion",
-    "no_bot_manager": "Aucun bot Telegram n'est encore connecté — demandez à un propriétaire d'en connecter un."
+    "no_bot_manager": "Aucun bot Telegram n'est encore connecté — demandez à un propriétaire d'en connecter un.",
+    "card_invites": "Envoyer des invitations",
+    "card_invites_desc": "Invitez de nouveaux membres sur ce compte.",
+    "card_work_hours": "Heures de travail",
+    "card_work_hours_desc": "Définissez les horaires de votre équipe."
   }
 }

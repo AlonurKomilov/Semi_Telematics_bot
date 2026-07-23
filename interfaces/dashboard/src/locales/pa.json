@@ -776,6 +776,10 @@
     "toast_disconnect_error": "ਡਿਸਕਨੈਕਟ ਨਹੀਂ ਹੋ ਸਕਿਆ",
     "configure_routing": "ਰੂਟਿੰਗ ਸੰਰਚੋ",
     "connection_label": "ਕਨੈਕਸ਼ਨ",
-    "no_bot_manager": "ਹਾਲੇ ਕੋਈ Telegram ਬੋਟ ਕਨੈਕਟ ਨਹੀਂ ਹੈ — ਕਿਸੇ ਮਾਲਕ ਨੂੰ ਕਨੈਕਟ ਕਰਨ ਲਈ ਕਹੋ।"
+    "no_bot_manager": "ਹਾਲੇ ਕੋਈ Telegram ਬੋਟ ਕਨੈਕਟ ਨਹੀਂ ਹੈ — ਕਿਸੇ ਮਾਲਕ ਨੂੰ ਕਨੈਕਟ ਕਰਨ ਲਈ ਕਹੋ।",
+    "card_invites": "ਸੱਦੇ ਭੇਜੋ",
+    "card_invites_desc": "ਇਸ ਖਾਤੇ ਵਿੱਚ ਨਵੇਂ ਮੈਂਬਰ ਸੱਦੋ।",
+    "card_work_hours": "ਕੰਮ ਦੇ ਘੰਟੇ",
+    "card_work_hours_desc": "ਆਪਣੀ ਟੀਮ ਦੀਆਂ ਸ਼ਿਫਟਾਂ ਸੈੱਟ ਕਰੋ।"
   }
 }

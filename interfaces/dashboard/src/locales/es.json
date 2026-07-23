@@ -992,6 +992,10 @@
     "toast_disconnect_error": "No se pudo desconectar",
     "configure_routing": "Configurar enrutamiento",
     "connection_label": "Conexión",
-    "no_bot_manager": "Aún no hay un bot de Telegram conectado — pídele a un propietario que conecte uno."
+    "no_bot_manager": "Aún no hay un bot de Telegram conectado — pídele a un propietario que conecte uno.",
+    "card_invites": "Enviar invitaciones",
+    "card_invites_desc": "Invita a nuevos miembros a esta cuenta.",
+    "card_work_hours": "Horario laboral",
+    "card_work_hours_desc": "Define los turnos de tu equipo."
   }
 }

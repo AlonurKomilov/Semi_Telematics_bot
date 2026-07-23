@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Settings as SettingsIcon, ArrowRight } from 'lucide-react';
+import { Settings as SettingsIcon, ArrowRight, Link2, Clock } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import type { SettingsResponse, WorkSchedule, User, BotConfig, AnyColumn } from '../../types';
 import DataGrid from '../../components/datagrid';
@@ -50,6 +50,8 @@ export default function Settings() {
   // own role's Sub bot).  The page renders just that card for them — no
   // /admin/settings fetch, so they never hit its can_manage_account 403.
   const canManageRoleBot = !!authUser?.permissions?.can_manage_role_bot;
+  const canInvite = !!authUser?.permissions?.can_invite;
+  const canManageWorkHours = !!authUser?.permissions?.can_manage_work_hours;
 
   // Vendor-directory contribution consent (UX audit 2026-07-16): the
   // auto-pipeline default (ON) becomes inspectable + owner-editable.
@@ -499,6 +501,37 @@ export default function Settings() {
               </div>
             </div>
           )}
+        </section>
+      )}
+
+      {/* Manager view: the OTHER Settings components their own flags
+          grant (owner reaches these via Team Management / the settings
+          group; a manager's page lists just what they hold).  General
+          settings stay owner-only and simply don't render. */}
+      {!canManageAccount && (canInvite || canManageWorkHours) && (
+        <section className="bg-card border border-border rounded-xl p-5">
+          <div className="space-y-2">
+            {canInvite && (
+              <Link to="/invites" className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 hover:border-ring transition">
+                <Link2 size={16} className="text-muted-foreground shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium text-foreground">{t('bot_card.card_invites')}</span>
+                  <span className="block text-xs text-muted-foreground">{t('bot_card.card_invites_desc')}</span>
+                </span>
+                <ArrowRight size={14} className="text-muted-foreground shrink-0" />
+              </Link>
+            )}
+            {canManageWorkHours && (
+              <Link to="/work-hours" className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 hover:border-ring transition">
+                <Clock size={16} className="text-muted-foreground shrink-0" />
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm font-medium text-foreground">{t('bot_card.card_work_hours')}</span>
+                  <span className="block text-xs text-muted-foreground">{t('bot_card.card_work_hours_desc')}</span>
+                </span>
+                <ArrowRight size={14} className="text-muted-foreground shrink-0" />
+              </Link>
+            )}
+          </div>
         </section>
       )}
 

@@ -992,6 +992,10 @@
     "toast_disconnect_error": "Не удалось отключить",
     "configure_routing": "Настроить маршрутизацию",
     "connection_label": "Подключение",
-    "no_bot_manager": "Telegram-бот ещё не подключён — попросите владельца подключить его."
+    "no_bot_manager": "Telegram-бот ещё не подключён — попросите владельца подключить его.",
+    "card_invites": "Приглашения",
+    "card_invites_desc": "Пригласите новых участников в аккаунт.",
+    "card_work_hours": "Рабочие часы",
+    "card_work_hours_desc": "Настройте графики смен вашей команды."
   }
 }
