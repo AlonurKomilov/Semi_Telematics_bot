@@ -133,11 +133,16 @@ export default function AlertRoutingSection({
     setLoading(true); setDataError(false); setTopicsError(false);
     apiJSON<AlertRoutingResponse>('/admin/alert-routing')
       .then(setData).catch(() => setDataError(true)).finally(() => setLoading(false));
-    apiJSON<SubBotsResponse>('/admin/bot-instances').then(setSubBots).catch(() => setSubBots(null));
+    // topicsError doubles as the "secondary routing details" flag: ANY
+    // of the three supporting fetches failing shows the one retry banner
+    // (a silent Sub-bots failure would even blank a manager's roster,
+    // since `manageable` drives row visibility).
+    apiJSON<SubBotsResponse>('/admin/bot-instances')
+      .then(setSubBots).catch(() => { setSubBots(null); setTopicsError(true); });
     apiJSON<PersonaTopicsResponse>('/admin/alert-routing/persona-topics')
       .then(setTopics).catch(() => setTopicsError(true));
     apiJSON<CustomTopicsResponse>('/admin/alert-routing/custom-topics')
-      .then(setCustomTopics).catch(() => setCustomTopics(null));
+      .then(setCustomTopics).catch(() => { setCustomTopics(null); setTopicsError(true); });
   }, []);
   useEffect(load, [load]);
 

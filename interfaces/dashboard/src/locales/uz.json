@@ -25,7 +25,9 @@
     "updated_min_ago": "{{n}} daq oldin",
     "updated_hr_ago": "{{n}} soat oldin",
     "updated_d_ago": "{{n}} kun oldin",
-    "updated_prefix": "Yangilangan"
+    "updated_prefix": "Yangilangan",
+    "error_generic": "Nimadir xato ketdi",
+    "try_again": "Qayta urinish"
   },
   "language": {
     "label": "Til",
@@ -120,7 +122,7 @@
     "custom_topics_empty": "Tanlangan turlarni alohida Telegram mavzusiga yo'naltiring — masalan, faqat Avariya + Keskin tormoz.",
     "topics_needs_group": "Guruh ulangach ishga tushadi.",
     "load_error": "Bot yo'naltirishini yuklab bo'lmadi. Ulanishni tekshirib, qayta urining.",
-    "topics_error": "Rol bo'yicha ogohlantirish sozlamalarini yuklab bo'lmadi — quyidagi ro'yxat to'liq bo'lmasligi mumkin.",
+    "topics_error": "Yo‘naltirishning ba'zi tafsilotlari yuklanmadi — ro‘yxat to‘liq bo‘lmasligi mumkin.",
     "mode_indicator": "Yetkazish rejimi: {{mode}}",
     "mode_change_link": "Sozlamalar → Telegram bot da o‘zgartirish",
     "single_owner_only": "Bu hisob bitta umumiy botdan foydalanadi — uning guruhi va mavzularini egasi boshqaradi.",

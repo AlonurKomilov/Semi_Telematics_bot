@@ -25,7 +25,9 @@
     "updated_min_ago": "il y a {{n}} min",
     "updated_hr_ago": "il y a {{n}} h",
     "updated_d_ago": "il y a {{n}} j",
-    "updated_prefix": "Mis à jour"
+    "updated_prefix": "Mis à jour",
+    "error_generic": "Une erreur est survenue",
+    "try_again": "Réessayer"
   },
   "language": {
     "label": "Langue",
@@ -120,7 +122,7 @@
     "custom_topics_empty": "Envoyez certains types dans leur propre fil Telegram — p. ex. seulement Collision + Freinage brusque.",
     "topics_needs_group": "S'applique une fois un groupe lié.",
     "load_error": "Impossible de charger le routage du bot. Vérifiez votre connexion et réessayez.",
-    "topics_error": "Impossible de charger les réglages d'alertes par rôle — la liste ci-dessous peut être incomplète.",
+    "topics_error": "Certains détails de routage n'ont pas pu être chargés — la liste peut être incomplète.",
     "mode_indicator": "Mode de distribution : {{mode}}",
     "mode_change_link": "modifier dans Paramètres → Bot Telegram",
     "single_owner_only": "Ce compte utilise un bot partagé — son groupe et ses sujets sont gérés par un propriétaire.",

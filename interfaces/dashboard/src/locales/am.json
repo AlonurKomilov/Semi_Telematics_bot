@@ -25,7 +25,9 @@
     "updated_min_ago": "ከ{{n}} ደቂቃ በፊት",
     "updated_hr_ago": "ከ{{n}} ሰዓት በፊት",
     "updated_d_ago": "ከ{{n}} ቀን በፊት",
-    "updated_prefix": "ተዘምኗል"
+    "updated_prefix": "ተዘምኗል",
+    "error_generic": "የሆነ ችግር ተፈጥሯል",
+    "try_again": "እንደገና ሞክር"
   },
   "language": {
     "label": "ቋንቋ",
@@ -120,7 +122,7 @@
     "custom_topics_empty": "የተመረጡ ዓይነቶችን ወደ የራሳቸው Telegram ክር ይምሩ — ለምሳሌ ግጭት + ኃይለኛ ብሬክ ብቻ።",
     "topics_needs_group": "ቡድን ከታሰረ በኋላ ተግባራዊ ይሆናል።",
     "load_error": "የቦት አቅጣጫን መጫን አልተቻለም። ግንኙነትዎን አረጋግጠው እንደገና ይሞክሩ።",
-    "topics_error": "የሚና ማንቂያ ቅንብሮችን መጫን አልተቻለም — ከታች ያለው ዝርዝር ያልተሟላ ሊሆን ይችላል።",
+    "topics_error": "አንዳንድ የአቅጣጫ ዝርዝሮች መጫን አልተቻለም — ዝርዝሩ ያልተሟላ ሊሆን ይችላል።",
     "mode_indicator": "የአደራረስ ሁናቴ፦ {{mode}}",
     "mode_change_link": "በቅንብሮች → Telegram ቦት ይቀይሩ",
     "single_owner_only": "ይህ መለያ አንድ የጋራ ቦት ይጠቀማል — ቡድኑና ርዕሶቹ በባለቤት ይተዳደራሉ።",

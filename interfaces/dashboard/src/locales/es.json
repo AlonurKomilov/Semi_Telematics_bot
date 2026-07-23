@@ -25,7 +25,9 @@
     "updated_min_ago": "hace {{n}} min",
     "updated_hr_ago": "hace {{n}} h",
     "updated_d_ago": "hace {{n}} d",
-    "updated_prefix": "Actualizado"
+    "updated_prefix": "Actualizado",
+    "error_generic": "Algo salió mal",
+    "try_again": "Reintentar"
   },
   "language": {
     "label": "Idioma",
@@ -120,7 +122,7 @@
     "custom_topics_empty": "Envía ciertos tipos a su propio hilo de Telegram — p. ej. solo Choque + Frenado brusco.",
     "topics_needs_group": "Se aplica cuando se vincula un grupo.",
     "load_error": "No se pudo cargar el enrutamiento del bot. Revisa tu conexión y reintenta.",
-    "topics_error": "No se pudieron cargar los ajustes de alertas por rol — la lista de abajo puede estar incompleta.",
+    "topics_error": "No se pudieron cargar algunos detalles de enrutamiento — la lista puede estar incompleta.",
     "mode_indicator": "Modo de entrega: {{mode}}",
     "mode_change_link": "cambiar en Ajustes → Bot de Telegram",
     "single_owner_only": "Esta cuenta usa un bot compartido — su grupo y temas los gestiona un propietario.",

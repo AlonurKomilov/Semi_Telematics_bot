@@ -25,7 +25,9 @@
     "updated_min_ago": "{{n}} daqiiqo kahor",
     "updated_hr_ago": "{{n}} saac kahor",
     "updated_d_ago": "{{n}} maalmood kahor",
-    "updated_prefix": "Cusboonaysiiyey"
+    "updated_prefix": "Cusboonaysiiyey",
+    "error_generic": "Wax baa qaldamay",
+    "try_again": "Isku day mar kale"
   },
   "language": {
     "label": "Luqad",
@@ -120,7 +122,7 @@
     "custom_topics_empty": "U dir noocyada la doortay dun Telegram u gaar ah — tusaale ahaan Shil + Bareeg adag oo keliya.",
     "topics_needs_group": "Wuxuu shaqaynayaa marka koox la xidho.",
     "load_error": "Lama soo rari karin hagida bot-ka. Hubi xiriirkaaga oo mar kale isku day.",
-    "topics_error": "Lama soo rari karin dejinta digniinta doorka — liiska hoose wuxuu noqon karaa mid aan dhammaystirnayn.",
+    "topics_error": "Qaar ka mid ah faahfaahinta hagida lama soo rari karin — liisku wuu noqon karaa mid aan dhammaystirnayn.",
     "mode_indicator": "Habka gaarsiinta: {{mode}}",
     "mode_change_link": "ka beddel Dejinta → Bot-ka Telegram",
     "single_owner_only": "Akoonkani wuxuu isticmaalaa hal bot wadaag ah — kooxdiisa iyo mowduucyadiisa waxaa maamula milkiile.",
