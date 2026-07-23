@@ -843,6 +843,30 @@ async def reconcile_work_orders_projection(
         return 0
 
 
+async def reconcile_loads_projection(account_id: int, tenant: Any) -> int:
+    """Loads twin of the work-orders reconcile: staged orders the
+    current window no longer returns get projected from their stored
+    payloads.  Cheap anti-join when nothing is missing; best-effort."""
+    try:
+        payloads = await tenant.datatruck_order_payloads_missing_projection(account_id)
+        if not payloads:
+            return 0
+        rows = [_norm_order(p) for p in payloads]
+        n = await tenant.project_external_loads(
+            account_id, rows, source=_PROVIDER_ID,
+        )
+        logger.info(
+            "datatruck loads projection reconcile acct=%d: %d orphaned rows projected",
+            account_id, n,
+        )
+        return n
+    except Exception as e:
+        logger.warning(
+            "datatruck loads projection reconcile failed acct=%d: %s", account_id, e,
+        )
+        return 0
+
+
 async def fetch_normalized(
     account_id: int, resource: str, *, days: int | None = None,
     on_progress: Any = None, max_pages: int | None = None,
@@ -1194,6 +1218,8 @@ async def sync_resource(
             await reconcile_work_orders_projection(
                 account_id, tenant, vehicle_lookup=wo_lookup,
             )
+        if spec.project_loads:
+            await reconcile_loads_projection(account_id, tenant)
 
         status["state"] = "completed"
     except Exception as e:

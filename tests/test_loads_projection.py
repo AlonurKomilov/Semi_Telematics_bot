@@ -312,3 +312,35 @@ async def test_tariff_pay_estimate_gated_and_pinnable(db):
     l = next(x for x in await db.list_loads(acct.id) if x.external_ref == "P2")
     assert l.driver_pay == 900.0
     assert l.field_provenance.get("driver_pay") == "manual"
+
+
+@pytest.mark.asyncio
+async def test_reconcile_projects_orphaned_staged_orders(db):
+    """Self-heal: a staged order that never became a load (synced
+    before the projection existed, or in a window later syncs moved
+    past) gets projected from its stored payload.  Audit 2026-07-23
+    found 107 such orphans in production."""
+    from capabilities.integrations.datatruck.sync import (
+        _norm_order, reconcile_loads_projection,
+    )
+
+    acct = await db.create_account("Reconcile Loads Co")
+    raw = {
+        "id": 88001, "trip_number": "S-88001", "status": "Delivered",
+        "customer": {"company_name": "Orphan Freight LLC"},
+        "total_rate": 2500.0,
+    }
+    # Stage WITHOUT projecting — the orphan state.
+    n = await db.upsert_datatruck_orders(acct.id, [_norm_order(raw)])
+    assert n == 1
+    assert await db.list_loads(acct.id) == []
+
+    healed = await reconcile_loads_projection(acct.id, db)
+    assert healed == 1
+    loads = await db.list_loads(acct.id)
+    assert len(loads) == 1
+    assert loads[0].external_ref == "88001"
+    assert loads[0].source == "datatruck"
+
+    # Idempotent: nothing left on the second pass.
+    assert await reconcile_loads_projection(acct.id, db) == 0

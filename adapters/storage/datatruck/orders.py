@@ -87,3 +87,31 @@ class DatatruckOrdersMixin(_MixinBase):
 
     async def datatruck_orders_stats(self, account_id: int) -> dict:
         return await resource_stats(self, _SPEC, account_id)
+
+    async def datatruck_order_payloads_missing_projection(
+        self, account_id: int, limit: int = 500,
+    ) -> list[dict[str, Any]]:
+        """Raw payloads of staged orders that never became a load —
+        the self-heal source for the loads-projection reconcile (rows
+        staged before the projection existed, or in a window later
+        syncs moved past, never re-sync on their own).  Audit
+        2026-07-23: 107 such orphans in production."""
+        import json
+        cur = await self._db.execute(
+            "SELECT d.payload FROM datatruck_orders d "
+            "LEFT JOIN loads l "
+            "  ON l.account_id = d.account_id AND l.source = 'datatruck' "
+            " AND l.external_ref = d.external_id "
+            "WHERE d.account_id = ? AND l.id IS NULL "
+            f"LIMIT {int(limit)}",
+            (account_id,),
+        )
+        out: list[dict[str, Any]] = []
+        for r in await cur.fetchall():
+            try:
+                p = json.loads(dict(r)["payload"] or "{}")
+                if isinstance(p, dict) and p:
+                    out.append(p)
+            except (ValueError, TypeError):
+                continue
+        return out
