@@ -109,3 +109,25 @@ async def test_migration_159_status_to_fleetio_vocabulary(db):
     # Second run: no-op.
     await mig(db._db)
     assert (await db.get_work_order(s, a))["status"] == "closed"
+
+
+@pytest.mark.asyncio
+async def test_migration_160_finalizes_completed_no_void(db):
+    """closed→completed and void→completed (void abolished); open
+    untouched.  Idempotent."""
+    from adapters.storage.migrations import (
+        migrate_work_orders_status_completed_no_void as mig,
+    )
+    a = 73
+    c = await db.add_work_order(a, "ACME", "T1", "Shop", status="closed",
+                                total_cost=10)
+    v = await db.add_work_order(a, "ACME", "T2", "Shop", status="void",
+                                total_cost=20)
+    o = await db.add_work_order(a, "ACME", "T3", "Shop", status="open",
+                                total_cost=30)
+    await mig(db._db)
+    assert (await db.get_work_order(c, a))["status"] == "completed"
+    assert (await db.get_work_order(v, a))["status"] == "completed"
+    assert (await db.get_work_order(o, a))["status"] == "open"
+    await mig(db._db)   # no-op
+    assert (await db.get_work_order(c, a))["status"] == "completed"

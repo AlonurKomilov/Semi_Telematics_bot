@@ -72,7 +72,7 @@ async def test_project_inserts_full_datatruck_detail(db):
     assert wo["parts_cost"] == pytest.approx(109.0)
     assert wo["labor_cost"] == pytest.approx(0.0)
     # Real upstream invoice, not a local draft.
-    assert wo["status"] == "closed"
+    assert wo["status"] == "completed"
 
 
 @pytest.mark.asyncio
@@ -127,16 +127,16 @@ async def test_project_is_idempotent_and_refreshes(db):
 async def test_project_preserves_operator_workflow_fields(db):
     await db.project_external_work_orders(42, [_WO_ROWS[0]], source="datatruck")
     row = (await db.list_work_orders(42))[0]
-    # Operator marks it paid, voids the draft status, edits the note.
+    # Operator marks it paid and edits the note.  (Status is
+    # upstream-authoritative for synced WOs — see the ratchet test.)
     await db.update_work_order(
-        row["id"], 42, payment_status="paid", status="void",
-        notes="reconciled in books",
+        row["id"], 42, payment_status="paid", notes="reconciled in books",
     )
-    # A re-sync refreshes Datatruck fields but keeps the operator's.
+    # A re-sync refreshes Datatruck fields but keeps the operator's
+    # money state (ratchets forward only) and notes (never touched).
     await db.project_external_work_orders(42, [_WO_ROWS[0]], source="datatruck")
     refreshed = (await db.list_work_orders(42))[0]
     assert refreshed["payment_status"] == "paid"
-    assert refreshed["status"] == "void"
     assert refreshed["notes"] == "reconciled in books"
 
 
@@ -430,31 +430,24 @@ async def test_datatruck_status_maps_to_fleetio_lifecycle(db):
     ]
     await db.project_external_work_orders(60, rows, source="datatruck")
     by = {r["external_id"]: r["status"] for r in await db.list_work_orders(60)}
-    assert by == {"s1": "closed", "s2": "open", "s3": "in_progress", "s4": "closed"}
+    assert by == {"s1": "completed", "s2": "open", "s3": "in_progress", "s4": "completed"}
 
 
 @pytest.mark.asyncio
-async def test_status_ratchets_to_closed_never_reopens(db):
-    """A WO synced while upstream is 'in progress' auto-closes when the
-    shop completes it — one-way, and an operator void always sticks."""
+async def test_status_ratchets_to_completed_never_reopens(db):
+    """A WO synced while upstream is 'in progress' auto-completes when
+    the shop finishes it — one-way (never reopened by a lagging feed)."""
     row = {"external_id": "r1", "number": "WO-R", "vehicle_unit": "T1",
            "status": "in progress", "total_cost": 10.0, "line_items": []}
     await db.project_external_work_orders(61, [row], source="datatruck")
     assert (await db.list_work_orders(61))[0]["status"] == "in_progress"
 
-    # Upstream completes → ratchets to closed.
+    # Upstream finishes → ratchets to completed.
     await db.project_external_work_orders(
         61, [{**row, "status": "completed"}], source="datatruck")
-    assert (await db.list_work_orders(61))[0]["status"] == "closed"
+    assert (await db.list_work_orders(61))[0]["status"] == "completed"
 
-    # Never reopens: a lagging feed showing "open" again stays closed.
+    # Never reopens: a lagging feed showing "open" again stays completed.
     await db.project_external_work_orders(
         61, [{**row, "status": "open"}], source="datatruck")
-    assert (await db.list_work_orders(61))[0]["status"] == "closed"
-
-    # Operator void survives any upstream status.
-    wid = (await db.list_work_orders(61))[0]["id"]
-    await db.update_work_order(wid, 61, status="void")
-    await db.project_external_work_orders(
-        61, [{**row, "status": "completed"}], source="datatruck")
-    assert (await db.list_work_orders(61))[0]["status"] == "void"
+    assert (await db.list_work_orders(61))[0]["status"] == "completed"

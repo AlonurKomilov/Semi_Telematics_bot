@@ -51,13 +51,12 @@ import { formatDay } from '../../utils/datetime';
 const STATUS_TONE: Record<string, Tone> = {
   open:        'warn',
   in_progress: 'info',
-  closed:      'ok',
-  void:        'danger',
+  completed:   'ok',
 };
 
 // snake_case status values → human labels for the badge.
 const STATUS_LABEL: Record<string, string> = {
-  open: 'Open', in_progress: 'In Progress', closed: 'Closed', void: 'Void',
+  open: 'Open', in_progress: 'In Progress', completed: 'Completed',
 };
 
 const PAYMENT_TONE: Record<string, Tone> = {

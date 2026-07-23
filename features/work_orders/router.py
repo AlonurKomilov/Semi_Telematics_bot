@@ -28,9 +28,10 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
-# Lifecycle vocabulary (Fleetio-standard): open → in_progress → closed,
-# + void.  Legacy draft/submitted are accepted at the write boundary
-# for one release (stale dashboard bundles) and normalized here, so the
+# Lifecycle vocabulary (Fleetio-standard): open → in_progress →
+# completed (no void — a mistaken WO is deleted).  Legacy
+# draft/submitted/closed/void are accepted at the write boundary for
+# one release (stale dashboard bundles) and normalized here, so the
 # stored value is always current.
 from adapters.storage.work_orders import normalize_wo_status
 
@@ -85,11 +86,12 @@ class WorkOrderCreate(BaseModel):
     labor_cost: float = Field(0.0, ge=0)
     parts_cost: float = Field(0.0, ge=0)
     tax_amount: float = Field(0.0, ge=0)
+    fee_amount: float = Field(0.0, ge=0)
     total_cost: float = Field(0.0, ge=0)
     invoice_number: str = ""
     payment_method: str = ""
     payment_status: str = Field("unpaid", pattern=r"^(unpaid|paid|partial|void)$")
-    status: str = Field("open", pattern=r"^(open|in_progress|closed|void|draft|submitted)$")
+    status: str = Field("open", pattern=r"^(open|in_progress|completed|draft|submitted|closed|void)$")
     # Reason-for-repair class (VMRS-style): planned upkeep vs unplanned
     # firefighting.  '' = unclassified.
     repair_priority: str = Field("", pattern=r"^(scheduled|non_scheduled|emergency|)$")
@@ -122,11 +124,12 @@ class WorkOrderUpdate(BaseModel):
     labor_cost: Optional[float] = Field(None, ge=0)
     parts_cost: Optional[float] = Field(None, ge=0)
     tax_amount: Optional[float] = Field(None, ge=0)
+    fee_amount: Optional[float] = Field(None, ge=0)
     total_cost: Optional[float] = Field(None, ge=0)
     invoice_number: Optional[str] = None
     payment_method: Optional[str] = None
     payment_status: Optional[str] = Field(None, pattern=r"^(unpaid|paid|partial|void)$")
-    status: Optional[str] = Field(None, pattern=r"^(open|in_progress|closed|void|draft|submitted)$")
+    status: Optional[str] = Field(None, pattern=r"^(open|in_progress|completed|draft|submitted|closed|void)$")
     repair_priority: Optional[str] = Field(None, pattern=r"^(scheduled|non_scheduled|emergency|)$")
     complaint: Optional[str] = None
 

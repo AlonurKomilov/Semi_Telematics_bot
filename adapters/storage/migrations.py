@@ -1528,6 +1528,11 @@ async def migrate_work_orders_skeleton(conn) -> None:
                 labor_cost               REAL    NOT NULL DEFAULT 0,
                 parts_cost               REAL    NOT NULL DEFAULT 0,
                 tax_amount               REAL    NOT NULL DEFAULT 0,
+                -- Additional charge beyond itemized parts + labor
+                -- (shop / environmental / call-out fee).  Parts and
+                -- labor are the line items; fee + tax are the header
+                -- add-ons.  total = labor + parts + fee + tax.
+                fee_amount               REAL    NOT NULL DEFAULT 0,
                 total_cost               REAL    NOT NULL DEFAULT 0,
                 invoice_number           TEXT    NOT NULL DEFAULT '',
                 payment_method           TEXT    NOT NULL DEFAULT '',
@@ -6855,3 +6860,40 @@ async def migrate_work_orders_status_fleetio_vocabulary(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 159: work_orders.status migrated to Fleetio vocabulary")
+
+
+@_register("160_work_orders_status_completed_no_void")
+async def migrate_work_orders_status_completed_no_void(conn) -> None:
+    """Finalize the WO lifecycle vocabulary (owner decision): the done
+    state is 'completed' (was the interim 'closed'), and there is NO
+    cancelled/void status — a mistaken WO is deleted, not soft-voided.
+
+      * closed → completed  (rename of the interim done state)
+      * void   → completed  (void abolished; the handful that ever
+                             existed become ordinary finished records —
+                             genuinely-cancelled ones are deleted)
+
+    Data-only + idempotent.  payment_status='void' (labelled "Written
+    off") is a SEPARATE money field and is untouched.
+    """
+    await conn.execute(
+        "UPDATE work_orders SET status = 'completed' "
+        "WHERE status IN ('closed', 'void')"
+    )
+    await conn.commit()
+    logger.info("Migration 160: WO status finalized (closed/void → completed)")
+
+
+@_register("161_work_orders_fee_amount")
+async def migrate_work_orders_fee_amount(conn) -> None:
+    """Add ``work_orders.fee_amount`` — the additional charge beyond
+    itemized parts + labor (shop / environmental / call-out fee).  The
+    Costs section drops the duplicate Labor scalar (labor is entered as
+    task-group line items) for a Fee field instead; total = labor +
+    parts + fee + tax.  Existing rows default to 0."""
+    await conn.execute(
+        "ALTER TABLE work_orders "
+        "ADD COLUMN IF NOT EXISTS fee_amount REAL NOT NULL DEFAULT 0"
+    )
+    await conn.commit()
+    logger.info("Migration 161: work_orders.fee_amount added")

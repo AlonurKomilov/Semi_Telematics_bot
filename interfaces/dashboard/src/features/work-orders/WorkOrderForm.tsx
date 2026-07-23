@@ -47,6 +47,7 @@ const blankWorkOrder = (): Partial<WorkOrder> => ({
   labor_cost: 0,
   parts_cost: 0,
   tax_amount: 0,
+  fee_amount: 0,
   total_cost: 0,
   invoice_number: '',
   payment_method: '',
@@ -419,9 +420,10 @@ export default function WorkOrderForm() {
     navigate(to);
   };
 
-  // Auto-totals: parts_cost = sum(parts.total_cost), total_cost =
-  // labor + parts + tax.  Recomputed as a derived value so the
-  // displayed numbers always match what'll be sent.
+  // Auto-totals: parts + labor are the line items (task groups above);
+  // fee + tax are the header add-ons.  total = labor+parts+fee+tax,
+  // recomputed as a derived value so the displayed numbers always
+  // match what'll be sent.
   const partsCostComputed = useMemo(
     () => parts.reduce((acc, p) => acc + (Number(p.total_cost) || 0), 0),
     [parts],
@@ -430,12 +432,16 @@ export default function WorkOrderForm() {
     () => laborLines.reduce((acc, l) => acc + (Number(l.total_cost) || 0), 0),
     [laborLines],
   );
+  // Labor comes from the task-group line items (or a legacy scalar on
+  // old records); it's display-only in Costs now — a Fee field took the
+  // old editable Labor slot.
   const effectiveLaborCost = laborLines.length
     ? laborCostComputed
     : (Number(wo.labor_cost) || 0);
   const totalCostComputed = useMemo(
-    () => effectiveLaborCost + partsCostComputed + (Number(wo.tax_amount) || 0),
-    [effectiveLaborCost, wo.tax_amount, partsCostComputed],
+    () => effectiveLaborCost + partsCostComputed
+      + (Number(wo.fee_amount) || 0) + (Number(wo.tax_amount) || 0),
+    [effectiveLaborCost, wo.fee_amount, wo.tax_amount, partsCostComputed],
   );
 
   // ── Field helpers ──────────────────────────────────────────────
@@ -837,18 +843,16 @@ export default function WorkOrderForm() {
   ];
   // Lifecycle only — money state lives in payment_status (the old
   // status='paid' was folded away by migration 154).
-  // Fleetio-standard lifecycle: Open → In Progress → Closed (+ Void
-  // for cancelled records, kept out of every cost report).
+  // Fleetio-standard lifecycle: Open → In Progress → Completed.
   const statusItems = [
     { value: 'open', label: t('work_orders_page.status_open', { defaultValue: 'Open' }) },
     { value: 'in_progress', label: t('work_orders_page.status_in_progress', { defaultValue: 'In Progress' }) },
-    { value: 'closed', label: t('work_orders_page.status_closed', { defaultValue: 'Closed' }) },
-    { value: 'void', label: t('work_orders_page.status_void', { defaultValue: 'Void' }) },
+    { value: 'completed', label: t('work_orders_page.status_completed', { defaultValue: 'Completed' }) },
   ];
   // Reason-for-repair class.  '' = unclassified (the honest default for
   // rows created before this field, or when the operator hasn't tagged it).
   const priorityItems = [
-    { value: '', label: t('work_orders_page.priority_unset', { defaultValue: 'Unclassified' }) },
+    { value: '', label: t('work_orders_page.priority_unset', { defaultValue: 'Not sure yet' }) },
     { value: 'scheduled', label: t('work_orders_page.priority_scheduled', { defaultValue: 'Scheduled' }) },
     { value: 'non_scheduled', label: t('work_orders_page.priority_non_scheduled', { defaultValue: 'Non-scheduled' }) },
     { value: 'emergency', label: t('work_orders_page.priority_emergency', { defaultValue: 'Emergency' }) },
@@ -940,7 +944,7 @@ export default function WorkOrderForm() {
           </Field>
           <Field label={t('work_orders_page.field_status')}
             tip={t('work_orders_page.tip_status', { defaultValue:
-              'The repair\u2019s lifecycle: Open = created / work not done, In Progress = being worked, Closed = finished, Void = cancelled (excluded from all cost reports). Whether it\u2019s paid lives in Payment status below.' })}>
+              'The repair\u2019s lifecycle: Open = created / work not done, In Progress = being worked, Completed = finished. Whether it\u2019s paid lives in Payment status below.' })}>
             <Select value={wo.status || 'open'} onValueChange={(v) => setField('status', v)} items={statusItems}>
               <SelectTrigger className="w-full" aria-label={t('work_orders_page.field_status')}><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -950,7 +954,7 @@ export default function WorkOrderForm() {
           </Field>
           <Field label={t('work_orders_page.field_repair_priority', { defaultValue: 'Repair priority' })}
             tip={t('work_orders_page.tip_repair_priority', { defaultValue:
-              'How this repair came about: Scheduled = planned maintenance, Non-scheduled = unplanned but not urgent, Emergency = roadside/breakdown. Used to break down repair spend by plannability.' })}>
+              'How this repair came about: Scheduled = planned maintenance, Non-scheduled = unplanned but not urgent, Emergency = roadside/breakdown. Not sure? Leave it “Not sure yet” — you can set it later. Used to break down repair spend by plannability.' })}>
             <Select value={wo.repair_priority || ''} onValueChange={(v) => setField('repair_priority', v)} items={priorityItems}>
               <SelectTrigger className="w-full" aria-label={t('work_orders_page.field_repair_priority', { defaultValue: 'Repair priority' })}><SelectValue /></SelectTrigger>
               <SelectContent>
@@ -1187,19 +1191,15 @@ export default function WorkOrderForm() {
       <section className="bg-card border border-border rounded-xl p-5 mb-5">
         <h3 className="text-sm font-semibold mb-3">{t('work_orders_page.section_costs')}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label={t('work_orders_page.field_labor')}>
+          <Field label={t('work_orders_page.field_fee', { defaultValue: 'Fee $' })}
+            tip={t('work_orders_page.tip_fee', { defaultValue:
+              'An extra charge beyond the parts and labor entered above — shop supplies, environmental, or a call-out fee. Parts and labor come from the line items; fee and tax are added on top.' })}>
             <input
               type="number" min="0" step="0.01"
-              value={laborLines.length ? laborCostComputed : (wo.labor_cost ?? 0)}
-              disabled={laborLines.length > 0}
-              onChange={e => setField('labor_cost', Number(e.target.value) || 0)}
-              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm tabular-nums text-foreground focus:outline-none focus:border-ring disabled:opacity-70"
+              value={wo.fee_amount ?? 0}
+              onChange={e => setField('fee_amount', Number(e.target.value) || 0)}
+              className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm tabular-nums text-foreground focus:outline-none focus:border-ring"
             />
-            {laborLines.length > 0 && (
-              <p className="text-2xs text-muted-foreground mt-1">
-                {t('work_orders_page.labor_sum_note', { defaultValue: 'Sum of the labor lines above.' })}
-              </p>
-            )}
           </Field>
           <Field label={t('work_orders_page.field_tax')}>
             <input
@@ -1213,6 +1213,7 @@ export default function WorkOrderForm() {
         <div className="mt-3 pt-3 border-t border-border/50 flex flex-wrap gap-x-6 gap-y-1 text-sm">
           <span className="text-muted-foreground">{t('work_orders_page.sum_parts')}: <span className="font-medium tabular-nums text-foreground">${partsCostComputed.toFixed(2)}</span></span>
           <span className="text-muted-foreground">{t('work_orders_page.sum_labor')}: <span className="font-medium tabular-nums text-foreground">${effectiveLaborCost.toFixed(2)}</span></span>
+          <span className="text-muted-foreground">{t('work_orders_page.sum_fee', { defaultValue: 'Fee' })}: <span className="font-medium tabular-nums text-foreground">${(Number(wo.fee_amount) || 0).toFixed(2)}</span></span>
           <span className="text-muted-foreground">{t('work_orders_page.sum_tax')}: <span className="font-medium tabular-nums text-foreground">${(Number(wo.tax_amount) || 0).toFixed(2)}</span></span>
           <span className="text-foreground font-semibold ml-auto">{t('work_orders_page.sum_total')}: <span className="tabular-nums">${totalCostComputed.toFixed(2)}</span></span>
         </div>

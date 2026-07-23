@@ -1530,12 +1530,15 @@ export interface WorkOrder {
   labor_cost: number;
   parts_cost: number;
   tax_amount: number;
+  /** Additional charge beyond itemized parts + labor (shop /
+   *  environmental / call-out fee).  total = labor+parts+fee+tax. */
+  fee_amount: number;
   total_cost: number;
   invoice_number: string;
   payment_method: string;
-  /** unpaid / paid / partial / void */
+  /** unpaid / paid / partial / void ("void" shows as "Written off") */
   payment_status: string;
-  /** draft / submitted / paid / void */
+  /** open / in_progress / completed */
   status: string;
   /** Reason-for-repair class: scheduled / non_scheduled / emergency,
    *  or '' when unclassified.  Splits planned upkeep from unplanned

@@ -11,14 +11,19 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-# Work-order lifecycle (Fleetio-standard): open → in_progress → closed,
-# plus void (cancelled — excluded from every cost report).  Money lives
-# in the separate payment_status field.
-_WO_STATUSES = ("open", "in_progress", "closed", "void")
+# Work-order lifecycle (Fleetio-standard): open → in_progress →
+# completed.  No cancelled/void state by owner decision — a mistaken WO
+# is deleted, not soft-voided.  Money lives in the separate
+# payment_status field.
+_WO_STATUSES = ("open", "in_progress", "completed")
 
-# Legacy pre-2026-07 values, accepted at the write boundary for one
-# release so stale dashboard bundles don't 422 mid-deploy.
-_LEGACY_WO_STATUS = {"draft": "open", "submitted": "closed"}
+# Legacy values accepted at the write boundary for one release so stale
+# dashboard bundles don't 422 mid-deploy (draft/submitted predate the
+# Fleetio vocab; closed/void were the brief interim before completed).
+_LEGACY_WO_STATUS = {
+    "draft": "open", "submitted": "completed",
+    "closed": "completed", "void": "completed",
+}
 
 
 def normalize_wo_status(value: Any) -> Optional[str]:
@@ -32,11 +37,11 @@ def normalize_wo_status(value: Any) -> Optional[str]:
 
 # Datatruck's own work-order statuses → ours.  Synced rows are shop
 # INVOICES for work that already happened, so an unrecognized/blank
-# status defaults to CLOSED (a completed repair), never open — else a
+# status defaults to COMPLETED (a finished repair), never open — else a
 # one-time backfill would flood the working set with phantom to-dos.
 _DATATRUCK_STATUS = {
-    "completed": "closed", "complete": "closed", "closed": "closed",
-    "paid": "closed", "invoiced": "closed",
+    "completed": "completed", "complete": "completed", "closed": "completed",
+    "paid": "completed", "invoiced": "completed",
     "open": "open", "new": "open", "pending": "open",
     "in progress": "in_progress", "in_progress": "in_progress",
     "on hold": "in_progress", "on_hold": "in_progress",
@@ -44,7 +49,7 @@ _DATATRUCK_STATUS = {
 
 
 def map_datatruck_status(value: Any) -> str:
-    return _DATATRUCK_STATUS.get(str(value or "").strip().lower(), "closed")
+    return _DATATRUCK_STATUS.get(str(value or "").strip().lower(), "completed")
 
 
 class WorkOrdersMixin:
@@ -66,6 +71,7 @@ class WorkOrdersMixin:
         labor_cost: float = 0.0,
         parts_cost: float = 0.0,
         tax_amount: float = 0.0,
+        fee_amount: float = 0.0,
         total_cost: float = 0.0,
         invoice_number: str = "",
         payment_method: str = "",
@@ -86,17 +92,17 @@ class WorkOrdersMixin:
                 vehicle_type, vendor_name, vendor_address, vendor_phone,
                 vendor_id, service_date, odometer_at_service,
                 engine_hours_at_service,
-                labor_cost, parts_cost, tax_amount, total_cost,
+                labor_cost, parts_cost, tax_amount, fee_amount, total_cost,
                 invoice_number, payment_method, payment_status,
                 status, repair_priority, complaint, cause, correction,
                 notes, assigned_to, created_by, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, company_code, vehicle_id, vehicle_name,
              vehicle_type, vendor_name, vendor_address, vendor_phone,
              vendor_id, service_date, odometer_at_service,
              engine_hours_at_service,
-             labor_cost, parts_cost, tax_amount, total_cost,
+             labor_cost, parts_cost, tax_amount, fee_amount, total_cost,
              invoice_number, payment_method, payment_status,
              status, repair_priority, complaint, cause, correction,
              notes, assigned_to, created_by, now, now),
@@ -309,11 +315,11 @@ class WorkOrdersMixin:
                     # one-way ratchets so a lagging feed never regresses
                     # an operator's or an already-final state:
                     #   payment: unpaid/partial → paid, never back.
-                    #   status:  open/in_progress → closed when upstream
-                    #            completes; never reopened; operator void
-                    #            always sticks.  (Without this a WO synced
-                    #            while "in progress" would never auto-close
-                    #            and would inflate the active set forever.)
+                    #   status:  open/in_progress → completed when
+                    #            upstream finishes; never reopened.
+                    #            (Without this a WO synced while "in
+                    #            progress" would never auto-finish and
+                    #            would inflate the active set forever.)
                     await self._db.execute(
                         "UPDATE work_orders SET vehicle_name = ?, "
                         "vehicle_type = ?, company_code = ?, assigned_to = ?, "
@@ -327,8 +333,7 @@ class WorkOrdersMixin:
                         "    WHEN ? = 'paid' THEN 'paid' "
                         "    ELSE payment_status END, "
                         "status = CASE "
-                        "    WHEN status = 'void' THEN 'void' "
-                        "    WHEN ? = 'closed' THEN 'closed' "
+                        "    WHEN ? = 'completed' THEN 'completed' "
                         "    ELSE status END, "
                         "updated_at = ? WHERE id = ? AND account_id = ?",
                         (vehicle_name, vehicle_type, company_code, assigned_to,
@@ -553,7 +558,7 @@ class WorkOrdersMixin:
             "company_code", "vehicle_id", "vehicle_name", "vehicle_type",
             "vendor_name", "vendor_address", "vendor_phone", "vendor_id",
             "service_date", "odometer_at_service", "engine_hours_at_service",
-            "labor_cost", "parts_cost", "tax_amount", "total_cost",
+            "labor_cost", "parts_cost", "tax_amount", "fee_amount", "total_cost",
             "invoice_number", "payment_method", "payment_status",
             "status", "repair_priority", "complaint", "cause", "correction",
             "notes", "assigned_to",
@@ -707,7 +712,7 @@ class WorkOrdersMixin:
         # Total recomputed in Python — Postgres ROUND(double, int)
         # doesn't exist, and this keeps the SQL dialect-free.
         wcur = await self._db.execute(
-            "SELECT parts_cost, tax_amount FROM work_orders "
+            "SELECT parts_cost, tax_amount, fee_amount FROM work_orders "
             "WHERE id = ? AND account_id = ?",
             (work_order_id, account_id),
         )
@@ -716,7 +721,8 @@ class WorkOrdersMixin:
             return
         w = dict(wrow)
         total = round(
-            labor + float(w["parts_cost"] or 0) + float(w["tax_amount"] or 0), 2,
+            labor + float(w["parts_cost"] or 0) + float(w["tax_amount"] or 0)
+            + float(w.get("fee_amount") or 0), 2,
         )
         await self._db.execute(
             "UPDATE work_orders SET labor_cost = ?, total_cost = ? "
