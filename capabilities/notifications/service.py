@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from capabilities.notifications.categories import (
     BROADCAST,
@@ -70,6 +70,7 @@ async def dispatch(
     content: NotificationContent,
     *,
     channels: Iterable[str] | None = None,
+    recipient_filter: Callable[[int, str | None], bool] | None = None,
 ) -> list[DeliveryResult]:
     """Deliver one semantic event to every subscriber on every channel.
 
@@ -86,6 +87,17 @@ async def dispatch(
     (moved out of the storage query): a user recipient whose CURRENT role
     isn't eligible for the category is dropped, so a stale pref left after a
     role change can't keep firing.
+
+    ``recipient_filter`` is a caller-supplied visibility gate applied to
+    every user-type recipient — ``(user_id, role) -> keep``.  It's how a
+    source layers on scoping the notification core must stay ignorant of:
+    alerting passes a company-scope predicate here so a user restricted to
+    Company A is never emailed about Company B's vehicle, WITHOUT the
+    notification core ever learning what a "company" is.  Applied in the
+    same pass as the audience gate (before digest enqueue, so both cadences
+    are covered) and FAIL-OPEN: a predicate that raises keeps the recipient.
+    Non-user (shared) recipients are never filtered — parity with the
+    Telegram path, where shared group topics aren't per-user gated.
     """
     cat = get_category(content.category)
     if cat is not None and cat.kind == TARGETED:
@@ -110,7 +122,7 @@ async def dispatch(
             logger.error("dispatch: subscriber lookup failed (%s): %s", key, e)
             continue
 
-        subs = await _apply_audience(db, subs, audience)
+        subs = await _filter_recipients(db, subs, audience, recipient_filter)
 
         for s in subs:
             cadence = s.get("cadence") or IMMEDIATE
@@ -144,11 +156,17 @@ async def dispatch(
     return results
 
 
-async def _apply_audience(db, subs, audience) -> list[dict]:
-    """Drop broadcast ``user`` recipients whose current role isn't eligible
-    for the category.  ``audience`` is ``None`` for categories with no role
-    gate (deliver to all) or unregistered categories (permissive)."""
-    if audience is None:
+async def _filter_recipients(db, subs, audience, recipient_filter) -> list[dict]:
+    """Drop broadcast ``user`` recipients failing the category's role
+    ``audience`` and/or a caller-supplied ``recipient_filter`` — in ONE
+    role-fetch pass.  ``audience`` is ``None`` for categories with no role
+    gate (deliver to all) or unregistered categories (permissive);
+    ``recipient_filter`` is ``None`` when the caller layers on no extra
+    scoping.  Non-user (shared) recipients are never filtered.
+
+    The predicate is FAIL-OPEN: if it raises, the recipient is kept — a
+    scoping bug must not silently swallow notifications."""
+    if audience is None and recipient_filter is None:
         return subs
     ids = [int(s["recipient_id"]) for s in subs
            if s["recipient_type"] == "user"
@@ -159,8 +177,18 @@ async def _apply_audience(db, subs, audience) -> list[dict]:
         if s["recipient_type"] != "user":
             return True                        # shared topics have no role
         rid = str(s["recipient_id"])
-        role = roles.get(int(rid)) if rid.lstrip("-").isdigit() else None
-        return role is not None and audience(role)
+        uid = int(rid) if rid.lstrip("-").isdigit() else None
+        role = roles.get(uid) if uid is not None else None
+        if audience is not None and not (role is not None and audience(role)):
+            return False
+        if recipient_filter is not None and uid is not None:
+            try:
+                if not recipient_filter(uid, role):
+                    return False
+            except Exception as e:             # a scoping bug must not mute
+                logger.error(
+                    "dispatch: recipient_filter raised for %s: %s", uid, e)
+        return True
 
     return [s for s in subs if keep(s)]
 

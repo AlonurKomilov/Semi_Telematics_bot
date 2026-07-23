@@ -301,6 +301,7 @@ async def dispatch_new_channels(
     severity: "AlertSeverity",
     vehicle_name: str,
     alert_text: str,
+    co: str = "",
     maps_url: str | None = None,
 ) -> None:
     """Hand one firing alert to the source-agnostic Notifications service
@@ -315,24 +316,21 @@ async def dispatch_new_channels(
     non-fatal — a Notifications failure must never sink an alert Telegram
     is about to deliver, so every error is logged and swallowed.
 
-    Two deliberate restrictions keep this correct while the notification
-    core is still gaining features:
-
     * **Category must exist.** The pipeline's verbose ``alert_type``
       ("fault") is mapped to the canonical registry key ("faults") and we
       only dispatch when a category is actually registered for it — so an
       alert type without a real category + audience rule (doc-expiry,
       scorecard, system…) simply stays Telegram-only instead of fanning
       out ungated.
-    * **Company scope: fail closed.**  ``dispatch()`` resolves recipients
-      at the ACCOUNT level and does not yet apply the per-user company-
-      access gate the Telegram DM path enforces (``company_scope.py``).
-      Until that gate is modeled in the notification core, we hold new-
-      channel delivery back for any account that has company-scoped users,
-      so a user restricted to Company A can never be emailed about Company
-      B's vehicle.  Single-company accounts (the common case) are
-      unaffected.  Lifting this needs the scope gate threaded through
-      dispatch() — a small follow-up, not a local patch.
+    * **Company scope: per-user (parity with Telegram).**  A recipient
+      restricted to certain companies (Team Management → Company Access)
+      must never be emailed/pushed about another company's vehicle.  We
+      build the same gate the Telegram DM path uses (``company_scope.py``)
+      and pass it to ``dispatch()`` as an OPAQUE predicate — so the
+      notification core enforces it without ever importing alerting or
+      learning what a "company" is.  Fail-open: no ``co``, no per-user
+      scoping, or a scope-load error delivers to all, exactly like
+      Telegram.  (This replaced an earlier account-wide fail-closed hold.)
 
     DND (Telegram quiet hours) is intentionally NOT applied here — it's a
     Telegram queue-and-flush concept; the new channels use the separate
@@ -357,15 +355,19 @@ async def dispatch_new_channels(
                 "new-channel delivery skipped", category, account_id)
             return
 
-        # Company-scope fail-closed gate (see docstring).
-        from capabilities.alerting.company_scope import load_company_scope
+        # Per-user company-scope predicate (parity with the Telegram path).
+        # Built here — alerting owns company scope — and handed to dispatch()
+        # as (user_id, role) -> keep, so a user restricted to another company
+        # is dropped WITHOUT the notification core knowing what a company is.
+        # Only built when there's a company AND some user is actually scoped;
+        # otherwise None (fail-open, deliver to all).
+        from capabilities.alerting.company_scope import (
+            load_company_scope, user_sees_company)
         scope = await load_company_scope(account_id)
-        if any(codes for codes in scope.values()):
-            logger.debug(
-                "notifications: acct=%d has company-scoped users — "
-                "new-channel delivery held back pending per-user company "
-                "gate", account_id)
-            return
+        recipient_filter = None
+        if co and any(scope.values()):
+            recipient_filter = (
+                lambda uid, role: user_sees_company(uid, role, co, scope))
 
         content = _NotifContent(
             title=f"{vehicle_name} — {alert_type}",
@@ -377,6 +379,7 @@ async def dispatch_new_channels(
         await _notif_dispatch(
             get_platform_db(), account_id, content,
             channels=("email", "web_push"),
+            recipient_filter=recipient_filter,
         )
     except Exception as exc:
         logger.error(
@@ -1169,6 +1172,7 @@ async def send_alert(
         severity=severity,
         vehicle_name=vname,
         alert_text=alert_text,
+        co=co,
         maps_url=maps_url,
     )
 

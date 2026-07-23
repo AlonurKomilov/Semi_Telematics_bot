@@ -15,7 +15,9 @@ Pins the seam contract:
     (Telegram HTML tags/entities stripped) and the alert severity
   • an alert type with no registered category is Telegram-only (no
     ungated fan-out)
-  • company-scoped accounts fail CLOSED (no cross-company email/push leak)
+  • company-scoped accounts deliver, passing dispatch() a per-user
+    predicate that drops recipients scoped out of the alert's company
+    (parity with Telegram; fail-open on no-company / no-scope / errors)
   • a Notifications failure is swallowed — an alert Telegram is about to
     deliver must never be sunk by an email/push error
 
@@ -44,10 +46,12 @@ class _RecordingDispatch:
         self.calls: list[dict] = []
         self._raises = raises
 
-    async def __call__(self, db, account_id, content, *, channels=None):
+    async def __call__(self, db, account_id, content, *, channels=None,
+                       recipient_filter=None):
         self.calls.append(
             {"db": db, "account_id": account_id, "content": content,
-             "channels": tuple(channels) if channels is not None else None}
+             "channels": tuple(channels) if channels is not None else None,
+             "recipient_filter": recipient_filter}
         )
         if self._raises is not None:
             raise self._raises
@@ -132,33 +136,56 @@ async def test_unregistered_alert_type_stays_telegram_only(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_company_scoped_account_fails_closed(monkeypatch):
-    """An account with any company-restricted user holds back new-channel
-    delivery until dispatch() applies the per-user company gate — no
-    cross-company email/push leak."""
+async def test_company_scoped_account_passes_per_user_predicate(monkeypatch):
+    """An account with company-restricted users now DELIVERS (no account-wide
+    hold-back), passing dispatch() a per-user predicate that scopes each
+    recipient — parity with the Telegram path."""
     disp = _RecordingDispatch()
     _patch(monkeypatch, flag=True, dispatch=disp,
-           scope={17: ["ACME"], 18: []})   # user 17 restricted → fail closed
+           scope={17: ["ACME"], 18: []})   # user 17 restricted, 18 not
 
     await dispatch_new_channels(
         account_id=99, alert_type="fault", severity=AlertSeverity.WARNING,
-        vehicle_name="Truck 5", alert_text="fault",
+        vehicle_name="Truck 5", alert_text="fault", co="OTHERCO",
     )
-    assert disp.calls == []
+    assert len(disp.calls) == 1
+    flt = disp.calls[0]["recipient_filter"]
+    assert flt is not None
+    # The restricted user (ACME only) is dropped for an OTHERCO alert;
+    # the unrestricted user and an owner are kept.
+    assert flt(17, "fleet") is False
+    assert flt(18, "fleet") is True
+    assert flt(1, "owner") is True
 
 
 @pytest.mark.asyncio
-async def test_unrestricted_account_delivers(monkeypatch):
-    """Users present but none company-restricted → delivers normally."""
+async def test_no_company_means_no_filter(monkeypatch):
+    """No alert company (co="") → fail-open, no predicate built even when
+    users are scoped (matches Telegram: a company-less alert reaches all)."""
+    disp = _RecordingDispatch()
+    _patch(monkeypatch, flag=True, dispatch=disp, scope={17: ["ACME"]})
+
+    await dispatch_new_channels(
+        account_id=99, alert_type="fault", severity=AlertSeverity.WARNING,
+        vehicle_name="Truck 5", alert_text="fault", co="",
+    )
+    assert len(disp.calls) == 1
+    assert disp.calls[0]["recipient_filter"] is None
+
+
+@pytest.mark.asyncio
+async def test_unscoped_account_no_filter(monkeypatch):
+    """Users present but none restricted → no predicate (deliver to all)."""
     disp = _RecordingDispatch()
     _patch(monkeypatch, flag=True, dispatch=disp,
            scope={17: [], 18: []})         # everyone unrestricted
 
     await dispatch_new_channels(
         account_id=99, alert_type="health", severity=AlertSeverity.INFO,
-        vehicle_name="Truck 5", alert_text="battery low",
+        vehicle_name="Truck 5", alert_text="battery low", co="ACME",
     )
     assert len(disp.calls) == 1
+    assert disp.calls[0]["recipient_filter"] is None
     assert disp.calls[0]["content"].category == "alert.health"
 
 
@@ -174,6 +201,22 @@ async def test_notifications_failure_is_swallowed(monkeypatch):
         vehicle_name="Reefer 9", alert_text="battery low",
     )
     assert len(disp.calls) == 1       # attempted, then error swallowed
+
+
+def test_user_sees_company_rules():
+    """The pure company gate (fail-open, owner-unrestricted, case-insens)."""
+    from capabilities.alerting.company_scope import user_sees_company
+    # Owner is always unrestricted, even with a scope row.
+    assert user_sees_company(1, "owner", "ACME", {1: ["OTHER"]}) is True
+    # No alert company → deliver to all.
+    assert user_sees_company(2, "fleet", "", {2: ["OTHER"]}) is True
+    # Not in the scope map → unrestricted.
+    assert user_sees_company(3, "fleet", "ACME", {}) is True
+    # Empty allowed list → unrestricted.
+    assert user_sees_company(4, "fleet", "ACME", {4: []}) is True
+    # Restricted, case-insensitive match / mismatch.
+    assert user_sees_company(5, "fleet", "acme", {5: ["ACME"]}) is True
+    assert user_sees_company(6, "fleet", "ACME", {6: ["OTHER"]}) is False
 
 
 def test_strip_alert_html_removes_tags_and_unescapes_entities():

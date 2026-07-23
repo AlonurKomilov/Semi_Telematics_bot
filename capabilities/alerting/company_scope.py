@@ -39,14 +39,30 @@ def subscriber_companies(sub, user_co: dict) -> list:
     return user_co.get(sub.id, [])
 
 
-def sees_company(sub, co: str, user_co: dict) -> bool:
-    """True if *sub* may receive an alert for company ``co`` (fail-open)."""
+def user_sees_company(user_id, role, co: str, user_co: dict) -> bool:
+    """True if a user (by id + role) may receive an alert for company ``co``
+    (fail-open).  The pure core of the company gate, keyed on primitives
+    rather than a subscriber object — so the notification ``dispatch()``
+    fan-out can apply the SAME rule via an opaque predicate without ever
+    importing alerting or learning what a "company" is.
+
+    ``role`` is the raw role value from the users table (a string like
+    "owner") OR a :class:`Role`; owner is always unrestricted.
+    """
     if not co:
         return True
-    allowed = subscriber_companies(sub, user_co)
+    role_str = role.value if hasattr(role, "value") else str(role or "")
+    if role_str == Role.OWNER.value:
+        return True
+    allowed = user_co.get(user_id, [])
     if not allowed:
         return True
     return co.upper() in {c.upper() for c in allowed}
+
+
+def sees_company(sub, co: str, user_co: dict) -> bool:
+    """True if *sub* may receive an alert for company ``co`` (fail-open)."""
+    return user_sees_company(sub.id, sub.role, co, user_co)
 
 
 async def filter_subscribers_by_company(subscribers: list, co: str, account_id: int) -> list:

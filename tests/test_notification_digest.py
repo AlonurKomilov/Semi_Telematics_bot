@@ -367,6 +367,51 @@ async def test_dispatch_audience_drops_ineligible_role(pg_db, fake_channel):
     assert {r.id for r, _ in fake_channel.sent} == {str(fleet)}   # driver dropped
 
 
+async def test_dispatch_recipient_filter_drops_user(pg_db, fake_channel):
+    """A caller-supplied recipient_filter (e.g. company scope) drops a
+    user recipient it rejects — the seam that lets alerting scope email/push
+    without the notification core knowing what a company is."""
+    from capabilities.notifications.categories import (
+        BROADCAST, NotificationCategory, register_category)
+    register_category(NotificationCategory("test.rf1", "RF", BROADCAST))
+    acct = (await pg_db.create_account("RF Co")).id
+    a = (await pg_db.create_user(telegram_id=8821, account_id=acct, role=Role.FLEET)).id
+    b = (await pg_db.create_user(telegram_id=8822, account_id=acct, role=Role.FLEET)).id
+    for uid in (a, b):
+        await pg_db.set_notification_pref(acct, "user", uid, "fake_test",
+                                          "test.rf1", enabled=True)
+        await pg_db.upsert_notification_channel(
+            acct, "user", uid, "fake_test", address=f"{uid}@x.com", verified=True)
+
+    await dispatch(pg_db, acct,
+                   NotificationContent(title="hi", category="test.rf1"),
+                   channels=["fake_test"],
+                   recipient_filter=lambda uid, role: uid == a)   # keep only a
+    assert {r.id for r, _ in fake_channel.sent} == {str(a)}       # b dropped
+
+
+async def test_dispatch_recipient_filter_fail_open_on_raise(pg_db, fake_channel):
+    """A predicate that raises must NOT silently mute — the recipient is
+    kept (fail-open parity with the Telegram company gate)."""
+    from capabilities.notifications.categories import (
+        BROADCAST, NotificationCategory, register_category)
+    register_category(NotificationCategory("test.rf2", "RF", BROADCAST))
+    acct = (await pg_db.create_account("RF2 Co")).id
+    uid = (await pg_db.create_user(telegram_id=8823, account_id=acct, role=Role.FLEET)).id
+    await pg_db.set_notification_pref(acct, "user", uid, "fake_test",
+                                      "test.rf2", enabled=True)
+    await pg_db.upsert_notification_channel(
+        acct, "user", uid, "fake_test", address="x@x.com", verified=True)
+
+    def boom(_uid, _role):
+        raise RuntimeError("scope lookup exploded")
+
+    await dispatch(pg_db, acct,
+                   NotificationContent(title="hi", category="test.rf2"),
+                   channels=["fake_test"], recipient_filter=boom)
+    assert {r.id for r, _ in fake_channel.sent} == {str(uid)}     # kept, not muted
+
+
 async def test_dispatch_rejects_targeted_category(pg_db, fake_channel):
     from capabilities.notifications.categories import (
         TARGETED, NotificationCategory, register_category)
