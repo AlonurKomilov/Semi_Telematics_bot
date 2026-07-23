@@ -384,6 +384,41 @@ export default function WorkOrderForm() {
     setLinkedTasks(detail.linked_tasks);
   }, [detail]);
 
+  // ── Unsaved-changes guard (UX audit P5) ──────────────────────────
+  // Snapshot the form ONCE it's populated (new mode: at mount; edit
+  // mode: when the server copy arrives); any later divergence marks it
+  // dirty.  Protects long line-item/labor edits from an accidental
+  // back / refresh / tab-close.
+  const initialSnapRef = useRef<string | null>(null);
+  const formSnapshot = useMemo(
+    () => JSON.stringify({ wo, parts, laborLines }),
+    [wo, parts, laborLines],
+  );
+  useEffect(() => {
+    if (initialSnapRef.current !== null) return;
+    if (isEdit && !detail) return;               // wait for the server copy
+    initialSnapRef.current = formSnapshot;
+  }, [isEdit, detail, formSnapshot]);
+  const dirty = initialSnapRef.current !== null
+    && formSnapshot !== initialSnapRef.current && !saving;
+
+  // Browser-level unload (close / refresh / external nav).
+  useEffect(() => {
+    if (!dirty) return;
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', h);
+    return () => window.removeEventListener('beforeunload', h);
+  }, [dirty]);
+
+  // In-app nav (this component router has no data-router blocker) —
+  // confirm on the back affordance when there are unsaved edits.
+  const leaveGuard = (to: string) => {
+    if (dirty && !window.confirm(t('work_orders_page.unsaved_confirm', {
+      defaultValue: 'You have unsaved changes. Leave without saving?',
+    }))) return;
+    navigate(to);
+  };
+
   // Auto-totals: parts_cost = sum(parts.total_cost), total_cost =
   // labor + parts + tax.  Recomputed as a derived value so the
   // displayed numbers always match what'll be sent.
@@ -818,7 +853,16 @@ export default function WorkOrderForm() {
     { value: 'non_scheduled', label: t('work_orders_page.priority_non_scheduled', { defaultValue: 'Non-scheduled' }) },
     { value: 'emergency', label: t('work_orders_page.priority_emergency', { defaultValue: 'Emergency' }) },
   ];
-  const paymentStatusItems = ['unpaid', 'paid', 'partial', 'void'].map((s) => ({ value: s, label: s }));
+  // 'void' renders as "Written off" so it never collides with the
+  // Status field's own "Void" on the same screen (UX audit C1): the
+  // stored VALUE stays 'void' (contract unchanged), only the label
+  // diverges.
+  const paymentStatusItems = [
+    { value: 'unpaid', label: t('work_orders_page.pay_unpaid', { defaultValue: 'Unpaid' }) },
+    { value: 'paid', label: t('work_orders_page.pay_paid', { defaultValue: 'Paid' }) },
+    { value: 'partial', label: t('work_orders_page.pay_partial', { defaultValue: 'Partial' }) },
+    { value: 'void', label: t('work_orders_page.pay_void', { defaultValue: 'Written off' }) },
+  ];
   const companyItems = [
     { value: '', label: '— none —' },
     ...companies.map((c) => ({ value: c.code, label: c.display_name || c.code })),
@@ -834,7 +878,7 @@ export default function WorkOrderForm() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => navigate('/work-orders')}
+              onClick={() => leaveGuard('/work-orders')}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-md text-xs font-medium text-foreground transition border border-border"
             >
               <ArrowLeft size={14} />
@@ -1237,11 +1281,11 @@ export default function WorkOrderForm() {
           </Field>
           <Field label={t('work_orders_page.field_payment_status')}
             tip={t('work_orders_page.tip_payment_status', { defaultValue:
-              'The money state: has this invoice been paid? Void here means the CHARGE was cancelled/written off \u2014 different from voiding the record itself (Status). Synced invoices update to Paid automatically when the integration reports a cleared balance.' })}>
+              'The money state: has this invoice been paid? \u201cWritten off\u201d = the charge was cancelled and nothing is owed \u2014 different from voiding the record itself (Status). Synced invoices update to Paid automatically when the integration reports a cleared balance.' })}>
             <Select value={wo.payment_status || 'unpaid'} onValueChange={(v) => setField('payment_status', v)} items={paymentStatusItems}>
-              <SelectTrigger className="w-full capitalize" aria-label={t('work_orders_page.field_payment_status')}><SelectValue /></SelectTrigger>
+              <SelectTrigger className="w-full" aria-label={t('work_orders_page.field_payment_status')}><SelectValue /></SelectTrigger>
               <SelectContent>
-                {paymentStatusItems.map((it) => <SelectItem key={it.value} value={it.value} className="capitalize">{it.label}</SelectItem>)}
+                {paymentStatusItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </Field>

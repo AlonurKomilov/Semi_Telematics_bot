@@ -18,7 +18,12 @@ import { Tip } from '../../components/tooltip';
 // the working set (money still owed, incl. partial; new WOs are born
 // unpaid so they land here too).  Void stays out of the working tabs
 // and is reachable via [All] + the Status column filter.
+// All leads (default landing) — the newest work orders sort to the top
+// here regardless of payment, so "where are my new WOs" is never hidden
+// behind a payment split (UX audit C3).  Unpaid/Paid narrow to the
+// money working sets.
 const WO_SEGMENTS: DataGridSegment[] = [
+  { key: 'all', label: 'All' },
   {
     key: 'unpaid',
     label: 'Unpaid',
@@ -33,7 +38,6 @@ const WO_SEGMENTS: DataGridSegment[] = [
       String(r.payment_status ?? '') === 'paid' &&
       String(r.status ?? '') !== 'void',
   },
-  { key: 'all', label: 'All', showCount: false },
 ];
 import { toneClasses, type Tone } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
@@ -61,6 +65,11 @@ const PAYMENT_TONE: Record<string, Tone> = {
   paid:    'ok',
   partial: 'warn',
   void:    'neutral',
+};
+// 'void' shows as "Written off" so payment never collides with the
+// Status column's own "Void" (UX audit C1); value stays 'void'.
+const PAYMENT_LABEL: Record<string, string> = {
+  unpaid: 'Unpaid', paid: 'Paid', partial: 'Partial', void: 'Written off',
 };
 
 // Reason-for-repair class → tone.  Emergency shouts (danger),
@@ -185,7 +194,7 @@ function makeColumns(tz: string): AnyColumn[] {
   { key: 'payment_status', label: 'Payment', sortable: true, filterable: true,
     filterValue: (row) => String((row as { payment_status?: string }).payment_status ?? ''),
     filterLabel: (row) => titleCase(String((row as { payment_status?: string }).payment_status ?? '')),
-    render: (v) => <Pill value={v} palette={PAYMENT_TONE} /> },
+    render: (v) => <Pill value={v} palette={PAYMENT_TONE} labels={PAYMENT_LABEL} /> },
   // Provenance — synced rows (Datatruck) read alongside hand-entered
   // ones, so the operator needs an at-a-glance "where did this come
   // from".  Manual rows show a muted dash to keep the column quiet.
@@ -250,8 +259,10 @@ export default function WorkOrders() {
   // bucket is just the full set.
   const buckets = useMemo(() => {
     const open = workOrders.filter(w => w.status === 'open' || w.status === 'in_progress');
-    const unpaid = workOrders.filter(w => w.payment_status === 'unpaid' && w.status !== 'void');
-    return { open, unpaid };
+    const unpaid = workOrders.filter(w =>
+      ['unpaid', 'partial'].includes(String(w.payment_status ?? '')) && w.status !== 'void');
+    const unpaidTotal = unpaid.reduce((s, w) => s + Number(w.total_cost ?? 0), 0);
+    return { open, unpaid, unpaidTotal };
   }, [workOrders]);
 
   // Total spent across visible rows — useful management at-a-glance.
@@ -338,7 +349,12 @@ export default function WorkOrders() {
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
           <p className="text-xs text-muted-foreground">{t('work_orders_page.card_unpaid')}</p>
-          <p className="text-xl font-bold tabular-nums">{buckets.unpaid.length}</p>
+          <p className="text-xl font-bold tabular-nums">
+            ${buckets.unpaidTotal.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+          </p>
+          <p className="text-2xs text-muted-foreground">
+            {t('work_orders_page.card_unpaid_count', { defaultValue: '{{n}} orders', n: buckets.unpaid.length })}
+          </p>
         </div>
       </div>
 
