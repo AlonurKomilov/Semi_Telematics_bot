@@ -53,13 +53,16 @@ interface SavedViewDialogProps {
   /** Title verb — "Save" for new, "Update" when editing an existing view. */
   saveLabel?: string;
   title?: string;
+  /** Human note for the sort the view will also carry (e.g. "Sorted by
+   *  Priority ↑"), shown read-only so the operator knows it's captured. */
+  capturedSort?: string;
   onSave: (name: string, filters: ColumnFiltersState, search: string) => void;
 }
 
 export default function SavedViewDialog({
   open, onOpenChange, columns, data,
   initialName, initialFilters, initialSearch, saveLabel = 'Save view',
-  title = 'New view', onSave,
+  title = 'New view', capturedSort, onSave,
 }: SavedViewDialogProps) {
   const filterable = useMemo(() => columns.filter(c => c.filterable), [columns]);
   const facets = useMemo(() => computeFacets(filterable, data), [filterable, data]);
@@ -245,6 +248,12 @@ export default function SavedViewDialog({
               </div>
             )}
           </div>
+
+          {capturedSort && (
+            <p className="text-2xs text-muted-foreground border-t border-border pt-3">
+              Also opens with your current sort — <span className="text-foreground font-medium">{capturedSort}</span>.
+            </p>
+          )}
         </div>
 
         <DialogFooter>

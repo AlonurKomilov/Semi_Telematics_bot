@@ -25,7 +25,7 @@ import {
 import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Rows3, Rows2, Rows4,
   Search, X, Columns3, Download, Copy, Filter as FilterIcon, ArrowUpDown,
-  CornerUpRight, ListTree, Plus, MoreVertical, Pencil, Trash2,
+  CornerUpRight, ListTree, Plus, MoreVertical, Pencil, Trash2, Star,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
@@ -278,6 +278,8 @@ const rowGroupKey   = (id: string | undefined) =>
   id ? `table.${id}.rowGroup` : '';
 const viewsKey      = (id: string | undefined) =>
   id ? `table.${id}.views` : '';
+const defaultViewKey = (id: string | undefined) =>
+  id ? `table.${id}.defaultView` : '';
 // Saved-view segment keys are prefixed so a view tab is never confused
 // with a code-defined segment.  ``__all__`` is the implicit "everything"
 // tab shown when a grid has no built-in segments.
@@ -549,6 +551,7 @@ export default function DataGrid({
   const {
     value: savedViewList,
     setValue: setSavedViewList,
+    hydrated: viewsHydrated,
   } = useUserPreference<SavedView[]>(
     savedViewsEnabled ? viewsKey(tableId) : '', NO_VIEWS,
   );
@@ -585,6 +588,45 @@ export default function DataGrid({
     // deleted, config changed) — fall back to the first.
     return effectiveSegments.find(s => s.key === segmentPref) ?? effectiveSegments[0];
   }, [effectiveSegments, segmentPref]);
+
+  // A view can be the DEFAULT tab (opens on load).  Stored as the view
+  // id per-user; applied once, after the views have loaded.
+  const {
+    value: defaultView,
+    setValue: setDefaultView,
+    hydrated: defaultHydrated,
+  } = useUserPreference<string>(
+    savedViewsEnabled ? defaultViewKey(tableId) : '', '',
+  );
+  const appliedDefault = useRef(false);
+  useEffect(() => {
+    if (appliedDefault.current) return;
+    // Wait for the server value to land — on a fresh device the pref is
+    // '' until the fetch resolves; deciding "no default" before then
+    // would permanently skip applying it.
+    if (!defaultHydrated || !viewsHydrated) return;
+    if (!defaultView) { appliedDefault.current = true; return; }
+    const key = VIEW_PREFIX + defaultView;
+    if (effectiveSegments.some(s => s.key === key)) {
+      setSegmentPref(key);
+    }
+    // Whether or not the (possibly-deleted) default view resolved, the
+    // one-shot is spent once both prefs are hydrated.
+    appliedDefault.current = true;
+  }, [defaultHydrated, viewsHydrated, defaultView, effectiveSegments]);
+
+  // Applying a view's captured SORT when it becomes the active tab (click
+  // or default-on-load).  Keyed only on the active VIEW id, so it fires
+  // when you SWITCH views — not while you re-sort within one — and never
+  // for a built-in tab.  A view with no captured sort leaves sort as-is.
+  const activeViewId = activeSegment?.key.startsWith(VIEW_PREFIX)
+    ? activeSegment.key.slice(VIEW_PREFIX.length) : null;
+  useEffect(() => {
+    if (!activeViewId) return;
+    const v = savedViewList.find(x => x.id === activeViewId);
+    if (v?.sort) setSorting(v.sort);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeViewId]);
   const segmentCounts = useMemo(() => {
     if (!effectiveSegments.length) return {};
     const counts: Record<string, number> = {};
@@ -606,6 +648,10 @@ export default function DataGrid({
   // the view being edited.
   const [viewDialog, setViewDialog] = useState<SavedView | 'new' | null>(null);
   const commitView = useCallback((name: string, filters: ColumnFiltersState, search: string) => {
+    // The live ``sorting`` belongs to the ACTIVE tab.  Grouping + column
+    // layout stay the grid's global per-user settings; a view doesn't
+    // touch them.
+    const liveSort = sorting.length ? sorting : undefined;
     if (viewDialog === 'new') {
       const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
       // Compose with the built-in segment we're inside (Active/Archive) —
@@ -614,20 +660,37 @@ export default function DataGrid({
       const baseSegment = cur && cur !== ALL_KEY && !cur.startsWith(VIEW_PREFIX)
         ? cur : undefined;
       setSavedViewList(prev => [...prev, {
-        id, name, filters, search: search || undefined, baseSegment,
+        id, name, filters, search: search || undefined, sort: liveSort, baseSegment,
       }]);
       setSegmentPref(VIEW_PREFIX + id);
     } else if (viewDialog) {
       const editId = viewDialog.id;
+      // Only re-capture the live sort when editing the view you're
+      // actually ON — otherwise ``sorting`` is some OTHER tab's sort and
+      // would stomp this view's saved one.  Keep its own sort otherwise.
+      const sort = editId === activeViewId ? liveSort : viewDialog.sort;
       setSavedViewList(prev => prev.map(v => (
-        v.id === editId ? { ...v, name, filters, search: search || undefined } : v
+        v.id === editId ? { ...v, name, filters, search: search || undefined, sort } : v
       )));
     }
-  }, [viewDialog, segmentPref, setSavedViewList]);
+  }, [viewDialog, segmentPref, setSavedViewList, sorting, activeViewId]);
   const deleteView = useCallback((id: string) => {
     setSavedViewList(prev => prev.filter(v => v.id !== id));
     setSegmentPref(prev => (prev === VIEW_PREFIX + id ? (segments?.[0]?.key ?? ALL_KEY) : prev));
-  }, [setSavedViewList, segments]);
+    setDefaultView(prev => (prev === id ? '' : prev));   // don't leave a dangling default
+  }, [setSavedViewList, segments, setDefaultView]);
+  // Reorder personal views (⋮ → Move left / right) — swap with the
+  // neighbour in the saved list.
+  const moveView = useCallback((id: string, dir: -1 | 1) => {
+    setSavedViewList(prev => {
+      const i = prev.findIndex(v => v.id === id);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= prev.length) return prev;
+      const next = prev.slice();
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }, [setSavedViewList]);
 
   // ── Column-layout state (visibility / order / pinning) ─────
   //
@@ -2307,6 +2370,27 @@ export default function DataGrid({
                           >
                             <Pencil size={14} className="text-muted-foreground" /> Edit view
                           </MenuPrimitive.Item>
+                          <MenuPrimitive.Item
+                            onClick={() => setDefaultView(defaultView === viewId ? '' : viewId)}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground"
+                          >
+                            <Star size={14} className={defaultView === viewId ? 'text-primary fill-current' : 'text-muted-foreground'} />
+                            {defaultView === viewId ? 'Default tab · clear' : 'Set as default tab'}
+                          </MenuPrimitive.Item>
+                          <MenuPrimitive.Item
+                            disabled={savedViewList.findIndex(v => v.id === viewId) <= 0}
+                            onClick={() => moveView(viewId, -1)}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed"
+                          >
+                            <ChevronLeft size={14} className="text-muted-foreground" /> Move left
+                          </MenuPrimitive.Item>
+                          <MenuPrimitive.Item
+                            disabled={savedViewList.findIndex(v => v.id === viewId) >= savedViewList.length - 1}
+                            onClick={() => moveView(viewId, 1)}
+                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed"
+                          >
+                            <ChevronRight size={14} className="text-muted-foreground" /> Move right
+                          </MenuPrimitive.Item>
                           <div className="my-1 border-t border-border" />
                           <MenuPrimitive.Item
                             onClick={() => deleteView(viewId)}
@@ -3109,6 +3193,17 @@ export default function DataGrid({
           initialName={viewDialog === 'new' ? '' : viewDialog.name}
           initialFilters={viewDialog === 'new' ? columnFilters : viewDialog.filters}
           initialSearch={viewDialog === 'new' ? (hasSearch ? globalFilter : '') : (viewDialog.search ?? '')}
+          capturedSort={(() => {
+            // Mirror EXACTLY what commitView will persist, so the note
+            // never disagrees: live sort for a new view or the active
+            // view; otherwise the view's own saved sort.
+            const useLive = viewDialog === 'new' || viewDialog.id === activeViewId;
+            const s = useLive ? sorting : (viewDialog.sort ?? []);
+            if (!s.length) return undefined;
+            const c = columns.find(col => col.key === s[0].id);
+            return `sorted by ${c?.label ?? s[0].id} ${s[0].desc ? '↓' : '↑'}`
+              + (s.length > 1 ? ` +${s.length - 1}` : '');
+          })()}
           onSave={commitView}
         />
       )}

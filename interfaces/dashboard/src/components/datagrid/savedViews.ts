@@ -13,7 +13,7 @@
 // computation), so a saved view can never scope differently than the
 // filters it was captured from.
 
-import type { ColumnFiltersState } from '@tanstack/react-table';
+import type { ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import type { AnyColumn } from '../../types';
 
 export interface SavedView {
@@ -25,6 +25,11 @@ export interface SavedView {
   filters: ColumnFiltersState;
   /** The captured global search, if any. */
   search?: string;
+  /** The captured sort — applied (as a starting point you can then
+   *  change) when the tab is selected.  Omitted when nothing was sorted.
+   *  Sort is session state, so a view can carry its own without touching
+   *  the grid's global grouping / column layout. */
+  sort?: SortingState;
   /** The built-in segment key active when the view was saved (if any).
    *  A view captured while on "Active" composes WITH that segment's
    *  scope — so "Critical" made on Active shows active criticals, not

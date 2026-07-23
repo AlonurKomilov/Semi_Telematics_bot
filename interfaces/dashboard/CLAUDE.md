@@ -257,8 +257,13 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   per-user (`table.<id>.views`), sit after built-in `segments` (an implicit
   "All" leads when there are none), and a view saved on a built-in segment
   COMPOSES with it. Don't hand-roll saved-filter tabs on a page — this is
-  the SSOT. (Phase 1: filter+search views. Sort/group/column capture,
-  reorder, and account-shared views are later phases.)
+  the SSOT. A view also carries the **sort** you had when you saved it
+  (applied on select; you can re-sort freely after) and can be **⋮ →
+  reordered / set as the default tab** (opens on load, per-user). NOT
+  captured per-view: row-grouping + column layout — those stay the grid's
+  GLOBAL per-user prefs (a per-view version would stomp them; deferred).
+  Account-shared views were dropped by the owner (personal-only, matching
+  the per-user isolation everywhere else).
 - **Charts/maps** can't use classes: charts → `chartColor(n)` (the
   `--chart-1..5` tokens); map hex → a shared config constant, never inline.
 
