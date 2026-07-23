@@ -123,7 +123,8 @@
     "topics_error": "Rol bo'yicha ogohlantirish sozlamalarini yuklab bo'lmadi — quyidagi ro'yxat to'liq bo'lmasligi mumkin.",
     "mode_indicator": "Yetkazish rejimi: {{mode}}",
     "mode_change_link": "Sozlamalar → Telegram bot da o‘zgartirish",
-    "single_owner_only": "Bu hisob bitta umumiy botdan foydalanadi — uning guruhi va mavzularini egasi boshqaradi."
+    "single_owner_only": "Bu hisob bitta umumiy botdan foydalanadi — uning guruhi va mavzularini egasi boshqaradi.",
+    "subbots_label": "Sub bots"
   },
   "nav": {
     "overview": "Bosh sahifa",
@@ -619,6 +620,7 @@
     "toast_connect_error": "Tokenni tekshirib bo'lmadi",
     "toast_disconnect_error": "Uzib bo'lmadi",
     "configure_routing": "Yo‘naltirishni sozlash",
-    "connection_label": "Ulanish"
+    "connection_label": "Ulanish",
+    "no_bot_manager": "Hali Telegram bot ulanmagan — egasidan ulashini so‘rang."
   }
 }

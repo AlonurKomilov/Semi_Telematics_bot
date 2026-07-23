@@ -17,6 +17,7 @@ import { useNow } from '../../hooks/useNow';
 import { rollupByDisplayLabel } from '../../features/ai/helpers';
 import { Link } from 'react-router-dom';
 import DeliveryModeSelector from '../alerts/DeliveryModeSelector';
+import SubBotRoster from '../alerts/SubBotRoster';
 import DangerZoneSection from './DangerZoneSection';
 import { toneClasses } from '../../lib/status';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
@@ -45,6 +46,10 @@ export default function Settings() {
   const [accountTzSaving, setAccountTzSaving] = useState(false);
   const [accountTzSuccess, setAccountTzSuccess] = useState('');
   const canManageAccount = !!authUser?.permissions?.can_manage_account;
+  // Role MANAGERS reach Settings for the Telegram Bot card ONLY (their
+  // own role's Sub bot).  The page renders just that card for them — no
+  // /admin/settings fetch, so they never hit its can_manage_account 403.
+  const canManageRoleBot = !!authUser?.permissions?.can_manage_role_bot;
 
   // Vendor-directory contribution consent (UX audit 2026-07-16): the
   // auto-pipeline default (ON) becomes inspectable + owner-editable.
@@ -113,6 +118,7 @@ export default function Settings() {
   const { data, isLoading: loading, error: queryError } = useQuery({
     queryKey: ['admin-settings'],
     queryFn: () => apiJSON<SettingsResponse>('/admin/settings'),
+    enabled: canManageAccount,   // managers get the bot card only
   });
   const fetchError = queryError instanceof Error ? queryError.message : '';
   const load = () => qc.invalidateQueries({ queryKey: ['admin-settings'] });
@@ -126,7 +132,7 @@ export default function Settings() {
   const { data: botConfig } = useQuery({
     queryKey: ['admin-bot-config'],
     queryFn: () => apiJSON<BotConfig>('/admin/bot-config'),
-    enabled: canManageAccount,
+    enabled: canManageAccount || canManageRoleBot,
   });
   const setBotConfig = (next: BotConfig | null) => qc.setQueryData(['admin-bot-config'], next);
 
@@ -216,7 +222,7 @@ export default function Settings() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
   };
 
-  if (loading) {
+  if (loading && canManageAccount) {
     return (
       <div>
         <PageHeader
@@ -239,7 +245,7 @@ export default function Settings() {
         title={t('pages.settings_title')}
         description={t('pages.settings_desc_long')}
       />
-      {(error || fetchError) && <ErrorState message={error || fetchError} />}
+      {canManageAccount && (error || fetchError) && <ErrorState message={error || fetchError} />}
 
       {/* Account Timezone — admin-only.  Single source of truth that
           drives cron-job timing and every display formatter for users
@@ -373,20 +379,18 @@ export default function Settings() {
           groups, Sub bots, topics) moved to Alerts → Group delivery so
           role managers configure their own group there without needing
           Settings access. */}
-      {canManageAccount && (
+      {(canManageAccount || canManageRoleBot) && (
         <section className="bg-card border border-border rounded-xl p-5">
           <h2 className="text-lg font-semibold mb-3">{t('bot_card.title')}</h2>
 
           {botConfig?.has_bot ? (
             <div>
               {/* Delivery mode — the owner's topology choice, on top.
-                  The operational routing (groups, topics) lives on
-                  Alerts → Group delivery (linked below). */}
-              <DeliveryModeSelector canManageAccount={canManageAccount} />
+                  Owner-only; managers can't change the account topology. */}
+              {canManageAccount && <DeliveryModeSelector canManageAccount={canManageAccount} />}
 
-              {/* The operational routing (bind groups, topics) lives on
-                  the Alerts tab — make that next step a real action, not
-                  a footnote (UX audit A2/P2). */}
+              {/* Group binding + topics live on Alerts → Group delivery —
+                  a real action, not a footnote (UX audit A2/P2). */}
               <Link
                 to="/alerts/group-delivery"
                 className="inline-flex items-center gap-1 mb-5 px-3 py-1.5 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
@@ -394,6 +398,11 @@ export default function Settings() {
                 {t('bot_card.configure_routing')}
                 <ArrowRight size={14} />
               </Link>
+
+              {/* Sub bots — attach the per-role SENDER bot.  Owner sees
+                  every role; a manager sees only their own row.  The
+                  group + topics for that role live on Group delivery. */}
+              <SubBotRoster canManageAccount={canManageAccount} />
 
               {/* CONNECTION — the bot-credential half of the card,
                   labeled so it reads as a distinct section from DELIVERY. */}
@@ -443,7 +452,8 @@ export default function Settings() {
                   className="px-3 py-1.5 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition">
                   {t('bot_card.open_telegram')}
                 </a>
-                {showBotDisconnect ? (
+                {/* Disconnect is an account-credential action — owner only. */}
+                {canManageAccount && (showBotDisconnect ? (
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-muted-foreground">{t('bot_card.disconnect_confirm')}</span>
                     <button onClick={handleDisconnectBot} disabled={botSaving}
@@ -460,9 +470,12 @@ export default function Settings() {
                     className="px-3 py-1.5 bg-destructive/10 hover:bg-destructive/20 text-destructive rounded text-xs font-medium transition">
                     {t('bot_card.disconnect')}
                   </button>
-                )}
+                ))}
               </div>
             </div>
+          ) : !canManageAccount ? (
+            // Manager, no account bot yet — only an owner can connect one.
+            <p className="text-sm text-muted-foreground">{t('bot_card.no_bot_manager')}</p>
           ) : (
             <div>
               <p className="text-sm text-muted-foreground mb-3">

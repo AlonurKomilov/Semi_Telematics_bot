@@ -955,7 +955,8 @@
     "topics_error": "Couldn't load role alert settings — the list below may be incomplete.",
     "mode_indicator": "Delivery mode: {{mode}}",
     "mode_change_link": "change in Settings → Telegram Bot",
-    "single_owner_only": "This account uses one shared bot — its group and topics are managed by an owner."
+    "single_owner_only": "This account uses one shared bot — its group and topics are managed by an owner.",
+    "subbots_label": "Sub bots"
   },
   "forum_routing": {
     "section_desc": "Connect a Telegram forum group so the bot can post each alert to its own topic. Personal DMs are independent — each user sets their own preferences under Alerts bell → Notification preferences.",
@@ -1255,6 +1256,7 @@
     "toast_connect_error": "Failed to validate token",
     "toast_disconnect_error": "Failed to disconnect",
     "configure_routing": "Configure routing",
-    "connection_label": "Connection"
+    "connection_label": "Connection",
+    "no_bot_manager": "No Telegram bot is connected yet — ask an owner to connect one."
   }
 }

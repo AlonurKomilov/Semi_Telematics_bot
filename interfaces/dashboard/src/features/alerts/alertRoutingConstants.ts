@@ -11,6 +11,11 @@
 // the two modes — do not localize them without also localizing the
 // backend catalog.  Not a bug; don't "fix" it.
 
+// Operational staff roles, in roster order.  The owner_admin aggregate
+// renders separately (the Main row); these are the roles a manager can
+// belong to and that get their own group / Sub bot.
+export const ROLE_ORDER = ['dispatcher', 'safety', 'fleet', 'hr', 'accounting', 'recruiter'] as const;
+
 // Display names for the canonical alert types.
 export const TYPE_LABELS: Record<string, string> = {
   faults: 'Faults', health: 'Health', fuel: 'Fuel', events: 'Safety Events',

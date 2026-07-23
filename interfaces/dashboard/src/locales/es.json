@@ -123,7 +123,8 @@
     "topics_error": "No se pudieron cargar los ajustes de alertas por rol — la lista de abajo puede estar incompleta.",
     "mode_indicator": "Modo de entrega: {{mode}}",
     "mode_change_link": "cambiar en Ajustes → Bot de Telegram",
-    "single_owner_only": "Esta cuenta usa un bot compartido — su grupo y temas los gestiona un propietario."
+    "single_owner_only": "Esta cuenta usa un bot compartido — su grupo y temas los gestiona un propietario.",
+    "subbots_label": "Sub bots"
   },
   "nav": {
     "overview": "Resumen",
@@ -990,6 +991,7 @@
     "toast_connect_error": "No se pudo validar el token",
     "toast_disconnect_error": "No se pudo desconectar",
     "configure_routing": "Configurar enrutamiento",
-    "connection_label": "Conexión"
+    "connection_label": "Conexión",
+    "no_bot_manager": "Aún no hay un bot de Telegram conectado — pídele a un propietario que conecte uno."
   }
 }

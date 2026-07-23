@@ -123,7 +123,8 @@
     "topics_error": "Impossible de charger les réglages d'alertes par rôle — la liste ci-dessous peut être incomplète.",
     "mode_indicator": "Mode de distribution : {{mode}}",
     "mode_change_link": "modifier dans Paramètres → Bot Telegram",
-    "single_owner_only": "Ce compte utilise un bot partagé — son groupe et ses sujets sont gérés par un propriétaire."
+    "single_owner_only": "Ce compte utilise un bot partagé — son groupe et ses sujets sont gérés par un propriétaire.",
+    "subbots_label": "Sub bots"
   },
   "nav": {
     "overview": "Aperçu",
@@ -990,6 +991,7 @@
     "toast_connect_error": "Impossible de valider le token",
     "toast_disconnect_error": "Impossible de déconnecter",
     "configure_routing": "Configurer le routage",
-    "connection_label": "Connexion"
+    "connection_label": "Connexion",
+    "no_bot_manager": "Aucun bot Telegram n'est encore connecté — demandez à un propriétaire d'en connecter un."
   }
 }

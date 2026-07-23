@@ -123,7 +123,8 @@
     "topics_error": "ਰੋਲ ਅਲਰਟ ਸੈਟਿੰਗਾਂ ਲੋਡ ਨਹੀਂ ਹੋ ਸਕੀਆਂ — ਹੇਠਾਂ ਦਿੱਤੀ ਸੂਚੀ ਅਧੂਰੀ ਹੋ ਸਕਦੀ ਹੈ।",
     "mode_indicator": "ਡਿਲੀਵਰੀ ਮੋਡ: {{mode}}",
     "mode_change_link": "ਸੈਟਿੰਗਾਂ → Telegram ਬੋਟ ਵਿੱਚ ਬਦਲੋ",
-    "single_owner_only": "ਇਹ ਖਾਤਾ ਇੱਕ ਸਾਂਝਾ ਬੋਟ ਵਰਤਦਾ ਹੈ — ਇਸਦੇ ਗਰੁੱਪ ਅਤੇ ਵਿਸ਼ੇ ਇੱਕ ਮਾਲਕ ਪ੍ਰਬੰਧਿਤ ਕਰਦਾ ਹੈ।"
+    "single_owner_only": "ਇਹ ਖਾਤਾ ਇੱਕ ਸਾਂਝਾ ਬੋਟ ਵਰਤਦਾ ਹੈ — ਇਸਦੇ ਗਰੁੱਪ ਅਤੇ ਵਿਸ਼ੇ ਇੱਕ ਮਾਲਕ ਪ੍ਰਬੰਧਿਤ ਕਰਦਾ ਹੈ।",
+    "subbots_label": "Sub bots"
   },
   "nav": {
     "overview": "ਸੰਖੇਪ",
@@ -774,6 +775,7 @@
     "toast_connect_error": "ਟੋਕਨ ਤਸਦੀਕ ਨਹੀਂ ਹੋ ਸਕਿਆ",
     "toast_disconnect_error": "ਡਿਸਕਨੈਕਟ ਨਹੀਂ ਹੋ ਸਕਿਆ",
     "configure_routing": "ਰੂਟਿੰਗ ਸੰਰਚੋ",
-    "connection_label": "ਕਨੈਕਸ਼ਨ"
+    "connection_label": "ਕਨੈਕਸ਼ਨ",
+    "no_bot_manager": "ਹਾਲੇ ਕੋਈ Telegram ਬੋਟ ਕਨੈਕਟ ਨਹੀਂ ਹੈ — ਕਿਸੇ ਮਾਲਕ ਨੂੰ ਕਨੈਕਟ ਕਰਨ ਲਈ ਕਹੋ।"
   }
 }

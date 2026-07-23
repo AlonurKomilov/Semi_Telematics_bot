@@ -9,7 +9,7 @@ import { InfoTip } from '../../components/tooltip';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { Switch } from '../../components/ui/switch';
 import { ErrorState } from '../../components/shell';
-import { TYPE_LABELS, FEATURE_GROUPS, SUBTYPE_LABELS } from './alertRoutingConstants';
+import { ROLE_ORDER, TYPE_LABELS, FEATURE_GROUPS, SUBTYPE_LABELS } from './alertRoutingConstants';
 
 // The Telegram Bot card's body controller.  The Routing selector sits
 // at the TOP of the card (it's the bot-topology decision, not an
@@ -85,8 +85,6 @@ export interface BotConfigLite {
   is_running?: boolean;
 }
 
-// Operational roles; the owner_admin aggregate renders as the Main row.
-const ROLE_ORDER = ['dispatcher', 'safety', 'fleet', 'hr', 'accounting', 'recruiter'] as const;
 
 export default function AlertRoutingSection({
   botConfig,
@@ -102,7 +100,6 @@ export default function AlertRoutingSection({
   const [subBots, setSubBots] = useState<SubBotsResponse | null>(null);
   const [topics, setTopics] = useState<PersonaTopicsResponse | null>(null);
   const [chatInputs, setChatInputs] = useState<Record<string, string>>({});
-  const [tokenInputs, setTokenInputs] = useState<Record<string, string>>({});
   const [customTopics, setCustomTopics] = useState<CustomTopicsResponse | null>(null);
   // Add-topic mini-form (one open at a time, keyed by persona)
   const [ctName, setCtName] = useState('');
@@ -186,47 +183,6 @@ export default function AlertRoutingSection({
       await apiJSON(`/admin/alert-routing/persona-groups/${persona}`, { method: 'DELETE' });
       setData({ ...data, personas: { ...data.personas, [persona]: null } });
       toast.success(t('alert_routing.toast_unbound'));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
-    } finally {
-      setBusy(''); setConfirming('');
-    }
-  };
-
-  const attachSubBot = async (persona: string) => {
-    const token = (tokenInputs[persona] || '').trim();
-    if (!token || busy) return;
-    setBusy(`sub-${persona}`);
-    try {
-      const res = await apiJSON<{ bot_username: string }>('/admin/bot-instances', {
-        method: 'POST', body: { persona, bot_token: token },
-      });
-      setTokenInputs({ ...tokenInputs, [persona]: '' });
-      setSubBots(subBots && {
-        ...subBots,
-        personas: {
-          ...subBots.personas,
-          [persona]: { persona, bot_username: res.bot_username, is_running: false },
-        },
-      });
-      toast.success(t('alert_routing.toast_subbot_attached', { username: res.bot_username }));
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
-    } finally {
-      setBusy('');
-    }
-  };
-
-  const detachSubBot = async (persona: string) => {
-    if (busy) return;
-    setBusy(`sub-${persona}`);
-    try {
-      await apiJSON(`/admin/bot-instances/${persona}`, { method: 'DELETE' });
-      setSubBots(subBots && {
-        ...subBots,
-        personas: { ...subBots.personas, [persona]: null },
-      });
-      toast.success(t('alert_routing.toast_subbot_detached'));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : t('alert_routing.toast_error'));
     } finally {
@@ -841,12 +797,11 @@ export default function AlertRoutingSection({
             {topicsExpander('owner_admin')}
           </div>
 
-          {/* Role rows — reading order mirrors the setup order: the
-              role, its GROUP (step 1), then its optional Sub bot
-              (step 2), then topics. */}
+          {/* Role rows — the role, its GROUP (bind here), a READ-ONLY
+              sender indicator (attach the Sub bot on Settings), then
+              topics. */}
           {ROLE_ORDER.map((persona) => {
             const sub = subBots?.personas?.[persona] ?? null;
-            const editable = canManage(persona);
             // The Permissions matrix is the SSOT: a role with no
             // alert-type features granted has nothing to route, so its
             // row doesn't render (unless something is already bound).
@@ -867,81 +822,21 @@ export default function AlertRoutingSection({
                     {groupCell(persona)}
                   </span>
 
-                  {/* BOT cell — who SENDS to this group; metadata on
-                      the right, same slot as the Main row's identity. */}
+                  {/* SENDER — who delivers to this group.  READ-ONLY here;
+                      attaching/detaching the Sub bot lives on Settings →
+                      Telegram Bot (the "bot" home), so it isn't duplicated. */}
                   <span className="inline-flex items-center gap-2 ml-auto">
                     {sub ? (
-                      <>
-                        <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs ${
-                          sub.is_running ? toneClasses('ok') : toneClasses('neutral')
-                        }`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${sub.is_running ? 'bg-ok' : 'bg-muted-foreground'}`} />
-                          @{sub.bot_username}
-                        </span>
-                        {editable && (
-                          confirming === `detach-${persona}` ? (
-                            confirmCluster(
-                              t('alert_routing.confirm_detach', { username: sub.bot_username }),
-                              t('alert_routing.subbot_detach'),
-                              () => { void detachSubBot(persona); },
-                              `sub-${persona}`,
-                            )
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => setConfirming(`detach-${persona}`)}
-                              disabled={busy === `sub-${persona}`}
-                              className="text-xs text-destructive hover:underline disabled:opacity-50"
-                            >
-                              {t('alert_routing.subbot_detach')}
-                            </button>
-                          )
-                        )}
-                      </>
-                    ) : !editable ? (
+                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-xs ${
+                        sub.is_running ? toneClasses('ok') : toneClasses('neutral')
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${sub.is_running ? 'bg-ok' : 'bg-muted-foreground'}`} />
+                        @{sub.bot_username}
+                      </span>
+                    ) : (
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs ${toneClasses('neutral')}`}>
                         {t('alert_routing.main_sends')}
                       </span>
-                    ) : openInput !== `token-${persona}` ? (
-                      <>
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs ${toneClasses('neutral')}`}>
-                          {t('alert_routing.main_sends')}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => setOpenInput(`token-${persona}`)}
-                          className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition"
-                        >
-                          {t('alert_routing.subbot_attach')}
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <input
-                          type="text"
-                          value={tokenInputs[persona] || ''}
-                          onChange={(e) => setTokenInputs({ ...tokenInputs, [persona]: e.target.value })}
-                          placeholder={t('alert_routing.subbot_token_ph')}
-                          autoComplete="off"
-                          spellCheck={false}
-                          className="w-64 bg-muted border border-border rounded px-2 py-1 text-xs text-foreground font-mono focus:outline-none focus:border-ring"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => { void attachSubBot(persona).then(() => setOpenInput('')); }}
-                          disabled={busy === `sub-${persona}` || (tokenInputs[persona] || '').trim().length < 30}
-                          className="px-2.5 py-1 border border-primary/40 bg-primary/15 hover:bg-primary/25 text-primary rounded text-xs font-medium transition disabled:opacity-50"
-                        >
-                          {busy === `sub-${persona}` ? '…' : t('alert_routing.subbot_attach')}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setOpenInput('')}
-                          className="text-xs text-muted-foreground hover:text-foreground"
-                        >
-                          {t('alert_routing.cancel')}
-                        </button>
-                      </>
                     )}
                   </span>
                 </div>

@@ -123,7 +123,8 @@
     "topics_error": "የሚና ማንቂያ ቅንብሮችን መጫን አልተቻለም — ከታች ያለው ዝርዝር ያልተሟላ ሊሆን ይችላል።",
     "mode_indicator": "የአደራረስ ሁናቴ፦ {{mode}}",
     "mode_change_link": "በቅንብሮች → Telegram ቦት ይቀይሩ",
-    "single_owner_only": "ይህ መለያ አንድ የጋራ ቦት ይጠቀማል — ቡድኑና ርዕሶቹ በባለቤት ይተዳደራሉ።"
+    "single_owner_only": "ይህ መለያ አንድ የጋራ ቦት ይጠቀማል — ቡድኑና ርዕሶቹ በባለቤት ይተዳደራሉ።",
+    "subbots_label": "Sub bots"
   },
   "nav": {
     "overview": "አጠቃላይ እይታ",
@@ -774,6 +775,7 @@
     "toast_connect_error": "ቶክኑን ማረጋገጥ አልተቻለም",
     "toast_disconnect_error": "ማቋረጥ አልተቻለም",
     "configure_routing": "አቅጣጫን አዋቅር",
-    "connection_label": "ግንኙነት"
+    "connection_label": "ግንኙነት",
+    "no_bot_manager": "እስካሁን የTelegram ቦት አልተገናኘም — ባለቤትን እንዲያገናኝ ይጠይቁ።"
   }
 }

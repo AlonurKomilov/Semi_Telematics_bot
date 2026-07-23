@@ -123,7 +123,8 @@
     "topics_error": "Lama soo rari karin dejinta digniinta doorka — liiska hoose wuxuu noqon karaa mid aan dhammaystirnayn.",
     "mode_indicator": "Habka gaarsiinta: {{mode}}",
     "mode_change_link": "ka beddel Dejinta → Bot-ka Telegram",
-    "single_owner_only": "Akoonkani wuxuu isticmaalaa hal bot wadaag ah — kooxdiisa iyo mowduucyadiisa waxaa maamula milkiile."
+    "single_owner_only": "Akoonkani wuxuu isticmaalaa hal bot wadaag ah — kooxdiisa iyo mowduucyadiisa waxaa maamula milkiile.",
+    "subbots_label": "Sub bots"
   },
   "nav": {
     "overview": "Guudmar",
@@ -774,6 +775,7 @@
     "toast_connect_error": "Token-ka lama xaqiijin karin",
     "toast_disconnect_error": "Lama jari karin",
     "configure_routing": "Habee hagida",
-    "connection_label": "Xiriir"
+    "connection_label": "Xiriir",
+    "no_bot_manager": "Weli bot Telegram lama xirin — weydiiso milkiile inuu mid xiro."
   }
 }

@@ -102,13 +102,28 @@ alerts go" (Notification preferences), both under Alerts.
 The delivery MODE selector (Single ↔ Sub bots) is the owner's topology
 decision, so it stays on **Settings → Telegram Bot** with the bot
 credential (`features/alerts/DeliveryModeSelector.tsx`, owner-gated) —
-NOT on the operational tab where managers work. The Group delivery body
-reads the mode and shows a read-only indicator with a "change in
-Settings" link for owners.
+NOT on the operational tab. The Group delivery body reads the mode and
+shows a read-only indicator with a "change in Settings" link for owners.
 
-Settings → Telegram Bot holds the account bot CREDENTIAL
-(connect/disconnect + token) PLUS the mode selector, gated
-`can_manage_account`, and cross-links to the tab for routing.
+**The bot vs group split (owner decision 2026-07-22):** the "BOT" side
+lives on Settings, the "GROUP" side on Alerts, each scoped by role.
+- **Settings → Telegram Bot** — account bot CREDENTIAL (connect/token,
+  owner) + mode selector (owner) + the **Sub bots roster**
+  (`features/alerts/SubBotRoster.tsx`): attach the per-role SENDER bot.
+  Reachable by owners AND role managers; a manager sees ONLY their own
+  role's Sub-bot row (the API `manageable` list enforces it) and the
+  page renders JUST the Telegram Bot card for them — `/admin/settings`
+  is not fetched, so no `can_manage_account` 403. `can_manage_role_bot`
+  is restored on the `/settings` route + sidebar for this.
+- **Alerts → Group delivery** — the per-role GROUP binding + topics /
+  kinds / custom topics (owner all roles, manager own). The roster's
+  sender column is now READ-ONLY (shows @subbot / "main bot sends");
+  attach/detach moved to the Settings Sub-bots roster, so it isn't
+  duplicated.
+
+A manager therefore attaches their Sub bot on Settings, then binds their
+group + sets topics on Alerts — two homes by design (bot vs routing),
+both role-scoped.
 The old `can_manage_role_bot`-opens-Settings special case is gone —
 managers never need Settings; the tab is gated `can_manage_account`
 (full, incl. the mode selector) OR `can_manage_role_bot` (own row only,
