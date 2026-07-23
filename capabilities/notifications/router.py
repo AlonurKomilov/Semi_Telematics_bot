@@ -225,8 +225,9 @@ async def set_channel_cadence_route(
 # the per-category mute in the matrix), so all three columns appear.
 
 # Personal channels, including telegram_dm — unlike the alert matrix,
-# which routes Telegram through the legacy per-user columns.
-AccountActivityChannel = Literal["telegram_dm", "email", "web_push"]
+# which routes Telegram through the legacy per-user columns — and the
+# intrinsic in_app inbox (muting it hides a category from the bell).
+AccountActivityChannel = Literal["telegram_dm", "email", "web_push", "in_app"]
 
 
 @router.get("/preferences/account-activity")
@@ -260,7 +261,9 @@ async def get_account_activity_prefs(
             db_user.account_id, "user", db_user.id, ch.key)
         verified = bool(conn and conn.get("verified"))
         master = bool(conn.get("enabled_master")) if conn else True
-        if ch.key == "web_push":
+        if getattr(ch, "intrinsic", False):
+            ready = True                    # in-app inbox: nothing to connect
+        elif ch.key == "web_push":
             devices = await db.list_push_subscriptions(
                 db_user.account_id, db_user.id)
             ready = bool(devices) and master
@@ -324,6 +327,81 @@ async def set_account_activity_pref(
         db_user.account_id, "user", db_user.id, body.channel,
         body.category, enabled=body.enabled, cadence="immediate")
     return {"ok": True}
+
+
+# ── In-app inbox — the bell's persisted feed (authed) ────────────────
+# Rows are written by the intrinsic in_app channel (send() persists), so
+# everything here is read/mark-read only.  Alerts are NOT in this feed —
+# the bell reads those from /alerts/pending (dual-source by design).
+
+
+@router.get("/inbox")
+@limiter.limit("60/minute")
+async def get_inbox(
+    request: Request,
+    source: str = "",
+    before_id: int | None = None,
+    limit: int = 30,
+    user: dict = Depends(get_current_user),
+):
+    """Newest-first page of the caller's notices + their unread count.
+    ``source`` filters to one namespace tab (team / system); ``before_id``
+    is keyset pagination."""
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    db_user = await get_current_db_user(user, db)
+    if not db_user:
+        return {"notices": [], "unread": 0}
+    notices = await db.list_inbox_notices(
+        db_user.account_id, db_user.id,
+        source=source, limit=limit, before_id=before_id)
+    unread = await db.count_inbox_unread(db_user.account_id, db_user.id)
+    return {
+        "notices": [
+            {"id": n["id"], "category": n["category"], "source": n["source"],
+             "severity": n["severity"], "title": n["title"], "body": n["body"],
+             "url": n["url"], "created_at": n["created_at"],
+             "read": bool(n["read_at"])}
+            for n in notices
+        ],
+        "unread": unread,
+    }
+
+
+class InboxReadRequest(BaseModel):
+    ids: list[int]
+
+
+@router.post("/inbox/read")
+@limiter.limit("60/minute")
+async def mark_inbox_read_route(
+    request: Request, body: InboxReadRequest,
+    user: dict = Depends(get_current_user),
+):
+    """Mark specific notices read.  Storage scopes the UPDATE to the
+    caller's own rows, so a foreign id silently matches nothing."""
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    db_user = await get_current_db_user(user, db)
+    if not db_user:
+        return {"ok": False, "error": "user_not_found"}
+    n = await db.mark_inbox_read(db_user.account_id, db_user.id, body.ids)
+    unread = await db.count_inbox_unread(db_user.account_id, db_user.id)
+    return {"ok": True, "marked": n, "unread": unread}
+
+
+@router.post("/inbox/read-all")
+@limiter.limit("30/minute")
+async def mark_inbox_all_read_route(
+    request: Request, user: dict = Depends(get_current_user),
+):
+    from infra.platform import get_platform_db
+    db = get_platform_db()
+    db_user = await get_current_db_user(user, db)
+    if not db_user:
+        return {"ok": False, "error": "user_not_found"}
+    n = await db.mark_inbox_all_read(db_user.account_id, db_user.id)
+    return {"ok": True, "marked": n, "unread": 0}
 
 
 # ── Web push: device subscribe / unsubscribe (authed) ────────────────

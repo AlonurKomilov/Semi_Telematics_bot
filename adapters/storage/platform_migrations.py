@@ -196,6 +196,7 @@ async def run_all(conn) -> None:
     await migrate_notification_category_rename(conn)
     await migrate_notification_matrix(conn)
     await migrate_notification_digest_queue(conn)
+    await migrate_notification_inbox(conn)
     await migrate_push_subscriptions(conn)
     # Capacity monitoring (operator console): platform metric history +
     # per-account request metering.
@@ -587,6 +588,46 @@ async def migrate_notification_digest_queue(conn) -> None:
         await conn.commit()
     except Exception as e:
         logger.error("notification digest queue migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_notification_inbox(conn) -> None:
+    """Create ``notification_inbox`` — the persisted per-user record behind
+    the bell dropdown, written by the intrinsic ``in_app`` channel.
+    Mirrors platform_schema.py (fresh installs get it there).  Additive;
+    nothing writes until a non-alert source notifies."""
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS notification_inbox (
+                id         SERIAL PRIMARY KEY,
+                account_id INTEGER NOT NULL,
+                user_id    INTEGER NOT NULL,
+                category   TEXT    NOT NULL,
+                source     TEXT    NOT NULL DEFAULT '',
+                severity   TEXT    NOT NULL DEFAULT 'info',
+                title      TEXT    NOT NULL,
+                body       TEXT    NOT NULL DEFAULT '',
+                url        TEXT    NOT NULL DEFAULT '',
+                meta       TEXT    NOT NULL DEFAULT '',
+                created_at TEXT    NOT NULL,
+                read_at    TEXT    NOT NULL DEFAULT ''
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notification_inbox_feed"
+            " ON notification_inbox(account_id, user_id, id DESC)"
+        )
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notification_inbox_unread"
+            " ON notification_inbox(account_id, user_id)"
+            " WHERE read_at = ''"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.error("notification inbox migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

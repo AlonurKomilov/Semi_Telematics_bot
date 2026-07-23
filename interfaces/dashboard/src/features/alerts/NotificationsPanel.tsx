@@ -12,9 +12,9 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Settings, RefreshCw, Check, CheckCheck, ArrowRight, BellOff,
+  Settings, RefreshCw, Check, CheckCheck, ArrowRight, Bell, BellOff,
   Wrench, HeartPulse, Fuel, MapPin, ShieldAlert, Camera, CircleParking,
-  AlertTriangle, Loader2,
+  AlertTriangle, Loader2, Users, Server,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Alert, AlertSeverity } from '../../types';
@@ -24,6 +24,7 @@ import { formatAgoShort } from '../../utils/datetime';
 import { stagedAction } from '../../components/banners';
 import { useRecentAlerts, useAckAlerts } from './useRecentAlerts';
 import { addStagedAcks, removeStagedAcks, useStagedAckIds } from './stagedAcks';
+import { useInbox, useInboxActions, type InboxNotice } from './useInbox';
 
 const SEVERITY_TONE: Record<AlertSeverity, Tone> = {
   critical: 'danger',
@@ -44,11 +45,16 @@ const TYPE_ICON: Record<string, typeof Wrench> = {
 };
 
 type Tab = 'all' | 'critical';
+// Primary source tabs — the bell is a multi-source inbox: the alert
+// glance (its own store, /alerts/pending) beside the persisted notices
+// (team.* → Activity, system.* → System) from /notifications/inbox.
+type Source = 'alerts' | 'activity' | 'system';
 
 export function NotificationsPanel(
   { onClose, canAlerts }: { onClose: () => void; canAlerts: boolean },
 ) {
   const navigate = useNavigate();
+  const [src, setSrc] = useState<Source>(canAlerts ? 'alerts' : 'activity');
   const [tab, setTab] = useState<Tab>('all');
   // Locally hide alerts the moment they're acked so the row doesn't linger
   // through the refetch round-trip.
@@ -56,10 +62,25 @@ export function NotificationsPanel(
   const [busy, setBusy] = useState(false);
 
   // A vehicle-less role (recruiter, HR) has no alerts access — the bell is
-  // still their Notifications door (the gear → all preferences), it just
-  // shows no alert glance.  Don't fetch a feed they can't read.
+  // still their Notifications door; they just have no Alerts tab.  Don't
+  // fetch a feed they can't read.
   const { data, isLoading, isFetching, refetch } = useRecentAlerts(canAlerts);
   const ackAlerts = useAckAlerts();
+
+  // The persisted inbox (panel mounts only while the dropdown is open).
+  const { data: inbox, isLoading: inboxLoading } = useInbox(true);
+  const { markRead, markAllRead } = useInboxActions();
+  const notices = useMemo(() => inbox?.notices ?? [], [inbox]);
+  // 'system' namespace gets its own tab; every other source (team today,
+  // more later) reads as personal account Activity.
+  const systemNotices = useMemo(
+    () => notices.filter((n) => n.source === 'system'), [notices]);
+  const activityNotices = useMemo(
+    () => notices.filter((n) => n.source !== 'system'), [notices]);
+  // Per-tab counts come from the loaded page (newest 30) — a glance
+  // number, deliberately approximate past that window.  The BELL badge
+  // reads the server's true total (useInboxUnread), so nothing is lost.
+  const unreadOf = (list: InboxNotice[]) => list.filter((n) => !n.read).length;
   // Ids inside a pending "Acknowledge all" window — module-level store, so
   // the hide survives this panel unmounting when the dropdown closes (a
   // reopened panel must NOT resurface rows that are mid-countdown, and
@@ -156,9 +177,25 @@ export function NotificationsPanel(
         </div>
       </div>
 
-      {canAlerts ? (
+      {/* Source tabs — Alerts (permission-gated) · Activity · System.
+          Alert count = pending; inbox counts = unread. */}
+      <div className="flex items-center gap-1 px-3 py-2 border-b border-border">
+        {canAlerts && (
+          <TabPill active={src === 'alerts'} onClick={() => setSrc('alerts')}>
+            Alerts{alerts.length ? ` ${alerts.length}` : ''}
+          </TabPill>
+        )}
+        <TabPill active={src === 'activity'} onClick={() => setSrc('activity')}>
+          Activity{unreadOf(activityNotices) ? ` ${unreadOf(activityNotices)}` : ''}
+        </TabPill>
+        <TabPill active={src === 'system'} onClick={() => setSrc('system')}>
+          System{unreadOf(systemNotices) ? ` ${unreadOf(systemNotices)}` : ''}
+        </TabPill>
+      </div>
+
+      {src === 'alerts' && canAlerts ? (
         <>
-          {/* Tabs — filter the glance (All / Critical) */}
+          {/* Severity sub-filter — alerts only */}
           <div className="flex items-center gap-1 px-3 py-2 border-b border-border">
             <TabPill active={tab === 'all'} onClick={() => setTab('all')}>
               All{alerts.length ? ` ${alerts.length}` : ''}
@@ -175,7 +212,7 @@ export function NotificationsPanel(
                 <Loader2 size={18} className="animate-spin" aria-hidden />
               </div>
             ) : shown.length === 0 ? (
-              <EmptyState critical={tab === 'critical'} />
+              <EmptyState label={tab === 'critical' ? 'No critical alerts' : 'You’re all caught up'} />
             ) : (
               <ul className="divide-y divide-border/60">
                 {shown.map((a) => (
@@ -204,18 +241,53 @@ export function NotificationsPanel(
           </div>
         </>
       ) : (
-        /* No alerts access — the bell is still the Notifications door. */
-        <div className="px-4 py-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            No alerts for your role.
-          </p>
-          <button
-            onClick={() => goto('/notifications/preferences')}
-            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-          >
-            Manage notification preferences <ArrowRight size={14} aria-hidden />
-          </button>
-        </div>
+        /* Inbox tabs — persisted notices, read/unread */
+        (() => {
+          const list = src === 'system' ? systemNotices : activityNotices;
+          return (
+            <>
+              <div className="flex-1 overflow-y-auto min-h-0">
+                {inboxLoading ? (
+                  <div className="flex items-center justify-center py-10 text-muted-foreground">
+                    <Loader2 size={18} className="animate-spin" aria-hidden />
+                  </div>
+                ) : list.length === 0 ? (
+                  <EmptyState label={src === 'system'
+                    ? 'No system notices'
+                    : 'No account activity yet'} />
+                ) : (
+                  <ul className="divide-y divide-border/60">
+                    {list.map((n) => (
+                      <InboxRow
+                        key={n.id}
+                        notice={n}
+                        onOpen={() => {
+                          if (!n.read) void markRead(n.id);
+                          if (n.url) goto(n.url);
+                        }}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="flex items-center justify-between px-3 py-2 border-t border-border">
+                <button
+                  onClick={() => void markAllRead()}
+                  disabled={unreadOf(notices) === 0}
+                  className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors"
+                >
+                  <CheckCheck size={14} aria-hidden /> Mark all read
+                </button>
+                <button
+                  onClick={() => goto('/notifications/preferences')}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+                >
+                  Preferences <ArrowRight size={14} aria-hidden />
+                </button>
+              </div>
+            </>
+          );
+        })()
       )}
     </div>
   );
@@ -275,13 +347,54 @@ function AlertRow({ alert, onAck, onOpen, busy }: {
   );
 }
 
-function EmptyState({ critical }: { critical: boolean }) {
+// Inbox source → glyph.  Kept coarse on purpose: the row's text carries
+// the specifics; the icon just separates "people" from "platform".
+const SOURCE_ICON: Record<string, typeof Users> = {
+  team: Users,
+  system: Server,
+};
+
+function InboxRow({ notice, onOpen }: {
+  notice: InboxNotice; onOpen: () => void;
+}) {
+  const tone = SEVERITY_TONE[notice.severity] ?? 'info';
+  // Neutral fallback (Bell, not AlertTriangle) — this is the NON-alert
+  // feed; an unknown future source shouldn't masquerade as an alert.
+  const Icon = SOURCE_ICON[notice.source] ?? Bell;
+  const age = formatAgoShort(notice.created_at);
+  return (
+    <li>
+      <button
+        onClick={onOpen}
+        className={`flex items-start gap-2.5 w-full px-3 py-2.5 text-left transition-colors hover:bg-muted/50 ${
+          notice.read ? 'opacity-60' : ''
+        }`}
+      >
+        <Icon size={16} className={`${toneText(tone)} mt-0.5 shrink-0`} aria-hidden />
+        <span className="flex-1 min-w-0">
+          <span className="flex items-baseline justify-between gap-2">
+            <span className="text-sm font-medium truncate">{notice.title}</span>
+            <span className="text-3xs text-muted-foreground shrink-0 tabular-nums">{age}</span>
+          </span>
+          {notice.body && (
+            <span className="block text-xs text-muted-foreground truncate mt-0.5">
+              {notice.body}
+            </span>
+          )}
+        </span>
+        {!notice.read && (
+          <span className="size-2 rounded-full bg-primary mt-1.5 shrink-0" aria-label="Unread" />
+        )}
+      </button>
+    </li>
+  );
+}
+
+function EmptyState({ label }: { label: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 py-10 px-4 text-center">
       <BellOff size={24} className="text-muted-foreground" aria-hidden />
-      <p className="text-sm text-muted-foreground">
-        {critical ? 'No critical alerts' : 'You’re all caught up'}
-      </p>
+      <p className="text-sm text-muted-foreground">{label}</p>
     </div>
   );
 }

@@ -129,6 +129,15 @@ class Channel(Protocol):
       • ``render`` turns :class:`NotificationContent` into this channel's
         :class:`Payload` (escape, format, subject, short-form …).
       • ``send`` pushes a rendered ``Payload`` to a recipient.
+
+    A channel may additionally declare ``intrinsic = True`` (read via
+    ``getattr(..., "intrinsic", False)``, so existing channels need no
+    change): it has NO external address to connect or verify — it is
+    always available for every user (the in-app inbox).  The service
+    layer skips the connection check for intrinsic channels and resolves
+    broadcast recipients opt-OUT (all eligible users minus explicit
+    mutes) instead of opt-in, because a passive record nobody pre-enables
+    would otherwise stay empty forever.
     """
     key: str
     personal: bool
@@ -157,6 +166,11 @@ def get_channel(key: str) -> Channel | None:
 
 
 def list_channels() -> list[Channel]:
+    """Every registered channel — NOTE this includes the intrinsic
+    ``in_app`` inbox, so a ``dispatch()``/``notify_user()`` call with
+    ``channels=None`` writes inbox rows too.  A source that must NOT
+    surface in the bell (e.g. alerts, which have their own feed) passes an
+    explicit ``channels=`` list."""
     return list(_CHANNELS.values())
 
 

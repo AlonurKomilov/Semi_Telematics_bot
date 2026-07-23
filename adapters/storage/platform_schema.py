@@ -424,6 +424,33 @@ async def create_tables(conn) -> None:
             ON notification_digest_queue(cadence, account_id, recipient_type,
                                          recipient_id, channel, id);
 
+        -- In-app inbox: the persisted per-user notification record behind
+        -- the bell dropdown.  Populated by the intrinsic 'in_app' channel
+        -- (its send() INSERTs here instead of transmitting), so audience /
+        -- scoping / mute rules apply through the same dispatch()/
+        -- notify_user() fan-out as every real transport.  Alerts are NOT
+        -- double-stored here — the bell reads them from alert_history;
+        -- this table holds the non-alert sources (team.*, system.*).
+        CREATE TABLE IF NOT EXISTS notification_inbox (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            user_id    INTEGER NOT NULL,
+            category   TEXT    NOT NULL,               -- 'team.invite_accepted'
+            source     TEXT    NOT NULL DEFAULT '',    -- namespace: 'team' | 'system'
+            severity   TEXT    NOT NULL DEFAULT 'info',
+            title      TEXT    NOT NULL,
+            body       TEXT    NOT NULL DEFAULT '',
+            url        TEXT    NOT NULL DEFAULT '',
+            meta       TEXT    NOT NULL DEFAULT '',    -- JSON blob for structured extras
+            created_at TEXT    NOT NULL,
+            read_at    TEXT    NOT NULL DEFAULT ''     -- '' = unread
+        );
+        CREATE INDEX IF NOT EXISTS idx_notification_inbox_feed
+            ON notification_inbox(account_id, user_id, id DESC);
+        CREATE INDEX IF NOT EXISTS idx_notification_inbox_unread
+            ON notification_inbox(account_id, user_id)
+            WHERE read_at = '';
+
         -- Web-push device subscriptions: PER-DEVICE (a user can have
         -- push on the laptop but not the phone), so they are sub-entities
         -- of the user rather than a single notification_channel address.

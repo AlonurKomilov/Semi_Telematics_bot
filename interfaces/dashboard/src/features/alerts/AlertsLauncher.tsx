@@ -19,6 +19,7 @@ import { Bell } from 'lucide-react';
 import { useShellStats } from '../../shells/heroes/useShellStats';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { NotificationsPanel } from './NotificationsPanel';
+import { useInboxUnread } from './useInbox';
 
 const P_ALERTS = ['can_alerts_all', 'can_alerts_vehicle'];
 
@@ -34,9 +35,13 @@ export function AlertsLauncher() {
 function AlertsBell({ canAlerts }: { canAlerts: boolean }) {
   const [open, setOpen] = useState(false);
   // Only fetch the stats when they'd mean something — a no-alerts role's
-  // badge is forced to 0, so don't pay for the query.
+  // alert count is forced to 0, so don't pay for the query.
   const { data } = useShellStats(canAlerts);
-  const pending = canAlerts ? (data?.pending_alerts ?? 0) : 0;
+  // Badge = pending alerts + unread inbox notices, summed CLIENT-side —
+  // the two stores stay separate (alerts keep ack semantics; the inbox
+  // keeps read semantics) and the bell just adds the numbers.
+  const inboxUnread = useInboxUnread(true);
+  const pending = (canAlerts ? (data?.pending_alerts ?? 0) : 0) + inboxUnread;
   const badge = pending > 99 ? '99+' : String(pending);
   const label = pending > 0 ? `Notifications, ${pending} pending` : 'Notifications';
 

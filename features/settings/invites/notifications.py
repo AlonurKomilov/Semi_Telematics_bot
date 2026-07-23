@@ -94,6 +94,9 @@ async def announce_invite_accepted(
                 body=body,
                 category=INVITE_ACCEPTED,
                 severity="info",
+                # Relative path: the in-app inbox row click-navigates here,
+                # and web push only honours same-origin relative urls.
+                url="/team",
             ),
         )
     except Exception as exc:

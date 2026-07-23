@@ -42,9 +42,11 @@ from capabilities.notifications.categories import (  # noqa: F401,E402
 from capabilities.notifications import telegram as _telegram  # noqa: F401,E402
 from capabilities.notifications.email import EmailChannel  # noqa: E402
 from capabilities.notifications.webpush import WebPushChannel  # noqa: E402
+from capabilities.notifications.inapp import InAppChannel  # noqa: E402
 
 register_channel(EmailChannel())
 register_channel(WebPushChannel())
+register_channel(InAppChannel())
 
 # Boot-time visibility: email links are signed with NOTIFICATION_SIGNING_
 # SECRET if set, else JWT_SECRET.  This only warns when BOTH are absent

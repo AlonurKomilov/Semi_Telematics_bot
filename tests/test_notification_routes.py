@@ -366,13 +366,18 @@ async def test_account_activity_lists_targeted_categories_on_by_default(api):
     cat = cats["team.invite_accepted"]
     assert cat["source"] == "team"
     assert cat["mandatory"] is False
-    # Opt-out: ON for every personal channel until muted.
-    assert cat["channels"] == {"telegram_dm": True, "email": True, "web_push": True}
+    # Opt-out: ON for every personal channel until muted (in_app is the
+    # intrinsic inbox channel — always present).
+    assert cat["channels"] == {"telegram_dm": True, "email": True,
+                               "web_push": True, "in_app": True}
     # Channel connection states ride along so the UI can grey a column.
-    assert set(body["channels"]) == {"telegram_dm", "email", "web_push"}
+    assert set(body["channels"]) == {"telegram_dm", "email", "web_push", "in_app"}
     # A brand-new user hasn't connected anything (alerts_on defaults off, so
-    # the telegram_dm channel isn't provisioned yet) — nothing is "ready".
-    assert all(ch["ready"] is False for ch in body["channels"].values())
+    # the telegram_dm channel isn't provisioned yet) — nothing external is
+    # "ready"; the intrinsic inbox always is.
+    assert body["channels"]["in_app"]["ready"] is True
+    assert all(ch["ready"] is False
+               for k, ch in body["channels"].items() if k != "in_app")
 
 
 async def test_account_activity_mute_then_reflected(api):
@@ -407,3 +412,61 @@ async def test_account_activity_requires_auth(api):
     async with _client(api) as c:
         r = await c.get(f"{API}/preferences/account-activity")
     assert r.status_code == 401
+
+
+# ── In-app inbox routes (N5-P2) ──────────────────────────────────────
+
+async def test_inbox_feed_unread_and_mark_read(api):
+    db, acct, uid = api["db"], api["acct"], api["uid"]
+    await db.add_inbox_notice(acct, uid, category="team.invite_accepted",
+                              title="Invite accepted", body="Dana joined.")
+    await db.add_inbox_notice(acct, uid, category="system.security",
+                              title="New sign-in", severity="warning")
+    async with _client(api) as c:
+        body = (await c.get(f"{API}/inbox", headers=_h(api["token"]))).json()
+        assert body["unread"] == 2
+        assert [n["title"] for n in body["notices"]] == ["New sign-in", "Invite accepted"]
+        assert body["notices"][0]["source"] == "system"
+        assert body["notices"][0]["read"] is False
+
+        # Source tab filter.
+        team = (await c.get(f"{API}/inbox?source=team",
+                            headers=_h(api["token"]))).json()
+        assert [n["source"] for n in team["notices"]] == ["team"]
+
+        # Mark one read → unread drops; row flips.
+        first_id = body["notices"][0]["id"]
+        r = (await c.post(f"{API}/inbox/read", json={"ids": [first_id]},
+                          headers=_h(api["token"]))).json()
+        assert r == {"ok": True, "marked": 1, "unread": 1}
+
+        # Read-all clears the rest.
+        r = (await c.post(f"{API}/inbox/read-all",
+                          headers=_h(api["token"]))).json()
+        assert r["ok"] is True and r["unread"] == 0
+        body = (await c.get(f"{API}/inbox", headers=_h(api["token"]))).json()
+        assert body["unread"] == 0
+        assert all(n["read"] for n in body["notices"])
+
+
+async def test_inbox_requires_auth(api):
+    async with _client(api) as c:
+        assert (await c.get(f"{API}/inbox")).status_code == 401
+        assert (await c.post(f"{API}/inbox/read", json={"ids": [1]})).status_code == 401
+
+
+async def test_inbox_cannot_read_other_users_rows(api):
+    """Another user's notices never appear in my feed, and my mark-read
+    can't flip their rows."""
+    db, acct = api["db"], api["acct"]
+    other = await db.create_user(9002, acct, role=Role.FLEET)
+    await db.add_inbox_notice(acct, other.id, category="team.t", title="theirs")
+    async with _client(api) as c:
+        body = (await c.get(f"{API}/inbox", headers=_h(api["token"]))).json()
+        assert body["notices"] == [] and body["unread"] == 0
+        # Try to mark their row read by id — scoped UPDATE matches nothing.
+        theirs = await db.list_inbox_notices(acct, other.id)
+        r = (await c.post(f"{API}/inbox/read", json={"ids": [theirs[0]["id"]]},
+                          headers=_h(api["token"]))).json()
+        assert r["marked"] == 0
+    assert await db.count_inbox_unread(acct, other.id) == 1

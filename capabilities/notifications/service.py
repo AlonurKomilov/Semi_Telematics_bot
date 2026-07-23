@@ -116,8 +116,18 @@ async def dispatch(
             logger.warning("dispatch: unknown channel %r", key)
             continue
         try:
-            subs = await db.get_notification_subscribers(
-                account_id, content.category, key)
+            if getattr(channel, "intrinsic", False):
+                # Intrinsic (in-app inbox): no address to opt in with, so
+                # broadcast is OPT-OUT — every active user minus explicit
+                # mutes.  Rows come back in the same shape as the opt-in
+                # query, with cadence forced immediate (batching a
+                # persisted record is meaningless), and the audience +
+                # recipient_filter pass below applies unchanged.
+                subs = await db.get_optout_subscribers(
+                    account_id, content.category, key)
+            else:
+                subs = await db.get_notification_subscribers(
+                    account_id, content.category, key)
         except Exception as e:                      # a broken channel query
             logger.error("dispatch: subscriber lookup failed (%s): %s", key, e)
             continue
@@ -227,9 +237,15 @@ async def notify_user(
         channel = get_channel(key)
         if channel is None or not getattr(channel, "personal", False):
             continue                           # targeted = personal channels only
-        conn = await db.get_notification_channel(account_id, "user", user_id, key)
-        if not conn or not conn.get("verified") or not conn.get("enabled_master"):
-            continue                           # nothing connected to deliver to
+        if getattr(channel, "intrinsic", False):
+            # Intrinsic (in-app inbox): nothing to connect or verify —
+            # always deliverable.  Mutes / mandatory still apply below.
+            conn = {"address": ""}
+        else:
+            conn = await db.get_notification_channel(
+                account_id, "user", user_id, key)
+            if not conn or not conn.get("verified") or not conn.get("enabled_master"):
+                continue                       # nothing connected to deliver to
         if not mandatory:
             prefs = await db.get_pref_categories(account_id, "user", user_id, key)
             # Opt-out with the SPECIFIC row winning over the '*' blanket, in

@@ -90,6 +90,7 @@ from .storage_sync import StorageSyncMixin
 from .ai_chat import AIChatHistoryMixin
 from .ai_actions import AIActionProposalsMixin
 from .notification_prefs import NotificationPrefsMixin
+from .notification_inbox import NotificationInboxMixin
 from .push_subscriptions import PushSubscriptionsMixin
 from .errors import ErrorLogMixin
 from .scan_log import ScanLogMixin
@@ -154,6 +155,7 @@ class Database(
     AIChatHistoryMixin,
     AIActionProposalsMixin,
     NotificationPrefsMixin,
+    NotificationInboxMixin,
     PushSubscriptionsMixin,
     ErrorLogMixin,
     ScanLogMixin,

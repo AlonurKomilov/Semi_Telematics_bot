@@ -58,6 +58,7 @@ _NOTIF_MODULES = (
     "capabilities.notifications.vapid",
     "capabilities.notifications.categories",
     "capabilities.notifications.push_endpoint",
+    "capabilities.notifications.inapp",
     "capabilities.notifications.router",
 )
 

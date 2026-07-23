@@ -16,11 +16,11 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Send, Mail, MonitorSmartphone, Check } from 'lucide-react';
+import { Send, Mail, MonitorSmartphone, Check, Bell } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { Tip } from '@/components/tooltip';
 
-type ChannelKey = 'telegram_dm' | 'email' | 'web_push';
+type ChannelKey = 'telegram_dm' | 'email' | 'web_push' | 'in_app';
 
 interface Category {
   key: string;
@@ -33,6 +33,9 @@ interface ChannelState { connected: boolean; verified: boolean; enabled_master: 
 interface Payload { categories: Category[]; channels: Record<ChannelKey, ChannelState>; }
 
 const COLUMNS: { key: ChannelKey; icon: typeof Send; label: string; notReady: string }[] = [
+  // In-app first: always deliverable (the bell inbox needs no connection),
+  // so its column is never greyed — the one toggle every user can use.
+  { key: 'in_app', icon: Bell, label: 'In-app', notReady: '' },
   { key: 'telegram_dm', icon: Send, label: 'Telegram', notReady: 'Turn on personal alerts in Channels above first' },
   { key: 'email', icon: Mail, label: 'Email', notReady: 'Connect and verify your email in Channels above first' },
   { key: 'web_push', icon: MonitorSmartphone, label: 'Push', notReady: 'Enable push on at least one device in Channels above first' },

@@ -28,3 +28,16 @@ register_need(RetentionNeed(
     "undeliverable/undrained digest residue; outlives the daily cadence "
     "so an outage re-sends instead of dropping",
 ))
+
+# In-app inbox: one row per (user × notice), written by the intrinsic
+# in_app channel.  A recent-activity glance, not an archive — 60 days
+# keeps the feed meaningful while bounding the per-user fan-out growth.
+register_target(RetentionTarget(
+    "notifications.inbox", "In-app notification inbox", "platform",
+    lambda db, _acct, days: db.prune_notification_inbox(days=days),
+))
+register_need(RetentionNeed(
+    "notifications", "notifications.inbox", 60,
+    "bell-dropdown recent notices; read/unread state matters for weeks, "
+    "not months — pruned regardless of read state",
+))
