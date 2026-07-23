@@ -2,21 +2,22 @@ import { useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, Plus, Paperclip, Receipt, X } from 'lucide-react';
+import { FileText, Plus, Paperclip, Receipt, X, ArrowUpRight, ExternalLink } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
+import type { MenuAction } from '../../components/ui/context-menu';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
 } from '../../components/shell';
 import type { WorkOrder, WorkOrdersResponse, AnyColumn } from '../../types';
 import { Tip } from '../../components/tooltip';
 
-// Payment lifecycle tabs (B3 phase 1).  Evidence from live data: every
-// WO is status='submitted' — the ONE dominant lifecycle dimension is
-// payment.  First tab = the working set (money still owed, incl.
-// partial; bot-drafts are born unpaid so they land here too).  Void
-// stays out of the working tabs and is reachable via [All] + the
-// Status column filter.
+// Payment tabs.  The status field is the Fleetio work lifecycle
+// (open → in_progress → closed → void); the ONE dominant dimension for
+// these tabs is MONEY, so they slice on payment_status.  First tab =
+// the working set (money still owed, incl. partial; new WOs are born
+// unpaid so they land here too).  Void stays out of the working tabs
+// and is reachable via [All] + the Status column filter.
 const WO_SEGMENTS: DataGridSegment[] = [
   {
     key: 'unpaid',
@@ -44,10 +45,15 @@ import { formatDay } from '../../utils/datetime';
 // shared ``statusTone`` map, so the tone is pinned here and the soft
 // pill is rendered through the shared ``toneClasses`` recipe.
 const STATUS_TONE: Record<string, Tone> = {
-  draft:     'neutral',
-  submitted: 'info',
-  paid:      'ok',
-  void:      'danger',
+  open:        'warn',
+  in_progress: 'info',
+  closed:      'ok',
+  void:        'danger',
+};
+
+// snake_case status values → human labels for the badge.
+const STATUS_LABEL: Record<string, string> = {
+  open: 'Open', in_progress: 'In Progress', closed: 'Closed', void: 'Void',
 };
 
 const PAYMENT_TONE: Record<string, Tone> = {
@@ -82,12 +88,15 @@ function PriorityCell({ value }: { value: unknown }) {
   );
 }
 
-function Pill({ value, palette }: { value: unknown; palette: Record<string, Tone> }) {
+function Pill({ value, palette, labels }: { value: unknown; palette: Record<string, Tone>; labels?: Record<string, string> }) {
   const v = String(value || '').toLowerCase();
   const cls = toneClasses(palette[v] ?? 'neutral');
+  // A label map wins (so 'in_progress' → 'In Progress'); else the raw
+  // value under `capitalize`.
+  const text = labels?.[v];
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium capitalize ${cls}`}>
-      {v || '—'}
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${text ? '' : 'capitalize'} ${cls}`}>
+      {text || v || '—'}
     </span>
   );
 }
@@ -162,7 +171,7 @@ function makeColumns(tz: string): AnyColumn[] {
   { key: 'status', label: 'Status', sortable: true, filterable: true,
     filterValue: (row) => String((row as { status?: string }).status ?? ''),
     filterLabel: (row) => titleCase(String((row as { status?: string }).status ?? '')),
-    render: (v) => <Pill value={v} palette={STATUS_TONE} /> },
+    render: (v) => <Pill value={v} palette={STATUS_TONE} labels={STATUS_LABEL} /> },
   // Reason-for-repair class — planned upkeep vs unplanned firefighting.
   // Filterable so an operator can isolate emergency spend; the label
   // maps '' → "Unclassified" so that bucket is filterable too.
@@ -240,9 +249,9 @@ export default function WorkOrders() {
   // the rendered set even if the upstream query refetches.  The "All"
   // bucket is just the full set.
   const buckets = useMemo(() => {
-    const draft = workOrders.filter(w => w.status === 'draft');
+    const open = workOrders.filter(w => w.status === 'open' || w.status === 'in_progress');
     const unpaid = workOrders.filter(w => w.payment_status === 'unpaid' && w.status !== 'void');
-    return { draft, unpaid };
+    return { open, unpaid };
   }, [workOrders]);
 
   // Total spent across visible rows — useful management at-a-glance.
@@ -324,8 +333,8 @@ export default function WorkOrders() {
           </p>
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
-          <p className="text-xs text-muted-foreground">{t('work_orders_page.card_draft')}</p>
-          <p className="text-xl font-bold tabular-nums">{buckets.draft.length}</p>
+          <p className="text-xs text-muted-foreground">{t('work_orders_page.card_open', { defaultValue: 'Open' })}</p>
+          <p className="text-xl font-bold tabular-nums">{buckets.open.length}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
           <p className="text-xs text-muted-foreground">{t('work_orders_page.card_unpaid')}</p>
@@ -361,6 +370,15 @@ export default function WorkOrders() {
           onRowClick={(row) => {
             const w = row as unknown as WorkOrder;
             navigate(`/work-orders/${w.id}`);
+          }}
+          // Right-click a WO row → Open here / Open in a new tab (the
+          // classic new-tab affordance a plain row click can't offer).
+          rowActions={(row): MenuAction[] => {
+            const path = `/work-orders/${(row as unknown as WorkOrder).id}`;
+            return [
+              { key: 'open', label: 'Open', icon: <ArrowUpRight size={14} className="text-muted-foreground" />, onSelect: () => navigate(path) },
+              { key: 'open-new', label: 'Open in new tab', icon: <ExternalLink size={14} className="text-muted-foreground" />, onSelect: () => window.open(path, '_blank', 'noopener') },
+            ];
           }}
         />
       )}

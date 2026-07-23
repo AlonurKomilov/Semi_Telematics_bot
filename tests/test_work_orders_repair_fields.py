@@ -87,3 +87,25 @@ async def test_migration_154_folds_status_paid_into_payment_status(db):
     await mig(db._db)
     r1b = await db.get_work_order(legacy_unpaid, a)
     assert (r1b["status"], r1b["payment_status"]) == ("submitted", "paid")
+
+
+@pytest.mark.asyncio
+async def test_migration_159_status_to_fleetio_vocabulary(db):
+    """draft→open, submitted→closed; void untouched.  Idempotent."""
+    from adapters.storage.migrations import (
+        migrate_work_orders_status_fleetio_vocabulary as mig,
+    )
+    a = 72
+    d = await db.add_work_order(a, "ACME", "T1", "Shop", status="draft",
+                                total_cost=10)
+    s = await db.add_work_order(a, "ACME", "T2", "Shop", status="submitted",
+                                total_cost=20)
+    v = await db.add_work_order(a, "ACME", "T3", "Shop", status="void",
+                                total_cost=30)
+    await mig(db._db)
+    assert (await db.get_work_order(d, a))["status"] == "open"
+    assert (await db.get_work_order(s, a))["status"] == "closed"
+    assert (await db.get_work_order(v, a))["status"] == "void"
+    # Second run: no-op.
+    await mig(db._db)
+    assert (await db.get_work_order(s, a))["status"] == "closed"

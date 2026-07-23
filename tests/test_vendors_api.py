@@ -329,7 +329,7 @@ async def test_vehicle_history_includes_work_orders_manager_only(seeded):
     acct = seeded["acct"]
     await db.add_work_order(
         acct.id, "VC", "T-1", "History Shop",
-        service_date="2026-07-03", total_cost=250.0, status="submitted",
+        service_date="2026-07-03", total_cost=250.0, status="closed",
     )
     transport = ASGITransport(app=seeded["app"])
     async with AsyncClient(transport=transport, base_url="http://t") as c:
@@ -362,11 +362,16 @@ async def test_status_paid_rejected_by_api(seeded):
         assert r.status_code == 422
         vid = seeded["vendor"]["id"]
         _ = vid
+        # Legacy alias: a stale dashboard bundle POSTing the old
+        # 'submitted' is accepted for one release and NORMALIZED to the
+        # Fleetio 'closed' — never stored as the dead value.
         r = await c.post("/api/work-orders", headers=_h(seeded["token_fleet"]),
                          json={"vehicle_name": "T-1", "status": "submitted",
                                "payment_status": "paid"})
         assert r.status_code == 200
         wo_id = r.json()["id"]
+        stored = await seeded["db"].get_work_order(wo_id, seeded["acct"].id)
+        assert stored["status"] == "closed"
         r = await c.put(f"/api/work-orders/{wo_id}",
                         headers=_h(seeded["token_fleet"]),
                         json={"status": "paid"})

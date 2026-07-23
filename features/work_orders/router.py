@@ -26,7 +26,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# Lifecycle vocabulary (Fleetio-standard): open → in_progress → closed,
+# + void.  Legacy draft/submitted are accepted at the write boundary
+# for one release (stale dashboard bundles) and normalized here, so the
+# stored value is always current.
+from adapters.storage.work_orders import normalize_wo_status
 
 from interfaces.api.deps import (
     get_current_user, get_platform_db, get_tenant_db,
@@ -83,10 +89,15 @@ class WorkOrderCreate(BaseModel):
     invoice_number: str = ""
     payment_method: str = ""
     payment_status: str = Field("unpaid", pattern=r"^(unpaid|paid|partial|void)$")
-    status: str = Field("draft", pattern=r"^(draft|submitted|void)$")
+    status: str = Field("open", pattern=r"^(open|in_progress|closed|void|draft|submitted)$")
     # Reason-for-repair class (VMRS-style): planned upkeep vs unplanned
     # firefighting.  '' = unclassified.
     repair_priority: str = Field("", pattern=r"^(scheduled|non_scheduled|emergency|)$")
+
+    @field_validator("status")
+    @classmethod
+    def _norm_status(cls, v: str) -> str:
+        return normalize_wo_status(v) or "open"
     # 3C repair documentation (DOT / warranty standard).
     complaint: str = ""
     cause: str = ""
@@ -115,9 +126,14 @@ class WorkOrderUpdate(BaseModel):
     invoice_number: Optional[str] = None
     payment_method: Optional[str] = None
     payment_status: Optional[str] = Field(None, pattern=r"^(unpaid|paid|partial|void)$")
-    status: Optional[str] = Field(None, pattern=r"^(draft|submitted|void)$")
+    status: Optional[str] = Field(None, pattern=r"^(open|in_progress|closed|void|draft|submitted)$")
     repair_priority: Optional[str] = Field(None, pattern=r"^(scheduled|non_scheduled|emergency|)$")
     complaint: Optional[str] = None
+
+    @field_validator("status")
+    @classmethod
+    def _norm_status(cls, v: Optional[str]) -> Optional[str]:
+        return normalize_wo_status(v) if v is not None else None
     cause: Optional[str] = None
     correction: Optional[str] = None
     notes: Optional[str] = None
@@ -494,13 +510,15 @@ async def upload_attachment(
     from adapters.storage.object_store import get_object_store_for_account
     wo = await _require_visible_work_order(work_order_id, user, tenant_db)
 
-    # Drivers locked to uploading on DRAFTS for their truck — once
-    # paid/submitted, the manager owns the record.
+    # Drivers may upload only while the WO is still ACTIVE (open /
+    # in_progress) for their truck — that's the photo-first window (at
+    # the shop, invoice in hand).  Once it's closed the manager owns
+    # the record.
     if not await can_for_account(user["account_id"], Role(user["role"]), "can_work_orders_all"):
-        if wo.get("status") != "draft":
+        if wo.get("status") not in ("open", "in_progress"):
             raise HTTPException(
                 status_code=403,
-                detail="Drivers can only attach files to draft work orders.",
+                detail="Drivers can only attach files to open work orders.",
             )
 
     if kind not in _ALLOWED_KINDS:

@@ -181,7 +181,7 @@ async def build_dot_binder(
     in_window = [
         w for w in all_work_orders
         if (w.get("service_date") or "") >= coverage_start
-        or w.get("status") in ("draft", "submitted")
+        or w.get("status") != "void"
     ]
     work_orders_by_vehicle: dict[str, list[dict]] = {}
     for w in in_window:

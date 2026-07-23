@@ -1922,7 +1922,8 @@ class WarehouseMixin(_MixinBase):
               FROM work_orders
              WHERE account_id = ?
                AND service_date >= ?
-               AND status != 'draft'
+               AND status NOT IN ('open', 'void')
+               AND payment_status != 'void'
                AND (vehicle_id = ? OR (vehicle_id = '' AND vehicle_name = ?))
             """,
             (account_id, since_day, vehicle_id, vehicle_name),

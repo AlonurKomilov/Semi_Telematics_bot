@@ -132,7 +132,7 @@ async def test_void_work_orders_excluded_from_cost_reports(db):
     into any cost aggregate — parts, labor, or per-part usage."""
     a = 72
     ok = await db.add_work_order(
-        a, "ACME", "T400", "Void Test Shop", status="submitted",
+        a, "ACME", "T400", "Void Test Shop", status="closed",
         service_date="2026-07-05", total_cost=100,
     )
     await db.add_work_order_part(
@@ -153,7 +153,7 @@ async def test_void_work_orders_excluded_from_cost_reports(db):
         voided, a, description="Ghost labor", total_cost=999, service_task="brakes",
     )
     pay_voided = await db.add_work_order(
-        a, "ACME", "T402", "Void Test Shop", status="submitted",
+        a, "ACME", "T402", "Void Test Shop", status="closed",
         payment_status="void", service_date="2026-07-07", total_cost=500,
     )
     await db.add_work_order_part(

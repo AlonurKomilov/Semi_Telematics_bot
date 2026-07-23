@@ -38,7 +38,7 @@ async def seeded(pg_db):
     shop_b = await database.resolve_or_create_vendor(acct.id, "Parts Shop Beta")
     part = await database.resolve_or_create_part(acct.id, "Brake Pad Set")
 
-    async def wo(vehicle, vendor, date, *, status="submitted",
+    async def wo(vehicle, vendor, date, *, status="closed",
                  payment_status="unpaid", qty=1.0, unit=0.0, total=0.0):
         wo_id = await database.add_work_order(
             acct.id, "PC", vehicle, vendor["name"], vendor_id=vendor["id"],
@@ -186,7 +186,7 @@ async def test_merge_repoints_lines_and_aliases(seeded):
     wo_id = await db.add_work_order(
         acct.id, "PC", "T-2", seeded["shop_b"]["name"],
         vendor_id=seeded["shop_b"]["id"], service_date="2026-06-20",
-        status="submitted", total_cost=57,
+        status="closed", total_cost=57,
     )
     await db.add_work_order_part(
         wo_id, part_name="Brake Padd Set", quantity=1, unit_cost=57,

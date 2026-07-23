@@ -51,7 +51,7 @@ const blankWorkOrder = (): Partial<WorkOrder> => ({
   invoice_number: '',
   payment_method: '',
   payment_status: 'unpaid',
-  status: 'draft',
+  status: 'open',
   repair_priority: '',
   complaint: '',
   cause: '',
@@ -802,7 +802,14 @@ export default function WorkOrderForm() {
   ];
   // Lifecycle only — money state lives in payment_status (the old
   // status='paid' was folded away by migration 154).
-  const statusItems = ['draft', 'submitted', 'void'].map((s) => ({ value: s, label: s }));
+  // Fleetio-standard lifecycle: Open → In Progress → Closed (+ Void
+  // for cancelled records, kept out of every cost report).
+  const statusItems = [
+    { value: 'open', label: t('work_orders_page.status_open', { defaultValue: 'Open' }) },
+    { value: 'in_progress', label: t('work_orders_page.status_in_progress', { defaultValue: 'In Progress' }) },
+    { value: 'closed', label: t('work_orders_page.status_closed', { defaultValue: 'Closed' }) },
+    { value: 'void', label: t('work_orders_page.status_void', { defaultValue: 'Void' }) },
+  ];
   // Reason-for-repair class.  '' = unclassified (the honest default for
   // rows created before this field, or when the operator hasn't tagged it).
   const priorityItems = [
@@ -889,11 +896,11 @@ export default function WorkOrderForm() {
           </Field>
           <Field label={t('work_orders_page.field_status')}
             tip={t('work_orders_page.tip_status', { defaultValue:
-              'The record\u2019s lifecycle: Draft = still being prepared, Submitted = a real invoice, Void = cancelled (excluded from all cost reports). Whether it\u2019s paid lives in Payment status below.' })}>
-            <Select value={wo.status || 'draft'} onValueChange={(v) => setField('status', v)} items={statusItems}>
-              <SelectTrigger className="w-full capitalize" aria-label={t('work_orders_page.field_status')}><SelectValue /></SelectTrigger>
+              'The repair\u2019s lifecycle: Open = created / work not done, In Progress = being worked, Closed = finished, Void = cancelled (excluded from all cost reports). Whether it\u2019s paid lives in Payment status below.' })}>
+            <Select value={wo.status || 'open'} onValueChange={(v) => setField('status', v)} items={statusItems}>
+              <SelectTrigger className="w-full" aria-label={t('work_orders_page.field_status')}><SelectValue /></SelectTrigger>
               <SelectContent>
-                {statusItems.map((it) => <SelectItem key={it.value} value={it.value} className="capitalize">{it.label}</SelectItem>)}
+                {statusItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
               </SelectContent>
             </Select>
           </Field>

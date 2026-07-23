@@ -184,7 +184,7 @@ async def handle_invoice_message(
         company_code="",
         vehicle_name=vehicle,
         vendor_name="",
-        status="draft",
+        status="open",
         payment_status="unpaid",
         notes=f"Invoice photo uploaded by {user.display_name or user.telegram_id} via bot.",
         created_by=int(user.telegram_id),

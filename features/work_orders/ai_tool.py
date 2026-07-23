@@ -48,7 +48,7 @@ def _within_days(service_date: str, days: int) -> bool:
                 "type": "string",
                 "description": (
                     "Optional: 'open', 'in_progress', 'closed', "
-                    "'cancelled'.  Omit for all statuses."
+                    "'void'.  Omit for all statuses."
                 ),
             },
             "payment_status": {

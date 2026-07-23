@@ -1160,7 +1160,7 @@ async def get_service_history(
                 "total_cost": w.get("total_cost") or 0,
             }
             for w in wos
-            if w.get("status") not in ("draft", "void") and w.get("service_date")
+            if w.get("status") not in ("open", "void") and w.get("service_date")
         ]
 
     return {

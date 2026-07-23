@@ -72,7 +72,7 @@ async def test_project_inserts_full_datatruck_detail(db):
     assert wo["parts_cost"] == pytest.approx(109.0)
     assert wo["labor_cost"] == pytest.approx(0.0)
     # Real upstream invoice, not a local draft.
-    assert wo["status"] == "submitted"
+    assert wo["status"] == "closed"
 
 
 @pytest.mark.asyncio
@@ -410,3 +410,51 @@ async def test_payment_ratchets_forward_from_tms_balance(db):
     # One-way: re-syncing an open balance never demotes a paid row.
     await db.project_external_work_orders(43, [row], source="datatruck")
     assert (await db.list_work_orders(43))[0]["payment_status"] == "paid"
+
+
+@pytest.mark.asyncio
+async def test_datatruck_status_maps_to_fleetio_lifecycle(db):
+    """The projection maps Datatruck's own status onto ours instead of
+    flattening everything to one value (the pre-fix bug: all 583 synced
+    WOs read 'submitted').  Unknown/blank → closed (shop invoices are
+    completed work)."""
+    rows = [
+        {"external_id": "s1", "number": "WO-A", "vehicle_unit": "T1",
+         "status": "completed", "total_cost": 10.0, "line_items": []},
+        {"external_id": "s2", "number": "WO-B", "vehicle_unit": "T2",
+         "status": "open", "total_cost": 10.0, "line_items": []},
+        {"external_id": "s3", "number": "WO-C", "vehicle_unit": "T3",
+         "status": "in progress", "total_cost": 10.0, "line_items": []},
+        {"external_id": "s4", "number": "WO-D", "vehicle_unit": "T4",
+         "total_cost": 10.0, "line_items": []},   # no status → closed
+    ]
+    await db.project_external_work_orders(60, rows, source="datatruck")
+    by = {r["external_id"]: r["status"] for r in await db.list_work_orders(60)}
+    assert by == {"s1": "closed", "s2": "open", "s3": "in_progress", "s4": "closed"}
+
+
+@pytest.mark.asyncio
+async def test_status_ratchets_to_closed_never_reopens(db):
+    """A WO synced while upstream is 'in progress' auto-closes when the
+    shop completes it — one-way, and an operator void always sticks."""
+    row = {"external_id": "r1", "number": "WO-R", "vehicle_unit": "T1",
+           "status": "in progress", "total_cost": 10.0, "line_items": []}
+    await db.project_external_work_orders(61, [row], source="datatruck")
+    assert (await db.list_work_orders(61))[0]["status"] == "in_progress"
+
+    # Upstream completes → ratchets to closed.
+    await db.project_external_work_orders(
+        61, [{**row, "status": "completed"}], source="datatruck")
+    assert (await db.list_work_orders(61))[0]["status"] == "closed"
+
+    # Never reopens: a lagging feed showing "open" again stays closed.
+    await db.project_external_work_orders(
+        61, [{**row, "status": "open"}], source="datatruck")
+    assert (await db.list_work_orders(61))[0]["status"] == "closed"
+
+    # Operator void survives any upstream status.
+    wid = (await db.list_work_orders(61))[0]["id"]
+    await db.update_work_order(wid, 61, status="void")
+    await db.project_external_work_orders(
+        61, [{**row, "status": "completed"}], source="datatruck")
+    assert (await db.list_work_orders(61))[0]["status"] == "void"

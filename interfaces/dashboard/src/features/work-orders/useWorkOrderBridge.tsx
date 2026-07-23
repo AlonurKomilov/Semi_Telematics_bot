@@ -26,12 +26,12 @@ import { Button } from '../../components/ui/button';
 import type { WorkOrder } from '../../types';
 import { WO_PREFILL_STATE_KEY, type WorkOrderPrefill } from './createFrom';
 
-// A work order is still "open" (worth warning about) while it's a
-// draft or submitted AND not yet settled — a paid/void one is a closed
-// ticket for a past instance of the same problem and shouldn't block a
-// fresh repair.  (status carries lifecycle only since migration 154;
-// money truth is payment_status.)
-const OPEN_STATUSES = new Set(['draft', 'submitted']);
+// A work order is still "open" (worth warning about) while its
+// lifecycle is active — open or in_progress — AND it isn't settled.
+// A closed/void or paid one is a finished ticket for a past instance
+// of the same problem and shouldn't block a fresh repair.  (status =
+// Fleetio lifecycle since migration 159; money = payment_status.)
+const OPEN_STATUSES = new Set(['open', 'in_progress']);
 const isOpenWorkOrder = (w: { status?: string; payment_status?: string }) =>
   OPEN_STATUSES.has(String(w.status ?? '')) &&
   !['paid', 'void'].includes(String(w.payment_status ?? ''));

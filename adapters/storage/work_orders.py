@@ -11,6 +11,41 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+# Work-order lifecycle (Fleetio-standard): open → in_progress → closed,
+# plus void (cancelled — excluded from every cost report).  Money lives
+# in the separate payment_status field.
+_WO_STATUSES = ("open", "in_progress", "closed", "void")
+
+# Legacy pre-2026-07 values, accepted at the write boundary for one
+# release so stale dashboard bundles don't 422 mid-deploy.
+_LEGACY_WO_STATUS = {"draft": "open", "submitted": "closed"}
+
+
+def normalize_wo_status(value: Any) -> Optional[str]:
+    """Map a caller's status onto the current vocabulary (legacy
+    aliases translated); None when it isn't a recognized value so the
+    caller can leave the field untouched."""
+    s = str(value or "").strip().lower()
+    s = _LEGACY_WO_STATUS.get(s, s)
+    return s if s in _WO_STATUSES else None
+
+
+# Datatruck's own work-order statuses → ours.  Synced rows are shop
+# INVOICES for work that already happened, so an unrecognized/blank
+# status defaults to CLOSED (a completed repair), never open — else a
+# one-time backfill would flood the working set with phantom to-dos.
+_DATATRUCK_STATUS = {
+    "completed": "closed", "complete": "closed", "closed": "closed",
+    "paid": "closed", "invoiced": "closed",
+    "open": "open", "new": "open", "pending": "open",
+    "in progress": "in_progress", "in_progress": "in_progress",
+    "on hold": "in_progress", "on_hold": "in_progress",
+}
+
+
+def map_datatruck_status(value: Any) -> str:
+    return _DATATRUCK_STATUS.get(str(value or "").strip().lower(), "closed")
+
 
 class WorkOrdersMixin:
 
@@ -35,7 +70,7 @@ class WorkOrdersMixin:
         invoice_number: str = "",
         payment_method: str = "",
         payment_status: str = "unpaid",
-        status: str = "draft",
+        status: str = "open",
         repair_priority: str = "",
         complaint: str = "",
         cause: str = "",
@@ -264,12 +299,21 @@ class WorkOrdersMixin:
                         payment_status = "paid"
                     elif _paid not in (None, "") and float(_paid) + 0.005 >= total:
                         payment_status = "paid"
+                # Lifecycle mapped from Datatruck's own status (unknown /
+                # blank → closed: these are completed shop invoices).
+                wo_status = map_datatruck_status(r.get("status"))
 
                 wo_id = existing.get(ext)
                 if wo_id is not None:
-                    # Refresh Datatruck-owned fields only (+ the payment
-                    # ratchet: unpaid/partial may become paid, never the
-                    # reverse; operator void always sticks).
+                    # Refresh Datatruck-owned fields only, with TWO
+                    # one-way ratchets so a lagging feed never regresses
+                    # an operator's or an already-final state:
+                    #   payment: unpaid/partial → paid, never back.
+                    #   status:  open/in_progress → closed when upstream
+                    #            completes; never reopened; operator void
+                    #            always sticks.  (Without this a WO synced
+                    #            while "in progress" would never auto-close
+                    #            and would inflate the active set forever.)
                     await self._db.execute(
                         "UPDATE work_orders SET vehicle_name = ?, "
                         "vehicle_type = ?, company_code = ?, assigned_to = ?, "
@@ -282,12 +326,16 @@ class WorkOrdersMixin:
                         "    WHEN payment_status IN ('paid', 'void') THEN payment_status "
                         "    WHEN ? = 'paid' THEN 'paid' "
                         "    ELSE payment_status END, "
+                        "status = CASE "
+                        "    WHEN status = 'void' THEN 'void' "
+                        "    WHEN ? = 'closed' THEN 'closed' "
+                        "    ELSE status END, "
                         "updated_at = ? WHERE id = ? AND account_id = ?",
                         (vehicle_name, vehicle_type, company_code, assigned_to,
                          invoice_number, external_number, vendor_name,
                          vendor_address, vendor_phone, vendor_id, payment_method,
                          service_date, odometer, labor_cost, parts_cost,
-                         tax, total, payment_status, now, wo_id, account_id),
+                         tax, total, payment_status, wo_status, now, wo_id, account_id),
                     )
                     written += 1
                     continue
@@ -314,7 +362,7 @@ class WorkOrdersMixin:
                      vendor_id, service_date, odometer, None,
                      labor_cost, parts_cost, tax, total,
                      invoice_number, external_number, payment_method, payment_status,
-                     "submitted", str(r.get("note") or ""), assigned_to, source, ext,
+                     wo_status, str(r.get("note") or ""), assigned_to, source, ext,
                      0, now, now),
                 )
                 # Resolve the freshly-inserted id and seed its line items.

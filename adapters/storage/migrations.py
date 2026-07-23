@@ -1532,7 +1532,7 @@ async def migrate_work_orders_skeleton(conn) -> None:
                 invoice_number           TEXT    NOT NULL DEFAULT '',
                 payment_method           TEXT    NOT NULL DEFAULT '',
                 payment_status           TEXT    NOT NULL DEFAULT 'unpaid',
-                status                   TEXT    NOT NULL DEFAULT 'draft',
+                status                   TEXT    NOT NULL DEFAULT 'open',
                 repair_priority          TEXT    NOT NULL DEFAULT '',
                 complaint                TEXT    NOT NULL DEFAULT '',
                 cause                    TEXT    NOT NULL DEFAULT '',
@@ -6823,3 +6823,35 @@ async def migrate_datatruck_stale_payment_ratchet(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 158: stale Datatruck payment statuses ratcheted to paid")
+
+
+@_register("159_work_orders_status_fleetio_vocabulary")
+async def migrate_work_orders_status_fleetio_vocabulary(conn) -> None:
+    """Adopt the Fleetio-standard work-order lifecycle vocabulary.
+
+    status: draft|submitted|void → open|in_progress|closed|void, so a
+    work order reads as a real job ticket (Open → In Progress → Closed)
+    instead of a document (Draft/Submitted).  The status/payment SPLIT
+    is unchanged — money still lives in payment_status.
+
+      * draft     → open     (created, work/entry not finished)
+      * submitted → closed    (a finalized invoice record)
+      * void      → void      (cancelled; still excluded from reports)
+
+    Data-only + column default; idempotent (only the two legacy values
+    are rewritten).  Legacy values are also accepted + normalized at
+    the API boundary for one release, so a stale dashboard bundle mid-
+    deploy never 422s.
+    """
+    await conn.execute(
+        "UPDATE work_orders SET status = CASE status "
+        "  WHEN 'draft' THEN 'open' "
+        "  WHEN 'submitted' THEN 'closed' "
+        "  ELSE status END "
+        "WHERE status IN ('draft', 'submitted')"
+    )
+    await conn.execute(
+        "ALTER TABLE work_orders ALTER COLUMN status SET DEFAULT 'open'"
+    )
+    await conn.commit()
+    logger.info("Migration 159: work_orders.status migrated to Fleetio vocabulary")
