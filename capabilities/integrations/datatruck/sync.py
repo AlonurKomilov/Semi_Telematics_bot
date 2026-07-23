@@ -812,12 +812,15 @@ async def _persist_rows(
 
 async def fetch_normalized(
     account_id: int, resource: str, *, days: int | None = None,
+    on_progress: Any = None,
 ) -> tuple[list[dict], int | None]:
     """Fetch + normalize every page of a resource WITHOUT writing.
 
     Backs the preview path: we pull the data, hand it to a planner to
     compute the diff, and cache it so apply commits the very same rows.
-    Returns ``(rows, total_upstream)``.
+    Returns ``(rows, total_upstream)``.  ``on_progress`` (optional
+    async ``(fetched, total) -> None``) fires after each page so a
+    long rate-gated fetch can report itself.
     """
     spec = RESOURCES.get(resource)
     if spec is None:
@@ -834,6 +837,11 @@ async def fetch_normalized(
             total = page.get("count")
         records = page.get("results") or []
         rows.extend(spec.normalize(r) for r in records if isinstance(r, dict))
+        if on_progress is not None:
+            # Rate-gated pages arrive ~3s apart, so one callback per
+            # page is cheap — it's what keeps the dashboard's preview
+            # progress honest instead of a frozen spinner.
+            await on_progress(len(rows), total)
     return rows, total
 
 
@@ -890,7 +898,8 @@ async def run_preview(
     """
     key = _preview_key(account_id, resource, preview_id)
     await _cache_preview(key, {
-        "state": "running", "resource": resource, "preview_id": preview_id,
+        "state": "running", "phase": "fetching",
+        "resource": resource, "preview_id": preview_id,
         "fetched": 0, "total_upstream": None, "diff": None, "error": None,
     })
     try:
@@ -900,7 +909,29 @@ async def run_preview(
         tenant = await get_tenant_db(account_id)
         if tenant is None:
             raise RuntimeError("tenant DB unavailable")
-        rows, total = await fetch_normalized(account_id, resource, days=days)
+
+        # Live progress: a 500-record work-orders window is ~60 pages
+        # behind the 18 req/min gate (≈3+ minutes) — the poller needs
+        # to SEE the fetch advancing or the dashboard reads as stuck.
+        async def _progress(fetched: int, total: int | None) -> None:
+            await _cache_preview(key, {
+                "state": "running", "phase": "fetching",
+                "resource": resource, "preview_id": preview_id,
+                "fetched": fetched, "total_upstream": total,
+                "diff": None, "error": None,
+            })
+
+        rows, total = await fetch_normalized(
+            account_id, resource, days=days, on_progress=_progress,
+        )
+        # Fetch done — the roster lookup + diff planning are the last
+        # (shorter) stretch; a distinct phase keeps the poller honest.
+        await _cache_preview(key, {
+            "state": "running", "phase": "planning",
+            "resource": resource, "preview_id": preview_id,
+            "fetched": len(rows), "total_upstream": total,
+            "diff": None, "error": None,
+        })
         # Work orders reference the vehicle by plate/unit string; pull the
         # rosters live (read-only) so the diff + apply show the canonical
         # unit number, with no separate trucks/trailers sync needed.

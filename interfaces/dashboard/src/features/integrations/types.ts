@@ -257,6 +257,10 @@ export interface DatatruckPreviewStatus {
     | 'expired' | 'unavailable';
   resource: string;
   preview_id: string;
+  /** While running: 'fetching' (rate-gated upstream pages) then
+   *  'planning' (roster lookup + diff).  Drives the live progress
+   *  line so a 3-minute work-orders preview never reads as stuck. */
+  phase?: 'fetching' | 'planning';
   fetched?: number;
   total_upstream?: number | null;
   diff?: SyncDiff;

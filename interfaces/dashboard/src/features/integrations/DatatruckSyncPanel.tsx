@@ -85,20 +85,26 @@ export default function DatatruckSyncPanel({
     });
 
   // Poll a background preview until it's ready/failed.  The upstream
-  // fetch is rate-gated and can run tens of seconds, so it can't be a
-  // single synchronous request — we keep the row's spinner on (via
-  // ``triggering``) the whole time, then open the modal on ready.
+  // fetch is rate-gated — a 500-record work-orders window is 3+
+  // MINUTES of pages — so there is deliberately NO fixed time ceiling:
+  // we keep polling as long as the worker reports PROGRESS (fetched /
+  // phase advancing), and only give up when the status stops moving
+  // for ~2 minutes (a genuinely dead worker).  While it runs, the
+  // feedback line narrates the progress so the spinner never reads as
+  // stuck.
   const pollPreview = async (
-    resource: string, previewId: string, attempt: number,
+    resource: string, previewId: string,
+    lastSig = '', stalledPolls = 0,
   ) => {
-    if (attempt > 60) {  // ~90s ceiling
-      setFeedback({ kind: 'error', message: `${resource}: preview timed out — try again` });
+    if (stalledPolls > 80) {  // ~2 min with NO progress at all
+      setFeedback({ kind: 'error', message: `${resource}: preview stalled — try again` });
       busyOff(resource);
       return;
     }
     try {
       const st = await getDatatruckPreview(resource, previewId);
       if (st.state === 'ready') {
+        setFeedback(null);
         setPreview(st);
         busyOff(resource);
       } else if (st.state === 'failed') {
@@ -108,8 +114,26 @@ export default function DatatruckSyncPanel({
         setFeedback({ kind: 'error', message: `${resource}: preview unavailable — try again` });
         busyOff(resource);
       } else {
-        // queued / pending / running → keep polling
-        setTimeout(() => pollPreview(resource, previewId, attempt + 1), 1500);
+        // queued / pending / running → narrate + keep polling while
+        // anything is moving.
+        const sig = `${st.state}|${st.phase ?? ''}|${st.fetched ?? 0}`;
+        if (st.state === 'running') {
+          setFeedback({
+            kind: 'info',
+            message: st.phase === 'planning'
+              ? `${resource}: computing changes…`
+              : `${resource}: preparing preview — ${st.fetched ?? 0}${
+                  st.total_upstream ? ` of ${st.total_upstream}` : ''
+                } records fetched…`,
+          });
+        }
+        setTimeout(
+          () => pollPreview(
+            resource, previewId, sig,
+            sig === lastSig ? stalledPolls + 1 : 0,
+          ),
+          1500,
+        );
       }
     } catch (e) {
       setFeedback({ kind: 'error', message: `${resource}: ${e instanceof Error ? e.message : 'preview failed'}` });
@@ -128,7 +152,7 @@ export default function DatatruckSyncPanel({
       // until the operator accepts.  ``busyOff`` happens in pollPreview.
       try {
         const { preview_id } = await startDatatruckPreview(resource, days);
-        pollPreview(resource, preview_id, 0);
+        pollPreview(resource, preview_id);
       } catch (e) {
         setFeedback({
           kind: 'error',
