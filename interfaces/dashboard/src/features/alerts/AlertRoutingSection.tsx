@@ -745,16 +745,21 @@ export default function AlertRoutingSection({
               </button>
             </div>
           )}
-          {/* Completion cue — how much of the roster is set up. */}
+          {/* Completion cue + first-run path are ACCOUNT-WIDE state —
+              owner/admin only.  A role manager sees just their own row
+              (its bind form carries the /chatid hint), never other
+              roles' setup progress. */}
+          {canManageAccount && (
           <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
             {t('alert_routing.roster_progress', { n: boundCount, total: destinations.length })}
             <InfoTip label={`${t('alert_routing.subbot_hint')} ${t('alert_routing.fallback_note')}`} size={12} />
           </p>
+          )}
 
           {/* First-run path — VISIBLE until the first group is bound
               (one-time setup help stays out from behind tips).  Step 1
               is pre-checked by the bot connection itself. */}
-          {boundCount === 0 && (
+          {canManageAccount && boundCount === 0 && (
             <div className="rounded-lg border border-border px-3 py-2 space-y-1 text-xs">
               <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                 {t('alert_routing.setup_title')}
@@ -769,8 +774,11 @@ export default function AlertRoutingSection({
             </div>
           )}
 
-          {/* Main row — the identity bot.  Same spot the single-mode
-              header occupies; label states its three jobs. */}
+          {/* Main row — the identity bot + Owner & Admins group.
+              Owner/admin only: a role manager has no business with the
+              owners' group, and the account-bot identity stays off
+              their routing view. */}
+          {canManageAccount && (
           <div className="border border-border rounded-lg px-3 py-2">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               {/* One w-40 name column on EVERY row (Main included) so
@@ -803,11 +811,15 @@ export default function AlertRoutingSection({
             </p>
             {topicsExpander('owner_admin')}
           </div>
+          )}
 
           {/* Role rows — the role, its GROUP (bind here), a READ-ONLY
               sender indicator (attach the Sub bot on Settings), then
-              topics. */}
-          {ROLE_ORDER.map((persona) => {
+              topics.  Rows are viewer-scoped: owner/admin sees every
+              role; a manager (and a manager-tier PREVIEW) sees ONLY
+              their own role — other roles' groups are not their
+              business (info-scope, same rule as the Settings roster). */}
+          {ROLE_ORDER.filter((p) => canManage(p)).map((persona) => {
             const sub = subBots?.personas?.[persona] ?? null;
             // The Permissions matrix is the SSOT: a role with no
             // alert-type features granted has nothing to route, so its

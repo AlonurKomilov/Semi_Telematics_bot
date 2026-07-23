@@ -413,7 +413,10 @@ export default function Settings() {
               <SubBotRoster canManageAccount={canManageAccount} />
 
               {/* CONNECTION — the bot-credential half of the card,
-                  labeled so it reads as a distinct section from DELIVERY. */}
+                  OWNER-ONLY: a role manager manages their Sub bot above;
+                  the account bot's identity/credential isn't their
+                  surface (owner info-scope decision 2026-07-23). */}
+              {canManageAccount && (<>
               <div className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                 {t('bot_card.connection_label')}
               </div>
@@ -480,6 +483,7 @@ export default function Settings() {
                   </button>
                 ))}
               </div>
+              </>)}
             </div>
           ) : !canManageAccount ? (
             // Manager, no account bot yet — only an owner can connect one.
