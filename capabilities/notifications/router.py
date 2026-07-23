@@ -122,7 +122,10 @@ async def get_channel_prefs(
     rows = await db.list_recipient_notification_prefs(
         db_user.account_id, "user", db_user.id)
     ch_rows = [r for r in rows if r["channel"] == channel]
-    types = {r["alert_type"]: bool(r["enabled"]) for r in ch_rows}
+    # Storage keys categories namespaced (``alert.faults``); this endpoint
+    # still speaks the UI's bare alert-type vocabulary, so strip the prefix.
+    types = {r["category"].split(".", 1)[-1]: bool(r["enabled"])
+             for r in ch_rows if r["category"].startswith("alert.")}
     # Channel cadence = the shared cadence of the channel's rows (kept
     # uniform by set_channel_cadence); default when nothing is enabled yet.
     cadence = next((r["cadence"] for r in ch_rows),
@@ -180,9 +183,10 @@ async def set_channel_type(
         db_user.account_id, "user", db_user.id)
     cadence = next((r["cadence"] for r in rows if r["channel"] == channel),
                    _CHANNEL_DEFAULT_CADENCE[channel])
+    # UI speaks bare alert types; the matrix stores the namespaced category.
     await db.set_notification_pref(
         db_user.account_id, "user", db_user.id, channel,
-        body.alert_type, enabled=body.enabled, cadence=cadence)
+        f"alert.{body.alert_type}", enabled=body.enabled, cadence=cadence)
     return {"ok": True}
 
 

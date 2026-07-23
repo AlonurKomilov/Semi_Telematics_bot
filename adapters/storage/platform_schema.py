@@ -379,11 +379,11 @@ async def create_tables(conn) -> None:
             recipient_type TEXT    NOT NULL,             -- 'user' | 'account' | 'topic'
             recipient_id   TEXT    NOT NULL,             -- user_id / topic id / distro id
             channel        TEXT    NOT NULL,             -- 'telegram_dm' | 'email' | 'web_push' | 'sms' | 'telegram_topic'
-            alert_type     TEXT    NOT NULL,             -- 'faults' | ... | '*'
+            category       TEXT    NOT NULL,             -- 'alert.faults' | 'team.invite_accepted' | '*'
             enabled        INTEGER NOT NULL DEFAULT 1,
             cadence        TEXT    NOT NULL DEFAULT 'immediate',  -- 'immediate' | 'hourly' | 'daily'
             updated_at     TEXT    NOT NULL DEFAULT '',
-            PRIMARY KEY (account_id, recipient_type, recipient_id, channel, alert_type)
+            PRIMARY KEY (account_id, recipient_type, recipient_id, channel, category)
         );
 
         -- Per-recipient channel CONNECTION (address + verified state +
@@ -414,7 +414,7 @@ async def create_tables(conn) -> None:
             recipient_id   TEXT    NOT NULL,
             channel        TEXT    NOT NULL,
             cadence        TEXT    NOT NULL,      -- 'hourly' | 'daily'
-            alert_type     TEXT    NOT NULL,
+            category       TEXT    NOT NULL,
             summary        TEXT    NOT NULL DEFAULT '',
             severity       TEXT    NOT NULL DEFAULT 'info',
             address        TEXT    NOT NULL DEFAULT '',

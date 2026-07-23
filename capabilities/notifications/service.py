@@ -25,6 +25,11 @@ import logging
 from collections import defaultdict
 from typing import Any, Iterable
 
+from capabilities.notifications.categories import (
+    BROADCAST,
+    TARGETED,
+    get_category,
+)
 from capabilities.notifications.channels import (
     SEVERITY_RANK,
     DeliveryResult,
@@ -73,8 +78,22 @@ async def dispatch(
     sends the result.  ``content`` stays RAW: it must NOT be pre-escaped,
     since ``escape_html`` is not idempotent for ``&`` and rendering is
     where escaping belongs.  ``channels`` restricts the fan-out (default:
-    every registered channel).  ``content.alert_type`` selects subscribers.
+    every registered channel).  ``content.category`` selects subscribers.
+
+    BROADCAST only — a targeted category (``team.invite_accepted``) must go
+    through :func:`notify_user`, not here; passing one is a programming
+    error and raises.  Category audience (role eligibility) is applied here
+    (moved out of the storage query): a user recipient whose CURRENT role
+    isn't eligible for the category is dropped, so a stale pref left after a
+    role change can't keep firing.
     """
+    cat = get_category(content.category)
+    if cat is not None and cat.kind == TARGETED:
+        raise ValueError(
+            f"dispatch() is broadcast-only; {content.category!r} is targeted "
+            "— use notify_user()")
+    audience = cat.audience if cat is not None else None
+
     keys = list(channels) if channels is not None else [c.key for c in list_channels()]
     line = (content.title or content.body).split("\n", 1)[0].strip()
     results: list[DeliveryResult] = []
@@ -86,10 +105,12 @@ async def dispatch(
             continue
         try:
             subs = await db.get_notification_subscribers(
-                account_id, content.alert_type, key)
+                account_id, content.category, key)
         except Exception as e:                      # a broken channel query
             logger.error("dispatch: subscriber lookup failed (%s): %s", key, e)
             continue
+
+        subs = await _apply_audience(db, subs, audience)
 
         for s in subs:
             cadence = s.get("cadence") or IMMEDIATE
@@ -104,7 +125,7 @@ async def dispatch(
                 try:
                     await db.enqueue_digest_item(
                         account_id, s["recipient_type"], s["recipient_id"],
-                        key, cadence, content.alert_type, line,
+                        key, cadence, content.category, line,
                         s.get("address", ""), severity=content.severity,
                     )
                 except Exception as e:
@@ -123,6 +144,85 @@ async def dispatch(
     return results
 
 
+async def _apply_audience(db, subs, audience) -> list[dict]:
+    """Drop broadcast ``user`` recipients whose current role isn't eligible
+    for the category.  ``audience`` is ``None`` for categories with no role
+    gate (deliver to all) or unregistered categories (permissive)."""
+    if audience is None:
+        return subs
+    ids = [int(s["recipient_id"]) for s in subs
+           if s["recipient_type"] == "user"
+           and str(s["recipient_id"]).lstrip("-").isdigit()]
+    roles = await db.get_roles_for_users(ids) if ids else {}
+
+    def keep(s: dict) -> bool:
+        if s["recipient_type"] != "user":
+            return True                        # shared topics have no role
+        rid = str(s["recipient_id"])
+        role = roles.get(int(rid)) if rid.lstrip("-").isdigit() else None
+        return role is not None and audience(role)
+
+    return [s for s in subs if keep(s)]
+
+
+async def notify_user(
+    db: Any,
+    account_id: int,
+    user_id: int,
+    content: NotificationContent,
+    *,
+    channels: Iterable[str] | None = None,
+) -> list[DeliveryResult]:
+    """Deliver a TARGETED notification to ONE user (the actor / affected
+    person) — e.g. ``team.invite_accepted``.
+
+    OPT-OUT, unlike broadcast: it fires on every channel the user has
+    connected UNLESS they explicitly muted this category (an ``enabled=0``
+    pref row).  A ``mandatory`` category (security/billing) ignores the
+    mute.  This is the only honest default for account-activity — nobody
+    pre-creates a pref row for "your invite was accepted", so an opt-IN
+    model would silently never fire.
+
+    Rejects broadcast categories (use :func:`dispatch`).  Immediate only —
+    a targeted notice is a direct reply; batching it makes no sense.
+    """
+    cat = get_category(content.category)
+    if cat is not None and cat.kind == BROADCAST:
+        raise ValueError(
+            f"notify_user() is targeted-only; {content.category!r} is "
+            "broadcast — use dispatch()")
+    mandatory = bool(cat and cat.mandatory)
+    keys = list(channels) if channels is not None else [c.key for c in list_channels()]
+    results: list[DeliveryResult] = []
+
+    for key in keys:
+        channel = get_channel(key)
+        if channel is None or not getattr(channel, "personal", False):
+            continue                           # targeted = personal channels only
+        conn = await db.get_notification_channel(account_id, "user", user_id, key)
+        if not conn or not conn.get("verified") or not conn.get("enabled_master"):
+            continue                           # nothing connected to deliver to
+        if not mandatory:
+            prefs = await db.get_pref_categories(account_id, "user", user_id, key)
+            # Opt-out with the SPECIFIC row winning over the '*' blanket, in
+            # both directions — so "I muted everything but re-enabled X" and
+            # "I allow everything but muted X" both behave as the user set
+            # them, no "turned it back on but still muted" surprise.
+            specific = prefs.get(content.category)      # None | True | False
+            if specific is False:
+                continue                                # explicit mute of X
+            if specific is None and prefs.get("*") is False:
+                continue                                # blanket mute, no override
+        rcpt = Recipient(account_id=account_id, type="user", id=str(user_id),
+                         address=conn.get("address", ""))
+        try:
+            results.append(await channel.send(rcpt, channel.render(rcpt, content)))
+        except Exception as e:
+            logger.error("notify_user: send failed (%s): %s", key, e)
+            results.append(DeliveryResult(ok=False, error="exception"))
+    return results
+
+
 def build_digest_content(items: list[dict], cadence: str) -> NotificationContent:
     """Group a recipient's buffered items into ONE semantic digest.
 
@@ -138,14 +238,16 @@ def build_digest_content(items: list[dict], cadence: str) -> NotificationContent
     """
     label = {"hourly": "Hourly", "daily": "Daily"}.get(cadence, cadence.title())
     n = len(items)
-    by_type: dict[str, int] = defaultdict(int)
+    by_cat: dict[str, int] = defaultdict(int)
     sev = "info"
     for it in items:
-        by_type[it["alert_type"]] += 1
+        by_cat[it["category"]] += 1
         if _SEV_RANK.get(it.get("severity", "info"), 0) > _SEV_RANK.get(sev, 0):
             sev = it.get("severity", "info")
+    # Display the bare topic (strip the source namespace: alert.faults → faults).
     counts = ", ".join(
-        f"{c} {t.replace('_', ' ')}" for t, c in sorted(by_type.items())
+        f"{c} {t.split('.', 1)[-1].replace('_', ' ')}"
+        for t, c in sorted(by_cat.items())
     )
     title = f"{label} summary — {n} notification{'s' if n != 1 else ''}"
 
@@ -166,7 +268,7 @@ def build_digest_content(items: list[dict], cadence: str) -> NotificationContent
         body_lines.append(f"…and {n - shown} more")
     return NotificationContent(
         title=title, body="\n".join(body_lines),
-        alert_type="digest", severity=sev,
+        category="digest", severity=sev,
     )
 
 

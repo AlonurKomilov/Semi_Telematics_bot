@@ -56,6 +56,7 @@ _NOTIF_MODULES = (
     "capabilities.notifications.retention",
     "capabilities.notifications.webpush",
     "capabilities.notifications.vapid",
+    "capabilities.notifications.categories",
     "capabilities.notifications.push_endpoint",
     "capabilities.notifications.router",
 )
@@ -247,6 +248,29 @@ def test_telegram_photo_caption_uses_stricter_limit():
     content = NotificationContent(title="Cam", body="x " * 2000,
                                   photo_bytes=b"\x89PNG")
     assert len(render_telegram(content).text) <= _TELEGRAM_CAPTION_MAX
+
+
+def test_notification_content_category_alias():
+    """`alert_type` is a deprecated alias for `category` during the sweep —
+    each accepts the other and they read back mirrored."""
+    assert NotificationContent(title="t", category="alert.fuel").alert_type == "alert.fuel"
+    assert NotificationContent(title="t", alert_type="alert.fuel").category == "alert.fuel"
+    # category wins if both given.
+    c = NotificationContent(title="t", category="a", alert_type="b")
+    assert c.category == "a" and c.alert_type == "a"
+
+
+def test_every_alert_type_has_a_registered_category():
+    """Drift guard: each alert type must register an `alert.<type>`
+    category, or dispatch would deliver it with no audience gate (silent
+    least-privilege loss)."""
+    import capabilities.alerting  # noqa: F401  — triggers registration
+    from capabilities.alerting.relevance import ALERT_TYPE_REQUIRED_PERM
+    from capabilities.notifications.categories import get_category
+    for atype in ALERT_TYPE_REQUIRED_PERM:
+        cat = get_category(f"alert.{atype}")
+        assert cat is not None and cat.kind == "broadcast", atype
+        assert cat.audience is not None, atype
 
 
 def test_severity_maps_do_not_drift():

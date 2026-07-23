@@ -27,6 +27,15 @@ from capabilities.notifications.service import (  # noqa: F401,E402
     build_digest_content,
     dispatch,
     flush_digests,
+    notify_user,
+)
+from capabilities.notifications.categories import (  # noqa: F401,E402
+    BROADCAST,
+    TARGETED,
+    NotificationCategory,
+    get_category,
+    list_categories,
+    register_category,
 )
 
 # Register the built-in transports (their module-load @register_channel).

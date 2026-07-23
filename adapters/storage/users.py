@@ -635,9 +635,11 @@ class UsersMixin:
             return
         account_id, telegram_id, alerts_on = row[0], row[1], row[2]
         for col, val in touched.items():
+            # The matrix stores categories namespaced by source; a legacy
+            # alert toggle mirrors to the `alert.<type>` category.
             await self.set_notification_pref(
                 account_id, "user", user_id, "telegram_dm",
-                self._ALERT_PREF_COLS[col], enabled=bool(val),
+                f"alert.{self._ALERT_PREF_COLS[col]}", enabled=bool(val),
             )
         # The channel connection carries the telegram address + master
         # switch; only meaningful for telegram-linked users.
@@ -737,8 +739,9 @@ class UsersMixin:
         so behavior matches.  NOT yet wired into the live pipeline — the
         shadow-compare test proves it returns the same users before the
         reader flip (2b-2)."""
+        # The matrix keys categories namespaced by source.
         subs = await self.get_notification_subscribers(
-            account_id, alert_type, "telegram_dm",
+            account_id, f"alert.{alert_type}", "telegram_dm",
         )
         ids = [int(s["recipient_id"]) for s in subs
                if str(s["recipient_id"]).lstrip("-").isdigit()]

@@ -32,7 +32,7 @@ async def test_set_and_list_prefs(pg_db):
     await pg_db.set_notification_pref(acct, "user", uid, "telegram_dm", "faults", enabled=False)
     await pg_db.set_notification_pref(acct, "user", uid, "email", "fuel", enabled=True, cadence="daily")
     rows = await pg_db.list_recipient_notification_prefs(acct, "user", uid)
-    got = {(r["channel"], r["alert_type"]): (r["enabled"], r["cadence"]) for r in rows}
+    got = {(r["channel"], r["category"]): (r["enabled"], r["cadence"]) for r in rows}
     assert got[("telegram_dm", "fuel")] == (True, "immediate")
     assert got[("telegram_dm", "faults")] == (False, "immediate")
     assert got[("email", "fuel")] == (True, "daily")
@@ -40,7 +40,7 @@ async def test_set_and_list_prefs(pg_db):
     # Upsert overwrites in place (no duplicate row).
     await pg_db.set_notification_pref(acct, "user", uid, "telegram_dm", "fuel", enabled=False)
     rows = await pg_db.list_recipient_notification_prefs(acct, "user", uid)
-    fuel = [r for r in rows if r["channel"] == "telegram_dm" and r["alert_type"] == "fuel"]
+    fuel = [r for r in rows if r["channel"] == "telegram_dm" and r["category"] == "fuel"]
     assert len(fuel) == 1 and fuel[0]["enabled"] is False
 
 
@@ -94,33 +94,61 @@ async def test_wildcard_pref_matches_any_type(pg_db):
         assert len(await pg_db.get_notification_subscribers(acct, atype, "telegram_dm")) == 1
 
 
-async def test_subscribers_apply_delivery_role_filter(pg_db):
-    """A pref row for a type the recipient's CURRENT role can't receive is
-    dropped at delivery — the same defence-in-depth the Telegram readers
-    apply, so a row left over after a role downgrade can't keep firing."""
-    from capabilities.alerting.relevance import (
-        ALERT_TYPE_REQUIRED_PERM, alert_types_for_role)
+async def test_subscribers_return_raw_rows_role_gate_moved_to_dispatch(pg_db):
+    """get_notification_subscribers returns the RAW matrix match — the
+    role/audience gate moved OUT of storage INTO dispatch, so this query no
+    longer imports capabilities.alerting at all."""
     acct = (await pg_db.create_account("RoleGate Co")).id
-    role = Role.DRIVER
-    allowed = set(alert_types_for_role(role))
-    disallowed = [t for t in ALERT_TYPE_REQUIRED_PERM if t not in allowed]
-    assert disallowed, "expected a role with at least one non-receivable type"
-    bad = disallowed[0]
-
-    u = await pg_db.create_user(telegram_id=4242, account_id=acct, role=role)
-    await pg_db.set_notification_pref(acct, "user", u.id, "email", bad, enabled=True)
+    u = await pg_db.create_user(telegram_id=4242, account_id=acct, role=Role.DRIVER)
+    await pg_db.set_notification_pref(acct, "user", u.id, "email", "alert.fuel", enabled=True)
     await pg_db.upsert_notification_channel(
         acct, "user", u.id, "email", address="d@x.com", verified=True)
 
-    # Pref + verified channel both present, but the role can't receive it.
-    assert await pg_db.get_notification_subscribers(acct, bad, "email") == []
+    # The storage query now returns the RAW matrix match — it no longer
+    # applies a role gate (that moved to dispatch's audience filter).  So a
+    # DRIVER pref for a fleet-only type is INCLUDED here; it's dropped later
+    # in dispatch (see test_dispatch_audience_drops_ineligible_role).
+    subs = await pg_db.get_notification_subscribers(acct, "alert.fuel", "email")
+    assert [s["recipient_id"] for s in subs] == [str(u.id)]
 
-    # A type the role CAN receive is delivered normally.
-    if allowed:
-        good = sorted(allowed)[0]
-        await pg_db.set_notification_pref(acct, "user", u.id, "email", good, enabled=True)
-        subs = await pg_db.get_notification_subscribers(acct, good, "email")
-        assert [s["recipient_id"] for s in subs] == [str(u.id)]
+    # get_roles_for_users backs the dispatch audience gate.
+    assert await pg_db.get_roles_for_users([u.id]) == {u.id: "driver"}
+
+
+# ── Category rename migration (existing installs) ────────────────────
+
+async def test_category_rename_migration_on_existing_install(pg_db):
+    """Simulate a PRE-rename install: notification_pref with an
+    ``alert_type`` column + bare values.  The migration renames the column
+    to ``category`` and namespaces the values to ``alert.<type>`` (leaving
+    ``'*'`` alone), and is idempotent."""
+    from adapters.storage.platform_migrations import (
+        migrate_notification_category_rename)
+    db = pg_db._db
+    await db.execute("DROP TABLE IF EXISTS notification_pref")
+    await db.execute("""
+        CREATE TABLE notification_pref (
+            account_id INTEGER NOT NULL, recipient_type TEXT NOT NULL,
+            recipient_id TEXT NOT NULL, channel TEXT NOT NULL,
+            alert_type TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1,
+            cadence TEXT NOT NULL DEFAULT 'immediate',
+            updated_at TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (account_id, recipient_type, recipient_id, channel, alert_type))""")
+    for atype in ("fuel", "*"):
+        await db.execute(
+            "INSERT INTO notification_pref (account_id, recipient_type, "
+            "recipient_id, channel, alert_type, enabled, cadence, updated_at) "
+            "VALUES (1, 'user', '5', 'email', ?, 1, 'daily', '')", (atype,))
+    await db.commit()
+
+    await migrate_notification_category_rename(db)
+    cur = await db.execute("SELECT category FROM notification_pref")
+    assert {r[0] for r in await cur.fetchall()} == {"alert.fuel", "*"}  # '*' preserved
+
+    # Idempotent — a second run finds `category` already and no-ops.
+    await migrate_notification_category_rename(db)
+    cur = await db.execute("SELECT category FROM notification_pref")
+    assert {r[0] for r in await cur.fetchall()} == {"alert.fuel", "*"}
 
 
 # ── Backfill migration ───────────────────────────────────────────────
@@ -142,20 +170,20 @@ async def test_backfill_from_legacy_columns(pg_db):
     await migrate_notification_matrix(pg_db._db)
 
     rows = await pg_db.list_recipient_notification_prefs(acct, "user", uid)
-    by_type = {r["alert_type"]: r["enabled"]
-               for r in rows if r["channel"] == "telegram_dm"}
-    assert by_type["fuel"] is False           # the OFF column
-    assert by_type["faults"] is True          # default-ON column
-    assert by_type["camera"] is True
+    by_cat = {r["category"]: r["enabled"]
+              for r in rows if r["channel"] == "telegram_dm"}
+    assert by_cat["alert.fuel"] is False       # the OFF column (namespaced)
+    assert by_cat["alert.faults"] is True      # default-ON column
+    assert by_cat["alert.camera"] is True
     # Channel connection carries telegram_id + the alerts_on master.
     ch = await pg_db.get_notification_channel(acct, "user", uid, "telegram_dm")
     assert ch and ch["enabled_master"] is True and ch["address"]
 
     # Idempotent: a user edit survives a re-run (ON CONFLICT DO NOTHING).
-    await pg_db.set_notification_pref(acct, "user", uid, "telegram_dm", "fuel", enabled=True)
+    await pg_db.set_notification_pref(acct, "user", uid, "telegram_dm", "alert.fuel", enabled=True)
     await migrate_notification_matrix(pg_db._db)
     rows2 = await pg_db.list_recipient_notification_prefs(acct, "user", uid)
-    fuel = [r for r in rows2 if r["channel"] == "telegram_dm" and r["alert_type"] == "fuel"][0]
+    fuel = [r for r in rows2 if r["channel"] == "telegram_dm" and r["category"] == "alert.fuel"][0]
     assert fuel["enabled"] is True            # the re-run did NOT clobber the edit
 
 
@@ -246,7 +274,7 @@ async def test_reader_flip_flag_switches_source(pg_db, monkeypatch):
 
     # A MATRIX-ONLY change (bypassing the columns) is seen only when ON —
     # proving the flag genuinely selects the source.
-    await pg_db.set_notification_pref(acct, "user", u.id, "telegram_dm", "faults", enabled=False)
+    await pg_db.set_notification_pref(acct, "user", u.id, "telegram_dm", "alert.faults", enabled=False)
     assert await pg_db.get_typed_alert_subscribers(acct, "faults") == []   # ON → matrix (now off)
     monkeypatch.delenv("NOTIFICATIONS_MATRIX_READER", raising=False)
     assert {x.id for x in await pg_db.get_typed_alert_subscribers(acct, "faults")} == {u.id}  # OFF → column still on

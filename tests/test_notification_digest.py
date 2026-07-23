@@ -92,7 +92,7 @@ async def test_enqueue_fetch_clear_roundtrip(pg_db):
     assert await pg_db.fetch_due_digest_items("hourly") == []   # cadence-scoped
     items = await pg_db.fetch_due_digest_items("daily")
     assert len(items) == 2
-    assert {i["alert_type"] for i in items} == {"fuel", "faults"}
+    assert {i["category"] for i in items} == {"fuel", "faults"}
     assert items[0]["address"] == "me@x.com"
     assert items[0]["severity"] == "warning"
 
@@ -114,7 +114,7 @@ async def test_immediate_renders_and_sends_now(pg_db, fake_channel):
     rcpt, payload = fake_channel.sent[0]
     assert rcpt.address == "me@x.com"
     assert payload.text == "Low fuel · Truck 22"           # rendered from content
-    assert payload.extra["content"].alert_type == "fuel"   # channel saw raw content
+    assert payload.extra["content"].category == "fuel"   # channel saw raw content
     assert await pg_db.fetch_due_digest_items("daily") == []
 
 
@@ -154,11 +154,11 @@ async def test_non_subscriber_gets_nothing(pg_db, fake_channel):
 # ── Digest content building (raw, grouped, capped) ───────────────────
 
 def test_build_digest_groups_counts_and_severity():
-    items = [{"alert_type": "fuel", "summary": f"fuel {i}", "severity": "info"}
+    items = [{"category": "fuel", "summary": f"fuel {i}", "severity": "info"}
              for i in range(3)]
-    items += [{"alert_type": "faults", "summary": "fault A", "severity": "critical"}]
+    items += [{"category": "faults", "summary": "fault A", "severity": "critical"}]
     content = build_digest_content(items, "daily")
-    assert content.alert_type == "digest"
+    assert content.category == "digest"
     assert content.severity == "critical"          # max across items
     assert "4 notifications" in content.title
     assert "1 faults, 3 fuel" in content.body      # grouped counts
@@ -168,13 +168,13 @@ def test_build_digest_groups_counts_and_severity():
 def test_build_digest_stays_under_the_transport_limit():
     """A digest longer than the transport cap would be rejected on every
     run, wedging the queue.  Long summaries are dropped by COUNT."""
-    fat = [{"alert_type": "fuel", "summary": "x" * 500, "severity": "info"}
+    fat = [{"category": "fuel", "summary": "x" * 500, "severity": "info"}
            for _ in range(MAX_DIGEST_LINES)]
     content = build_digest_content(fat, "daily")
     assert len(content.body) <= MAX_DIGEST_CHARS
     assert "more" in content.body                  # remainder reported
 
-    many = [{"alert_type": "fuel", "summary": f"s{i}", "severity": "info"}
+    many = [{"category": "fuel", "summary": f"s{i}", "severity": "info"}
             for i in range(MAX_DIGEST_LINES + 5)]
     capped = build_digest_content(many, "hourly")
     assert capped.body.count("•") <= MAX_DIGEST_LINES
@@ -186,7 +186,7 @@ def test_build_digest_body_is_raw_not_escaped():
     render, exactly once.  Storing an already-escaped body here would
     double-escape on the Telegram path."""
     content = build_digest_content(
-        [{"alert_type": "fuel", "summary": "Truck A & B", "severity": "info"}],
+        [{"category": "fuel", "summary": "Truck A & B", "severity": "info"}],
         "daily")
     assert "Truck A & B" in content.body           # literal ampersand, unescaped
     assert "&amp;" not in content.body
@@ -339,6 +339,145 @@ async def test_retention_sweep_clears_undrainable_residue(pg_db):
 
     keys = {r.target.key for r in resolve("platform")}
     assert "notifications.digest_queue" in keys      # claimed, so it's swept
+
+
+# ── Category audience (broadcast) + notify_user (targeted) — N1 ──────
+
+async def test_dispatch_audience_drops_ineligible_role(pg_db, fake_channel):
+    """The role gate moved from storage into dispatch: a broadcast
+    category's ``audience`` drops a subscriber whose CURRENT role isn't
+    eligible, even though the raw matrix query returned them."""
+    from capabilities.notifications.categories import (
+        BROADCAST, NotificationCategory, register_category)
+    register_category(NotificationCategory(
+        "test.fleetonly", "Fleet only", BROADCAST,
+        audience=lambda role: role == "fleet"))
+    acct = (await pg_db.create_account("Aud Co")).id
+    fleet = (await pg_db.create_user(telegram_id=8801, account_id=acct, role=Role.FLEET)).id
+    driver = (await pg_db.create_user(telegram_id=8802, account_id=acct, role=Role.DRIVER)).id
+    for uid in (fleet, driver):
+        await pg_db.set_notification_pref(acct, "user", uid, "fake_test",
+                                          "test.fleetonly", enabled=True)
+        await pg_db.upsert_notification_channel(
+            acct, "user", uid, "fake_test", address=f"{uid}@x.com", verified=True)
+
+    await dispatch(pg_db, acct,
+                   NotificationContent(title="hi", category="test.fleetonly"),
+                   channels=["fake_test"])
+    assert {r.id for r, _ in fake_channel.sent} == {str(fleet)}   # driver dropped
+
+
+async def test_dispatch_rejects_targeted_category(pg_db, fake_channel):
+    from capabilities.notifications.categories import (
+        TARGETED, NotificationCategory, register_category)
+    register_category(NotificationCategory("test.tgt1", "T", TARGETED))
+    acct, uid = await _seed(pg_db)
+    with pytest.raises(ValueError):
+        await dispatch(pg_db, acct,
+                       NotificationContent(title="x", category="test.tgt1"),
+                       channels=["fake_test"])
+
+
+async def test_notify_user_opt_out_delivers_without_a_pref_row(pg_db, fake_channel):
+    """Targeted = opt-out: fires on a connected channel even though the user
+    never created a pref row (nobody pre-opts-in to 'invite accepted')."""
+    from capabilities.notifications.categories import (
+        TARGETED, NotificationCategory, register_category)
+    from capabilities.notifications.service import notify_user
+    register_category(NotificationCategory("test.invite2", "Invite", TARGETED))
+    acct, uid = await _seed(pg_db)
+    await pg_db.upsert_notification_channel(
+        acct, "user", uid, "fake_test", address="me@x.com", verified=True)
+
+    res = await notify_user(
+        pg_db, acct, uid,
+        NotificationContent(title="Accepted", category="test.invite2"),
+        channels=["fake_test"])
+    assert any(r.ok for r in res) and fake_channel.sent
+
+
+async def test_notify_user_respects_an_explicit_mute(pg_db, fake_channel):
+    from capabilities.notifications.categories import (
+        TARGETED, NotificationCategory, register_category)
+    from capabilities.notifications.service import notify_user
+    register_category(NotificationCategory("test.invite3", "Invite", TARGETED))
+    acct, uid = await _seed(pg_db)
+    await pg_db.upsert_notification_channel(
+        acct, "user", uid, "fake_test", address="me@x.com", verified=True)
+    await pg_db.set_notification_pref(
+        acct, "user", uid, "fake_test", "test.invite3", enabled=False)  # muted
+
+    await notify_user(pg_db, acct, uid,
+                      NotificationContent(title="x", category="test.invite3"),
+                      channels=["fake_test"])
+    assert fake_channel.sent == []
+
+
+async def test_notify_user_specific_optin_wins_over_star_mute(pg_db, fake_channel):
+    """A specific-category row wins over the '*' blanket in BOTH directions:
+    an all-off '*' with an explicit re-enable of THIS category delivers."""
+    from capabilities.notifications.categories import (
+        TARGETED, NotificationCategory, register_category)
+    from capabilities.notifications.service import notify_user
+    register_category(NotificationCategory("test.invite4", "Invite", TARGETED))
+    acct, uid = await _seed(pg_db)
+    await pg_db.upsert_notification_channel(
+        acct, "user", uid, "fake_test", address="me@x.com", verified=True)
+    await pg_db.set_notification_pref(acct, "user", uid, "fake_test", "*", enabled=False)
+    await pg_db.set_notification_pref(
+        acct, "user", uid, "fake_test", "test.invite4", enabled=True)  # re-enabled
+
+    await notify_user(pg_db, acct, uid,
+                      NotificationContent(title="x", category="test.invite4"),
+                      channels=["fake_test"])
+    assert fake_channel.sent           # specific opt-in beats the '*' mute
+
+
+async def test_notify_user_star_mute_suppresses_uncustomized_category(pg_db, fake_channel):
+    """The '*' blanket DOES suppress a category with no specific row."""
+    from capabilities.notifications.categories import (
+        TARGETED, NotificationCategory, register_category)
+    from capabilities.notifications.service import notify_user
+    register_category(NotificationCategory("test.invite5", "Invite", TARGETED))
+    acct, uid = await _seed(pg_db)
+    await pg_db.upsert_notification_channel(
+        acct, "user", uid, "fake_test", address="me@x.com", verified=True)
+    await pg_db.set_notification_pref(acct, "user", uid, "fake_test", "*", enabled=False)
+
+    await notify_user(pg_db, acct, uid,
+                      NotificationContent(title="x", category="test.invite5"),
+                      channels=["fake_test"])
+    assert fake_channel.sent == []     # no specific override → '*' mute applies
+
+
+async def test_notify_user_mandatory_ignores_the_mute(pg_db, fake_channel):
+    from capabilities.notifications.categories import (
+        TARGETED, NotificationCategory, register_category)
+    from capabilities.notifications.service import notify_user
+    register_category(NotificationCategory(
+        "test.security1", "Security", TARGETED, mandatory=True))
+    acct, uid = await _seed(pg_db)
+    await pg_db.upsert_notification_channel(
+        acct, "user", uid, "fake_test", address="me@x.com", verified=True)
+    await pg_db.set_notification_pref(
+        acct, "user", uid, "fake_test", "test.security1", enabled=False)  # tries to mute
+
+    await notify_user(pg_db, acct, uid,
+                      NotificationContent(title="x", category="test.security1"),
+                      channels=["fake_test"])
+    assert fake_channel.sent            # mandatory delivers despite the mute
+
+
+async def test_notify_user_rejects_broadcast_category(pg_db, fake_channel):
+    from capabilities.notifications.categories import (
+        BROADCAST, NotificationCategory, register_category)
+    from capabilities.notifications.service import notify_user
+    register_category(NotificationCategory("test.bcast1", "B", BROADCAST))
+    acct, uid = await _seed(pg_db)
+    with pytest.raises(ValueError):
+        await notify_user(pg_db, acct, uid,
+                          NotificationContent(title="x", category="test.bcast1"),
+                          channels=["fake_test"])
 
 
 # ── Telegram stays immediate (the invariant this phase must not break) ─

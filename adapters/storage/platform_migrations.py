@@ -193,6 +193,7 @@ async def run_all(conn) -> None:
     await migrate_ai_proposal_staged_payload(conn)
     await migrate_ai_proposal_undo(conn)
     await migrate_ai_conversation_workspace(conn)
+    await migrate_notification_category_rename(conn)
     await migrate_notification_matrix(conn)
     await migrate_notification_digest_queue(conn)
     await migrate_push_subscriptions(conn)
@@ -388,6 +389,35 @@ async def migrate_ai_conversation_workspace(conn) -> None:
             pass
 
 
+async def migrate_notification_category_rename(conn) -> None:
+    """Rename notification_pref/digest_queue ``alert_type`` -> ``category``
+    and namespace existing values to ``alert.<type>`` (every pre-existing
+    row is alert-derived by construction).  Runs BEFORE the matrix backfill
+    so the backfill writes the new column name.  Idempotent: guarded on the
+    column still being named ``alert_type`` (skips once renamed / on a fresh
+    install created with ``category``)."""
+    for table in ("notification_pref", "notification_digest_queue"):
+        try:
+            cur = await conn.execute(
+                "SELECT 1 FROM information_schema.columns "
+                f"WHERE table_schema = 'public' AND table_name = '{table}'"
+                " AND column_name = 'alert_type'")
+            if not await cur.fetchone():
+                continue                      # already renamed, or table absent
+            await conn.execute(
+                f"ALTER TABLE {table} RENAME COLUMN alert_type TO category")
+            await conn.execute(
+                f"UPDATE {table} SET category = 'alert.' || category "
+                "WHERE category <> '*'")
+            await conn.commit()
+        except Exception as e:
+            logger.error("notification category rename (%s) failed: %s", table, e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+
+
 async def migrate_notification_matrix(conn) -> None:
     """Create ``notification_pref`` + ``notification_channel`` and
     backfill the PERSONAL Telegram-DM prefs from the legacy per-user
@@ -407,11 +437,11 @@ async def migrate_notification_matrix(conn) -> None:
                 recipient_type TEXT    NOT NULL,
                 recipient_id   TEXT    NOT NULL,
                 channel        TEXT    NOT NULL,
-                alert_type     TEXT    NOT NULL,
+                category       TEXT    NOT NULL,
                 enabled        INTEGER NOT NULL DEFAULT 1,
                 cadence        TEXT    NOT NULL DEFAULT 'immediate',
                 updated_at     TEXT    NOT NULL DEFAULT '',
-                PRIMARY KEY (account_id, recipient_type, recipient_id, channel, alert_type)
+                PRIMARY KEY (account_id, recipient_type, recipient_id, channel, category)
             )
         """)
         await conn.execute("""
@@ -454,16 +484,16 @@ async def migrate_notification_matrix(conn) -> None:
                 f"""
                 INSERT INTO notification_pref
                     (account_id, recipient_type, recipient_id, channel,
-                     alert_type, enabled, cadence, updated_at)
+                     category, enabled, cadence, updated_at)
                 SELECT account_id, 'user', CAST(id AS TEXT), 'telegram_dm',
                        ?, CASE WHEN COALESCE({col}, 1) <> 0 THEN 1 ELSE 0 END,
                        'immediate', ?
                   FROM users
                  WHERE is_active = 1
-                ON CONFLICT (account_id, recipient_type, recipient_id, channel, alert_type)
+                ON CONFLICT (account_id, recipient_type, recipient_id, channel, category)
                 DO NOTHING
                 """,
-                (atype, now),
+                (f"alert.{atype}", now),
             )
         # Channel connection: telegram_id + the alerts_on master switch.
         await conn.execute(
@@ -535,7 +565,7 @@ async def migrate_notification_digest_queue(conn) -> None:
                 recipient_id   TEXT    NOT NULL,
                 channel        TEXT    NOT NULL,
                 cadence        TEXT    NOT NULL,
-                alert_type     TEXT    NOT NULL,
+                category       TEXT    NOT NULL,
                 summary        TEXT    NOT NULL DEFAULT '',
                 severity       TEXT    NOT NULL DEFAULT 'info',
                 address        TEXT    NOT NULL DEFAULT '',

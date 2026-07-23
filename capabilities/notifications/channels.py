@@ -68,19 +68,32 @@ class NotificationContent:
     (subject from ``title``), or one day a ≤160-char SMS, with no lossy
     round-trip through another channel's already-rendered string.
 
-    ``severity`` is a plain string ("critical"/"warning"/"info") — the
-    alerting layer's enum maps to it at the call site, keeping alerting's
-    types on alerting's side of the seam.  ``meta`` carries optional
-    channel hints (e.g. a Telegram keyboard spec) without polluting the
-    semantic core.
+    ``category`` is what the notification is ABOUT, namespaced by source
+    (``alert.faults`` / ``team.invite_accepted``) — it selects subscribers
+    and the audience gate (see ``categories.py``).  ``alert_type`` is a
+    DEPRECATED alias kept during the alert-type→category sweep: a caller
+    that still passes ``alert_type=`` gets mapped to ``category``, and
+    ``.alert_type`` always mirrors ``.category`` on read.
+
+    ``severity`` is a plain string ("critical"/"warning"/"info").  ``meta``
+    carries optional channel hints (e.g. a Telegram keyboard spec) without
+    polluting the semantic core.
     """
     title: str
     body: str = ""
-    alert_type: str = ""
+    category: str = ""
     severity: str = "info"
     url: str = ""
     photo_bytes: bytes | None = None
     meta: dict = field(default_factory=dict)
+    alert_type: str = ""            # deprecated alias for `category`
+
+    def __post_init__(self) -> None:
+        # Accept the old keyword; keep the two mirrored so `.alert_type`
+        # reads back == `.category` for any remaining consumer.
+        if self.alert_type and not self.category:
+            self.category = self.alert_type
+        self.alert_type = self.category
 
 
 @dataclass

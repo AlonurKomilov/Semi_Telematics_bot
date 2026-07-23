@@ -4,6 +4,9 @@ Re-exports the full public API via
 ``from capabilities.alerting import X``.
 """
 
+# Register alert.* notification categories at boot (alerting -> notifications).
+from capabilities.alerting import notification_categories  # noqa: F401,E402
+
 # ── pipeline (shared core) ───────────────────────────────────────
 from capabilities.alerting.pipeline import (              # noqa: F401
     AlertSeverity,

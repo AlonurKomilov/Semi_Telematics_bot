@@ -42,10 +42,10 @@ class NotificationPrefsMixin(_MixinBase):
 
     async def set_notification_pref(
         self, account_id: int, recipient_type: str, recipient_id: str,
-        channel: str, alert_type: str, *, enabled: bool,
+        channel: str, category: str, *, enabled: bool,
         cadence: str = "immediate",
     ) -> None:
-        """Upsert one rule (recipient × channel × alert_type)."""
+        """Upsert one rule (recipient × channel × category)."""
         if cadence not in _VALID_CADENCES:
             # Fail loudly at the write boundary: an unrecognised cadence
             # has no flush job, so it would silently swallow every
@@ -55,11 +55,11 @@ class NotificationPrefsMixin(_MixinBase):
         await self._db.execute(
             """INSERT INTO notification_pref
                  (account_id, recipient_type, recipient_id, channel,
-                  alert_type, enabled, cadence, updated_at)
+                  category, enabled, cadence, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT (account_id, recipient_type, recipient_id, channel, alert_type)
+               ON CONFLICT (account_id, recipient_type, recipient_id, channel, category)
                DO UPDATE SET enabled = ?, cadence = ?, updated_at = ?""",
-            (account_id, recipient_type, str(recipient_id), channel, alert_type,
+            (account_id, recipient_type, str(recipient_id), channel, category,
              1 if enabled else 0, cadence, now,
              1 if enabled else 0, cadence, now),
         )
@@ -88,40 +88,34 @@ class NotificationPrefsMixin(_MixinBase):
     async def list_recipient_notification_prefs(
         self, account_id: int, recipient_type: str, recipient_id: str,
     ) -> list[dict]:
-        """Every rule for one recipient (all channels × types)."""
+        """Every rule for one recipient (all channels × categories)."""
         cur = await self._db.execute(
-            """SELECT channel, alert_type, enabled, cadence
+            """SELECT channel, category, enabled, cadence
                  FROM notification_pref
                 WHERE account_id = ? AND recipient_type = ? AND recipient_id = ?
-                ORDER BY channel, alert_type""",
+                ORDER BY channel, category""",
             (account_id, recipient_type, str(recipient_id)),
         )
         return [
-            {"channel": r[0], "alert_type": r[1],
+            {"channel": r[0], "category": r[1],
              "enabled": bool(r[2]), "cadence": r[3]}
             for r in await cur.fetchall()
         ]
 
     async def get_notification_subscribers(
-        self, account_id: int, alert_type: str, channel: str,
+        self, account_id: int, category: str, channel: str,
     ) -> list[dict]:
-        """Recipients who want ``alert_type`` on ``channel`` — enabled at
-        BOTH the per-type rule AND the channel master switch, and with a
-        verified address.  Returns ``{recipient_type, recipient_id,
-        address, cadence}``.
+        """Recipients who want ``category`` on ``channel`` — enabled at
+        BOTH the per-category rule AND the channel master switch, and with
+        a verified address.  Returns ``{recipient_type, recipient_id,
+        address, cadence}``.  A ``'*'`` pref row (all categories) also
+        matches.
 
-        A ``'*'`` pref row (all types) also matches.  This is the query
-        the dispatch fan-out uses.
-
-        Role-relevance is re-checked at delivery for ``user`` recipients —
-        the SAME defence-in-depth the Telegram subscriber readers apply
-        (``get_typed_alert_subscribers`` + its matrix twin): a pref row for
-        a type the recipient's CURRENT role can't receive (e.g. left over
-        after a role downgrade) must not keep firing, and the settings UI
-        that would let them turn it off only renders their current role's
-        types.  Non-user recipients (shared topics) have no single role and
-        pass through; a non-alert notification type (not in the alert
-        relevance map) is not role-gated.
+        This returns the RAW matrix rows — it no longer applies any
+        role/audience filter.  Category-relevance is a notification-domain
+        concern (each source declares its category's audience), so the
+        filter lives in ``dispatch()``, keeping this storage query free of
+        any ``capabilities.alerting`` dependency.
         """
         cur = await self._db.execute(
             """SELECT p.recipient_type, p.recipient_id, c.address, p.cadence
@@ -132,48 +126,45 @@ class NotificationPrefsMixin(_MixinBase):
                    AND c.recipient_id = p.recipient_id
                    AND c.channel = p.channel
                 WHERE p.account_id = ? AND p.channel = ?
-                  AND p.alert_type IN (?, '*')
+                  AND p.category IN (?, '*')
                   AND p.enabled = 1
                   AND c.enabled_master = 1
                   AND c.verified_at <> ''
                   AND c.address <> ''""",
-            (account_id, channel, alert_type),
+            (account_id, channel, category),
         )
-        rows = [
+        return [
             {"recipient_type": r[0], "recipient_id": r[1],
              "address": r[2], "cadence": r[3]}
             for r in await cur.fetchall()
         ]
 
-        # Local import: keeps capabilities.alerting out of this module's
-        # cold-start import graph (same idiom as the users.py readers).
-        from capabilities.alerting.relevance import (
-            ALERT_TYPE_REQUIRED_PERM,
-            role_can_receive_alert,
+    async def get_roles_for_users(self, user_ids: list[int]) -> dict[int, str]:
+        """``{user_id: role}`` for the given ids — the audience filter in
+        ``dispatch()`` uses it to drop broadcast recipients whose current
+        role isn't eligible for a category."""
+        ids = [int(i) for i in user_ids if str(i).lstrip("-").isdigit()]
+        if not ids:
+            return {}
+        ph = ", ".join("?" for _ in ids)
+        cur = await self._db.execute(
+            f"SELECT id, role FROM users WHERE id IN ({ph})", tuple(ids))
+        return {row[0]: row[1] for row in await cur.fetchall()}
+
+    async def get_pref_categories(
+        self, account_id: int, recipient_type: str, recipient_id: str,
+        channel: str,
+    ) -> dict[str, bool]:
+        """``{category: enabled}`` for one recipient+channel — lets the
+        targeted (opt-out) path see an explicit mute without loading the
+        whole matrix."""
+        cur = await self._db.execute(
+            """SELECT category, enabled FROM notification_pref
+                WHERE account_id = ? AND recipient_type = ?
+                  AND recipient_id = ? AND channel = ?""",
+            (account_id, recipient_type, str(recipient_id), channel),
         )
-        if alert_type not in ALERT_TYPE_REQUIRED_PERM:
-            return rows            # not an alert type → nothing to role-gate
-
-        user_ids = [
-            int(r["recipient_id"]) for r in rows
-            if r["recipient_type"] == "user"
-            and str(r["recipient_id"]).lstrip("-").isdigit()
-        ]
-        roles: dict[int, str] = {}
-        if user_ids:
-            ph = ", ".join("?" for _ in user_ids)
-            cur = await self._db.execute(
-                f"SELECT id, role FROM users WHERE id IN ({ph})", tuple(user_ids))
-            roles = {row[0]: row[1] for row in await cur.fetchall()}
-
-        def _keep(r: dict) -> bool:
-            if r["recipient_type"] != "user":
-                return True
-            role = roles.get(int(r["recipient_id"])) \
-                if str(r["recipient_id"]).lstrip("-").isdigit() else None
-            return role is not None and role_can_receive_alert(role, alert_type)
-
-        return [r for r in rows if _keep(r)]
+        return {row[0]: bool(row[1]) for row in await cur.fetchall()}
 
     # ── Channel connection ───────────────────────────────────────────
 
@@ -257,7 +248,7 @@ class NotificationPrefsMixin(_MixinBase):
 
     async def enqueue_digest_item(
         self, account_id: int, recipient_type: str, recipient_id: str,
-        channel: str, cadence: str, alert_type: str,
+        channel: str, cadence: str, category: str,
         summary: str, address: str = "", *, severity: str = "info",
     ) -> None:
         """Buffer one notification for a batched cadence.  Stores RAW
@@ -267,10 +258,10 @@ class NotificationPrefsMixin(_MixinBase):
         await self._db.execute(
             """INSERT INTO notification_digest_queue
                  (account_id, recipient_type, recipient_id, channel,
-                  cadence, alert_type, summary, severity, address, created_at)
+                  cadence, category, summary, severity, address, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, recipient_type, str(recipient_id), channel,
-             cadence, alert_type, summary[:500], severity, address, self._now()),
+             cadence, category, summary[:500], severity, address, self._now()),
         )
         await self._db.commit()
 
@@ -281,7 +272,7 @@ class NotificationPrefsMixin(_MixinBase):
         (account, recipient, channel) in one pass."""
         cur = await self._db.execute(
             """SELECT id, account_id, recipient_type, recipient_id, channel,
-                      alert_type, summary, address, severity
+                      category, summary, address, severity
                  FROM notification_digest_queue
                 WHERE cadence = ?
                 ORDER BY account_id, recipient_type, recipient_id, channel, id
@@ -290,7 +281,7 @@ class NotificationPrefsMixin(_MixinBase):
         )
         return [
             {"id": r[0], "account_id": r[1], "recipient_type": r[2],
-             "recipient_id": r[3], "channel": r[4], "alert_type": r[5],
+             "recipient_id": r[3], "channel": r[4], "category": r[5],
              "summary": r[6], "address": r[7], "severity": r[8]}
             for r in await cur.fetchall()
         ]
