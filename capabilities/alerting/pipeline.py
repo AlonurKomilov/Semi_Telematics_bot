@@ -25,6 +25,8 @@ from infra.bot_registry import get_app_for_account
 from capabilities.formatting import format_alert_history_footer
 
 import logging
+import re as _re_html
+import html as _html_mod
 from infra.config import (
     FAULT_ALERT_COOLDOWN_HOURS,
     HEALTH_ALERT_COOLDOWN_HOURS,
@@ -267,6 +269,120 @@ _FORUM_ROUTING_ENABLED = _os.getenv("FORUM_ROUTING_ENABLED", "1") not in ("0", "
 # only (relies entirely on each user's per-topic notifications being
 # loud enough).
 _FORUM_CRITICAL_MIRROR = _os.getenv("FORUM_CRITICAL_MIRROR", "1") not in ("0", "false", "False")
+
+# Live cross-channel fanout.  Telegram delivery is always on its own
+# proven path (DM fanout + group topics below).  When this flag is on,
+# every alert that survives the suppression/mute gates ALSO hands the
+# same semantic event to the source-agnostic Notifications service,
+# which delivers it over the *new* channels a user opted into — email
+# and web push — using the per-user notification matrix.  Ships OFF so
+# an account switches these channels on deliberately; Telegram is
+# untouched either way.  This is the N2 "switch-on" for the
+# notifications spine built in N1.
+_NOTIFICATIONS_LIVE_DISPATCH = _os.getenv(
+    "NOTIFICATIONS_LIVE_DISPATCH", "0") not in ("0", "false", "False")
+
+# ``alert_text`` is composed as Telegram HTML (sent with ParseMode.HTML)
+# — it carries tags (<b>, <code>, <a>) and HTML entities.  The
+# Notifications ``NotificationContent.body`` must be RAW plain text, so
+# each channel escapes exactly once at render time.  Strip tags and
+# unescape entities on the way across the seam.
+_ALERT_TAG_RE = _re_html.compile(r"<[^>]+>")
+
+
+def _strip_alert_html(text: str) -> str:
+    return _html_mod.unescape(_ALERT_TAG_RE.sub("", text or "")).strip()
+
+
+async def dispatch_new_channels(
+    *,
+    account_id: int,
+    alert_type: str,
+    severity: "AlertSeverity",
+    vehicle_name: str,
+    alert_text: str,
+    maps_url: str | None = None,
+) -> None:
+    """Hand one firing alert to the source-agnostic Notifications service
+    for delivery over the *new* channels (email + web push).
+
+    Telegram is NOT touched here — it runs on its own proven path.  This
+    is the N2 seam: the same semantic event, rendered per-channel by
+    ``dispatch()`` for every user who opted the alert's category in on
+    email / web push via the notification matrix.
+
+    No-op unless ``NOTIFICATIONS_LIVE_DISPATCH`` is on, and fully
+    non-fatal — a Notifications failure must never sink an alert Telegram
+    is about to deliver, so every error is logged and swallowed.
+
+    Two deliberate restrictions keep this correct while the notification
+    core is still gaining features:
+
+    * **Category must exist.** The pipeline's verbose ``alert_type``
+      ("fault") is mapped to the canonical registry key ("faults") and we
+      only dispatch when a category is actually registered for it — so an
+      alert type without a real category + audience rule (doc-expiry,
+      scorecard, system…) simply stays Telegram-only instead of fanning
+      out ungated.
+    * **Company scope: fail closed.**  ``dispatch()`` resolves recipients
+      at the ACCOUNT level and does not yet apply the per-user company-
+      access gate the Telegram DM path enforces (``company_scope.py``).
+      Until that gate is modeled in the notification core, we hold new-
+      channel delivery back for any account that has company-scoped users,
+      so a user restricted to Company A can never be emailed about Company
+      B's vehicle.  Single-company accounts (the common case) are
+      unaffected.  Lifting this needs the scope gate threaded through
+      dispatch() — a small follow-up, not a local patch.
+
+    DND (Telegram quiet hours) is intentionally NOT applied here — it's a
+    Telegram queue-and-flush concept; the new channels use the separate
+    cadence/digest system instead.
+    """
+    if not _NOTIFICATIONS_LIVE_DISPATCH:
+        return
+    try:
+        from capabilities.notifications import (
+            dispatch as _notif_dispatch,
+            NotificationContent as _NotifContent,
+        )
+        from capabilities.notifications.categories import get_category
+
+        # Verbose pipeline alert_type ("fault") → canonical registry key
+        # ("faults").  Skip when no category is registered for it.
+        route_key = _PIPELINE_TO_ROUTE_KEY.get(alert_type, alert_type)
+        category = f"alert.{route_key}"
+        if get_category(category) is None:
+            logger.debug(
+                "notifications: no category for %r (acct=%d) — "
+                "new-channel delivery skipped", category, account_id)
+            return
+
+        # Company-scope fail-closed gate (see docstring).
+        from capabilities.alerting.company_scope import load_company_scope
+        scope = await load_company_scope(account_id)
+        if any(codes for codes in scope.values()):
+            logger.debug(
+                "notifications: acct=%d has company-scoped users — "
+                "new-channel delivery held back pending per-user company "
+                "gate", account_id)
+            return
+
+        content = _NotifContent(
+            title=f"{vehicle_name} — {alert_type}",
+            body=_strip_alert_html(alert_text),
+            category=category,
+            severity=severity.value,
+            url=maps_url or "",
+        )
+        await _notif_dispatch(
+            get_platform_db(), account_id, content,
+            channels=("email", "web_push"),
+        )
+    except Exception as exc:
+        logger.error(
+            "notifications dispatch failed acct=%d type=%s: %s",
+            account_id, alert_type, exc, exc_info=True,
+        )
 
 
 def build_alert_keyboard(
@@ -1039,6 +1155,22 @@ async def send_alert(
             account_id, alert_type, vid, history_record["id"],
         )
         return
+
+    # ── New-channel fanout via the source-agnostic Notifications service.
+    # We're past every suppression/mute gate, so the alert is genuinely
+    # firing.  Hand the SAME semantic event to the non-Telegram channels
+    # (email + web push) HERE — before the group-vs-DM routing fork below
+    # — so those subscribers hear it whether or not this account is
+    # forum-routed (the DM path early-returns for group-routed accounts).
+    # Telegram stays entirely on its own path; this never touches it.
+    await dispatch_new_channels(
+        account_id=account_id,
+        alert_type=alert_type,
+        severity=severity,
+        vehicle_name=vname,
+        alert_text=alert_text,
+        maps_url=maps_url,
+    )
 
     # Send-stage timing kept around even after the bulk-ack pre-fetch
     # was retired — the surrounding fanout still wants a wall-clock
