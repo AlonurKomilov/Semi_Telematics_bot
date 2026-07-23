@@ -21,6 +21,7 @@ from interfaces.bot.state import get_user_company_codes, get_platform_db, get_te
 from interfaces.bot.keyboards import main_menu_kb, system_owner_kb, unregistered_kb, back_kb, onboarding_kb
 from interfaces.bot.helpers import _show
 from interfaces.bot.auth import _get_user
+from features.settings.invites.notifications import announce_invite_accepted
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -171,6 +172,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 kb = main_menu_kb(new_user.role, company_codes)
                 await _show(update, context, [text], keyboard=kb)
                 logger.info(f"Deep-link join: {tid} → '{account.name}' as {new_user.role.value}")
+                # Tell the inviter their invite was accepted (targeted,
+                # opt-out, flag-gated, non-fatal — never blocks the join).
+                await announce_invite_accepted(
+                    platform, code, new_user, role_display=r_display)
                 return
             else:
                 await _show(update, context, [
@@ -375,6 +380,9 @@ async def cmd_join(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await _show(update, context, [text], keyboard=kb)
     logger.info(f"User {tid} joined '{account.name}' as {new_user.role.value}")
+    # Tell the inviter their invite was accepted (targeted, opt-out,
+    # flag-gated, non-fatal — never blocks the join).
+    await announce_invite_accepted(platform, code, new_user, role_display=r_display)
 
 
 # ── Bot-login: approve/reject dashboard login via deep link ───
