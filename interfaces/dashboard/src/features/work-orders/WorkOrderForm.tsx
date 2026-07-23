@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, type InputHTMLAttributes } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { WO_PREFILL_STATE_KEY, type WorkOrderPrefill } from './createFrom';
 import { useTranslation } from 'react-i18next';
@@ -106,6 +106,45 @@ interface DraftPart {
    *  grouping in the editor and the per-task cost report. */
   service_task: string;
   notes: string;
+}
+
+/**
+ * Numeric input that keeps its own display STRING so the field can be
+ * genuinely empty (never a stuck "0" you can't delete), typed freely
+ * (no leading zero from a pre-filled 0 -> no "0100"), and still accept
+ * decimals ("0.5") - while the model stays a number (empty => 0).  The
+ * external value re-syncs the display only when it changes to something
+ * the current text doesn't already represent (auto-computed totals,
+ * loading a saved WO), so it never fights active typing.
+ */
+function NumberInput({
+  value, onValueChange,
+  ...rest
+}: {
+  value: number;
+  onValueChange: (n: number) => void;
+} & Omit<InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'>) {
+  const [text, setText] = useState(() => (value ? String(value) : ''));
+  useEffect(() => {
+    const cur = text.trim() === '' ? 0 : Number(text);
+    if (!Number.isNaN(cur) && cur === value) return;
+    setText(value ? String(value) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
+  return (
+    <input
+      {...rest}
+      type="number"
+      inputMode="decimal"
+      value={text}
+      placeholder={rest.placeholder ?? '0'}
+      onChange={(e) => {
+        setText(e.target.value);
+        const n = e.target.value.trim() === '' ? 0 : Number(e.target.value);
+        onValueChange(Number.isNaN(n) ? 0 : n);
+      }}
+    />
+  );
 }
 
 const blankPart = (serviceTask = ''): DraftPart => ({
@@ -600,34 +639,34 @@ export default function WorkOrderForm() {
                   />
                 </td>
                 <td className="py-1.5 px-2">
-                  <input
-                    type="number" min="0" step="1"
+                  <NumberInput
+                    min="0" step="1"
                     value={pt.quantity}
-                    onChange={e => updatePart(idx, { quantity: Number(e.target.value) || 0 })}
+                    onValueChange={v => updatePart(idx, { quantity: v })}
                     className="w-full bg-transparent border-0 px-1 py-0.5 text-sm text-right tabular-nums focus:outline-none focus:bg-muted/40 rounded"
                   />
                 </td>
                 <td className="py-1.5 px-2">
-                  <input
-                    type="number" min="0" step="0.01"
+                  <NumberInput
+                    min="0" step="0.01"
                     value={pt.unit_cost}
-                    onChange={e => updatePart(idx, { unit_cost: Number(e.target.value) || 0 })}
+                    onValueChange={v => updatePart(idx, { unit_cost: v })}
                     className="w-full bg-transparent border-0 px-1 py-0.5 text-sm text-right tabular-nums focus:outline-none focus:bg-muted/40 rounded"
                   />
                 </td>
                 <td className="py-1.5 px-2">
-                  <input
-                    type="number" min="0" step="0.01"
+                  <NumberInput
+                    min="0" step="0.01"
                     value={pt.total_cost}
-                    onChange={e => updatePart(idx, { total_cost: Number(e.target.value) || 0 })}
+                    onValueChange={v => updatePart(idx, { total_cost: v })}
                     className="w-full bg-transparent border-0 px-1 py-0.5 text-sm text-right tabular-nums font-medium focus:outline-none focus:bg-muted/40 rounded"
                   />
                 </td>
                 <td className="py-1.5 px-2">
-                  <input
-                    type="number" min="0" step="1"
+                  <NumberInput
+                    min="0" step="1"
                     value={pt.warranty_months}
-                    onChange={e => updatePart(idx, { warranty_months: Number(e.target.value) || 0 })}
+                    onValueChange={v => updatePart(idx, { warranty_months: v })}
                     placeholder="0"
                     className="w-full bg-transparent border-0 px-1 py-0.5 text-sm text-right tabular-nums focus:outline-none focus:bg-muted/40 rounded"
                   />
@@ -686,26 +725,26 @@ export default function WorkOrderForm() {
                   />
                 </td>
                 <td className="py-1.5 px-2">
-                  <input
-                    type="number" min="0" step="0.25"
-                    value={l.hours || ''}
-                    onChange={e => updateLaborLine(idx, { hours: Number(e.target.value) || 0 })}
+                  <NumberInput
+                    min="0" step="0.25"
+                    value={l.hours}
+                    onValueChange={v => updateLaborLine(idx, { hours: v })}
                     className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-right tabular-nums text-foreground focus:outline-none focus:border-ring"
                   />
                 </td>
                 <td className="py-1.5 px-2">
-                  <input
-                    type="number" min="0" step="0.01"
-                    value={l.rate || ''}
-                    onChange={e => updateLaborLine(idx, { rate: Number(e.target.value) || 0 })}
+                  <NumberInput
+                    min="0" step="0.01"
+                    value={l.rate}
+                    onValueChange={v => updateLaborLine(idx, { rate: v })}
                     className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-right tabular-nums text-foreground focus:outline-none focus:border-ring"
                   />
                 </td>
                 <td className="py-1.5 px-2">
-                  <input
-                    type="number" min="0" step="0.01"
-                    value={l.total_cost || ''}
-                    onChange={e => updateLaborLine(idx, { total_cost: Number(e.target.value) || 0 })}
+                  <NumberInput
+                    min="0" step="0.01"
+                    value={l.total_cost}
+                    onValueChange={v => updateLaborLine(idx, { total_cost: v })}
                     className="w-full bg-muted border border-border rounded px-2 py-1 text-sm text-right tabular-nums text-foreground focus:outline-none focus:border-ring"
                   />
                 </td>
@@ -1196,18 +1235,18 @@ export default function WorkOrderForm() {
           <Field label={t('work_orders_page.field_fee', { defaultValue: 'Fee $' })}
             tip={t('work_orders_page.tip_fee', { defaultValue:
               'An extra charge beyond the parts and labor entered above — shop supplies, environmental, or a call-out fee. Parts and labor come from the line items; fee and tax are added on top.' })}>
-            <input
-              type="number" min="0" step="0.01"
+            <NumberInput
+              min="0" step="0.01"
               value={wo.fee_amount ?? 0}
-              onChange={e => setField('fee_amount', Number(e.target.value) || 0)}
+              onValueChange={v => setField('fee_amount', v)}
               className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm tabular-nums text-foreground focus:outline-none focus:border-ring"
             />
           </Field>
           <Field label={t('work_orders_page.field_tax')}>
-            <input
-              type="number" min="0" step="0.01"
+            <NumberInput
+              min="0" step="0.01"
               value={wo.tax_amount ?? 0}
-              onChange={e => setField('tax_amount', Number(e.target.value) || 0)}
+              onValueChange={v => setField('tax_amount', v)}
               className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm tabular-nums focus:outline-none focus:border-ring"
             />
           </Field>
