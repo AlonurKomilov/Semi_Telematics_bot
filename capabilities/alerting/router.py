@@ -161,6 +161,19 @@ async def _vehicle_company_map(account_id: int, tenant_db) -> dict:
         return {}
 
 
+def _attach_company(alerts: list[dict], veh_map: dict) -> list[dict]:
+    """Tag each alert with its vehicle's company_code so the row can read
+    "130 · ACME · Parking" — which company a unit belongs to, not just the
+    unit.  Keyed on ``vehicle_id`` (names collide across companies).  An
+    empty ``veh_map`` (single-company account, or a read failure) leaves
+    ``company`` blank so the UI shows no chip — the code only disambiguates
+    when there's more than one company to tell apart.
+    """
+    for a in alerts:
+        a["company"] = (veh_map.get(a.get("vehicle_id")) or "") if veh_map else ""
+    return alerts
+
+
 @router.get("/pending")
 async def pending_alerts(
     alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
@@ -198,13 +211,25 @@ async def pending_alerts(
     ``days`` windows the acknowledged/all views on first_seen.
     """
     state = _norm_ack_state(ack_state)
+    # Company code on each row (multi-company accounts only — otherwise the
+    # code is noise, every unit shares it).  ``veh_map`` (vehicle_id →
+    # company_code) is built at most ONCE here and reused for BOTH the
+    # company-restriction filter and the display tag, so the display feature
+    # adds no query on single-company accounts and none beyond the one the
+    # restriction filter already needed.
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
+    allowed = await get_user_company_codes(user)
+    multi_company = (await tenant_db.count_account_companies(user["account_id"])) > 1
+    veh_map = (await _vehicle_company_map(user["account_id"], tenant_db)
+               if (allowed or multi_company) else {})
+    # Only TAG for display when the account actually has >1 company.
+    display_map = veh_map if multi_company else {}
+
     # Drivers (own-truck) AND company-restricted users both need the
     # PYTHON path: their filters can't run in SQL — alert_history has no
     # company column, and the truck filter joins user→vehicle in Python.
     # So fetch the full filtered set, filter, then paginate.  Everyone
     # else gets the faster SQL-paginated path below.
-    is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
-    allowed = await get_user_company_codes(user)
     if is_driver_scope or allowed:
         rows = await tenant_db.get_active_alert_history_for_account_paged(
             user["account_id"],
@@ -215,8 +240,8 @@ async def pending_alerts(
         if is_driver_scope:
             alerts = await _filter_own(user, alerts)
         if allowed:
-            veh_map = await _vehicle_company_map(user["account_id"], tenant_db)
             alerts = filter_by_company_map(alerts, allowed, veh_map, key="vehicle_id")
+        _attach_company(alerts, display_map)
         paged = paginate(alerts, page, page_size)
         return {"alerts": paged["items"], "count": paged["total"],
                 "page": paged["page"], "page_size": paged["page_size"],
@@ -234,7 +259,8 @@ async def pending_alerts(
         severity=severity, ack_state=state, days=days,
         limit=page_size, offset=offset,
     )
-    alerts = [_shape_history_for_pending_api(r) for r in rows]
+    alerts = _attach_company(
+        [_shape_history_for_pending_api(r) for r in rows], display_map)
     total_pages = max(1, (total + page_size - 1) // page_size) if total > 0 else 1
     return {"alerts": alerts, "count": total,
             "page": page, "page_size": page_size,

@@ -314,6 +314,10 @@ export interface Alert {
   alert_key?: string;
   vehicle_name?: string;
   vehicle_id?: string;
+  /** Company code of the unit's company — set only on multi-company
+   *  accounts (server tags /pending rows) so a row can show which company
+   *  a unit belongs to.  '' / undefined → no company chip. */
+  company?: string;
   alert_type?: string;
   /** Server-authoritative severity — written by pipeline.send_alert.
    *  Frontends must NOT re-derive from alert_type. */

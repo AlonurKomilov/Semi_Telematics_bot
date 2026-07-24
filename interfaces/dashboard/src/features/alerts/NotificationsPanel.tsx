@@ -406,7 +406,19 @@ function AlertRow({ alert, onAck, onOpen, busy }: {
         <Icon size={16} className={`${toneText(tone)} mt-0.5 shrink-0`} aria-hidden />
         <span className="flex-1 min-w-0">
           <span className="flex items-baseline justify-between gap-2">
-            <span className="text-sm font-medium truncate">{alert.vehicle_name || 'Vehicle'}</span>
+            <span className="min-w-0 inline-flex items-baseline gap-1.5">
+              <span className="text-sm font-medium truncate">{alert.vehicle_name || 'Vehicle'}</span>
+              {alert.company && (
+                /* Which company this unit belongs to — only present on
+                   multi-company accounts (server-tagged).  Matches the
+                   company chip in maintenance/Tasks.tsx (same "disambiguate
+                   a shared vehicle name" job → identical styling per the
+                   design rules). */
+                <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-3xs">
+                  {alert.company}
+                </span>
+              )}
+            </span>
             <span className="text-3xs text-muted-foreground shrink-0 tabular-nums">{age}</span>
           </span>
           {detail && (
