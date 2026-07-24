@@ -780,10 +780,6 @@ async def re_escalate_critical_alerts(app: Application):
             # (so they see "[reminder 2/4]" added to the existing alert
             # bubble) instead of sending a brand-new push.
             try:
-                deliveries = await tenant.auto_resolve_alerts_by_vehicle  # noqa
-            except AttributeError:
-                deliveries = None
-            try:
                 rows = await tenant.read_all(
                     "SELECT * FROM alert_acknowledgments "
                     "WHERE account_id = ? AND alert_type = ? AND vehicle_id = ? "

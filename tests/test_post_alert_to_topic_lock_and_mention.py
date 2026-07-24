@@ -69,7 +69,7 @@ def _patched_resolver(monkeypatch):
     decision without standing up a real Postgres."""
     targets: list[AlertTarget] = []
 
-    async def _fake_resolve(*, account_id, alert_type, severity=""):
+    async def _fake_resolve(*, account_id, alert_type, severity="", subtype=""):
         return list(targets)
 
     monkeypatch.setattr(

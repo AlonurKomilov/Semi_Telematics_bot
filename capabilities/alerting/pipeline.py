@@ -692,8 +692,8 @@ async def _try_post_to_topic(
             event_time=event_time,
             maps_url=maps_url,
             subtype=subtype,
-            send_text_plain=_group_text_plain,
-            ai_account_default=_include_ai_in_group,
+            send_text_plain=send_text_plain,
+            ai_account_default=ai_account_default,
         )
         if ok:
             any_success = True
