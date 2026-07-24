@@ -264,9 +264,10 @@ async def analyze_camera_image(
     return result
 
 
-async def generate_with_vision(
+async def generate_with_file(
     prompt: str,
-    image_bytes: bytes,
+    file_bytes: bytes,
+    mime_type: str,
     system: str = "You are a helpful assistant.",
     account_id: int | None = None,
     *,
@@ -274,18 +275,19 @@ async def generate_with_vision(
     role: str | None = None,
     action: str = "vision_text",
 ) -> tuple[str, dict | None]:
-    """Generate a text response from a prompt + image using Gemini vision.
+    """Generate a text response from a prompt + an arbitrary file part.
 
-    Returns ``(text, usage)`` — usage may be ``None`` if the backend
-    didn't report token counts or if all vision attempts failed and we
-    fell back to text-only ``generate()``.
+    The generalized core behind :func:`generate_with_vision`: takes an
+    EXPLICIT ``mime_type`` instead of sniffing image magic bytes, so
+    callers can send documents Gemini reads natively but a sniffer
+    can't classify — ``application/pdf``, ``image/heic`` — alongside
+    the usual photo types (invoice extraction sends whatever the shop
+    handed over).
 
-    ``user_id`` / ``role`` / ``action`` enable per-attempt router
-    telemetry parallel to the image-only ``analyze_camera_image``
-    path; default action="vision_text" keeps text+image rows in a
-    distinct scoring slice from raw camera-check rows.  Falls back
-    to ``generate()`` when ``image_bytes`` is empty — that path
-    already self-records, so no double-log.
+    Returns ``(text, usage)``; ``("", None)`` when every attempt failed
+    — there is deliberately NO text-only fallback here, because a
+    file-grounded task (reading an invoice) answered without the file
+    would be hallucination, not degradation.
     """
     import asyncio
     from capabilities.ai.usage import (
@@ -295,8 +297,8 @@ async def generate_with_vision(
     )
     import time as _t
 
-    if not image_bytes:
-        return await generate(prompt, system=system, account_id=account_id)
+    if not file_bytes:
+        return "", None
 
     model_name = DEFAULT_VISION_MODEL
     location = DEFAULT_VISION_LOCATION
@@ -315,8 +317,8 @@ async def generate_with_vision(
     from google.genai import types as _gtypes
 
     image_part = _gtypes.Part.from_bytes(
-        data=image_bytes,
-        mime_type=_sniff_image_mime(image_bytes),
+        data=file_bytes,
+        mime_type=mime_type,
     )
     text_content = f"{system}\n\n{prompt}" if system else prompt
     prompt_part = _gtypes.Part.from_text(text=text_content)
@@ -327,12 +329,21 @@ async def generate_with_vision(
 
     last_exc: Exception | None = None
 
+    # Per-call ceiling: a hung Vertex thread must not pin an interactive
+    # request (invoice scan) behind a spinner for minutes.  Timeout =
+    # infrastructure slowness, so we bail rather than burn the same wait
+    # on every fallback (mirrors analyze_camera_image's reasoning).
+    _PER_CALL_TIMEOUT_S = 40.0
+
     for attempt_model, attempt_loc in attempts:
         _attempt_started = _t.monotonic()
         try:
             model_obj = _ensure_model(attempt_model, attempt_loc)
-            response = await asyncio.to_thread(
-                model_obj.generate_content, [prompt_part, image_part],
+            response = await asyncio.wait_for(
+                asyncio.to_thread(
+                    model_obj.generate_content, [prompt_part, image_part],
+                ),
+                timeout=_PER_CALL_TIMEOUT_S,
             )
             text = response.text.strip() if response.text else ""
             usage = _capture_usage(response)
@@ -351,6 +362,19 @@ async def generate_with_vision(
                 )
             if text:
                 return text, usage
+        except asyncio.TimeoutError as te:
+            last_exc = te
+            _latency_ms = int((_t.monotonic() - _attempt_started) * 1000)
+            await _record_call(
+                account_id=account_id, user_id=user_id,
+                role=role, action=action,
+                model=attempt_model, latency_ms=_latency_ms,
+                error_type="timeout", usage=None,
+                prompt_category=_prompt_category,
+            )
+            logger.warning("Vision %s timed out after %.0fs on file task",
+                           attempt_model, _PER_CALL_TIMEOUT_S)
+            break
         except Exception as e:
             last_exc = e
             _latency_ms = int((_t.monotonic() - _attempt_started) * 1000)
@@ -364,8 +388,40 @@ async def generate_with_vision(
             if _is_rate_limit_error(e):
                 logger.warning("Vision %s rate-limited, trying next", attempt_model)
                 continue
-            logger.error("generate_with_vision failed (%s): %s", attempt_model, e)
+            logger.error("generate_with_file failed (%s): %s", attempt_model, e)
             break
 
+    logger.warning("Vision unavailable for file task (%s): %s",
+                   mime_type, last_exc)
+    return "", None
+
+
+async def generate_with_vision(
+    prompt: str,
+    image_bytes: bytes,
+    system: str = "You are a helpful assistant.",
+    account_id: int | None = None,
+    *,
+    user_id: int | None = None,
+    role: str | None = None,
+    action: str = "vision_text",
+) -> tuple[str, dict | None]:
+    """Generate a text response from a prompt + image using Gemini vision.
+
+    Thin wrapper over :func:`generate_with_file`: sniffs the image MIME
+    from magic bytes and, unlike the file path, DEGRADES to text-only
+    ``generate()`` when the image is missing or every vision attempt
+    failed — its callers (chat with a pasted photo) prefer a partial
+    answer over none.  Returns ``(text, usage)``.
+    """
+    if not image_bytes:
+        return await generate(prompt, system=system, account_id=account_id)
+    text, usage = await generate_with_file(
+        prompt, image_bytes, _sniff_image_mime(image_bytes),
+        system=system, account_id=account_id,
+        user_id=user_id, role=role, action=action,
+    )
+    if text:
+        return text, usage
     logger.info("Vision unavailable, falling back to text-only generate")
     return await generate(prompt, system=system, account_id=account_id)

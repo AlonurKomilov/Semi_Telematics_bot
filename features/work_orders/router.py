@@ -24,9 +24,13 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter, Depends, File, HTTPException, Query, Request, UploadFile,
+)
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
+
+from interfaces.api.rate_limit import limiter
 
 # Lifecycle vocabulary (Fleetio-standard): open → in_progress →
 # completed (no void — a mistaken WO is deleted).  Legacy
@@ -295,6 +299,61 @@ async def create_work_order(
 # can_parts gate).  The old /work-orders/parts-catalog URLs live on
 # there as deprecated aliases; this router only CONSUMES parts via
 # ``resolve_or_create_part`` on line saves.
+
+
+@router.post("/extract-invoice")
+@limiter.limit("30/hour")
+async def extract_invoice_fields(
+    request: Request,
+    file: UploadFile = File(...),
+    user: dict = Depends(require_permission("can_work_orders_all")),
+):
+    """Read a shop invoice (photo/PDF) → WO-shaped fields for the form.
+
+    TRANSIENT by design: nothing is persisted here — no attachment, no
+    WO.  The form pre-fills from the response, the human reviews, and
+    only Save writes (in create mode the form then uploads the same
+    file as the ``invoice`` attachment once the WO id exists).  Gated
+    on ``can_work_orders_all`` — the permission matrix, not a role, is
+    the access SSOT.  Rate-limited because every call is a paid
+    vision-model request (the ocr-cdl precedent).
+    """
+    from features.work_orders.extraction import EXTRACT_MIMES, extract_invoice
+    from infra.file_safety import sniff_mime
+
+    raw = await file.read()
+    if len(raw) > _MAX_ATTACHMENT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds {_MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB limit.",
+        )
+    if not raw:
+        raise HTTPException(status_code=422, detail="Empty file.")
+
+    # Magic bytes are the truth, not the declared Content-Type (a paid
+    # model call deserves the same rigor as the public intake).  HEIC
+    # isn't in the sniffer's vocabulary — verify its ISO-BMFF ``ftyp``
+    # box instead, keeping iPhone photos first-class like the
+    # attachment whitelist does.
+    declared = (file.content_type or "").lower()
+    mime = sniff_mime(raw)
+    if mime is None and declared in ("image/heic", "image/heif") \
+            and len(raw) > 12 and raw[4:8] == b"ftyp":
+        mime = declared
+    if mime not in EXTRACT_MIMES:
+        raise HTTPException(
+            status_code=415,
+            detail="Please upload an invoice photo (JPG/PNG/WEBP/HEIC) or PDF.",
+        )
+
+    result = await extract_invoice(
+        raw, mime,
+        account_id=user["account_id"],
+        user_id=int(user["sub"]), role=user.get("role"),
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=502, detail=result.get("error", "Extraction failed."))
+    return result
 
 
 @router.get("/{work_order_id}")
