@@ -24,6 +24,8 @@ export interface InboxNotice {
   created_at: string;
   /** The object chip ("Team", "AI") — '' = no chip. */
   context: string;
+  /** Inline row action (expanded view) — server-validated relative url. */
+  action: { label: string; url: string } | null;
   read: boolean;
 }
 

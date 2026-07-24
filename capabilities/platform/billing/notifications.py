@@ -30,6 +30,7 @@ this module's call sites.
 from __future__ import annotations
 
 import logging
+import re as _re
 from datetime import datetime, timezone
 
 from adapters.storage.models import Role
@@ -39,6 +40,87 @@ logger = logging.getLogger(__name__)
 
 
 _BILLING_ADMIN_ROLES = (Role.OWNER, Role.ADMIN)
+
+
+# ── system.billing → the notification service (in-app record) ────────
+# Telegram stays on this module's proven path below; Stripe owns billing
+# email.  The notification service adds the third leg: a persistent
+# in-app inbox row (the bell's System tab) for every billing event —
+# BROADCAST + audience = billing-capable roles (permission SSOT, so it
+# can never drift from who may actually fix the problem), MANDATORY so
+# no preference row can silence a payment problem.
+
+
+def _billing_audience(role) -> bool:
+    """audience(role) for system.billing — can_manage_billing per the
+    permission SSOT.  Accepts a raw role string or a Role.
+
+    STATIC role defaults by design-for-now: per-account matrix overrides /
+    module masking are not consulted (docs/architecture/notifications.md
+    §9d — fixed in one sweep with the alert audiences; don't copy this
+    pattern into an authorization context)."""
+    from capabilities.permissions.roles import get_permissions
+    try:
+        r = Role.from_str(role) if isinstance(role, str) else role
+        return bool(get_permissions(r).can_manage_billing)
+    except Exception:
+        return False
+
+
+def _register_billing_category() -> None:
+    from capabilities.notifications.categories import (
+        BROADCAST, NotificationCategory, register_category)
+    register_category(NotificationCategory(
+        key="system.billing",
+        label="Billing & subscription",
+        kind=BROADCAST,
+        mandatory=True,
+        audience=_billing_audience,
+    ))
+
+
+_register_billing_category()
+
+_TAG_RE = _re.compile(r"<[^>]+>")
+
+# kind → (title, severity) for the inbox record; body = the same message
+# the Telegram path sends, stripped to plain text.
+_KIND_PRESENTATION = {
+    "checkout_complete": ("Subscription active", "info"),
+    "payment_failed":    ("Payment failed", "warning"),
+    "payment_recovered": ("Payment recovered", "info"),
+    "comp_granted":      ("Complimentary plan granted", "info"),
+    "comp_expiring":     ("Complimentary plan expiring soon", "warning"),
+    "comp_expired":      ("Complimentary plan ended", "warning"),
+}
+
+
+async def _record_in_inbox(kind: str, account_id: int, text: str) -> None:
+    """Mirror one billing event into the in-app inbox (best-effort)."""
+    try:
+        from infra.platform import get_platform_db
+        from capabilities.notifications import NotificationContent, dispatch
+        title, severity = _KIND_PRESENTATION.get(
+            kind, (kind.replace("_", " ").capitalize(), "info"))
+        import html as _html
+        await dispatch(
+            get_platform_db(), account_id,
+            NotificationContent(
+                title=title,
+                body=_html.unescape(_TAG_RE.sub("", text or "")).strip(),
+                category="system.billing",
+                severity=severity,
+                url="/billing",
+                meta={"context": "Billing",
+                      "action": {"label": "Open billing", "url": "/billing"}},
+            ),
+            channels=["in_app"],
+        )
+    except Exception:
+        logger.warning(
+            "billing inbox record failed (kind=%s acct=%d)",
+            kind, account_id, exc_info=True,
+        )
 
 
 async def _billing_admin_telegram_ids(account_id: int) -> list[int]:
@@ -138,6 +220,9 @@ async def _send_and_record(kind: str, account_id: int, text: str) -> int:
     """
     count = await _send_to_admins(account_id, text)
     _obs.record_billing_notification(kind, "telegram", count)
+    # Third leg: the persistent in-app record (bell System tab) for the
+    # same event — never blocks or fails the Telegram path.
+    await _record_in_inbox(kind, account_id, text)
     return count
 
 

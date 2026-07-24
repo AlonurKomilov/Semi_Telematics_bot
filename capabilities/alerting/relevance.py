@@ -107,6 +107,11 @@ def role_can_receive_alert(role: Union[Role, str], alert_type: str) -> bool:
 
     Equivalent to ``alert_type in alert_types_for_role(role)`` but
     avoids the list allocation when the caller only needs a yes/no.
+
+    STATIC role defaults by design-for-now (per-account matrix overrides
+    / module masking not consulted) — see
+    docs/architecture/notifications.md §9d; don't copy this pattern into
+    an authorization context.
     """
     if alert_type not in ALERT_TYPE_REQUIRED_PERM:
         return False

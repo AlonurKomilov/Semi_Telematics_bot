@@ -119,12 +119,15 @@ async def dispatch(
             if getattr(channel, "intrinsic", False):
                 # Intrinsic (in-app inbox): no address to opt in with, so
                 # broadcast is OPT-OUT — every active user minus explicit
-                # mutes.  Rows come back in the same shape as the opt-in
-                # query, with cadence forced immediate (batching a
-                # persisted record is meaningless), and the audience +
-                # recipient_filter pass below applies unchanged.
+                # mutes.  MANDATORY categories ignore mutes entirely (a
+                # notice whose toggle is locked in the UI must not be
+                # silenceable by a leftover pref row).  Rows come back in
+                # the same shape as the opt-in query, with cadence forced
+                # immediate, and the audience + recipient_filter pass
+                # below applies unchanged.
                 subs = await db.get_optout_subscribers(
-                    account_id, content.category, key)
+                    account_id, content.category, key,
+                    ignore_mutes=bool(cat and cat.mandatory))
             else:
                 subs = await db.get_notification_subscribers(
                     account_id, content.category, key)

@@ -214,3 +214,24 @@ async def test_prune_drops_old_rows(pg_db):
     assert dropped == 1
     rows = await pg_db.list_inbox_notices(acct, uid)
     assert [r["title"] for r in rows] == ["new"]
+
+
+async def test_mandatory_broadcast_ignores_mutes(pg_db):
+    """A MANDATORY broadcast category (system.billing model) reaches every
+    audience-passing user even with an explicit mute row — the locked-on
+    toggle in the UI must be the truth."""
+    from capabilities.notifications.categories import (
+        BROADCAST, NotificationCategory, register_category)
+    register_category(NotificationCategory(
+        "test.mand1", "M", BROADCAST, mandatory=True))
+    acct, uid = await _seed(pg_db, name="Mand Co", tg=7315)
+    await pg_db.set_notification_pref(
+        acct, "user", uid, "in_app", "test.mand1", enabled=False)   # mute try
+    await pg_db.set_notification_pref(
+        acct, "user", uid, "in_app", "*", enabled=False)            # blanket too
+
+    await dispatch(pg_db, acct,
+                   NotificationContent(title="pay up", category="test.mand1"),
+                   channels=["in_app"])
+    rows = await pg_db.list_inbox_notices(acct, uid)
+    assert [r["category"] for r in rows] == ["test.mand1"]          # delivered

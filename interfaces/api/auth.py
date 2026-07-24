@@ -346,18 +346,30 @@ async def mint_session_token(
             now_dt = datetime.now(timezone.utc)
             exp_ttl = JWT_EXPIRY_LONG_SECONDS if remember_me else JWT_EXPIRY_SHORT_SECONDS
             ua = (request.headers.get("user-agent") or "")[:500]
+            device_label = _parse_user_agent(ua)
+            client_ip = _client_ip(request)
+            # New-device sign-in notice (system.security) — checked BEFORE
+            # the new session row is inserted so it can't match itself.
+            # Both the check and the announce are non-fatal by construction.
+            from interfaces.api.security_notifications import (
+                announce_new_device_signin, is_new_device)
+            notify_new_device = await is_new_device(db, user_id, device_label)
             await db.create_user_session(
                 user_id=user_id,
                 jti=jti,
-                device_label=_parse_user_agent(ua),
+                device_label=device_label,
                 user_agent=ua,
-                ip=_client_ip(request),
+                ip=client_ip,
                 created_at=now_dt.isoformat(),
                 last_seen=now_dt.isoformat(),
                 expires_at=datetime.fromtimestamp(
                     int(now_dt.timestamp()) + exp_ttl, tz=timezone.utc
                 ).isoformat(),
             )
+            if notify_new_device:
+                await announce_new_device_signin(
+                    db, account_id, user_id,
+                    device_label=device_label, ip=client_ip)
         except Exception as e:
             # Session bookkeeping is non-critical — never break login.
             logging.getLogger("api.auth").warning(

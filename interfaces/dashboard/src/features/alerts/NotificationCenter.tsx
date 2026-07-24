@@ -14,26 +14,16 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Bell, CheckCheck, Settings, ArrowRight, Loader2, BellOff,
-  Users, Server, Bot,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiJSON } from '@/api/client';
 import { PageHeader } from '@/components/shell';
-import type { Tone } from '../../lib/status';
-import { toneText } from '../../lib/status';
-import { formatAgoShort } from '../../utils/datetime';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { InboxNotice, InboxResponse } from './useInbox';
 import { INBOX_QUERY_KEY } from './useInbox';
+import { InboxRow } from './NotificationsPanel';
 
 const PAGE = 30;
-
-const SEVERITY_TONE: Record<string, Tone> = {
-  critical: 'danger', warning: 'warn', info: 'info',
-};
-const SOURCE_ICON: Record<string, typeof Users> = {
-  team: Users, ai: Bot, system: Server,
-};
 
 type Filter = '' | 'team' | 'ai' | 'system';
 // Precise per-source filters (server filters by exact namespace).  The
@@ -181,41 +171,17 @@ export default function NotificationCenter() {
           </div>
         ) : (
           <ul className="divide-y divide-border/60">
-            {notices.map((n) => {
-              const Icon = SOURCE_ICON[n.source] ?? Bell;
-              const tone = SEVERITY_TONE[n.severity] ?? 'info';
-              return (
-                <li key={n.id}>
-                  <button
-                    onClick={() => void openNotice(n)}
-                    className={`flex items-start gap-3 w-full px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
-                      n.read ? 'opacity-60' : ''
-                    }`}
-                  >
-                    <Icon size={16} className={`${toneText(tone)} mt-0.5 shrink-0`} aria-hidden />
-                    <span className="flex-1 min-w-0">
-                      <span className="flex items-baseline justify-between gap-3">
-                        <span className="text-sm font-medium truncate">{n.title}</span>
-                        <span className="text-2xs text-muted-foreground shrink-0 tabular-nums">
-                          {formatAgoShort(n.created_at)}
-                        </span>
-                      </span>
-                      {n.body && (
-                        <span className="block text-xs text-muted-foreground mt-0.5">{n.body}</span>
-                      )}
-                      {n.context && (
-                        <span className="inline-flex items-center rounded bg-muted px-1.5 py-px text-2xs font-medium text-muted-foreground mt-1.5">
-                          {n.context}
-                        </span>
-                      )}
-                    </span>
-                    {!n.read && (
-                      <span className="size-2 rounded-full bg-primary mt-1.5 shrink-0" aria-label="Unread" />
-                    )}
-                  </button>
-                </li>
-              );
-            })}
+            {notices.map((n) => (
+              <InboxRow
+                key={n.id}
+                notice={n}
+                onOpen={() => void openNotice(n)}
+                onAction={(url) => {
+                  if (!n.read) void openNotice({ ...n, url: '' });
+                  navigate(url);
+                }}
+              />
+            ))}
           </ul>
         )}
         {!done && notices.length > 0 && (

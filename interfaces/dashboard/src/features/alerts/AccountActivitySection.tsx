@@ -41,7 +41,13 @@ const COLUMNS: { key: ChannelKey; icon: typeof Send; label: string; notReady: st
   { key: 'web_push', icon: MonitorSmartphone, label: 'Push', notReady: 'Enable push on at least one device in Channels above first' },
 ];
 
-export default function AccountActivitySection({ refreshKey }: { refreshKey: number }) {
+export default function AccountActivitySection({ refreshKey, section = 'personal' }: {
+  refreshKey: number;
+  /** 'personal' = team/ai targeted notices; 'system' = the system.*
+   *  categories (security/billing — typically mandatory, locked-on).
+   *  Same endpoint + grid; the page mounts one instance per section. */
+  section?: 'personal' | 'system';
+}) {
   const [data, setData] = useState<Payload | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -84,6 +90,9 @@ export default function AccountActivitySection({ refreshKey }: { refreshKey: num
     }
   };
 
+  const visible = (data?.categories ?? []).filter((c) =>
+    section === 'system' ? c.source === 'system' : c.source !== 'system');
+
   // Load failed — offer a retry, never a false "all good" empty state.
   if (loaded && failed) {
     return (
@@ -97,15 +106,14 @@ export default function AccountActivitySection({ refreshKey }: { refreshKey: num
       </section>
     );
   }
-  // Nothing to configure yet (no targeted sources registered) — say so
-  // rather than render an empty grid.
-  if (loaded && (!data || data.categories.length === 0)) {
+  // Nothing to configure yet — say so rather than render an empty grid.
+  if (loaded && (!data || visible.length === 0)) {
     return (
       <section className="bg-card border border-border rounded-xl p-4">
         <p className="text-sm text-muted-foreground">
-          No account-activity notifications yet. As new ones arrive (like
-          when someone accepts your invite), you&apos;ll be able to choose
-          where they reach you here.
+          {section === 'system'
+            ? 'No system notices apply to your role yet.'
+            : 'No account-activity notifications yet. As new ones arrive (like when someone accepts your invite), you\u2019ll be able to choose where they reach you here.'}
         </p>
       </section>
     );
@@ -118,9 +126,13 @@ export default function AccountActivitySection({ refreshKey }: { refreshKey: num
     <section className="bg-card border border-border rounded-xl p-4">
       {/* Opt-OUT, unlike the opt-IN Alerts grid above — the two look
           identical, so name the polarity explicitly: here ON is the
-          resting state and a tick you REMOVE is a mute. */}
+          resting state and a tick you REMOVE is a mute.  System rows are
+          mostly MANDATORY (locked on), so that badge says so instead. */}
       <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground mb-3">
-        <Check size={12} aria-hidden /> On by default — turn off what you don’t want
+        <Check size={12} aria-hidden />
+        {section === 'system'
+          ? 'Security and billing notices can\u2019t be switched off'
+          : 'On by default — turn off what you don\u2019t want'}
       </span>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -133,7 +145,7 @@ export default function AccountActivitySection({ refreshKey }: { refreshKey: num
             </tr>
           </thead>
           <tbody className="divide-y divide-border/60">
-            {data.categories.map(cat => (
+            {visible.map(cat => (
               <tr key={cat.key}>
                 <td className="py-2.5 pr-3">{cat.label}</td>
                 {COLUMNS.map(col => {

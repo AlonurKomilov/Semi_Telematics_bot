@@ -192,15 +192,10 @@ export default function MyNotifications() {
       />
 
       <SourceLabel>Account activity</SourceLabel>
-      <AccountActivitySection refreshKey={refreshKey} />
+      <AccountActivitySection refreshKey={refreshKey} section="personal" />
 
       <SourceLabel>System</SourceLabel>
-      <section className="bg-card border border-border rounded-xl p-4">
-        <p className="text-sm text-muted-foreground">
-          Platform notices — billing, security, and account changes — will
-          appear here. Nothing to configure yet.
-        </p>
-      </section>
+      <AccountActivitySection refreshKey={refreshKey} section="system" />
 
       <SourceLabel>In-app</SourceLabel>
       <div className="grid gap-4 lg:grid-cols-2 items-start">

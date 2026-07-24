@@ -473,3 +473,21 @@ async def test_inbox_cannot_read_other_users_rows(api):
                           headers=_h(api["token"]))).json()
         assert r["marked"] == 0
     assert await db.count_inbox_unread(acct, other.id) == 1
+
+
+async def test_inbox_action_field_validated(api):
+    """meta.action rides through only when it's a labeled RELATIVE url —
+    an absolute/protocol-relative url is dropped (no off-site redirect)."""
+    db, acct, uid = api["db"], api["acct"], api["uid"]
+    await db.add_inbox_notice(
+        acct, uid, category="system.security", title="New sign-in",
+        meta='{"context": "Security", "action": {"label": "Review sessions", "url": "/profile"}}')
+    await db.add_inbox_notice(
+        acct, uid, category="system.security", title="Evil",
+        meta='{"action": {"label": "x", "url": "https://evil.example"}}')
+    async with _client(api) as c:
+        body = (await c.get(f"{API}/inbox", headers=_h(api["token"]))).json()
+    by_title = {n["title"]: n for n in body["notices"]}
+    assert by_title["New sign-in"]["action"] == {
+        "label": "Review sessions", "url": "/profile"}
+    assert by_title["Evil"]["action"] is None

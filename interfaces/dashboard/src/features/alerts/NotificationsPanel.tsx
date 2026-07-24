@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Settings, RefreshCw, Check, CheckCheck, ArrowRight, Bell, BellOff,
   Wrench, HeartPulse, Fuel, MapPin, ShieldAlert, Camera, CircleParking,
-  AlertTriangle, Loader2, Users, Server, Bot,
+  AlertTriangle, Loader2, Users, Server, Bot, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Alert, AlertSeverity } from '../../types';
@@ -246,6 +246,10 @@ export function NotificationsPanel(
                             onOpen={() => {
                               if (!m.notice.read) void markRead(m.notice.id);
                               if (m.notice.url) goto(m.notice.url);
+                            }}
+                            onAction={(url) => {
+                              if (!m.notice.read) void markRead(m.notice.id);
+                              goto(url);
                             }} />
                 ))}
               </ul>
@@ -339,6 +343,10 @@ export function NotificationsPanel(
                           if (!n.read) void markRead(n.id);
                           if (n.url) goto(n.url);
                         }}
+                        onAction={(url) => {
+                          if (!n.read) void markRead(n.id);
+                          goto(url);
+                        }}
                       />
                     ))}
                   </ul>
@@ -429,45 +437,86 @@ const SOURCE_ICON: Record<string, typeof Users> = {
   system: Server,
 };
 
-function InboxRow({ notice, onOpen }: {
-  notice: InboxNotice; onOpen: () => void;
+// Bodies longer than roughly one panel line earn the expand chevron.
+const EXPAND_THRESHOLD = 76;
+
+/** One inbox notice row — shared by the bell dropdown and the
+ * Notification center so both surfaces speak one grammar.
+ *
+ * Expandable (chevron, always visible — no hover reveal on cab tablets)
+ * when the body overflows a line OR the notice carries an inline action;
+ * expanded shows the full body + the action button ("Review sessions",
+ * "Open billing").  The action lives OUTSIDE the main row button —
+ * nested buttons are invalid HTML. */
+export function InboxRow({ notice, onOpen, onAction }: {
+  notice: InboxNotice;
+  onOpen: () => void;
+  onAction: (url: string) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const tone = SEVERITY_TONE[notice.severity] ?? 'info';
   // Neutral fallback (Bell, not AlertTriangle) — this is the NON-alert
   // feed; an unknown future source shouldn't masquerade as an alert.
   const Icon = SOURCE_ICON[notice.source] ?? Bell;
   const age = formatAgoShort(notice.created_at);
+  const expandable = !!notice.action || (notice.body?.length ?? 0) > EXPAND_THRESHOLD;
   return (
-    <li>
-      <button
-        onClick={onOpen}
-        className={`flex items-start gap-2.5 w-full px-3 py-2.5 text-left transition-colors hover:bg-muted/50 ${
-          notice.read ? 'opacity-60' : ''
-        }`}
-      >
-        <Icon size={16} className={`${toneText(tone)} mt-0.5 shrink-0`} aria-hidden />
-        <span className="flex-1 min-w-0">
-          <span className="flex items-baseline justify-between gap-2">
-            <span className="text-sm font-medium truncate">{notice.title}</span>
-            <span className="text-3xs text-muted-foreground shrink-0 tabular-nums">{age}</span>
+    <li className="px-3 py-2.5 hover:bg-muted/50 transition-colors">
+      <div className="flex items-start gap-2.5">
+        <button
+          onClick={onOpen}
+          className={`flex items-start gap-2.5 flex-1 min-w-0 text-left ${
+            notice.read ? 'opacity-60' : ''
+          }`}
+        >
+          <Icon size={16} className={`${toneText(tone)} mt-0.5 shrink-0`} aria-hidden />
+          <span className="flex-1 min-w-0">
+            <span className="flex items-baseline justify-between gap-2">
+              <span className="text-sm font-medium truncate">{notice.title}</span>
+              <span className="text-3xs text-muted-foreground shrink-0 tabular-nums">{age}</span>
+            </span>
+            {notice.body && (
+              <span className={`block text-xs text-muted-foreground mt-0.5 ${
+                expanded ? '' : 'truncate'
+              }`}>
+                {notice.body}
+              </span>
+            )}
+            {notice.context && (
+              /* The object chip — what the notice is ABOUT; especially
+                 useful on the merged All feed where sources interleave. */
+              <span className="inline-flex items-center rounded bg-muted px-1.5 py-px text-2xs font-medium text-muted-foreground mt-1">
+                {notice.context}
+              </span>
+            )}
           </span>
-          {notice.body && (
-            <span className="block text-xs text-muted-foreground truncate mt-0.5">
-              {notice.body}
-            </span>
-          )}
-          {notice.context && (
-            /* The object chip — what the notice is ABOUT; especially
-               useful on the merged All feed where sources interleave. */
-            <span className="inline-flex items-center rounded bg-muted px-1.5 py-px text-2xs font-medium text-muted-foreground mt-1">
-              {notice.context}
-            </span>
-          )}
-        </span>
+        </button>
+        {expandable && (
+          <button
+            onClick={() => setExpanded((e) => !e)}
+            aria-label={expanded ? 'Collapse' : 'Expand'}
+            aria-expanded={expanded}
+            className="inline-flex size-6 items-center justify-center rounded-md text-muted-foreground/60 hover:bg-muted hover:text-foreground transition-colors shrink-0"
+          >
+            {expanded
+              ? <ChevronUp size={14} aria-hidden />
+              : <ChevronDown size={14} aria-hidden />}
+          </button>
+        )}
         {!notice.read && (
           <span className="size-2 rounded-full bg-primary mt-1.5 shrink-0" aria-label="Unread" />
         )}
-      </button>
+      </div>
+      {expanded && notice.action && (
+        <div className="mt-1.5 pl-6">
+          <button
+            onClick={() => onAction(notice.action!.url)}
+            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-foreground hover:bg-muted transition-colors"
+          >
+            {notice.action.label} <ArrowRight size={12} aria-hidden />
+          </button>
+        </div>
+      )}
     </li>
   );
 }

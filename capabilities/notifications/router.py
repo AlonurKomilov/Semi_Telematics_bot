@@ -276,7 +276,20 @@ async def get_account_activity_prefs(
         pref_by_channel[ch.key] = await db.get_pref_categories(
             db_user.account_id, "user", db_user.id, ch.key)
 
-    cats = [c for c in list_categories() if c.kind == TARGETED]
+    # TARGETED categories (opt-out, personal) + broadcast SYSTEM notices
+    # whose audience the caller's role passes (billing → owner/admin only)
+    # — so the System section shows exactly what this person can receive,
+    # never a locked billing row a driver will never get.
+    role_str = getattr(db_user.role, "value", None) or str(db_user.role)
+
+    def _listed(c) -> bool:
+        if c.kind == TARGETED:
+            return True
+        if c.source == "system":
+            return c.audience is None or bool(c.audience(role_str))
+        return False
+
+    cats = [c for c in list_categories() if _listed(c)]
     cats.sort(key=lambda c: (c.source, c.label))
     out = []
     for c in cats:
@@ -357,33 +370,45 @@ async def get_inbox(
         source=source, limit=limit, before_id=before_id)
     unread = await db.count_inbox_unread(db_user.account_id, db_user.id)
 
-    def _context(meta_raw: str) -> str:
-        """The object chip a row shows ("Team", "Truck 245") — carried in
-        the notice's meta JSON under ``context``; absent = no chip.  ANY
-        malformed meta (non-JSON, or JSON that isn't an object) yields ''
-        — one bad row must never 500 the whole feed."""
+    def _meta(meta_raw: str) -> dict:
+        """Parsed meta object, {} on ANY malformed value — one bad row
+        must never 500 the whole feed."""
         if not meta_raw:
-            return ""
+            return {}
         try:
             import json as _json
             parsed = _json.loads(meta_raw)
-            if not isinstance(parsed, dict):
-                return ""
-            return str(parsed.get("context", "") or "")
+            return parsed if isinstance(parsed, dict) else {}
         except Exception:
-            return ""
+            return {}
 
-    return {
-        "notices": [
+    def _action(meta: dict) -> dict | None:
+        """The row's inline action button ({label, url}) — only honoured
+        when the url is a same-origin RELATIVE path (matches the web-push
+        rule: a stored notice must never become an off-site redirect)."""
+        raw = meta.get("action")
+        if not isinstance(raw, dict):
+            return None
+        label = str(raw.get("label", "") or "").strip()
+        url = str(raw.get("url", "") or "")
+        # "\\" rejected too: browsers normalize a leading "/\\" to "//"
+        # in real navigations, which would defeat the relative-only rule.
+        if (not label or not url.startswith("/")
+                or url.startswith("//") or "\\" in url):
+            return None
+        return {"label": label[:40], "url": url}
+
+    out = []
+    for n in notices:
+        meta = _meta(n.get("meta", ""))
+        out.append(
             {"id": n["id"], "category": n["category"], "source": n["source"],
              "severity": n["severity"], "title": n["title"], "body": n["body"],
              "url": n["url"], "created_at": n["created_at"],
-             "context": _context(n.get("meta", "")),
-             "read": bool(n["read_at"])}
-            for n in notices
-        ],
-        "unread": unread,
-    }
+             "context": str(meta.get("context", "") or ""),
+             "action": _action(meta),
+             "read": bool(n["read_at"])})
+    return {"notices": out, "unread": unread}
 
 
 class InboxReadRequest(BaseModel):

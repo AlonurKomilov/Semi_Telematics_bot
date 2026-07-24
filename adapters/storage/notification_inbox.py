@@ -104,6 +104,7 @@ class NotificationInboxMixin(_MixinBase):
 
     async def get_optout_subscribers(
         self, account_id: int, category: str, channel: str,
+        *, ignore_mutes: bool = False,
     ) -> list[dict]:
         """Broadcast recipients for an OPT-OUT channel: every active user of
         the account EXCEPT those whose prefs mute it — with the specific
@@ -111,6 +112,11 @@ class NotificationInboxMixin(_MixinBase):
         as ``notify_user``).  The intrinsic ``in_app`` channel uses this
         instead of the opt-in matrix query: an inbox is a passive record,
         so requiring opt-in would leave it empty forever.
+
+        ``ignore_mutes=True`` (MANDATORY categories — security/billing)
+        returns every active user regardless of prefs: a notice that can't
+        be turned off in the UI must not be silenceable by a leftover
+        pref row either.
 
         Returns the same row shape as ``get_notification_subscribers``
         (recipient_type/recipient_id/address/cadence) so ``dispatch()``'s
@@ -140,11 +146,12 @@ class NotificationInboxMixin(_MixinBase):
             row = dict(r)
             spec = row["spec_enabled"]          # None | 0/1
             star = row["star_enabled"]
-            if spec is not None:
-                if not spec:
-                    continue                    # explicit mute of this category
-            elif star is not None and not star:
-                continue                        # blanket mute, no override
+            if not ignore_mutes:
+                if spec is not None:
+                    if not spec:
+                        continue                # explicit mute of this category
+                elif star is not None and not star:
+                    continue                    # blanket mute, no override
             out.append({
                 "recipient_type": "user",
                 "recipient_id": str(row["user_id"]),
