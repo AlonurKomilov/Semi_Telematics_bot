@@ -130,6 +130,12 @@ export default function LiveAlertWatcher() {
         tone,
         title: `${label(a.alert_type)} — ${a.vehicle_name || 'Vehicle'}`,
         detail: a.message || a.last_detail,
+        // Live age + occurrence so the banner is honest about WHEN: a
+        // fresh fire reads "2m ago", a recurring one "×5 · 2m ago", and a
+        // sticky critical that lingers keeps ticking ("3d ago") instead of
+        // masquerading as current.
+        ageSince: a.last_seen || a.created_at,
+        occurrence: a.occurrence_count,
         // Critical stays until dismissed/acked; others auto-close.
         seconds: critical ? undefined : AUTO_DISMISS_SECONDS,
         countdown: 'dismiss',

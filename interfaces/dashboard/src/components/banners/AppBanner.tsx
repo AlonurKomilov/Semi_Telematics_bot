@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import type { Tone } from '@/lib/status';
 import { toneText } from '@/lib/status';
+import { formatAgoShort } from '@/utils/datetime';
 
 const TONE_ICON: Record<Tone, typeof Info> = {
   ok: CheckCircle2,
@@ -50,6 +51,13 @@ export interface BannerOptions {
   tone: Tone;
   title: string;
   detail?: string;
+  /** Timestamp the banner's event happened.  Rendered as a LIVE age
+   *  ("2m ago" → "3d ago") in the header, recomputed on an interval — so a
+   *  sticky banner that's lingered is obviously old, never mistaken for
+   *  new (a critical banner never auto-closes, so this is its honesty). */
+  ageSince?: string | number;
+  /** Fire count for a recurring alert — shown as "×N" beside the age. */
+  occurrence?: number;
   actions?: BannerAction[];
   /** Seconds on the countdown; omit for a sticky banner (manual ✕). */
   seconds?: number;
@@ -64,7 +72,7 @@ const TICK_MS = 100;
 
 export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptions }) {
   const {
-    tone, title, detail, actions = [], seconds,
+    tone, title, detail, ageSince, occurrence, actions = [], seconds,
     countdown = 'dismiss', onExpire, onClose,
   } = opts;
   const total = (seconds ?? 0) * 1000;
@@ -72,6 +80,18 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
   const [stopped, setStopped] = useState(seconds == null);
   const [expanded, setExpanded] = useState(false);
   const firedRef = useRef(false);
+
+  // Re-render the age on a slow interval so a lingering (sticky) banner's
+  // "3d ago" stays truthful instead of freezing at its show-time value.
+  const [, bumpAge] = useState(0);
+  useEffect(() => {
+    if (ageSince == null) return;
+    const iv = setInterval(() => bumpAge((n) => n + 1), 30_000);
+    return () => clearInterval(iv);
+  }, [ageSince]);
+  const ageLabel = ageSince != null ? formatAgoShort(ageSince) : '';
+  const meta = occurrence && occurrence > 1
+    ? `×${occurrence} · ${ageLabel}` : ageLabel;
 
   useEffect(() => {
     if (stopped || total <= 0) return;
@@ -111,6 +131,11 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
         <div className="flex items-start gap-2">
           <Icon size={16} className={`${toneText(tone)} mt-0.5 shrink-0`} aria-hidden />
           <p className="flex-1 min-w-0 text-sm font-semibold">{title}</p>
+          {meta && (
+            <span className="shrink-0 mt-0.5 text-2xs text-muted-foreground tabular-nums">
+              {meta}
+            </span>
+          )}
           {detail && (
             <button
               onClick={() => setExpanded(v => !v)}
