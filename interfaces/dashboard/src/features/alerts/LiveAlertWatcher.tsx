@@ -129,6 +129,9 @@ export default function LiveAlertWatcher() {
       showBanner({
         tone,
         title: `${label(a.alert_type)} — ${a.vehicle_name || 'Vehicle'}`,
+        // Company code chip — which company this unit belongs to (server
+        // tags it on multi-company accounts only), same as the bell rows.
+        tag: a.company,
         detail: a.message || a.last_detail,
         // Live age + occurrence so the banner is honest about WHEN: a
         // fresh fire reads "2m ago", a recurring one "×5 · 2m ago", and a

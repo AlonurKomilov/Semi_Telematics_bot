@@ -58,6 +58,10 @@ export interface BannerOptions {
   ageSince?: string | number;
   /** Fire count for a recurring alert — shown as "×N" beside the age. */
   occurrence?: number;
+  /** Small muted chip after the title — the object the notice is ABOUT
+   *  (e.g. an alert's company code), so a banner disambiguates the same
+   *  way the bell rows do. */
+  tag?: string;
   actions?: BannerAction[];
   /** Seconds on the countdown; omit for a sticky banner (manual ✕). */
   seconds?: number;
@@ -72,7 +76,7 @@ const TICK_MS = 100;
 
 export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptions }) {
   const {
-    tone, title, detail, ageSince, occurrence, actions = [], seconds,
+    tone, title, detail, ageSince, occurrence, tag, actions = [], seconds,
     countdown = 'dismiss', onExpire, onClose,
   } = opts;
   const total = (seconds ?? 0) * 1000;
@@ -130,7 +134,16 @@ export function AppBanner({ id, opts }: { id: string | number; opts: BannerOptio
       <div className="px-3 pt-2.5 pb-2">
         <div className="flex items-start gap-2">
           <Icon size={16} className={`${toneText(tone)} mt-0.5 shrink-0`} aria-hidden />
-          <p className="flex-1 min-w-0 text-sm font-semibold">{title}</p>
+          <p className="flex-1 min-w-0 text-sm font-semibold inline-flex items-baseline gap-1.5">
+            <span className="truncate">{title}</span>
+            {tag && (
+              /* Object chip (e.g. company code) — same styling as the bell
+                 alert-row / maintenance company chip. */
+              <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-3xs font-normal">
+                {tag}
+              </span>
+            )}
+          </p>
           {meta && (
             <span className="shrink-0 mt-0.5 text-2xs text-muted-foreground tabular-nums">
               {meta}
