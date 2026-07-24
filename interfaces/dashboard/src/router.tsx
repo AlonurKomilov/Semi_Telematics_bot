@@ -105,6 +105,7 @@ const AuditLog         = lazyWithReload(() => import('./features/settings/AuditL
 const Settings         = lazyWithReload(() => import('./features/settings/Settings'));
 const Profile          = lazyWithReload(() => import('./pages/Profile'));
 const MyNotifications  = lazyWithReload(() => import('./features/alerts/MyNotifications'));
+const NotificationCenter = lazyWithReload(() => import('./features/alerts/NotificationCenter'));
 const GroupDelivery    = lazyWithReload(() => import('./features/alerts/GroupDelivery'));
 const Storage          = lazyWithReload(() => import('./features/storage/Storage'));
 const WorkHours        = lazyWithReload(() => import('./features/settings/WorkHours'));
@@ -271,11 +272,13 @@ export default function AppRouter() {
             user regardless of role. */}
         <Route path="profile" element={L(<Profile />)} />
         {/* Notifications are a cross-source PERSONAL surface on their own
-            door (the topbar bell's gear), not an Alerts sub-tab. The alert
-            BOARD stays at /alerts; the old /alerts/preferences path 301s
-            here so bookmarks survive. */}
+            door (the topbar bell), not an Alerts sub-tab. /notifications =
+            the browsable history (Notification center); /preferences = the
+            settings page (the bell's gear). The alert BOARD stays at
+            /alerts; the old /alerts/preferences path 301s so bookmarks
+            survive. */}
+        <Route path="notifications" element={L(<NotificationCenter />)} />
         <Route path="notifications/preferences" element={L(<MyNotifications />)} />
-        <Route path="notifications" element={<Navigate to="/notifications/preferences" replace />} />
         <Route path="alerts/preferences" element={<Navigate to="/notifications/preferences" replace />} />
         <Route path="alerts/group-delivery" element={L(<GroupDelivery />)} />
         <Route path="storage"  element={L(<P perm="can_manage_storage"><Storage /></P>)} />

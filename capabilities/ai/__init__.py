@@ -222,3 +222,8 @@ def __getattr__(name: str):
         from capabilities.ai import models as _m
         return _m._model
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+# Registers the ai.* notification categories (ai.action_executed) so the
+# preferences UI knows them at boot — importing the package is enough.
+from capabilities.ai import notifications as _ai_notifications  # noqa: F401,E402

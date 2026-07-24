@@ -16,18 +16,23 @@ import { apiJSON } from '../../api/client';
 export interface InboxNotice {
   id: number;
   category: string;
-  source: string;         // namespace: 'team' | 'system' | future
+  source: string;         // namespace: 'team' | 'ai' | 'system' | future
   severity: 'info' | 'warning' | 'critical';
   title: string;
   body: string;
   url: string;
   created_at: string;
+  /** The object chip ("Team", "AI") — '' = no chip. */
+  context: string;
   read: boolean;
 }
 
-interface InboxResponse { notices: InboxNotice[]; unread: number }
+export interface InboxResponse { notices: InboxNotice[]; unread: number }
 
 const KEY = ['notifications', 'inbox'];
+/** Shared cache key — the Notification center invalidates it after its own
+ * mark-read writes so the bell stays in sync. */
+export const INBOX_QUERY_KEY = KEY;
 
 export function useInbox(enabled: boolean) {
   return useQuery({

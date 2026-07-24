@@ -148,6 +148,15 @@ async def execute_approved_action(
     except Exception:
         logger.exception("Audit write failed for AI action %s (executed anyway)", tool)
 
+    # ── Inbox record (ai.action_executed → the approver, in-app only) ──
+    # A durable "the AI did X under your name" row beside the audit log;
+    # non-fatal by construction inside announce_ai_action_executed.
+    from capabilities.ai.notifications import announce_ai_action_executed
+    await announce_ai_action_executed(
+        platform_db, account_id, uid, tool=tool,
+        result=result if isinstance(result, dict) else None,
+    )
+
     return {"status": "consumed", "result": _client_result(result)}
 
 

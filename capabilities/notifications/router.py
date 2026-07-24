@@ -356,11 +356,29 @@ async def get_inbox(
         db_user.account_id, db_user.id,
         source=source, limit=limit, before_id=before_id)
     unread = await db.count_inbox_unread(db_user.account_id, db_user.id)
+
+    def _context(meta_raw: str) -> str:
+        """The object chip a row shows ("Team", "Truck 245") — carried in
+        the notice's meta JSON under ``context``; absent = no chip.  ANY
+        malformed meta (non-JSON, or JSON that isn't an object) yields ''
+        — one bad row must never 500 the whole feed."""
+        if not meta_raw:
+            return ""
+        try:
+            import json as _json
+            parsed = _json.loads(meta_raw)
+            if not isinstance(parsed, dict):
+                return ""
+            return str(parsed.get("context", "") or "")
+        except Exception:
+            return ""
+
     return {
         "notices": [
             {"id": n["id"], "category": n["category"], "source": n["source"],
              "severity": n["severity"], "title": n["title"], "body": n["body"],
              "url": n["url"], "created_at": n["created_at"],
+             "context": _context(n.get("meta", "")),
              "read": bool(n["read_at"])}
             for n in notices
         ],

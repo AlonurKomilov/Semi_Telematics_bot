@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Settings, RefreshCw, Check, CheckCheck, ArrowRight, Bell, BellOff,
   Wrench, HeartPulse, Fuel, MapPin, ShieldAlert, Camera, CircleParking,
-  AlertTriangle, Loader2, Users, Server,
+  AlertTriangle, Loader2, Users, Server, Bot,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Alert, AlertSeverity } from '../../types';
@@ -47,14 +47,20 @@ const TYPE_ICON: Record<string, typeof Wrench> = {
 type Tab = 'all' | 'critical';
 // Primary source tabs — the bell is a multi-source inbox: the alert
 // glance (its own store, /alerts/pending) beside the persisted notices
-// (team.* → Activity, system.* → System) from /notifications/inbox.
-type Source = 'alerts' | 'activity' | 'system';
+// (team.*/ai.* → Activity, system.* → System) from /notifications/inbox.
+// 'all' interleaves every source by time — the default landing view.
+type Source = 'all' | 'alerts' | 'activity' | 'system';
+
+// One row of the merged All feed — an alert or a notice, time-sortable.
+type MergedItem =
+  | { kind: 'alert'; alert: Alert; ts: number }
+  | { kind: 'notice'; notice: InboxNotice; ts: number };
 
 export function NotificationsPanel(
   { onClose, canAlerts }: { onClose: () => void; canAlerts: boolean },
 ) {
   const navigate = useNavigate();
-  const [src, setSrc] = useState<Source>(canAlerts ? 'alerts' : 'activity');
+  const [src, setSrc] = useState<Source>('all');
   const [tab, setTab] = useState<Tab>('all');
   // Locally hide alerts the moment they're acked so the row doesn't linger
   // through the refetch round-trip.
@@ -81,6 +87,8 @@ export function NotificationsPanel(
   // number, deliberately approximate past that window.  The BELL badge
   // reads the server's true total (useInboxUnread), so nothing is lost.
   const unreadOf = (list: InboxNotice[]) => list.filter((n) => !n.read).length;
+  // Force a valid tab if permissions shift under us.
+  if (src === 'alerts' && !canAlerts) setSrc('all');
   // Ids inside a pending "Acknowledge all" window — module-level store, so
   // the hide survives this panel unmounting when the dropdown closes (a
   // reopened panel must NOT resurface rows that are mid-countdown, and
@@ -99,6 +107,22 @@ export function NotificationsPanel(
   const shown = tab === 'critical'
     ? alerts.filter((a) => a.severity === 'critical')
     : alerts;
+
+  // The All feed: alerts + notices interleaved newest-first.  Two stores,
+  // one glance — exactly what the umbrella "Notifications" name promises.
+  const merged = useMemo<MergedItem[]>(() => {
+    const items: MergedItem[] = [
+      ...(canAlerts ? alerts : []).map((a) => ({
+        kind: 'alert' as const, alert: a,
+        ts: Date.parse(a.last_seen || a.created_at || '') || 0,
+      })),
+      ...notices.map((n) => ({
+        kind: 'notice' as const, notice: n,
+        ts: Date.parse(n.created_at) || 0,
+      })),
+    ];
+    return items.sort((x, y) => y.ts - x.ts);
+  }, [canAlerts, alerts, notices]);
 
   const goto = (path: string) => { onClose(); navigate(path); };
 
@@ -177,9 +201,16 @@ export function NotificationsPanel(
         </div>
       </div>
 
-      {/* Source tabs — Alerts (permission-gated) · Activity · System.
-          Alert count = pending; inbox counts = unread. */}
+      {/* Source tabs — All (merged, default) · Alerts (permission-gated) ·
+          Activity · System.  The All pill's inbox half is the SERVER's
+          exact unread total (same field the bell badge reads); the alert
+          half counts the loaded glance rows.  Per-source pills stay
+          page-approximate. */}
       <div className="flex items-center gap-1 px-3 py-2 border-b border-border">
+        <TabPill active={src === 'all'} onClick={() => setSrc('all')}>
+          All{((canAlerts ? alerts.length : 0) + (inbox?.unread ?? 0))
+            ? ` ${(canAlerts ? alerts.length : 0) + (inbox?.unread ?? 0)}` : ''}
+        </TabPill>
         {canAlerts && (
           <TabPill active={src === 'alerts'} onClick={() => setSrc('alerts')}>
             Alerts{alerts.length ? ` ${alerts.length}` : ''}
@@ -193,7 +224,50 @@ export function NotificationsPanel(
         </TabPill>
       </div>
 
-      {src === 'alerts' && canAlerts ? (
+      {src === 'all' ? (
+        <>
+          {/* Merged feed — alert rows keep their ack; notice rows their
+              read state.  Bulk verbs live on the dedicated tabs. */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {(isLoading || inboxLoading) && merged.length === 0 ? (
+              <div className="flex items-center justify-center py-10 text-muted-foreground">
+                <Loader2 size={18} className="animate-spin" aria-hidden />
+              </div>
+            ) : merged.length === 0 ? (
+              <EmptyState label="You’re all caught up" />
+            ) : (
+              <ul className="divide-y divide-border/60">
+                {merged.map((m) => m.kind === 'alert' ? (
+                  <AlertRow key={`a${String(m.alert.id)}`} alert={m.alert}
+                            onAck={() => ack([m.alert.id])}
+                            onOpen={() => goto('/alerts')} busy={busy} />
+                ) : (
+                  <InboxRow key={`n${m.notice.id}`} notice={m.notice}
+                            onOpen={() => {
+                              if (!m.notice.read) void markRead(m.notice.id);
+                              if (m.notice.url) goto(m.notice.url);
+                            }} />
+                ))}
+              </ul>
+            )}
+          </div>
+          <div className="flex items-center justify-between px-3 py-2 border-t border-border">
+            <button
+              onClick={() => void markAllRead()}
+              disabled={(inbox?.unread ?? 0) === 0}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors"
+            >
+              <CheckCheck size={14} aria-hidden /> Mark all read
+            </button>
+            <button
+              onClick={() => goto('/notifications')}
+              className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+            >
+              See all <ArrowRight size={14} aria-hidden />
+            </button>
+          </div>
+        </>
+      ) : src === 'alerts' && canAlerts ? (
         <>
           {/* Severity sub-filter — alerts only */}
           <div className="flex items-center gap-1 px-3 py-2 border-b border-border">
@@ -273,16 +347,16 @@ export function NotificationsPanel(
               <div className="flex items-center justify-between px-3 py-2 border-t border-border">
                 <button
                   onClick={() => void markAllRead()}
-                  disabled={unreadOf(notices) === 0}
+                  disabled={(inbox?.unread ?? 0) === 0}
                   className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors"
                 >
                   <CheckCheck size={14} aria-hidden /> Mark all read
                 </button>
                 <button
-                  onClick={() => goto('/notifications/preferences')}
+                  onClick={() => goto('/notifications')}
                   className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
                 >
-                  Preferences <ArrowRight size={14} aria-hidden />
+                  See all <ArrowRight size={14} aria-hidden />
                 </button>
               </div>
             </>
@@ -348,9 +422,10 @@ function AlertRow({ alert, onAck, onOpen, busy }: {
 }
 
 // Inbox source → glyph.  Kept coarse on purpose: the row's text carries
-// the specifics; the icon just separates "people" from "platform".
+// the specifics; the icon just separates "people" / "AI" / "platform".
 const SOURCE_ICON: Record<string, typeof Users> = {
   team: Users,
+  ai: Bot,
   system: Server,
 };
 
@@ -379,6 +454,13 @@ function InboxRow({ notice, onOpen }: {
           {notice.body && (
             <span className="block text-xs text-muted-foreground truncate mt-0.5">
               {notice.body}
+            </span>
+          )}
+          {notice.context && (
+            /* The object chip — what the notice is ABOUT; especially
+               useful on the merged All feed where sources interleave. */
+            <span className="inline-flex items-center rounded bg-muted px-1.5 py-px text-2xs font-medium text-muted-foreground mt-1">
+              {notice.context}
             </span>
           )}
         </span>

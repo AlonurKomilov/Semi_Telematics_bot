@@ -83,20 +83,27 @@ async def announce_invite_accepted(
 
         name = (getattr(new_user, "display_name", "") or "Someone").strip()
         role = (role_display or "").strip()
-        body = f"{name} joined as {role}." if role else f"{name} joined your team."
 
         await notify_user(
             db,
             getattr(new_user, "account_id"),
             inviter_id,
             NotificationContent(
-                title="Invite accepted",
-                body=body,
+                # ACTOR-led title: every channel renders the title bold/
+                # first (inbox row, Telegram <b>, email subject), so leading
+                # with WHO makes rows scannable — "Dana Driver joined your
+                # team", not a generic "Invite accepted".
+                title=f"{name} joined your team",
+                body=(f"Accepted your invite — joined as {role}." if role
+                      else "Accepted your invite."),
                 category=INVITE_ACCEPTED,
                 severity="info",
                 # Relative path: the in-app inbox row click-navigates here,
                 # and web push only honours same-origin relative urls.
                 url="/team",
+                # ``context`` renders as the small object chip on inbox rows
+                # (what the notice is ABOUT).
+                meta={"context": "Team"},
             ),
         )
     except Exception as exc:

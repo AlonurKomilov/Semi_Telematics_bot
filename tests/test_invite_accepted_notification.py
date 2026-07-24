@@ -93,9 +93,11 @@ async def test_flag_on_notifies_inviter_with_targeted_content(monkeypatch):
     assert call["user_id"] == 7                 # the INVITER, not the new user
     content = call["content"]
     assert content.category == INVITE_ACCEPTED
-    assert content.title == "Invite accepted"
-    assert content.body == "Dana Driver joined as Driver."
+    # Actor-led: the bold/first-rendered title carries WHO.
+    assert content.title == "Dana Driver joined your team"
+    assert content.body == "Accepted your invite — joined as Driver."
     assert content.severity == "info"
+    assert content.meta == {"context": "Team"}      # the inbox row's chip
 
 
 @pytest.mark.asyncio
@@ -103,7 +105,8 @@ async def test_body_without_role(monkeypatch):
     notify = _RecordingNotify()
     db = _patch(monkeypatch, flag=True, notify=notify, created_by=7)
     await announce_invite_accepted(db, "ABC-123", _user(name="Sam"), role_display="")
-    assert notify.calls[0]["content"].body == "Sam joined your team."
+    assert notify.calls[0]["content"].title == "Sam joined your team"
+    assert notify.calls[0]["content"].body == "Accepted your invite."
 
 
 @pytest.mark.asyncio

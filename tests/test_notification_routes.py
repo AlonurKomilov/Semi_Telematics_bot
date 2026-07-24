@@ -419,7 +419,8 @@ async def test_account_activity_requires_auth(api):
 async def test_inbox_feed_unread_and_mark_read(api):
     db, acct, uid = api["db"], api["acct"], api["uid"]
     await db.add_inbox_notice(acct, uid, category="team.invite_accepted",
-                              title="Invite accepted", body="Dana joined.")
+                              title="Invite accepted", body="Dana joined.",
+                              meta='{"context": "Team"}')
     await db.add_inbox_notice(acct, uid, category="system.security",
                               title="New sign-in", severity="warning")
     async with _client(api) as c:
@@ -428,6 +429,8 @@ async def test_inbox_feed_unread_and_mark_read(api):
         assert [n["title"] for n in body["notices"]] == ["New sign-in", "Invite accepted"]
         assert body["notices"][0]["source"] == "system"
         assert body["notices"][0]["read"] is False
+        assert body["notices"][0]["context"] == ""          # no meta → no chip
+        assert body["notices"][1]["context"] == "Team"      # meta.context chip
 
         # Source tab filter.
         team = (await c.get(f"{API}/inbox?source=team",
