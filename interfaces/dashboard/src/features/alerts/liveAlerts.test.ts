@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { diffNewAlerts, type AlertLike } from './liveAlerts';
+import { diffNewAlerts, resolvedBanners, type AlertLike } from './liveAlerts';
 
 const a = (id: string, severity: AlertLike['severity'] = 'warning'): AlertLike =>
   ({ id, severity });
@@ -38,5 +38,31 @@ describe('diffNewAlerts', () => {
     ({ seen } = diffNewAlerts([a('7', 'critical')], seen, 'all', false));
     const again = diffNewAlerts([a('7', 'critical')], seen, 'all', false);
     expect(again.toShow).toEqual([]);
+  });
+});
+
+
+describe('resolvedBanners', () => {
+  it('returns banners whose alert is NOT in the authoritative active set', () => {
+    const shown = new Map<string, string | number>([
+      ['a1', 't1'], ['a2', 't2'], ['a3', 't3'],
+    ]);
+    const active = new Set(['a1', 'a3']);        // a2 resolved
+    expect(resolvedBanners(shown, active)).toEqual([['a2', 't2']]);
+  });
+
+  it('keeps all when every shown banner is still active', () => {
+    const shown = new Map<string, string | number>([['a1', 1], ['a2', 2]]);
+    expect(resolvedBanners(shown, new Set(['a1', 'a2']))).toEqual([]);
+  });
+
+  it('returns ALL when the active set is empty (everything resolved)', () => {
+    const shown = new Map<string, string | number>([['a1', 1], ['a2', 2]]);
+    expect(resolvedBanners(shown, new Set()).map(([id]) => id).sort())
+      .toEqual(['a1', 'a2']);
+  });
+
+  it('is empty when nothing is shown', () => {
+    expect(resolvedBanners(new Map(), new Set(['a1']))).toEqual([]);
   });
 });

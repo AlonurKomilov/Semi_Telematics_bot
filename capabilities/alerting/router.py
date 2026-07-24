@@ -267,6 +267,47 @@ async def pending_alerts(
             "total_pages": total_pages}
 
 
+@router.get("/active-among")
+async def alerts_active_among(
+    ids: str = Query("", description="Comma-separated alert ids to check"),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Of the given alert ids, which are STILL active (and visible to the
+    caller)?  The AUTHORITATIVE resolved/active signal the live-banner
+    watcher needs: it retires a sticky banner once its alert is
+    acknowledged/resolved anywhere, WITHOUT the false-positive risk of
+    inferring "gone" from the capped/windowed recent feed (a long-running
+    critical stays active past the 7-day window yet must not be dropped).
+
+    Same per-user scoping as /pending — a driver only confirms their own
+    trucks, a company-restricted user only their companies — so this can't
+    become an oracle for alerts the caller can't otherwise see.  Returns a
+    subset of the input ids (as strings); unknown/foreign/resolved ids are
+    simply absent."""
+    # Positive digit strings only, bounded length — so a crafted token
+    # ("--5", a 500-digit number) can't crash int()/the asyncpg bind.
+    id_list: list[int] = []
+    for x in ids.split(","):
+        x = x.strip()
+        if x.isdigit() and len(x) <= 18:
+            id_list.append(int(x))
+            if len(id_list) >= 64:
+                break
+    if not id_list:
+        return {"active_ids": []}
+    rows = await tenant_db.get_active_alert_history_by_ids(
+        user["account_id"], id_list)
+    alerts = [_shape_history_for_pending_api(r) for r in rows]
+    if user.get("_matched_perm") == "can_alerts_vehicle":
+        alerts = await _filter_own(user, alerts)
+    allowed = await get_user_company_codes(user)
+    if allowed:
+        veh_map = await _vehicle_company_map(user["account_id"], tenant_db)
+        alerts = filter_by_company_map(alerts, allowed, veh_map, key="vehicle_id")
+    return {"active_ids": [str(a["id"]) for a in alerts]}
+
+
 @router.get("/pending/by-vehicle")
 async def pending_alerts_by_vehicle(
     alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),

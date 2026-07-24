@@ -19,9 +19,9 @@ import type { Alert, AlertSeverity } from '../../types';
 import type { Tone } from '../../lib/status';
 import { showBanner } from '../../components/banners';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
-import { useRecentAlerts, useAckAlerts } from './useRecentAlerts';
+import { useRecentAlerts, useAckAlerts, activeAmong } from './useRecentAlerts';
 import { useBannerLevel } from './bannerLevel';
-import { diffNewAlerts } from './liveAlerts';
+import { diffNewAlerts, resolvedBanners } from './liveAlerts';
 
 const P_ALERTS = ['can_alerts_all', 'can_alerts_vehicle'];
 // 60s ambient cadence — "a new alert within a minute" for an OPEN tab;
@@ -76,6 +76,11 @@ export default function LiveAlertWatcher() {
   // low thousands of short strings over a multi-day session — negligible.
   const seenRef = useRef<Set<string>>(new Set());
   const firstLoadRef = useRef(true);
+  // alertId → the banner's toast id, for banners currently on screen — so a
+  // sticky critical banner can be retired once its alert resolves (checked
+  // authoritatively via /alerts/active-among, never inferred from the
+  // capped feed).
+  const shownRef = useRef<Map<string, string | number>>(new Map());
   // Latest values read inside the data effect without making it re-run on
   // their change (only a genuine new fetch should diff).
   const levelRef = useRef(level);
@@ -126,12 +131,13 @@ export default function LiveAlertWatcher() {
     function bannerFor(a: Alert) {
       const tone = SEVERITY_TONE[a.severity ?? 'info'] ?? 'info';
       const critical = a.severity === 'critical';
-      showBanner({
+      const bannerId = showBanner({
         tone,
         title: `${label(a.alert_type)} — ${a.vehicle_name || 'Vehicle'}`,
         // Company code chip — which company this unit belongs to (server
         // tags it on multi-company accounts only), same as the bell rows.
         tag: a.company,
+        onClose: () => shownRef.current.delete(String(a.id)),
         detail: a.message || a.last_detail,
         // Live age + occurrence so the banner is honest about WHEN: a
         // fresh fire reads "2m ago", a recurring one "×5 · 2m ago", and a
@@ -149,6 +155,7 @@ export default function LiveAlertWatcher() {
             onClick: async () => {
               try {
                 await ackRef.current([a.id]);
+                shownRef.current.delete(String(a.id));   // resolved by me
                 toast.success('Acknowledged');
               } catch (e) {
                 toast.error(e instanceof Error ? e.message : 'Couldn’t acknowledge');
@@ -157,8 +164,44 @@ export default function LiveAlertWatcher() {
           },
         ],
       });
+      // Track ONLY sticky (critical) banners — they're the ones that never
+      // auto-close and so need retiring when their alert resolves.  Non-
+      // critical banners self-dismiss on their countdown, and tracking them
+      // would let leaked entries (View/auto-close don't fire onClose) pile
+      // up and push a fresh critical past the server's id cap.  Bound it
+      // defensively too, well under that cap (drop-oldest).
+      if (critical) {
+        shownRef.current.set(String(a.id), bannerId);
+        while (shownRef.current.size > 48) {
+          const oldest = shownRef.current.keys().next().value;
+          if (oldest === undefined) break;
+          shownRef.current.delete(oldest);
+        }
+      }
     }
   }, [data, dataUpdatedAt]);
+
+  // Retire on-screen banners whose alert has resolved.  Runs each poll:
+  // asks the AUTHORITATIVE /alerts/active-among for exactly the shown ids
+  // (never the capped feed), dismisses any that came back not-active.
+  // Best-effort — a failed check keeps the banners (a sticky safety banner
+  // must never vanish on a network blip).
+  useEffect(() => {
+    if (!active) return;
+    const ids = [...shownRef.current.keys()];
+    if (!ids.length) return;
+    let cancelled = false;
+    activeAmong(ids)
+      .then((activeIds) => {
+        if (cancelled) return;
+        for (const [alertId, bannerId] of resolvedBanners(shownRef.current, activeIds)) {
+          toast.dismiss(bannerId);
+          shownRef.current.delete(alertId);
+        }
+      })
+      .catch(() => { /* keep banners on failure */ });
+    return () => { cancelled = true; };
+  }, [dataUpdatedAt, active]);
 
   return null;
 }

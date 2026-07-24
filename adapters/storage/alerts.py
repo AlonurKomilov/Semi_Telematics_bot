@@ -539,6 +539,25 @@ class AlertsMixin(_MixinBase):
         )
         return dict(row) if row else None
 
+    async def get_active_alert_history_by_ids(
+        self, account_id: int, ids: list[int],
+    ) -> list[dict]:
+        """Of the given alert_history ids, the ones still ``status='active'``
+        (this account only).  The AUTHORITATIVE "is this specific alert still
+        open?" check the live-banner watcher needs — unlike the recent-alerts
+        feed, it is not capped by page size or a first_seen window, so a
+        long-running critical never falsely reads as resolved.  Ids that are
+        cleared, resolved, or pruned simply don't come back."""
+        if not ids:
+            return []
+        ph = ", ".join("?" for _ in ids)
+        cur = await self._db.execute(
+            f"SELECT * FROM alert_history "
+            f"WHERE account_id = ? AND status = 'active' AND id IN ({ph})",
+            (account_id, *[int(i) for i in ids]),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
     async def upsert_alert_history(
         self, account_id: int, alert_type: str,
         vehicle_id: str, vehicle_name: str,

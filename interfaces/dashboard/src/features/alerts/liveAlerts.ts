@@ -41,3 +41,26 @@ export function diffNewAlerts<T extends AlertLike>(
   }
   return { toShow, seen: nextSeen };
 }
+
+/**
+ * Banners whose alert is no longer active — return their entries so the
+ * caller can dismiss them.  A sticky critical banner never auto-closes, so
+ * once its alert is acknowledged/resolved anywhere its banner must retire
+ * too, rather than linger for days looking current.
+ *
+ * ``activeIds`` MUST be the AUTHORITATIVE active set for exactly the shown
+ * ids — i.e. the response of ``activeAmong(shown.keys())`` (/alerts/
+ * active-among), NOT the capped/windowed recent feed.  Feeding a truncated
+ * feed here would false-dismiss a still-open critical that simply fell off
+ * the page — the exact bug this signal exists to avoid.
+ */
+export function resolvedBanners(
+  shown: ReadonlyMap<string, string | number>,
+  activeIds: ReadonlySet<string>,
+): Array<[string, string | number]> {
+  const gone: Array<[string, string | number]> = [];
+  for (const [alertId, bannerId] of shown) {
+    if (!activeIds.has(alertId)) gone.push([alertId, bannerId]);
+  }
+  return gone;
+}

@@ -14,6 +14,22 @@ import type { AlertsResponse } from '../../types';
 
 const RECENT_LIMIT = 12;
 
+/**
+ * Authoritative "which of these alerts are still active?" check — the
+ * signal the live-banner watcher retires a sticky banner by.  Unlike the
+ * capped recent feed, this is NOT windowed/paginated, so a long-running
+ * critical never falsely reads as resolved.  Returns the active subset as
+ * a Set of id-strings; on any error the caller keeps its banners (safe).
+ */
+export async function activeAmong(ids: (string | number)[]): Promise<Set<string>> {
+  const list = ids.map(String).filter(Boolean);
+  if (!list.length) return new Set();
+  const r = await apiJSON<{ active_ids: string[] }>(
+    `/alerts/active-among?ids=${encodeURIComponent(list.join(','))}`,
+  );
+  return new Set((r.active_ids ?? []).map(String));
+}
+
 export function useRecentAlerts(enabled: boolean, refetchInterval?: number) {
   return useQuery({
     queryKey: ['alerts', 'recent'],
