@@ -1410,6 +1410,7 @@ TOOL_PERMISSIONS: dict[str, list[str] | None] = {
     # ── Write actions (copilot "hands") — propose during a chat turn;
     # the SAME flag is re-checked at the approve endpoint before the write.
     "create_maintenance_task":  ["can_maintenance_all"],                         # owner/admin/fleet/hr — mirrors POST /maintenance/tasks
+    "create_work_order":        ["can_work_orders_all"],                         # mirrors POST /work-orders — permission SSOT, no role hardcoding
     "acknowledge_alerts":       ["can_alerts_all", "can_alerts_vehicle"],        # owner/admin/fleet/safety/driver(own)
     "import_inventory_items":   ["can_manage_vehicles"],                         # owner/admin/fleet/hr — mirrors POST /vehicles/{v}/inventory; also gates attachment parsing
 }
@@ -1467,9 +1468,11 @@ VEHICLE_SPECIFIC_TOOLS: frozenset[str] = frozenset({
     "get_vehicle_events", "get_vehicle_maintenance", "get_vehicle_fuel_costs",
     "check_vehicle_camera", "get_vehicle_odometer",
     "get_recent_work_orders", "get_recent_inspections", "get_vehicle_history",
-    # Write action with a required vehicle_name — a scoped caller may only
-    # create a task on a vehicle they can access (gate rejects otherwise).
+    # Write actions with a required vehicle_name — a scoped caller may only
+    # create a task / work order on a vehicle they can access (gate
+    # rejects otherwise).
     "create_maintenance_task",
+    "create_work_order",
 })
 
 # Legacy alias — keeps any external code that imports TRUCK_SPECIFIC_TOOLS working.

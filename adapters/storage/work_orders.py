@@ -599,6 +599,13 @@ class WorkOrdersMixin:
             "DELETE FROM work_order_parts WHERE work_order_id = ?",
             (work_order_id,),
         )
+        # Labor lines have no FK (migration 153) — without this DELETE
+        # they'd survive as orphans and keep counting in the
+        # labor_by_service_task cost rollups.
+        await self._db.execute(
+            "DELETE FROM work_order_labor WHERE work_order_id = ?",
+            (work_order_id,),
+        )
         await self._db.execute(
             "DELETE FROM work_order_attachments WHERE work_order_id = ?",
             (work_order_id,),

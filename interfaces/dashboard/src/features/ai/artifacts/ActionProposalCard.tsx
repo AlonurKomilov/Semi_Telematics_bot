@@ -12,9 +12,11 @@
  * device / earlier session shows "Done" instead of a stale button).
  */
 import { useState, useEffect, useRef } from 'react';
-import { Check, X, Loader2, ShieldAlert, Undo2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Check, X, Loader2, ShieldAlert, Undo2, Paperclip } from 'lucide-react';
 import { aiApproveAction, aiRejectAction, aiUndoAction, aiGetActionStatus } from '../../../api/client';
 import { toneClasses } from '../../../lib/status';
+import { uploadSourceFilesToWorkOrder } from '../sourceFileUpload';
 import { registerArtifact } from './registry';
 import type { Artifact } from './types';
 
@@ -33,6 +35,8 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
   const [undoAvailable, setUndoAvailable] = useState(false);
   const [undoConfirm, setUndoConfirm] = useState(false);
   const [undoResult, setUndoResult] = useState<Record<string, unknown> | null>(null);
+  // Post-approve source-file archival status ('' = nothing to report).
+  const [fileNote, setFileNote] = useState('');
   const undoConfirmTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const undoArmedAt = useRef(0);
   useEffect(() => () => { if (undoConfirmTimer.current) clearTimeout(undoConfirmTimer.current); }, []);
@@ -97,6 +101,25 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
       aiGetActionStatus(a.proposal_id)
         .then((s) => setUndoAvailable(!!s.undoable))
         .catch(() => { /* card just shows no Undo */ });
+      // Source-file archival (create_work_order contract): the chat
+      // files are device-held, so after OUR approve (only — a card
+      // reconciled as done elsewhere must not re-upload) the named
+      // files go onto the created record.  Target id comes ONLY from
+      // the server's approve response.
+      const r = (res.result || {}) as Record<string, unknown>;
+      const names = Array.isArray(r.source_files) ? r.source_files as string[] : [];
+      if (r.target_type === 'work_order' && r.target_id && names.length) {
+        setFileNote('Attaching files…');
+        uploadSourceFilesToWorkOrder(Number(r.target_id), names)
+          .then((o) => {
+            const bits: string[] = [];
+            if (o.uploaded.length) bits.push(`${o.uploaded.length} file${o.uploaded.length > 1 ? 's' : ''} attached`);
+            const gone = o.missing.length + o.failed.length;
+            if (gone) bits.push(`${gone} couldn’t be attached — add the original from the work order page`);
+            setFileNote(bits.join(' · '));
+          })
+          .catch(() => setFileNote('Files couldn’t be attached — add them from the work order page.'));
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Action failed');
       setPhase('pending');
@@ -178,6 +201,14 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
           <span className="inline-flex items-center gap-1.5 text-2xs text-ok">
             <Check size={12} aria-hidden /> {msg || 'Done'}
           </span>
+          {result?.target_type === 'work_order' && result?.target_id ? (
+            <Link
+              to={`/work-orders/${result.target_id}`}
+              className="text-2xs text-primary hover:underline"
+            >
+              Open work order →
+            </Link>
+          ) : null}
           {undoAvailable && (
             <button
               onClick={undo}
@@ -193,6 +224,11 @@ function ActionProposalView({ artifact }: { artifact: Artifact }) {
           )}
           {error && <span className="text-3xs text-destructive">{error}</span>}
         </div>
+      )}
+      {phase === 'done' && fileNote && (
+        <p className="mt-1 inline-flex items-center gap-1 text-3xs text-muted-foreground">
+          <Paperclip size={12} aria-hidden /> {fileNote}
+        </p>
       )}
       {phase === 'undoing' && (
         <div className="mt-2 inline-flex items-center gap-1.5 text-2xs text-muted-foreground">

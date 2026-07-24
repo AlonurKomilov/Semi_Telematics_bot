@@ -253,6 +253,26 @@ export function clearConversationAttachments(conversationId: number): void {
 }
 
 /**
+ * Look up held files by exact name across pending + every conversation
+ * (newest wins on duplicates).  Used post-approve to archive a write
+ * action's source files onto the record it created — names are pure
+ * lookup KEYS into this device-local store, never paths or URLs.
+ */
+export function findHeldAttachments(names: string[]): PendingAttachment[] {
+  const want = new Set(names);
+  const byName = new Map<string, PendingAttachment>();
+  const s = load();
+  const consider = (a: PendingAttachment) => {
+    if (!want.has(a.name)) return;
+    const prev = byName.get(a.name);
+    if (!prev || a.t > prev.t) byName.set(a.name, a);
+  };
+  s.pending.forEach(consider);
+  for (const list of Object.values(s.convo)) list.forEach(consider);
+  return [...byName.values()];
+}
+
+/**
  * Files attached in OTHER conversations, still held device-locally —
  * offered as "Recent files" so a user can re-attach a sheet to a new
  * chat without hunting for it on disk again.  Deduped by name (newest

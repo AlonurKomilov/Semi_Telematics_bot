@@ -1,0 +1,377 @@
+"""Work-order AI write action — the assistant's "Door B".
+
+The user attaches an invoice / issue photos in chat and asks for a work
+order; the agent (which already SEES image attachments) fills the
+structured args and this tool PROPOSES.  Nothing mutates in the chat
+loop — the propose→approve→execute spine (capabilities/ai/actions.py)
+re-checks the real JWT role at approve time and the executor runs only
+then.
+
+Owner contract (2026-07-24, see memory project-ai-invoice-to-wo):
+  * AI drafts only — the created WO is ALWAYS status='open'; the human
+    finishes it in the form.  The tool description tells the agent to
+    ASK for a missing unit instead of guessing.
+  * Access = can_work_orders_all (TOOL_PERMISSIONS), scope =
+    vehicle_param (fail-closed gate; VEHICLE_SPECIFIC_TOOLS).
+  * The chat files stay transient server-side: ``source_files`` are
+    NAMES the client uses post-approve to upload its device-held files
+    to the new WO — the approve response's target_id is the only id
+    the client may upload to.
+
+Trust posture mirrors extraction.py: every model-supplied value is
+re-clamped here AND in the executor (payloads outlive code revisions),
+money totals are recomputed server-side, and a mid-way line failure
+triggers compensating cleanup (delete the header) so a failed action
+never strands a half-built WO without an undo handle.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from capabilities.ai.tools.registry import (
+    register_action_executor,
+    register_tool,
+    register_undo_executor,
+    tool_error,
+    tool_propose,
+)
+
+logger = logging.getLogger("bot.work_orders")
+
+_MAX_LINES = 60
+_MAX_SOURCE_FILES = 5
+_MAX_MONEY = 1_000_000.0
+_MAX_QTY = 10_000.0
+_PRIORITIES = ("", "scheduled", "non_scheduled", "emergency")
+
+
+def _f(v, cap: float = _MAX_MONEY) -> float:
+    """Non-negative, capped, 2-dp float; garbage → 0 (never raises)."""
+    try:
+        n = float(v)
+    except (TypeError, ValueError):
+        return 0.0
+    if n != n or n in (float("inf"), float("-inf")):
+        return 0.0
+    return round(min(max(n, 0.0), cap), 2)
+
+
+def _s(v, cap: int) -> str:
+    if not isinstance(v, (str, int, float)):
+        return ""
+    return str(v).strip()[:cap]
+
+
+def _clean_lines(raw_parts, raw_labor) -> tuple[list[dict], list[dict]]:
+    """Model line items → clamped part/labor dicts (shared by propose
+    and execute so a stored payload gets the same rigor on replay)."""
+    parts: list[dict] = []
+    for p in (raw_parts or [])[:_MAX_LINES]:
+        if not isinstance(p, dict):
+            continue
+        name = _s(p.get("name") or p.get("part_name"), 200)
+        if not name:
+            continue
+        qty = _f(p.get("quantity"), _MAX_QTY) or 1.0
+        unit = _f(p.get("unit_cost") or p.get("unit_price"))
+        total = _f(p.get("total") or p.get("total_cost"))
+        if not total and unit:
+            total = round(qty * unit, 2)
+        parts.append({
+            "part_name": name,
+            "part_number": _s(p.get("part_number"), 60),
+            "quantity": qty, "unit_cost": unit, "total_cost": total,
+        })
+    labor: list[dict] = []
+    for l in (raw_labor or [])[:_MAX_LINES]:
+        if not isinstance(l, dict):
+            continue
+        desc = _s(l.get("description"), 200)
+        if not desc:
+            continue
+        hours = _f(l.get("hours"), 10_000.0)
+        rate = _f(l.get("rate"), 10_000.0)
+        total = _f(l.get("total") or l.get("total_cost"))
+        if not total and hours and rate:
+            total = round(hours * rate, 2)
+        labor.append({
+            "description": desc, "hours": hours, "rate": rate,
+            "total_cost": total,
+        })
+    return parts[:_MAX_LINES], labor[: max(0, _MAX_LINES - len(parts))]
+
+
+def _normalize(args: dict) -> dict | None:
+    """Args/payload → the one clamped shape both stages agree on.
+    Returns None when the required vehicle is missing."""
+    vehicle = _s(args.get("vehicle_name"), 80)
+    if not vehicle:
+        return None
+    parts, labor = _clean_lines(args.get("parts"), args.get("labor"))
+    priority = _s(args.get("repair_priority"), 20).lower()
+    if priority not in _PRIORITIES:
+        priority = ""
+    files = [
+        _s(n, 120) for n in (args.get("source_files") or [])[:_MAX_SOURCE_FILES]
+        if _s(n, 120)
+    ]
+    return {
+        "vehicle_name": vehicle,
+        "vehicle_type": (
+            _s(args.get("vehicle_type"), 10).lower()
+            if _s(args.get("vehicle_type"), 10).lower() in ("truck", "trailer")
+            else ""
+        ),
+        "vendor_name": _s(args.get("vendor_name"), 200),
+        "vendor_phone": _s(args.get("vendor_phone"), 40),
+        "vendor_email": _s(args.get("vendor_email"), 120),
+        "vendor_address": _s(args.get("vendor_address"), 300),
+        "invoice_number": _s(args.get("invoice_number"), 60),
+        "service_date": _s(args.get("service_date"), 10),
+        "odometer": _f(args.get("odometer"), 5_000_000.0) or None,
+        "repair_priority": priority,
+        "fee": _f(args.get("fee")),
+        "tax": _f(args.get("tax")),
+        "notes": _s(args.get("notes"), 1000),
+        "parts": parts,
+        "labor": labor,
+        "source_files": files,
+    }
+
+
+@register_tool({
+    "name": "create_work_order",
+    "description": (
+        "Propose creating a work order (a shop visit / repair invoice "
+        "record) for a vehicle. Use when the user asks to log or create "
+        "a work order — especially from an attached invoice or repair "
+        "photos: read the attachment(s) first, split parts vs labor "
+        "line items, and set repair_priority (emergency for a "
+        "breakdown/roadside damage, scheduled for planned service). "
+        "This does NOT create it directly — the user approves first, "
+        "and the result is an OPEN work order draft they finish in the "
+        "Work Orders page. If the documents don't clearly identify the "
+        "vehicle unit, ASK the user which vehicle it is — never guess. "
+        "List the names of the attached files in source_files so they "
+        "can be archived onto the work order after approval."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "vehicle_name": {"type": "string", "description": "Vehicle unit name/number (e.g. '234'). Required — ask the user if the documents don't identify it."},
+            "vehicle_type": {"type": "string", "description": "Optional: 'truck' or 'trailer'."},
+            "vendor_name": {"type": "string", "description": "Shop / vendor name from the invoice."},
+            "vendor_phone": {"type": "string"},
+            "vendor_email": {"type": "string"},
+            "vendor_address": {"type": "string"},
+            "invoice_number": {"type": "string"},
+            "service_date": {"type": "string", "description": "YYYY-MM-DD."},
+            "odometer": {"type": "number", "description": "Odometer (miles) printed on the invoice, if any."},
+            "repair_priority": {"type": "string", "description": "One of: scheduled, non_scheduled, emergency. Omit when unsure."},
+            "fee": {"type": "number", "description": "Shop/environmental/misc fees that are not parts or labor lines."},
+            "tax": {"type": "number", "description": "Sales tax."},
+            "notes": {"type": "string", "description": "Short context — e.g. what the issue photos show."},
+            "parts": {
+                "type": "array",
+                "description": "Part/material line items.",
+                "items": {"type": "object", "properties": {
+                    "name": {"type": "string"},
+                    "part_number": {"type": "string"},
+                    "quantity": {"type": "number"},
+                    "unit_cost": {"type": "number"},
+                    "total": {"type": "number"},
+                }, "required": ["name"]},
+            },
+            "labor": {
+                "type": "array",
+                "description": "Labor/diagnostic line items.",
+                "items": {"type": "object", "properties": {
+                    "description": {"type": "string"},
+                    "hours": {"type": "number"},
+                    "rate": {"type": "number"},
+                    "total": {"type": "number"},
+                }, "required": ["description"]},
+            },
+            "source_files": {
+                "type": "array", "items": {"type": "string"},
+                "description": "Names of the files attached to THIS message the work order is based on.",
+            },
+        },
+        "required": ["vehicle_name"],
+    },
+    "writes": True,
+    "risk": "low",
+    # Required vehicle_name ⇒ the fail-closed vehicle gate applies (a
+    # scoped caller may only target a vehicle they can access).
+    "scope": "vehicle_param",
+})
+async def create_work_order_action(tool_args, samsara_client,
+                                   account_id=None, db=None):
+    norm = _normalize(tool_args or {})
+    if norm is None:
+        return tool_error(
+            "A vehicle is required to create a work order — ask the user "
+            "which unit this is for.",
+        )
+    lines_total = round(
+        sum(p["total_cost"] for p in norm["parts"])
+        + sum(l["total_cost"] for l in norm["labor"]), 2,
+    )
+    grand = round(lines_total + norm["fee"] + norm["tax"], 2)
+    bits = [f"{len(norm['parts'])} parts", f"{len(norm['labor'])} labor lines"]
+    if norm["vendor_name"]:
+        bits.insert(0, norm["vendor_name"])
+    summary = (
+        f"Create work order for {norm['vehicle_name']}: "
+        f"{', '.join(bits)}, total ${grand:,.2f}."
+    )
+    return tool_propose(
+        "create_work_order", summary, norm,
+        risk="low",
+        consequence=(
+            "Creates an OPEN work order draft you can edit or delete on "
+            "the Work Orders page — nothing is final until you review it."
+        ),
+    )
+
+
+@register_action_executor("create_work_order")
+async def _execute_create_work_order(payload, account_id, user_context, db):
+    """Create the WO + lines — runs only post-approval.
+
+    Re-clamps everything from the stored payload (never trusts it aged
+    well), forces status='open' (AI drafts only), and compensates on a
+    mid-way line failure by deleting the header so a failed action
+    leaves nothing behind.
+    """
+    from fastapi import HTTPException
+
+    norm = _normalize(payload or {})
+    if norm is None:
+        raise HTTPException(status_code=422, detail="Proposal lost its vehicle")
+
+    parts_cost = round(sum(p["total_cost"] for p in norm["parts"]), 2)
+    # Header total starts as parts+fee+tax; each labor-line insert
+    # below recomputes labor_cost AND total server-side (migration 153
+    # contract), so the final row is internally consistent.
+    total = round(parts_cost + norm["fee"] + norm["tax"], 2)
+
+    vendor_id = None
+    if norm["vendor_name"]:
+        _v = await db.resolve_or_create_vendor(
+            account_id, norm["vendor_name"],
+            address=norm["vendor_address"], phone=norm["vendor_phone"],
+            email=norm["vendor_email"],
+        )
+        if _v:
+            vendor_id = _v["id"]
+
+    wo_id = await db.add_work_order(
+        account_id, "",                      # company resolved by the human later
+        norm["vehicle_name"], norm["vendor_name"],
+        vehicle_type=norm["vehicle_type"],
+        vendor_address=norm["vendor_address"],
+        vendor_phone=norm["vendor_phone"],
+        vendor_id=vendor_id,
+        service_date=norm["service_date"] or None,
+        odometer_at_service=norm["odometer"],
+        parts_cost=parts_cost,
+        tax_amount=norm["tax"],
+        fee_amount=norm["fee"],
+        total_cost=total,
+        invoice_number=norm["invoice_number"],
+        payment_status="unpaid",
+        status="open",                        # AI drafts only — never final
+        repair_priority=norm["repair_priority"],
+        notes=norm["notes"],
+        created_by=int((user_context or {}).get("user_id") or 0),
+    )
+    try:
+        for p in norm["parts"]:
+            await db.add_work_order_part(wo_id, **p)
+        for l in norm["labor"]:
+            await db.add_work_order_labor(wo_id, account_id, **l)
+    except Exception:
+        # Compensating cleanup: a half-built WO with no undo handle is
+        # worse than no WO — remove the header + whatever landed.
+        try:
+            await db.delete_work_order(wo_id, account_id=account_id)
+        except Exception:      # pragma: no cover — best-effort cleanup
+            logger.exception("WO %s cleanup after failed line insert", wo_id)
+        raise
+
+    return {
+        "created": True,
+        "target_type": "work_order",
+        "target_id": str(wo_id),
+        "vehicle_name": norm["vehicle_name"],
+        "vendor_name": norm["vendor_name"],
+        "parts": len(norm["parts"]),
+        "labor": len(norm["labor"]),
+        # The client uploads its device-held files by these NAMES to the
+        # approve response's target_id (never an id from the payload).
+        "source_files": norm["source_files"],
+        "message": (
+            f"Created work order #{wo_id} for {norm['vehicle_name']} as an "
+            f"open draft — review and finish it on the Work Orders page."
+        ),
+        "_wo_id": wo_id,
+    }
+
+
+@register_undo_executor("create_work_order")
+async def _undo_create_work_order(result, payload, account_id, user_context, db):
+    """Reverse an executed create — delete exactly the WO it made.
+
+    Post-approve client uploads mean attachments may exist by undo
+    time, so physical files are cleared first (the DELETE route's own
+    recipe); DB rows cascade via delete_work_order.  Tolerant: a WO
+    someone already deleted manually is a no-op, not a failure.
+    """
+    from fastapi import HTTPException
+
+    wo_id = (result or {}).get("_wo_id")
+    try:
+        wo_id = int(wo_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=409,
+            detail="This action predates undo support — delete the work "
+                   "order from the Work Orders page instead.",
+        )
+    wo = await db.get_work_order(wo_id, account_id)
+    if not wo:
+        return {"undone": 0, "target_type": "work_order",
+                "message": "That work order was already deleted."}
+
+    from adapters.storage.object_store import get_object_store_for_account
+    from features.work_orders.storage import (
+        resolve_company_folder, work_order_folder,
+    )
+    try:
+        store = await get_object_store_for_account(account_id, db)
+        company_folder = await resolve_company_folder(
+            db, account_id, wo.get("company_code", ""),
+        )
+        folder = work_order_folder(
+            company_folder=company_folder,
+            work_order_id=wo_id,
+            vehicle_name=wo.get("vehicle_name", ""),
+            service_date=wo.get("service_date"),
+            vendor_name=wo.get("vendor_name", ""),
+        )
+        for att in await db.list_work_order_attachments(wo_id):
+            try:
+                store.delete(folder, att.get("file_name", ""))
+            except Exception:
+                pass
+    except Exception:          # pragma: no cover — files are best-effort
+        logger.exception("WO %s undo: object-store cleanup failed", wo_id)
+
+    deleted = await db.delete_work_order(wo_id, account_id=account_id)
+    return {
+        "undone": deleted,
+        "target_type": "work_order",
+        "message": f"Deleted work order #{wo_id}.",
+    }
