@@ -320,6 +320,40 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_maint_custom_types_account
             ON maintenance_custom_task_types(account_id);
 
+        -- Service tasks: the SSOT vocabulary shared by Maintenance
+        -- (what's due) and Work Orders (what got done + cost).  Before
+        -- this table the same vocabulary lived as a loose TEXT slug in
+        -- three places that had already drifted apart.
+        --
+        -- ``canonical_key`` is the cross-account identity: every
+        -- account's seeded "Engine Oil & Filter" row carries the SAME
+        -- key, so fleet-wide benchmarking is a GROUP BY rather than a
+        -- platform-side directory (which this closed ~20-item
+        -- vocabulary doesn't earn).  NULL ⇒ an account's own custom
+        -- task: freely renamed and deletable.  NOT NULL ⇒ a standard
+        -- task: archive-only, name locked.
+        --
+        -- ``parent_id`` gives ONE level of main-task/subtask nesting;
+        -- the "a subtask may not itself have subtasks" rule can't be
+        -- expressed as a CHECK, so the storage layer enforces it.
+        CREATE TABLE IF NOT EXISTS service_tasks (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id           INTEGER NOT NULL REFERENCES accounts(id),
+            name                 TEXT    NOT NULL,
+            name_key             TEXT    NOT NULL,
+            canonical_key        TEXT    NOT NULL DEFAULT '',
+            description          TEXT    NOT NULL DEFAULT '',
+            expected_labor_hours REAL    NOT NULL DEFAULT 0,
+            parent_id            INTEGER,
+            status               TEXT    NOT NULL DEFAULT 'active',
+            created_by           INTEGER NOT NULL DEFAULT 0,
+            created_at           TEXT    NOT NULL DEFAULT '',
+            updated_at           TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, name_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_service_tasks_account
+            ON service_tasks(account_id, status);
+
         -- account_settings: per-account key/value store for feature flags,
         -- AI model preferences, pillar caps, etc.  Isolation is enforced
         -- by the account_id predicate on every read/write (same pattern

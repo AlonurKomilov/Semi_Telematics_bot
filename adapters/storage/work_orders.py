@@ -9,7 +9,10 @@ for the file-system layout shared by every storage backend.
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Optional
+
+logger = logging.getLogger("bot.storage")
 
 # Work-order lifecycle (Fleetio-standard): open → in_progress →
 # completed.  No cancelled/void state by owner decision — a mistaken WO
@@ -645,15 +648,35 @@ class WorkOrdersMixin:
         part_id: Optional[int] = None,
         notes: str = "",
     ) -> int:
+        # Dual-write the service_tasks reference beside the legacy tag
+        # (see adapters/storage/service_tasks.py).  Parts don't carry
+        # account_id, so it comes from the parent work order — and only
+        # when there's actually a tag to resolve.
+        service_task_id = None
+        if service_task:
+            try:
+                acur = await self._db.execute(
+                    "SELECT account_id FROM work_orders WHERE id = ?",
+                    (work_order_id,),
+                )
+                arow = await acur.fetchone()
+                if arow:
+                    service_task_id = await self.resolve_service_task_id(
+                        int(dict(arow)["account_id"]), service_task,
+                    )
+            except Exception:
+                logger.warning("service_task resolve failed for part tag %r",
+                               service_task, exc_info=True)
+
         cur = await self._db.execute(
             """INSERT INTO work_order_parts
                (work_order_id, part_name, part_number, quantity,
                 unit_cost, total_cost, warranty_months, service_task,
-                part_id, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                service_task_id, part_id, notes)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (work_order_id, part_name, part_number, quantity,
              unit_cost, total_cost, warranty_months, service_task,
-             part_id, notes),
+             service_task_id, part_id, notes),
         )
         await self._db.commit()
         return cur.lastrowid
@@ -751,13 +774,23 @@ class WorkOrdersMixin:
         when not supplied explicitly (flat-rate invoices send it)."""
         if not total_cost and hours and rate:
             total_cost = round(hours * rate, 2)
+        # Dual-write the service_tasks reference beside the legacy tag.
+        service_task_id = None
+        if service_task:
+            try:
+                service_task_id = await self.resolve_service_task_id(
+                    account_id, service_task,
+                )
+            except Exception:
+                logger.warning("service_task resolve failed for labor tag %r",
+                               service_task, exc_info=True)
         cur = await self._db.execute(
             """INSERT INTO work_order_labor
-               (account_id, work_order_id, service_task, description,
-                hours, rate, total_cost, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (account_id, work_order_id, service_task, description,
-             hours, rate, total_cost, self._now()),
+               (account_id, work_order_id, service_task, service_task_id,
+                description, hours, rate, total_cost, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, work_order_id, service_task, service_task_id,
+             description, hours, rate, total_cost, self._now()),
         )
         await self._db.commit()
         await self._recompute_labor_cost(work_order_id, account_id)
@@ -804,12 +837,13 @@ class WorkOrdersMixin:
         """Labor spend per service_task — merged into the per-task cost
         report so each kind of work shows parts AND labor."""
         q = (
-            "SELECT CASE WHEN l.service_task = '' THEN 'untagged' "
-            "            ELSE l.service_task END AS service_task, "
+            "SELECT COALESCE(st.name, NULLIF(l.service_task, ''), 'untagged') "
+            "         AS service_task, "
             "       SUM(l.total_cost) AS labor_spent "
             "FROM work_order_labor l "
             "JOIN work_orders w ON w.id = l.work_order_id "
             "     AND w.account_id = l.account_id "
+            "LEFT JOIN service_tasks st ON st.id = l.service_task_id "
             "WHERE l.account_id = ? AND w.service_date IS NOT NULL AND w.status != 'void' AND w.payment_status != 'void'"
         )
         params: list = [account_id]
@@ -817,8 +851,7 @@ class WorkOrdersMixin:
             q += " AND w.service_date >= ?"
             params.append(since)
         q += (
-            " GROUP BY CASE WHEN l.service_task = '' THEN 'untagged' "
-            "               ELSE l.service_task END"
+            " GROUP BY COALESCE(st.name, NULLIF(l.service_task, ''), 'untagged')"
         )
         cur = await self._db.execute(q, params)
         return {
@@ -1009,13 +1042,20 @@ class WorkOrdersMixin:
         additive ``labor_spent`` key — so each kind of work shows its
         parts AND labor split.  Tax stays out entirely.
         """
+        # Grouped by the service_tasks REFERENCE, displayed by the
+        # task's name.  The LEFT JOIN carries no status filter on
+        # purpose: an ARCHIVED task must still resolve its label or
+        # historical rows would collapse into a nameless bucket.  Rows
+        # not yet backfilled fall back to their legacy string, so the
+        # report is correct throughout the dual-write window.
         q = (
-            "SELECT CASE WHEN p.service_task = '' THEN 'untagged' "
-            "            ELSE p.service_task END AS service_task, "
+            "SELECT COALESCE(st.name, NULLIF(p.service_task, ''), 'untagged') "
+            "         AS service_task, "
             "       COUNT(DISTINCT w.id) AS work_order_count, "
             "       SUM(p.total_cost) AS total_spent "
             "FROM work_order_parts p "
             "JOIN work_orders w ON w.id = p.work_order_id "
+            "LEFT JOIN service_tasks st ON st.id = p.service_task_id "
             "WHERE w.account_id = ? AND w.service_date IS NOT NULL AND w.status != 'void' AND w.payment_status != 'void'"
         )
         params: list = [account_id]
@@ -1023,8 +1063,7 @@ class WorkOrdersMixin:
             q += " AND w.service_date >= ?"
             params.append(since)
         q += (
-            " GROUP BY CASE WHEN p.service_task = '' THEN 'untagged' "
-            "               ELSE p.service_task END"
+            " GROUP BY COALESCE(st.name, NULLIF(p.service_task, ''), 'untagged')"
             " ORDER BY total_spent DESC"
         )
         cur = await self._db.execute(q, params)

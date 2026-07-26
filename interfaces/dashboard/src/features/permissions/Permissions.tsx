@@ -144,6 +144,7 @@ const PERM_GROUPS: PermGroup[] = [
       // row governs both); Parts is feature-owned — its list still
       // serves the WO editor's autocomplete for can_work_orders_all.
       { key: 'can_parts', label: 'Parts', description: 'Parts catalog + per-part analytics (recurrence, price per vendor)' },
+      { key: 'can_service_tasks', label: 'Service Tasks', description: 'Manage the shared task list maintenance and work orders both pick from (reads stay open to anyone who can create those records)' },
       { allKey: 'can_inspections_all', vehicleKey: 'can_inspections_vehicle', label: 'PTI Inspections', scoped: true },
     ],
   },

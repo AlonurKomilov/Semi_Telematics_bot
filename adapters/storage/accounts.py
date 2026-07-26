@@ -55,6 +55,12 @@ class AccountsMixin:
             await self.seed_account_pti_templates(
                 account_id, STANDARD_DOT_TRUCK_ITEMS, STANDARD_DOT_TRAILER_ITEMS,
             )
+            # The standard service-task library — the shared vocabulary
+            # Maintenance and Work Orders both pick from.  Seeded per
+            # account (not referenced from a platform table) with a
+            # stable ``canonical_key`` per entry, so cross-account
+            # comparison is still a GROUP BY.
+            await self.seed_service_tasks(account_id)
         return Account(id=account_id, name=clean, slug=slug,
                        tier=tier, is_active=True, created_at=now)
 

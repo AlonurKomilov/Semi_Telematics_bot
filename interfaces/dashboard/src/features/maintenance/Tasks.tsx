@@ -26,7 +26,7 @@ import {
   PRIORITY_OPTIONS, TYPE_LABELS,
   type Priority,
 } from './badges';
-import TypePicker from './TypePicker';
+import ServiceTaskPicker from '../service-tasks/ServiceTaskPicker';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { VehiclePicker, MilesPicker, HoursPicker, DaysPicker, type VehicleSummary } from './pickers';
 import { CalendarMonth } from './CalendarMonth';
@@ -512,7 +512,7 @@ export default function Tasks() {
   );
 
   // Account's custom task types — drives the "Type" column's display
-  // label for rows that use a custom type, plus the TypePicker
+  // label for rows that use a custom type, plus the ServiceTaskPicker
   // dropdown in the add / edit forms.  Lookup map is built once per
   // fetch so the table render closures don't reduce on every row.
   const { data: customTypesData } = useQuery({
@@ -1469,7 +1469,7 @@ export default function Tasks() {
           )}
           <label className="block">
             <span className="block text-xs text-muted-foreground mb-1">Type</span>
-            <TypePicker value={fType} onChange={setFType} />
+            <ServiceTaskPicker value={fType} onChange={setFType} />
           </label>
           <label className="block">
             <span className="block text-xs text-muted-foreground mb-1">Description</span>
@@ -1851,12 +1851,12 @@ export default function Tasks() {
               {/* Type selector — lets the operator FIX a mistyped task
                   type after creation.  Without this they had to delete
                   the row and re-create just to flip e.g. "Oil Change"
-                  to "Inspection".  Uses the same TypePicker the add
+                  to "Inspection".  Uses the same ServiceTaskPicker the add
                   form does so custom types created here also surface
                   on the create form (and vice versa). */}
               <label className="block">
                 <span className="block text-xs text-muted-foreground mb-1">Type</span>
-                <TypePicker value={eType} onChange={setEType} />
+                <ServiceTaskPicker value={eType} onChange={setEType} />
               </label>
               <label className="block">
                 <span className="block text-xs text-muted-foreground mb-1">Priority</span>

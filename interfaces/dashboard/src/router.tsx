@@ -91,6 +91,7 @@ const WorkOrderForm    = lazyWithReload(() => import('./features/work-orders/Wor
 const Vendors          = lazyWithReload(() => import('./features/vendors/Vendors'));
 const VendorProfile    = lazyWithReload(() => import('./features/vendors/VendorProfile'));
 const Parts            = lazyWithReload(() => import('./features/parts/Parts'));
+const ServiceTasks     = lazyWithReload(() => import('./features/service-tasks/ServiceTasks'));
 const PartDetail       = lazyWithReload(() => import('./features/parts/PartDetail'));
 const CostReports      = lazyWithReload(() => import('./features/reports/CostReports'));
 // Inspections page hosts both the submissions list AND the template
@@ -247,6 +248,7 @@ export default function AppRouter() {
         <Route path="vendors"             element={L(<P perm="can_work_orders_all"><Vendors /></P>)} />
         <Route path="vendors/:id"         element={L(<P perm="can_work_orders_all"><VendorProfile /></P>)} />
         <Route path="parts"               element={L(<P perm="can_parts"><Parts /></P>)} />
+        <Route path="service-tasks"       element={L(<P perm="can_service_tasks"><ServiceTasks /></P>)} />
         <Route path="parts/:id"           element={L(<P perm="can_parts"><PartDetail /></P>)} />
         <Route path="work-orders/new"     element={L(<P perm="can_maintenance_all"><WorkOrderForm /></P>)} />
         <Route path="work-orders/:id"     element={L(<P perm={['can_maintenance_all', 'can_maintenance_vehicle']}><WorkOrderForm /></P>)} />

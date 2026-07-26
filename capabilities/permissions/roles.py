@@ -126,6 +126,7 @@ class FeatureSet:
     can_work_orders_all: bool = False   # shop-invoice work orders (all trucks)
     can_work_orders_vehicle: bool = False   # shop-invoice work orders (assigned vehicle)
     can_parts: bool = False             # parts catalog + per-part analytics (feature-owned gate; the WO editor's autocomplete read is shared — see features/parts)
+    can_service_tasks: bool = False      # service-task master data — the shared Maintenance+Work Orders vocabulary (feature-owned gate; READS stay open to task/WO creators so pickers never break)
     can_cost_reports: bool = False      # /cost-reports executive rollups (split off can_maintenance_all)
     can_scorecard_all: bool = False     # scorecards for all subjects (driver or vehicle)
     can_scorecard_vehicle: bool = False     # scorecards for the assigned vehicle(s) only
@@ -203,6 +204,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
         can_parts=True,
+        can_service_tasks=True,
         can_cost_reports=True,
         can_scorecard_all=True, can_scorecard_vehicle=True,
         can_location_map=True, can_location_vehicle=True,
@@ -236,6 +238,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
         can_parts=True,
+        can_service_tasks=True,
         can_cost_reports=True,
         can_scorecard_all=True, can_scorecard_vehicle=True,
         can_location_map=True, can_location_vehicle=True,
@@ -268,6 +271,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_maintenance_all=True, can_maintenance_vehicle=True,
         can_work_orders_all=True, can_work_orders_vehicle=True,
         can_parts=True,
+        can_service_tasks=True,
         can_cost_reports=True,
         can_scorecard_all=True, can_scorecard_vehicle=True,
         can_location_map=True, can_location_vehicle=True,
@@ -517,7 +521,8 @@ TIER_GRANTS: dict[Role, RoleTier] = {
         # The accounting lead can review the shop invoices / maintenance
         # records behind the cost numbers (parts analytics included).
         grants=frozenset({"can_work_orders_all", "can_maintenance_all",
-                          "can_parts", "can_manage_role_bot"}),
+                          "can_parts", "can_service_tasks",
+                          "can_manage_role_bot"}),
     ),
 }
 
@@ -1117,6 +1122,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_work_orders_all": "work orders (all trucks)",
     "can_work_orders_vehicle": "work orders (assigned vehicle)",
     "can_parts": "parts catalog & analytics",
+    "can_service_tasks": "service tasks (shared task list)",
     "can_parking_all": "parking events (all trucks)",
     "can_parking_vehicle": "parking events (assigned vehicle)",
     "can_cameras": "dashcam cameras",

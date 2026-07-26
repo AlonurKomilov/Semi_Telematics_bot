@@ -1312,18 +1312,29 @@ async def list_custom_task_types(
     user: dict = Depends(get_current_user),
     tenant_db=Depends(get_tenant_db),
 ):
-    """List the account's saved custom task types.
+    """DEPRECATED — the account's CUSTOM task types.
+
+    Superseded by ``GET /service-tasks``, which serves the whole
+    vocabulary (standard + custom) from the one table both Maintenance
+    and Work Orders now read.  Kept for one release so a dashboard
+    bundle cached before the cutover keeps working; it deliberately
+    returns only custom entries because that stale UI still carries its
+    own hardcoded built-in list and would otherwise show duplicates.
 
     Read permission matches the rest of maintenance: anyone with
-    ``can_maintenance_vehicle`` can SEE them.  Adding / removing custom
-    types requires ``can_maintenance_all`` (separate routes below).
+    ``can_maintenance_vehicle`` can SEE them.
     """
     if not has_maintenance_access(user["role"]):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
-    items = await tenant_db.list_maintenance_custom_task_types(
-        user["account_id"],
-    )
-    return {"types": items}
+    rows = await tenant_db.list_service_tasks(user["account_id"])
+    return {"types": [
+        {"id": r["id"], "account_id": r["account_id"],
+         "value": r["canonical_key"] or r["name"], "label": r["name"],
+         "created_by": r.get("created_by", 0),
+         "created_at": r.get("created_at", ""),
+         "updated_at": r.get("updated_at", "")}
+        for r in rows if not r["canonical_key"]
+    ]}
 
 
 @router.post("/task-types")
@@ -1332,21 +1343,34 @@ async def create_custom_task_type(
     user: dict = Depends(require_permission("can_maintenance_all")),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Create or return-existing a custom task type for the account.
+    """DEPRECATED — create-or-return a custom task type.
 
-    Idempotent: re-submitting the same label returns the existing
-    row.  The dashboard relies on this so an operator who repeatedly
-    types "Tire change" never sees a UNIQUE-violation error.
+    Now a thin shim over ``service_tasks`` (see ``POST /service-tasks``).
+    Still idempotent: re-submitting a label returns the existing task,
+    which is what keeps a stale dashboard from ever seeing a
+    UNIQUE-violation error.
     """
     created_by = await resolve_user_id(user)
-    row = await tenant_db.create_maintenance_custom_task_type(
-        user["account_id"], body.label, created_by=created_by,
-    )
-    if row is None:
+    label = (body.label or "").strip()
+    if not label:
         raise HTTPException(
             status_code=400,
             detail="label must be non-empty after trimming whitespace",
         )
+    task = await tenant_db.create_service_task(
+        user["account_id"], label, created_by=created_by,
+    )
+    if task is None:
+        # Name already taken — return the existing row (idempotent).
+        task = await tenant_db.resolve_service_task(user["account_id"], label)
+    if task is None:
+        raise HTTPException(
+            status_code=400,
+            detail="label must be non-empty after trimming whitespace",
+        )
+    row = {"id": task["id"], "account_id": task["account_id"],
+           "value": task["canonical_key"] or task["name"],
+           "label": task["name"]}
     await tenant_db.add_audit_log(
         user["account_id"], created_by,
         "maintenance_custom_type_create",
@@ -1363,12 +1387,20 @@ async def delete_custom_task_type(
     user: dict = Depends(require_permission("can_maintenance_all")),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Remove a custom task type from the picker.  Existing
-    maintenance tasks already using the type keep their stored
-    ``task_type`` string unchanged."""
-    ok = await tenant_db.delete_maintenance_custom_task_type(
-        user["account_id"], type_id,
-    )
+    """DEPRECATED — remove a custom task from the picker.
+
+    Shims onto ``service_tasks``: a task nothing references is deleted,
+    one WITH history is archived instead so those records keep their
+    label (``DELETE /service-tasks/{id}`` is the real surface).
+    """
+    existing = await tenant_db.get_service_task(type_id, user["account_id"])
+    if not existing or existing.get("canonical_key"):
+        raise HTTPException(status_code=404, detail="Custom type not found")
+    ok = await tenant_db.delete_service_task(type_id, user["account_id"])
+    if not ok:
+        ok = await tenant_db.update_service_task(
+            type_id, user["account_id"], status="archived",
+        )
     if not ok:
         raise HTTPException(status_code=404, detail="Custom type not found")
     await tenant_db.add_audit_log(

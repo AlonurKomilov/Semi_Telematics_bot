@@ -21,9 +21,15 @@ import re
 # 'done' where the API writes 'completed'; both count as closed.
 CLOSED_STATUSES = frozenset({"completed", "done", "cancelled"})
 
-# Curated per-task-type vocabulary: words that plausibly appear on a
-# shop invoice for that kind of work.  Specific by design — one hit is
-# enough to suggest, so a generic word here would spam every WO.
+# Curated matching vocabulary, keyed on the SERVICE TASK's
+# ``canonical_key`` (adapters/storage/service_tasks.py) — not on a
+# private list of slugs.  Keeping these keys tied to the seeded
+# standard tasks is what stops this file from becoming a fourth
+# drifting copy of the task vocabulary; a task with no entry here
+# still matches through its own description words.
+#
+# Specific by design — one hit is enough to suggest, so a generic word
+# here would spam every WO.
 _TASK_KEYWORDS: dict[str, tuple[str, ...]] = {
     "oil":            ("oil", "lube", "lof"),
     "tires":          ("tire", "tyre", "tread", "rotation", "rotate",
@@ -37,6 +43,18 @@ _TASK_KEYWORDS: dict[str, tuple[str, ...]] = {
     "transmission":   ("transmission", "clutch", "gearbox"),
     "coolant":        ("coolant", "radiator", "antifreeze", "thermostat"),
     "battery":        ("battery", "batteries", "alternator", "starter"),
+    "electrical":     ("electrical", "wiring", "harness", "fuse", "solenoid"),
+    "air_filter":     ("air filter", "air cleaner"),
+    "fuel_filter":    ("fuel filter", "water separator"),
+    "alignment":      ("alignment", "align", "toe", "camber"),
+    "suspension":     ("suspension", "spring", "shock", "airbag", "bushing"),
+    "air_system":     ("air line", "air lines", "air dryer", "glad hand",
+                       "air leak"),
+    "hvac":           ("hvac", "a/c", "air conditioning", "heater", "blower"),
+    "lighting":       ("headlight", "taillight", "marker light", "light bulb"),
+    "lube":           ("lube", "grease", "chassis lubrication"),
+    "pm_service":     ("pm service", "preventive maintenance"),
+    "trailer_service": ("kingpin", "landing gear", "trailer service"),
 }
 
 # Words that carry no matching signal on their own.  Two families:
@@ -116,7 +134,12 @@ def suggest_task_links(
     for task in open_tasks or []:
         if not is_open_task(task):
             continue
-        ttype = str(task.get("task_type") or "").strip().lower()
+        # Prefer the service task's canonical key when the caller passes
+        # an enriched row; fall back to the legacy slug (they agree for
+        # standard tasks, which is what keeps this transition seamless).
+        ttype = str(
+            task.get("canonical_key") or task.get("task_type") or ""
+        ).strip().lower()
         desc = str(task.get("description") or "")
 
         matched: str | None = None

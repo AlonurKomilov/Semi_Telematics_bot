@@ -6897,3 +6897,243 @@ async def migrate_work_orders_fee_amount(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 161: work_orders.fee_amount added")
+
+
+@_register("162_service_tasks_ssot")
+async def migrate_service_tasks_ssot(conn) -> None:
+    """Graduate "service task" from a loose TEXT slug into shared master
+    data, and point Maintenance + Work Orders at it.
+
+    Why: the same vocabulary was hand-maintained in three places (the
+    dashboard dropdown, the maintenance AI tool, the work-order link
+    matcher) and had already drifted — the UI offered ``electrical``
+    the backend coerced to custom, while the AI minted ``coolant`` /
+    ``battery`` the dropdown couldn't render.  There was no owner.
+
+    Backfill reads the DATA, never our code lists: every distinct
+    string actually present in the three columns becomes a task, so
+    drifted values and anything free-typed by the bot survive.  A
+    string we don't recognise lands as an ARCHIVED custom task — the
+    row keeps its meaning without cluttering live dropdowns.
+
+    The legacy string columns stay for one release (writers keep them
+    in sync); a later sweep re-runs this backfill for rows written by
+    workers that hadn't restarted yet, and only then do they go.
+    """
+    from adapters.storage.service_tasks import (
+        STANDARD_SERVICE_TASKS, service_task_name_key,
+    )
+
+    # ── 1. The table (mirrors schema.py for fresh installs) ──────────
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS service_tasks (
+            id                   SERIAL PRIMARY KEY,
+            account_id           INTEGER NOT NULL REFERENCES accounts(id),
+            name                 TEXT    NOT NULL,
+            name_key             TEXT    NOT NULL,
+            canonical_key        TEXT    NOT NULL DEFAULT '',
+            description          TEXT    NOT NULL DEFAULT '',
+            expected_labor_hours REAL    NOT NULL DEFAULT 0,
+            parent_id            INTEGER,
+            status               TEXT    NOT NULL DEFAULT 'active',
+            created_by           INTEGER NOT NULL DEFAULT 0,
+            created_at           TEXT    NOT NULL DEFAULT '',
+            updated_at           TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, name_key)
+        )
+        """
+    )
+    # Indexes belong HERE, never in schema.py's CREATE TABLE IF NOT
+    # EXISTS — that statement is a no-op on upgrade, so an index
+    # declared inside it would never be created (and a boot-time
+    # CREATE INDEX on a missing column crashes startup).
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_service_tasks_account "
+        "ON service_tasks(account_id, status)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_service_tasks_canonical "
+        "ON service_tasks(canonical_key)"
+    )
+
+    # ── 2. Reference columns on the three consumers ──────────────────
+    for table in ("maintenance_tasks", "work_order_parts", "work_order_labor"):
+        await conn.execute(
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS service_task_id INTEGER"
+        )
+        await conn.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{table}_service_task "
+            f"ON {table}(service_task_id)"
+        )
+    await conn.commit()
+
+    # ── 3. Seed the standard library for every account ───────────────
+    now = __import__("datetime").datetime.now(
+        __import__("datetime").timezone.utc
+    ).isoformat()
+    cur = await conn.execute("SELECT id FROM accounts")
+    account_ids = [int(dict(r)["id"]) for r in await cur.fetchall()]
+    for acct in account_ids:
+        for entry in STANDARD_SERVICE_TASKS:
+            await conn.execute(
+                "INSERT INTO service_tasks "
+                "(account_id, name, name_key, canonical_key, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (account_id, name_key) DO NOTHING",
+                (acct, entry["name"], service_task_name_key(entry["name"]),
+                 entry["key"], now, now),
+            )
+    await conn.commit()
+
+    # ── 4. Fold the per-account custom task types in ─────────────────
+    # ``maintenance_custom_task_types`` was half a master-data table
+    # (value + label, per account).  Its rows become real tasks; the
+    # old table stays readable for one release behind the deprecated
+    # /maintenance/task-types shim, then goes.
+    custom_map: dict[tuple[int, str], int] = {}
+    try:
+        cur = await conn.execute(
+            "SELECT account_id, value, label FROM maintenance_custom_task_types"
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+    except Exception:
+        rows = []
+    for row in rows:
+        acct = int(row["account_id"])
+        label = (row.get("label") or row.get("value") or "").strip()
+        if not label:
+            continue
+        await conn.execute(
+            "INSERT INTO service_tasks "
+            "(account_id, name, name_key, canonical_key, created_at, updated_at) "
+            "VALUES (?, ?, ?, '', ?, ?) "
+            "ON CONFLICT (account_id, name_key) DO NOTHING",
+            (acct, label, service_task_name_key(label), now, now),
+        )
+        c2 = await conn.execute(
+            "SELECT id FROM service_tasks WHERE account_id = ? AND name_key = ?",
+            (acct, service_task_name_key(label)),
+        )
+        got = await c2.fetchone()
+        if got:
+            custom_map[(acct, str(row["value"]))] = int(dict(got)["id"])
+    await conn.commit()
+
+    # ── 5. Backfill the three columns FROM THE DATA ──────────────────
+    # Resolution order per distinct string: a seeded canonical key, a
+    # folded custom-type value, an exact name match, else a brand-new
+    # ARCHIVED custom task (nothing is dropped, nothing is guessed).
+    async def _resolve(acct: int, raw: str) -> int | None:
+        val = (raw or "").strip()
+        if not val:
+            return None
+        hit = custom_map.get((acct, val))
+        if hit:
+            return hit
+        c = await conn.execute(
+            "SELECT id FROM service_tasks "
+            "WHERE account_id = ? AND (canonical_key = ? OR name_key = ?)",
+            (acct, val.lower(), service_task_name_key(val)),
+        )
+        row = await c.fetchone()
+        if row:
+            tid = int(dict(row)["id"])
+            custom_map[(acct, val)] = tid
+            return tid
+        # Legacy 'custom_<slug>' → a readable label.
+        label = val
+        if val.lower().startswith("custom_"):
+            label = val[len("custom_"):].replace("_", " ").strip() or val
+        label = label.title() if label.islower() else label
+        await conn.execute(
+            "INSERT INTO service_tasks "
+            "(account_id, name, name_key, canonical_key, status, created_at, updated_at) "
+            "VALUES (?, ?, ?, '', 'archived', ?, ?) "
+            "ON CONFLICT (account_id, name_key) DO NOTHING",
+            (acct, label, service_task_name_key(label), now, now),
+        )
+        c = await conn.execute(
+            "SELECT id FROM service_tasks WHERE account_id = ? AND name_key = ?",
+            (acct, service_task_name_key(label)),
+        )
+        row = await c.fetchone()
+        if not row:
+            return None
+        tid = int(dict(row)["id"])
+        custom_map[(acct, val)] = tid
+        return tid
+
+    filled = 0
+    # maintenance_tasks carries account_id directly.
+    cur = await conn.execute(
+        "SELECT DISTINCT account_id, task_type FROM maintenance_tasks "
+        "WHERE service_task_id IS NULL AND COALESCE(task_type, '') <> ''"
+    )
+    for row in [dict(r) for r in await cur.fetchall()]:
+        tid = await _resolve(int(row["account_id"]), row["task_type"])
+        if not tid:
+            continue
+        c = await conn.execute(
+            "UPDATE maintenance_tasks SET service_task_id = ? "
+            "WHERE account_id = ? AND task_type = ? AND service_task_id IS NULL",
+            (tid, int(row["account_id"]), row["task_type"]),
+        )
+        filled += c.rowcount or 0
+
+    # work_order_labor carries account_id; work_order_parts reaches it
+    # through its parent work order.
+    cur = await conn.execute(
+        "SELECT DISTINCT account_id, service_task FROM work_order_labor "
+        "WHERE service_task_id IS NULL AND COALESCE(service_task, '') <> ''"
+    )
+    for row in [dict(r) for r in await cur.fetchall()]:
+        tid = await _resolve(int(row["account_id"]), row["service_task"])
+        if not tid:
+            continue
+        c = await conn.execute(
+            "UPDATE work_order_labor SET service_task_id = ? "
+            "WHERE account_id = ? AND service_task = ? AND service_task_id IS NULL",
+            (tid, int(row["account_id"]), row["service_task"]),
+        )
+        filled += c.rowcount or 0
+
+    cur = await conn.execute(
+        "SELECT DISTINCT w.account_id AS account_id, p.service_task AS service_task "
+        "FROM work_order_parts p JOIN work_orders w ON w.id = p.work_order_id "
+        "WHERE p.service_task_id IS NULL AND COALESCE(p.service_task, '') <> ''"
+    )
+    for row in [dict(r) for r in await cur.fetchall()]:
+        tid = await _resolve(int(row["account_id"]), row["service_task"])
+        if not tid:
+            continue
+        c = await conn.execute(
+            "UPDATE work_order_parts SET service_task_id = ? "
+            "WHERE service_task_id IS NULL AND service_task = ? AND work_order_id IN "
+            "(SELECT id FROM work_orders WHERE account_id = ?)",
+            (tid, row["service_task"], int(row["account_id"])),
+        )
+        filled += c.rowcount or 0
+    await conn.commit()
+
+    # ── 6. RLS (same gating/shape as every other tenant table) ───────
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() in ("1", "true", "TRUE", "yes"):
+        try:
+            await conn.execute("ALTER TABLE service_tasks ENABLE ROW LEVEL SECURITY")
+            await conn.execute("ALTER TABLE service_tasks FORCE ROW LEVEL SECURITY")
+            await conn.execute("DROP POLICY IF EXISTS tenant_isolation ON service_tasks")
+            await conn.execute(
+                """
+                CREATE POLICY tenant_isolation ON service_tasks
+                USING       (account_id::text = current_setting('app.account_id', true))
+                WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+                """
+            )
+        except Exception as e:
+            logger.warning("Migration 162: service_tasks RLS skipped (%s)", e)
+    await conn.commit()
+    logger.info(
+        "Migration 162: service_tasks seeded for %d accounts; %d rows linked",
+        len(account_ids), filled,
+    )

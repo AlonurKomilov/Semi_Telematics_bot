@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any, Optional
+
+logger = logging.getLogger("bot.storage")
 
 
 if TYPE_CHECKING:
@@ -161,17 +164,37 @@ class MaintenanceMixin(_MixinBase):
         last_engine_hours: Optional[float] = None,
     ) -> int:
         now = self._now()
+        # Dual-write: the legacy ``task_type`` slug AND the service_tasks
+        # reference.  Resolving HERE (the one choke point every writer —
+        # dashboard, bot, AI tool, fault auto-create — passes through)
+        # means no caller can forget.  The resolver is fail-open: an
+        # unrecognised slug becomes an archived custom task rather than
+        # rejecting the write.
+        service_task_id = None
+        if task_type:
+            try:
+                service_task_id = await self.resolve_service_task_id(
+                    account_id, task_type, created_by=created_by,
+                )
+            except Exception:
+                logger.warning(
+                    "service_task resolve failed for %r (account %s)",
+                    task_type, account_id, exc_info=True,
+                )
+
         cur = await self._db.execute(
             """INSERT INTO maintenance_tasks
                (account_id, company_code, vehicle_id, vehicle_name,
-                task_type, description, due_date, due_miles, due_engine_hours,
+                task_type, service_task_id, description,
+                due_date, due_miles, due_engine_hours,
                 priority, created_by, created_at, updated_at,
                 recur_interval_days, recur_interval_miles, recur_interval_engine_hours,
                 work_order_id, spawned_from_id,
                 last_odometer, last_engine_hours)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, company_code, vehicle_id, vehicle_name,
-             task_type, description, due_date, due_miles, due_engine_hours,
+             task_type, service_task_id, description,
+             due_date, due_miles, due_engine_hours,
              priority, created_by, now, now,
              recur_interval_days, recur_interval_miles, recur_interval_engine_hours,
              work_order_id, spawned_from_id,

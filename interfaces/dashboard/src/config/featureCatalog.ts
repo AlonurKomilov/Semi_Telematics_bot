@@ -128,6 +128,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // Parts — master data + per-part analytics (recurrence, price per
   // vendor).  Graduated from a Work Orders component; feature-owned gate.
   { id: 'parts', labelKey: 'nav.parts', path: '/parts', icon: Cog,                      modules: ['fleet'], tier: 'role', permission: 'can_parts', navGroup: 'operations' },
+  { id: 'service-tasks', labelKey: 'nav.service_tasks', path: '/service-tasks', icon: ClipboardList, modules: ['fleet'], tier: 'role', permission: 'can_service_tasks', navGroup: 'operations' },
   { id: 'inspections', labelKey: 'nav.inspections', path: '/inspections', icon: ClipboardCheck, modules: ['fleet'], tier: 'role', permission: ['can_inspections_all', 'can_inspections_vehicle'], navGroup: 'operations' },
   // Geofences: zones serve both fleet (sites/yards) and dispatch
   // (routing boundaries) — surfaced when EITHER department is on.

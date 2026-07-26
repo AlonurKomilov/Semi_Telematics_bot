@@ -233,10 +233,30 @@ def _maintenance_table_artifact(rows: list[dict]) -> list[dict]:
 # EXECUTE (the registered executor, run only from the approve endpoint
 # after re-authorization): actually create the task.
 
-_TASK_TYPES = (
-    "oil", "tires", "brakes", "inspection", "dot_inspection", "dpf_regen",
-    "def_refill", "transmission", "coolant", "battery", "custom",
-)
+# The task vocabulary is NOT a constant here any more — it lives in the
+# account's ``service_tasks`` table (the SSOT Maintenance and Work
+# Orders share).  A hardcoded tuple in this file was one of the three
+# copies that drifted: it silently coerced the dashboard's "electrical"
+# to custom while minting "coolant"/"battery" the dropdown couldn't
+# render.  Resolution now goes through ``resolve_service_task``, which
+# is fail-open — an unknown value becomes an archived custom task
+# rather than being rewritten to "custom".
+
+
+async def _resolve_task_type(db, account_id, task_type: str) -> str:
+    """Normalize a model-supplied task type against the account's real
+    vocabulary.  Returns the stored slug (canonical key when the task
+    is a standard one, else the task's name)."""
+    raw = (task_type or "").strip()
+    if not raw or db is None or account_id is None:
+        return raw or "custom"
+    try:
+        task = await db.resolve_service_task(account_id, raw)
+    except Exception:
+        return raw
+    if not task:
+        return raw or "custom"
+    return task.get("canonical_key") or task.get("name") or raw
 
 
 @register_tool({
@@ -251,7 +271,7 @@ _TASK_TYPES = (
         "type": "object",
         "properties": {
             "vehicle_name": {"type": "string", "description": "Vehicle name/number (e.g. '228')."},
-            "task_type": {"type": "string", "description": "One of: oil, tires, brakes, inspection, dot_inspection, dpf_regen, def_refill, transmission, coolant, battery, custom."},
+            "task_type": {"type": "string", "description": "The kind of service — a standard one (oil, tires, brakes, inspection, dot_inspection, dpf_regen, def_refill, transmission, coolant, battery, electrical, air_filter, fuel_filter, alignment, suspension, hvac, lighting) or any service task this account has defined. Unknown values are kept as-is, never rewritten."},
             "description": {"type": "string", "description": "Short description of the work."},
             "due_date": {"type": "string", "description": "Optional due date YYYY-MM-DD."},
             "due_miles": {"type": "number", "description": "Optional absolute odometer (miles) at which it's due."},
@@ -272,8 +292,7 @@ async def create_maintenance_task(tool_args, samsara_client,
     task_type = str(tool_args.get("task_type", "")).strip().lower()
     if not vehicle:
         return tool_error("A vehicle is required to create a maintenance task.")
-    if task_type not in _TASK_TYPES:
-        task_type = "custom"
+    task_type = await _resolve_task_type(db, account_id, task_type)
     desc = str(tool_args.get("description", "")).strip()
     due_date = str(tool_args.get("due_date", "")).strip() or None
     due_miles = tool_args.get("due_miles")
@@ -308,8 +327,7 @@ async def _execute_create_maintenance_task(payload, account_id, user_context, db
     client body)."""
     vehicle = str(payload.get("vehicle_name", "")).strip()
     task_type = str(payload.get("task_type", "custom")).strip().lower()
-    if task_type not in _TASK_TYPES:
-        task_type = "custom"
+    task_type = await _resolve_task_type(db, account_id, task_type)
     task_id = await db.add_maintenance_task(
         account_id,
         company_code="",
