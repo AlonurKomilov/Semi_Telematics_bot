@@ -151,9 +151,9 @@ async def operator_create_account(
         reset_token = await platform_db.create_password_reset_token(
             owner.id, ttl_hours=24,
         )
+        import os as _os
         from capabilities.email.smtp import send_email
-        from infra.config import settings as _settings
-        base = getattr(_settings, "dashboard_base_url", "https://dash.4truck.us")
+        base = _os.getenv("DASHBOARD_BASE_URL", "https://dash.4truck.us").rstrip("/")
         link = f"{base}/reset-password?token={reset_token}"
         subject = (
             "Your 4truck account is ready"

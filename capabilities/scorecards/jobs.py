@@ -152,7 +152,7 @@ async def check_scorecard_drop_alerts(_app=None) -> None:
 
     Runs immediately after ``take_daily_scorecard_snapshots`` in the nightly job.
     """
-    from infra.platform import get_app_for_account
+    from infra.bot_registry import get_app_for_account
 
     yesterday  = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
     prior_week = (datetime.now(timezone.utc) - timedelta(days=8)).strftime("%Y-%m-%d")
