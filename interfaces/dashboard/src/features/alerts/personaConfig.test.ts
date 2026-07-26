@@ -18,7 +18,6 @@ afterEach(cleanup);
 describe('PERSONA_FILTER_DEFAULTS — per-persona first-land values', () => {
   it('Dispatcher lands on the flat ack queue (list view, 7 days, active)', () => {
     expect(PERSONA_FILTER_DEFAULTS.dispatcher).toEqual({
-      viewMode: 'list',
       typeFilter: 'all',
       severityFilter: 'all',
       ackState: 'active',
@@ -27,9 +26,8 @@ describe('PERSONA_FILTER_DEFAULTS — per-persona first-land values', () => {
     });
   });
 
-  it('Safety lands on safety_events filtered by-vehicle, 7 days', () => {
+  it('Safety lands on safety_events filtered, 7 days', () => {
     expect(PERSONA_FILTER_DEFAULTS.safety).toEqual({
-      viewMode: 'by-vehicle',
       typeFilter: 'safety_events',
       severityFilter: 'all',
       ackState: 'active',
@@ -38,8 +36,7 @@ describe('PERSONA_FILTER_DEFAULTS — per-persona first-land values', () => {
     });
   });
 
-  it('Fleet lands on by-vehicle, 30 days (longer maintenance-trend window)', () => {
-    expect(PERSONA_FILTER_DEFAULTS.fleet.viewMode).toBe('by-vehicle');
+  it('Fleet lands on 30 days (longer maintenance-trend window)', () => {
     expect(PERSONA_FILTER_DEFAULTS.fleet.days).toBe(30);
     expect(PERSONA_FILTER_DEFAULTS.fleet.typeFilter).toBe('all');
   });
@@ -49,8 +46,9 @@ describe('PERSONA_FILTER_DEFAULTS — per-persona first-land values', () => {
     expect(PERSONA_FILTER_DEFAULTS.hr.days).toBe(30);
   });
 
-  it('Driver lands on list view (Mini App is primary; web is fallback)', () => {
-    expect(PERSONA_FILTER_DEFAULTS.driver.viewMode).toBe('list');
+  it('Driver lands on a short own-truck window (Mini App is primary)', () => {
+    expect(PERSONA_FILTER_DEFAULTS.driver.days).toBe(7);
+    expect(PERSONA_FILTER_DEFAULTS.driver.ackState).toBe('active');
   });
 });
 

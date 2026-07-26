@@ -1,6 +1,19 @@
 /**
  * Filter chip row — ack-state + type + severity + vehicle search.
  *
+ * These are SERVER filters: each one re-queries, so it narrows the whole
+ * dataset.  That's why the grid below has no column filters of its own —
+ * a client filter would scope to the loaded batch (capped at one fetch)
+ * and silently disagree with these whenever the window overflows.  One
+ * control per dimension, and the correct one.
+ *
+ * NEXT STEP (deferred): move these INTO the grid — column filters that
+ * write these same URL params.  That gets one control per dimension AND
+ * puts it where the data is, and it's the prerequisite for turning on
+ * DataGrid's saved tabs here (tabs capture column filters, so today they'd
+ * have nothing to save).  It needs DataGrid to support server-driven
+ * filters, so it waits for that.
+ *
  * All four reads + writes go through useAlertsFilters (URL params).
  * Page-reset on filter change is automatic.
  *

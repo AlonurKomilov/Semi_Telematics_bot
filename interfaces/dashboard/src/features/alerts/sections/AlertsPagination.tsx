@@ -1,27 +1,20 @@
 /**
- * Pagination footer — Next/Prev step through whichever unit the
- * user is paginating (vehicles in per-vehicle mode, alerts in
- * per-alert mode).  The label flips so "Page 1 of 2 of 80 vehicles"
- * doesn't get confused with "Page 1 of 22 of 2164 alerts".
+ * Server-batch navigation — shown ONLY when the chosen window holds more
+ * alerts than one fetch returns.
  *
- * Renders nothing when there's no data — silent in error / loading /
- * empty states (AlertsResults handles those branches).
+ * It is deliberately NOT a second table paginator: DataGrid's own footer
+ * pages the rows already loaded, while this steps to the next BATCH from
+ * the server.  Two "Showing X–Y of Z" lines over different denominators
+ * was the confusion this replaced, so the wording says "Batch" and states
+ * the window it counts within.
  */
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import type { VehiclesAlertsResponse } from '../../../types';
 import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsQuery } from '../_shared/useAlertsQuery';
 
 export default function AlertsPagination() {
   const { page, setPage, days } = useAlertsFilters();
   const { data, isFetching, pageSize } = useAlertsQuery();
-
-  // Discriminate the response shape — same logic as AlertsResults so
-  // the "alerts" vs "vehicles" unit label matches what's rendered.
-  const vehiclesData =
-    data && Array.isArray((data as VehiclesAlertsResponse).vehicles)
-      ? (data as VehiclesAlertsResponse)
-      : undefined;
 
   // Render ONLY when the window overflows a single fetch.  Otherwise
   // DataGrid's own footer is already the one true paginator for this
@@ -35,14 +28,13 @@ export default function AlertsPagination() {
   const cur = data.page ?? page;
   const start = total === 0 ? 0 : (cur - 1) * ps + 1;
   const end = Math.min(cur * ps, total);
-  const unit = vehiclesData ? 'vehicles' : 'alerts';
 
   return (
     <div className="flex items-center justify-between mt-3">
       <p className="text-xs text-muted-foreground">
         Batch <strong>{start.toLocaleString()}</strong>–
         <strong>{end.toLocaleString()}</strong> of{' '}
-        <strong>{total.toLocaleString()}</strong> {unit} in the last{' '}
+        <strong>{total.toLocaleString()}</strong> alerts in the last{' '}
         {days} days
       </p>
       {(data.total_pages ?? 1) > 1 && (

@@ -20,14 +20,12 @@
 import type { Persona } from '../_lib/types';
 
 /** Discrete filter values that compose the page's URL state. */
-export type AlertViewMode = 'list' | 'by-vehicle';
 export type AlertType =
   | 'all' | 'fault' | 'health' | 'fuel' | 'events' | 'parking' | 'safety_events';
 export type AlertSeverity = 'all' | 'critical' | 'warning' | 'info';
 export type AlertAckState = 'active' | 'acknowledged' | 'all';
 
 export interface FilterDefaults {
-  viewMode: AlertViewMode;
   typeFilter: AlertType;
   severityFilter: AlertSeverity;
   ackState: AlertAckState;
@@ -39,16 +37,15 @@ export interface FilterDefaults {
  * Per-persona first-land filter defaults (§5 of the design doc).
  *
  * Tuned per persona based on what they actually do every day:
- *   • Dispatcher — flat list, last 7 days, active queue
- *   • Safety / HR — by-vehicle, safety_events only (pattern detection)
- *   • Fleet — by-vehicle, last 30 days (more time for vehicle-health trends)
- *   • Owner / Admin — by-vehicle, last 7 days, all types
- *   • Accounting — by-vehicle, last 30 days (cost-trend window)
- *   • Driver — flat list (Mini App is primary surface; web is fallback)
+ *   • Dispatcher — last 7 days, active queue
+ *   • Safety / HR — safety_events only (pattern detection)
+ *   • Fleet — last 30 days (more time for vehicle-health trends)
+ *   • Owner / Admin — last 7 days, all types
+ *   • Accounting — last 30 days (cost-trend window)
+ *   • Driver — last 7 days (Mini App is primary surface; web is fallback)
  */
 export const PERSONA_FILTER_DEFAULTS: Record<Persona, FilterDefaults> = {
   owner: {
-    viewMode: 'by-vehicle',
     typeFilter: 'all',
     severityFilter: 'all',
     ackState: 'active',
@@ -56,7 +53,6 @@ export const PERSONA_FILTER_DEFAULTS: Record<Persona, FilterDefaults> = {
     days: 7,
   },
   admin: {
-    viewMode: 'by-vehicle',
     typeFilter: 'all',
     severityFilter: 'all',
     ackState: 'active',
@@ -64,7 +60,6 @@ export const PERSONA_FILTER_DEFAULTS: Record<Persona, FilterDefaults> = {
     days: 7,
   },
   fleet: {
-    viewMode: 'by-vehicle',
     typeFilter: 'all',
     severityFilter: 'all',
     ackState: 'active',
@@ -72,7 +67,6 @@ export const PERSONA_FILTER_DEFAULTS: Record<Persona, FilterDefaults> = {
     days: 30,
   },
   dispatcher: {
-    viewMode: 'list',
     typeFilter: 'all',
     severityFilter: 'all',
     ackState: 'active',
@@ -80,7 +74,6 @@ export const PERSONA_FILTER_DEFAULTS: Record<Persona, FilterDefaults> = {
     days: 7,
   },
   safety: {
-    viewMode: 'by-vehicle',
     typeFilter: 'safety_events',
     severityFilter: 'all',
     ackState: 'active',
@@ -88,7 +81,6 @@ export const PERSONA_FILTER_DEFAULTS: Record<Persona, FilterDefaults> = {
     days: 7,
   },
   hr: {
-    viewMode: 'by-vehicle',
     typeFilter: 'safety_events',
     severityFilter: 'all',
     ackState: 'active',
@@ -96,7 +88,6 @@ export const PERSONA_FILTER_DEFAULTS: Record<Persona, FilterDefaults> = {
     days: 30,
   },
   accounting: {
-    viewMode: 'by-vehicle',
     typeFilter: 'all',
     severityFilter: 'all',
     ackState: 'active',
@@ -104,7 +95,6 @@ export const PERSONA_FILTER_DEFAULTS: Record<Persona, FilterDefaults> = {
     days: 30,
   },
   recruiter: {
-    viewMode: 'by-vehicle',
     typeFilter: 'all',
     severityFilter: 'all',
     ackState: 'active',
@@ -112,7 +102,6 @@ export const PERSONA_FILTER_DEFAULTS: Record<Persona, FilterDefaults> = {
     days: 30,
   },
   driver: {
-    viewMode: 'list',
     typeFilter: 'all',
     severityFilter: 'all',
     ackState: 'active',

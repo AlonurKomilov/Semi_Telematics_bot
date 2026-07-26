@@ -31,12 +31,10 @@ import {
   type AlertAckState,
   type AlertSeverity,
   type AlertType,
-  type AlertViewMode,
   type FilterDefaults,
 } from '../personaConfig';
 
 const FILTER_PARAM_KEYS = [
-  'viewMode',
   'typeFilter',
   'severityFilter',
   'ackState',
@@ -48,15 +46,12 @@ const FILTER_PARAM_KEYS = [
 type FilterParamKey = (typeof FILTER_PARAM_KEYS)[number];
 
 export interface AlertsFiltersAPI {
-  viewMode: AlertViewMode;
   typeFilter: AlertType;
   severityFilter: AlertSeverity;
   ackState: AlertAckState;
   vehicleSearch: string;
   days: number;
   page: number;
-
-  setViewMode: (v: AlertViewMode) => void;
   setTypeFilter: (v: AlertType) => void;
   setSeverityFilter: (v: AlertSeverity) => void;
   setAckState: (v: AlertAckState) => void;
@@ -76,7 +71,6 @@ export interface AlertsFiltersAPI {
 }
 
 function readDefaults(params: URLSearchParams, defaults: FilterDefaults): {
-  viewMode: AlertViewMode;
   typeFilter: AlertType;
   severityFilter: AlertSeverity;
   ackState: AlertAckState;
@@ -84,11 +78,6 @@ function readDefaults(params: URLSearchParams, defaults: FilterDefaults): {
   days: number;
   page: number;
 } {
-  const viewModeRaw = params.get('viewMode');
-  const viewMode: AlertViewMode =
-    viewModeRaw === 'list' || viewModeRaw === 'by-vehicle'
-      ? viewModeRaw
-      : defaults.viewMode;
   const typeFilter = (params.get('typeFilter') as AlertType) || defaults.typeFilter;
   const severityFilter =
     (params.get('severityFilter') as AlertSeverity) || defaults.severityFilter;
@@ -98,12 +87,11 @@ function readDefaults(params: URLSearchParams, defaults: FilterDefaults): {
   const days = Number.isFinite(daysRaw) && daysRaw > 0 ? daysRaw : defaults.days;
   const pageRaw = parseInt(params.get('page') ?? '', 10);
   const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? pageRaw : 1;
-  return { viewMode, typeFilter, severityFilter, ackState, vehicleSearch, days, page };
+  return { typeFilter, severityFilter, ackState, vehicleSearch, days, page };
 }
 
 function writeDefaults(defaults: FilterDefaults): URLSearchParams {
   const next = new URLSearchParams();
-  next.set('viewMode', defaults.viewMode);
   next.set('typeFilter', defaults.typeFilter);
   next.set('severityFilter', defaults.severityFilter);
   next.set('ackState', defaults.ackState);
@@ -175,7 +163,6 @@ export function useAlertsFilters(): AlertsFiltersAPI {
       state.typeFilter !== defaults.typeFilter
       || state.severityFilter !== defaults.severityFilter
       || state.vehicleSearch.trim() !== defaults.vehicleSearch.trim(),
-    setViewMode: (v) => setParam('viewMode', v),
     setTypeFilter: (v) => setParam('typeFilter', v),
     setSeverityFilter: (v) => setParam('severityFilter', v),
     // NOTE: changing ack-state changes which rows are "ackable", so

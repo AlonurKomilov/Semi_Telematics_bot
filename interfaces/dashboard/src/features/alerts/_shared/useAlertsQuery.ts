@@ -1,13 +1,12 @@
 /**
  * Shared query for the Alerts page — single source of truth for the
- * /alerts/pending (or /alerts/pending/by-vehicle) endpoint + the
+ * /alerts/pending endpoint + the
  * queryKey shape.
  *
  * Every section that needs alert data calls this hook; TanStack
  * Query dedupes on the queryKey so only ONE network request fires
  * per filter combination regardless of how many sections subscribe.
  *
- * The endpoint chosen depends on viewMode: ``by-vehicle`` hits the
  * vehicle-grouped aggregate so the page count reflects vehicle cards
  * (``Page 1 of 2`` for 80 trucks) rather than alert rows (``Page 1
  * of 22`` for 2164 alerts) — same UX rule as the pre-refactor page.
@@ -36,14 +35,11 @@ export interface UseAlertsQueryResult {
   error: unknown;
   refetch: () => void;
   dataUpdatedAt: number;
-  /** True when the active viewMode pulls from /alerts/pending/by-vehicle. */
-  useVehicleEndpoint: boolean;
   pageSize: number;
 }
 
 export function useAlertsQuery(): UseAlertsQueryResult {
   const {
-    viewMode,
     typeFilter,
     severityFilter,
     ackState,
@@ -52,11 +48,9 @@ export function useAlertsQuery(): UseAlertsQueryResult {
     days,
   } = useAlertsFilters();
 
-  // Both view modes read the same FLAT endpoint now — the per-vehicle
-  // presentation is DataGrid row-grouping over the same rows, done
-  // client-side in AlertsResults.  One endpoint, one cache entry, and
-  // toggling the view doesn't refetch (viewMode is out of the key).
-  void viewMode;
+  // ONE endpoint, one cache entry.  Grouping rows by vehicle (or by any
+  // other column) is DataGrid's job via its column menu — there is no
+  // separate "per vehicle" fetch or view mode.
   const pageSize = PAGE_SIZE;
 
   const queryKey = [
@@ -95,7 +89,6 @@ export function useAlertsQuery(): UseAlertsQueryResult {
     error: q.error,
     refetch: q.refetch,
     dataUpdatedAt: q.dataUpdatedAt,
-    useVehicleEndpoint: false,
     pageSize,
   };
 }

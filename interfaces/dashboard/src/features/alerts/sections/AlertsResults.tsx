@@ -70,7 +70,7 @@ export default function AlertsResults() {
   const { t } = useTranslation();
   const tz = useTimezone();
   const qc = useQueryClient();
-  const { ackState, viewMode, narrowed, resetToDefaults, days, setDays } = useAlertsFilters();
+  const { ackState, narrowed, resetToDefaults, days, setDays } = useAlertsFilters();
   // DataGrid owns the checkbox column + the bulk-action bar now, but
   // the SELECTION still lives in the shared context (LiveAckPanel's
   // sound cue, AlertsBulkError, and the filter-chip clear all read it),
@@ -170,23 +170,18 @@ export default function AlertsResults() {
         // Rank-based sort so critical outranks warning outranks info
         // (alphabetical would bury critical in the middle).
         sortKey: (row) => SEV_RANK[String((row as Alert).severity ?? 'warning')] ?? 3,
-        filterable: true,
-        filterValue: (row) => String((row as Alert).severity ?? 'warning'),
-        filterLabel: (row) => {
-          const s = String((row as Alert).severity ?? 'warning');
-          return s.charAt(0).toUpperCase() + s.slice(1);
-        },
+        // No column filter: Severity has an authoritative SERVER control in
+        // the filter bar.  A client-side twin would filter only the loaded
+        // batch and silently disagree with it once the window overflows one
+        // fetch — two controls per dimension, one of them quietly wrong.
         render: (v) => <SeverityDot severity={v as string} />,
       },
-      { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
+      // Vehicle: sortable, but filtered from the server search above (see
+      // the Severity note).
+      { key: 'vehicle_name', label: 'Vehicle', sortable: true },
       {
         key: 'alert_type', label: 'Type', sortable: true,
-        filterable: true,
-        filterValue: (row) => String((row as Alert).alert_type ?? 'unknown'),
-        filterLabel: (row) => {
-          const s = String((row as Alert).alert_type ?? 'unknown');
-          return s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-        },
+        // Filtered from the server Type chips above (see the Severity note).
         render: (v, row) => {
           const a = row as unknown as Alert;
           return (
@@ -235,8 +230,8 @@ export default function AlertsResults() {
           const a = row as Alert;
           return a.last_seen || a.created_at || '';
         },
-        filterable: true,
-        filterMode: 'date-range',
+        // Filtered from the server date window (the range picker above);
+        // a client date filter over the loaded batch would contradict it.
         render: (_v, row) => {
           const a = row as unknown as Alert;
           const iso = a.last_seen || a.created_at;
@@ -330,8 +325,6 @@ export default function AlertsResults() {
     );
   }
 
-  const byVehicle = viewMode === 'by-vehicle';
-
   return (
     <div>
       {/* Truncation notice — the window exceeded the single-fetch cap,
@@ -348,16 +341,31 @@ export default function AlertsResults() {
         </p>
       )}
       <DataGrid
-        // Distinct tableIds per view mode: the two modes persist
-        // separate layout / grouping prefs, and the mode toggle in
-        // the control bar swaps between them instantly (same data,
-        // no refetch).
-        tableId={byVehicle ? 'alerts-by-vehicle' : 'alerts-list'}
-        defaultRowGroup={byVehicle ? 'vehicle_name' : undefined}
+        // One table, one set of per-user prefs.  Grouping is the
+        // operator's choice via any column's ⋮ "Group rows by this" (it
+        // shows as a removable "Grouped by …" chip), which replaced the
+        // old Per-vehicle / Per-alert toggle — that was a hardcoded
+        // special case of this, offering only Vehicle.
+        tableId="alerts"
+        // savedTabs is deliberately NOT enabled yet.  Saved tabs capture the
+        // grid's COLUMN filters, and this grid intentionally has none: every
+        // dimension (status / type / severity / vehicle / date) is filtered
+        // server-side, because a client filter would silently scope to the
+        // loaded batch and disagree with the real total.  Turning tabs on
+        // today would give operators a picker with nothing in it.  They
+        // become genuinely useful in the same step that moves the filter bar
+        // INTO the grid (column filters writing the server query) — see the
+        // note in AlertsFilterChips.
         columns={columns}
         data={alerts as unknown as Record<string, unknown>[]}
-        searchKey={['vehicle_name', 'location']}
-        searchPlaceholder="Search vehicle or location…"
+        // Location only.  Vehicle already has an authoritative SERVER
+        // search in the filter bar; a second client-side vehicle search
+        // over the loaded batch would silently disagree with it whenever
+        // the window overflows one fetch.  Location has no server
+        // equivalent, so this is the one place it's searchable — scoped to
+        // the loaded batch, which the notice above the table states.
+        searchKey={['location']}
+        searchPlaceholder="Search location in this batch…"
         // Bulk selection is DataGrid's (checkbox column + top bar);
         // CONTROLLED so the shared context stays the owner.  Only
         // un-acknowledged alerts are selectable, and Acknowledge is the
@@ -368,8 +376,10 @@ export default function AlertsResults() {
         isRowSelectable={(row) => isAckable(row as unknown as Alert)}
         bulkRowLabel={(row) => `alert ${(row as unknown as Alert).id}`}
         bulkActions={bulkActions}
-        // Rich group header — vehicle name + severity tallies +
-        // latest activity, replacing the default "<value> (N)".
+        // Rich group header — the group's value + severity tallies +
+        // latest activity, replacing the default "<value> (N)".  Written
+        // against `value`, not "vehicle", so it reads correctly whichever
+        // column the operator groups by.
         rowGroupHeader={(value, rows) => {
           const as_ = rows as unknown as Alert[];
           const counts = { critical: 0, warning: 0, info: 0 };

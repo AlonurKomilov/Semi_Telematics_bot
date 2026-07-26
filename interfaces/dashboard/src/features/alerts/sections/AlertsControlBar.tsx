@@ -1,12 +1,14 @@
 /**
- * Top control bar — view-mode toggle (left) + date-range presets (right).
+ * Top control bar — the date-range presets.
  *
- * Replaces the old Pending/History tab strip.  View-mode toggle and
- * date range are the two page-level decisions the operator makes;
- * everything below (filters, severity chips, search) refines the
- * result inside that scope.  The History tab was removed because the
- * date range already covers the lookback case — selecting "30d"
- * surfaces the same alerts the History tab used to show.
+ * The date window is the page-level decision: it chooses WHICH alerts are
+ * fetched, and everything below (status / type / severity chips, vehicle
+ * search) refines within that scope.  Replaces the old Pending/History tab
+ * strip — the range already covers the lookback case, since selecting
+ * "30d" surfaces the same alerts History used to show.
+ *
+ * A "Per vehicle / Per alert" toggle also used to live here; see the note
+ * in the body for why it's gone.
  *
  * Page-reset on filter change is automatic via useAlertsFilters'
  * setters — no manual setPage(1) here.
@@ -16,26 +18,18 @@ import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsQuery } from '../_shared/useAlertsQuery';
 
 export default function AlertsControlBar() {
-  const { viewMode, setViewMode, days, setDays } = useAlertsFilters();
+  const { days, setDays } = useAlertsFilters();
   const { isFetching } = useAlertsQuery();
 
+  // The old "Per vehicle / Per alert" toggle lived here.  It was a
+  // hardcoded special case of something the grid already does better:
+  // every column's ⋮ menu offers "Group rows by this", so an operator can
+  // group by Vehicle, Type, Severity or Company — and see it as a
+  // removable "Grouped by …" chip.  Both modes had long since read the
+  // same flat endpoint, so the toggle only set a default grouping, which
+  // a saved per-user preference could silently override.
   return (
-    <div className="flex items-center justify-between mb-4 border-b border-border pb-3">
-      <div className="flex gap-1" role="group" aria-label="View mode">
-        {(['by-vehicle', 'list'] as const).map((mode) => (
-          <button
-            key={mode}
-            onClick={() => setViewMode(mode)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition border ${
-              viewMode === mode
-                ? 'bg-primary text-primary-foreground border-primary'
-                : 'bg-muted/40 text-muted-foreground border-border hover:bg-muted hover:text-foreground'
-            }`}
-          >
-            {mode === 'by-vehicle' ? 'Per vehicle' : 'Per alert'}
-          </button>
-        ))}
-      </div>
+    <div className="flex items-center justify-end mb-4 border-b border-border pb-3">
       <DateRangePresets
         value={days}
         onChange={(d) => setDays(d)}

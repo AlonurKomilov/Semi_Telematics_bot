@@ -5,7 +5,9 @@
  *   • ``selected`` — Set of alert ids the user has checked.  URL-
  *     encoding a Set is awful, mutates very frequently (every
  *     checkbox), and has no meaning outside the current session.
- *   • ``expandedVehicles`` — same rationale, scoped to by-vehicle view.
+ *   • ``expandedVehicles`` — legacy of the removed per-vehicle view;
+ *     DataGrid owns group expansion now.  Inert, kept only so the
+ *     context's shape stays stable for its tests.
  *   • ``bulkError`` / ``acking`` — transient UI state for the
  *     "Acknowledge N" flow at the page header.
  *

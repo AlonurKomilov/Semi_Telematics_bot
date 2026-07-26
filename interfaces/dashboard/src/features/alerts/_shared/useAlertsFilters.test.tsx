@@ -50,7 +50,6 @@ describe('useAlertsFilters — first-land persona defaults', () => {
       wrapper: makeWrapper('/alerts'),
     });
     // First-load effect runs after mount; values reflect Safety defaults.
-    expect(result.current.viewMode).toBe('by-vehicle');
     expect(result.current.typeFilter).toBe('safety_events');
     expect(result.current.days).toBe(7);
     expect(result.current.ackState).toBe('active');
@@ -62,15 +61,16 @@ describe('useAlertsFilters — first-land persona defaults', () => {
       wrapper: makeWrapper('/alerts'),
     });
     expect(result.current.days).toBe(30);
-    expect(result.current.viewMode).toBe('by-vehicle');
   });
 
-  it('writes Dispatcher defaults (list view) when persona=dispatcher and URL is empty', () => {
+  it('writes Dispatcher defaults (7 days, all types) when URL is empty', () => {
     setPersona('dispatcher');
     const { result } = renderHook(() => useAlertsFilters(), {
       wrapper: makeWrapper('/alerts'),
     });
-    expect(result.current.viewMode).toBe('list');
+    expect(result.current.days).toBe(7);
+    expect(result.current.typeFilter).toBe('all');
+    expect(result.current.ackState).toBe('active');
   });
 
   it('does NOT overwrite URL when URL already has filter params (bookmark deep link)', () => {

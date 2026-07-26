@@ -34,7 +34,7 @@ export const ALERTS_SECTIONS: SectionRegistry<AlertsSectionProps> = {
   },
   results: {
     Component: lazy(() => import('./sections/AlertsResults')),
-    label: 'Alerts queue (by-vehicle or list)',
+    label: 'Alerts queue (grouping is the operator\'s choice)',
   },
   pagination: {
     Component: lazy(() => import('./sections/AlertsPagination')),
