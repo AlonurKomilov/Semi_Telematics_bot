@@ -11,18 +11,43 @@ import { statusTone, toneText } from '../../../lib/status';
 import { formatDate } from '../../../utils/datetime';
 import type { Alert } from '../../../types';
 
+// Raw alert_type → the SAME words the Type filter chips show, so a row and
+// the control that filters it name the thing identically.  Multi-word keys
+// need the map (CSS `capitalize` would render "Doc_expiry").
+const TYPE_TEXT: Record<string, string> = {
+  fault: 'Fault', faults: 'Fault',
+  health: 'Health',
+  fuel: 'Fuel',
+  events: 'Events', event: 'Events', safety_events: 'Events',
+  parking: 'Parking',
+  camera: 'Camera',
+  geofence: 'Geofence',
+  maintenance: 'Maintenance',
+  documents: 'Documents', doc_expiry: 'Documents',
+  scorecard: 'Scorecard',
+  system: 'System', samsara_sync: 'Sync', reescalate: 'Re-escalation',
+};
+
+function typeText(type: string): string {
+  return TYPE_TEXT[type]
+    ?? type.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
+}
+
+/** What KIND of alert this is — identity, not severity.
+ *
+ *  Neutral on purpose.  The row already carries one colour channel (the
+ *  severity dot + word); tinting the type as well made the two compete for
+ *  the same glance, and the five hues it used were raw Tailwind palette
+ *  values, which the design system forbids (there is no categorical colour
+ *  token here — the theme is monochrome with semantic accents).
+ *
+ *  Shape is the grammar: a borderless PILL means "this is a fact about the
+ *  row"; the bordered rounded-rect chips in the filter bar mean "click me
+ *  to filter". Same words, different shapes, no ambiguity. */
 export function TypeBadge({ type }: { type: string }) {
-  const colors: Record<string, string> = {
-    fault: 'bg-orange-500/15 text-orange-700 dark:text-orange-400',
-    health: 'bg-red-500/15 text-red-700 dark:text-red-400',
-    fuel: 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400',
-    events: 'bg-purple-500/15 text-purple-700 dark:text-purple-400',
-    parking: 'bg-cyan-500/15 text-cyan-700 dark:text-cyan-400',
-  };
-  const cls = colors[type] || 'bg-gray-500/20 text-muted-foreground';
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls}`}>
-      {type}
+    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+      {typeText(type)}
     </span>
   );
 }

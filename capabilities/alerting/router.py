@@ -945,3 +945,49 @@ async def escalation_summary(
         "reescalate_after_minutes": REESCALATE_AFTER_MINUTES,
         "reescalate_max_attempts":  REESCALATE_MAX_ATTEMPTS,
     }
+
+
+@router.get("/by-id/{alert_id}")
+async def alert_by_id(
+    alert_id: int,
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """One alert by id — what the ``?alertId=`` deep link (from the
+    notification bell) opens the incident drawer with.
+
+    Deliberately NOT windowed or filtered: the whole point is that a user
+    who clicked a specific alert lands on that alert, even when it sits
+    outside the board's current date window or type filter (a chronic alert
+    older than the window is exactly the case that matters).  It also
+    returns acknowledged/cleared rows, so following a link to an alert a
+    colleague just handled shows what happened instead of a dead end.
+
+    Scoped exactly like ``/pending``: a driver only reads their own trucks'
+    alerts, a company-restricted user only their companies' — so an id
+    guess can never surface an alert the caller couldn't otherwise see.
+
+    Path is ``/by-id/{alert_id}`` rather than ``/{alert_id}`` so it can
+    never shadow a literal sibling route (``/pending``, ``/history``, …).
+    """
+    row = await tenant_db.get_alert_history_by_id(user["account_id"], alert_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    alerts = [_shape_history_for_pending_api(row)]
+    if user.get("_matched_perm") == "can_alerts_vehicle":
+        alerts = await _filter_own(user, alerts)
+    allowed = await get_user_company_codes(user)
+    # Same gates as /pending, so a deep-linked alert looks exactly like the
+    # same row on the board: the company chip only appears on multi-company
+    # accounts, and the vehicle map is built only when something needs it.
+    multi_company = (await tenant_db.count_account_companies(user["account_id"])) > 1
+    veh_map = (await _vehicle_company_map(user["account_id"], tenant_db)
+               if (allowed or multi_company) else {})
+    if allowed:
+        alerts = filter_by_company_map(alerts, allowed, veh_map, key="vehicle_id")
+    if not alerts:
+        # Out of the caller's scope — same 404 as "doesn't exist" so an id
+        # probe can't distinguish the two.
+        raise HTTPException(status_code=404, detail="Alert not found")
+    _attach_company(alerts, veh_map if multi_company else {})
+    return {"alert": alerts[0]}

@@ -42,8 +42,13 @@ export default function AlertsFilterChips() {
       {/* Status (ack-state) chips live inline with the type /
           severity filters — one flat row of refinements.  Default
           'Not acknowledged' is the daily work queue; 'Acknowledged'
-          / 'All' use the date range to bound the lookback. */}
+          / 'All' use the date range to bound the lookback.
+          Each group is LABELLED: all three are exclusive and each
+          carries its own "All", so unlabelled neighbours read as
+          "All … All …" — one muddled selection instead of three
+          independent dimensions. */}
       <FilterChips
+        label="Status"
         options={ACK_STATES}
         value={ackState}
         onChange={(v) => {
@@ -53,6 +58,7 @@ export default function AlertsFilterChips() {
         labelFor={(v) => ACK_STATE_LABELS[v]}
       />
       <FilterChips
+        label="Type"
         options={ALERT_TYPES}
         value={typeFilter as (typeof ALERT_TYPES)[number]}
         onChange={(v) => setTypeFilter(v)}
@@ -62,6 +68,7 @@ export default function AlertsFilterChips() {
           client-side broke "Page N of M" when a page contained no
           matches and rendered empty). */}
       <FilterChips
+        label="Severity"
         options={['all', 'critical', 'warning', 'info'] as const}
         value={severityFilter}
         onChange={(v) => setSeverityFilter(v)}

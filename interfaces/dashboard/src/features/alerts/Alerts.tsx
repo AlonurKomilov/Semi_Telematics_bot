@@ -16,6 +16,7 @@
  */
 import { PageLayoutHost } from '../_lib/PageLayoutHost';
 import { AlertsSelectionProvider } from './_shared/AlertsSelectionContext';
+import AlertDeepLink from './_shared/AlertDeepLink';
 import { ALERTS_SECTIONS } from './registry';
 import { ALERTS_LAYOUTS } from './layouts';
 import { AlertsTabs } from './AlertsTabs';
@@ -23,6 +24,9 @@ import { AlertsTabs } from './AlertsTabs';
 export default function Alerts() {
   return (
     <AlertsSelectionProvider>
+      {/* Opens the drawer when arrived at via ?alertId= (the bell's rows).
+          Lives here, not in a persona layout, so every role gets it. */}
+      <AlertDeepLink />
       <AlertsTabs />
       <PageLayoutHost
         registry={ALERTS_SECTIONS}

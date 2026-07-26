@@ -539,6 +539,21 @@ class AlertsMixin(_MixinBase):
         )
         return dict(row) if row else None
 
+    async def get_alert_history_by_id(
+        self, account_id: int, alert_id: int,
+    ) -> Optional[dict]:
+        """One alert_history row by id, scoped to the account.
+
+        NOT filtered by status or date: this backs the deep link that opens
+        a specific alert, which must work for a chronic alert older than any
+        board window and for one a colleague already acknowledged.
+        """
+        row = await self.read_one(
+            "SELECT * FROM alert_history WHERE id = ? AND account_id = ?",
+            (int(alert_id), account_id),
+        )
+        return dict(row) if row else None
+
     async def get_active_alert_history_by_ids(
         self, account_id: int, ids: list[int],
     ) -> list[dict]:

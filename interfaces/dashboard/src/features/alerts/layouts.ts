@@ -9,9 +9,16 @@
  *
  * Planned persona-specific additions — wire here when each section lands:
  *   • dispatcher → ``live_ack_panel`` before ``control_bar``
- *   • safety     → ``safety_summary_strip`` + ``incident_drillin_drawer``
+ *   • safety     → ``safety_summary_strip``
  *   • fleet      → ``vehicle_health_summary``
  *   • owner/admin → ``escalation_status_card`` + ``account_alert_summary``
+ *
+ * ``incident_drillin_drawer`` is UNIVERSAL, not persona-specific: every
+ * layout renders ``results``, whose alert-id cell calls ``openDrillIn()``.
+ * Leaving the drawer out of a layout makes that button silently dead, so
+ * it sits at the tail of every list — it renders null until context opens
+ * it, so it costs nothing for personas that never drill in.  It is also
+ * what the ``?alertId=`` deep link (from the notification bell) opens.
  *
  * Until those land the layouts stay uniform; the audit script
  * (check:layout-coverage) keeps the keys in sync with the Persona union.
@@ -25,6 +32,9 @@ const UNIVERSAL: ReadonlyArray<string> = [
   'bulk_error',
   'results',
   'pagination',
+  // Tail position: the fixed-overlay drawer mounts AFTER the page body is
+  // in the tree, which keeps focus management predictable.
+  'incident_drillin_drawer',
 ];
 
 // Per-persona section lists are kept as ``key: [...literal]`` so the
@@ -39,11 +49,13 @@ export const ALERTS_LAYOUTS: LayoutMap = {
     'header',
     'live_ack_panel',
     'control_bar', 'filter_chips', 'bulk_error', 'results', 'pagination',
+    'incident_drillin_drawer',
   ],
   fleet: [
     'header',
     'vehicle_health_summary',
     'control_bar', 'filter_chips', 'bulk_error', 'results', 'pagination',
+    'incident_drillin_drawer',
   ],
   safety: [
     'header',
@@ -63,12 +75,14 @@ export const ALERTS_LAYOUTS: LayoutMap = {
     'escalation_status_card',
     'account_alert_summary',
     'control_bar', 'filter_chips', 'bulk_error', 'results', 'pagination',
+    'incident_drillin_drawer',
   ],
   admin: [
     'header',
     'escalation_status_card',
     'account_alert_summary',
     'control_bar', 'filter_chips', 'bulk_error', 'results', 'pagination',
+    'incident_drillin_drawer',
   ],
   // Personas without dedicated sections render the universal layout.
   // Adding a persona-specific section means: write it → register it

@@ -6,6 +6,13 @@ interface FilterChipsProps<T extends string> {
   onChange: (v: T) => void;
   labelFor?: (v: T) => string;
   countFor?: (v: T) => number | undefined;
+  /** What this group filters BY ("Status", "Type", "Severity").
+   *
+   *  Required in spirit whenever two chip groups sit next to each other:
+   *  each exclusive group carries its own "All" option, so two unlabelled
+   *  groups read as "All … All …" — one confused selection rather than two
+   *  independent dimensions.  Also names the group for screen readers. */
+  label?: string;
 }
 
 export function FilterChips<T extends string>({
@@ -14,9 +21,18 @@ export function FilterChips<T extends string>({
   onChange,
   labelFor,
   countFor,
+  label,
 }: FilterChipsProps<T>) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    // role="group" only when it has a NAME — an unnamed group adds a
+    // landmark screen readers can't describe.
+    <div className="flex flex-wrap items-center gap-1.5"
+         {...(label ? { role: 'group', 'aria-label': label } : {})}>
+      {label && (
+        <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground mr-0.5">
+          {label}
+        </span>
+      )}
       {options.map((opt) => {
         const active = opt === value;
         const label = labelFor ? labelFor(opt) : opt;

@@ -263,7 +263,7 @@ export function NotificationsPanel(
                 {merged.map((m) => m.kind === 'alert' ? (
                   <AlertRow key={`a${String(m.alert.id)}`} alert={m.alert}
                             onAck={() => ack([m.alert.id])}
-                            onOpen={() => goto('/alerts')} busy={busy} />
+                            onOpen={() => goto(`/alerts?alertId=${m.alert.id}`)} busy={busy} />
                 ) : (
                   <InboxRow key={`n${m.notice.id}`} notice={m.notice}
                             onOpen={() => {
@@ -315,7 +315,7 @@ export function NotificationsPanel(
               <ul className="divide-y divide-border/60">
                 {shown.map((a) => (
                   <AlertRow key={String(a.id)} alert={a} onAck={() => ack([a.id])}
-                            onOpen={() => goto('/alerts')} busy={busy} />
+                            onOpen={() => goto(`/alerts?alertId=${a.id}`)} busy={busy} />
                 ))}
               </ul>
             )}

@@ -147,3 +147,49 @@ class TestActiveAmongRoute:
                 headers={**_hh(api["owner"]), "X-View-As": "fleet"})
         assert r.status_code == 200                              # no 500
         assert r.json()["active_ids"] == []
+
+
+class TestAlertByIdRoute:
+    """GET /alerts/by-id/{id} — what the bell's ?alertId= deep link opens.
+
+    Must reach an alert the BOARD can't show (outside its window, or already
+    acknowledged) — that's the whole point — while never leaking one outside
+    the caller's scope.
+    """
+
+    async def test_returns_an_alert_outside_any_window(self, api):
+        db = api["app"]  # noqa: F841  (fixture wires infra.platform)
+        async with AsyncClient(transport=ASGITransport(app=api["app"]),
+                               base_url="http://t") as c:
+            r = await c.get(f"/api/alerts/by-id/{api['a1']}",
+                            headers={**_hh(api["owner"]), "X-View-As": "fleet"})
+        assert r.status_code == 200
+        assert str(r.json()["alert"]["id"]) == str(api["a1"])
+
+    async def test_returns_a_cleared_alert_too(self, api):
+        """A link to an alert a colleague just handled shows what happened
+        rather than a dead end."""
+        async with AsyncClient(transport=ASGITransport(app=api["app"]),
+                               base_url="http://t") as c:
+            r = await c.get(f"/api/alerts/by-id/{api['a3']}",
+                            headers={**_hh(api["owner"]), "X-View-As": "fleet"})
+        assert r.status_code == 200
+
+    async def test_driver_cannot_read_another_trucks_alert(self, api):
+        """Out-of-scope is a 404, identical to not-found — an id probe can't
+        tell the two apart."""
+        async with AsyncClient(transport=ASGITransport(app=api["app"]),
+                               base_url="http://t") as c:
+            own = await c.get(f"/api/alerts/by-id/{api['a1']}",
+                              headers=_hh(api["driver"]))
+            other = await c.get(f"/api/alerts/by-id/{api['a2']}",
+                                headers=_hh(api["driver"]))
+        assert own.status_code == 200        # their own truck (T1)
+        assert other.status_code == 404      # T2 — not theirs
+
+    async def test_unknown_id_is_404(self, api):
+        async with AsyncClient(transport=ASGITransport(app=api["app"]),
+                               base_url="http://t") as c:
+            r = await c.get("/api/alerts/by-id/99999999",
+                            headers={**_hh(api["owner"]), "X-View-As": "fleet"})
+        assert r.status_code == 404
