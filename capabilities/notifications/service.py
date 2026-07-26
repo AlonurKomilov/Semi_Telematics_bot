@@ -114,6 +114,9 @@ async def dispatch(
             f"dispatch() is broadcast-only; {content.category!r} is targeted "
             "— use notify_user()")
     audience = cat.audience if cat is not None else None
+    if correlation_key:
+        # Renderers need the routing address for action buttons.
+        content.meta.setdefault("correlation_key", correlation_key)
 
     keys = list(channels) if channels is not None else [c.key for c in list_channels()]
     line = (content.title or content.body).split("\n", 1)[0].strip()
@@ -267,6 +270,8 @@ async def notify_user(
             f"notify_user() is targeted-only; {content.category!r} is "
             "broadcast — use dispatch()")
     mandatory = bool(cat and cat.mandatory)
+    if correlation_key:
+        content.meta.setdefault("correlation_key", correlation_key)
     keys = list(channels) if channels is not None else [c.key for c in list_channels()]
     results: list[DeliveryResult] = []
 

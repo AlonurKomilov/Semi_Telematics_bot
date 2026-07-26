@@ -78,6 +78,16 @@ class NotificationContent:
     ``severity`` is a plain string ("critical"/"warning"/"info").  ``meta``
     carries optional channel hints (e.g. a Telegram keyboard spec) without
     polluting the semantic core.
+
+    ``actions`` are SEMANTIC buttons — ``[{"id": "ack", "label": "✅
+    Acknowledge"}]``.  Channels that can render interaction (Telegram
+    inline keyboards) show them; channels that can't (email) ignore them.
+    A press is routed back to the SOURCE's registered handler
+    (``actions.py``: handler key = ``{source}.{action_id}``, source taken
+    from the correlation_key namespace) — the spine renders and routes,
+    the source decides what the press means.  Actions require a
+    ``correlation_key`` at dispatch time (that's the routing address);
+    without one they are dropped with a warning.
     """
     title: str
     body: str = ""
@@ -86,6 +96,7 @@ class NotificationContent:
     url: str = ""
     photo_bytes: bytes | None = None
     meta: dict = field(default_factory=dict)
+    actions: list = field(default_factory=list)
     alert_type: str = ""            # deprecated alias for `category`
 
     def __post_init__(self) -> None:

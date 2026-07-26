@@ -77,9 +77,10 @@ def render_telegram(content: NotificationContent) -> Payload:
     import html as _html
 
     icon = _SEV_ICON.get(content.severity, "")
-    head = f"{icon} <b>{_html.escape(content.title)}</b>" if icon \
-        else f"<b>{_html.escape(content.title)}</b>"
-    parts = [head]
+    parts = []
+    if content.title:
+        parts.append(f"{icon} <b>{_html.escape(content.title)}</b>" if icon
+                     else f"<b>{_html.escape(content.title)}</b>")
     if content.body:
         parts.append(_html.escape(content.body))
     if content.url:
@@ -88,7 +89,34 @@ def render_telegram(content: NotificationContent) -> Payload:
     return Payload(
         text=_clamp("\n".join(parts), limit), parse_mode="HTML",
         photo_bytes=content.photo_bytes,
+        markup=_action_markup(content),
     )
+
+
+def _action_markup(content: NotificationContent):
+    """``content.actions`` → an inline keyboard, or None.
+
+    Buttons need a routing address: the dispatch-time ``correlation_key``
+    (stamped into ``content.meta`` by the service).  No key, or a key too
+    long for Telegram's 64-byte callback cap → the whole row is dropped
+    (a message without buttons beats one with dead buttons)."""
+    if not content.actions:
+        return None
+    correlation_key = content.meta.get("correlation_key", "")
+    if not correlation_key:
+        logger.warning("actions without correlation_key — dropped (%s)",
+                       content.category)
+        return None
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+    from .actions import build_action_callback_data
+    buttons = []
+    for a in content.actions:
+        data = build_action_callback_data(correlation_key, str(a.get("id", "")))
+        if data is None or not a.get("label"):
+            return None
+        buttons.append(InlineKeyboardButton(str(a["label"]), callback_data=data))
+    return InlineKeyboardMarkup([buttons])
 
 
 async def _tg_send_with_retry(send, *, what: str):

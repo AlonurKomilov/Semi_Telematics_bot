@@ -480,6 +480,17 @@ async def _ack_alert(u, c):
 
 _router.prefix("ack_alert_", _ack_alert)
 
+# Spine-delivered notification actions (``notif_act:{corr_key}:{action}``)
+# — the notifications capability routes the press to whichever source
+# registered the handler (alert.ack, later work_order.approve, …).
+# docs/architecture/alert-dm-migration.md, Phase 2.
+
+async def _notif_action(u, c):
+    from capabilities.notifications.actions import handle_action_callback
+    await handle_action_callback(u, c)
+
+_router.prefix("notif_act:", _notif_action)
+
 async def _back_alert(u, c):
     try:
         ack_id = int(u.callback_query.data.replace("back_alert_", ""))
