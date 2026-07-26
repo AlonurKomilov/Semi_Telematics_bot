@@ -7232,3 +7232,127 @@ async def migrate_drop_dnd_alert_queue(conn) -> None:
     the alert content itself lives on in ``alert_history``.
     """
     await conn.execute("DROP TABLE IF EXISTS dnd_alert_queue")
+
+
+@_register("165_service_task_backfill_sweep")
+async def migrate_service_task_backfill_sweep(conn) -> None:
+    """Second pass over the service-task references — the deploy-window
+    catch-up.
+
+    Migration 162 backfilled everything that existed when it ran, and
+    from that moment the writers dual-write (legacy string + the new
+    ``service_task_id``).  But a rolling deploy has a gap: workers on
+    the OLD code kept writing string-only rows until they restarted.
+    Those rows have a tag and no reference.  This sweeps them up.
+
+    Idempotent and cheap: it only looks at rows where the reference is
+    NULL and a legacy tag is present, so on a healthy database it
+    matches nothing and costs three index scans.  Resolution mirrors
+    162 deliberately (self-contained — migrations are historical
+    records, not shared code): canonical key, then exact name, else a
+    brand-new ARCHIVED custom task, so a value we don't recognise is
+    preserved rather than dropped.
+
+    NOTE: this does NOT retire the legacy string columns.  Live readers
+    still depend on them — including ``capabilities/reporting/
+    dot_binder.py``, which selects DOT inspections by
+    ``task_type == 'dot_inspection'`` for an FMCSA compliance binder,
+    and the whole maintenance UI.  Those move to the reference first;
+    only then can the dual-write stop and the columns go.
+    """
+    from adapters.storage.service_tasks import service_task_name_key
+
+    now = __import__("datetime").datetime.now(
+        __import__("datetime").timezone.utc
+    ).isoformat()
+    cache: dict[tuple[int, str], int] = {}
+
+    async def _resolve(acct: int, raw: str) -> int | None:
+        val = (raw or "").strip()
+        if not val:
+            return None
+        hit = cache.get((acct, val))
+        if hit:
+            return hit
+        c = await conn.execute(
+            "SELECT id FROM service_tasks "
+            "WHERE account_id = ? AND (canonical_key = ? OR name_key = ?)",
+            (acct, val.lower(), service_task_name_key(val)),
+        )
+        row = await c.fetchone()
+        if not row:
+            label = val
+            if val.lower().startswith("custom_"):
+                label = val[len("custom_"):].replace("_", " ").strip() or val
+            label = label.title() if label.islower() else label
+            await conn.execute(
+                "INSERT INTO service_tasks "
+                "(account_id, name, name_key, canonical_key, status, "
+                " created_at, updated_at) "
+                "VALUES (?, ?, ?, '', 'archived', ?, ?) "
+                "ON CONFLICT (account_id, name_key) DO NOTHING",
+                (acct, label, service_task_name_key(label), now, now),
+            )
+            c = await conn.execute(
+                "SELECT id FROM service_tasks "
+                "WHERE account_id = ? AND name_key = ?",
+                (acct, service_task_name_key(label)),
+            )
+            row = await c.fetchone()
+            if not row:
+                return None
+        tid = int(dict(row)["id"])
+        cache[(acct, val)] = tid
+        return tid
+
+    swept = 0
+
+    cur = await conn.execute(
+        "SELECT DISTINCT account_id, task_type FROM maintenance_tasks "
+        "WHERE service_task_id IS NULL AND COALESCE(task_type, '') <> ''"
+    )
+    for row in [dict(r) for r in await cur.fetchall()]:
+        tid = await _resolve(int(row["account_id"]), row["task_type"])
+        if not tid:
+            continue
+        c = await conn.execute(
+            "UPDATE maintenance_tasks SET service_task_id = ? "
+            "WHERE account_id = ? AND task_type = ? AND service_task_id IS NULL",
+            (tid, int(row["account_id"]), row["task_type"]),
+        )
+        swept += c.rowcount or 0
+
+    cur = await conn.execute(
+        "SELECT DISTINCT account_id, service_task FROM work_order_labor "
+        "WHERE service_task_id IS NULL AND COALESCE(service_task, '') <> ''"
+    )
+    for row in [dict(r) for r in await cur.fetchall()]:
+        tid = await _resolve(int(row["account_id"]), row["service_task"])
+        if not tid:
+            continue
+        c = await conn.execute(
+            "UPDATE work_order_labor SET service_task_id = ? "
+            "WHERE account_id = ? AND service_task = ? AND service_task_id IS NULL",
+            (tid, int(row["account_id"]), row["service_task"]),
+        )
+        swept += c.rowcount or 0
+
+    cur = await conn.execute(
+        "SELECT DISTINCT w.account_id AS account_id, p.service_task AS service_task "
+        "FROM work_order_parts p JOIN work_orders w ON w.id = p.work_order_id "
+        "WHERE p.service_task_id IS NULL AND COALESCE(p.service_task, '') <> ''"
+    )
+    for row in [dict(r) for r in await cur.fetchall()]:
+        tid = await _resolve(int(row["account_id"]), row["service_task"])
+        if not tid:
+            continue
+        c = await conn.execute(
+            "UPDATE work_order_parts SET service_task_id = ? "
+            "WHERE service_task_id IS NULL AND service_task = ? AND work_order_id IN "
+            "(SELECT id FROM work_orders WHERE account_id = ?)",
+            (tid, row["service_task"], int(row["account_id"])),
+        )
+        swept += c.rowcount or 0
+
+    await conn.commit()
+    logger.info("Migration 165: swept %d stragglers onto service_task_id", swept)

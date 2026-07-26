@@ -299,3 +299,61 @@ async def test_migration_backfills_from_actual_data(db):
     part = next(p for p in await db.list_work_order_parts(wo) if p["id"] == pid)
     line = next(l for l in await db.list_work_order_labor(wo, a) if l["id"] == lid)
     assert part["service_task_id"] and line["service_task_id"]
+
+
+@pytest.mark.asyncio
+async def test_sweep_catches_deploy_window_stragglers(db):
+    """Migration 165: rows a not-yet-restarted worker wrote string-only
+    during the rolling deploy get their reference filled in."""
+    from adapters.storage.migrations import migrate_service_task_backfill_sweep
+    a = (await db.create_account("Sweep Co")).id
+
+    mt = await db.add_maintenance_task(a, "", "234", "brakes", "Squeal")
+    odd = await db.add_maintenance_task(a, "", "234", "gremlin removal", "???")
+    wo = await db.add_work_order(a, "", "234", "Shop")
+    pid = await db.add_work_order_part(wo, part_name="Pad", service_task="brakes")
+    lid = await db.add_work_order_labor(wo, a, description="Bleed",
+                                        service_task="brakes")
+    # Simulate the old code path: tag written, reference not.
+    await db._db.execute(
+        "UPDATE maintenance_tasks SET service_task_id = NULL WHERE account_id = ?",
+        (a,))
+    await db._db.execute(
+        "UPDATE work_order_labor SET service_task_id = NULL WHERE account_id = ?",
+        (a,))
+    await db._db.execute(
+        "UPDATE work_order_parts SET service_task_id = NULL "
+        "WHERE work_order_id = ?", (wo,))
+    await db._db.commit()
+
+    await migrate_service_task_backfill_sweep(db._db)
+
+    assert (await db.get_maintenance_task(mt, a))["service_task_id"]
+    part = next(p for p in await db.list_work_order_parts(wo) if p["id"] == pid)
+    line = next(l for l in await db.list_work_order_labor(wo, a) if l["id"] == lid)
+    assert part["service_task_id"] and line["service_task_id"]
+
+    # An unrecognised free-typed value is preserved, not dropped.
+    odd_row = await db.get_maintenance_task(odd, a)
+    assert odd_row["service_task_id"]
+    odd_task = await db.get_service_task(odd_row["service_task_id"], a)
+    assert odd_task["status"] == "archived" and odd_task["canonical_key"] == ""
+
+    # Idempotent: a second pass is a no-op, not a duplicate-maker.
+    before = len(await db.list_service_tasks(a, include_archived=True))
+    await migrate_service_task_backfill_sweep(db._db)
+    assert len(await db.list_service_tasks(a, include_archived=True)) == before
+
+
+@pytest.mark.asyncio
+async def test_sweep_leaves_the_legacy_strings_alone(db):
+    """The sweep fills references; retiring the strings is a SEPARATE
+    step, blocked until every reader moves (the DOT binder still
+    selects inspections by task_type)."""
+    from adapters.storage.migrations import migrate_service_task_backfill_sweep
+    a = (await db.create_account("Sweep Keep Co")).id
+    mt = await db.add_maintenance_task(a, "", "234", "dot_inspection", "Annual")
+    await migrate_service_task_backfill_sweep(db._db)
+    row = await db.get_maintenance_task(mt, a)
+    assert row["task_type"] == "dot_inspection"      # compliance filter intact
+    assert row["service_task_id"]
