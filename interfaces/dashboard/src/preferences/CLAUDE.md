@@ -27,6 +27,21 @@ separate — the bot and notification router consume it. Account-level
 `work_hours` stays in its feature table. Session tokens, transient drafts
 and data caches are **not** preferences.
 
+Worked examples of things that LOOK like preferences but aren't — don't
+"finish the migration" by moving these in:
+
+| Storage | What it really is |
+|---|---|
+| `poi_v2_<layer>_<bbox>` (`hooks/usePoiLayers`) | a map-tile **cache**: `{ts, features}` with 30 min / 2 hr TTLs and eviction |
+| `4truck_dispatch_last_ack_iso` | an acknowledgement **timestamp** — operational state for "what's new since" |
+| `api/client` TOKEN_KEY, `AuthContext` | session/auth |
+| AI `attachmentStore` / `thoughtStore` | transient data caches |
+| public apply / carrier-intake drafts | form drafts with no logged-in user |
+| `i18nextLng` | owned by the i18n library; language is a typed profile field |
+
+The test: a preference has a **default**, a user **chooses** it, and losing
+it is an annoyance. A cache has a TTL and losing it costs a re-fetch.
+
 ## Using it
 
 ```tsx
