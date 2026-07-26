@@ -36,11 +36,15 @@ from capabilities.ai.tools.registry import (
     tool_error,
     tool_propose,
 )
+from features.work_orders.task_links import (
+    describe_links, invoice_haystack, is_open_task, suggest_task_links,
+)
 
 logger = logging.getLogger("bot.work_orders")
 
 _MAX_LINES = 60
 _MAX_SOURCE_FILES = 5
+_MAX_LINK_TASKS = 10
 _MAX_MONEY = 1_000_000.0
 _MAX_QTY = 10_000.0
 _PRIORITIES = ("", "scheduled", "non_scheduled", "emergency")
@@ -116,6 +120,14 @@ def _normalize(args: dict) -> dict | None:
         _s(n, 120) for n in (args.get("source_files") or [])[:_MAX_SOURCE_FILES]
         if _s(n, 120)
     ]
+    link_ids: list[int] = []
+    for raw in (args.get("link_task_ids") or [])[:_MAX_LINK_TASKS]:
+        try:
+            tid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if tid > 0 and tid not in link_ids:
+            link_ids.append(tid)
     return {
         "vehicle_name": vehicle,
         "vehicle_type": (
@@ -137,6 +149,11 @@ def _normalize(args: dict) -> dict | None:
         "parts": parts,
         "labor": labor,
         "source_files": files,
+        # Maintenance tasks this WO closes out.  Filled by the propose
+        # step (server-side matching) and/or named by the user; every
+        # id is RE-validated against the account + vehicle + still-open
+        # state at execute time — a payload id is never trusted.
+        "link_task_ids": link_ids,
     }
 
 
@@ -197,6 +214,14 @@ def _normalize(args: dict) -> dict | None:
                 "type": "array", "items": {"type": "string"},
                 "description": "Names of the files attached to THIS message the work order is based on.",
             },
+            "link_task_ids": {
+                "type": "array", "items": {"type": "number"},
+                "description": (
+                    "Optional: ids of open maintenance tasks this shop "
+                    "visit covers — only when the user names them. Matching "
+                    "tasks are suggested automatically otherwise."
+                ),
+            },
         },
         "required": ["vehicle_name"],
     },
@@ -226,12 +251,53 @@ async def create_work_order_action(tool_args, samsara_client,
         f"Create work order for {norm['vehicle_name']}: "
         f"{', '.join(bits)}, total ${grand:,.2f}."
     )
+
+    # Maintenance auto-link: does this invoice cover work the vehicle
+    # already has an open task for?  Matched server-side (deterministic,
+    # no hallucinated ids) and NAMED IN THE SUMMARY — the user approves
+    # the links together with the work order, never silently.
+    described: list[dict] = []
+    if db is not None and account_id is not None:
+        open_tasks: list[dict] = []
+        suggestions: list[dict] = []
+        try:
+            open_tasks = await db.get_maintenance_tasks(
+                account_id, vehicle_name=norm["vehicle_name"],
+            )
+            hay = invoice_haystack(
+                norm["parts"], norm["labor"], norm["notes"],
+            )
+            suggestions = suggest_task_links(open_tasks, hay)
+        except Exception:      # pragma: no cover — suggestions are a bonus
+            logger.exception("Maintenance link suggestion failed")
+        # Union with any ids named explicitly ("link task 12").
+        merged = list(norm["link_task_ids"])
+        for s in suggestions:
+            if s["id"] not in merged and len(merged) < _MAX_LINK_TASKS:
+                merged.append(s["id"])
+        norm["link_task_ids"] = merged
+
+        # EVERY id that could get linked is named in the summary — an
+        # explicitly-passed id must not ride along invisibly just
+        # because the matcher didn't nominate it.
+        by_id = {s["id"]: s for s in suggestions}
+        for t in open_tasks:
+            tid = int(t.get("id") or 0)
+            if tid in merged and tid not in by_id:
+                by_id[tid] = {"id": tid,
+                              "task_type": str(t.get("task_type") or "")}
+        described = [by_id.get(tid, {"id": tid, "task_type": ""})
+                     for tid in merged]
+
+    link_phrase = describe_links(described)
     return tool_propose(
-        "create_work_order", summary, norm,
+        "create_work_order", summary + link_phrase, norm,
         risk="low",
         consequence=(
             "Creates an OPEN work order draft you can edit or delete on "
             "the Work Orders page — nothing is final until you review it."
+            + (" Linked tasks stay open; linking only ties them to this "
+               "work order for cost reporting." if link_phrase else "")
         ),
     )
 
@@ -301,6 +367,32 @@ async def _execute_create_work_order(payload, account_id, user_context, db):
             logger.exception("WO %s cleanup after failed line insert", wo_id)
         raise
 
+    # Maintenance links: every id is re-checked HERE against the real
+    # rows — right account, THIS vehicle, still open, not already on
+    # another work order.  The payload proposed them; the database
+    # decides.  Non-fatal: a stale id just doesn't link.
+    linked = 0
+    if norm["link_task_ids"]:
+        valid: list[int] = []
+        for tid in norm["link_task_ids"]:
+            try:
+                task = await db.get_maintenance_task(tid, account_id)
+            except Exception:      # pragma: no cover
+                task = None
+            if not task or not is_open_task(task):
+                continue
+            if str(task.get("vehicle_name") or "").strip().lower() \
+                    != norm["vehicle_name"].strip().lower():
+                continue
+            valid.append(tid)
+        if valid:
+            try:
+                linked = await db.link_maintenance_tasks_to_work_order(
+                    account_id, wo_id, valid,
+                )
+            except Exception:      # pragma: no cover
+                logger.exception("WO %s maintenance link failed", wo_id)
+
     return {
         "created": True,
         "target_type": "work_order",
@@ -309,12 +401,15 @@ async def _execute_create_work_order(payload, account_id, user_context, db):
         "vendor_name": norm["vendor_name"],
         "parts": len(norm["parts"]),
         "labor": len(norm["labor"]),
+        "linked_tasks": linked,
         # The client uploads its device-held files by these NAMES to the
         # approve response's target_id (never an id from the payload).
         "source_files": norm["source_files"],
         "message": (
             f"Created work order #{wo_id} for {norm['vehicle_name']} as an "
             f"open draft — review and finish it on the Work Orders page."
+            + (f" Linked {linked} maintenance task"
+               f"{'s' if linked > 1 else ''}." if linked else "")
         ),
         "_wo_id": wo_id,
     }
