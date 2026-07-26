@@ -20,6 +20,7 @@ async def run_all(conn) -> None:
     await migrate_vendor_identity_sharing(conn)
     await migrate_vendor_reviews(conn)
     await migrate_market_intel(conn)
+    await migrate_service_task_library(conn)
     await migrate_add_bot_columns(conn)
     await migrate_rename_fleet_manager_role(conn)
     await migrate_knowledge_base_to_platform(conn)
@@ -4142,3 +4143,56 @@ async def migrate_market_intel(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+async def migrate_service_task_library(conn) -> None:
+    """The operator-curated standard service-task library.
+
+    Until now the standard list lived only as a Python tuple, so adding
+    one fleet-wide meant a code change plus a migration.  This makes it
+    data the system owner edits on system.4truck.us — the same control
+    they already have over the parts and vendor directories.
+
+    Deliberately simpler than ``part_directory``: no adopt fan-out
+    table, no aliases, no suppression flags.  Each account's standard
+    tasks already carry ``canonical_key``, which IS the cross-account
+    identity, so the library and the tenant rows join by construction.
+
+    Seeded from ``STANDARD_SERVICE_TASKS`` so the library starts as an
+    exact mirror of what accounts already hold — the code tuple stays
+    as the bootstrap, the library becomes the source of truth.
+    """
+    from adapters.storage.service_tasks import STANDARD_SERVICE_TASKS
+
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS service_task_library (
+            id                   SERIAL PRIMARY KEY,
+            canonical_key        TEXT    NOT NULL UNIQUE,
+            name                 TEXT    NOT NULL,
+            description          TEXT    NOT NULL DEFAULT '',
+            expected_labor_hours REAL    NOT NULL DEFAULT 0,
+            vehicle_type         TEXT    NOT NULL DEFAULT '',
+            status               TEXT    NOT NULL DEFAULT 'active',
+            created_at           TEXT    NOT NULL,
+            updated_at           TEXT    NOT NULL DEFAULT ''
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_service_task_library_status "
+        "ON service_task_library(status)"
+    )
+    now = __import__("datetime").datetime.now(
+        __import__("datetime").timezone.utc
+    ).isoformat()
+    for entry in STANDARD_SERVICE_TASKS:
+        await conn.execute(
+            "INSERT INTO service_task_library "
+            "(canonical_key, name, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?) "
+            "ON CONFLICT (canonical_key) DO NOTHING",
+            (entry["key"], entry["name"], now, now),
+        )
+    await conn.commit()
+    logger.info("Platform migration: service_task_library ready")

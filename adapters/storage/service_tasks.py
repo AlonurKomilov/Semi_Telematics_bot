@@ -79,6 +79,36 @@ class ServiceTasksMixin:
 
     # ── Seeding ──────────────────────────────────────────────────────
 
+    async def _standard_seed_rows(self) -> list[dict[str, Any]]:
+        """The standard list to seed from.
+
+        The operator-curated ``service_task_library`` is the source of
+        truth; the code tuple is the bootstrap for a database whose
+        library hasn't been created/seeded yet (fresh installs, tests
+        that skip platform migrations).  Archived library entries are
+        skipped — that's what archiving one means: stop handing it to
+        new accounts.
+        """
+        try:
+            cur = await self._db.execute(
+                "SELECT canonical_key, name, description, "
+                "       expected_labor_hours, vehicle_type "
+                "FROM service_task_library WHERE status = 'active' "
+                "ORDER BY name",
+            )
+            rows = [dict(r) for r in await cur.fetchall()]
+        except Exception:
+            rows = []
+        if rows:
+            return [{"key": r["canonical_key"], "name": r["name"],
+                     "description": r.get("description") or "",
+                     "hours": float(r.get("expected_labor_hours") or 0),
+                     "vehicle_type": r.get("vehicle_type") or ""}
+                    for r in rows]
+        return [{"key": e["key"], "name": e["name"], "description": "",
+                 "hours": 0.0, "vehicle_type": ""}
+                for e in STANDARD_SERVICE_TASKS]
+
     async def seed_service_tasks(self, account_id: int) -> int:
         """Insert any missing standard tasks for this account.
 
@@ -88,15 +118,18 @@ class ServiceTasksMixin:
         """
         now = self._now()
         created = 0
-        for entry in STANDARD_SERVICE_TASKS:
+        for entry in await self._standard_seed_rows():
             cur = await self._db.execute(
                 "INSERT INTO service_tasks "
-                "(account_id, name, name_key, canonical_key, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?) "
+                "(account_id, name, name_key, canonical_key, description, "
+                " expected_labor_hours, vehicle_type, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (account_id, name_key) DO NOTHING "
                 "RETURNING id",
                 (account_id, entry["name"], service_task_name_key(entry["name"]),
-                 entry["key"], now, now),
+                 entry["key"], entry.get("description", ""),
+                 entry.get("hours", 0.0), entry.get("vehicle_type", ""),
+                 now, now),
             )
             created += 1 if await cur.fetchone() else 0
         await self._db.commit()

@@ -32,6 +32,7 @@ from interfaces.api.routes import webhooks as webhooks_routes
 # Hub + platform-capability routers live WITH their domain:
 from capabilities.alerting import router as alerts
 from capabilities.notifications import router as notifications_routes
+from capabilities.preferences import router as preferences_routes
 from capabilities.reporting import router as reports_routes
 from capabilities.ai import router as ai_routes
 from features.scorecards import router as scorecards_routes
@@ -58,6 +59,7 @@ from features.service_tasks import router as service_tasks_routes
 from features.vendors import router as vendors_routes
 from capabilities.platform.vendor_directory import router as vendor_directory_routes
 from capabilities.platform.part_directory import router as part_directory_routes
+from capabilities.platform.service_task_library import router as service_task_library_routes
 from capabilities.platform.market_intel import router as market_intel_routes
 from capabilities.platform.capacity import router as capacity_routes
 from features.loads import router as loads_routes
@@ -428,6 +430,9 @@ def create_api() -> FastAPI:
         app.include_router(health.router, prefix=prefix)
         app.include_router(auth_router, prefix=prefix)
         app.include_router(user_routes.router, prefix=prefix)
+        # Mounted right after the user router it was split out of, so the
+        # /user/preferences/ui/* paths stay byte-identical.
+        app.include_router(preferences_routes.router, prefix=prefix)
         app.include_router(overview_routes.router, prefix=prefix)
         app.include_router(vehicles_routes.router, prefix=prefix)
         app.include_router(vehicle_inventory_routes.router, prefix=prefix)
@@ -467,6 +472,7 @@ def create_api() -> FastAPI:
         app.include_router(vendors_routes.router, prefix=prefix)
         app.include_router(vendor_directory_routes.router, prefix=prefix)
         app.include_router(part_directory_routes.router, prefix=prefix)
+        app.include_router(service_task_library_routes.router, prefix=prefix)
         app.include_router(market_intel_routes.router, prefix=prefix)
         app.include_router(capacity_routes.router, prefix=prefix)
         app.include_router(inspections_routes.router, prefix=prefix)

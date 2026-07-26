@@ -244,6 +244,25 @@ async def create_tables(conn) -> None:
         -- (archived: adopt/resolve skip it; existing links survive but
         -- stop receiving enrichment).  source: manual | import |
         -- promoted.
+        -- Operator-curated STANDARD service tasks — the library every
+        -- account is seeded from.  Unlike part_directory this needs no
+        -- adopt/alias machinery: ``canonical_key`` is already the
+        -- cross-account identity carried by each account's own copy,
+        -- so the library and the tenant rows line up by construction.
+        -- status: active (seeded into new accounts) | archived (kept
+        -- for history, no longer handed out).
+        CREATE TABLE IF NOT EXISTS service_task_library (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            canonical_key        TEXT    NOT NULL UNIQUE,
+            name                 TEXT    NOT NULL,
+            description          TEXT    NOT NULL DEFAULT '',
+            expected_labor_hours REAL    NOT NULL DEFAULT 0,
+            vehicle_type         TEXT    NOT NULL DEFAULT '',
+            status               TEXT    NOT NULL DEFAULT 'active',
+            created_at           TEXT    NOT NULL,
+            updated_at           TEXT    NOT NULL DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS part_directory (
             id           INTEGER PRIMARY KEY AUTOINCREMENT,
             name         TEXT    NOT NULL,
