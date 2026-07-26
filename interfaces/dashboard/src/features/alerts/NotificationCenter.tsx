@@ -19,7 +19,7 @@ import { toast } from 'sonner';
 import { apiJSON } from '@/api/client';
 import { PageHeader } from '@/components/shell';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
-import { useUserPreference } from '../../hooks/useUserPreference';
+import { usePreference } from '../../preferences';
 import type { InboxNotice, InboxResponse } from './useInbox';
 import { INBOX_QUERY_KEY } from './useInbox';
 import { InboxRow } from './NotificationsPanel';
@@ -46,8 +46,10 @@ export default function NotificationCenter() {
 
   // Remembered per user (server-backed, localStorage fast-paint) — a
   // dispatcher who lives in one bucket shouldn't re-pick it every visit.
-  const { value: filter, setValue: setFilter } =
-    useUserPreference<Filter>('notifications.center.filter', '');
+  const { value: filterRaw, setValue: setFilterRaw } =
+    usePreference('notifications.center.filter');
+  const filter = filterRaw as Filter;
+  const setFilter = setFilterRaw as (v: Filter) => void;
   const [notices, setNotices] = useState<InboxNotice[]>([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);

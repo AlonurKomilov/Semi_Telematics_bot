@@ -1,21 +1,22 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
 
-export type ColorTheme = 'dark-blue' | 'dark-purple' | 'dark-green' | 'light';
-export type Density = 'compact' | 'default' | 'comfortable';
-export type RadiusVariant = 'sharp' | 'rounded' | 'pill';
+import { usePreference } from '../preferences';
+import type {
+  ThemeColor, ThemeDensity, ThemeRadius, ThemeSetting,
+} from '../preferences';
 
-export interface Theme {
-  color: ColorTheme;
-  density: Density;
-  radius: RadiusVariant;
-}
+// The stored SHAPE is owned by the preferences registry (it's the single
+// source of truth for what persists); these aliases keep the long-standing
+// names every consumer already imports from here.
+export type ColorTheme = ThemeColor;
+export type Density = ThemeDensity;
+export type RadiusVariant = ThemeRadius;
+export type Theme = ThemeSetting;
 
 interface ThemeContextValue {
   theme: Theme;
   setTheme: (partial: Partial<Theme>) => void;
 }
-
-const DEFAULT_THEME: Theme = { color: 'dark-blue', density: 'default', radius: 'rounded' };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
@@ -32,25 +33,18 @@ function applyTheme(theme: Theme) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    try {
-      const saved = localStorage.getItem('dashboard-theme');
-      return saved ? { ...DEFAULT_THEME, ...JSON.parse(saved) } : DEFAULT_THEME;
-    } catch {
-      return DEFAULT_THEME;
-    }
-  });
+  // Persistence (default, legacy 'dashboard-theme' migration, and the
+  // partial-object completion this used to do inline) lives in the
+  // preferences registry now.  This provider only applies the theme to
+  // the DOM and exposes the partial-update ergonomics consumers expect.
+  const { value: theme, setValue } = usePreference('theme');
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
 
   const setTheme = (partial: Partial<Theme>) => {
-    setThemeState((prev) => {
-      const next = { ...prev, ...partial };
-      localStorage.setItem('dashboard-theme', JSON.stringify(next));
-      return next;
-    });
+    setValue((prev) => ({ ...prev, ...partial }));
   };
 
   return (

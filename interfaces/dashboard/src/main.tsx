@@ -8,6 +8,7 @@ import { useNotifPosition } from './components/banners';
 import App from './App';
 import { AuthProvider } from './context/AuthContext';
 import { RoleViewProvider } from './context/RoleViewContext';
+import PreferencesSync from './preferences/PreferencesSync';
 import { ThemeProvider } from './context/ThemeContext';
 import { TooltipProvider } from './components/ui/tooltip';
 import { applyPublicFormTheme } from './features/applications/public/theme';
@@ -99,6 +100,10 @@ if (_isApply) {
           <TooltipProvider delay={600} timeout={0}>
             <BrowserRouter basename={import.meta.env.VITE_ROUTER_BASE ?? ''}>
               <AuthProvider>
+                {/* Syncs personal preferences to the account once we know
+                    WHO is signed in — inside AuthProvider by necessity.
+                    Renders nothing. */}
+                <PreferencesSync />
                 <RoleViewProvider>
                   <App />
                 </RoleViewProvider>

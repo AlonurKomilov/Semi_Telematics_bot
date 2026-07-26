@@ -14,6 +14,7 @@
  * string across the open.
  */
 import { createContext, useContext, useState, useCallback, useEffect, useLayoutEffect, useMemo, type ReactNode } from 'react';
+import { usePreference } from '../../preferences';
 
 /** Coarse run state the chat publishes so surfaces OUTSIDE the chat (the
  *  docked launcher chip) can show progress while the panel is hidden.
@@ -26,8 +27,6 @@ export type AssistantRunPhase = 'idle' | 'running' | 'done';
 export const PANEL_W_DEFAULT = 420;
 const PANEL_W_MIN = 320;
 const PANEL_W_MAX = 680;
-const PANEL_W_KEY = 'assistant.panelWidth';
-const PANEL_EXPANDED_KEY = 'assistant.expanded';
 export const clampPanelW = (w: number) =>
   Math.min(PANEL_W_MAX, Math.max(PANEL_W_MIN, Math.round(w)));
 
@@ -80,22 +79,20 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const [run, setRun] = useState<{ phase: AssistantRunPhase; label: string }>(
     { phase: 'idle', label: '' },
   );
-  const [panelWidth, setPanelWidthState] = useState<number>(() => {
-    try {
-      const v = parseInt(localStorage.getItem(PANEL_W_KEY) ?? '', 10);
-      return Number.isFinite(v) ? clampPanelW(v) : PANEL_W_DEFAULT;
-    } catch { return PANEL_W_DEFAULT; }
-  });
+  // The PERSISTED width lives in the preferences service; the live value
+  // stays local state because a drag updates it every pointermove and we
+  // only want to store the settled result (see the effect below).
+  const { value: storedPanelWidth, setValue: setStoredPanelWidth } =
+    usePreference('assistant.panelWidth');
+  const [panelWidth, setPanelWidthState] = useState<number>(storedPanelWidth);
   const [panelResizing, setPanelResizing] = useState(false);
-  const [panelExpanded, setPanelExpandedState] = useState<boolean>(() => {
-    try { return localStorage.getItem(PANEL_EXPANDED_KEY) === '1'; } catch { return false; }
-  });
+  const { value: panelExpanded, setValue: setPanelExpandedPref } =
+    usePreference('assistant.expanded');
   const setPanelExpanded = useCallback((v: boolean) => {
-    setPanelExpandedState(v);
-    try { localStorage.setItem(PANEL_EXPANDED_KEY, v ? '1' : '0'); } catch { /* private mode */ }
+    setPanelExpandedPref(v);
     // Maps/charts behind the overlay need a reflow when it toggles.
     setTimeout(() => window.dispatchEvent(new Event('resize')), 220);
-  }, []);
+  }, [setPanelExpandedPref]);
   const [headerSlot, setHeaderSlotState] = useState<HTMLElement | null>(null);
   const setHeaderSlot = useCallback((el: HTMLElement | null) => {
     setHeaderSlotState((prev) => (prev === el ? prev : el));
@@ -110,8 +107,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   // Persist once a drag settles (not per pointermove frame).
   useEffect(() => {
     if (panelResizing) return;
-    try { localStorage.setItem(PANEL_W_KEY, String(panelWidth)); } catch { /* private mode */ }
-  }, [panelResizing, panelWidth]);
+    setStoredPanelWidth(panelWidth);
+  }, [panelResizing, panelWidth, setStoredPanelWidth]);
 
   const openPanel = useCallback((q?: string) => {
     if (q) setPrefill(q);

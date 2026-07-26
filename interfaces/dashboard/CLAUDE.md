@@ -102,6 +102,15 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   DataGrid's `rowActions` prop; a feature's action list lives in
   `features/<x>/contextMenu.tsx`. Full rule + contracts:
   [components/ui/CLAUDE.md](src/components/ui/CLAUDE.md).
+- **Per-user UI state = the preferences service, never raw `localStorage`.**
+  `usePreference('notif.position')` (or `preferences.get(…)` outside React);
+  add ONE entry to [`src/preferences/registry.ts`](src/preferences/registry.ts)
+  with its type, default, `scope` (`device` vs `synced`) and legacy key.
+  Keys are FROZEN — renaming one silently orphans that user's data. If the
+  BACKEND reads the value to act on it (DND, timezone, language) or it
+  affects anyone else, it's a typed column / feature table instead. Full
+  rule + how to add one:
+  [src/preferences/CLAUDE.md](src/preferences/CLAUDE.md).
 - **Charts/maps** can't use classes: charts → `chartColor(n)` (the
   `--chart-1..5` tokens); map hex → a shared config constant, never inline.
 

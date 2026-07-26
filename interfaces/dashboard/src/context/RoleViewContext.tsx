@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useMemo, useCallback, t
 import { useAuth } from './AuthContext';
 import { apiJSON, setActiveViewForApi } from '../api/client';
 import type { Permissions } from '../types';
+import { usePreference } from '../preferences';
 
 const VIEW_LABELS: Record<string, string> = {
   owner: 'Owner',
@@ -70,7 +71,6 @@ const PREVIEWABLE_ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'h
 const STORAGE_KEY = 'roleView.activeView';
 // Preview tier for manager-capable roles (Manager vs Employee) — persisted so
 // re-picking the role keeps the operator's last choice.
-const TIER_STORAGE_KEY = 'roleView.previewAsManager';
 
 // Branded subdomain → persona mapping.  When an Owner/Admin opens
 // fleet.4truck.us / dispatch.4truck.us / safety.4truck.us the dashboard
@@ -150,6 +150,14 @@ interface RoleViewContextValue {
   switchView: (role: string) => void;
   viewHas: (flag: string) => boolean;
   viewHasAny: (...flags: string[]) => boolean;
+  /** False only while a PREVIEW's permission sets are still in flight.
+   * ``viewHas``/``viewHasAny`` answer "no" to everything in that window
+   * (by design — see ``baseViewPerms``), which is indistinguishable from
+   * a real denial.  Anything that DENIES on a false answer — route
+   * guards above all — must wait for this before deciding.  Merely
+   * hiding a nav item can ignore it: hidden-then-shown is a cosmetic
+   * flash, where redirect-then-nothing loses the URL. */
+  viewPermsReady: boolean;
   /** True when the current view differs from the user's real role
    * (Owner/Admin previewing as Fleet/Safety/etc).  Used by the layout
    * to render a "Previewing as X" banner. */
@@ -190,14 +198,12 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   // Preview tier for a manager-capable role: MANAGER (default — an Owner should
   // see the full experience) or plain employee.  Persisted, so re-picking the
   // role keeps the operator's last choice.
-  const [previewAsManager, setPreviewAsManagerState] = useState<boolean>(() => {
-    try { const v = localStorage.getItem(TIER_STORAGE_KEY); return v === null ? true : v === '1'; }
-    catch { return true; }
-  });
-  const setPreviewAsManager = useCallback((v: boolean) => {
-    setPreviewAsManagerState(v);
-    try { localStorage.setItem(TIER_STORAGE_KEY, v ? '1' : '0'); } catch { /* localStorage disabled */ }
-  }, []);
+  // Device-scoped preference: a preview tier must not follow the operator
+  // to a machine where they expect their own view.  Default (true — an
+  // Owner should see the full experience) + the legacy '1'/'0' migration
+  // live in the preferences registry.
+  const { value: previewAsManager, setValue: setPreviewAsManager } =
+    usePreference('roleView.previewAsManager');
 
   // The user's explicit "preview as X" choice — the ONLY thing that
   // needs imperative state, because it persists across renders until
@@ -357,6 +363,13 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   const viewHas = (flag: string) => !!viewPerms[flag as keyof Permissions];
   const viewHasAny = (...flags: string[]) => flags.some((f) => !!viewPerms[f as keyof Permissions]);
 
+  // Self view (and any non-switching user) reads permissions straight off
+  // /user/me, which App.tsx has already awaited — authoritative on the
+  // first render.  Only a PREVIEW has to wait for /admin/permissions/roles;
+  // once that settles, viewPerms is authoritative either way (the role's
+  // own set, or the documented fallback to the previewer's).
+  const viewPermsReady = (!canSwitch || isSelfView) ? true : rolePermsSettled;
+
   // Non-switchable users see a single static pill showing their own
   // role.  During the loading window where realRole is undefined we
   // return an empty list — the consumer hides the pill entirely, and
@@ -384,7 +397,7 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   return (
     <RoleViewContext.Provider value={{
       activeView, viewLabel, homeRoute, canSwitch, availableViews,
-      switchView, viewHas, viewHasAny, isPreviewing,
+      switchView, viewHas, viewHasAny, viewPermsReady, isPreviewing,
       rolePermSets, refreshPermissions: fetchRolePerms,
       activeViewSupportsManager,
       activeViewTier: ROLE_TIERS[activeView]

@@ -15,7 +15,7 @@ import { PageLayoutHost } from '../../features/_lib/PageLayoutHost';
 import { LIVE_MAP_SECTIONS } from '../../features/live-map/registry';
 import PoiIcon from '../../features/live-map/PoiIcon';
 import { Tip } from '../../components/tooltip';
-import { useUserPreference } from '../../hooks/useUserPreference';
+import { usePreference } from '../../preferences';
 import { LIVE_MAP_LAYOUTS } from '../../features/live-map/layouts';
 
 const REFRESH_MS      = 30_000;   // full data refresh (fuel, DEF, status)
@@ -251,9 +251,9 @@ export default function LiveMap() {
   // persona literals here and no toggle for a layer you never get.
   const personaLayout = LIVE_MAP_LAYOUTS[persona] ?? [];
   const { value: utilHeatOn, setValue: setUtilHeatOn } =
-    useUserPreference<boolean>('livemap.overlay.utilheat', true);
+    usePreference('livemap.overlay.utilheat');
   const { value: companyColorsOn, setValue: setCompanyColorsOn } =
-    useUserPreference<boolean>('livemap.overlay.companycolors', true);
+    usePreference('livemap.overlay.companycolors');
   const showUtilToggle = personaLayout.includes('utilisation_heatmap');
   const showCompanyToggle = personaLayout.includes('company_color_partition');
 

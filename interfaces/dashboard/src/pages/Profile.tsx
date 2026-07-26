@@ -38,6 +38,7 @@ import {
 
 import { apiJSON, apiFetch } from '../api/client';
 import { PageHeader, ErrorState } from '../components/shell';
+import StoredPreferencesCard from '../preferences/StoredPreferencesCard';
 import { toneClasses } from '../lib/status';
 import type { User } from '../types';
 import { LANGUAGE_OPTIONS } from '../utils/languages';
@@ -317,6 +318,7 @@ export default function Profile() {
         </button>
       </section>
 
+      <StoredPreferencesCard />
       <SignInMethods />
       <RecentActivity />
       <ActiveSessions />

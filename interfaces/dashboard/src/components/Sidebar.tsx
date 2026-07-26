@@ -4,6 +4,7 @@ import { Tip } from './tooltip';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Settings as SettingsIcon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { usePreference } from '../preferences';
 import { useRoleView } from '../context/RoleViewContext';
 import { PersonaSelector } from './PersonaSelector';
 import { generateNav, type NavItem } from '../shells/nav/generateNav';
@@ -13,27 +14,13 @@ import { generateNav, type NavItem } from '../shells/nav/generateNav';
 // every shell just renders <Sidebar /> and the catalog decides what each
 // persona sees (catalog ∩ enabled modules ∩ permissions).
 
-// Persist the collapsed preference so the user's choice survives across
-// page loads.  Stored as ``'1'`` / ``'0'`` so a simple string check
-// works without JSON parsing; reading is cheap enough to do in the
-// initializer of useState (called once per mount).
-const COLLAPSE_KEY = 'sidebar.collapsed';
-
-function readCollapsed(): boolean {
-  try {
-    return localStorage.getItem(COLLAPSE_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
-
 export default function Sidebar() {
   const { user } = useAuth();
   const { t } = useTranslation();
-  // Local state seeded from localStorage; persisted on every toggle.
-  // Same-mount reads see the latest value because we update both
-  // simultaneously below.
-  const [collapsed, setCollapsed] = useState<boolean>(readCollapsed);
+  // Collapsed state is a per-user preference (device-scoped: it depends on
+  // THIS screen's width).  Persistence + the legacy '1'/'0' migration live
+  // in the preferences registry.
+  const { value: collapsed, setValue: setCollapsed } = usePreference('sidebar.collapsed');
   // The Settings group follows the route: it expands while you're on
   // the Settings page or any of its components, and folds by itself the
   // moment you navigate to another feature — no chevron press needed.
@@ -41,11 +28,6 @@ export default function Sidebar() {
   const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const location = useLocation();
   useEffect(() => {
-    try {
-      localStorage.setItem(COLLAPSE_KEY, collapsed ? '1' : '0');
-    } catch {
-      /* localStorage disabled — toggle still works for the session */
-    }
     // Expose the live width so the assistant's expanded overlay can start
     // at the content edge (right of the sidebar) instead of covering the
     // rail.  Mirrors the --assistant-w pattern; matches w-14 / w-56.

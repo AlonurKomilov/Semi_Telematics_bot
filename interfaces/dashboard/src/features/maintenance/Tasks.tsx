@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+import { usePreference } from '../../preferences';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -297,15 +298,10 @@ export default function Tasks() {
   // View mode toggle: list (default) or calendar.  Persisted to
   // localStorage so a fleet manager who lives in calendar view doesn't
   // need to flip every session.
-  const [viewMode, setViewMode] = useState<'list' | 'calendar'>(() => {
-    try {
-      const v = localStorage.getItem('4truck.maintenance.viewMode');
-      return v === 'calendar' ? 'calendar' : 'list';
-    } catch { return 'list'; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem('4truck.maintenance.viewMode', viewMode); } catch { /* ignore */ }
-  }, [viewMode]);
+  // Per-user preference (synced): a fleet manager who lives in calendar
+  // view shouldn't re-pick it on another machine.  Storage + default +
+  // the legacy '4truck.maintenance.viewMode' key live in the registry.
+  const { value: viewMode, setValue: setViewMode } = usePreference('maintenance.viewMode');
   // Bulk selection — list of task ids the user has multi-selected for a
   // batch operation.  Cleared whenever the visible task list changes
   // (filter chip flip, refetch) so stale ids never get sent to the

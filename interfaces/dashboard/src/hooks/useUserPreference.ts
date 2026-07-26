@@ -1,5 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { apiJSON } from '../api/client';
+import { preferences } from '../preferences';
+
+/**
+ * The master "sync my preferences" switch, read from the preferences
+ * service.  When an operator turns it off, THIS hook must stop talking to
+ * the server too — otherwise the profile toggle would lie: it would claim
+ * "this browser only" while table layouts and saved tabs kept syncing.
+ *
+ * Read imperatively (not as a hook) so it's evaluated at the moment of
+ * each fetch/PUT rather than captured at mount.
+ */
+const syncEnabled = (): boolean => {
+  try { return preferences.get('prefs.syncEnabled'); } catch { return true; }
+};
 
 /**
  * Hybrid per-user preference store.
@@ -104,6 +118,14 @@ export function useUserPreference<T>(
   // will retry.
   useEffect(() => {
     if (disabled) return;
+    if (!syncEnabled()) {
+      // Local-only mode: the cached value IS the value.  Mark hydrated so
+      // consumers that gate on it (DataGrid's default-tab apply-once)
+      // still run.
+      setHydrated(true);
+      skipNextPutRef.current = false;
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -166,6 +188,9 @@ export function useUserPreference<T>(
       }
       debounceRef.current = window.setTimeout(() => {
         debounceRef.current = null;
+        // Local-only mode — the localStorage write above already happened;
+        // nothing goes to the account.
+        if (!syncEnabled()) return;
         const valueToSend = pendingRef.current;
         const isFallback = JSON.stringify(valueToSend) === JSON.stringify(fallback);
         if (deleteOnFallback && isFallback) {
@@ -201,6 +226,7 @@ export function useUserPreference<T>(
       if (debounceRef.current != null) {
         window.clearTimeout(debounceRef.current);
         if (disabledRef.current) return;
+        if (!syncEnabled()) return;          // local-only mode
         const valueToSend = pendingRef.current;
         apiJSON(
           `/user/preferences/ui/${encodeURIComponent(keyRef.current)}`,
