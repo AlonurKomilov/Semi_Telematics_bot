@@ -2,13 +2,12 @@
 
 Pins the fanout contract (docs/architecture/alert-dm-migration.md):
 
-  • ``_dm_via_spine``: per-account ``alert_dm_spine`` setting, ships OFF,
-    fail-closed to the proven legacy path on any settings error
   • ``_spine_dm_fanout``: dispatches on the ``telegram_dm`` channel only,
     correlation key ``alert:{history_id}``, ✅ Acknowledge action only for
     ackable severities WITH a history id; unregistered category or an
-    outer dispatch error returns False so the caller falls back to the
-    legacy loop (delivery guaranteed over dedup in the parity window)
+    outer dispatch error returns False — send_alert then logs loudly and
+    skips DMs for the occurrence (the legacy loop is gone; group post +
+    history are unaffected)
   • the recipient predicate mirrors the legacy loop exactly: a driver
     WITH a truck only hears that truck (substring on vehicle name), a
     driver without one is not narrowed, company scope composes on top
@@ -25,7 +24,6 @@ import capabilities.alerting.pipeline as pipeline
 from adapters.storage import Role
 from capabilities.alerting.pipeline import (
     AlertSeverity,
-    _dm_via_spine,
     _spine_dm_fanout,
 )
 
@@ -81,30 +79,6 @@ async def _run(monkeypatch, dispatch, *, alert_type="fault",
         needs_ack=needs_ack, subscribers=subscribers or [], co=co)
 
 
-# ── the account switch ──────────────────────────────────────────────
-
-class _SettingsDb:
-    def __init__(self, value=None, raises=False):
-        self._v, self._raises = value, raises
-
-    async def get_account_setting(self, account_id, key):
-        if self._raises:
-            raise RuntimeError("db down")
-        return self._v
-
-
-@pytest.mark.asyncio
-async def test_switch_reads_setting():
-    assert await _dm_via_spine(_SettingsDb("1"), 1) is True
-    assert await _dm_via_spine(_SettingsDb("0"), 1) is False
-    assert await _dm_via_spine(_SettingsDb(None), 1) is False
-
-
-@pytest.mark.asyncio
-async def test_switch_fails_closed_to_legacy():
-    assert await _dm_via_spine(_SettingsDb(raises=True), 1) is False
-
-
 # ── the fanout ──────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -136,14 +110,14 @@ async def test_no_history_id_means_no_key_and_no_buttons(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_unregistered_category_falls_back_to_legacy(monkeypatch):
+async def test_unregistered_category_returns_unhandled(monkeypatch):
     disp = _RecordingDispatch()
     handled = await _run(monkeypatch, disp, alert_type="mystery_type")
     assert handled is False and disp.calls == []
 
 
 @pytest.mark.asyncio
-async def test_dispatch_error_falls_back_to_legacy(monkeypatch):
+async def test_dispatch_error_returns_unhandled(monkeypatch):
     disp = _RecordingDispatch(raises=RuntimeError("spine down"))
     handled = await _run(monkeypatch, disp)
     assert handled is False

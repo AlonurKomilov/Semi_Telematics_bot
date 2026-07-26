@@ -1,6 +1,6 @@
 # ADR: Alert DM delivery moves to the notifications spine
 
-- **Status:** ACCEPTED (owner decision, 2026-07-24) — rails + the fanout flip landed (flag-gated, ships OFF); remaining: enable per account → verify parity → legacy cleanup
+- **Status:** COMPLETE (2026-07-26) — spine DMs always-on for `send_alert`; legacy DM loop deleted. Trial verified live on the production account (perfect parity, ack/edit round-trip). Remaining follow-on (outside this ADR's scope): migrate the lite-path producers' direct driver DMs + their `dnd_alert_queue` use to the spine, then drop the queue.
 - **Owners:** alerting (`capabilities/alerting/`) + notifications (`capabilities/notifications/`)
 - **Related:** [notifications.md](notifications.md) (spine architecture), [bot-topology.md](bot-topology.md) (bot vs group split)
 
@@ -73,7 +73,36 @@ spine instead of its own loop).
 | **Actions + callback routing** ✅ 2026-07-24 | `actions` in content; keyboard render; `notif_act:{correlation_key}:{action}` callback dispatch to registered handlers; alerting registers `alert.ack` | 1 d | yes (additive) |
 | **Quiet hours in the spine** ✅ 2026-07-24 | Quiet-window policy + deferral queue on the digest machinery; severity bypass; alerting registers the quiet rule + alert digest renderer; document-attachment rail | 1 d | yes |
 | **The fanout flip** ✅ 2026-07-26 | `send_alert` DM fanout → spine call **behind the `alert_dm_spine` account setting** with parity logging (the pref backfill already existed — notifications.md step 2a had populated the telegram_dm matrix) | 1 d | flag-gated, ships OFF |
-| **Legacy-path cleanup** | Escalation/resolve edits via `update_delivery`; delete legacy loop + JSONB reader; full test pass | 0.5 d | after parity holds |
+| **Legacy-path cleanup** ✅ 2026-07-26 | Reminder/resolve edits via `update_delivery`; pref writes mirrored to the matrix; DM cosmetics restored (video, utility buttons, AI-note cohorts); legacy DM loop + the `alert_dm_spine` switch deleted — spine always-on | 0.5 d | done |
+
+## Landed: legacy-path cleanup (2026-07-26)
+
+- **Reminders**: `re_escalate` edits every spine-delivered copy via one
+  `update_delivery` per occurrence ("🟡 Reminder N/M…", ✅ button kept —
+  `update_delivery` stamps the correlation key into meta so edits
+  re-render their action row). Group-post reminder edits unchanged.
+- **Pref writes dual-store**: the matrix is the delivery SSOT; the
+  dashboard PUT `/user/me/alerts` and the bot's per-type/master toggles
+  mirror through `alerting/prefs_mirror.py`. Legacy `users.alert_*`
+  columns remain a write-mirrored cache (bot keyboard checkmarks,
+  reports) — never consulted for DM delivery.
+- **Cosmetics restored**: `video_url` through content/payload
+  (`send_video`, caption edits); utility buttons (AI Diagnose / Open in
+  Samsara / View on map / View Truck) built by the SAME legacy
+  `build_alert_keyboard` and passed as generic `meta["tg_buttons"]`
+  specs (default-language labels — the accepted trade-off of one shared
+  render); per-user AI-note toggle honored via two dispatch cohorts
+  sharing one correlation key.
+- **Burned**: the legacy per-sub DM loop in `send_alert` (including its
+  DND queueing and per-delivery ack rows for DMs) and the
+  `alert_dm_spine` switch — spine DMs are unconditional. A fanout
+  returning False (unregistered category / spine error) logs loudly and
+  skips DMs for that occurrence; group post + history unaffected.
+- **Deliberately KEPT** (scope honesty): `dnd_alert_queue` + the
+  `deliver_dnd_alerts` shift report + escalation's queue branch — three
+  lite-path producers (driver-doc expiry driver DMs, camera, parking
+  formatting) still write it (~24k rows live). Their migration to the
+  spine is the follow-on work item; the queue drops with it.
 
 Risk control: hottest path in the product → per-account flag (same pattern
 as `NOTIFICATIONS_LIVE_DISPATCH`), parity logs during the dual window, the

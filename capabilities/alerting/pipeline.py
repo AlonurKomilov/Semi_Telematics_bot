@@ -388,19 +388,6 @@ async def dispatch_new_channels(
         )
 
 
-async def _dm_via_spine(tenant, account_id: int) -> bool:
-    """Per-account switch for spine-delivered alert DMs
-    (``alert_dm_spine`` account setting; ships OFF).  Guarded so a
-    settings read error can never block delivery — it just means the
-    proven legacy path runs."""
-    try:
-        return str(await tenant.get_account_setting(
-            account_id, "alert_dm_spine") or "0") in ("1", "true", "on")
-    except Exception as e:
-        logger.debug("alert_dm_spine read failed acct=%d: %s", account_id, e)
-        return False
-
-
 def _keyboard_rows_as_specs(markup) -> list:
     """InlineKeyboardMarkup → the generic ``meta["tg_buttons"]`` specs
     the spine renders — so the spine never learns Telegram markup types
@@ -1498,252 +1485,46 @@ async def send_alert(
         )
         return
 
-    # ── Spine DM fanout (the reader/writer switch) ───────────────
-    # Per-account setting ``alert_dm_spine``: when on, personal DM
-    # delivery goes through the notifications spine — matrix prefs,
-    # quiet-hours deferral, delivery ledger + ack button — instead of
-    # the legacy loop below (docs/architecture/alert-dm-migration.md).
-    # False from the fanout (unregistered category / outer error) falls
-    # through to the legacy loop: delivery is guaranteed over dedup
-    # during the parity window.
-    if await _dm_via_spine(tenant, account_id):
-        _spine_handled = False
-        with _obs.time_block(timings, "fanout"):
-            _spine_handled = await _spine_dm_fanout(
-                account_id=account_id,
-                alert_type=alert_type,
-                severity=severity,
-                alert_text=alert_text + history_footer,
-                vname=vname,
-                photo_bytes=photo_bytes,
-                video_url=video_url,
-                history_id=(history_record or {}).get("id"),
-                needs_ack=needs_ack,
-                subscribers=subscribers,
-                co=co,
-                ai_note=ai_note,
-                vehicle_id=vid,
-                event_id=event_id,
-                event_time=event_time,
-                maps_url=maps_url,
-            )
-        if _spine_handled:
-            timings["total"] = round(
-                (_time.perf_counter() - _send_t0) * 1000, 1,
-            )
-            logger.info(
-                "send_alert acct=%d type=%s severity=%s route=spine-dm "
-                "timings_ms=%s",
-                account_id, alert_type, severity.value, timings,
-            )
-            return
-
-    fanout_sem = asyncio.Semaphore(_ALERT_FANOUT_CONCURRENCY)
-
-    async def _send_to_one_sub(sub):
-      async with fanout_sem:
-        # Driver: only alert for their own truck.
-        # Substring match (case-insensitive) to mirror
-        # ``filter_alerts_by_access`` in alerting/service.py — the API +
-        # miniapp use the same shape, so the bot and dashboard stay
-        # consistent for names like "Truck 105" vs assignment "105".
-        if sub.role == Role.DRIVER and sub.truck_num:
-            if sub.truck_num.lower() not in vname.lower():
-                return
-
-        # DND: queue non-critical alerts during quiet hours.  SSoT is
-        # ``is_user_dnd_active`` — checks per-user override first, falls
-        # back to derived-from-Working-Hours for the user's role.
-        from capabilities.alerting.dnd import is_user_dnd_active
-        if not bypasses_dnd and await is_user_dnd_active(sub, tenant):
-            await tenant.queue_dnd_alert(
-                account_id=account_id,
-                telegram_id=sub.telegram_id,
-                alert_type=alert_type,
-                vehicle_name=vname,
-                alert_text=alert_text,
-            )
-            return
-
-        try:
-            # Old "delete prior INFO message" hop has been folded into
-            # the INFO branch below — it now tries edit-in-place first
-            # and only falls back to delete+send when the edit fails.
-
-            # Build message text
-            send_text = alert_text
-            if ai_note:
-                # Only include AI note if this subscriber has AI enabled for this alert type
-                ai_field = {"fault": "ai_fault", "health": "ai_health",
-                            "fuel": "ai_fuel", "events": "ai_events",
-                            "parking": "ai_parking"}.get(alert_type)
-                if ai_field and getattr(sub, ai_field, False):
-                    send_text += ai_note
-            send_text += history_footer
-
-            # ── Helper: send the alert as one merged photo+caption
-            # message when the body fits in 1024 chars, otherwise
-            # fall back to the legacy photo + text-reply pattern.
-            # Returns the message object the caller uses for ack
-            # tracking (photo message in merged path, text message
-            # in fallback).
-            async def _send_alert_dm(keyboard):
-                # Merged path — preferred when there's media AND the
-                # text fits in a Telegram caption.  One coherent
-                # message instead of "two photos / two captions"
-                # confusion the operators reported.
-                if (video_url or photo_bytes) and _caption_fits(send_text):
-                    try:
-                        if video_url:
-                            return await bot_app.bot.send_video(
-                                chat_id=sub.telegram_id,
-                                video=video_url,
-                                caption=send_text,
-                                parse_mode=ParseMode.HTML,
-                                reply_markup=keyboard,
-                                read_timeout=30, write_timeout=30,
-                            )
-                        import io as _io
-                        return await bot_app.bot.send_photo(
-                            chat_id=sub.telegram_id,
-                            photo=_io.BytesIO(photo_bytes),
-                            caption=send_text,
-                            parse_mode=ParseMode.HTML,
-                            reply_markup=keyboard,
-                            read_timeout=15, write_timeout=15,
-                        )
-                    except Exception as me:
-                        logger.debug(
-                            "DM media-with-caption send failed for %s: %s "
-                            "— falling back to media+reply", vname, me,
-                        )
-                # Fallback path — no media, caption overflow, or
-                # merged send failed above.  Photo/video posts
-                # first (caption = identity), then text replies to it.
-                _reply_to: int | None = None
-                if video_url:
-                    try:
-                        vmsg = await bot_app.bot.send_video(
-                            chat_id=sub.telegram_id,
-                            video=video_url,
-                            caption=f"🎥 {vname}",
-                            read_timeout=30, write_timeout=30,
-                        )
-                        _reply_to = vmsg.message_id
-                    except Exception as ve:
-                        logger.debug(f"Video send failed for {vname}: {ve}")
-                elif photo_bytes:
-                    try:
-                        import io as _io
-                        pmsg = await bot_app.bot.send_photo(
-                            chat_id=sub.telegram_id,
-                            photo=_io.BytesIO(photo_bytes),
-                            caption=f"📍 Parking location — #{vname}",
-                            read_timeout=15, write_timeout=15,
-                        )
-                        _reply_to = pmsg.message_id
-                    except Exception as pe:
-                        logger.debug(f"Photo send failed for {vname}: {pe}")
-                return await _tg_send_with_retry(
-                    lambda: bot_app.bot.send_message(
-                        chat_id=sub.telegram_id,
-                        text=send_text,
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=keyboard,
-                        reply_to_message_id=_reply_to,
-                    ),
-                    what="alert DM",
-                )
-
-            if needs_ack:
-                # Per-fire model: every alert is unique, always send-new.
-                # Each fire creates its own alert_history row with its
-                # own AlertID, so there is no "previous version" to
-                # collapse onto — matches PagerDuty / Datadog / Samsara.
-                sub_lang = getattr(sub, "language", None) or "en"
-                basic_kb = build_alert_keyboard(
-                    severity, co, vname, alert_type=alert_type,
-                    vehicle_id=vid, event_id=event_id, event_time=event_time,
-                    lang=sub_lang,
-                    maps_url=maps_url,
-                )
-                msg = await _send_alert_dm(basic_kb)
-                # Per-fire model: keep prior alert messages untouched.
-                # Each fire is its own AlertID; users refer back to
-                # earlier ones in their chat history.
-                alert_key = f"{co}:{vid}:{alert_key_detail}"
-                ack_id = await tenant.create_alert_ack(
-                    account_id=account_id,
-                    alert_type=alert_type,
-                    vehicle_id=vid,
-                    vehicle_name=vname,
-                    alert_key=alert_key,
-                    message_id=msg.message_id,
-                    chat_id=sub.telegram_id,
-                    sent_to=sub.telegram_id,
-                    severity=severity.value if hasattr(severity, "value") else str(severity),
-                )
-                # Swap the keyboard now that we have an ack_id.
-                # ``edit_message_reply_markup`` works on photo/video
-                # messages just as well as text — the keyboard sits
-                # under whichever message type ``_send_alert_dm`` chose.
-                ack_kb = build_alert_keyboard(
-                    severity, co, vname, ack_id=ack_id, alert_type=alert_type,
-                    vehicle_id=vid, event_id=event_id, event_time=event_time,
-                    lang=sub_lang,
-                    maps_url=maps_url,
-                )
-                await bot_app.bot.edit_message_reply_markup(
-                    chat_id=sub.telegram_id,
-                    message_id=msg.message_id,
-                    reply_markup=ack_kb,
-                )
-            else:
-                # INFO — same per-fire + merged-media model as
-                # CRITICAL/WARNING but no ack-keyboard swap (INFO
-                # doesn't show the Acknowledge button at all).
-                sub_lang = getattr(sub, "language", None) or "en"
-                basic_kb = build_alert_keyboard(
-                    severity, co, vname, alert_type=alert_type,
-                    vehicle_id=vid, event_id=event_id, event_time=event_time,
-                    lang=sub_lang,
-                    maps_url=maps_url,
-                )
-                msg = await _send_alert_dm(basic_kb)
-                alert_key = f"{co}:{vid}:{alert_key_detail}"
-                await tenant.create_info_alert_ack(
-                    account_id=account_id,
-                    alert_type=alert_type,
-                    vehicle_id=vid,
-                    vehicle_name=vname,
-                    alert_key=alert_key,
-                    message_id=msg.message_id,
-                    chat_id=sub.telegram_id,
-                    sent_to=sub.telegram_id,
-                )
-        except Exception as e:
-            logger.error("%s alert delivery failed for user %s (account %d): %s",
-                         alert_type, sub.telegram_id, account_id, e, exc_info=True)
-
-    # Fan out to subscribers in parallel — bounded by fanout_sem so we
-    # stay under Telegram's ~30 msg/sec global rate limit. gather()
-    # captures any per-sub exception (already logged inside) so one
-    # bad recipient never sinks the rest of the cohort.
-    if subscribers:
-        with _obs.time_block(timings, "fanout"):
-            await asyncio.gather(
-                *(_send_to_one_sub(s) for s in subscribers),
-                return_exceptions=True,
-            )
-
+    # ── Personal DMs: the notifications spine, always ────────────
+    # Matrix prefs decide recipients; quiet hours defer; the delivery
+    # ledger + ✅ Acknowledge action ride along.  The legacy per-sub
+    # loop is gone (docs/architecture/alert-dm-migration.md — legacy
+    # cleanup): a False here (unregistered category / spine error)
+    # means DMs are skipped for THIS occurrence — logged loudly; the
+    # group post and alert_history above are unaffected.
+    handled = False
+    with _obs.time_block(timings, "fanout"):
+        handled = await _spine_dm_fanout(
+            account_id=account_id,
+            alert_type=alert_type,
+            severity=severity,
+            alert_text=alert_text + history_footer,
+            vname=vname,
+            photo_bytes=photo_bytes,
+            video_url=video_url,
+            history_id=(history_record or {}).get("id"),
+            needs_ack=needs_ack,
+            subscribers=subscribers,
+            co=co,
+            ai_note=ai_note,
+            vehicle_id=vid,
+            event_id=event_id,
+            event_time=event_time,
+            maps_url=maps_url,
+        )
+    if not handled:
+        logger.error(
+            "spine-dm fanout unavailable acct=%d type=%s — personal DMs "
+            "skipped for this occurrence (group post + history delivered)",
+            account_id, alert_type,
+        )
     timings["total"] = round(
         (_time.perf_counter() - _send_t0) * 1000, 1,
     )
     logger.info(
-        "send_alert acct=%d type=%s severity=%s subs=%d timings_ms=%s",
-        account_id, alert_type, severity.value, len(subscribers), timings,
+        "send_alert acct=%d type=%s severity=%s route=spine-dm timings_ms=%s",
+        account_id, alert_type, severity.value, timings,
     )
-
 
 async def is_vehicle_suppressed(account_id: int, vehicle_name: str) -> bool:
     """Check if alerts should be suppressed for a vehicle in active maintenance."""
