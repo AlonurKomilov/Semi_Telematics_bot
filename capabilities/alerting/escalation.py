@@ -187,6 +187,41 @@ async def _auto_resolve_vehicle_alerts(
     # Clear the single alert_history record (single source of truth)
     await tenant.clear_alert_history(account_id, alert_type, vehicle_id)
 
+    # Spine-delivered DM copies (delivery ledger keyed alert:{history_id})
+    # get their resolve receipt as an in-place edit through the spine's
+    # update verb — final edit for the occurrence, so the ledger rows
+    # clear with it.  No-op for accounts still on the legacy DM path
+    # (their ledger is empty); a failed edit never blocks the legacy
+    # receipts below.  docs/architecture/alert-dm-migration.md.
+    try:
+        from capabilities.notifications import (
+            NotificationContent as _NotifContent,
+            update_delivery as _update_delivery,
+        )
+        _who = ""
+        if earliest_ack and (earliest_ack.get("acknowledged_by") or 0) > 0:
+            try:
+                _acker = await get_platform_db().get_user_by_telegram_id(
+                    earliest_ack["acknowledged_by"])
+                _who = (_acker.display_name if _acker else "") or ""
+            except Exception:
+                _who = ""
+        _line = (f"✅ Acked by {_who}" if _who
+                 else "Condition cleared automatically")
+        await _update_delivery(
+            tenant, account_id, f"alert:{hist['id']}",
+            _NotifContent(
+                title="",
+                body=(f"🟢 RESOLVED — #{vehicle_name} {alert_type}\n"
+                      f"{_line}  🔖 #{hist['id']}"),
+                severity="info",
+            ),
+            clear=True,
+        )
+    except Exception as _se:
+        logger.debug("spine resolve receipt failed for %s/%s: %s",
+                     account_id, vehicle_id, _se)
+
     # ── Two-step lookup + resolution ─────────────────────────────
     # Step 1: capture every recent delivery row REGARDLESS of ack
     # state so the resolve receipt can thread to the original alert

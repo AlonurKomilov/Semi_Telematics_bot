@@ -388,6 +388,146 @@ async def dispatch_new_channels(
         )
 
 
+async def _dm_via_spine(tenant, account_id: int) -> bool:
+    """Per-account switch for spine-delivered alert DMs
+    (``alert_dm_spine`` account setting; ships OFF).  Guarded so a
+    settings read error can never block delivery — it just means the
+    proven legacy path runs."""
+    try:
+        return str(await tenant.get_account_setting(
+            account_id, "alert_dm_spine") or "0") in ("1", "true", "on")
+    except Exception as e:
+        logger.debug("alert_dm_spine read failed acct=%d: %s", account_id, e)
+        return False
+
+
+async def _spine_dm_fanout(
+    *,
+    account_id: int,
+    alert_type: str,
+    severity: "AlertSeverity",
+    alert_text: str,
+    vname: str,
+    photo_bytes: bytes | None,
+    video_url: str,
+    history_id: int | None,
+    needs_ack: bool,
+    subscribers: list,
+    co: str,
+) -> bool:
+    """Personal DM delivery through the notifications spine.
+
+    The spine reads the matrix prefs, applies quiet-hours deferral,
+    records deliveries in the ledger (keyed ``alert:{history_id}`` so the
+    ack button, reminder edits, and resolve receipts can find every
+    copy), and renders the ✅ Acknowledge action.  Alerting contributes
+    the two scoping rules the spine stays blind to — company scope and
+    the driver-truck rule — as one ``recipient_filter`` predicate.
+
+    Returns True when the spine handled DM delivery; False → the caller
+    falls back to the legacy loop (unregistered category, or an outer
+    dispatch error — delivery is guaranteed over dedup during the parity
+    window).  A parity line compares the two paths' recipient sets while
+    both implementations exist.
+    """
+    try:
+        from capabilities.notifications import (
+            dispatch as _notif_dispatch,
+            NotificationContent as _NotifContent,
+        )
+        from capabilities.notifications.categories import get_category
+
+        route_key = _PIPELINE_TO_ROUTE_KEY.get(alert_type, alert_type)
+        category = f"alert.{route_key}"
+        if get_category(category) is None:
+            logger.warning(
+                "spine-dm: no category for %r (acct=%d) — legacy DM path",
+                category, account_id)
+            return False
+
+        # Company scope — same predicate build as the email/push seam.
+        from capabilities.alerting.company_scope import (
+            load_company_scope, user_sees_company)
+        scope = await load_company_scope(account_id)
+        co_pred = None
+        if co and any(scope.values()):
+            co_pred = (
+                lambda uid, role: user_sees_company(uid, role, co, scope))
+
+        # Driver-truck rule, mirroring the legacy loop exactly: a driver
+        # WITH an assigned truck only hears their truck (substring match
+        # on the vehicle name); a driver without one is not narrowed.
+        truck_by_uid = {
+            s.id: (getattr(s, "truck_num", "") or "")
+            for s in subscribers
+            if getattr(s, "role", None) == Role.DRIVER
+        }
+        _vname_l = (vname or "").lower()
+
+        def _pred(uid: int, role: "str | None") -> bool:
+            if co_pred is not None and not co_pred(uid, role):
+                return False
+            if str(role or "") == "driver":
+                truck = truck_by_uid.get(uid, "")
+                if truck and truck.lower() not in _vname_l:
+                    return False
+            return True
+
+        correlation_key = (
+            f"alert:{int(history_id)}" if history_id else "")
+        content = _NotifContent(
+            title="",
+            body=_strip_alert_html(alert_text),
+            category=category,
+            severity=severity.value,
+            url=video_url or "",
+            photo_bytes=photo_bytes,
+            actions=[{"id": "ack", "label": "✅ Acknowledge"}]
+            if (needs_ack and correlation_key) else [],
+        )
+        pdb = get_platform_db()
+        await _notif_dispatch(
+            pdb, account_id, content,
+            channels=("telegram_dm",),
+            recipient_filter=_pred,
+            correlation_key=correlation_key,
+        )
+
+        # Parity line (dual-implementation window): the legacy loop's
+        # would-be recipient set vs what the ledger says the spine sent.
+        # Diffs are expected for quiet-deferred users (spine holds them
+        # for the shift-start flush) and matrix-vs-legacy pref drift.
+        try:
+            legacy_ids = {
+                s.id for s in subscribers
+                if not (getattr(s, "role", None) == Role.DRIVER
+                        and (getattr(s, "truck_num", "") or "")
+                        and s.truck_num.lower() not in _vname_l)
+            }
+            spine_ids: set = set()
+            if correlation_key:
+                rows = await pdb.get_notification_deliveries(
+                    account_id, correlation_key, channel="telegram_dm")
+                spine_ids = {int(r["recipient_id"]) for r in rows
+                             if str(r["recipient_id"]).isdigit()}
+            logger.info(
+                "spine-dm parity acct=%d type=%s legacy=%d spine=%d "
+                "only_legacy=%s only_spine=%s",
+                account_id, alert_type, len(legacy_ids), len(spine_ids),
+                sorted(legacy_ids - spine_ids)[:10],
+                sorted(spine_ids - legacy_ids)[:10],
+            )
+        except Exception as pe:
+            logger.debug("spine-dm parity log failed: %s", pe)
+        return True
+    except Exception as exc:
+        logger.error(
+            "spine-dm fanout failed acct=%d type=%s — legacy DM path: %s",
+            account_id, alert_type, exc, exc_info=True,
+        )
+        return False
+
+
 def build_alert_keyboard(
     severity: AlertSeverity,
     co: str,
@@ -1267,6 +1407,41 @@ async def send_alert(
             account_id, alert_type, severity.value, timings,
         )
         return
+
+    # ── Spine DM fanout (the reader/writer switch) ───────────────
+    # Per-account setting ``alert_dm_spine``: when on, personal DM
+    # delivery goes through the notifications spine — matrix prefs,
+    # quiet-hours deferral, delivery ledger + ack button — instead of
+    # the legacy loop below (docs/architecture/alert-dm-migration.md).
+    # False from the fanout (unregistered category / outer error) falls
+    # through to the legacy loop: delivery is guaranteed over dedup
+    # during the parity window.
+    if await _dm_via_spine(tenant, account_id):
+        _spine_handled = False
+        with _obs.time_block(timings, "fanout"):
+            _spine_handled = await _spine_dm_fanout(
+                account_id=account_id,
+                alert_type=alert_type,
+                severity=severity,
+                alert_text=alert_text + history_footer,
+                vname=vname,
+                photo_bytes=photo_bytes,
+                video_url=video_url,
+                history_id=(history_record or {}).get("id"),
+                needs_ack=needs_ack,
+                subscribers=subscribers,
+                co=co,
+            )
+        if _spine_handled:
+            timings["total"] = round(
+                (_time.perf_counter() - _send_t0) * 1000, 1,
+            )
+            logger.info(
+                "send_alert acct=%d type=%s severity=%s route=spine-dm "
+                "timings_ms=%s",
+                account_id, alert_type, severity.value, timings,
+            )
+            return
 
     fanout_sem = asyncio.Semaphore(_ALERT_FANOUT_CONCURRENCY)
 

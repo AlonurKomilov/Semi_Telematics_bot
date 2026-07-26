@@ -1,6 +1,6 @@
 # ADR: Alert DM delivery moves to the notifications spine
 
-- **Status:** ACCEPTED (owner decision, 2026-07-24) — rails landed (contract lock, delivery ledger, actions, quiet hours); remaining: the fanout flip + legacy cleanup
+- **Status:** ACCEPTED (owner decision, 2026-07-24) — rails + the fanout flip landed (flag-gated, ships OFF); remaining: enable per account → verify parity → legacy cleanup
 - **Owners:** alerting (`capabilities/alerting/`) + notifications (`capabilities/notifications/`)
 - **Related:** [notifications.md](notifications.md) (spine architecture), [bot-topology.md](bot-topology.md) (bot vs group split)
 
@@ -72,7 +72,7 @@ spine instead of its own loop).
 | **Delivery ledger + handles** ✅ 2026-07-24 | `notification_deliveries` table; `DeliveryResult` returns handle; `update_delivery()`; per-channel `supports_edit` | 1 d | yes (additive) |
 | **Actions + callback routing** ✅ 2026-07-24 | `actions` in content; keyboard render; `notif_act:{correlation_key}:{action}` callback dispatch to registered handlers; alerting registers `alert.ack` | 1 d | yes (additive) |
 | **Quiet hours in the spine** ✅ 2026-07-24 | Quiet-window policy + deferral queue on the digest machinery; severity bypass; alerting registers the quiet rule + alert digest renderer; document-attachment rail | 1 d | yes |
-| **The fanout flip** | `alert_prefs` JSONB → `notification_pref` rows (idempotent migration, dual-read window); `send_alert` DM fanout → spine call **behind a per-account flag** with parity logging | 1 d | flag-gated |
+| **The fanout flip** ✅ 2026-07-26 | `send_alert` DM fanout → spine call **behind the `alert_dm_spine` account setting** with parity logging (the pref backfill already existed — notifications.md step 2a had populated the telegram_dm matrix) | 1 d | flag-gated, ships OFF |
 | **Legacy-path cleanup** | Escalation/resolve edits via `update_delivery`; delete legacy loop + JSONB reader; full test pass | 0.5 d | after parity holds |
 
 Risk control: hottest path in the product → per-account flag (same pattern
@@ -80,6 +80,48 @@ as `NOTIFICATIONS_LIVE_DISPATCH`), parity logs during the dual window, the
 existing alerting test suite + new contract tests per phase, and the fanout flip
 (the only step that touches `send_alert` itself) coordinated with a quiet
 deploy moment.
+
+## Landed: the fanout flip (2026-07-26, ships OFF)
+
+`send_alert` personal-DM delivery can now run through the spine, gated
+per account:
+
+- **Switch:** account setting `alert_dm_spine` ("1" = on; anything else
+  = legacy). Read via `_dm_via_spine()` — fail-closed to the legacy
+  path on any settings error. Enable for a trial account with:
+  `UPDATE account_settings … key='alert_dm_spine', value='1'` (or the
+  settings mixin); no restart needed (read per alert).
+- **`_spine_dm_fanout()`** (pipeline.py): maps the pipeline alert type
+  to its `alert.*` category (unregistered → False → legacy loop),
+  builds ONE `recipient_filter` from company scope + the driver-truck
+  rule (exact legacy semantics: driver WITH truck → substring match on
+  vehicle name; driver without → not narrowed; matrix-only drivers the
+  legacy list never knew are allowed and surfaced by the parity log),
+  dispatches on `("telegram_dm",)` with
+  `correlation_key = alert:{history_id}` and the ✅ Acknowledge action
+  (ackable severities with a history id only). Photo rides along;
+  video degrades to a link (`content.url`).
+- **Fallback contract:** False from the fanout (unregistered category /
+  outer error) falls through to the legacy loop — delivery is
+  guaranteed over dedup during the parity window.
+- **Parity line:** after each spine fanout, a log compares the legacy
+  would-be recipient set against the ledger's actual spine recipients
+  (`spine-dm parity acct=… legacy=N spine=M only_legacy=[…]
+  only_spine=[…]`). Expected diffs: quiet-deferred users (spine holds
+  them for the shift-start flush) and matrix-vs-legacy pref drift.
+- **Resolve receipts:** `_auto_resolve_vehicle_alerts` now also edits
+  every spine-delivered copy in place via
+  `update_delivery(alert:{id}, 🟢 RESOLVED…, clear=True)` — no-op for
+  legacy accounts (empty ledger), guarded so it never blocks the
+  legacy receipts.
+- **What spine mode gives up during the window** (returns with the
+  legacy cleanup): per-user AI-note inclusion toggles, per-user
+  keyboard language + Details/Maps buttons (spine DMs carry the ack
+  button only), merged video messages, and **re-escalation reminder
+  edits on DM copies** (reminders still fire on the group path;
+  history-level state is unaffected). Acceptable for the trial account;
+  the cleanup step wires reminders through `update_delivery`.
+- Contract tests: `tests/test_alert_dm_spine.py` (9).
 
 ## Landed: quiet hours in the spine (2026-07-24)
 
