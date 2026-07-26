@@ -4,8 +4,8 @@
  * The dropdown is a glance (newest 30); this page walks the whole
  * retained window (60 days) with keyset pagination and a source filter.
  * Alerts intentionally live elsewhere (the Alerts board owns ack /
- * occurrence semantics) — this page is the inbox record: Activity + AI +
- * System notices, read/unread.
+ * occurrence semantics) — this page is the inbox record: Activity
+ * (team + AI) and System notices, read/unread.
  *
  * Reached from the bell's "See all"; preferences stay one click away.
  */
@@ -19,20 +19,22 @@ import { toast } from 'sonner';
 import { apiJSON } from '@/api/client';
 import { PageHeader } from '@/components/shell';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
+import { useUserPreference } from '../../hooks/useUserPreference';
 import type { InboxNotice, InboxResponse } from './useInbox';
 import { INBOX_QUERY_KEY } from './useInbox';
 import { InboxRow } from './NotificationsPanel';
 
 const PAGE = 30;
 
-type Filter = '' | 'team' | 'ai' | 'system';
-// Precise per-source filters (server filters by exact namespace).  The
-// bell's coarse "Activity" bucket = team+ai; reusing that word here for
-// team-only would collide, so the filter says "Team".
+// Filters name the same BUCKETS as the bell tabs and the preferences
+// page ("Account activity" / "System") — one object, one name everywhere.
+// Activity spans the team + ai namespaces (the server takes a bucket list);
+// each row's context chip still says which source it came from, so nothing
+// is lost by not filtering namespace-by-namespace.
+type Filter = '' | 'team,ai' | 'system';
 const FILTERS: { key: Filter; label: string }[] = [
   { key: '', label: 'All' },
-  { key: 'team', label: 'Team' },
-  { key: 'ai', label: 'AI' },
+  { key: 'team,ai', label: 'Activity' },
   { key: 'system', label: 'System' },
 ];
 
@@ -42,7 +44,10 @@ export default function NotificationCenter() {
   const { hasAny } = useViewPermissions();
   const canAlerts = hasAny('can_alerts_all', 'can_alerts_vehicle');
 
-  const [filter, setFilter] = useState<Filter>('');
+  // Remembered per user (server-backed, localStorage fast-paint) — a
+  // dispatcher who lives in one bucket shouldn't re-pick it every visit.
+  const { value: filter, setValue: setFilter } =
+    useUserPreference<Filter>('notifications.center.filter', '');
   const [notices, setNotices] = useState<InboxNotice[]>([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -73,7 +78,11 @@ export default function NotificationCenter() {
     }
   }, []);
 
-  useEffect(() => { setNotices([]); setDone(false); void load(filter); }, [filter, load]);
+  // NB: no setNotices([]) here.  The request token already guarantees only
+  // the newest response applies, so keeping the current rows visible until
+  // it lands avoids a blank flash — including the one-time correction when
+  // useUserPreference's server value differs from the fast-paint cache.
+  useEffect(() => { setDone(false); void load(filter); }, [filter, load]);
 
   // Keep the bell's cached feed in sync after writes made from this page.
   const syncBell = () => void qc.invalidateQueries({ queryKey: INBOX_QUERY_KEY });

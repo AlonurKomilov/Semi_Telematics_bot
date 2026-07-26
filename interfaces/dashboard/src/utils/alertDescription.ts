@@ -143,13 +143,26 @@ function formatFault(detail: string): string {
 
 /** Public API — pick the right per-type formatter and fall through
  *  to the raw detail on anything unrecognised. */
+/** Table-cell placeholder: a blank Description cell reads as broken, so
+ *  ``formatAlertDescription`` returns this when there's nothing to say. */
+export const NO_DETAIL = '\u2014';
+
+/** Same translation, but yields '' instead of the em-dash placeholder —
+ *  for INLINE contexts (a bell row's second line, a banner's expandable
+ *  body) where a lone "—" is worse than omitting the line entirely, and
+ *  would light up an expand chevron with nothing behind it. */
+export function formatAlertDetailInline(alert: AlertLike): string {
+  const s = formatAlertDescription(alert);
+  return s === NO_DETAIL ? '' : s;
+}
+
 export function formatAlertDescription(alert: AlertLike): string {
   const raw =
     alert.last_detail ||
     alert.message ||
     alert.description ||
     '';
-  if (!raw) return '—';
+  if (!raw) return NO_DETAIL;
   const type = (alert.alert_type || '').toLowerCase();
 
   // Dispatch by type FIRST so we don't mis-parse a fault-detail string

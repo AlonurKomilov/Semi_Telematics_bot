@@ -25,6 +25,12 @@ else:
     _MixinBase = object
 
 
+# The only real source namespaces (category prefixes).  Filtering is
+# allow-listed rather than free-text: self-documents the buckets and keeps
+# a junk value from ever reaching the query.
+_SOURCES = frozenset({"team", "ai", "system"})
+
+
 class NotificationInboxMixin(_MixinBase):
 
     async def add_inbox_notice(
@@ -55,9 +61,16 @@ class NotificationInboxMixin(_MixinBase):
         q = ("SELECT * FROM notification_inbox "
              "WHERE account_id = ? AND user_id = ?")
         params: list = [account_id, user_id]
-        if source:
-            q += " AND source = ?"
-            params.append(source)
+        # ``source`` accepts one namespace ("team") or a comma-separated
+        # BUCKET ("team,ai") — the UI groups sources into buckets (Activity =
+        # team + ai) and must filter by the bucket it names, not by an
+        # internal namespace the user never sees.
+        wanted = [s.strip() for s in (source or "").split(",")
+                  if s.strip() in _SOURCES]
+        if wanted:
+            ph = ", ".join("?" for _ in wanted)
+            q += f" AND source IN ({ph})"
+            params.extend(wanted)
         if before_id is not None:
             q += " AND id < ?"
             params.append(before_id)

@@ -200,6 +200,25 @@ async def test_feed_newest_first_source_filter_and_pagination(pg_db):
     assert [r["title"] for r in page2] == ["t1"]
 
 
+async def test_feed_source_accepts_a_bucket_list(pg_db):
+    """The UI filters by the BUCKET it names ("Activity" = team + ai), so
+    ``source`` takes a comma list — one namespace still works."""
+    acct, uid = await _seed(pg_db, name="Bucket Co", tg=7316)
+    await pg_db.add_inbox_notice(acct, uid, category="team.a", title="t")
+    await pg_db.add_inbox_notice(acct, uid, category="ai.b", title="a")
+    await pg_db.add_inbox_notice(acct, uid, category="system.c", title="s")
+
+    activity = await pg_db.list_inbox_notices(acct, uid, source="team,ai")
+    assert {r["title"] for r in activity} == {"t", "a"}      # bucket
+    assert [r["title"] for r in
+            await pg_db.list_inbox_notices(acct, uid, source="system")] == ["s"]
+    # Whitespace tolerated; unknown namespaces simply match nothing.
+    assert len(await pg_db.list_inbox_notices(acct, uid, source=" team , ai ")) == 2
+    assert await pg_db.list_inbox_notices(acct, uid, source="nope") == []
+    # Empty string keeps the unfiltered behaviour.
+    assert len(await pg_db.list_inbox_notices(acct, uid, source="")) == 3
+
+
 async def test_prune_drops_old_rows(pg_db):
     acct, uid = await _seed(pg_db, name="Prune Co", tg=7314)
     await pg_db.add_inbox_notice(acct, uid, category="team.t", title="fresh")

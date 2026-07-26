@@ -204,7 +204,9 @@ function Cell({ checked, disabled, hint, onChange }: {
   );
   return (
     <td className="py-2.5 px-2 text-center">
-      {disabled && hint ? <Tip label={hint}>{box}</Tip> : box}
+      {/* Disabled inputs swallow pointer events, so the Tip needs a
+          wrapper element to hover — without it the reason never shows. */}
+      {disabled && hint ? <Tip label={hint}><span>{box}</span></Tip> : box}
     </td>
   );
 }

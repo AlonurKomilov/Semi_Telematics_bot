@@ -19,6 +19,7 @@ import type { Alert, AlertSeverity } from '../../types';
 import type { Tone } from '../../lib/status';
 import { showBanner } from '../../components/banners';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
+import { formatAlertDetailInline } from '../../utils/alertDescription';
 import { useRecentAlerts, useAckAlerts, activeAmong } from './useRecentAlerts';
 import { useBannerLevel } from './bannerLevel';
 import { diffNewAlerts, resolvedBanners } from './liveAlerts';
@@ -138,7 +139,9 @@ export default function LiveAlertWatcher() {
         // tags it on multi-company accounts only), same as the bell rows.
         tag: a.company,
         onClose: () => shownRef.current.delete(String(a.id)),
-        detail: a.message || a.last_detail,
+        // `last_detail` is a dedup key ("parking:unknown:8h") — humanize it
+        // through the shared formatter, same as the board and the bell.
+        detail: formatAlertDetailInline(a),
         // Live age + occurrence so the banner is honest about WHEN: a
         // fresh fire reads "2m ago", a recurring one "×5 · 2m ago", and a
         // sticky critical that lingers keeps ticking ("3d ago") instead of
@@ -151,6 +154,9 @@ export default function LiveAlertWatcher() {
         actions: [
           { label: 'View', onClick: () => navRef.current('/alerts') },
           {
+            // The action that RESOLVES the alert — filled, so the eye
+            // doesn't have to read both buttons to find the real one.
+            primary: true,
             label: 'Acknowledge',
             onClick: async () => {
               try {

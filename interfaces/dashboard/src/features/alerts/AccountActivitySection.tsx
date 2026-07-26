@@ -124,10 +124,10 @@ export default function AccountActivitySection({ refreshKey, section = 'personal
 
   return (
     <section className="bg-card border border-border rounded-xl p-4">
-      {/* Opt-OUT, unlike the opt-IN Alerts grid above — the two look
-          identical, so name the polarity explicitly: here ON is the
-          resting state and a tick you REMOVE is a mute.  System rows are
-          mostly MANDATORY (locked on), so that badge says so instead. */}
+      {/* Opt-OUT, unlike the opt-IN Alerts grid above.  Two signals carry
+          the inverted polarity: the cells are On/Off SWITCHES (not
+          checkboxes — see Cell), and this badge names the default in words.
+          System rows are mostly MANDATORY (locked), so it says that instead. */}
       <span className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-0.5 text-2xs font-medium text-muted-foreground mb-3">
         <Check size={12} aria-hidden />
         {section === 'system'
@@ -191,23 +191,38 @@ function Th({ icon: Icon, label, hint }: { icon: typeof Send; label: string; hin
   );
 }
 
+/** One (category × channel) cell — an On/Off SWITCH, not a checkbox.
+ *
+ *  Deliberate grammar split from the Alerts matrix above: a checkbox reads
+ *  "add this to my selection" (opt-IN, resting state empty), while these
+ *  rows are opt-OUT — already on, and a click turns them off.  Rendering
+ *  the resting state as a filled "On" pill makes that polarity legible
+ *  BEFORE reading any helper text, which two identical checkbox grids with
+ *  opposite defaults never could. */
 function Cell({ checked, disabled, hint, onChange }: {
   checked: boolean; disabled: boolean; hint: string;
   onChange: (v: boolean) => void | Promise<void>;
 }) {
-  const box = (
-    <input
-      type="checkbox"
-      checked={checked}
-      disabled={disabled}
-      onChange={(e) => void onChange(e.target.checked)}
-      className="accent-primary cursor-pointer disabled:cursor-not-allowed"
+  const pill = (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
       aria-label={hint || undefined}
-    />
+      disabled={disabled}
+      onClick={() => void onChange(!checked)}
+      className={`inline-flex h-7 min-w-14 items-center justify-center rounded-md px-2 text-2xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+        checked
+          ? 'bg-primary/15 text-primary hover:bg-primary/25'
+          : 'bg-muted text-muted-foreground hover:bg-muted/80'
+      }`}
+    >
+      {checked ? 'On' : 'Off'}
+    </button>
   );
   return (
-    <td className="py-2.5 px-2 text-center">
-      {disabled && hint ? <Tip label={hint}>{box}</Tip> : box}
+    <td className="py-2 px-2 text-center">
+      {disabled && hint ? <Tip label={hint}><span>{pill}</span></Tip> : pill}
     </td>
   );
 }

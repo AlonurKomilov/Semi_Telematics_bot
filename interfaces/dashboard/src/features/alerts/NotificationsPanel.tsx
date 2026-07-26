@@ -21,6 +21,8 @@ import type { Alert, AlertSeverity } from '../../types';
 import type { Tone } from '../../lib/status';
 import { toneText } from '../../lib/status';
 import { formatAgoShort } from '../../utils/datetime';
+import { formatAlertDetailInline } from '../../utils/alertDescription';
+import { Tip } from '../../components/tooltip';
 import { stagedAction } from '../../components/banners';
 import { useRecentAlerts, useAckAlerts } from './useRecentAlerts';
 import { addStagedAcks, removeStagedAcks, useStagedAckIds } from './stagedAcks';
@@ -108,6 +110,16 @@ export function NotificationsPanel(
     ? alerts.filter((a) => a.severity === 'critical')
     : alerts;
 
+  // The glance total (matches the bell badge: pending alerts + server-true
+  // unread notices) and how many sources actually contribute to it — the
+  // All pill shows its number only when it isn't a restatement of one
+  // source's own count.
+  const allCount = (canAlerts ? alerts.length : 0) + (inbox?.unread ?? 0);
+  const contributingSources =
+    [(canAlerts ? alerts.length : 0) > 0,
+     activityNotices.length > 0,
+     systemNotices.length > 0].filter(Boolean).length;
+
   // The All feed: alerts + notices interleaved newest-first.  Two stores,
   // one glance — exactly what the umbrella "Notifications" name promises.
   const merged = useMemo<MergedItem[]>(() => {
@@ -121,7 +133,13 @@ export function NotificationsPanel(
         ts: Date.parse(n.created_at) || 0,
       })),
     ];
-    return items.sort((x, y) => y.ts - x.ts);
+    // Criticals first, then newest — mirrors the Alerts tab's
+    // severity-first server ordering so switching tabs doesn't reshuffle
+    // the same items, and a critical is never buried under a fresher
+    // warning just because it fired earlier.
+    const rank = (m: MergedItem) =>
+      (m.kind === 'alert' ? m.alert.severity : m.notice.severity) === 'critical' ? 0 : 1;
+    return items.sort((x, y) => (rank(x) - rank(y)) || (y.ts - x.ts));
   }, [canAlerts, alerts, notices]);
 
   const goto = (path: string) => { onClose(); navigate(path); };
@@ -207,19 +225,24 @@ export function NotificationsPanel(
           half counts the loaded glance rows.  Per-source pills stay
           page-approximate. */}
       <div className="flex items-center gap-1 px-3 py-2 border-b border-border">
-        <TabPill active={src === 'all'} onClick={() => setSrc('all')}>
-          All{((canAlerts ? alerts.length : 0) + (inbox?.unread ?? 0))
-            ? ` ${(canAlerts ? alerts.length : 0) + (inbox?.unread ?? 0)}` : ''}
+        <TabPill active={src === 'all'} onClick={() => setSrc('all')} dim={allCount === 0}>
+          {/* Show All's total ONLY when more than one source contributes —
+              otherwise it just repeats that source's own count and reads as
+              a duplicate tab ("All 12 · Alerts 12"). */}
+          All{contributingSources > 1 && allCount ? ` ${allCount}` : ''}
         </TabPill>
         {canAlerts && (
-          <TabPill active={src === 'alerts'} onClick={() => setSrc('alerts')}>
+          <TabPill active={src === 'alerts'} onClick={() => setSrc('alerts')}
+                   dim={alerts.length === 0}>
             Alerts{alerts.length ? ` ${alerts.length}` : ''}
           </TabPill>
         )}
-        <TabPill active={src === 'activity'} onClick={() => setSrc('activity')}>
+        <TabPill active={src === 'activity'} onClick={() => setSrc('activity')}
+                 dim={activityNotices.length === 0}>
           Activity{unreadOf(activityNotices) ? ` ${unreadOf(activityNotices)}` : ''}
         </TabPill>
-        <TabPill active={src === 'system'} onClick={() => setSrc('system')}>
+        <TabPill active={src === 'system'} onClick={() => setSrc('system')}
+                 dim={systemNotices.length === 0}>
           System{unreadOf(systemNotices) ? ` ${unreadOf(systemNotices)}` : ''}
         </TabPill>
       </div>
@@ -256,13 +279,10 @@ export function NotificationsPanel(
             )}
           </div>
           <div className="flex items-center justify-between px-3 py-2 border-t border-border">
-            <button
+            <MarkAllReadButton
+              unread={inbox?.unread ?? 0}
               onClick={() => void markAllRead()}
-              disabled={(inbox?.unread ?? 0) === 0}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors"
-            >
-              <CheckCheck size={14} aria-hidden /> Mark all read
-            </button>
+            />
             <button
               onClick={() => goto('/notifications')}
               className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
@@ -353,13 +373,10 @@ export function NotificationsPanel(
                 )}
               </div>
               <div className="flex items-center justify-between px-3 py-2 border-t border-border">
-                <button
+                <MarkAllReadButton
+                  unread={inbox?.unread ?? 0}
                   onClick={() => void markAllRead()}
-                  disabled={(inbox?.unread ?? 0) === 0}
-                  className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors"
-                >
-                  <CheckCheck size={14} aria-hidden /> Mark all read
-                </button>
+                />
                 <button
                   onClick={() => goto('/notifications')}
                   className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
@@ -375,16 +392,43 @@ export function NotificationsPanel(
   );
 }
 
-function TabPill({ active, onClick, children }: {
-  active: boolean; onClick: () => void; children: React.ReactNode;
+/** "Mark all read" — governs the INBOX notices (alerts are cleared with
+ *  Acknowledge instead).  When there's nothing to mark it explains WHY it's
+ *  disabled: a greyed verb above a populated list otherwise reads as broken
+ *  (the All tab shows alerts + notices together). */
+function MarkAllReadButton({ unread, onClick }: {
+  unread: number; onClick: () => void;
+}) {
+  const btn = (
+    <button
+      onClick={onClick}
+      disabled={unread === 0}
+      className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:hover:text-muted-foreground transition-colors"
+    >
+      <CheckCheck size={14} aria-hidden /> Mark all read
+    </button>
+  );
+  return unread === 0
+    ? <Tip label="No unread notices — alerts are cleared with Acknowledge">
+        <span>{btn}</span>
+      </Tip>
+    : btn;
+}
+
+function TabPill({ active, onClick, dim, children }: {
+  active: boolean; onClick: () => void; dim?: boolean;
+  children: React.ReactNode;
 }) {
   return (
     <button
       onClick={onClick}
+      // `dim` = this source has nothing right now, so the tab reads empty
+      // BEFORE it's clicked (no count needed, no wasted click).
       className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors ${
         active
           ? 'bg-primary/15 text-primary'
-          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          : `hover:bg-muted hover:text-foreground ${
+              dim ? 'text-muted-foreground/50' : 'text-muted-foreground'}`
       }`}
     >
       {children}
@@ -397,8 +441,26 @@ function AlertRow({ alert, onAck, onOpen, busy }: {
 }) {
   const tone = SEVERITY_TONE[alert.severity ?? 'info'] ?? 'info';
   const Icon = TYPE_ICON[alert.alert_type ?? ''] ?? AlertTriangle;
-  const detail = alert.message || alert.last_detail || '';
+  // `last_detail` is the pipeline's DEDUP KEY ("parking:unknown:8h",
+  // "fuel:8") — never display copy.  Route it through the shared
+  // humanizer the board already uses so the glance reads in plain
+  // language ("Parked in unverified location for 8 hours").
+  const detail = formatAlertDetailInline(alert);
   const age = formatAgoShort(alert.last_seen || alert.created_at);
+  // The row's time is last_seen — a chronic alert that keeps re-firing
+  // reads "18m ago" even when it's been open for days.  Surface how long
+  // it has ACTUALLY been open (first_seen) so ignoring it has a visible
+  // cost; only past a day, where the two genuinely diverge.
+  const openedMs = alert.created_at ? Date.parse(alert.created_at) : NaN;
+  const lastMs = Date.parse(alert.last_seen || alert.created_at || '');
+  const openDays = Number.isNaN(openedMs)
+    ? 0 : Math.floor((Date.now() - openedMs) / 86_400_000);
+  // Only when the row's age (the last FIRE) actually understates how long
+  // the alert has been open — a single-fire alert already reads "2d ago",
+  // so "open 2d" beside it would just repeat itself.
+  const understatesAge = Number.isFinite(openedMs) && Number.isFinite(lastMs)
+    && (lastMs - openedMs) > 3_600_000;
+  const openFor = openDays >= 1 && understatesAge ? `open ${openDays}d` : '';
 
   return (
     <li className="flex items-start gap-2.5 px-3 py-2.5 hover:bg-muted/50 transition-colors">
@@ -416,6 +478,14 @@ function AlertRow({ alert, onAck, onOpen, busy }: {
                    design rules). */
                 <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-3xs">
                   {alert.company}
+                </span>
+              )}
+              {openFor && (
+                /* How long this alert has been OPEN (first_seen).  The age
+                   on the right is the last FIRE — a chronic alert that keeps
+                   re-firing reads "18m ago" and hides that it's days old. */
+                <span className="shrink-0 inline-flex items-center px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-3xs">
+                  {openFor}
                 </span>
               )}
             </span>
