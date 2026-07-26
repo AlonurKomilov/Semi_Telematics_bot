@@ -142,7 +142,19 @@ async def overview_stats(
     # 50,000 mi from due isn't "Maintenance due", it's scheduled.
     overview, pending_alerts, all_parked, maint_tasks = await asyncio.gather(
         get_vehicles_for_map(account_id, company=company),
-        tenant_db.get_pending_alerts(account_id) if fetch_alerts else asyncio.sleep(0, result=[]),
+        # LOGICAL alerts (alert_history: one row per truck+problem), NOT
+        # delivery receipts.  get_pending_alerts reads
+        # alert_acknowledgments, which holds one row per RECIPIENT — three
+        # people DM'd about one fault counted as three "pending alerts", so
+        # this card and the bell badge reported a number the Alerts board
+        # never agreed with.  alert_history is the SSOT (the board reads it);
+        # unwindowed, because an unacknowledged alert is open regardless of
+        # age.  This is the same call /alerts/pending/count makes, so the
+        # card, the badge and the board can't drift apart; only alert_type
+        # and vehicle_name are read below.
+        tenant_db.get_active_alert_history_for_account(
+            account_id,
+        ) if fetch_alerts else asyncio.sleep(0, result=[]),
         tenant_db.get_active_parking_events(account_id, attention_only=False) if fetch_parking else asyncio.sleep(0, result=[]),
         tenant_db.get_maintenance_tasks(account_id) if fetch_maintenance else asyncio.sleep(0, result=[]),
     )

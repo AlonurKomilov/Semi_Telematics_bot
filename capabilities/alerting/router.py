@@ -182,12 +182,10 @@ async def pending_alerts(
     # Ack-state chip: 'active' (not acknowledged, default), 'acknowledged'
     # (human-acked or auto-resolved), or 'all'.
     ack_state: str | None = Query(None, description="active | acknowledged | all"),
-    # Date window on first_seen — applied to EVERY ack_state, including
-    # 'active' (see _alert_filter_clause).  That matters: first_seen is set
-    # once and never bumped on a re-fire, so a chronic alert still firing
-    # today falls outside a 30-day window once it's older than that.  The
-    # board's empty state is worded for this (it scopes its all-clear to
-    # the window and offers to widen); don't "simplify" that copy.
+    # Date window on first_seen — bounds the acknowledged / all views only.
+    # 'active' is deliberately UNWINDOWED so a chronic unresolved alert
+    # can't fall off the open queue just because it started long ago; see
+    # _alert_filter_clause for the reasoning.
     days: int | None = Query(None, ge=1, le=90),
     page: int = Query(1, ge=1, description="Page number"),
     # Cap raised 500 → 2000: the dashboard's DataTable loads the whole

@@ -18,8 +18,13 @@ import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsQuery } from '../_shared/useAlertsQuery';
 
 export default function AlertsControlBar() {
-  const { days, setDays } = useAlertsFilters();
+  const { days, setDays, ackState } = useAlertsFilters();
   const { isFetching } = useAlertsQuery();
+  // The open queue is unwindowed by design (an unacknowledged alert is open
+  // regardless of age), so the range picker genuinely does nothing here.
+  // Disabled WITH THE REASON rather than hidden: a control that vanishes
+  // between states is harder to learn than one that explains itself.
+  const windowApplies = ackState !== 'active';
 
   // The old "Per vehicle / Per alert" toggle lived here.  It was a
   // hardcoded special case of something the grid already does better:
@@ -29,11 +34,17 @@ export default function AlertsControlBar() {
   // same flat endpoint, so the toggle only set a default grouping, which
   // a saved per-user preference could silently override.
   return (
-    <div className="flex items-center justify-end mb-4 border-b border-border pb-3">
+    <div className="flex items-center justify-end gap-2 mb-4 border-b border-border pb-3">
+      {!windowApplies && (
+        <span className="text-2xs text-muted-foreground">
+          Pending alerts aren’t date-limited
+        </span>
+      )}
       <DateRangePresets
         value={days}
         onChange={(d) => setDays(d)}
         isFetching={isFetching}
+        disabled={!windowApplies}
       />
     </div>
   );

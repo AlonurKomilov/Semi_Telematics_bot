@@ -78,6 +78,16 @@ async def overview_app(pg_db, monkeypatch):
     msg_id = 1000
     for at, n in counts.items():
         for i in range(n):
+            # /overview/stats counts LOGICAL alerts from alert_history (one
+            # row per truck+problem) — not delivery receipts, which are one
+            # row per RECIPIENT and so inflated the card.  send_alert always
+            # upserts history BEFORE creating any ack row, so the seed has to
+            # do the same or it builds a shape production never produces.
+            await db.upsert_alert_history(
+                account_id=acct.id, alert_type=at,
+                vehicle_id=f"v-{at}-{i}", vehicle_name=f"Truck {at}{i}",
+                severity="warning",
+            )
             await db.create_alert_ack(
                 account_id=acct.id, alert_type=at,
                 vehicle_id=f"v-{at}-{i}", vehicle_name=f"Truck {at}{i}",

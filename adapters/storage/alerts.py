@@ -831,7 +831,18 @@ class AlertsMixin(_MixinBase):
         elif ack_state == "acknowledged":
             clauses.append(f"{p}status <> 'active'")
         # "all" → no status predicate
-        if days:
+        # The date window bounds HISTORY, never the open queue.
+        #
+        # ``first_seen`` is stamped once and never bumped on a re-fire, so a
+        # window applied to active rows hides the longest-running unresolved
+        # problems — a fault still firing today drops off a 30-day board
+        # simply because it started 40 days ago.  For a safety queue that is
+        # backwards: an unacknowledged alert is open regardless of age.  So
+        # 'active' is UNWINDOWED, and the window still bounds the
+        # acknowledged / all views, where "last 30 days" is what the
+        # operator means.  (Owner decision; the UI disables the date control
+        # while viewing the open queue so it can't look like it applies.)
+        if days and ack_state != "active":
             from datetime import datetime, timedelta, timezone
             cutoff = (
                 datetime.now(timezone.utc) - timedelta(days=int(days))

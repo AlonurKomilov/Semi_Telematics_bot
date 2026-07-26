@@ -13,7 +13,7 @@ import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsQuery } from '../_shared/useAlertsQuery';
 
 export default function AlertsPagination() {
-  const { page, setPage, days } = useAlertsFilters();
+  const { page, setPage, days, ackState } = useAlertsFilters();
   const { data, isFetching, pageSize } = useAlertsQuery();
 
   // Render ONLY when the window overflows a single fetch.  Otherwise
@@ -34,8 +34,12 @@ export default function AlertsPagination() {
       <p className="text-xs text-muted-foreground">
         Batch <strong>{start.toLocaleString()}</strong>–
         <strong>{end.toLocaleString()}</strong> of{' '}
-        <strong>{total.toLocaleString()}</strong> alerts in the last{' '}
-        {days} days
+        <strong>{total.toLocaleString()}</strong>{' '}
+        {/* The open queue is unwindowed, so naming a window here would be
+            a claim the query doesn't make. */}
+        {ackState === 'active'
+          ? 'open alerts'
+          : `alerts in the last ${days} days`}
       </p>
       {(data.total_pages ?? 1) > 1 && (
         <div className="flex items-center gap-2">

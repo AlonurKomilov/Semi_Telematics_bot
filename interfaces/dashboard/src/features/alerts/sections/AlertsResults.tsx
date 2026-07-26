@@ -286,18 +286,23 @@ export default function AlertsResults() {
         <EmptyState
           icon={Bell}
           title="No alerts match these filters"
-          description="Other alerts may still be pending — clear the filters to see everything in this window."
+          description={
+            // "this window" would be a lie on the open queue, which is
+            // unwindowed — only the acknowledged / all views are bounded
+            // by the date range.
+            ackState === 'active'
+              ? 'Other alerts may still be pending — clear the filters to see the whole open queue.'
+              : 'Other alerts may still be pending — clear the filters to see everything in this window.'
+          }
           action={clearFilters}
         />
       );
     }
-    // The date window narrows "active" too: the query filters on
-    // first_seen, which is set once and NEVER bumped on a re-fire — so a
-    // chronic alert that has been firing for months sits OUTSIDE a 30-day
-    // window while still being unacknowledged.  That makes the
-    // longest-running problems the easiest ones to hide, so the all-clear
-    // is scoped to the window and offers to widen it.
-    const widen = days < MAX_WINDOW_DAYS ? (
+    // The open queue is UNWINDOWED (see _alert_filter_clause), so an empty
+    // active view genuinely means nothing is open — the all-clear can be
+    // stated without a date caveat again.  The acknowledged / all views ARE
+    // windowed, so they say so and offer to widen.
+    const widen = ackState !== 'active' && days < MAX_WINDOW_DAYS ? (
       <button
         onClick={() => setDays(MAX_WINDOW_DAYS)}
         className="h-8 px-3 inline-flex items-center rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/80 transition-colors"
@@ -310,14 +315,14 @@ export default function AlertsResults() {
         icon={Bell}
         title={
           ackState === 'active'
-            ? 'No pending alerts in this window'
+            ? 'No pending alerts'
             : ackState === 'acknowledged'
               ? 'No acknowledged alerts in this window'
               : 'No alerts in this window'
         }
         description={
           ackState === 'active'
-            ? `Every alert that started in the last ${days} days has been acknowledged. Older alerts can still be open — widen the window to check.`
+            ? 'Every alert has been acknowledged — including older ones, which the open queue never hides.'
             : 'Try widening the date range.'
         }
         action={widen}
@@ -336,8 +341,10 @@ export default function AlertsResults() {
            below); this says the part nothing else does — that search,
            filters and sorting only see the loaded batch. */
         <p className="mb-2 text-xs text-muted-foreground">
-          Search, filters and sorting apply to the loaded batch — narrow the
-          date window to bring everything into one batch.
+          Search, filters and sorting apply to the loaded batch
+          {ackState === 'active'
+            ? ' — use the Type and Severity filters to bring everything into one batch.'
+            : ' — narrow the date window to bring everything into one batch.'}
         </p>
       )}
       <DataGrid
