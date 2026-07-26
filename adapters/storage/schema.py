@@ -345,6 +345,9 @@ async def create_tables(conn) -> None:
             description          TEXT    NOT NULL DEFAULT '',
             expected_labor_hours REAL    NOT NULL DEFAULT 0,
             parent_id            INTEGER,
+            -- '' = any vehicle (the default); 'truck' / 'trailer' narrow
+            -- the picker on a mixed fleet without hiding anything.
+            vehicle_type         TEXT    NOT NULL DEFAULT '',
             status               TEXT    NOT NULL DEFAULT 'active',
             created_by           INTEGER NOT NULL DEFAULT 0,
             created_at           TEXT    NOT NULL DEFAULT '',

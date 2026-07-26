@@ -38,6 +38,7 @@ class ServiceTaskCreate(BaseModel):
     description: str = Field("", max_length=2000)
     expected_labor_hours: float = Field(0, ge=0, le=1000)
     parent_id: int | None = None
+    vehicle_type: str = Field("", pattern="^(truck|trailer|)$")
 
 
 class ServiceTaskUpdate(BaseModel):
@@ -45,12 +46,14 @@ class ServiceTaskUpdate(BaseModel):
     description: str | None = Field(None, max_length=2000)
     expected_labor_hours: float | None = Field(None, ge=0, le=1000)
     parent_id: int | None = None
+    vehicle_type: str | None = Field(None, pattern="^(truck|trailer|)$")
     status: str | None = Field(None, pattern="^(active|archived)$")
 
 
 @router.get("")
 async def list_service_tasks(
     include_archived: bool = False,
+    vehicle_type: str = "",
     user: dict = Depends(require_permission_any(
         "can_service_tasks", "can_maintenance_all", "can_work_orders_all",
     )),
@@ -60,6 +63,7 @@ async def list_service_tasks(
     task pickers on the maintenance / work-order forms."""
     rows = await tenant_db.list_service_tasks(
         user["account_id"], include_archived=include_archived,
+        vehicle_type=vehicle_type,
     )
     return {"service_tasks": rows, "count": len(rows)}
 
@@ -78,6 +82,7 @@ async def create_service_task(
         description=body.description,
         expected_labor_hours=body.expected_labor_hours,
         parent_id=body.parent_id,
+        vehicle_type=body.vehicle_type,
         created_by=await resolve_user_id(user),
     )
     if not task:
@@ -127,6 +132,39 @@ async def update_service_task(
         target_type="service_task", target_id=str(task_id),
     )
     return await tenant_db.get_service_task(task_id, user["account_id"])
+
+
+class MergeBody(BaseModel):
+    loser_id: int
+    winner_id: int
+
+
+@router.post("/merge")
+async def merge_service_tasks(
+    body: MergeBody,
+    user: dict = Depends(require_permission("can_service_tasks")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Fold a duplicate task into the canonical one.
+
+    "Brake Job", "brake job" and "Brakes" typed at different times
+    split every report three ways; merging repoints all history onto
+    one task so the numbers add up again.  Destructive and
+    irreversible — the loser row is gone afterwards — so only the
+    account's OWN tasks can be merged away (a standard task's key is
+    shared vocabulary; archive it instead).
+    """
+    ok, reason = await tenant_db.merge_service_tasks(
+        user["account_id"], body.loser_id, body.winner_id,
+    )
+    if not ok:
+        raise HTTPException(status_code=422, detail=reason)
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]), "service_task_merge",
+        target_type="service_task", target_id=str(body.winner_id),
+        details=f"merged #{body.loser_id} into #{body.winner_id}",
+    )
+    return {"merged": True}
 
 
 @router.get("/defaults")

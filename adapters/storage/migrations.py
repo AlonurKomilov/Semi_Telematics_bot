@@ -7189,3 +7189,31 @@ async def migrate_service_task_parts(conn) -> None:
             logger.warning("Migration 163: service_task_parts RLS skipped (%s)", e)
     await conn.commit()
     logger.info("Migration 163: service_task_parts ready")
+
+
+@_register("164_service_tasks_vehicle_type")
+async def migrate_service_tasks_vehicle_type(conn) -> None:
+    """Optional truck/trailer scoping on a service task.
+
+    A mixed fleet's task list is long, and most of it is irrelevant to
+    whichever unit is in the shop — trailer work clutters the picker on
+    a tractor and vice versa.  Tagging a task narrows the dropdown
+    without hiding anything permanently: '' means "any vehicle" and
+    stays the default, so nothing that exists today changes behaviour.
+
+    (Fleetio has no equivalent — its Service Tasks apply fleet-wide.
+    This is deliberately ours.)
+
+    NOTE on FKs: the reference columns stay plain INTEGERs. A
+    RESTRICT foreign key would be tidy defence-in-depth, but the
+    delete path is already guarded in the storage layer + route
+    (``service_task_usage``), and adding a constraint here would
+    change account-purge ordering — a shipped flow with retention
+    semantics we don't want to disturb for a redundant guard.
+    """
+    await conn.execute(
+        "ALTER TABLE service_tasks "
+        "ADD COLUMN IF NOT EXISTS vehicle_type TEXT NOT NULL DEFAULT ''"
+    )
+    await conn.commit()
+    logger.info("Migration 164: service_tasks.vehicle_type added")

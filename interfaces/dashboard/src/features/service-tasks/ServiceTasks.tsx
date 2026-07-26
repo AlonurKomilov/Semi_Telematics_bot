@@ -14,6 +14,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ClipboardList, Plus } from 'lucide-react';
 import TaskPartsDialog from './TaskPartsDialog';
+import MergeTaskDialog from './MergeTaskDialog';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
@@ -36,6 +37,8 @@ const SEGMENTS: DataGridSegment[] = [
   { key: 'all', label: 'All' },
   { key: 'standard', label: 'Standard', match: (r) => !!r.canonical_key },
   { key: 'mine', label: 'Your tasks', match: (r) => !r.canonical_key },
+  { key: 'trucks', label: 'Trucks', match: (r) => r.vehicle_type === 'truck' },
+  { key: 'trailers', label: 'Trailers', match: (r) => r.vehicle_type === 'trailer' },
   { key: 'archived', label: 'Archived', match: (r) => r.status === 'archived' },
 ];
 
@@ -50,6 +53,8 @@ export default function ServiceTasks() {
   const [saving, setSaving] = useState(false);
   // Row → its linked-parts editor (what a work order pre-fills).
   const [partsFor, setPartsFor] = useState<ServiceTask | null>(null);
+  // Row → the merge dialog (fold a duplicate into the canonical one).
+  const [mergeFor, setMergeFor] = useState<ServiceTask | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: [...SERVICE_TASKS_KEY, 'all'],
@@ -112,6 +117,12 @@ export default function ServiceTasks() {
         ? <span className="tabular-nums">{Number(v)} h</span>
         : <span className="text-muted-foreground">—</span>),
     },
+    {
+      key: 'vehicle_type', label: 'Applies to', sortable: true, filterable: true,
+      render: (v) => (v
+        ? <span className="capitalize text-sm">{String(v)}s only</span>
+        : <span className="text-muted-foreground">Any vehicle</span>),
+    },
     { key: 'description', label: 'Description', filterable: true,
       render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
     {
@@ -144,9 +155,25 @@ export default function ServiceTasks() {
               updateServiceTask(t.id, { status: 'active' })),
           });
         }
+        // Narrowing a mixed fleet's picker: tag the task for one kind
+        // of unit, or clear it back to "any vehicle".
+        for (const vt of ['truck', 'trailer', ''] as const) {
+          if (t.vehicle_type === vt) continue;
+          actions.push({
+            key: `vt-${vt || 'any'}`,
+            label: vt ? `Applies to ${vt}s only` : 'Applies to any vehicle',
+            separatorBefore: vt === 'truck',
+            onSelect: () => act('Updated', () =>
+              updateServiceTask(t.id, { vehicle_type: vt })),
+          });
+        }
         if (!t.canonical_key) {
           actions.push({
-            key: 'delete', label: 'Delete', danger: true, separatorBefore: true,
+            key: 'merge', label: 'Merge into…', separatorBefore: true,
+            onSelect: () => setMergeFor(t),
+          });
+          actions.push({
+            key: 'delete', label: 'Delete', danger: true,
             onSelect: () => act('Task deleted', () => deleteServiceTask(t.id)),
           });
         }
@@ -186,6 +213,8 @@ export default function ServiceTasks() {
           tableId="service-tasks"
         />
       )}
+
+      <MergeTaskDialog task={mergeFor} onClose={() => setMergeFor(null)} />
 
       <TaskPartsDialog
         task={partsFor}

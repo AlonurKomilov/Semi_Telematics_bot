@@ -19,6 +19,8 @@ export interface ServiceTask {
   description: string;
   expected_labor_hours: number;
   parent_id: number | null;
+  /** '' = any vehicle; narrows the picker on a mixed fleet. */
+  vehicle_type: '' | 'truck' | 'trailer';
   status: 'active' | 'archived';
   created_at: string;
   updated_at: string;
@@ -31,11 +33,13 @@ export const taskValue = (t: ServiceTask): string =>
 export const SERVICE_TASKS_KEY = ['service-tasks'] as const;
 
 export async function fetchServiceTasks(
-  includeArchived = false,
+  includeArchived = false, vehicleType = '',
 ): Promise<{ service_tasks: ServiceTask[]; count: number }> {
-  return apiJSON(
-    `/service-tasks${includeArchived ? '?include_archived=true' : ''}`,
-  );
+  const q = new URLSearchParams();
+  if (includeArchived) q.set('include_archived', 'true');
+  if (vehicleType) q.set('vehicle_type', vehicleType);
+  const qs = q.toString();
+  return apiJSON(`/service-tasks${qs ? `?${qs}` : ''}`);
 }
 
 export async function createServiceTask(body: {
@@ -49,7 +53,8 @@ export async function createServiceTask(body: {
 export async function updateServiceTask(
   id: number,
   body: Partial<Pick<ServiceTask,
-    'name' | 'description' | 'expected_labor_hours' | 'status'>>,
+    'name' | 'description' | 'expected_labor_hours' | 'status'
+    | 'vehicle_type' | 'parent_id'>>,
 ): Promise<ServiceTask> {
   return apiJSON(`/service-tasks/${id}`, { method: 'PUT', body });
 }
@@ -84,4 +89,14 @@ export async function unlinkTaskPart(
   taskId: number, linkId: number,
 ): Promise<void> {
   await apiJSON(`/service-tasks/${taskId}/parts/${linkId}`, { method: 'DELETE' });
+}
+
+/** Fold a duplicate task into the canonical one. Destructive: the
+ *  loser row is gone afterwards, its history repointed at the winner. */
+export async function mergeServiceTasks(
+  loser_id: number, winner_id: number,
+): Promise<void> {
+  await apiJSON('/service-tasks/merge', {
+    method: 'POST', body: { loser_id, winner_id },
+  });
 }

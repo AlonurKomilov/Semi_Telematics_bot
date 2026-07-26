@@ -37,11 +37,15 @@ interface Props {
    *  untagged bucket; maintenance tasks don't). */
   allowEmpty?: boolean;
   emptyLabel?: string;
+  /** 'truck' | 'trailer' — hides tasks tagged for the OTHER kind of
+   *  unit so a mixed fleet's dropdown stays short. Tasks tagged "any
+   *  vehicle" always show, so nothing is ever unreachable. */
+  vehicleType?: string;
 }
 
 export default function ServiceTaskPicker({
   value, onChange, className, canCreate = true,
-  allowEmpty = false, emptyLabel = '— none —',
+  allowEmpty = false, emptyLabel = '— none —', vehicleType = '',
 }: Props) {
   const qc = useQueryClient();
   const [inlineAdding, setInlineAdding] = useState(false);
@@ -50,8 +54,8 @@ export default function ServiceTaskPicker({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: SERVICE_TASKS_KEY,
-    queryFn: () => fetchServiceTasks(),
+    queryKey: [...SERVICE_TASKS_KEY, vehicleType || 'any'],
+    queryFn: () => fetchServiceTasks(false, vehicleType),
     staleTime: 60_000,
   });
 
@@ -73,8 +77,27 @@ export default function ServiceTaskPicker({
   }, [inlineAdding]);
 
   const tasks: ServiceTask[] = data?.service_tasks ?? [];
-  const standard = tasks.filter((t) => t.canonical_key);
-  const custom = tasks.filter((t) => !t.canonical_key);
+  // Subtasks follow their parent, indented (nesting is one level deep,
+  // enforced server-side) so a grouped task list reads as a hierarchy
+  // instead of a flat alphabetical wall.
+  const childrenOf = new Map<number, ServiceTask[]>();
+  for (const t of tasks) {
+    if (t.parent_id) {
+      const list = childrenOf.get(t.parent_id) ?? [];
+      list.push(t);
+      childrenOf.set(t.parent_id, list);
+    }
+  }
+  const withChildren = (list: ServiceTask[]): Array<[ServiceTask, boolean]> =>
+    list.flatMap((t) => [
+      [t, false] as [ServiceTask, boolean],
+      ...(childrenOf.get(t.id) ?? []).map(
+        (c) => [c, true] as [ServiceTask, boolean],
+      ),
+    ]);
+  const topLevel = tasks.filter((t) => !t.parent_id);
+  const standard = withChildren(topLevel.filter((t) => t.canonical_key));
+  const custom = withChildren(topLevel.filter((t) => !t.canonical_key));
   // An archived/removed task still on this record keeps its slot.
   const known = new Set(tasks.map(taskValue));
   const orphan = value && !known.has(value) ? value : '';
@@ -146,16 +169,20 @@ export default function ServiceTaskPicker({
         {standard.length > 0 && (
           <SelectGroup>
             <SelectLabel>Standard</SelectLabel>
-            {standard.map((t) => (
-              <SelectItem key={t.id} value={taskValue(t)}>{t.name}</SelectItem>
+            {standard.map(([t, isChild]) => (
+              <SelectItem key={t.id} value={taskValue(t)}>
+                {isChild ? `\u2514 ${t.name}` : t.name}
+              </SelectItem>
             ))}
           </SelectGroup>
         )}
         {custom.length > 0 && (
           <SelectGroup>
             <SelectLabel>Your tasks</SelectLabel>
-            {custom.map((t) => (
-              <SelectItem key={t.id} value={taskValue(t)}>{t.name}</SelectItem>
+            {custom.map(([t, isChild]) => (
+              <SelectItem key={t.id} value={taskValue(t)}>
+                {isChild ? `\u2514 ${t.name}` : t.name}
+              </SelectItem>
             ))}
           </SelectGroup>
         )}

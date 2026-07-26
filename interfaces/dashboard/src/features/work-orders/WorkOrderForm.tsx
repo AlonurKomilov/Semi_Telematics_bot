@@ -1437,6 +1437,7 @@ export default function WorkOrderForm() {
                     value={gv}
                     onChange={(next) => renameTaskGroup(gv, next)}
                     canCreate={canManageTaskTypes}
+                    vehicleType={wo.vehicle_type || ''}
                     className="w-56"
                   />
                   <span className="text-xs text-muted-foreground tabular-nums">

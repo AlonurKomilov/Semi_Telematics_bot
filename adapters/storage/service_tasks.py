@@ -106,6 +106,7 @@ class ServiceTasksMixin:
 
     async def list_service_tasks(
         self, account_id: int, *, include_archived: bool = False,
+        vehicle_type: str = "",
     ) -> list[dict[str, Any]]:
         """The account's tasks, standards first then custom, A-Z.
 
@@ -118,6 +119,11 @@ class ServiceTasksMixin:
         if not include_archived:
             q += " AND status = ?"
             params.append(TASK_ACTIVE)
+        # Narrowing is additive, never exclusive: a task tagged for
+        # "any vehicle" ('') belongs on every list.
+        if vehicle_type in ("truck", "trailer"):
+            q += " AND vehicle_type IN ('', ?)"
+            params.append(vehicle_type)
         q += " ORDER BY CASE WHEN canonical_key = '' THEN 1 ELSE 0 END, name"
         cur = await self._db.execute(q, params)
         return [dict(r) for r in await cur.fetchall()]
@@ -149,6 +155,7 @@ class ServiceTasksMixin:
         expected_labor_hours: float = 0.0,
         parent_id: Optional[int] = None,
         canonical_key: str = "",
+        vehicle_type: str = "",
         created_by: int = 0,
     ) -> Optional[dict[str, Any]]:
         """Create a task; ``None`` when the name collides (the caller
@@ -173,12 +180,14 @@ class ServiceTasksMixin:
         cur = await self._db.execute(
             "INSERT INTO service_tasks "
             "(account_id, name, name_key, canonical_key, description, "
-            " expected_labor_hours, parent_id, created_by, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            " expected_labor_hours, parent_id, vehicle_type, created_by, "
+            " created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (account_id, name_key) DO NOTHING "
             "RETURNING id",
             (account_id, name, service_task_name_key(name), canonical_key,
              description, float(expected_labor_hours or 0), parent_id,
+             vehicle_type if vehicle_type in ("truck", "trailer") else "",
              created_by, now, now),
         )
         row = await cur.fetchone()
@@ -196,7 +205,8 @@ class ServiceTasksMixin:
         task = await self.get_service_task(task_id, account_id)
         if not task:
             return False
-        allowed = {"description", "expected_labor_hours", "status", "parent_id"}
+        allowed = {"description", "expected_labor_hours", "status",
+                   "parent_id", "vehicle_type"}
         if not task.get("canonical_key"):
             allowed.add("name")
         updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
@@ -204,6 +214,11 @@ class ServiceTasksMixin:
             return False
         if "status" in updates and updates["status"] not in (TASK_ACTIVE, TASK_ARCHIVED):
             return False
+        if "vehicle_type" in updates:
+            vt = str(updates["vehicle_type"]).strip().lower()
+            if vt not in ("", "truck", "trailer"):
+                return False
+            updates["vehicle_type"] = vt
         if "parent_id" in updates:
             pid = updates["parent_id"]
             if pid:
@@ -347,6 +362,121 @@ class ServiceTasksMixin:
             account_id, value, created_by=created_by,
         )
         return int(task["id"]) if task else None
+
+    # ── Merge ────────────────────────────────────────────────────────
+
+    async def merge_service_tasks(
+        self, account_id: int, loser_id: int, winner_id: int,
+    ) -> tuple[bool, str]:
+        """Fold a duplicate task into the canonical one.
+
+        The problem this solves is Fleetio's own: "Brake Job", "brake
+        job" and "Brakes" typed at three different times split every
+        report three ways.  Merging repoints all history onto one task
+        so the numbers add up again.
+
+        Rules:
+          * the LOSER must be one of the account's own tasks — a
+            standard task's ``canonical_key`` is the cross-account
+            identity, so it can only ever be archived;
+          * one-level nesting survives: a loser with subtasks can't
+            fold into a task that is itself a subtask.
+
+        Everything moves in ONE transaction — a half-merged vocabulary
+        would be worse than a duplicated one.  Returns ``(ok, reason)``.
+        """
+        if loser_id == winner_id:
+            return False, "A task can't be merged into itself."
+        loser = await self.get_service_task(loser_id, account_id)
+        winner = await self.get_service_task(winner_id, account_id)
+        if not loser or not winner:
+            return False, "Task not found."
+        if loser.get("canonical_key"):
+            return False, (
+                "Standard tasks can't be merged away — archive it instead, "
+                "or merge your custom task into it."
+            )
+
+        children = [
+            t for t in await self.list_service_tasks(
+                account_id, include_archived=True)
+            if t.get("parent_id") and int(t["parent_id"]) == loser_id
+        ]
+        if children and winner.get("parent_id"):
+            return False, (
+                "That task has subtasks, and the target is itself a subtask "
+                "(only one level of nesting is allowed)."
+            )
+
+        winner_value = winner["canonical_key"] or winner["name"]
+
+        async with self.transaction():
+            # Legacy string columns first, while the loser's id still
+            # identifies its rows — during the dual-write window a stale
+            # reader must not see the old name pointing at a dead task.
+            await self._db.execute(
+                "UPDATE maintenance_tasks SET task_type = ? "
+                "WHERE account_id = ? AND service_task_id = ?",
+                (winner_value, account_id, loser_id),
+            )
+            await self._db.execute(
+                "UPDATE work_order_labor SET service_task = ? "
+                "WHERE account_id = ? AND service_task_id = ?",
+                (winner_value, account_id, loser_id),
+            )
+            # work_order_parts has no account_id — scope via parent WOs.
+            await self._db.execute(
+                "UPDATE work_order_parts SET service_task = ? "
+                "WHERE service_task_id = ? AND work_order_id IN "
+                "  (SELECT id FROM work_orders WHERE account_id = ?)",
+                (winner_value, loser_id, account_id),
+            )
+
+            # Then the references themselves.
+            await self._db.execute(
+                "UPDATE maintenance_tasks SET service_task_id = ? "
+                "WHERE account_id = ? AND service_task_id = ?",
+                (winner_id, account_id, loser_id),
+            )
+            await self._db.execute(
+                "UPDATE work_order_labor SET service_task_id = ? "
+                "WHERE account_id = ? AND service_task_id = ?",
+                (winner_id, account_id, loser_id),
+            )
+            await self._db.execute(
+                "UPDATE work_order_parts SET service_task_id = ? "
+                "WHERE service_task_id = ? AND work_order_id IN "
+                "  (SELECT id FROM work_orders WHERE account_id = ?)",
+                (winner_id, loser_id, account_id),
+            )
+
+            # Linked parts: drop the loser's links that the winner
+            # already has (UNIQUE(service_task_id, part_id)), move the rest.
+            await self._db.execute(
+                "DELETE FROM service_task_parts "
+                "WHERE account_id = ? AND service_task_id = ? AND part_id IN "
+                "  (SELECT part_id FROM service_task_parts "
+                "   WHERE account_id = ? AND service_task_id = ?)",
+                (account_id, loser_id, account_id, winner_id),
+            )
+            await self._db.execute(
+                "UPDATE service_task_parts SET service_task_id = ? "
+                "WHERE account_id = ? AND service_task_id = ?",
+                (winner_id, account_id, loser_id),
+            )
+
+            # Subtasks follow their parent.
+            await self._db.execute(
+                "UPDATE service_tasks SET parent_id = ? "
+                "WHERE account_id = ? AND parent_id = ?",
+                (winner_id, account_id, loser_id),
+            )
+            await self._db.execute(
+                "DELETE FROM service_tasks WHERE id = ? AND account_id = ? "
+                "AND canonical_key = ''",
+                (loser_id, account_id),
+            )
+        return True, ""
 
     # ── Linked parts ─────────────────────────────────────────────────
     #
