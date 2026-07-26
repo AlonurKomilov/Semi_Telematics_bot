@@ -113,13 +113,18 @@ export function useUserPreference<T>(
         if (cancelled) return;
         const raw = res?.value ?? '';
         if (!raw) {
-          // Server has no entry — keep fallback / cache; no PUT needed.
+          // Server has no entry yet — keep the fallback / local cache.
+          // CLEAR the initial skip: there's nothing to echo-suppress, so
+          // the operator's FIRST mutation (e.g. creating a saved tab on a
+          // grid that's never persisted one) MUST reach the server rather
+          // than be swallowed as a phantom echo.
+          skipNextPutRef.current = false;
           setHydrated(true);
           return;
         }
         let parsed: T;
         try { parsed = JSON.parse(raw) as T; }
-        catch { setHydrated(true); return; }
+        catch { skipNextPutRef.current = false; setHydrated(true); return; }
         // Only update state when it actually changed — avoids a spurious
         // render + a write-back loop when local + server already agree.
         const sameAsLocal = JSON.stringify(parsed) === JSON.stringify(value);
@@ -127,6 +132,10 @@ export function useUserPreference<T>(
           skipNextPutRef.current = true;   // don't echo the just-fetched value back
           _setValue(parsed);
           lsSet(key, parsed);
+        } else {
+          // Cache already matched the server — nothing was applied, so the
+          // next setValue is a genuine edit that must persist.
+          skipNextPutRef.current = false;
         }
         setHydrated(true);
       } catch {
