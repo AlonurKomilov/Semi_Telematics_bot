@@ -187,3 +187,96 @@ async def test_ai_proposal_quiet_when_price_is_normal(db, acct):
                    "unit_cost": 95, "total": 95}],
     }, None, acct, db)
     assert "above what you usually pay" not in out["artifacts"][0]["summary"]
+
+
+# ── Company isolation ───────────────────────────────────────────────
+#
+# An account is NOT one company.  A user assigned to Company A must not
+# learn Company B's prices — and the response names the cheapest
+# VENDOR, so a leak would disclose who the other company buys from.
+
+async def _buy_for(db, acct, company, name, unit, *, vendor="Shop A",
+                   vehicle="234", date="2026-07-01"):
+    wo = await db.add_work_order(acct, company, vehicle, vendor,
+                                 service_date=date, status="completed")
+    part = await db.resolve_or_create_part(acct, name)
+    await db.add_work_order_part(
+        wo, part_name=name, part_id=part["id"], quantity=1,
+        unit_cost=unit, total_cost=unit,
+    )
+
+
+@pytest.mark.asyncio
+async def test_company_scope_excludes_the_other_company(db, acct):
+    for price in (90, 95):
+        await _buy_for(db, acct, "AAA", "Brake Pad Set", price, vendor="A Shop")
+    for price in (500, 600):
+        await _buy_for(db, acct, "BBB", "Brake Pad Set", price, vendor="B Secret Shop")
+
+    key = part_name_key("Brake Pad Set")
+    a_only = await db.part_price_context(
+        acct, ["Brake Pad Set"], company_codes=["AAA"])
+    assert a_only[key]["buys"] == 2
+    assert a_only[key]["high"] < 200
+    # The other company's VENDOR must not surface either.
+    assert a_only[key]["cheapest_vendor"] == "A Shop"
+
+    # Unrestricted (owner) still sees the whole account.
+    everything = await db.part_price_context(acct, ["Brake Pad Set"])
+    assert everything[key]["buys"] == 4
+
+
+@pytest.mark.asyncio
+async def test_company_scope_is_case_insensitive(db, acct):
+    for price in (90, 95):
+        await _buy_for(db, acct, "AAA", "Filter X", price)
+    got = await db.part_price_context(
+        acct, ["Filter X"], company_codes=["aaa"])
+    assert got[part_name_key("Filter X")]["buys"] == 2
+
+
+@pytest.mark.asyncio
+async def test_empty_scope_fails_closed(db, acct):
+    """A restriction that resolves to nothing means the caller sees
+    NOTHING — never everything."""
+    for price in (90, 95):
+        await _buy_for(db, acct, "AAA", "Fail Closed Part", price)
+    assert await db.part_price_context(
+        acct, ["Fail Closed Part"], company_codes=[]) == {}
+    assert await db.part_price_context(
+        acct, ["Fail Closed Part"], vehicle_names=[]) == {}
+
+
+@pytest.mark.asyncio
+async def test_vehicle_scope_isolates_the_ai_path(db, acct):
+    """The assistant carries its scope as vehicle names, so isolation
+    rides that axis instead of company codes."""
+    for price in (90, 95):
+        await _buy_for(db, acct, "AAA", "Scoped Part", price, vehicle="234")
+    for price in (700, 800):
+        await _buy_for(db, acct, "BBB", "Scoped Part", price, vehicle="999")
+
+    key = part_name_key("Scoped Part")
+    scoped = await db.part_price_context(
+        acct, ["Scoped Part"], vehicle_names=["234"])
+    assert scoped[key]["buys"] == 2 and scoped[key]["high"] < 200
+    # Case-insensitive on vehicle names too.
+    assert await db.part_price_context(
+        acct, ["Scoped Part"], vehicle_names=["  234 "]) == scoped
+
+
+@pytest.mark.asyncio
+async def test_ai_proposal_respects_vehicle_scope(db, acct):
+    """Door B must not flag using another company's prices."""
+    from features.work_orders.ai_actions import create_work_order_action
+    for price in (700, 800):
+        await _buy_for(db, acct, "BBB", "Cross Part", price, vehicle="999")
+
+    out = await create_work_order_action({
+        "vehicle_name": "234",
+        "parts": [{"name": "Cross Part", "quantity": 1,
+                   "unit_cost": 100, "total": 100}],
+        # Scoped to truck 234 — truck 999's history is off-limits.
+        "_scope_vehicles": ["234"],
+    }, None, acct, db)
+    assert "usually pay" not in out["artifacts"][0]["summary"]

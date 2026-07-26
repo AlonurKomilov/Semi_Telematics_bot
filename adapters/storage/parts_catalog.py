@@ -214,7 +214,10 @@ class PartsCatalogMixin:
     )
 
     async def part_price_context(
-        self, account_id: int, names: list[str], *, months: int = 12,
+        self, account_id: int, names: list[str], *,
+        company_codes: list[str] | None = None,
+        vehicle_names: list[str] | None = None,
+        months: int = 12,
     ) -> dict[str, dict]:
         """"Is this price normal?" — answered from the account's OWN
         buying history, keyed by part NAME.
@@ -232,15 +235,45 @@ class PartsCatalogMixin:
         alike when market data eventually exists beside this).  Parts
         with fewer than 2 purchases are omitted: one prior data point
         isn't a range, and pretending otherwise would flag noise.
+
+        ISOLATION.  An account is not one company: a user assigned to
+        Company A must not learn Company B's prices, and this response
+        names the cheapest VENDOR, so leaking it would disclose who
+        the other company buys from.  Both restriction axes follow the
+        codebase's scope convention — ``None`` means unrestricted,
+        an EMPTY list means restricted to nothing and returns ``{}``
+        (fail closed), never "everything".
+
+          * ``company_codes``  — the caller's allowed companies (the
+            direct axis; what the work-order list filters on).
+          * ``vehicle_names``  — the AI path's equivalent, since the
+            assistant carries its scope as vehicle names rather than
+            company codes.
         """
         keys = {part_name_key(n) for n in (names or []) if part_name_key(n)}
         if not keys:
+            return {}
+        # Fail closed: a restriction that resolves to nothing means the
+        # caller may see nothing, not everything.
+        if company_codes is not None and not company_codes:
+            return {}
+        if vehicle_names is not None and not vehicle_names:
             return {}
         from datetime import datetime, timedelta, timezone
         since = (datetime.now(timezone.utc)
                  - timedelta(days=int(months) * 31)).date().isoformat()
 
         placeholders = ",".join("?" * len(keys))
+        co_clause, co_params = "", []
+        if company_codes:
+            co_clause = ("  AND UPPER(COALESCE(w.company_code, '')) IN ("
+                         + ",".join("?" * len(company_codes)) + ") ")
+            co_params = [str(c).strip().upper() for c in company_codes]
+        veh_clause, veh_params = "", []
+        if vehicle_names:
+            veh_clause = ("  AND LOWER(COALESCE(w.vehicle_name, '')) IN ("
+                          + ",".join("?" * len(vehicle_names)) + ") ")
+            veh_params = [str(v).strip().lower() for v in vehicle_names]
         cur = await self._db.execute(
             f"SELECT c.name_key AS name_key, "
             f"       {self._UNIT_PRICE} AS unit_price, "
@@ -256,8 +289,9 @@ class PartsCatalogMixin:
             f"  AND c.name_key IN ({placeholders}) "
             f"  AND w.service_date IS NOT NULL AND w.service_date >= ? "
             f"  AND w.status != 'void' AND w.payment_status != 'void' "
+            f"{co_clause}{veh_clause}"
             f"ORDER BY w.service_date DESC",
-            (account_id, *sorted(keys), since),
+            (account_id, *sorted(keys), since, *co_params, *veh_params),
         )
         rows = [dict(r) for r in await cur.fetchall()]
 

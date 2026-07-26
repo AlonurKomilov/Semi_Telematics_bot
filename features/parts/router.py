@@ -30,6 +30,7 @@ from pydantic import BaseModel, Field
 
 from interfaces.api.deps import (
     get_tenant_db,
+    get_user_company_codes,
     require_permission,
     require_permission_any,
 )
@@ -108,8 +109,16 @@ async def price_context(
     are simply absent from the response: one data point is a price,
     not a range.
     """
+    # An account is not one company.  A user assigned to Company A must
+    # not learn Company B's prices — and this response names the
+    # cheapest VENDOR, so leaking it would disclose who the other
+    # company buys from.  Same axis the work-order list filters on;
+    # empty list = unrestricted (owners, unassigned users).
+    codes = await get_user_company_codes(user)
     return {"context": await tenant_db.part_price_context(
-        user["account_id"], body.names, months=body.months,
+        user["account_id"], body.names,
+        company_codes=codes or None,
+        months=body.months,
     )}
 
 

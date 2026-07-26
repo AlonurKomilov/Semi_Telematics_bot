@@ -310,9 +310,17 @@ async def create_work_order_action(tool_args, samsara_client,
     # this is the moment they could still question the shop.
     price_note = ""
     if db is not None and account_id is not None and norm["parts"]:
+        # The assistant carries its scope as VEHICLE names (the
+        # write-tool gate's axis), so isolation rides that: a caller
+        # restricted to one company's trucks can't be shown a band
+        # computed from another company's invoices.  ``None`` here
+        # means genuinely unrestricted; an empty scope fails closed
+        # inside part_price_context.
+        _scope = tool_args.get("_scope_vehicles") if tool_args else None
         try:
             ctx = await db.part_price_context(
                 account_id, [p["part_name"] for p in norm["parts"]],
+                vehicle_names=_scope,
             )
         except Exception:      # pragma: no cover — a bonus, never a blocker
             ctx = {}
