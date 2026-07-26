@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { usePreference } from '../../preferences';
 import { Link } from 'react-router-dom';
 import {
   CheckCircle2,
@@ -28,7 +28,6 @@ interface OnboardingBannerProps {
   onDismiss?: () => void;
 }
 
-const STORAGE_KEY = '4truck.onboarding.dismissed';
 
 export default function OnboardingBanner({
   vehicleCount,
@@ -37,13 +36,9 @@ export default function OnboardingBanner({
   scorecardRulesCustomized = false,
   onDismiss,
 }: OnboardingBannerProps) {
-  const [hidden, setHidden] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(STORAGE_KEY) === '1';
-    } catch {
-      return false;
-    }
-  });
+  // Dismissal is a per-user preference (synced — being re-taught the same
+  // banner on a second browser is exactly what this prevents).
+  const { value: hidden, setValue: setHidden } = usePreference('onboarding.dismissed');
 
   const steps: OnboardingStep[] = [
     {
@@ -91,7 +86,6 @@ export default function OnboardingBanner({
 
   const dismiss = () => {
     try {
-      localStorage.setItem(STORAGE_KEY, '1');
     } catch { /* ignore */ }
     setHidden(true);
     onDismiss?.();

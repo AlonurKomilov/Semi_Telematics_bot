@@ -99,6 +99,7 @@ export interface ThemeSetting {
 export type NotifPosition = 'top-right' | 'bottom-right' | 'bottom-center';
 export type BannerLevel = 'all' | 'critical' | 'off';
 export type MaintenanceViewMode = 'list' | 'calendar';
+export type InviteChannel = 'telegram' | 'url' | 'email';
 
 const THEME_DEFAULT: ThemeSetting = {
   color: 'dark-blue', density: 'default', radius: 'rounded',
@@ -240,6 +241,53 @@ export const DEFS = {
     fromLegacy: legacyBool,
     sanitize: asBool,
     note: 'Assistant panel expanded to full height.',
+  }),
+
+  // ── Dismissals ────────────────────────────────────────────────────
+  // "I've seen this, stop showing it."  synced: having dismissed a
+  // one-time explainer is a fact about the PERSON — being re-taught the
+  // same thing on a second browser is the annoyance this prevents.
+  'onboarding.dismissed': def<boolean>({
+    default: false,
+    scope: 'synced',
+    legacyKeys: ['4truck.onboarding.dismissed'],
+    fromLegacy: legacyBool,
+    sanitize: asBool,
+    note: 'Setup banner dismissed.',
+  }),
+  'alerts.routingNudgeDismissed': def<boolean>({
+    default: false,
+    // device — the original module documents this as a PER-BROWSER
+    // dismissal ("advice, not account config"); keeping its author's call.
+    scope: 'device',
+    legacyKeys: ['tg_routing_nudge_dismissed'],
+    fromLegacy: legacyBool,
+    sanitize: asBool,
+    note: 'Telegram-routing nudge dismissed.',
+  }),
+
+  // ── Remembered last choices ───────────────────────────────────────
+  'invites.lastChannel': def<InviteChannel>({
+    // 'telegram' preserves the muscle memory of operators who predate
+    // the 3-channel split (see features/settings/Invites.tsx).
+    default: 'telegram',
+    scope: 'synced',
+    legacyKeys: ['invites.lastChannel'],
+    fromLegacy: (raw) => raw as InviteChannel,
+    sanitize: oneOf<InviteChannel>(['telegram', 'url', 'email']),
+    note: 'Channel pre-selected when creating an invite.',
+  }),
+
+  // ── Dispatch board sound ──────────────────────────────────────────
+  // device, for the same reason as bannerLevel: a wall-mounted dispatch
+  // screen should chime; a laptop in a shared office should not.
+  'dispatch.soundOn': def<boolean>({
+    default: false,
+    scope: 'device',
+    legacyKeys: ['4truck_dispatch_sound_on'],
+    fromLegacy: legacyBool,
+    sanitize: asBool,
+    note: 'Chime when a new live alert arrives.',
   }),
 
   // ── Role preview (Owner/Admin "view as") ──────────────────────────

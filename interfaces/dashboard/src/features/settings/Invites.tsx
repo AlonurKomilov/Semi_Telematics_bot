@@ -30,6 +30,7 @@ import { toneClasses, toneText, statusClasses } from '../../lib/status';
 import { Tip } from '../../components/tooltip';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
+import { usePreference } from '../../preferences';
 
 // Role choices for the create-invite form — the shared assignable-role
 // list (owner excluded; the server rank-check forbids inviting peers /
@@ -188,20 +189,11 @@ export function InvitesPanel() {
   // expect.  Operators who pick URL or Email get it persisted as
   // their personal default going forward.
   type Channel = 'telegram' | 'url' | 'email';
-  const CHANNEL_STORAGE_KEY = 'invites.lastChannel';
-  const readStoredChannel = (): Channel => {
-    try {
-      const v = localStorage.getItem(CHANNEL_STORAGE_KEY);
-      if (v === 'telegram' || v === 'url' || v === 'email') return v;
-    } catch { /* localStorage disabled — fall through */ }
-    return 'telegram';
-  };
-  const [channel, setChannel] = useState<Channel>(readStoredChannel);
+  // Remembered last choice — the default, the valid-value guard and the
+  // legacy 'invites.lastChannel' key live in the preferences registry.
+  const { value: channel, setValue: setChannel } = usePreference('invites.lastChannel');
   const [recipientEmail, setRecipientEmail] = useState('');
-  const persistChannel = (c: Channel) => {
-    setChannel(c);
-    try { localStorage.setItem(CHANNEL_STORAGE_KEY, c); } catch { /* ignore */ }
-  };
+  const persistChannel = (c: Channel) => setChannel(c);
 
   // Duplicate-recipient check.  When the operator types in the
   // Email-channel recipient input, debounce-fetch

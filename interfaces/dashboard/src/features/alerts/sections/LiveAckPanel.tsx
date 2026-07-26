@@ -26,8 +26,8 @@ import { Volume2, VolumeX, Activity, Clock } from 'lucide-react';
 import { useAlertsQuery } from '../_shared/useAlertsQuery';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import type { AlertsResponse, VehiclesAlertsResponse } from '../../../types';
+import { usePreference } from '../../../preferences';
 
-const SOUND_PREF_KEY = '4truck_dispatch_sound_on';
 const LAST_ACK_KEY = '4truck_dispatch_last_ack_iso';
 
 // Short, soft, non-alarming.  Browser-bundled Web Audio so we don't
@@ -97,9 +97,10 @@ export default function LiveAckPanel() {
   const { data, isLoading } = useAlertsQuery();
   const { selected, acking } = useAlertsSelection();
 
-  const [soundOn, setSoundOn] = useState(() => {
-    try { return localStorage.getItem(SOUND_PREF_KEY) === '1'; } catch { return false; }
-  });
+  // Device-scoped preference: a wall-mounted dispatch screen should chime,
+  // a laptop in a shared office should not.  Storage + the legacy
+  // '4truck_dispatch_sound_on' key live in the preferences registry.
+  const { value: soundOn, setValue: setSoundOn } = usePreference('dispatch.soundOn');
   const [lastAck, setLastAck] = useState<string | null>(() => {
     try { return localStorage.getItem(LAST_ACK_KEY); } catch { return null; }
   });
@@ -150,7 +151,6 @@ export default function LiveAckPanel() {
   const toggleSound = () => {
     const next = !soundOn;
     setSoundOn(next);
-    try { localStorage.setItem(SOUND_PREF_KEY, next ? '1' : '0'); } catch { /* ignore */ }
     // Tiny chime on enable to confirm audio works under the current
     // browser gesture-grant rules.
     if (next) playChime();
