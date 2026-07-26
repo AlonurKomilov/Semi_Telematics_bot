@@ -142,7 +142,7 @@ class DeliveryResult:
     the caller's ``correlation_key`` — that's how a source updates a
     delivered message later ("reminder 2/4", "✅ acked") without ever
     speaking the transport's dialect (docs/architecture/
-    alert-dm-migration.md, Phase 1).
+    alert-dm-migration.md).
     """
     ok: bool
     error: str = ""

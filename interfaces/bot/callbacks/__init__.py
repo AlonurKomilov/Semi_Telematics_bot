@@ -483,7 +483,7 @@ _router.prefix("ack_alert_", _ack_alert)
 # Spine-delivered notification actions (``notif_act:{corr_key}:{action}``)
 # — the notifications capability routes the press to whichever source
 # registered the handler (alert.ack, later work_order.approve, …).
-# docs/architecture/alert-dm-migration.md, Phase 2.
+# docs/architecture/alert-dm-migration.md.
 
 async def _notif_action(u, c):
     from capabilities.notifications.actions import handle_action_callback

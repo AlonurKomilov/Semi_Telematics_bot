@@ -1,6 +1,6 @@
 """Alerting's quiet-hours + digest registrations with the spine.
 
-Phase 3 of the DM migration (docs/architecture/alert-dm-migration.md):
+Part of the alert-DM migration (docs/architecture/alert-dm-migration.md):
 the spine owns the deferral MECHANICS (queue under the 'quiet' cadence,
 hourly flush); THIS module hands it the two domain pieces it must stay
 blind to:
@@ -14,9 +14,10 @@ blind to:
 
 Importing this module (from ``capabilities.alerting`` at boot, like
 ``notification_categories`` / ``spine_actions``) performs both
-registrations.  Nothing defers until spine-delivered alert DMs exist
-(Phase 4); the legacy DND path (``dnd.py`` + ``dnd_alert_queue``) keeps
-serving the live pipeline until Phase 5 retires it.  The full
+registrations.  Nothing defers until spine-delivered alert DMs ship
+(the fanout flip); the legacy DND path (``dnd.py`` + ``dnd_alert_queue``)
+keeps serving the live pipeline until the legacy-path cleanup retires
+it.  The full
 shift-handoff REPORT (summary + PDF from ``get_shift_handoff_data``)
 stays a domain job — it aggregates far more than the deferred queue and
 is a report, not a flush.

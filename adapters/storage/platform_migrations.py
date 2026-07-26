@@ -528,7 +528,7 @@ async def migrate_notification_deliveries(conn) -> None:
     ``update_delivery()`` (edit-addresses of sent messages, keyed by the
     source's correlation_key).  Additive; nothing writes until a dispatch
     caller passes a ``correlation_key``
-    (docs/architecture/alert-dm-migration.md, Phase 1)."""
+    (docs/architecture/alert-dm-migration.md)."""
     try:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS notification_deliveries (

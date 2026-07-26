@@ -15,7 +15,7 @@ window for reminders/acks is measured in days, not months.
 
 Design note: this ledger is DELIVERY memory, not domain state — the
 alerting side keeps its ack state machine; this table only remembers
-message addresses (docs/architecture/alert-dm-migration.md, Phase 1).
+message addresses (docs/architecture/alert-dm-migration.md).
 """
 
 from __future__ import annotations

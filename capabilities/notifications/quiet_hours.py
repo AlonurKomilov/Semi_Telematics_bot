@@ -1,6 +1,6 @@
 """Quiet hours — the spine's "don't disturb this person right now" policy.
 
-Phase 3 of the DM migration (docs/architecture/alert-dm-migration.md).
+Part of the alert-DM migration (docs/architecture/alert-dm-migration.md).
 The spine owns the MECHANICS: which channels respect quiet hours, when
 severity overrides them, deferring into the queue and flushing when the
 window ends.  The RULE — *is this user quiet right now?* — belongs to

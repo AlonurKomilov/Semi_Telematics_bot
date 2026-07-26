@@ -1,6 +1,6 @@
-"""Phase 2 of the alert-DM migration — action buttons + callback routing.
+"""Action buttons + callback routing on the notifications spine.
 
-Pins the contract (docs/architecture/alert-dm-migration.md, Phase 2):
+Pins the contract (docs/architecture/alert-dm-migration.md):
 
   • callback data ``notif_act:{correlation_key}:{action_id}`` builds and
     parses round-trip — including correlation keys that contain colons —

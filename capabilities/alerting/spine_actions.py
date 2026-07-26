@@ -1,19 +1,19 @@
 """Alerting's spine action handlers — the MEANING side of a button press.
 
-Phase 2 of the DM migration (docs/architecture/alert-dm-migration.md):
+Part of the alert-DM migration (docs/architecture/alert-dm-migration.md):
 the notifications spine renders the buttons and routes the press here;
 THIS module decides what "acknowledge" means — the same storage cascade
 the dashboard's bulk-ack runs — then asks the spine to update every
 delivered copy of the message.
 
-Correlation-key contract (also what Phase 4 will send with): one logical
-alert occurrence = one ``alert_history`` row, so
+Correlation-key contract (what spine-delivered alert DMs send with):
+one logical alert occurrence = one ``alert_history`` row, so
 
     correlation_key = f"alert:{history_id}"
 
 Importing this module (done from ``capabilities.alerting`` at boot, like
 ``notification_categories``) performs the registration.  Nothing fires
-until spine-delivered alert DMs exist (Phase 4) — registering early just
+until spine-delivered alert DMs ship — registering early just
 means the wire is live the moment the first such DM ships.
 """
 
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 CORRELATION_PREFIX = "alert"
 
-# The button row Phase 4 will attach to spine-delivered alert DMs.
+# The button row spine-delivered alert DMs will carry.
 ACK_ACTION = {"id": "ack", "label": "✅ Acknowledge"}
 
 

@@ -1,4 +1,4 @@
-"""Phase 1 of the alert-DM migration — delivery handles + the edit verb.
+"""Delivery handles + the edit verb on the notifications spine.
 
 Pins the contract docs/architecture/alert-dm-migration.md rests on:
 

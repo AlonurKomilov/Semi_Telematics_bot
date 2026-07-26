@@ -235,7 +235,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     )
     # Quiet-hours deferrals: hourly tick; per-recipient the registered
     # quiet rule decides "window ended → flush".  Drains nothing until
-    # spine-delivered alert DMs ship (alert-dm-migration Phase 4).
+    # spine-delivered alert DMs ship (docs/architecture/alert-dm-migration.md).
     scheduler.add_job(
         job_flush_quiet_deferrals, "cron",
         minute=7, args=[app], id="notification_quiet_flush",
