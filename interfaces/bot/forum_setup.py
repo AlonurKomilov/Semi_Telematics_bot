@@ -17,7 +17,7 @@ from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 
 from adapters.storage import ALERT_TYPE_KEYS
-from capabilities.alerting.forum_client import (
+from capabilities.notifications.forum_client import (
     check_setup_preconditions,
     create_topic,
     delete_topic,
@@ -25,7 +25,7 @@ from capabilities.alerting.forum_client import (
     rename_general,
     TopicAlreadyNamed,
 )
-from capabilities.alerting.forum_topics import FORUM_TOPIC_SPEC, TOPIC_BY_KEY
+from capabilities.notifications.forum_topics import FORUM_TOPIC_SPEC, TOPIC_BY_KEY
 from interfaces.bot.auth import _get_user
 from interfaces.bot.config import logger
 from interfaces.bot.state import get_platform_db
@@ -970,7 +970,7 @@ async def cmd_test_forum(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.debug("testforum: starter message failed: %s", e)
 
-    from capabilities.alerting.forum_topics import TOPIC_BY_KEY
+    from capabilities.notifications.forum_topics import TOPIC_BY_KEY
     sent: list[str] = []
     failed: list[tuple[str, str]] = []
 

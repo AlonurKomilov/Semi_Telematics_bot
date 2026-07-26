@@ -57,10 +57,10 @@ vi.mock('../../components/shell', () => ({
 vi.mock('./DangerZoneSection', () => ({
   default: () => <div data-testid="danger-zone" />,
 }));
-vi.mock('../alerts/DeliveryModeSelector', () => ({
+vi.mock('../notifications/delivery/DeliveryModeSelector', () => ({
   default: () => <div data-testid="delivery-mode" />,
 }));
-vi.mock('../alerts/SubBotRoster', () => ({
+vi.mock('../notifications/delivery/SubBotRoster', () => ({
   default: () => <div data-testid="sub-bot-roster" />,
 }));
 vi.mock('../../components/datagrid', () => ({ default: () => <div data-testid="datagrid" /> }));

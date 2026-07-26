@@ -40,6 +40,17 @@ FORBIDDEN = {
     "capabilities/notifications": ("capabilities.alerting", "features"),
 }
 
+# Narrow, deliberate exemptions (path prefixes, repo-relative).
+# delivery_admin/ is the ALERT-routing config skin that re-homed under
+# notifications (destination/channel config belongs to delivery) — it
+# speaks alert vocabulary (subtype catalog, topic sentinel, persona→type
+# mapping) by nature.  The spine CORE (channels/service/plan/…) stays
+# absolutely walled; anything new that needs alerting belongs here or
+# nowhere.
+EXEMPT_PREFIXES = (
+    "capabilities/notifications/delivery_admin/",
+)
+
 
 def _imports_of(path: Path) -> list[str]:
     """Every module name imported by *path* (import X / from X import Y)."""
@@ -60,6 +71,9 @@ def _violations(root: str, banned: tuple[str, ...]) -> list[str]:
     out: list[str] = []
     for path in sorted((REPO / root).rglob("*.py")):
         if "__pycache__" in path.parts:
+            continue
+        rel = str(path.relative_to(REPO))
+        if any(rel.startswith(p) for p in EXEMPT_PREFIXES):
             continue
         for mod in _imports_of(path):
             for prefix in banned:

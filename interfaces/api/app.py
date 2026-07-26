@@ -22,6 +22,7 @@ from interfaces.api.routes import health
 from features.overview import router as overview_routes
 from interfaces.api.routes import user as user_routes
 from features.settings import router as settings_routes
+from capabilities.notifications import delivery_admin as delivery_admin_routes
 from capabilities.warehouse.telemetry import router as telemetry_routes
 from capabilities.jobs import router as jobs_routes
 from interfaces.api.routes import system as system_routes
@@ -455,6 +456,10 @@ def create_api() -> FastAPI:
         app.include_router(reports_routes.user_router, prefix=prefix)
         app.include_router(costs_routes.router, prefix=prefix)
         app.include_router(settings_routes.router, prefix=prefix)
+        # Delivery-destination admin (team groups, Sub bots, topics) —
+        # notifications' side of the boundary; historical /admin URLs.
+        app.include_router(delivery_admin_routes.routing_router, prefix=prefix)
+        app.include_router(delivery_admin_routes.forum_router, prefix=prefix)
         app.include_router(telemetry_routes.router, prefix=prefix)
         app.include_router(jobs_routes.router, prefix=prefix)
         app.include_router(system_routes.router, prefix=prefix)

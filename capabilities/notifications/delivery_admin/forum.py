@@ -40,7 +40,7 @@ async def get_forum_routing(
     setup wizard should be rendered; when bound it lists each alert
     type, the topic it maps to, and whether the route is active.
     """
-    from capabilities.alerting.forum_topics import FORUM_TOPIC_SPEC
+    from capabilities.notifications.forum_topics import FORUM_TOPIC_SPEC
 
     account_id = user["account_id"]
     group = await platform_db.get_forum_group(account_id)

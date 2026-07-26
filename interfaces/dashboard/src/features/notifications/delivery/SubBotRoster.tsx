@@ -13,10 +13,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { apiJSON } from '../../api/client';
-import { toneClasses } from '../../lib/status';
-import { InfoTip } from '../../components/tooltip';
-import { useRoleView } from '../../context/RoleViewContext';
+import { apiJSON } from '../../../api/client';
+import { toneClasses } from '../../../lib/status';
+import { InfoTip } from '../../../components/tooltip';
+import { useRoleView } from '../../../context/RoleViewContext';
 import { ROLE_ORDER } from './alertRoutingConstants';
 
 interface SubBotRow { persona: string; bot_username: string; is_running: boolean; }

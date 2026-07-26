@@ -1,14 +1,14 @@
 import { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { apiJSON } from '../../api/client';
+import { apiJSON } from '../../../api/client';
 import { FEATURE_GROUPS, SUBTYPE_LABELS } from './alertRoutingConstants';
-import { Switch } from '../../components/ui/switch';
-import { ErrorState } from '../../components/shell';
-import { InfoTip } from '../../components/tooltip';
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
-import { useTimezone } from '../../hooks/useTimezone';
-import { formatDate } from '../../utils/datetime';
+import { Switch } from '../../../components/ui/switch';
+import { ErrorState } from '../../../components/shell';
+import { InfoTip } from '../../../components/tooltip';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../../components/ui/select';
+import { useTimezone } from '../../../hooks/useTimezone';
+import { formatDate } from '../../../utils/datetime';
 import {
   ChevronDown, ChevronRight, Check,
   // Per-alert-type row icons.  The backend still ships `icon_emoji`

@@ -11,8 +11,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { apiJSON } from '../../api/client';
-import { toneClasses } from '../../lib/status';
+import { apiJSON } from '../../../api/client';
+import { toneClasses } from '../../../lib/status';
+import { usePreference } from '../../../preferences';
 import { Check, Info, X } from 'lucide-react';
 
 interface ModeResponse {
@@ -29,11 +30,11 @@ export default function DeliveryModeSelector({
   const { t } = useTranslation();
   const [data, setData] = useState<ModeResponse | null>(null);
   const [busy, setBusy] = useState(false);
-  // Per-browser dismissal — advice, not account config (see the Group
-  // delivery roster, which reads the same flag).
-  const [nudgeDismissed, setNudgeDismissed] = useState(
-    () => localStorage.getItem('tg_routing_nudge_dismissed') === '1',
-  );
+  // Per-browser dismissal — advice, not account config.  Registered
+  // device-scoped in the preferences registry, which also owns the legacy
+  // 'tg_routing_nudge_dismissed' key.
+  const { value: nudgeDismissed, setValue: setNudgeDismissed } =
+    usePreference('alerts.routingNudgeDismissed');
 
   const load = useCallback(() => {
     apiJSON<ModeResponse>('/admin/alert-routing').then(setData).catch(() => setData(null));
@@ -93,10 +94,7 @@ export default function DeliveryModeSelector({
           <button
             type="button"
             aria-label={t('alert_routing.dismiss')}
-            onClick={() => {
-              localStorage.setItem('tg_routing_nudge_dismissed', '1');
-              setNudgeDismissed(true);
-            }}
+            onClick={() => setNudgeDismissed(true)}
             className="ml-auto shrink-0 hover:opacity-70"
           >
             <X size={14} />

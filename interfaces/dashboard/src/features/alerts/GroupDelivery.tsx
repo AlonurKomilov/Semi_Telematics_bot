@@ -24,11 +24,11 @@ import type { BotConfig } from '@/types';
 import { PageHeader, CardSkeleton, EmptyState } from '@/components/shell';
 import { useViewPermissions } from '@/hooks/useViewPermissions';
 import { AlertsTabs } from './AlertsTabs';
-import AlertRoutingSection from './AlertRoutingSection';
-import ForumRoutingSection from './ForumRoutingSection';
+import AlertRoutingSection from '../notifications/delivery/AlertRoutingSection';
+import ForumRoutingSection from '../notifications/delivery/ForumRoutingSection';
 
 export default function GroupDelivery() {
-  const { has } = useViewPermissions();
+  const { has, ready } = useViewPermissions();
   const canManageAccount = has('can_manage_account');
   const canManage = canManageAccount || has('can_manage_role_bot');
 
@@ -39,7 +39,10 @@ export default function GroupDelivery() {
   });
 
   // Direct navigation by someone with neither grant → back to the board.
-  if (!canManage) return <Navigate to="/alerts" replace />;
+  // Only once the answer is authoritative: on a preview view permissions
+  // arrive from a second request, and bouncing during that window broke
+  // every deep link here (the ``replace`` also discarded the URL).
+  if (ready && !canManage) return <Navigate to="/alerts" replace />;
 
   const header = (
     <>
@@ -51,6 +54,13 @@ export default function GroupDelivery() {
       />
     </>
   );
+
+  // Permissions still in flight: the bot-config query is gated on
+  // ``canManage``, so a disabled query would fall through to the
+  // "no bot connected" empty state and blame the account for it.
+  if (!ready) {
+    return <div>{header}<CardSkeleton message="Checking access…" /></div>;
+  }
 
   if (isLoading) {
     return <div>{header}<CardSkeleton message="Loading group delivery…" /></div>;

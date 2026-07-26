@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
-import { apiJSON } from '../../api/client';
-import { toneClasses } from '../../lib/status';
+import { apiJSON } from '../../../api/client';
+import { toneClasses } from '../../../lib/status';
 import { Link } from 'react-router-dom';
 import { AlertTriangle, Check, ChevronDown, ChevronRight, Info } from 'lucide-react';
-import { InfoTip, Tip } from '../../components/tooltip';
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
-import { Switch } from '../../components/ui/switch';
-import { ErrorState } from '../../components/shell';
-import { useRoleView } from '../../context/RoleViewContext';
+import { InfoTip, Tip } from '../../../components/tooltip';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../../components/ui/select';
+import { Switch } from '../../../components/ui/switch';
+import { ErrorState } from '../../../components/shell';
+import { useRoleView } from '../../../context/RoleViewContext';
 import { ROLE_ORDER, TYPE_LABELS, FEATURE_GROUPS, SUBTYPE_LABELS } from './alertRoutingConstants';
 
 // The Telegram Bot card's body controller.  The Routing selector sits
