@@ -392,6 +392,12 @@ class PersonaGroup:
     is_active: bool
     created_at: str
     updated_at: str
+    # Delivery health: per-persona group failures are NOT auto-disabled
+    # (bot kicked / lost admin / group deleted need a human), so the
+    # pipeline stamps the last failure here and the Group delivery
+    # roster surfaces it.  Cleared on the next successful post.
+    last_error: str = ""
+    last_error_at: str = ""
 
 
 @dataclass

@@ -127,7 +127,8 @@
     "mode_change_link": "ka beddel Dejinta → Bot-ka Telegram",
     "single_owner_only": "Akoonkani wuxuu isticmaalaa hal bot wadaag ah — kooxdiisa iyo mowduucyadiisa waxaa maamula milkiile.",
     "subbots_label": "Sub bots",
-    "setup_step_group_bot": "Samee koox Telegram oo ku dar @{{username}}."
+    "setup_step_group_bot": "Samee koox Telegram oo ku dar @{{username}}.",
+    "delivery_failing": "Gudbintu way fashilmaysaa"
   },
   "nav": {
     "overview": "Guudmar",

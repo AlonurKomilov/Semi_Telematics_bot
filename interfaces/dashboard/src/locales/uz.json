@@ -127,7 +127,8 @@
     "mode_change_link": "Sozlamalar → Telegram bot da o‘zgartirish",
     "single_owner_only": "Bu hisob bitta umumiy botdan foydalanadi — uning guruhi va mavzularini egasi boshqaradi.",
     "subbots_label": "Sub bots",
-    "setup_step_group_bot": "Telegram guruh yarating va unga @{{username}} ni qo‘shing."
+    "setup_step_group_bot": "Telegram guruh yarating va unga @{{username}} ni qo‘shing.",
+    "delivery_failing": "Yetkazish ishlamayapti"
   },
   "nav": {
     "overview": "Bosh sahifa",

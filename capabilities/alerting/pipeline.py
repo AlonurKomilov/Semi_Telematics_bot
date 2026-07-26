@@ -1074,6 +1074,14 @@ async def _post_one_target(
             thread_id if thread_id is not None else "-",
             " [aggregate]" if target.is_aggregate else "",
         )
+        if target.persona:
+            # A success heals the roster's delivery-failing stamp
+            # (no-op write unless one is set).
+            try:
+                await get_platform_db().clear_persona_group_failure(
+                    account_id, target.persona)
+            except Exception:
+                pass
         return True
 
     except Exception as e:
@@ -1107,6 +1115,15 @@ async def _post_one_target(
                 "Forum post failed acct=%d type=%s chat=%d — %s",
                 account_id, alert_type, chat_id, e,
             )
+            if target.persona:
+                # Not auto-disabled (needs a human) — but no longer
+                # invisible either: stamp the row so the Group delivery
+                # roster shows "delivery failing" until a post succeeds.
+                try:
+                    await get_platform_db().record_persona_group_failure(
+                        account_id, target.persona, str(e))
+                except Exception:
+                    logger.debug("persona failure stamp failed", exc_info=True)
         return False
 
 

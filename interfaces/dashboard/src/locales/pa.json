@@ -127,7 +127,8 @@
     "mode_change_link": "ਸੈਟਿੰਗਾਂ → Telegram ਬੋਟ ਵਿੱਚ ਬਦਲੋ",
     "single_owner_only": "ਇਹ ਖਾਤਾ ਇੱਕ ਸਾਂਝਾ ਬੋਟ ਵਰਤਦਾ ਹੈ — ਇਸਦੇ ਗਰੁੱਪ ਅਤੇ ਵਿਸ਼ੇ ਇੱਕ ਮਾਲਕ ਪ੍ਰਬੰਧਿਤ ਕਰਦਾ ਹੈ।",
     "subbots_label": "Sub bots",
-    "setup_step_group_bot": "ਇੱਕ Telegram ਗਰੁੱਪ ਬਣਾਓ ਅਤੇ ਉਸ ਵਿੱਚ @{{username}} ਸ਼ਾਮਲ ਕਰੋ।"
+    "setup_step_group_bot": "ਇੱਕ Telegram ਗਰੁੱਪ ਬਣਾਓ ਅਤੇ ਉਸ ਵਿੱਚ @{{username}} ਸ਼ਾਮਲ ਕਰੋ।",
+    "delivery_failing": "ਡਿਲੀਵਰੀ ਅਸਫਲ"
   },
   "nav": {
     "overview": "ਸੰਖੇਪ",

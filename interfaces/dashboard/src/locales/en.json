@@ -985,7 +985,8 @@
     "mode_change_link": "change in Settings → Telegram Bot",
     "single_owner_only": "This account uses one shared bot — its group and topics are managed by an owner.",
     "subbots_label": "Sub bots",
-    "setup_step_group_bot": "Create a Telegram group and add @{{username}} to it."
+    "setup_step_group_bot": "Create a Telegram group and add @{{username}} to it.",
+    "delivery_failing": "Delivery failing"
   },
   "forum_routing": {
     "section_desc": "Connect a Telegram forum group so the bot can post each alert to its own topic. Personal DMs are independent — each user sets their own preferences under Alerts bell → Notification preferences.",

@@ -57,6 +57,7 @@ async def run_all(conn) -> None:
     await migrate_add_users_last_seen(conn)
     await migrate_create_user_sessions(conn)
     await migrate_create_account_persona_groups(conn)
+    await migrate_persona_group_failure_columns(conn)
     await migrate_add_accounts_alert_routing_mode(conn)
     await migrate_create_bot_instances(conn)
     await migrate_create_alert_topics(conn)
@@ -2598,6 +2599,29 @@ async def migrate_create_alert_topics(conn) -> None:
         logger.info("Created alert_topics table")
     except Exception as e:
         logger.error("alert_topics migration failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_persona_group_failure_columns(conn) -> None:
+    """Add delivery-health stamps to ``account_persona_groups`` —
+    per-persona group failures aren't auto-disabled (they need a human),
+    so the pipeline records the last failure and the Group delivery
+    roster surfaces it.  Additive, idempotent."""
+    try:
+        await conn.execute(
+            "ALTER TABLE account_persona_groups "
+            "ADD COLUMN IF NOT EXISTS last_error TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.execute(
+            "ALTER TABLE account_persona_groups "
+            "ADD COLUMN IF NOT EXISTS last_error_at TEXT NOT NULL DEFAULT ''"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.error("persona group failure columns migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

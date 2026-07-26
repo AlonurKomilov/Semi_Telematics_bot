@@ -127,7 +127,8 @@
     "mode_change_link": "cambiar en Ajustes → Bot de Telegram",
     "single_owner_only": "Esta cuenta usa un bot compartido — su grupo y temas los gestiona un propietario.",
     "subbots_label": "Sub bots",
-    "setup_step_group_bot": "Crea un grupo de Telegram y añade @{{username}}."
+    "setup_step_group_bot": "Crea un grupo de Telegram y añade @{{username}}.",
+    "delivery_failing": "Entrega fallando"
   },
   "nav": {
     "overview": "Resumen",

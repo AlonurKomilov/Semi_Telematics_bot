@@ -113,6 +113,7 @@ class AccountPersonaGroupsMixin:
         await self._db.commit()
 
     def _row_to_persona_group(self, row) -> PersonaGroup:
+        keys = row.keys() if hasattr(row, "keys") else ()
         return PersonaGroup(
             id=row["id"],
             account_id=row["account_id"],
@@ -122,4 +123,34 @@ class AccountPersonaGroupsMixin:
             is_active=bool(row["is_active"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            last_error=(row["last_error"] or "") if "last_error" in keys else "",
+            last_error_at=(row["last_error_at"] or "")
+            if "last_error_at" in keys else "",
         )
+
+    async def record_persona_group_failure(
+        self, account_id: int, persona: str, error: str
+    ) -> None:
+        """Stamp the latest delivery failure on the persona's group row —
+        the Group delivery roster shows it until a post succeeds again.
+        Truncated: this is a symptom pointer, not a log."""
+        await self._db.execute(
+            """UPDATE account_persona_groups
+               SET last_error = ?, last_error_at = ?
+               WHERE account_id = ? AND persona = ?""",
+            ((error or "")[:200], self._now(), account_id, persona),
+        )
+        await self._db.commit()
+
+    async def clear_persona_group_failure(
+        self, account_id: int, persona: str
+    ) -> None:
+        """A successful post heals the stamp.  The WHERE guard keeps the
+        happy path a no-op write-wise."""
+        await self._db.execute(
+            """UPDATE account_persona_groups
+               SET last_error = '', last_error_at = ''
+               WHERE account_id = ? AND persona = ? AND last_error <> ''""",
+            (account_id, persona),
+        )
+        await self._db.commit()

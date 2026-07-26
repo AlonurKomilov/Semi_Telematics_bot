@@ -4,8 +4,8 @@ import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import { toneClasses } from '../../lib/status';
 import { Link } from 'react-router-dom';
-import { Check, ChevronDown, ChevronRight, Info } from 'lucide-react';
-import { InfoTip } from '../../components/tooltip';
+import { AlertTriangle, Check, ChevronDown, ChevronRight, Info } from 'lucide-react';
+import { InfoTip, Tip } from '../../components/tooltip';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { Switch } from '../../components/ui/switch';
 import { ErrorState } from '../../components/shell';
@@ -32,6 +32,11 @@ interface PersonaBinding {
   chat_id: number;
   chat_title: string;
   is_active: boolean;
+  // Delivery health — stamped by the backend when a group post fails
+  // (per-persona failures never auto-disable; a human must fix the
+  // group), cleared by the next successful post.
+  last_error?: string;
+  last_error_at?: string;
 }
 
 interface AlertRoutingResponse {
@@ -347,6 +352,18 @@ export default function AlertRoutingSection({
             <Check size={12} />
             {bound.chat_title || bound.chat_id}
           </span>
+          {bound.last_error && (
+            /* Delivery-health warning: posts to this group are failing
+               (bot kicked / group deleted / lost admin) and per-persona
+               routing never self-disables — surface it instead of the
+               silent-forever failure the audit flagged. */
+            <Tip label={bound.last_error}>
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs ${toneClasses('warn')}`}>
+                <AlertTriangle size={12} />
+                {t('alert_routing.delivery_failing')}
+              </span>
+            </Tip>
+          )}
           {editable && (
             confirming === `unbind-${persona}` ? (
               confirmCluster(

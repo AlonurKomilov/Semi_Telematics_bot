@@ -127,7 +127,8 @@
     "mode_change_link": "змінити в Налаштуваннях → Telegram-бот",
     "single_owner_only": "Цей акаунт використовує один спільний бот — його групою та темами керує власник.",
     "subbots_label": "Sub bots",
-    "setup_step_group_bot": "Створіть групу Telegram і додайте до неї @{{username}}."
+    "setup_step_group_bot": "Створіть групу Telegram і додайте до неї @{{username}}.",
+    "delivery_failing": "Доставка не працює"
   },
   "nav": {
     "overview": "Головна",

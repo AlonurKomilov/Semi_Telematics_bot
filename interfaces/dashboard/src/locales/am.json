@@ -127,7 +127,8 @@
     "mode_change_link": "በቅንብሮች → Telegram ቦት ይቀይሩ",
     "single_owner_only": "ይህ መለያ አንድ የጋራ ቦት ይጠቀማል — ቡድኑና ርዕሶቹ በባለቤት ይተዳደራሉ።",
     "subbots_label": "Sub bots",
-    "setup_step_group_bot": "የTelegram ቡድን ይፍጠሩ እና @{{username}} ን ያክሉ።"
+    "setup_step_group_bot": "የTelegram ቡድን ይፍጠሩ እና @{{username}} ን ያክሉ።",
+    "delivery_failing": "ማድረስ አልተሳካም"
   },
   "nav": {
     "overview": "አጠቃላይ እይታ",

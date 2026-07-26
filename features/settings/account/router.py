@@ -315,6 +315,10 @@ async def get_alert_routing_settings(
             "chat_id": r.chat_id,
             "chat_title": r.chat_title,
             "is_active": bool(r.is_active),
+            # Delivery health — stamped by the pipeline on a failed group
+            # post, cleared by the next success; the roster shows it.
+            "last_error": r.last_error,
+            "last_error_at": r.last_error_at,
         }
 
     try:
