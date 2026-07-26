@@ -851,6 +851,18 @@ async def update_my_alerts(
 
     if updates:
         await platform_db.update_user(db_user.id, **updates)
+        # The matrix is the DELIVERY SSOT for personal Telegram alerts
+        # (DM fanout reads it, not the legacy columns) — mirror every
+        # accepted toggle so the save actually changes what arrives.
+        from capabilities.alerting.prefs_mirror import (
+            mirror_alert_prefs_to_matrix)
+        await mirror_alert_prefs_to_matrix(
+            platform_db, db_user,
+            toggles={k[len("alert_"):]: v for k, v in updates.items()
+                     if k.startswith("alert_")
+                     and k != "alert_resolve_receipts"},
+            alerts_on=updates.get("alerts_on"),
+        )
 
     # Echo the post-update state so the dashboard re-syncs without
     # a second roundtrip.

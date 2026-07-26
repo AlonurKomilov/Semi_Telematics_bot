@@ -353,6 +353,9 @@ async def update_delivery(
     edit ("🟢 resolved"), after which nothing should update it again.
     Rows are kept on partial failure so a later retry can finish the job.
     """
+    # Renderers need the routing address to rebuild action buttons on
+    # the edited message (an edit replaces the whole keyboard).
+    content.meta.setdefault("correlation_key", correlation_key)
     try:
         rows = await db.get_notification_deliveries(account_id, correlation_key)
     except Exception as e:

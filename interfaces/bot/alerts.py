@@ -34,6 +34,9 @@ async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Enable alerts and show settings
         platform = get_platform_db()
         await platform.update_user(user.id, alerts_on=True)
+        from capabilities.alerting.prefs_mirror import (
+            mirror_alert_prefs_to_matrix)
+        await mirror_alert_prefs_to_matrix(platform, user, alerts_on=True)
         user = await platform.get_user_by_telegram_id(user.telegram_id)
         context.user_data["_db_user"] = user
 
@@ -66,6 +69,11 @@ async def cmd_alert_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE,
     current = getattr(user, col, True)
     platform = get_platform_db()
     await platform.update_user(user.id, **{col: not current})
+    # Delivery reads the notification matrix — mirror the toggle there
+    # (legacy column stays as the keyboard's checkmark cache).
+    from capabilities.alerting.prefs_mirror import mirror_alert_prefs_to_matrix
+    await mirror_alert_prefs_to_matrix(
+        platform, user, toggles={alert_type: not current})
     user = await platform.get_user_by_telegram_id(user.telegram_id)
     context.user_data["_db_user"] = user
 
@@ -101,6 +109,8 @@ async def cmd_alert_disable_all(update: Update, context: ContextTypes.DEFAULT_TY
     user = context.user_data["_db_user"]
     platform = get_platform_db()
     await platform.update_user(user.id, alerts_on=False)
+    from capabilities.alerting.prefs_mirror import mirror_alert_prefs_to_matrix
+    await mirror_alert_prefs_to_matrix(platform, user, alerts_on=False)
     user = await platform.get_user_by_telegram_id(user.telegram_id)
     context.user_data["_db_user"] = user
 

@@ -810,6 +810,38 @@ async def re_escalate_critical_alerts(app: Application):
             ]
             reminder_text = "\n".join(reminder_lines)
 
+            # Spine-delivered DM copies (delivery ledger keyed
+            # alert:{history_id}): ONE update edits every recorded copy,
+            # keeping the ✅ Acknowledge button (the edit re-renders the
+            # action row).  No-op when the ledger holds nothing for this
+            # occurrence; rows are NOT cleared — later reminders and the
+            # final ack/resolve edit reuse them.
+            spine_reminded = False
+            try:
+                from capabilities.notifications import (
+                    NotificationContent as _NotifContent,
+                    update_delivery as _update_delivery,
+                )
+                from capabilities.alerting.spine_actions import ACK_ACTION
+                _plain = (
+                    f"🟡 Reminder {attempt_n}/{REESCALATE_MAX_ATTEMPTS}"
+                    " — unacknowledged alert\n"
+                    f"🚛 Vehicle #{vname}\n"
+                    f"⏱ {atype.title()} active for {age_str}\n"
+                    "💡 Acknowledge or mute — auto-clears when the "
+                    "condition lifts\n"
+                    f"🔖 #{history_id}"
+                )
+                _results = await _update_delivery(
+                    tenant, account_id, f"alert:{history_id}",
+                    _NotifContent(title="", body=_plain, severity="warning",
+                                  actions=[dict(ACK_ACTION)]),
+                )
+                spine_reminded = any(r.ok for r in _results)
+            except Exception as _se:
+                logger.debug("re_escalate: spine reminder failed for #%s: %s",
+                             history_id, _se)
+
             # Resolve every still-active recipient delivery for this
             # logical alert.  We edit each subscriber's message in place
             # (so they see "[reminder 2/4]" added to the existing alert
@@ -825,7 +857,7 @@ async def re_escalate_critical_alerts(app: Application):
             except Exception as e:
                 logger.debug("re_escalate: deliveries fetch failed: %s", e)
                 deliveries = []
-            if not deliveries:
+            if not deliveries and not spine_reminded:
                 # No active deliveries to remind — likely already acked
                 # via a path that didn't clear history.  Bump count so
                 # we don't loop on this row.
@@ -846,7 +878,7 @@ async def re_escalate_critical_alerts(app: Application):
                     "🔎 Open alert",
                     callback_data=f"back_alert_{deliveries[0]['id']}",
                 ),
-            ]])
+            ]]) if deliveries else None
             kb_group = None
 
             attempt_sent_anywhere = False
@@ -949,7 +981,7 @@ async def re_escalate_critical_alerts(app: Application):
                         continue
                 attempt_sent_anywhere = True
 
-            if attempt_sent_anywhere:
+            if attempt_sent_anywhere or spine_reminded:
                 try:
                     new_count = await tenant.bump_reescalate_attempt(history_id, account_id)
                     sent += 1
