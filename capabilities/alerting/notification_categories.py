@@ -17,8 +17,20 @@ from functools import partial
 
 from capabilities.alerting.relevance import (
     ALERT_TYPE_REQUIRED_PERM,
+    perms_allow_alert_type,
     role_can_receive_alert,
 )
+from adapters.storage.models import Role
+from capabilities.permissions.roles import ROLE_PERMISSIONS
+
+
+def _extra_type_audience(alert_type: str, role) -> bool:
+    """Role → static-default FeatureSet → permission check (ANY-OF)."""
+    try:
+        perms = ROLE_PERMISSIONS.get(Role(str(role)))
+    except ValueError:
+        return False
+    return perms is not None and perms_allow_alert_type(perms, alert_type)
 from capabilities.notifications.categories import (
     BROADCAST,
     NotificationCategory,
@@ -46,19 +58,22 @@ def register_alert_categories() -> None:
             audience=partial(role_can_receive_alert, alert_type=atype),
         ))
     # Profile-upgraded lite types (profiles.py — Board rows + personal
-    # channels, owner decision 2026-07-26).  No users.alert_* legacy
-    # column exists for these, so the audience is a role set rather than
-    # a permission lookup; subscriptions are opt-in via the matrix.
-    for atype, label, roles in (
-        ("documents", "Driver documents", ("hr", "owner", "admin")),
-        ("scorecard", "Scorecard drops",
-         ("safety", "fleet", "owner", "admin")),
+    # channels, owner decision 2026-07-26).  Audience is PERMISSION-
+    # derived (CATEGORY_EXTRA_PERMS — the same SSOT the Board's type
+    # gate reads), never a hard-coded role set: if an account's matrix
+    # takes documents access away from a role, its subscription toggle
+    # and delivery follow automatically at the static-defaults tier
+    # (same known per-account-override limitation as every category —
+    # notifications.md §9d).
+    for atype, label in (
+        ("documents", "Driver documents"),
+        ("scorecard", "Scorecard drops"),
     ):
         register_category(NotificationCategory(
             key=f"alert.{atype}",
             label=label,
             kind=BROADCAST,
-            audience=(lambda role, _rs=roles: str(role) in _rs),
+            audience=partial(_extra_type_audience, atype),
         ))
 
 

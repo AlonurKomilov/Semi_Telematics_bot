@@ -711,6 +711,7 @@ async def post_alert_to_topic(
     subject_id: str = "",
     subject_name: str = "",
     dedup_key: str = "",
+    co: str = "",
 ) -> bool:
     """Public group-post helper for alert paths that don't run through
     ``send_alert()`` — maintenance overdue, doc expiry, Samsara sync,
@@ -763,6 +764,18 @@ async def post_alert_to_topic(
                 dispatch as _notif_dispatch,
             )
             _rk = _PIPELINE_TO_ROUTE_KEY.get(alert_type, alert_type)
+            # Company scope (Team Management → Company Access) — same
+            # predicate build as send_alert's seam: a user restricted
+            # from this alert's company never receives a personal copy.
+            # Empty ``co`` fail-opens, parity with every legacy path.
+            _rf = None
+            if co:
+                from capabilities.alerting.company_scope import (
+                    load_company_scope, user_sees_company)
+                _scope = await load_company_scope(account_id)
+                if any(_scope.values()):
+                    _rf = (lambda uid, role, _co=co, _s=_scope:
+                           user_sees_company(uid, role, _co, _s))
             await _notif_dispatch(
                 get_platform_db(), account_id,
                 _NotifContent(
@@ -772,6 +785,7 @@ async def post_alert_to_topic(
                     severity=(severity or "warning").strip().lower() or "warning",
                 ),
                 channels=("telegram_dm", "email", "web_push"),
+                recipient_filter=_rf,
                 correlation_key=(f"alert:{_history_id}" if _history_id else ""),
             )
         except Exception as _pe:

@@ -247,6 +247,7 @@ async def check_overdue_maintenance(app: Application):
                                        or task.get("vehicle_name") or ""),
                         subject_name=str(task.get("vehicle_name") or ""),
                         dedup_key=f"task:{task['id']}",
+                        co=str(task.get("company_code") or ""),
                     )
                     if posted:
                         continue
@@ -324,6 +325,7 @@ async def check_overdue_by_mileage(app: Application):
                                        or task.get("vehicle_name") or ""),
                         subject_name=str(task.get("vehicle_name") or ""),
                         dedup_key=f"task:{task['id']}",
+                        co=str(task.get("company_code") or ""),
                     )
                     if posted:
                         continue
@@ -404,6 +406,7 @@ async def check_overdue_by_engine_hours(app: Application):
                                        or task.get("vehicle_name") or ""),
                         subject_name=str(task.get("vehicle_name") or ""),
                         dedup_key=f"task:{task['id']}",
+                        co=str(task.get("company_code") or ""),
                     )
                     if posted:
                         continue
@@ -492,6 +495,7 @@ async def check_upcoming_maintenance_warnings(app: Application):
                                        or task.get("vehicle_name") or ""),
                         subject_name=str(task.get("vehicle_name") or ""),
                         dedup_key=f"task:{task['id']}",
+                        co=str(task.get("company_code") or ""),
                     )
                     if not posted:
                         if task["created_by"]:

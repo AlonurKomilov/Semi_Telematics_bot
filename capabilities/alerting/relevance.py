@@ -124,3 +124,27 @@ def role_can_receive_alert(role: Union[Role, str], alert_type: str) -> bool:
     if perms is None:
         return False
     return _role_has_perm(perms, ALERT_TYPE_REQUIRED_PERM[alert_type])
+
+
+# Category / Board visibility for profile-upgraded types (profiles.py).
+# NOT merged into ALERT_TYPE_REQUIRED_PERM: that map also drives the
+# bot's legacy per-type DM toggles, which require a users.alert_<type>
+# column — these types have none (their personal delivery is the
+# notification matrix only).  Same ANY-OF semantics.
+CATEGORY_EXTRA_PERMS: dict[str, Union[str, list[str]]] = {
+    "documents": ["can_manage_driver_docs", "can_driver_docs_own"],
+    "scorecard": ["can_scorecard_all", "can_scorecard_vehicle"],
+}
+
+
+def perms_allow_alert_type(perms, alert_type: str) -> bool:
+    """Permission-SSOT check for ANY alert type against an effective
+    FeatureSet (per-account overrides included when the caller passes
+    the resolved set).  Types in neither map (system, samsara_sync,
+    legacy oddballs) stay visible — fail-open matches the Board's
+    historical behavior for the core family."""
+    req = ALERT_TYPE_REQUIRED_PERM.get(alert_type) \
+        or CATEGORY_EXTRA_PERMS.get(alert_type)
+    if req is None:
+        return True
+    return _role_has_perm(perms, req)

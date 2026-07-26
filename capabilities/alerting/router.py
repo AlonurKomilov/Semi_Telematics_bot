@@ -23,6 +23,20 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
 _FAULT_FMI_RE = re.compile(r"(\d+)-\d+(?=\b|:)")
 
 
+def _filter_types_by_permission(user: dict, alerts: list[dict]) -> list[dict]:
+    """Permission SSOT on the Board: a caller only sees alert TYPES their
+    effective per-account FeatureSet allows (maintenance rows need
+    can_maintenance_*, documents rows need driver-docs access, …).
+    ``_perms`` is stashed by require_permission_any; when absent
+    (legacy path) nothing is hidden — fail-open matches history."""
+    perms = user.get("_perms")
+    if perms is None:
+        return alerts
+    from capabilities.alerting.relevance import perms_allow_alert_type
+    return [a for a in alerts
+            if perms_allow_alert_type(perms, a.get("alert_type") or "")]
+
+
 async def _filter_own(user: dict, alerts: list[dict]) -> list[dict]:
     """If user has only _own permission, filter alerts to their assigned vehicles."""
     if user.get("_matched_perm") != "can_alerts_vehicle":
@@ -239,6 +253,7 @@ async def pending_alerts(
         )
         alerts = [_shape_history_for_pending_api(r) for r in rows]
         if is_driver_scope:
+            alerts = _filter_types_by_permission(user, alerts)
             alerts = await _filter_own(user, alerts)
         if allowed:
             alerts = filter_by_company_map(alerts, allowed, veh_map, key="vehicle_id")
@@ -301,6 +316,7 @@ async def alerts_active_among(
         user["account_id"], id_list)
     alerts = [_shape_history_for_pending_api(r) for r in rows]
     if user.get("_matched_perm") == "can_alerts_vehicle":
+        alerts = _filter_types_by_permission(user, alerts)
         alerts = await _filter_own(user, alerts)
     allowed = await get_user_company_codes(user)
     if allowed:
@@ -398,6 +414,7 @@ async def alerts_aggregate(
     if is_driver_scope:
         rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
         alerts = [_shape_history_for_pending_api(r) for r in rows]
+        alerts = _filter_types_by_permission(user, alerts)
         alerts = await _filter_own(user, alerts)
     else:
         # Pull the full active set bounded by ``days`` so the histogram
@@ -460,6 +477,7 @@ async def pending_alerts_count(
         # gets EVERYTHING about their own truck.
         rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
         alerts = [_shape_history_for_pending_api(r) for r in rows]
+        alerts = _filter_types_by_permission(user, alerts)
         alerts = await _filter_own(user, alerts)
         return {"count": len(alerts)}
 
@@ -537,6 +555,7 @@ async def pending_alerts_by_type(
         # truck (same rule as /pending and /pending/count).
         rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
         alerts = [_shape_history_for_pending_api(r) for r in rows]
+        alerts = _filter_types_by_permission(user, alerts)
         alerts = await _filter_own(user, alerts)
         return {"counts": _tally(alerts, None)}
 
@@ -607,6 +626,7 @@ async def alert_history(
         status=status,
         severity=severity,
     )
+    alerts = _filter_types_by_permission(user, alerts)
     alerts = await _filter_own(user, alerts)
     company_codes = await get_user_company_codes(user)
     if company_codes:
@@ -1059,6 +1079,7 @@ async def alert_by_id(
         raise HTTPException(status_code=404, detail="Alert not found")
     alerts = [_shape_history_for_pending_api(row)]
     if user.get("_matched_perm") == "can_alerts_vehicle":
+        alerts = _filter_types_by_permission(user, alerts)
         alerts = await _filter_own(user, alerts)
     allowed = await get_user_company_codes(user)
     # Same gates as /pending, so a deep-linked alert looks exactly like the

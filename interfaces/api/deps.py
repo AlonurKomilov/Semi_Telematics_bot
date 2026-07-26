@@ -468,6 +468,11 @@ def require_permission_any(*features: str):
         for f in features:
             if getattr(perms, f, False):
                 user["_matched_perm"] = f
+                # Effective per-account FeatureSet (overrides + manager
+                # tier + module masks applied) — downstream reads gate
+                # row-level visibility on it (e.g. the Alerts Board
+                # filters alert TYPES to what the caller may access).
+                user["_perms"] = perms
                 return user
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     return _check

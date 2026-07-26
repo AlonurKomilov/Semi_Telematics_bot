@@ -73,6 +73,7 @@ class _Dispatch:
     async def __call__(self, db, account_id, content, *, channels=None,
                        recipient_filter=None, correlation_key=""):
         self.calls.append({"content": content, "channels": channels,
+                           "recipient_filter": recipient_filter,
                            "correlation_key": correlation_key})
         return []
 
@@ -138,15 +139,63 @@ async def test_board_needs_a_subject(monkeypatch):
 
 # ── category audiences ──────────────────────────────────────────────
 
-def test_documents_category_audience():
+def test_documents_category_audience_is_permission_derived():
     cat = get_category("alert.documents")
     assert cat is not None
     assert cat.audience("hr") and cat.audience("owner")
+    # dispatcher holds neither can_manage_driver_docs nor
+    # can_driver_docs_own in the static defaults.
     assert not cat.audience("dispatcher")
 
 
-def test_scorecard_category_audience():
+def test_scorecard_category_audience_is_permission_derived():
+    """The audience mirrors the PERMISSION matrix (the SSOT), not a
+    hand-picked role list — hr and dispatcher hold can_scorecard_* in
+    the static defaults, so they ARE in the audience."""
     cat = get_category("alert.scorecard")
     assert cat is not None
-    assert cat.audience("safety") and cat.audience("fleet")
-    assert not cat.audience("hr")
+    for role in ("safety", "fleet", "hr", "dispatcher", "owner"):
+        assert cat.audience(role), role
+    assert not cat.audience("unknown_role")
+
+
+# ── permission type-gate + company scope (SSOT guards) ──────────────
+
+class _Perms:
+    """FeatureSet-shaped: attributes are the permission flags."""
+    def __init__(self, **flags):
+        for k, v in flags.items():
+            setattr(self, k, v)
+
+
+def test_board_type_gate_follows_effective_permissions():
+    from capabilities.alerting.router import _filter_types_by_permission
+    rows = [{"alert_type": "fault"}, {"alert_type": "maintenance"},
+            {"alert_type": "documents"}, {"alert_type": "system"}]
+    # A safety-ish set: faults yes, maintenance no, docs yes.
+    user = {"_perms": _Perms(can_faults=True, can_manage_driver_docs=True)}
+    kept = [r["alert_type"] for r in _filter_types_by_permission(user, rows)]
+    assert kept == ["fault", "documents", "system"]   # system = untabled, fail-open
+    # No stashed perms (legacy path) → nothing hidden.
+    assert len(_filter_types_by_permission({}, rows)) == 4
+
+
+@pytest.mark.asyncio
+async def test_personal_fanout_carries_company_predicate(monkeypatch):
+    dispatch = _Dispatch()
+
+    async def _scope(account_id):
+        return {7: ["G1"]}
+    monkeypatch.setattr(
+        "capabilities.alerting.company_scope.load_company_scope", _scope)
+    monkeypatch.setattr(
+        "capabilities.alerting.company_scope.user_sees_company",
+        lambda uid, role, co, scope: not (uid == 7 and co == "G1"))
+    posted, tenant, dispatch = await _post(
+        monkeypatch, alert_type="maintenance", dispatch=dispatch,
+        subject_id="v-105", subject_name="Truck 105",
+        dedup_key="task:7", co="G1")
+    rf = dispatch.calls[0].get("recipient_filter")
+    assert rf is not None
+    assert rf(7, "dispatcher") is False    # G1-restricted user dropped
+    assert rf(8, "dispatcher") is True
