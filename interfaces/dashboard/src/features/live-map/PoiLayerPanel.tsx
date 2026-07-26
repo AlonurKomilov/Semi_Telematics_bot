@@ -10,6 +10,7 @@
 import { useState } from 'react';
 import type L from 'leaflet';
 import { Check, ChevronDown, ChevronUp, Download, Map as MapIcon, Pencil, Trash2, TriangleAlert } from 'lucide-react';
+import { ContextMenu, type MenuAction } from '@/components/ui/context-menu';
 import { POI_GROUPS } from '@/config/poiLayers';
 import type { PoiLayerDef } from '@/config/poiLayers';
 import type { UsePoiLayersResult, PoiFeature } from '@/hooks/usePoiLayers';
@@ -219,9 +220,15 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
             const customMatch    = CUSTOM_ID_RE.exec(def.id);
             const customDbId     = customMatch ? Number(customMatch[1]) : null;
             const showCustomCtrls = canManage && customDbId !== null;
+            // Right-click a custom layer → Edit / Delete (mirrors the ✏/🗑
+            // controls, which stay visible).  Built-in layers get no menu.
+            const layerMenu: MenuAction[] = showCustomCtrls ? [
+              { key: 'edit', label: 'Edit layer', icon: <Pencil size={14} className="text-muted-foreground" />, onSelect: () => setEditorState({ mode: 'edit', layerId: customDbId! }) },
+              { key: 'delete', label: 'Delete layer', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => handleDeleteCustom(customDbId!, def.label) },
+            ] : [];
 
             return (
-              <div key={def.id}>
+              <ContextMenu key={def.id} items={layerMenu} render={<div />}>
                 {/* ── Main toggle row ── */}
                 <label className="flex items-center gap-2.5 cursor-pointer py-0.5 hover:text-foreground group">
                   {/* Checkbox */}
@@ -352,7 +359,7 @@ export default function PoiLayerPanel({ poiHook, leafletMap }: PoiLayerPanelProp
                     )}
                   </>
                 )}
-              </div>
+              </ContextMenu>
             );
   }
 }

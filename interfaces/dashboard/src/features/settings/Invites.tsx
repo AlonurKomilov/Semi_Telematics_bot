@@ -4,12 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { VehiclePicker, type VehicleSummary } from '@/features/maintenance/pickers';
 import { Link as LinkIcon, Plus, Trash2, Copy, Check, Loader2, TimerReset, Mail, Send, ChevronDown, AlertCircle, ShieldAlert } from 'lucide-react';
-import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-} from '../../components/ui/dropdown-menu';
+import { ActionMenu } from '../../components/ui/context-menu';
 import { apiJSON, ApiError } from '../../api/client';
 import type { InviteInfo, InvitesResponse } from '../../types';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
@@ -502,7 +497,7 @@ export function InvitesPanel() {
   /**
    * Per-row clipboard helper — copies whichever URL the operator
    * picks from the per-row split-button (Copy Telegram / Copy URL).
-   * The ``which`` arg lets the same handler serve both DropdownMenu
+   * The ``which`` arg lets the same handler serve both copy-menu
    * items without duplicating the writeText/timeout/error scaffolding.
    */
   function copyLink(code: string, which: 'telegram' | 'url' = 'telegram') {
@@ -829,35 +824,29 @@ export function InvitesPanel() {
               </Tip>
             )}
             {canCopy && (
-              <DropdownMenu>
-                <DropdownMenuTrigger
+              <ActionMenu
+                align="start"
+                items={[
+                  { key: 'telegram', label: t('actions.copy_telegram', { defaultValue: 'Copy Telegram link' }), icon: <Send size={14} className="text-muted-foreground" />, onSelect: () => copyLink(code, 'telegram') },
+                  { key: 'url', label: t('actions.copy_url', { defaultValue: 'Copy URL' }), icon: <LinkIcon size={14} className="text-muted-foreground" />, onSelect: () => copyLink(code, 'url') },
+                ]}
+              >
+                <button
+                  type="button"
                   className={`inline-flex items-center gap-1 text-xs hover:opacity-80 transition-colors ${
                     isJustCopied ? toneText('ok') : 'text-primary'
                   }`}
                   title={t('actions.copy_invite_link', { defaultValue: 'Copy invite link' })}
-                  render={(props) => (
-                    <button type="button" {...props}>
-                      {isJustCopied ? <Check size={12} /> : <Copy size={12} />}
-                      <span className="ml-1">
-                        {isJustCopied
-                          ? t('actions.copied', { defaultValue: 'Copied' })
-                          : t('actions.copy', { defaultValue: 'Copy' })}
-                      </span>
-                      <ChevronDown size={12} className="ml-0.5 opacity-60" aria-hidden="true" />
-                    </button>
-                  )}
-                />
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => copyLink(code, 'telegram')}>
-                    <Send size={12} className="mr-2" />
-                    {t('actions.copy_telegram', { defaultValue: 'Copy Telegram link' })}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => copyLink(code, 'url')}>
-                    <LinkIcon size={12} className="mr-2" />
-                    {t('actions.copy_url', { defaultValue: 'Copy URL' })}
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                >
+                  {isJustCopied ? <Check size={12} /> : <Copy size={12} />}
+                  <span className="ml-1">
+                    {isJustCopied
+                      ? t('actions.copied', { defaultValue: 'Copied' })
+                      : t('actions.copy', { defaultValue: 'Copy' })}
+                  </span>
+                  <ChevronDown size={12} className="ml-0.5 opacity-60" aria-hidden="true" />
+                </button>
+              </ActionMenu>
             )}
             {canResend && (
               <button

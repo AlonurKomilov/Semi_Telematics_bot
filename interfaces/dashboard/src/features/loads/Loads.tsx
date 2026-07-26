@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, Package, Plus } from 'lucide-react';
 import DataGrid from '../../components/datagrid';
+import { loadRowMenu } from './contextMenu';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
 } from '../../components/shell';
@@ -270,6 +271,12 @@ export default function Loads() {
                 }
               : undefined
           }
+          // Right-click → Edit (gated by the same canEditLoad the row
+          // click uses).  Action list lives in ./contextMenu.
+          rowActions={(row) => loadRowMenu(row as unknown as LoadRow, {
+            canEditLoad,
+            openEdit: (r) => { setEditing(r); setDialogOpen(true); },
+          })}
         />
       )}
 

@@ -2,10 +2,10 @@ import { useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, Plus, Paperclip, Receipt, X, ArrowUpRight, ExternalLink } from 'lucide-react';
+import { FileText, Plus, Paperclip, Receipt, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
-import type { MenuAction } from '../../components/ui/context-menu';
+import { workOrderRowMenu } from './contextMenu';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
 } from '../../components/shell';
@@ -386,15 +386,9 @@ export default function WorkOrders() {
             const w = row as unknown as WorkOrder;
             navigate(`/work-orders/${w.id}`);
           }}
-          // Right-click a WO row → Open here / Open in a new tab (the
-          // classic new-tab affordance a plain row click can't offer).
-          rowActions={(row): MenuAction[] => {
-            const path = `/work-orders/${(row as unknown as WorkOrder).id}`;
-            return [
-              { key: 'open', label: 'Open', icon: <ArrowUpRight size={14} className="text-muted-foreground" />, onSelect: () => navigate(path) },
-              { key: 'open-new', label: 'Open in new tab', icon: <ExternalLink size={14} className="text-muted-foreground" />, onSelect: () => window.open(path, '_blank', 'noopener') },
-            ];
-          }}
+          // Right-click a WO row → Open here / Open in a new tab.  The
+          // action list lives in ./contextMenu (feature-local builder).
+          rowActions={(row) => workOrderRowMenu(row as unknown as WorkOrder, { navigate })}
         />
       )}
 

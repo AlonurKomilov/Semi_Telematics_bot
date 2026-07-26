@@ -12,6 +12,7 @@ import {
   Building2, GraduationCap, Snowflake,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+import { ContextMenu, type MenuAction } from '../../components/ui/context-menu';
 
 // Lucide icon per category key.  Falls back to BookOpen when the
 // backend ships a category the frontend hasn't seen yet (forward-
@@ -1159,8 +1160,17 @@ function ArticleCard({
 }: CardProps) {
   const tz = useTimezone();
   const bookmarked = Boolean(a.is_bookmarked);
+  // Right-click the card → Bookmark, plus Edit / Delete for the owner
+  // (the inline controls in the expanded body stay as the visible path).
+  const cardMenu: MenuAction[] = [
+    { key: 'bookmark', label: bookmarked ? 'Remove bookmark' : 'Bookmark', icon: <Pin size={14} className={bookmarked ? 'text-primary fill-current' : 'text-muted-foreground'} />, onSelect: () => onToggleBookmark(a.id, bookmarked) },
+    ...(isOwner ? [
+      { key: 'edit', label: 'Edit', icon: <Pencil size={14} className="text-muted-foreground" />, separatorBefore: true, onSelect: () => onEdit(a) },
+      { key: 'delete', label: 'Delete', icon: <Trash2 size={14} />, danger: true, onSelect: () => onDelete(a.id) },
+    ] : []),
+  ];
   return (
-    <div className="bg-card border border-border rounded-xl overflow-hidden hover:border-border transition-colors">
+    <ContextMenu items={cardMenu} render={<div className="bg-card border border-border rounded-xl overflow-hidden hover:border-border transition-colors" />}>
       {/* Header row.  Native ``<button>`` doesn't allow a nested
           button (the bookmark pin), so we use a div with a click +
           keyboard handler.  The bookmark button stops propagation so
@@ -1273,7 +1283,7 @@ function ArticleCard({
           t={t}
         />
       )}
-    </div>
+    </ContextMenu>
   );
 }
 

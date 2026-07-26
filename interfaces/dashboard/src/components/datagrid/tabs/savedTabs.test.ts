@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { AnyColumn } from '../../types';
+import type { AnyColumn } from '../../../types';
 import {
   rowPassesColFilter, rowMatchesSearch, tabMatch, tabIsEmpty, type SavedTab,
 } from './savedTabs';

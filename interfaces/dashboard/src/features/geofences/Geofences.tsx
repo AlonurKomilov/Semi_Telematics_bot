@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MapPin, Plus } from 'lucide-react';
+import { MapPin, Plus, Eye, Trash2 } from 'lucide-react';
+import { ContextMenu, type MenuAction } from '../../components/ui/context-menu';
 import { apiJSON, apiFetch } from '../../api/client';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { useShellConfig } from '../../hooks/useShellConfig';
@@ -633,8 +634,17 @@ export default function Geofences() {
             <div className="bg-card border border-border rounded-xl p-3 flex-1 overflow-y-auto min-h-0">
               <h3 className="text-xs text-muted-foreground uppercase tracking-wide mb-2">All Zones</h3>
               <ul className="space-y-0.5">
-                {geofences.map((f, i) => (
-                  <li key={i} className="flex items-center gap-1">
+                {geofences.map((f, i) => {
+                  const canDelete = canManage && f.properties?.source === 'platform' && typeof f.properties?.id === 'number';
+                  // Right-click the zone → Open, plus Delete for managers
+                  // on platform-owned zones (Samsara-sourced zones are
+                  // read-only here, same as the inline ✕ gate).
+                  const zoneMenu: MenuAction[] = [
+                    { key: 'open', label: 'Open zone', icon: <Eye size={14} className="text-muted-foreground" />, onSelect: () => { setSelected(f); setPanelMode('detail'); } },
+                    ...(canDelete ? [{ key: 'delete', label: 'Delete zone', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => handleDelete(f.properties!.id as number) }] : []),
+                  ];
+                  return (
+                  <ContextMenu key={i} items={zoneMenu} render={<li className="flex items-center gap-1" />}>
                     <button
                       onClick={() => { setSelected(f); setPanelMode('detail'); }}
                       className={`flex-1 text-left px-2 py-1.5 rounded text-sm transition flex items-center gap-2 ${
@@ -646,7 +656,7 @@ export default function Geofences() {
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ background: f.properties?.source === 'platform' ? GEOFENCE.platform : GEOFENCE.samsara }} />
                       <span className="truncate">{f.properties?.name || `Zone ${i + 1}`}</span>
                     </button>
-                    {canManage && f.properties?.source === 'platform' && typeof f.properties?.id === 'number' && (
+                    {canDelete && (
                       <button
                         onClick={() => handleDelete(f.properties!.id as number)}
                         disabled={deletingId === f.properties?.id}
@@ -656,8 +666,9 @@ export default function Geofences() {
                         {deletingId === f.properties?.id ? '…' : '✕'}
                       </button>
                     )}
-                  </li>
-                ))}
+                  </ContextMenu>
+                  );
+                })}
               </ul>
             </div>
           )}

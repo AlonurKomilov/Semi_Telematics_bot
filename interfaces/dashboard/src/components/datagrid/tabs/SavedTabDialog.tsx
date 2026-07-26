@@ -1,21 +1,41 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ColumnFiltersState } from '@tanstack/react-table';
-import { Plus, X, SlidersHorizontal } from 'lucide-react';
-import type { AnyColumn } from '../../types';
-import { cn } from '../../lib/utils';
+import { Plus, X, SlidersHorizontal, Search } from 'lucide-react';
+import type { AnyColumn } from '../../../types';
+import { cn } from '../../../lib/utils';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
-} from '../ui/dialog';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
+} from '../../ui/dialog';
+import { Button } from '../../ui/button';
+import { Input } from '../../ui/input';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
-} from '../ui/select';
-import ColumnFilterMenu from './ColumnFilterMenu';
+} from '../../ui/select';
+import ColumnFilterMenu from '../ColumnFilterMenu';
 import { computeFacets, isFilterValueEmpty, tabIsEmpty } from './savedTabs';
+import { TAB_ICONS, TAB_ICON_KEYS, TAB_ICON_TERMS } from './tabIcons';
+import { Tip, InfoTip } from '../../tooltip';
+import type { Tone } from '../../../lib/status';
+
+/** Tone choices for the count-badge colour (order matches the picker). */
+const TAB_TONES: Tone[] = ['info', 'ok', 'warn', 'danger', 'neutral'];
+/** Solid swatch class per tone — the picker shows PURE COLOUR (the count
+ *  badge itself renders the softer ``toneClasses`` tint).  Written out
+ *  literally because Tailwind can't see interpolated class names. */
+const TONE_SWATCH: Record<Tone, string> = {
+  info:    'bg-info',
+  ok:      'bg-ok',
+  warn:    'bg-warn',
+  danger:  'bg-danger',
+  neutral: 'bg-muted-foreground',
+};
+/** Plain colour names — the honest label for a colour choice. */
+const TONE_LABEL: Record<Tone, string> = {
+  info: 'Blue', ok: 'Green', warn: 'Amber', danger: 'Red', neutral: 'Grey',
+};
 
 /**
- * Build-a-view dialog.  The whole view is defined HERE — a name plus
+ * Build-a-tab dialog.  The whole tab is defined HERE — a name plus
  * filter rows you add inline (pick a column, pick its value) — so an
  * operator never has to filter the grid first.  Any filters already
  * applied are pre-loaded so "capture what I'm looking at" still works.
@@ -50,18 +70,24 @@ interface SavedTabDialogProps {
   initialName?: string;
   initialFilters: ColumnFiltersState;
   initialSearch?: string;
-  /** Title verb — "Save" for new, "Update" when editing an existing view. */
+  initialTone?: Tone;
+  initialIcon?: string;
+  /** Title verb — "Save" for new, "Update" when editing an existing tab. */
   saveLabel?: string;
   title?: string;
-  /** Human note for the sort the view will also carry (e.g. "Sorted by
+  /** Human note for the sort the tab will also carry (e.g. "Sorted by
    *  Priority ↑"), shown read-only so the operator knows it's captured. */
   capturedSort?: string;
-  onSave: (name: string, filters: ColumnFiltersState, search: string) => void;
+  onSave: (
+    name: string, filters: ColumnFiltersState, search: string,
+    tone?: Tone, icon?: string,
+  ) => void;
 }
 
 export default function SavedTabDialog({
   open, onOpenChange, columns, data,
-  initialName, initialFilters, initialSearch, saveLabel = 'Save tab',
+  initialName, initialFilters, initialSearch, initialTone, initialIcon,
+  saveLabel = 'Save tab',
   title = 'New tab', capturedSort, onSave,
 }: SavedTabDialogProps) {
   const filterable = useMemo(() => columns.filter(c => c.filterable), [columns]);
@@ -71,6 +97,9 @@ export default function SavedTabDialog({
   const [name, setName] = useState('');
   const [draft, setDraft] = useState<ColumnFiltersState>([]);
   const [search, setSearch] = useState('');
+  const [tone, setTone] = useState<Tone | undefined>(undefined);
+  const [icon, setIcon] = useState<string | undefined>(undefined);
+  const [iconQuery, setIconQuery] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [pendingOpen, setPendingOpen] = useState<string | null>(null);
   const anchors = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -81,6 +110,9 @@ export default function SavedTabDialog({
     setName(initialName ?? '');
     setDraft(initialFilters.filter(f => byKey.has(f.id)));
     setSearch(initialSearch ?? '');
+    setTone(initialTone);
+    setIcon(initialIcon);
+    setIconQuery('');
     setEditing(null);
     setPendingOpen(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -110,7 +142,16 @@ export default function SavedTabDialog({
   const used = new Set(draft.map(f => f.id));
   const addable = filterable.filter(c => !used.has(c.key));
 
-  // Save with the no-op rows stripped; block a view that constrains nothing.
+  // Icon search — matches the key AND its synonym terms ("gas" → fuel,
+  // "wheel" → tire), so a user finds an icon by what they call it.
+  const shownIcons = useMemo(() => {
+    const q = iconQuery.trim().toLowerCase();
+    if (!q) return TAB_ICON_KEYS;
+    return TAB_ICON_KEYS.filter(k =>
+      k.includes(q) || (TAB_ICON_TERMS[k] ?? '').includes(q));
+  }, [iconQuery]);
+
+  // Save with the no-op rows stripped; block a tab that constrains nothing.
   const cleaned = draft.filter(f => {
     const col = byKey.get(f.id);
     return col && !isFilterValueEmpty(col.filterMode, f.value);
@@ -119,7 +160,7 @@ export default function SavedTabDialog({
 
   const handleSave = () => {
     if (!canSave) return;
-    onSave(name.trim(), cleaned, search.trim());
+    onSave(name.trim(), cleaned, search.trim(), tone, icon);
     onOpenChange(false);
   };
 
@@ -134,13 +175,16 @@ export default function SavedTabDialog({
           </DialogDescription>
         </DialogHeader>
 
+        {/* The FORM itself never scrolls — it stays a compact, fixed-size
+            dialog.  The only scroll region is the icon panel below, which
+            is capped so the long icon set can't stretch the dialog. */}
         <div className="space-y-4 py-1">
           <div>
-            <label htmlFor="view-name" className="block text-xs font-medium text-muted-foreground mb-1.5">
-              View name
+            <label htmlFor="tab-name" className="block text-xs font-medium text-muted-foreground mb-1.5">
+              Tab name
             </label>
             <Input
-              id="view-name"
+              id="tab-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Cameras"
@@ -247,6 +291,134 @@ export default function SavedTabDialog({
                 </Select>
               </div>
             )}
+          </div>
+
+          {/* Appearance — personal recognition only; no effect on scope.
+              Explanations live behind ⓘ (learn-once helper text rule). */}
+          <div className="border-t border-border pt-3 space-y-3">
+            <div className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1">
+              Appearance
+              <InfoTip
+                size={12}
+                label="Optional. A colour and icon make this tab easier to spot in the strip — neither changes what the tab shows."
+              />
+            </div>
+            <div>
+              <div className="text-xs font-medium text-muted-foreground mb-1.5 inline-flex items-center gap-1">
+                Colour
+                <InfoTip size={12} label="Tints the count badge only — not the whole tab." />
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* None → the default (untinted) count badge. */}
+                <Tip label="No colour">
+                  <button
+                    type="button"
+                    onClick={() => setTone(undefined)}
+                    aria-label="No colour"
+                    aria-pressed={tone === undefined}
+                    className={cn(
+                      'size-6 rounded-full border border-dashed border-muted-foreground/60 transition',
+                      tone === undefined
+                        ? 'ring-2 ring-foreground ring-offset-2 ring-offset-background'
+                        : 'hover:border-ring',
+                    )}
+                  />
+                </Tip>
+                {TAB_TONES.map((t) => (
+                  <Tip key={t} label={TONE_LABEL[t]}>
+                    <button
+                      type="button"
+                      onClick={() => setTone(t)}
+                      aria-label={TONE_LABEL[t]}
+                      aria-pressed={tone === t}
+                      className={cn(
+                        'size-6 rounded-full transition', TONE_SWATCH[t],
+                        tone === t
+                          ? 'ring-2 ring-foreground ring-offset-2 ring-offset-background'
+                          : 'hover:opacity-80',
+                      )}
+                    />
+                  </Tip>
+                ))}
+              </div>
+            </div>
+            <div>
+              {/* "None" CLEARS the choice — it's an action, not a member of
+                  the icon set, so it lives on the label row rather than as
+                  an odd-shaped tile inside the grid.  The count tells the
+                  operator how much is in the panel (and how much a search
+                  narrowed it). */}
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="text-xs font-medium text-muted-foreground inline-flex items-center gap-1">
+                  Icon
+                  <InfoTip size={12} label="Shows before the tab name, in place of the dot." />
+                  <span className="font-normal">
+                    · {iconQuery.trim()
+                        ? `${shownIcons.length} of ${TAB_ICON_KEYS.length}`
+                        : TAB_ICON_KEYS.length}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIcon(undefined)}
+                  aria-pressed={icon === undefined}
+                  className={cn(
+                    'h-6 px-2 rounded-md border text-2xs transition',
+                    icon === undefined
+                      ? 'border-foreground text-foreground'
+                      : 'border-border text-muted-foreground hover:border-ring',
+                  )}
+                >
+                  None
+                </button>
+              </div>
+              <div className="relative mb-1.5">
+                <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+                <Input
+                  value={iconQuery}
+                  onChange={(e) => setIconQuery(e.target.value)}
+                  placeholder="Search icons"
+                  className="h-8 pl-7 text-xs"
+                  aria-label="Search icons"
+                />
+              </div>
+              {/* The icon set lives in its OWN bordered panel with its own
+                  scroll — the dialog stays a fixed, compact size while the
+                  whole set stays browsable (the common case when you don't
+                  know an icon's name; search is the shortcut, not the only
+                  path).  This is also the shape that scales if the set ever
+                  grows to lucide's full ~1,700. */}
+              <div className="flex flex-wrap gap-1.5 max-h-48 overflow-y-auto rounded-md border border-border bg-muted/20 p-2">
+                {shownIcons.map((key) => {
+                  const Icon = TAB_ICONS[key];
+                  return (
+                    <Tip key={key} label={key}>
+                      <button
+                        type="button"
+                        onClick={() => setIcon(key)}
+                        aria-label={`Icon ${key}`}
+                        aria-pressed={icon === key}
+                        className={cn(
+                          // Same selected-state language as the colour
+                          // swatches: a ring, not a border-colour swap.
+                          'size-7 rounded-md border inline-flex items-center justify-center transition',
+                          icon === key
+                            ? 'border-transparent bg-primary/10 text-foreground ring-2 ring-foreground ring-offset-2 ring-offset-background'
+                            : 'border-border text-muted-foreground hover:border-ring',
+                        )}
+                      >
+                        <Icon size={14} />
+                      </button>
+                    </Tip>
+                  );
+                })}
+                {shownIcons.length === 0 && (
+                  <p className="text-2xs text-muted-foreground italic py-1.5">
+                    No icons match “{iconQuery.trim()}”.
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
 
           {capturedSort && (

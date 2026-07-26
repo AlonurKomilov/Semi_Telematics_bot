@@ -25,7 +25,7 @@ import {
 import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Rows3, Rows2, Rows4,
   Search, X, Columns3, Download, Copy, Filter as FilterIcon, ArrowUpDown,
-  CornerUpRight, ListTree, Plus, MoreVertical, Pencil, Trash2, Star,
+  CornerUpRight, ListTree, Plus, Pencil, Trash2, Star,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
@@ -56,13 +56,17 @@ import ColumnHeaderMenu from './ColumnHeaderMenu';
 import ManageColumnsMenu from './ManageColumnsMenu';
 import {
   type SavedTab, rowPassesColFilter, tabMatch,
-} from './savedTabs';
-import SavedTabDialog from './SavedTabDialog';
+} from './tabs/savedTabs';
+import SavedTabDialog from './tabs/SavedTabDialog';
+import { TAB_ICONS } from './tabs/tabIcons';
+import { toneClasses, type Tone } from '../../lib/status';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../ui/select';
 import { Button } from '../ui/button';
+import { ContextMenu, type MenuAction } from '../ui/context-menu';
 import { Tip } from '../tooltip';
+import { toast } from 'sonner';
 import { exportRowsAsCsv, buildTsv, writeToClipboard } from '../../lib/csv';
 import { useUserPreference } from '../../hooks/useUserPreference';
 
@@ -152,6 +156,12 @@ interface DataGridProps {
   columns: AnyColumn[];
   data: Record<string, unknown>[];
   onRowClick?: (row: Record<string, unknown>) => void;
+  /** Per-row RIGHT-CLICK actions.  Return the ``MenuAction[]`` for a given
+   *  row (the domain object) and the grid wraps that row in a context menu
+   *  — Open / Edit / Delete etc.  Return ``[]`` to give a row no menu.
+   *  Additive: left-click / inline buttons are untouched.  Pages gate the
+   *  actions by permission themselves (return fewer items when read-only). */
+  rowActions?: (row: Record<string, unknown>) => MenuAction[];
   searchKey?: string | string[];
   stickyHeader?: string;
   searchPlaceholder?: string;
@@ -246,14 +256,17 @@ interface DataGridProps {
    *  Pass a module-level constant (not an inline literal) so the
    *  array identity is stable across renders. */
   segments?: DataGridSegment[];
-  /** Enable user-managed "saved views" — personal tabs an operator
+  /** Enable user-managed saved tabs — personal tabs an operator
    *  builds from the current filters (a "+ New tab" affordance beside
-   *  the tabs).  Each view applies as an ISOLATED scope, exactly like a
+   *  the tabs).  Each tab applies as an ISOLATED scope, exactly like a
    *  built-in segment, and persists per-user (``table.<id>.views``).
-   *  Requires ``tableId``.  Views sit AFTER any built-in ``segments``;
-   *  on a grid with no segments an implicit "All" tab leads.  A view
-   *  saved while on a built-in segment (Active) COMPOSES with it, so it
-   *  scopes within that lifecycle slice, not across all of them. */
+   *  This is the SECOND kind of tab: unlike ``segments`` (code-defined,
+   *  account-wide) these are user-defined and per-user — see the
+   *  two-kinds note atop savedTabs.ts.  Requires ``tableId``.  Saved
+   *  tabs sit AFTER any built-in ``segments``; on a grid with no
+   *  segments an implicit "All" tab leads.  A tab saved while on a
+   *  built-in segment (Active) COMPOSES with it, so it scopes within
+   *  that lifecycle slice, not across all of them. */
   savedTabs?: boolean;
 }
 
@@ -276,11 +289,14 @@ const groupsKey     = (id: string | undefined) =>
   id ? `table.${id}.groups` : '';
 const rowGroupKey   = (id: string | undefined) =>
   id ? `table.${id}.rowGroup` : '';
+// NOTE: the ``.views`` / ``.defaultView`` suffixes are the ORIGINAL
+// stored key names, deliberately preserved through the view→tab rename
+// — renaming them would orphan every user's saved tabs.  Don't "fix".
 const tabsKey      = (id: string | undefined) =>
   id ? `table.${id}.views` : '';
 const defaultTabKey = (id: string | undefined) =>
   id ? `table.${id}.defaultView` : '';
-// Saved-view segment keys are prefixed so a view tab is never confused
+// Saved-tab segment keys are prefixed so a saved tab is never confused
 // with a code-defined segment.  ``__all__`` is the implicit "everything"
 // tab shown when a grid has no built-in segments.
 const TAB_PREFIX = 'tab:';
@@ -306,6 +322,10 @@ export interface DataGridSegment {
   /** Hide the count badge (e.g. on an "All" tab where the number is
    *  noise).  Defaults to showing it. */
   showCount?: boolean;
+  /** Personal-tab customization carried through to the strip render:
+   *  ``tone`` colours the count badge, ``iconKey`` is a leading icon. */
+  tone?: Tone;
+  iconKey?: string;
 }
 
 /** One folder-style segment tab.
@@ -327,16 +347,26 @@ export interface DataGridSegment {
  *  curve into a clean concave sweep tangent to both the vertical wall
  *  and the horizontal card border. */
 function SegmentTab({
-  label, count, showCount, active, onClick, dot,
+  label, count, showCount, active, onClick, dot, iconKey, countTone, manageable,
 }: {
   label: string;
   count: number;
   showCount: boolean;
   active: boolean;
   onClick: () => void;
-  /** Small accent dot before the label — marks a personal saved view. */
+  /** Personal tab: advertises the Shift+F10 / Menu-key path to its
+   *  right-click management menu for keyboard + AT users. */
+  manageable?: boolean;
+  /** Small accent dot before the label — marks a personal saved tab.
+   *  Superseded by ``iconKey`` when the tab has a chosen icon. */
   dot?: boolean;
+  /** Optional leading lucide icon (personal-tab customization); when set
+   *  it renders in place of the dot, BEFORE the label. */
+  iconKey?: string;
+  /** Optional tone colouring the COUNT badge only (not the whole tab). */
+  countTone?: Tone;
 }) {
+  const LeadIcon = iconKey ? TAB_ICONS[iconKey] : undefined;
   const btnRef = useRef<HTMLButtonElement | null>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
   useLayoutEffect(() => {
@@ -413,6 +443,7 @@ function SegmentTab({
       type="button"
       role="tab"
       aria-selected={active}
+      aria-keyshortcuts={manageable ? 'Shift+F10' : undefined}
       onClick={onClick}
       className={cn(
         // No extra bottom-margin on the active tab: the strip already
@@ -448,15 +479,23 @@ function SegmentTab({
         </svg>
       )}
       <span className="relative z-10 inline-flex items-center gap-1.5">
-        {dot && (
+        {LeadIcon ? (
+          // The tab's chosen icon leads the label (neutral-coloured — only
+          // the count badge takes a tone).  Takes the dot's place.
+          <LeadIcon size={14} className={cn('shrink-0', active ? 'text-foreground' : 'text-muted-foreground')} />
+        ) : dot ? (
           <span aria-hidden className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-        )}
+        ) : null}
         {label}
         {showCount && (
           <span
             className={cn(
               'tabular-nums text-2xs px-1.5 py-0.5 rounded-full',
-              active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
+              // A chosen tone colours the number only; otherwise the count
+              // follows the active/inactive default.
+              countTone
+                ? toneClasses(countTone)
+                : active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground',
             )}
           >
             {count.toLocaleString()}
@@ -487,7 +526,7 @@ type GroupRun = {
 const noShiftStrategy: SortingStrategy = () => null;
 
 export default function DataGrid({
-  columns, data: sourceData, onRowClick, searchKey, stickyHeader, searchPlaceholder,
+  columns, data: sourceData, onRowClick, rowActions, searchKey, stickyHeader, searchPlaceholder,
   headerToolbar, tableId, firstColumnLeading, rowGroupHeader, defaultRowGroup,
   defaultAggregation,
   enableToolbar = true, enablePagination = true, segments,
@@ -535,7 +574,7 @@ export default function DataGrid({
   // Column layout / density stay persisted; WHICH SLICE you're
   // looking at resets to the default like the page's filters do.
   // ``searchKeys`` lives up here (ahead of the table) because a saved
-  // view's scope predicate matches on the SAME global-search keys the
+  // tab's scope predicate matches on the SAME global-search keys the
   // live grid uses.
   const searchKeys = useMemo(() => {
     if (!searchKey) return [];
@@ -543,9 +582,9 @@ export default function DataGrid({
   }, [searchKey]);
   const hasSearch = searchKeys.length > 0;
 
-  // Personal saved views — persisted per-user (no-op store when the
+  // Personal saved tabs — persisted per-user (no-op store when the
   // feature or tableId is off).  Each becomes a SEGMENT whose ``match``
-  // is the view's captured filters, so it flows through the identical
+  // is the tab's captured filters, so it flows through the identical
   // scoping (``sourceData.filter(match)``), counting, and tab rendering
   // as a code-defined segment — isolated, no cross-tab leak, for free.
   const {
@@ -555,13 +594,19 @@ export default function DataGrid({
   } = useUserPreference<SavedTab[]>(
     savedTabsEnabled ? tabsKey(tableId) : '', NO_TABS,
   );
+  // One-time coach-mark: after an operator makes their FIRST personal tab,
+  // teach right-click management (there's no ⋮ button).  Global per-user
+  // flag so it fires once across every grid, not once per table.
+  const { value: tabCoachSeen, setValue: setTabCoachSeen } = useUserPreference<boolean>(
+    savedTabsEnabled ? 'datagrid.savedTabCoachSeen' : '', false,
+  );
   const tabSegments = useMemo<DataGridSegment[]>(() => {
     if (!savedTabsEnabled) return [];
     return savedTabList.map(v => {
       const own = tabMatch(v, columns, searchKeys);
-      // Compose with the segment the view was captured under, if it still
-      // exists — so the view stays inside that lifecycle scope (a stale
-      // baseSegment simply drops to the view's own filters).
+      // Compose with the segment the tab was captured under, if it still
+      // exists — so the tab stays inside that lifecycle scope (a stale
+      // baseSegment simply drops to the tab's own filters).
       const base = v.baseSegment
         ? (segments ?? []).find(s => s.key === v.baseSegment)?.match
         : undefined;
@@ -569,6 +614,8 @@ export default function DataGrid({
         key: TAB_PREFIX + v.id,
         label: v.name,
         match: base ? (row) => base(row) && own(row) : own,
+        tone: v.tone,
+        iconKey: v.icon,
       };
     });
   }, [savedTabsEnabled, savedTabList, columns, searchKeys, segments]);
@@ -576,7 +623,7 @@ export default function DataGrid({
     const builtIn = segments ?? [];
     if (!savedTabsEnabled) return builtIn;
     // No built-in segments → an implicit "All" tab leads so the operator
-    // can always leave a view and see the full set again.
+    // can always leave a tab and see the full set again.
     const base = builtIn.length ? builtIn : [{ key: ALL_KEY, label: 'All' }];
     return [...base, ...tabSegments];
   }, [segments, savedTabsEnabled, tabSegments]);
@@ -584,13 +631,13 @@ export default function DataGrid({
   const [segmentPref, setSegmentPref] = useState<string>(effectiveSegments[0]?.key ?? '');
   const activeSegment = useMemo(() => {
     if (!effectiveSegments.length) return null;
-    // Selected key may reference a tab that no longer exists (a view was
+    // Selected key may reference a tab that no longer exists (a tab was
     // deleted, config changed) — fall back to the first.
     return effectiveSegments.find(s => s.key === segmentPref) ?? effectiveSegments[0];
   }, [effectiveSegments, segmentPref]);
 
-  // A view can be the DEFAULT tab (opens on load).  Stored as the view
-  // id per-user; applied once, after the views have loaded.
+  // A tab can be the DEFAULT (opens on load).  Stored as the tab
+  // id per-user; applied once, after the tabs have loaded.
   const {
     value: defaultTab,
     setValue: setDefaultTab,
@@ -610,15 +657,15 @@ export default function DataGrid({
     if (effectiveSegments.some(s => s.key === key)) {
       setSegmentPref(key);
     }
-    // Whether or not the (possibly-deleted) default view resolved, the
+    // Whether or not the (possibly-deleted) default tab resolved, the
     // one-shot is spent once both prefs are hydrated.
     appliedDefault.current = true;
   }, [defaultHydrated, tabsHydrated, defaultTab, effectiveSegments]);
 
-  // Applying a view's captured SORT when it becomes the active tab (click
-  // or default-on-load).  Keyed only on the active VIEW id, so it fires
-  // when you SWITCH views — not while you re-sort within one — and never
-  // for a built-in tab.  A view with no captured sort leaves sort as-is.
+  // Applying a tab's captured SORT when it becomes the active tab (click
+  // or default-on-load).  Keyed only on the active TAB id, so it fires
+  // when you SWITCH tabs — not while you re-sort within one — and never
+  // for a built-in tab.  A tab with no captured sort leaves sort as-is.
   const activeTabId = activeSegment?.key.startsWith(TAB_PREFIX)
     ? activeSegment.key.slice(TAB_PREFIX.length) : null;
   useEffect(() => {
@@ -642,45 +689,75 @@ export default function DataGrid({
     return sourceData.filter(activeSegment.match);
   }, [sourceData, activeSegment]);
 
-  // ── view CRUD ────────────────────────────────────────────────────
+  // ── saved-tab CRUD ───────────────────────────────────────────────
   // The New / Edit dialog owns the name + filter picking; these just
   // persist what it returns.  ``tabDialog`` = null (closed), 'new', or
-  // the view being edited.
+  // the tab being edited.
   const [tabDialog, setTabDialog] = useState<SavedTab | 'new' | null>(null);
-  const commitTab = useCallback((name: string, filters: ColumnFiltersState, search: string) => {
+  const commitTab = useCallback((
+    name: string, filters: ColumnFiltersState, search: string,
+    tone?: Tone, icon?: string,
+  ) => {
     // The live ``sorting`` belongs to the ACTIVE tab.  Grouping + column
-    // layout stay the grid's global per-user settings; a view doesn't
+    // layout stay the grid's global per-user settings; a tab doesn't
     // touch them.
     const liveSort = sorting.length ? sorting : undefined;
     if (tabDialog === 'new') {
       const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
       // Compose with the built-in segment we're inside (Active/Archive) —
-      // not the implicit "All" tab or another view.
+      // not the implicit "All" tab or another saved tab.
       const cur = segmentPref;
       const baseSegment = cur && cur !== ALL_KEY && !cur.startsWith(TAB_PREFIX)
         ? cur : undefined;
       setSavedTabList(prev => [...prev, {
         id, name, filters, search: search || undefined, sort: liveSort, baseSegment,
+        tone, icon,
       }]);
       setSegmentPref(TAB_PREFIX + id);
+      // First personal tab ever → teach the (icon-less) right-click menu.
+      if (!tabCoachSeen) {
+        toast('Tip: right-click a tab to rename, recolor, or delete it.', { duration: 6000 });
+        setTabCoachSeen(true);
+      }
     } else if (tabDialog) {
       const editId = tabDialog.id;
-      // Only re-capture the live sort when editing the view you're
+      // Only re-capture the live sort when editing the tab you're
       // actually ON — otherwise ``sorting`` is some OTHER tab's sort and
-      // would stomp this view's saved one.  Keep its own sort otherwise.
+      // would stomp this tab's saved one.  Keep its own sort otherwise.
       const sort = editId === activeTabId ? liveSort : tabDialog.sort;
       setSavedTabList(prev => prev.map(v => (
-        v.id === editId ? { ...v, name, filters, search: search || undefined, sort } : v
+        v.id === editId ? { ...v, name, filters, search: search || undefined, sort, tone, icon } : v
       )));
     }
-  }, [tabDialog, segmentPref, setSavedTabList, sorting, activeTabId]);
+  }, [tabDialog, segmentPref, setSavedTabList, sorting, activeTabId, tabCoachSeen, setTabCoachSeen]);
   const deleteTab = useCallback((id: string) => {
+    // Capture the tab + its position BEFORE removal so Undo can restore it
+    // in place — a saved tab took effort (name, filters, colour, icon), so
+    // a mis-click shouldn't wipe it with no recourse.
+    const idx = savedTabList.findIndex(v => v.id === id);
+    const removed = idx >= 0 ? savedTabList[idx] : undefined;
+    const wasDefault = defaultTab === id;
     setSavedTabList(prev => prev.filter(v => v.id !== id));
     setSegmentPref(prev => (prev === TAB_PREFIX + id ? (segments?.[0]?.key ?? ALL_KEY) : prev));
     setDefaultTab(prev => (prev === id ? '' : prev));   // don't leave a dangling default
-  }, [setSavedTabList, segments, setDefaultTab]);
-  // Reorder personal views (⋮ → Move left / right) — swap with the
-  // neighbour in the saved list.
+    if (!removed) return;
+    toast(`Deleted "${removed.name}"`, {
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          setSavedTabList(prev => {
+            if (prev.some(v => v.id === removed.id)) return prev;   // already restored
+            const next = prev.slice();
+            next.splice(Math.min(idx, next.length), 0, removed);
+            return next;
+          });
+          if (wasDefault) setDefaultTab(removed.id);
+        },
+      },
+    });
+  }, [savedTabList, defaultTab, setSavedTabList, segments, setDefaultTab]);
+  // Reorder personal tabs (right-click → Move left / right) — swap with
+  // the neighbour in the saved list.
   const moveTab = useCallback((id: string, dir: -1 | 1) => {
     setSavedTabList(prev => {
       const i = prev.findIndex(v => v.id === id);
@@ -691,6 +768,73 @@ export default function DataGrid({
       return next;
     });
   }, [setSavedTabList]);
+  // Duplicate a tab — a fresh id + "… copy" name, same scope/sort/style,
+  // inserted right after the original (a starting point to tweak).
+  const duplicateTab = useCallback((id: string) => {
+    setSavedTabList(prev => {
+      const i = prev.findIndex(v => v.id === id);
+      if (i < 0) return prev;
+      const newId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+      const copy: SavedTab = { ...prev[i], id: newId, name: `${prev[i].name} copy` };
+      const next = prev.slice();
+      next.splice(i + 1, 0, copy);
+      return next;
+    });
+  }, [setSavedTabList]);
+
+  // A personal tab's management actions, declared ONCE as data and fed to
+  // the right-click ContextMenu on the tab (see components/ui/context-menu).
+  // Edit / Set-default / Move / Delete — the same set the ⋮ menu used to
+  // hold, now reached by right-clicking the tab itself.
+  const buildTabActions = useCallback((tabId: string): MenuAction[] => {
+    const idx = savedTabList.findIndex(v => v.id === tabId);
+    const isDefault = defaultTab === tabId;
+    return [
+      {
+        key: 'edit',
+        label: 'Edit tab',
+        icon: <Pencil size={14} className="text-muted-foreground" />,
+        onSelect: () => {
+          const v = savedTabList.find(x => x.id === tabId);
+          if (v) setTabDialog(v);
+        },
+      },
+      {
+        key: 'default',
+        label: isDefault ? 'Default tab · clear' : 'Set as default tab',
+        icon: <Star size={14} className={isDefault ? 'text-primary fill-current' : 'text-muted-foreground'} />,
+        onSelect: () => setDefaultTab(isDefault ? '' : tabId),
+      },
+      {
+        key: 'left',
+        label: 'Move left',
+        icon: <ChevronLeft size={14} className="text-muted-foreground" />,
+        disabled: idx <= 0,
+        onSelect: () => moveTab(tabId, -1),
+      },
+      {
+        key: 'right',
+        label: 'Move right',
+        icon: <ChevronRight size={14} className="text-muted-foreground" />,
+        disabled: idx >= savedTabList.length - 1,
+        onSelect: () => moveTab(tabId, 1),
+      },
+      {
+        key: 'duplicate',
+        label: 'Duplicate tab',
+        icon: <Copy size={14} className="text-muted-foreground" />,
+        onSelect: () => duplicateTab(tabId),
+      },
+      {
+        key: 'delete',
+        label: 'Delete tab',
+        icon: <Trash2 size={14} />,
+        danger: true,
+        separatorBefore: true,
+        onSelect: () => deleteTab(tabId),
+      },
+    ];
+  }, [savedTabList, defaultTab, setTabDialog, setDefaultTab, moveTab, duplicateTab, deleteTab]);
 
   // ── Column-layout state (visibility / order / pinning) ─────
   //
@@ -987,7 +1131,7 @@ export default function DataGrid({
           const isDateRange = col.filterMode === 'date-range';
           // NOTE: this is the tanstack-Row form of the same logic that
           // ``rowPassesColFilter`` (savedTabs.ts) applies to raw rows —
-          // keep the two in sync so a saved view scopes exactly like the
+          // keep the two in sync so a saved tab scopes exactly like the
           // live filter it was captured from.  (They match today because
           // every column uses ``accessorKey``, so ``row.getValue(key)``
           // equals ``row.original[key]``.)
@@ -2315,6 +2459,10 @@ export default function DataGrid({
             const active = seg.key === activeSegment?.key;
             const prev = i > 0 ? effectiveSegments[i - 1] : undefined;
             const prevActive = prev?.key === activeSegment?.key;
+            // ``isTab`` = the ONE discriminator between the two tab kinds:
+            // a personal SAVED TAB (TAB_PREFIX key) vs a built-in segment
+            // (Active/Archive, no prefix).  Only saved tabs get the accent
+            // dot + ⋮ management menu; built-ins render plain.
             const isTab = seg.key.startsWith(TAB_PREFIX);
             const prevIsTab = prev?.key.startsWith(TAB_PREFIX);
             const tabId = isTab ? seg.key.slice(TAB_PREFIX.length) : '';
@@ -2322,7 +2470,7 @@ export default function DataGrid({
               <Fragment key={seg.key}>
                 {/* A firmer divider marks the boundary between the
                     code-defined segments and the operator's personal
-                    views; a hairline otherwise separates two INACTIVE
+                    tabs; a hairline otherwise separates two INACTIVE
                     neighbours (it vanishes next to the active tab so the
                     folder silhouette stays clean). */}
                 {isTab && !prevIsTab && i > 0 ? (
@@ -2331,78 +2479,31 @@ export default function DataGrid({
                   <span aria-hidden className="self-center w-px h-4 bg-border" />
                 )}
                 {isTab ? (
-                  // The ⋮ options button is a SIBLING of the tab (a real
-                  // <button>), never nested inside the tab's own <button>
-                  // — nesting interactive-in-interactive is invalid HTML
-                  // and broke keyboard activation.
-                  <span className="relative inline-flex items-end">
-                    <SegmentTab
-                      dot
-                      label={seg.label}
-                      count={segmentCounts[seg.key] ?? 0}
-                      showCount={seg.showCount !== false}
-                      active={active}
-                      onClick={() => setSegmentPref(seg.key)}
-                    />
-                  <MenuPrimitive.Root>
-                    <MenuPrimitive.Trigger
-                      render={(props) => (
-                        <button
-                          {...props}
-                          type="button"
-                          aria-label={`Options for ${seg.label}`}
-                          onClick={(e) => { e.stopPropagation(); props.onClick?.(e); }}
-                          className="self-center mb-1 -ml-1.5 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted inline-flex"
-                        >
-                          <MoreVertical size={14} />
-                        </button>
-                      )}
-                    />
-                    <MenuPrimitive.Portal>
-                      <MenuPrimitive.Positioner align="start" sideOffset={4} className="z-50 outline-none">
-                        <MenuPrimitive.Popup className="min-w-48 bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
-                          <MenuPrimitive.Item
-                            onClick={() => {
-                              const v = savedTabList.find(x => x.id === tabId);
-                              if (v) setTabDialog(v);
-                            }}
-                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground"
-                          >
-                            <Pencil size={14} className="text-muted-foreground" /> Edit tab
-                          </MenuPrimitive.Item>
-                          <MenuPrimitive.Item
-                            onClick={() => setDefaultTab(defaultTab === tabId ? '' : tabId)}
-                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground"
-                          >
-                            <Star size={14} className={defaultTab === tabId ? 'text-primary fill-current' : 'text-muted-foreground'} />
-                            {defaultTab === tabId ? 'Default tab · clear' : 'Set as default tab'}
-                          </MenuPrimitive.Item>
-                          <MenuPrimitive.Item
-                            disabled={savedTabList.findIndex(v => v.id === tabId) <= 0}
-                            onClick={() => moveTab(tabId, -1)}
-                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed"
-                          >
-                            <ChevronLeft size={14} className="text-muted-foreground" /> Move left
-                          </MenuPrimitive.Item>
-                          <MenuPrimitive.Item
-                            disabled={savedTabList.findIndex(v => v.id === tabId) >= savedTabList.length - 1}
-                            onClick={() => moveTab(tabId, 1)}
-                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-foreground data-[disabled]:opacity-40 data-[disabled]:cursor-not-allowed"
-                          >
-                            <ChevronRight size={14} className="text-muted-foreground" /> Move right
-                          </MenuPrimitive.Item>
-                          <div className="my-1 border-t border-border" />
-                          <MenuPrimitive.Item
-                            onClick={() => deleteTab(tabId)}
-                            className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent text-danger"
-                          >
-                            <Trash2 size={14} /> Delete tab
-                          </MenuPrimitive.Item>
-                        </MenuPrimitive.Popup>
-                      </MenuPrimitive.Positioner>
-                    </MenuPrimitive.Portal>
-                  </MenuPrimitive.Root>
-                  </span>
+                  // Personal tab: RIGHT-CLICK the tab to manage it (Edit /
+                  // Set-default / Move / Delete) — the actions live in
+                  // ``buildTabActions`` and render through the shared
+                  // ContextMenu.  The blue dot + the "Right-click…" hint are
+                  // the discoverability cues that replaced the old ⋮ button.
+                  <ContextMenu items={buildTabActions(tabId)} className="items-end">
+                    {/* Tip's render-composition needs a DOM node to merge
+                        onto; SegmentTab keeps its own internal ref, so the
+                        hover hint rides this wrapping span. */}
+                    <Tip label="Right-click to manage (rename · color · delete)">
+                      <span className="inline-flex items-end">
+                        <SegmentTab
+                          dot
+                          manageable
+                          iconKey={seg.iconKey}
+                          countTone={seg.tone}
+                          label={seg.label}
+                          count={segmentCounts[seg.key] ?? 0}
+                          showCount={seg.showCount !== false}
+                          active={active}
+                          onClick={() => setSegmentPref(seg.key)}
+                        />
+                      </span>
+                    </Tip>
+                  </ContextMenu>
                 ) : (
                   <SegmentTab
                     label={seg.label}
@@ -2968,54 +3069,60 @@ export default function DataGrid({
                 // VISUAL index (post-filter, post-sort), so it stays
                 // consistent regardless of underlying data order.
                 const isZebra = rowIdx % 2 === 1;
-                return (
-                  <TableRow
-                    key={row.id}
-                    onClick={(e) => handleRowClick(e, row.id, row.original)}
-                    data-state={isSelected ? 'selected' : undefined}
-                    style={isSelected
-                      // 3px inset shadow on the left edge — paints the
-                      // primary-coloured accent stripe without using
-                      // ``border-l`` (which would shift the row by 3px
-                      // because ``<tr>`` borders interact with
-                      // ``border-collapse`` differently than divs).
-                      ? { boxShadow: 'inset 3px 0 0 0 var(--primary)' }
-                      : undefined}
-                    className={cn(
-                      onRowClick ? 'cursor-pointer' : '',
-                      isZebra && !isSelected && 'bg-muted/30',
-                      // Primary-tinted background on selected rows
-                      // wins over zebra so the multi-row selection
-                      // stays visible across the table.
-                      isSelected && 'bg-primary/10 hover:bg-primary/15',
-                    )}
-                  >
-                    {row.getVisibleCells().map((cell, cIdx) => (
-                      <PinnedBodyCell
-                        key={cell.id}
-                        cell={cell}
-                        padding={padding}
-                        selected={isSelected}
-                        zebra={isZebra}
-                        // Indent the first DATA cell of leaf rows under an
-                        // expanded group so children read as nested (the
-                        // select column, when present, keeps its fixed
-                        // width — indenting it would just shift checkboxes).
-                        indent={cIdx === (bulkSelection ? 1 : 0) && !!rowGroupBy}
-                        // The per-row checkbox renders into the dedicated
-                        // select column (cIdx 0 when on); firstColumnLeading
-                        // rides the first DATA column, one slot right.
-                        leadingContent={
-                          bulkSelection && cIdx === 0
-                            ? (isRowSelectable && !isRowSelectable(row.original)
-                                ? undefined
-                                : renderRowBox(row.id, row.original))
-                            : cIdx === (bulkSelection ? 1 : 0)
-                              ? firstColumnLeading?.cell?.(row.original)
-                              : undefined
-                        }
-                      />
-                    ))}
+                const rowMenu = rowActions ? rowActions(row.original) : [];
+                const cells = row.getVisibleCells().map((cell, cIdx) => (
+                  <PinnedBodyCell
+                    key={cell.id}
+                    cell={cell}
+                    padding={padding}
+                    selected={isSelected}
+                    zebra={isZebra}
+                    // Indent the first DATA cell of leaf rows under an
+                    // expanded group so children read as nested (the
+                    // select column, when present, keeps its fixed
+                    // width — indenting it would just shift checkboxes).
+                    indent={cIdx === (bulkSelection ? 1 : 0) && !!rowGroupBy}
+                    // The per-row checkbox renders into the dedicated
+                    // select column (cIdx 0 when on); firstColumnLeading
+                    // rides the first DATA column, one slot right.
+                    leadingContent={
+                      bulkSelection && cIdx === 0
+                        ? (isRowSelectable && !isRowSelectable(row.original)
+                            ? undefined
+                            : renderRowBox(row.id, row.original))
+                        : cIdx === (bulkSelection ? 1 : 0)
+                          ? firstColumnLeading?.cell?.(row.original)
+                          : undefined
+                    }
+                  />
+                ));
+                const rowProps: React.ComponentPropsWithoutRef<'tr'> & { 'data-state'?: 'selected' } = {
+                  onClick: (e) => handleRowClick(e, row.id, row.original),
+                  'data-state': isSelected ? 'selected' : undefined,
+                  // 3px inset shadow on the left edge — paints the
+                  // primary-coloured accent stripe without using
+                  // ``border-l`` (which would shift the row by 3px because
+                  // ``<tr>`` borders interact with ``border-collapse``
+                  // differently than divs).
+                  style: isSelected ? { boxShadow: 'inset 3px 0 0 0 var(--primary)' } : undefined,
+                  className: cn(
+                    onRowClick ? 'cursor-pointer' : '',
+                    isZebra && !isSelected && 'bg-muted/30',
+                    // Primary-tinted background on selected rows wins over
+                    // zebra so the multi-row selection stays visible.
+                    isSelected && 'bg-primary/10 hover:bg-primary/15',
+                  ),
+                };
+                // Right-click menu wraps the ROW: the trigger MERGES onto
+                // the <tr> (render prop) — a <span> can't legally wrap a
+                // table row.  No actions → a plain row, zero overhead.
+                return rowMenu.length > 0 ? (
+                  <ContextMenu key={row.id} items={rowMenu} render={<TableRow {...rowProps} />}>
+                    {cells}
+                  </ContextMenu>
+                ) : (
+                  <TableRow key={row.id} {...rowProps}>
+                    {cells}
                   </TableRow>
                 );
               })
@@ -3197,6 +3304,8 @@ export default function DataGrid({
           initialName={tabDialog === 'new' ? '' : tabDialog.name}
           initialFilters={tabDialog === 'new' ? columnFilters : tabDialog.filters}
           initialSearch={tabDialog === 'new' ? (hasSearch ? globalFilter : '') : (tabDialog.search ?? '')}
+          initialTone={tabDialog === 'new' ? undefined : tabDialog.tone}
+          initialIcon={tabDialog === 'new' ? undefined : tabDialog.icon}
           capturedSort={(() => {
             // Mirror EXACTLY what commitTab will persist, so the note
             // never disagrees: live sort for a new tab or the active

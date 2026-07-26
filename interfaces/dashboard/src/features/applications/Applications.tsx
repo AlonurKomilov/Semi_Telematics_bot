@@ -13,6 +13,7 @@ import { APEX_DOMAIN } from '../../lib/safeReturnTo';
 import { formatDate } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
 import DataGrid, { type DataGridSegment, type BulkAction } from '../../components/datagrid';
+import { ContextMenu, type MenuAction } from '../../components/ui/context-menu';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../components/ui/select';
@@ -557,8 +558,16 @@ export default function Applications() {
               const expired = !!l.expires_at
                 && new Date(l.expires_at).getTime() < Date.now();
               const live = l.is_active === 1 && !expired;
+              // Right-click the link → the same actions as the inline
+              // buttons (which stay as the visible affordance).
+              const linkMenu: MenuAction[] = [
+                ...(live ? [{ key: 'copy', label: 'Copy link', icon: <Copy size={14} className="text-muted-foreground" />, onSelect: () => copyLink(l) }] : []),
+                ...(l.is_active === 1 ? [{ key: 'edit', label: 'Edit link', icon: <Pencil size={14} className="text-muted-foreground" />, onSelect: () => setEditingLink(l.id) }] : []),
+                ...(live ? [{ key: 'revoke', label: 'Revoke', icon: <Ban size={14} />, danger: true, separatorBefore: true, onSelect: () => revokeLink(l.id) }] : []),
+                ...(!live ? [{ key: 'delete', label: 'Delete permanently', icon: <Trash2 size={14} />, danger: true, separatorBefore: true, onSelect: () => deleteLink(l.id) }] : []),
+              ];
               return (
-              <li key={l.id} className="text-sm">
+              <ContextMenu key={l.id} items={linkMenu} render={<li className="text-sm" />}>
                 <div className="flex items-center gap-2">
                   <span className={`px-2 py-0.5 rounded text-xs ${
                     l.is_active !== 1 ? statusClasses('disabled')
@@ -622,7 +631,7 @@ export default function Applications() {
                     onCancel={() => setEditingLink(null)}
                     onCompaniesChanged={loadCompanies} />
                 )}
-              </li>
+              </ContextMenu>
               );
             })}
           </ul>

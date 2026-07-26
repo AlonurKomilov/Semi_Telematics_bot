@@ -11,7 +11,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '.
 import { apiJSON, apiFetch } from '../../api/client';
 import { toast } from 'sonner';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
-import { Menu as MenuPrimitive } from '@base-ui/react/menu';
+import { ActionMenu } from '../../components/ui/context-menu';
 import { useTeamMembersQuery } from './useTeamMembers';
 import StatusBadge from '../../components/StatusBadge';
 import RoleBadge, { ROLE_LABEL, ASSIGNABLE_ROLES, roleTone } from '../../components/RoleBadge';
@@ -2103,39 +2103,34 @@ function IntegrationLinksPanel({ members, onChanged }: {
   const LinkMemberMenu = ({ pool, onPick }: {
     pool: AdminUser[];
     onPick: (userId: number) => void;
-  }) => (
-    <MenuPrimitive.Root>
-      <MenuPrimitive.Trigger
-        render={(props) => (
-          <Button
-            {...props}
-            type="button"
-            variant="outline"
-            size="xs"
-            disabled={busy || pool.length === 0}
-            title={pool.length === 0 ? 'No eligible members to link' : undefined}
-          >
-            Link to member…
-          </Button>
-        )}
-      />
-      <MenuPrimitive.Portal>
-        <MenuPrimitive.Positioner align="start" sideOffset={4} className="z-50 outline-none">
-          <MenuPrimitive.Popup className="max-h-64 min-w-44 overflow-y-auto bg-popover text-popover-foreground border border-border rounded-md shadow-lg py-1 outline-none">
-            {pool.map((m) => (
-              <MenuPrimitive.Item
-                key={m.id}
-                onClick={() => onPick(m.id)}
-                className="w-full px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent"
-              >
-                {m.display_name || `#${m.id}`}
-              </MenuPrimitive.Item>
-            ))}
-          </MenuPrimitive.Popup>
-        </MenuPrimitive.Positioner>
-      </MenuPrimitive.Portal>
-    </MenuPrimitive.Root>
-  );
+  }) => {
+    const trigger = (
+      <Button
+        type="button"
+        variant="outline"
+        size="xs"
+        disabled={busy || pool.length === 0}
+        title={pool.length === 0 ? 'No eligible members to link' : undefined}
+      >
+        Link to member…
+      </Button>
+    );
+    // Empty pool → the disabled button stands alone (ActionMenu renders
+    // nothing when it has no items, which would drop the affordance).
+    if (pool.length === 0) return trigger;
+    return (
+      <ActionMenu
+        align="start"
+        items={pool.map((m) => ({
+          key: String(m.id),
+          label: m.display_name || `#${m.id}`,
+          onSelect: () => onPick(m.id),
+        }))}
+      >
+        {trigger}
+      </ActionMenu>
+    );
+  };
 
   const columns: AnyColumn[] = [
     { key: 'name', label: 'Name', sortable: true },

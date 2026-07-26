@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import { Pencil, Plus, Truck } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';
+import { vehicleRowMenu } from './contextMenu';
 import StatusBadge from '../../components/StatusBadge';
 import { Freshness, InfoTip, Tip } from '../../components/tooltip';
 import { useInventoryAlerts } from './inventory/useInventory';
@@ -234,6 +235,25 @@ export default function Vehicles() {
   const { t } = useTranslation();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const navigate = useNavigate();
+  // The detail-page path for a vehicle row.  Shared by the row click and
+  // the right-click menu so both route identically.
+  //
+  // Route is mounted at root (`vehicles/:name`), not under `/fleet/`; the
+  // persona context (fleet./dispatch./safety.) is carried by the subdomain
+  // so the URL path stays neutral.  The ``?company=`` query param
+  // disambiguates cross-company vehicle-name collisions — two trucks named
+  // "103" in different companies under one account are legal; without the
+  // qualifier the detail page renders whichever row landed first.
+  const vehiclePath = (row: Record<string, unknown>): string => {
+    const name = String(row.name ?? '');
+    const company = String(
+      (row as { _org?: unknown; company?: unknown })._org
+      ?? (row as { _org?: unknown; company?: unknown }).company
+      ?? '',
+    ).trim();
+    const qs = company ? `?company=${encodeURIComponent(company)}` : '';
+    return `/vehicles/${encodeURIComponent(name)}${qs}`;
+  };
   const { persona } = useShellConfig();
   // Gate on the ACTIVE VIEW's permission (viewHas), not the logged-in
   // user's own (has).  Otherwise an Owner previewing the Fleet persona
@@ -449,27 +469,15 @@ export default function Vehicles() {
           // or a street name should all narrow the list, not just the
           // vehicle number.
           searchKey={['name', 'company', 'status', 'address']}
-          onRowClick={(row) => {
-            // Route is mounted at root (`vehicles/:name`), not under
-            // `/fleet/`; the persona context (fleet./dispatch./safety.)
-            // is carried by the subdomain so the URL path stays neutral.
-            //
-            // The ``?company=`` query param disambiguates cross-company
-            // vehicle-name collisions.  Two trucks named "103" in
-            // different companies under the same account are legal;
-            // without the qualifier the detail page would arbitrarily
-            // render whichever row landed first in the API response.
-            const name = String(row.name ?? '');
-            const company = String(
-              (row as { _org?: unknown; company?: unknown })._org
-              ?? (row as { _org?: unknown; company?: unknown }).company
-              ?? '',
-            ).trim();
-            const qs = company
-              ? `?company=${encodeURIComponent(company)}`
-              : '';
-            navigate(`/vehicles/${encodeURIComponent(name)}${qs}`);
-          }}
+          onRowClick={(row) => navigate(vehiclePath(row))}
+          // Right-click → Open / Open in new tab / Edit (managers,
+          // registry rows).  Action list lives in ./contextMenu.
+          rowActions={(row) => vehicleRowMenu(row as unknown as Vehicle, {
+            path: vehiclePath(row),
+            navigate,
+            canManage,
+            openEdit: (v) => setDialog({ vehicle: v }),
+          })}
         />
       )}
 
