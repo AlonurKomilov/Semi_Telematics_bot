@@ -708,6 +708,9 @@ async def post_alert_to_topic(
     video_url: str = "",
     severity: str = "",
     subtype: str = "",
+    subject_id: str = "",
+    subject_name: str = "",
+    dedup_key: str = "",
 ) -> bool:
     """Public group-post helper for alert paths that don't run through
     ``send_alert()`` — maintenance overdue, doc expiry, Samsara sync,
@@ -727,6 +730,54 @@ async def post_alert_to_topic(
 
     Returns True (caller skips DM fanout) when ≥1 group post landed.
     """
+    # ── Profile-driven lifecycle (owner decision 2026-07-26) ─────
+    # Board rows + personal channels run REGARDLESS of group routing —
+    # an account with no groups still gets its Board row and any
+    # opted-in personal copies.  The return value stays "posted to a
+    # group?" (the callers' DM-fallback contract).
+    from capabilities.alerting.profiles import get_profile
+    _profile = get_profile(alert_type)
+    _history_id = None
+    if _profile.board and subject_id:
+        try:
+            _t = await get_tenant_db(account_id)
+            _plain_first = _strip_alert_html(text).split("\n", 1)[0][:200]
+            _hist = await _t.upsert_alert_history(
+                account_id, alert_type, subject_id,
+                subject_name or subject_id,
+                last_detail=_plain_first,
+                severity=(severity or "warning").strip().lower() or "warning",
+                alert_subkey=dedup_key,
+            )
+            _history_id = (_hist or {}).get("id")
+        except Exception as _be:
+            logger.debug("profile board row failed (%s): %s", alert_type, _be)
+    if _profile.personal and subject_id:
+        # Subjectless calls (the camera digest — its own per-sub loop owns
+        # personal delivery) keep group-only behavior: without a subject
+        # there is no Board row to correlate and no clean dedup, and
+        # double-delivery to camera subscribers would be a regression.
+        try:
+            from capabilities.notifications import (
+                NotificationContent as _NotifContent,
+                dispatch as _notif_dispatch,
+            )
+            _rk = _PIPELINE_TO_ROUTE_KEY.get(alert_type, alert_type)
+            await _notif_dispatch(
+                get_platform_db(), account_id,
+                _NotifContent(
+                    title="",
+                    body=_strip_alert_html(text),
+                    category=f"alert.{_rk}",
+                    severity=(severity or "warning").strip().lower() or "warning",
+                ),
+                channels=("telegram_dm", "email", "web_push"),
+                correlation_key=(f"alert:{_history_id}" if _history_id else ""),
+            )
+        except Exception as _pe:
+            logger.debug("profile personal fanout failed (%s): %s",
+                         alert_type, _pe)
+
     if not _FORUM_ROUTING_ENABLED:
         return False
 

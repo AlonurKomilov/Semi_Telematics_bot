@@ -253,6 +253,9 @@ async def check_scorecard_drop_alerts(_app=None) -> None:
                     bot_app, account_id=acc.id,
                     alert_type="scorecard", text=text,
                     severity="warning",
+                    subject_id="scorecard-digest",
+                    subject_name="Score drops",
+                    dedup_key=yesterday,
                 )
                 if posted:
                     continue

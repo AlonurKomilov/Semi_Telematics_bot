@@ -171,6 +171,9 @@ async def check_document_expirations(_app: Application | None = None) -> None:
                     bot_app, account_id=acct.id,
                     alert_type="documents", text=admin_text,
                     severity="warning",
+                    subject_id=f"drv:{driver.id}",
+                    subject_name=driver_name,
+                    dedup_key=str(getattr(a, "bucket", "") or ""),
                 )
                 if not posted:
                     # Fallback: send to each admin, skipping the driver

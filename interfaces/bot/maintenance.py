@@ -243,6 +243,10 @@ async def check_overdue_maintenance(app: Application):
                         alert_type="maintenance", text=notify_text,
                         severity="warning",
                         reply_markup=done_kb,
+                        subject_id=str(task.get("vehicle_id")
+                                       or task.get("vehicle_name") or ""),
+                        subject_name=str(task.get("vehicle_name") or ""),
+                        dedup_key=f"task:{task['id']}",
                     )
                     if posted:
                         continue
@@ -316,6 +320,10 @@ async def check_overdue_by_mileage(app: Application):
                         alert_type="maintenance", text=notify_text,
                         severity="warning",
                         reply_markup=done_kb,
+                        subject_id=str(task.get("vehicle_id")
+                                       or task.get("vehicle_name") or ""),
+                        subject_name=str(task.get("vehicle_name") or ""),
+                        dedup_key=f"task:{task['id']}",
                     )
                     if posted:
                         continue
@@ -392,6 +400,10 @@ async def check_overdue_by_engine_hours(app: Application):
                         alert_type="maintenance", text=notify_text,
                         severity="warning",
                         reply_markup=done_kb,
+                        subject_id=str(task.get("vehicle_id")
+                                       or task.get("vehicle_name") or ""),
+                        subject_name=str(task.get("vehicle_name") or ""),
+                        dedup_key=f"task:{task['id']}",
                     )
                     if posted:
                         continue
@@ -476,6 +488,10 @@ async def check_upcoming_maintenance_warnings(app: Application):
                         alert_type="maintenance", text=notify_text,
                         severity="info",
                         reply_markup=done_kb,
+                        subject_id=str(task.get("vehicle_id")
+                                       or task.get("vehicle_name") or ""),
+                        subject_name=str(task.get("vehicle_name") or ""),
+                        dedup_key=f"task:{task['id']}",
                     )
                     if not posted:
                         if task["created_by"]:

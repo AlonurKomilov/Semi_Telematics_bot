@@ -45,6 +45,21 @@ def register_alert_categories() -> None:
             # audience(role) -> role_can_receive_alert(role, alert_type=atype)
             audience=partial(role_can_receive_alert, alert_type=atype),
         ))
+    # Profile-upgraded lite types (profiles.py — Board rows + personal
+    # channels, owner decision 2026-07-26).  No users.alert_* legacy
+    # column exists for these, so the audience is a role set rather than
+    # a permission lookup; subscriptions are opt-in via the matrix.
+    for atype, label, roles in (
+        ("documents", "Driver documents", ("hr", "owner", "admin")),
+        ("scorecard", "Scorecard drops",
+         ("safety", "fleet", "owner", "admin")),
+    ):
+        register_category(NotificationCategory(
+            key=f"alert.{atype}",
+            label=label,
+            kind=BROADCAST,
+            audience=(lambda role, _rs=roles: str(role) in _rs),
+        ))
 
 
 register_alert_categories()
