@@ -30,6 +30,13 @@ from capabilities.notifications.service import (  # noqa: F401,E402
     notify_user,
     update_delivery,
 )
+from capabilities.notifications.plan import (  # noqa: F401,E402
+    DeliveryPlan,
+    PersonalSend,
+    PlanResult,
+    Target,
+    deliver,
+)
 from capabilities.notifications.categories import (  # noqa: F401,E402
     BROADCAST,
     TARGETED,

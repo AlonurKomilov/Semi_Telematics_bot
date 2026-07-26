@@ -318,37 +318,76 @@ class TelegramDmChannel:
         )
 
 
+# Per-destination locks: keep multi-part sends to ONE (chat, thread)
+# serialized so concurrent alerts can't interleave their messages in a
+# topic.  Transport-level concern, so the locks live with the channel.
+_DEST_LOCKS: dict[tuple[int, "int | None"], asyncio.Lock] = {}
+
+
+def _dest_lock(chat_id: int, thread_id: "int | None") -> asyncio.Lock:
+    key = (chat_id, thread_id)
+    lock = _DEST_LOCKS.get(key)
+    if lock is None:
+        lock = asyncio.Lock()
+        _DEST_LOCKS[key] = lock
+    return lock
+
+
+def _resolve_sender(account_id: int, sender_hint: str, override=None):
+    """The bot that posts to a shared destination: an explicit override,
+    else the hinted persona's Sub bot (fail-open to the primary — an
+    attached-but-down Sub bot must never eat a team post), else the
+    account's primary bot."""
+    if override is not None:
+        return override
+    if sender_hint:
+        from infra.bot_registry import get_sender_for_persona
+        app = get_sender_for_persona(account_id, sender_hint)
+        if app is not None:
+            return app
+    return _bot_for(account_id)
+
+
 class TelegramTopicChannel:
     """Bot → GROUP topic.  SHARED (per-account/topic destination).
 
-    ``address`` = ``"<chat_id>"`` or ``"<chat_id>:<thread_id>"``.  Pass
-    ``sender_app`` to force a specific bot (the owner_admin aggregate
-    cross-post uses the primary bot, not the persona bot)."""
+    ``address`` = ``"<chat_id>"`` or ``"<chat_id>:<thread_id>"``.
+    ``sender_hint`` names the persona whose Sub bot should post (plan
+    targets); ``sender_app`` forces an explicit bot.  The chosen sender
+    is recorded in the handle — Telegram only lets the AUTHOR bot edit
+    a message, so edits re-resolve the same sender."""
     key = "telegram_topic"
     personal = False
     supports_edit = True
+    accepts_sender_hint = True
 
     def render(self, recipient: Recipient, content: NotificationContent) -> Payload:
         return render_telegram(content)
 
     async def send(self, recipient: Recipient, payload: Payload,
-                   *, sender_app=None) -> DeliveryResult:
+                   *, sender_app=None, sender_hint: str = "") -> DeliveryResult:
         chat_raw, _, thread_raw = str(recipient.address).partition(":")
         try:
             chat_id = int(chat_raw)
         except (TypeError, ValueError):
             return DeliveryResult(ok=False, error="bad_chat_id")
         thread_id = int(thread_raw) if thread_raw else None
-        return await _send(
-            _bot_for(recipient.account_id, sender_app),
-            chat_id=chat_id, thread_id=thread_id, payload=payload, what="topic",
-        )
+        app = _resolve_sender(recipient.account_id, sender_hint, sender_app)
+        async with _dest_lock(chat_id, thread_id):
+            res = await _send(
+                app, chat_id=chat_id, thread_id=thread_id,
+                payload=payload, what="topic",
+            )
+        if res.ok and res.handle and sender_hint:
+            res.handle["sender"] = sender_hint
+        return res
 
     async def edit(self, recipient: Recipient, handle: dict, payload: Payload,
                    *, sender_app=None) -> DeliveryResult:
         return await _edit(
-            _bot_for(recipient.account_id, sender_app), handle=handle,
-            payload=payload, what="topic-edit",
+            _resolve_sender(recipient.account_id,
+                            str(handle.get("sender") or ""), sender_app),
+            handle=handle, payload=payload, what="topic-edit",
         )
 
 
