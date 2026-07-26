@@ -62,11 +62,15 @@ import {
 
 const SEV_RANK: Record<string, number> = { critical: 0, warning: 1, info: 2 };
 
+// The API caps the window at 90 days (days: ge=1, le=90), so this is the
+// widest honest "have I really seen everything" check we can offer.
+const MAX_WINDOW_DAYS = 90;
+
 export default function AlertsResults() {
   const { t } = useTranslation();
   const tz = useTimezone();
   const qc = useQueryClient();
-  const { ackState, viewMode } = useAlertsFilters();
+  const { ackState, viewMode, narrowed, resetToDefaults, days, setDays } = useAlertsFilters();
   // DataGrid owns the checkbox column + the bulk-action bar now, but
   // the SELECTION still lives in the shared context (LiveAckPanel's
   // sound cue, AlertsBulkError, and the filter-chip clear all read it),
@@ -268,21 +272,60 @@ export default function AlertsResults() {
   }
 
   if (alerts.length === 0) {
+    // "All caught up" is a claim about the FLEET, so it may only be made
+    // when nothing is narrowing the view.  With a type / severity /
+    // vehicle filter active the honest statement is "nothing matches
+    // these filters" — saying every alert is acknowledged while thousands
+    // are pending is a false all-clear, which in a safety product is the
+    // one lie we can't ship.
+    const clearFilters = (
+      <button
+        onClick={resetToDefaults}
+        className="h-8 px-3 inline-flex items-center rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/80 transition-colors"
+      >
+        Clear all filters
+      </button>
+    );
+    if (narrowed) {
+      return (
+        <EmptyState
+          icon={Bell}
+          title="No alerts match these filters"
+          description="Other alerts may still be pending — clear the filters to see everything in this window."
+          action={clearFilters}
+        />
+      );
+    }
+    // The date window narrows "active" too: the query filters on
+    // first_seen, which is set once and NEVER bumped on a re-fire — so a
+    // chronic alert that has been firing for months sits OUTSIDE a 30-day
+    // window while still being unacknowledged.  That makes the
+    // longest-running problems the easiest ones to hide, so the all-clear
+    // is scoped to the window and offers to widen it.
+    const widen = days < MAX_WINDOW_DAYS ? (
+      <button
+        onClick={() => setDays(MAX_WINDOW_DAYS)}
+        className="h-8 px-3 inline-flex items-center rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/80 transition-colors"
+      >
+        Check the last {MAX_WINDOW_DAYS} days
+      </button>
+    ) : undefined;
     return (
       <EmptyState
         icon={Bell}
         title={
           ackState === 'active'
-            ? 'No pending alerts'
+            ? 'No pending alerts in this window'
             : ackState === 'acknowledged'
               ? 'No acknowledged alerts in this window'
               : 'No alerts in this window'
         }
         description={
           ackState === 'active'
-            ? "You're all caught up — every alert has been acknowledged."
-            : 'Try widening the date range or removing filters.'
+            ? `Every alert that started in the last ${days} days has been acknowledged. Older alerts can still be open — widen the window to check.`
+            : 'Try widening the date range.'
         }
+        action={widen}
       />
     );
   }
@@ -296,10 +339,12 @@ export default function AlertsResults() {
           server pager (AlertsPagination below the table) steps through
           the overflow. */}
       {totalCount > alerts.length && (
+        /* The numbers + batch navigation live in ONE place (the pager
+           below); this says the part nothing else does — that search,
+           filters and sorting only see the loaded batch. */
         <p className="mb-2 text-xs text-muted-foreground">
-          Showing the latest {alerts.length.toLocaleString()} of{' '}
-          {totalCount.toLocaleString()} alerts — narrow the date window or
-          filters, or page through below.
+          Search, filters and sorting apply to the loaded batch — narrow the
+          date window to bring everything into one batch.
         </p>
       )}
       <DataGrid

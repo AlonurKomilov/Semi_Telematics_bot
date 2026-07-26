@@ -45,6 +45,10 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
   const [draft, setDraft] = useState('');
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Inline validation on BLUR — the submit path also validates, but a
+  // toast that only appears after you press the button makes you hunt for
+  // what was wrong.  Reset on edit so it doesn't nag mid-typing.
+  const [touched, setTouched] = useState(false);
 
   const load = async () => {
     try {
@@ -57,6 +61,10 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
     }
   };
   useEffect(() => { void load(); }, []);
+
+  // Only complain once the field has been left AND has content — an empty
+  // untouched field isn't an error, it's the starting state.
+  const showEmailError = touched && draft.trim() !== '' && !EMAIL_RE.test(draft.trim());
 
   // One path for connect / change / resend — the backend upsert is
   // idempotent, so a resend is just a re-submit of the known address.
@@ -148,7 +156,10 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
             inputMode="email"
             placeholder="you@company.com"
             value={draft}
-            onChange={e => setDraft(e.target.value)}
+            aria-invalid={showEmailError || undefined}
+            aria-describedby={showEmailError ? 'email-channel-error' : undefined}
+            onChange={e => { setDraft(e.target.value); setTouched(false); }}
+            onBlur={() => setTouched(true)}
             onKeyDown={e => { if (e.key === 'Enter') void submit(draft); }}
             className="flex-1"
           />
@@ -163,6 +174,11 @@ export default function EmailChannelCard({ onChanged }: { onChanged: () => void 
             )}
           </div>
           </div>
+          {showEmailError && (
+            <p id="email-channel-error" className="text-xs text-danger">
+              Enter a full address, e.g. you@company.com
+            </p>
+          )}
         </div>
       ) : (
         <div className="flex items-center justify-between gap-2">

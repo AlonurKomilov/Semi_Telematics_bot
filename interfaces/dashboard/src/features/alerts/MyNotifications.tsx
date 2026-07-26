@@ -29,6 +29,7 @@ import NotifyMatrix from './NotifyMatrix';
 import AccountActivitySection from './AccountActivitySection';
 import BannerSettingsCard from './BannerSettingsCard';
 import BannerLevelCard from './BannerLevelCard';
+import { useSavedFlash } from './_shared/useSavedFlash';
 
 /** Small uppercase source divider — the per-source rhythm of the page. */
 function SourceLabel({ children }: { children: React.ReactNode }) {
@@ -54,6 +55,9 @@ export default function MyNotifications() {
   // the matrix refetches its column enable-states.
   const [refreshKey, setRefreshKey] = useState(0);
   const bump = useCallback(() => setRefreshKey(k => k + 1), []);
+  // Autosave has no Save button, so success was silent — one transient
+  // "Saved" for the whole page (a toast per toggle would bury the screen).
+  const { saved, flashSaved } = useSavedFlash();
 
   useEffect(() => {
     let cancelled = false;
@@ -81,6 +85,7 @@ export default function MyNotifications() {
         method: 'PUT', body: { [field]: value },
       });
       setPrefs(fresh);
+      flashSaved();
     } catch (e) {
       setPrefs(prev);
       toast.error(e instanceof Error ? e.message : 'Save failed');
@@ -128,6 +133,15 @@ export default function MyNotifications() {
           'Connect your channels once, then choose what reaches you and where. Admins set group / forum routing under Alerts; that doesn’t override these personal choices.'
         }
       />
+
+      {/* Autosave confirmation — every control here writes immediately, so
+          success needs to be visible somewhere.  The live region is always
+          mounted but its CONTENT is conditional: assistive tech announces
+          on a content mutation, so an always-present node that only
+          changes opacity would never be read out. */}
+      <p className="text-xs text-ok inline-flex items-center gap-1.5 h-4" aria-live="polite">
+        {saved && (<><CheckCircle2 size={14} aria-hidden /> Saved</>)}
+      </p>
 
       <SourceLabel>Channels</SourceLabel>
       <div className="grid gap-4 lg:grid-cols-3 items-start">
@@ -184,6 +198,7 @@ export default function MyNotifications() {
 
       <SourceLabel>Alerts</SourceLabel>
       <NotifyMatrix
+        onSaved={flashSaved}
         relevantTypes={prefs.relevant_types}
         telegramMasterOn={prefs.alerts_on}
         telegramToggles={prefs.toggles}
@@ -192,10 +207,10 @@ export default function MyNotifications() {
       />
 
       <SourceLabel>Account activity</SourceLabel>
-      <AccountActivitySection refreshKey={refreshKey} section="personal" />
+      <AccountActivitySection refreshKey={refreshKey} section="personal" onSaved={flashSaved} />
 
       <SourceLabel>System</SourceLabel>
-      <AccountActivitySection refreshKey={refreshKey} section="system" />
+      <AccountActivitySection refreshKey={refreshKey} section="system" onSaved={flashSaved} />
 
       <SourceLabel>In-app</SourceLabel>
       <div className="grid gap-4 lg:grid-cols-2 items-start">

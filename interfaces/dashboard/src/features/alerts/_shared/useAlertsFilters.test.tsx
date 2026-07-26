@@ -9,6 +9,10 @@
  *   4. setPage itself does NOT reset page (no infinite recursion)
  *   5. resetToDefaults wipes the URL and reapplies persona defaults
  *   6. ackState change does NOT clear selection (caller's job)
+ *   7. `narrowed` is measured against PERSONA defaults — it gates the
+ *      board's "all caught up" claim, so a false negative would let the
+ *      board tell a fleet every alert is acknowledged while thousands are
+ *      pending.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, renderHook, act } from '@testing-library/react';
@@ -138,5 +142,60 @@ describe('useAlertsFilters — resetToDefaults', () => {
     expect(result.current.typeFilter).toBe('safety_events');
     expect(result.current.days).toBe(7);
     expect(result.current.page).toBe(1);
+  });
+});
+
+
+describe('useAlertsFilters — narrowed (gates the "all caught up" claim)', () => {
+  it('is FALSE on a persona default view, even when the default is not "all"', () => {
+    // Safety lands on typeFilter='safety_events' by default — that is NOT
+    // the user narrowing anything, so the genuine all-clear must stay
+    // reachable for them.
+    setPersona('safety');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts'),
+    });
+    expect(result.current.typeFilter).toBe('safety_events');
+    expect(result.current.narrowed).toBe(false);
+  });
+
+  it('is TRUE once the user picks a type away from their default', () => {
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?typeFilter=fuel'),
+    });
+    expect(result.current.narrowed).toBe(true);
+  });
+
+  it('is TRUE for a severity filter and for a vehicle search', () => {
+    setPersona('fleet');
+    const sev = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?severityFilter=critical'),
+    });
+    expect(sev.result.current.narrowed).toBe(true);
+    cleanup();
+    setPersona('fleet');
+    const veh = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?vehicleSearch=ZZZQQQ999'),
+    });
+    expect(veh.result.current.narrowed).toBe(true);
+  });
+
+  it('is FALSE for a date window alone — a window is always set', () => {
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?days=7'),
+    });
+    expect(result.current.narrowed).toBe(false);
+  });
+
+  it('goes back to FALSE after resetToDefaults', () => {
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?typeFilter=fuel&vehicleSearch=abc'),
+    });
+    expect(result.current.narrowed).toBe(true);
+    act(() => { result.current.resetToDefaults(); });
+    expect(result.current.narrowed).toBe(false);
   });
 });

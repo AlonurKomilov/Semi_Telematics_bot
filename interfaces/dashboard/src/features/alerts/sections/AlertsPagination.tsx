@@ -13,7 +13,7 @@ import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsQuery } from '../_shared/useAlertsQuery';
 
 export default function AlertsPagination() {
-  const { page, setPage } = useAlertsFilters();
+  const { page, setPage, days } = useAlertsFilters();
   const { data, isFetching, pageSize } = useAlertsQuery();
 
   // Discriminate the response shape — same logic as AlertsResults so
@@ -23,7 +23,12 @@ export default function AlertsPagination() {
       ? (data as VehiclesAlertsResponse)
       : undefined;
 
+  // Render ONLY when the window overflows a single fetch.  Otherwise
+  // DataGrid's own footer is already the one true paginator for this
+  // table, and a second "Showing X–Y of Z" beside it (over a different
+  // denominator) reads as two competing pagers with three totals.
   if (!data || data.count <= 0) return null;
+  if ((data.total_pages ?? 1) <= 1) return null;
 
   const total = data.count;
   const ps = data.page_size ?? pageSize;
@@ -35,8 +40,10 @@ export default function AlertsPagination() {
   return (
     <div className="flex items-center justify-between mt-3">
       <p className="text-xs text-muted-foreground">
-        Showing <strong>{start}</strong>–<strong>{end}</strong> of{' '}
-        <strong>{total}</strong> {unit}
+        Batch <strong>{start.toLocaleString()}</strong>–
+        <strong>{end.toLocaleString()}</strong> of{' '}
+        <strong>{total.toLocaleString()}</strong> {unit} in the last{' '}
+        {days} days
       </p>
       {(data.total_pages ?? 1) > 1 && (
         <div className="flex items-center gap-2">
@@ -49,7 +56,7 @@ export default function AlertsPagination() {
             Prev
           </button>
           <span className="text-xs text-muted-foreground tabular-nums">
-            Page <strong>{data.page ?? page}</strong> of{' '}
+            Batch <strong>{data.page ?? page}</strong> of{' '}
             <strong>{data.total_pages ?? 1}</strong>
           </span>
           <button

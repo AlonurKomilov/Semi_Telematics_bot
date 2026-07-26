@@ -41,8 +41,10 @@ const COLUMNS: { key: ChannelKey; icon: typeof Send; label: string; notReady: st
   { key: 'web_push', icon: MonitorSmartphone, label: 'Push', notReady: 'Enable push on at least one device in Channels above first' },
 ];
 
-export default function AccountActivitySection({ refreshKey, section = 'personal' }: {
+export default function AccountActivitySection({ refreshKey, section = 'personal', onSaved }: {
   refreshKey: number;
+  /** Fired after a successful write so the page can confirm the autosave. */
+  onSaved?: () => void;
   /** 'personal' = team/ai targeted notices; 'system' = the system.*
    *  categories (security/billing — typically mandatory, locked-on).
    *  Same endpoint + grid; the page mounts one instance per section. */
@@ -78,6 +80,7 @@ export default function AccountActivitySection({ refreshKey, section = 'personal
       await apiJSON('/notifications/preferences/account-activity', {
         method: 'PUT', body: { category: cat.key, channel, enabled },
       });
+      onSaved?.();
     } catch (e) {
       setData(d => d && ({
         ...d,

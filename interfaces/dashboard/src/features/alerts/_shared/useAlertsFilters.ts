@@ -63,6 +63,14 @@ export interface AlertsFiltersAPI {
   setVehicleSearch: (v: string) => void;
   setDays: (v: number) => void;
   setPage: (v: number) => void;
+  /** True when the view is NARROWED beyond this persona's defaults —
+   *  i.e. the user actively picked a type / severity / vehicle.  Callers
+   *  use it to tell "nothing matches your filters" apart from a genuine
+   *  all-clear: a Safety persona lands on ``typeFilter='safety_events'``
+   *  by default, so "not 'all'" alone would misread their default view as
+   *  filtered and they'd never see the real all-clear. */
+  narrowed: boolean;
+
   /** Restore persona defaults — wipes URL filters then writes them. */
   resetToDefaults: () => void;
 }
@@ -160,6 +168,13 @@ export function useAlertsFilters(): AlertsFiltersAPI {
 
   return {
     ...state,
+    // Compared against the PERSONA defaults, not against 'all' — see the
+    // `narrowed` doc on AlertsFiltersAPI.  ``days`` is excluded: a window
+    // is always set, so it never means "the user narrowed this".
+    narrowed:
+      state.typeFilter !== defaults.typeFilter
+      || state.severityFilter !== defaults.severityFilter
+      || state.vehicleSearch.trim() !== defaults.vehicleSearch.trim(),
     setViewMode: (v) => setParam('viewMode', v),
     setTypeFilter: (v) => setParam('typeFilter', v),
     setSeverityFilter: (v) => setParam('severityFilter', v),

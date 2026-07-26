@@ -22,6 +22,11 @@ import { Send, Mail, MonitorSmartphone } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { Tip } from '@/components/tooltip';
 
+// Every alert type the registry can hand us needs a row label here —
+// the fallback renders the RAW key ("maintenance"), which reads as a bug
+// beside "Engine Faults".  tests/test_alert_type_labels_ui.py pins this map
+// against the backend catalog (both directions) so a newly registered type
+// can't leak again — the drift is cross-language, so the guard lives there.
 const TYPE_LABEL: Record<string, string> = {
   faults: 'Engine Faults',
   health: 'Vehicle Health',
@@ -30,6 +35,7 @@ const TYPE_LABEL: Record<string, string> = {
   events: 'Safety Events',
   camera: 'Camera Issues',
   parking: 'Unsafe Parking',
+  maintenance: 'Maintenance Due',
 };
 
 interface ChannelPrefs {
@@ -51,11 +57,13 @@ interface MatrixProps {
   /** Bumped by the channel cards after connect/verify/device changes so
    * the column enable-states stay fresh. */
   refreshKey: number;
+  /** Fired after a successful write so the page can confirm the autosave. */
+  onSaved?: () => void;
 }
 
 export default function NotifyMatrix({
   relevantTypes, telegramMasterOn, telegramToggles, onTelegramToggle,
-  refreshKey,
+  refreshKey, onSaved,
 }: MatrixProps) {
   const [email, setEmail] = useState<ChannelPrefs | null>(null);
   const [push, setPush] = useState<ChannelPrefs | null>(null);
@@ -85,6 +93,7 @@ export default function NotifyMatrix({
       await apiJSON(`/notifications/prefs/${channel}/type`, {
         method: 'PUT', body: { alert_type: type, enabled },
       });
+      onSaved?.();
     } catch (e) {
       setState(p => p && ({ ...p, types: { ...p.types, [type]: !enabled } }));
       toast.error(e instanceof Error ? e.message : 'Save failed');
@@ -167,6 +176,13 @@ export default function NotifyMatrix({
           ].filter(Boolean).join(' · ')}
         </p>
       )}
+      {/* Why this grid has three channels while Account activity below has
+          four: alerts have their own feed (the bell reads them from the
+          alert board), so there's no In-app column to opt into here. */}
+      <p className="text-2xs text-muted-foreground mt-2">
+        Alerts always appear in the bell — these channels are the extra
+        places they can reach you.
+      </p>
     </section>
   );
 }
