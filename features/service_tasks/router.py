@@ -45,7 +45,10 @@ class ServiceTaskUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=200)
     description: str | None = Field(None, max_length=2000)
     expected_labor_hours: float | None = Field(None, ge=0, le=1000)
-    parent_id: int | None = None
+    # 0 means "no parent" (detach a subtask).  A null can't say that:
+    # unsent fields are dropped, so null would be indistinguishable
+    # from "leave it alone".
+    parent_id: int | None = Field(None, ge=0)
     vehicle_type: str | None = Field(None, pattern="^(truck|trailer|)$")
     status: str | None = Field(None, pattern="^(active|archived)$")
 
@@ -118,14 +121,43 @@ async def update_service_task(
             detail="Standard service tasks can't be renamed — archive it "
                    "and add your own if you need a different name.",
         )
+    # Pre-validate so each failure gets its OWN message.  The storage
+    # layer still refuses these (it's the real guard); this exists so
+    # the user is told which thing was wrong instead of a menu of
+    # three possibilities.
+    if body.name is not None:
+        clash = await tenant_db.find_service_task_by_name(
+            user["account_id"], body.name,
+        )
+        if clash and int(clash["id"]) != task_id:
+            raise HTTPException(
+                status_code=409,
+                detail=f"“{clash['name']}” already exists. Merge the two "
+                       f"tasks instead of keeping both spellings.",
+            )
+    if body.parent_id is not None and body.parent_id:
+        if int(body.parent_id) == task_id:
+            raise HTTPException(
+                status_code=422, detail="A task can't be its own parent.",
+            )
+        parent = await tenant_db.get_service_task(
+            int(body.parent_id), user["account_id"],
+        )
+        if not parent:
+            raise HTTPException(status_code=404, detail="Parent task not found")
+        if parent.get("parent_id"):
+            raise HTTPException(
+                status_code=422,
+                detail="That task is already a subtask — service tasks nest "
+                       "only one level deep.",
+            )
+
     ok = await tenant_db.update_service_task(
         task_id, user["account_id"], **body.model_dump(exclude_none=True),
     )
     if not ok:
         raise HTTPException(
-            status_code=422,
-            detail="Nothing to update, the name is taken, or the parent "
-                   "task is invalid (only one level of nesting).",
+            status_code=422, detail="Nothing to update.",
         )
     await tenant_db.add_audit_log(
         user["account_id"], int(user["sub"]), "service_task_update",

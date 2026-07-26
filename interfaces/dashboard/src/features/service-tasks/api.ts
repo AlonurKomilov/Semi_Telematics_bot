@@ -46,6 +46,7 @@ export async function createServiceTask(body: {
   name: string;
   description?: string;
   expected_labor_hours?: number;
+  vehicle_type?: string;
 }): Promise<ServiceTask> {
   return apiJSON('/service-tasks', { method: 'POST', body });
 }

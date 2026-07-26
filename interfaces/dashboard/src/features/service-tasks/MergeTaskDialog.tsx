@@ -9,7 +9,7 @@
  * Destructive and irreversible, so the dialog is explicit about which
  * task disappears and requires a deliberate second click.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Merge } from 'lucide-react';
@@ -25,16 +25,26 @@ import {
 } from './api';
 
 export default function MergeTaskDialog({
-  task, onClose,
+  task, onClose, presetWinnerId,
 }: {
   /** The task being merged AWAY (must be one of the account's own). */
   task: ServiceTask | null;
   onClose: () => void;
+  /** Pre-selects the surviving task — set when the user arrived here
+   *  from a rename collision, where we already know the target. */
+  presetWinnerId?: number | null;
 }) {
   const qc = useQueryClient();
   const [winnerId, setWinnerId] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // Arriving from a rename collision: the target is already known, so
+  // don't make the user find it again in the list.
+  useEffect(() => {
+    setWinnerId(presetWinnerId ? String(presetWinnerId) : '');
+    setConfirming(false);
+  }, [presetWinnerId, task]);
 
   const { data } = useQuery({
     queryKey: [...SERVICE_TASKS_KEY, 'all'],

@@ -242,3 +242,105 @@ async def test_api_vehicle_type_filter(api, db):
         r = await c.get("/api/service-tasks?vehicle_type=trailer",
                         headers=_h(api["owner"]))
         assert "Trailer Only Job" in {t["name"] for t in r.json()["service_tasks"]}
+
+
+# ── Editing (the revise path, not just create/destroy) ──────────────
+
+@pytest.mark.asyncio
+async def test_edit_updates_every_field(db, acct):
+    t = await db.create_service_task(acct, "Kingpin Job")
+    parent = await db.create_service_task(acct, "Trailer Overhaul")
+    assert await db.update_service_task(
+        t["id"], acct, name="Kingpin Service", description="Grease + inspect",
+        expected_labor_hours=1.25, vehicle_type="trailer",
+        parent_id=parent["id"],
+    ) is True
+    fresh = await db.get_service_task(t["id"], acct)
+    assert fresh["name"] == "Kingpin Service"
+    assert fresh["description"] == "Grease + inspect"
+    assert fresh["expected_labor_hours"] == 1.25
+    assert fresh["vehicle_type"] == "trailer"
+    assert fresh["parent_id"] == parent["id"]
+
+
+@pytest.mark.asyncio
+async def test_parent_zero_detaches_a_subtask(db, acct):
+    """A JSON null can't mean "clear this" (unsent fields are dropped),
+    so 0 is the explicit detach value."""
+    parent = await db.create_service_task(acct, "Big Job")
+    child = await db.create_service_task(acct, "Step One", parent_id=parent["id"])
+    assert child["parent_id"] == parent["id"]
+    assert await db.update_service_task(child["id"], acct, parent_id=0) is True
+    assert (await db.get_service_task(child["id"], acct))["parent_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_find_by_name_is_read_only(db, acct):
+    before = len(await db.list_service_tasks(acct, include_archived=True))
+    assert await db.find_service_task_by_name(acct, "Nothing Like This") is None
+    hit = await db.find_service_task_by_name(acct, "  brake   SERVICE ")
+    assert hit and hit["canonical_key"] == "brakes"     # normalized lookup
+    assert len(await db.list_service_tasks(acct, include_archived=True)) == before
+
+
+@pytest.mark.asyncio
+async def test_api_edit_errors_are_specific(api, db):
+    a = api["acct"]
+    mine = await db.create_service_task(a, "My Task")
+    other = await db.create_service_task(a, "Another Task")
+    sub = await db.create_service_task(a, "A Subtask", parent_id=other["id"])
+    std = next(t for t in await db.list_service_tasks(a)
+               if t["canonical_key"] == "oil")
+
+    async with AsyncClient(transport=ASGITransport(app=api["app"]),
+                           base_url="http://t") as c:
+        h = _h(api["owner"])
+        # Renaming onto an existing name → 409 naming the clash, so the
+        # UI can offer merge instead of inventing a second spelling.
+        r = await c.put(f"/api/service-tasks/{mine['id']}", headers=h,
+                        json={"name": "another task"})
+        assert r.status_code == 409 and "Another Task" in r.json()["detail"]
+
+        # Standard tasks are name-locked, with the reason.
+        r = await c.put(f"/api/service-tasks/{std['id']}", headers=h,
+                        json={"name": "My Oil"})
+        assert r.status_code == 422 and "archive" in r.json()["detail"].lower()
+
+        # Nesting depth, self-parent and missing parent each say so.
+        r = await c.put(f"/api/service-tasks/{mine['id']}", headers=h,
+                        json={"parent_id": sub["id"]})
+        assert r.status_code == 422 and "one level" in r.json()["detail"]
+        r = await c.put(f"/api/service-tasks/{mine['id']}", headers=h,
+                        json={"parent_id": mine["id"]})
+        assert r.status_code == 422 and "own parent" in r.json()["detail"]
+        r = await c.put(f"/api/service-tasks/{mine['id']}", headers=h,
+                        json={"parent_id": 999_999})
+        assert r.status_code == 404
+
+        # A standard task's OTHER fields stay editable.
+        r = await c.put(f"/api/service-tasks/{std['id']}", headers=h,
+                        json={"description": "Full synthetic",
+                              "expected_labor_hours": 0.75,
+                              "vehicle_type": "truck"})
+        assert r.status_code == 200
+        assert r.json()["description"] == "Full synthetic"
+
+        # Renaming to its OWN current name isn't a collision.
+        r = await c.put(f"/api/service-tasks/{mine['id']}", headers=h,
+                        json={"name": "My Task", "description": "same name"})
+        assert r.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_api_create_accepts_the_full_form(api):
+    async with AsyncClient(transport=ASGITransport(app=api["app"]),
+                           base_url="http://t") as c:
+        r = await c.post("/api/service-tasks", headers=_h(api["owner"]), json={
+            "name": "Reefer Service", "description": "Belts + coolant",
+            "expected_labor_hours": 3, "vehicle_type": "trailer",
+        })
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["description"] == "Belts + coolant"
+        assert body["vehicle_type"] == "trailer"
+        assert body["expected_labor_hours"] == 3

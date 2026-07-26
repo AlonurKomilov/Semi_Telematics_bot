@@ -138,6 +138,21 @@ class ServiceTasksMixin:
         row = await cur.fetchone()
         return dict(row) if row else None
 
+    async def find_service_task_by_name(
+        self, account_id: int, name: str,
+    ) -> Optional[dict[str, Any]]:
+        """Read-only name lookup — what a rename checks against before
+        it collides.  Never creates (that's the writers' resolver)."""
+        key = service_task_name_key(name)
+        if not key:
+            return None
+        cur = await self._db.execute(
+            "SELECT * FROM service_tasks WHERE account_id = ? AND name_key = ?",
+            (account_id, key),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
     async def service_task_labels(self, account_id: int) -> dict[int, str]:
         """``{id: name}`` including ARCHIVED tasks — the join every
         report uses so a historical row never renders as a bare id."""
@@ -225,6 +240,12 @@ class ServiceTasksMixin:
                 parent = await self.get_service_task(int(pid), account_id)
                 if not parent or parent.get("parent_id") or int(pid) == task_id:
                     return False
+            else:
+                # 0 is the explicit "no parent" value — a JSON null can't
+                # travel here (the router drops None fields, else every
+                # unsent field would read as "clear me"), so detaching a
+                # subtask needs a value that means something.
+                updates["parent_id"] = None
         if "name" in updates:
             new_name = str(updates["name"]).strip()
             if not new_name:

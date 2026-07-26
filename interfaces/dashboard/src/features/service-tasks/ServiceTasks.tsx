@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { ClipboardList, Plus } from 'lucide-react';
 import TaskPartsDialog from './TaskPartsDialog';
 import MergeTaskDialog from './MergeTaskDialog';
+import EditTaskDialog from './EditTaskDialog';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
@@ -50,11 +51,17 @@ export default function ServiceTasks() {
   const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState('');
   const [hours, setHours] = useState('');
+  const [addDescription, setAddDescription] = useState('');
+  const [addVehicleType, setAddVehicleType] = useState('');
   const [saving, setSaving] = useState(false);
   // Row → its linked-parts editor (what a work order pre-fills).
   const [partsFor, setPartsFor] = useState<ServiceTask | null>(null);
   // Row → the merge dialog (fold a duplicate into the canonical one).
   const [mergeFor, setMergeFor] = useState<ServiceTask | null>(null);
+  // Row → the edit dialog (the only place a parent is assigned).
+  const [editFor, setEditFor] = useState<ServiceTask | null>(null);
+  // Pre-selected merge target when the user came from a name clash.
+  const [mergeWinner, setMergeWinner] = useState<number | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: [...SERVICE_TASKS_KEY, 'all'],
@@ -84,15 +91,27 @@ export default function ServiceTasks() {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      await createServiceTask({
+      const created = await createServiceTask({
         name: name.trim(),
+        description: addDescription,
         expected_labor_hours: Number(hours) || 0,
+        vehicle_type: addVehicleType,
       });
       setAddOpen(false);
       setName('');
       setHours('');
+      setAddDescription('');
+      setAddVehicleType('');
       refresh();
-      toast.success('Service task added');
+      // Linking parts needs the task to exist, so it can't live in this
+      // dialog without creating the row behind the user's back.  Offer
+      // the jump instead.
+      toast.success('Service task added', {
+        action: {
+          label: 'Add usual parts',
+          onClick: () => setPartsFor(created),
+        },
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not add that task');
     } finally {
@@ -142,6 +161,10 @@ export default function ServiceTasks() {
           onSelect: () => setPartsFor(t),
         }];
         if (!canManage) return actions;
+        actions.unshift({
+          key: 'edit', label: 'Edit…',
+          onSelect: () => setEditFor(t),
+        });
         if (t.status === 'active') {
           actions.push({
             key: 'archive', label: 'Archive',
@@ -170,7 +193,7 @@ export default function ServiceTasks() {
         if (!t.canonical_key) {
           actions.push({
             key: 'merge', label: 'Merge into…', separatorBefore: true,
-            onSelect: () => setMergeFor(t),
+            onSelect: () => { setMergeWinner(null); setMergeFor(t); },
           });
           actions.push({
             key: 'delete', label: 'Delete', danger: true,
@@ -214,7 +237,25 @@ export default function ServiceTasks() {
         />
       )}
 
-      <MergeTaskDialog task={mergeFor} onClose={() => setMergeFor(null)} />
+      <EditTaskDialog
+        task={editFor}
+        allTasks={(data?.service_tasks ?? [])}
+        onClose={() => setEditFor(null)}
+        onMergeInstead={(target) => {
+          // Renaming onto an existing name → merge the two instead of
+          // keeping both spellings. The task being edited is the one
+          // that disappears; `target` keeps its name, pre-selected so
+          // the user doesn't have to find it again.
+          setMergeWinner(target.id);
+          setMergeFor(editFor);
+        }}
+      />
+
+      <MergeTaskDialog
+        task={mergeFor}
+        presetWinnerId={mergeWinner}
+        onClose={() => { setMergeFor(null); setMergeWinner(null); }}
+      />
 
       <TaskPartsDialog
         task={partsFor}
@@ -240,6 +281,32 @@ export default function ServiceTasks() {
                 placeholder="e.g. Kingpin Service"
                 className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
               />
+            </label>
+            <label className="block">
+              <span className="block text-xs text-muted-foreground mb-1">
+                Description (optional)
+              </span>
+              <textarea
+                value={addDescription}
+                onChange={(e) => setAddDescription(e.target.value)}
+                rows={2}
+                placeholder="What this job involves"
+                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+              />
+            </label>
+            <label className="block">
+              <span className="block text-xs text-muted-foreground mb-1">
+                Applies to
+              </span>
+              <select
+                value={addVehicleType}
+                onChange={(e) => setAddVehicleType(e.target.value)}
+                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+              >
+                <option value="">Any vehicle</option>
+                <option value="truck">Trucks only</option>
+                <option value="trailer">Trailers only</option>
+              </select>
             </label>
             <label className="block">
               <span className="block text-xs text-muted-foreground mb-1">
