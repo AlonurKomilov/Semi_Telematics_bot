@@ -138,7 +138,6 @@ async def _build_bot_app(
         BotCommand("join",        "🔑 Join with invite code"),
         # ── Driver-on-truck workflows ──────────────────────────
         BotCommand("pti",         "📋 Pre-trip inspection"),
-        BotCommand("invoice",     "🧾 Submit a shop invoice"),
         BotCommand("fuelcost",    "⛽ Log a fill-up"),
         BotCommand("my_pay",      "💵 My paystub"),
         BotCommand("my_coaching", "🎓 My coaching tasks"),

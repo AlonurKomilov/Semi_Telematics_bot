@@ -59,7 +59,6 @@ def register_handlers(app: Application) -> None:
     from interfaces.bot.callbacks import handle_callback, handle_text
     from interfaces.bot.events import cmd_events
     from interfaces.bot.knowledge import cmd_tips
-    from interfaces.bot.work_orders import cmd_invoice, handle_invoice_message
 
     # Registration
     app.add_handler(CommandHandler("start", cmd_start))
@@ -162,18 +161,17 @@ def register_handlers(app: Application) -> None:
     # customers chatting with the login bot or a per-account bot can't
     # accidentally trigger them.
 
-    # Work orders — /invoice command + file-receive handler for the
-    # photo/PDF upload step.  Registered BEFORE the generic text
-    # handler so the wizard state machine sees photos and documents
-    # before they hit the generic handler.
-    #
-    # ``filters.ChatType.PRIVATE`` restricts this to direct messages —
-    # photos posted inside a forum-routing group topic must not
-    # trigger the invoice wizard or any other private workflow.
-    app.add_handler(CommandHandler("invoice", cmd_invoice))
+    # Shop invoices are submitted on the dashboard and the mobile app,
+    # not here — the bot wizard was retired.  These two handlers are a
+    # courtesy landing, not a feature: Telegram caches the slash-command
+    # menu client-side, so drivers keep seeing /invoice for a while, and
+    # a photo in DM used to mean "here's my invoice".  Silence would read
+    # as a broken bot.  ``filters.ChatType.PRIVATE`` keeps this out of
+    # forum-routing group topics, which are alert-delivery surfaces.
+    app.add_handler(CommandHandler("invoice", _invoice_moved))
     app.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & (filters.PHOTO | filters.Document.ALL),
-        handle_invoice_message,
+        _invoice_moved,
     ))
 
     # Callback router
@@ -192,23 +190,24 @@ def register_handlers(app: Application) -> None:
     # token-cost leak and a confusing UX.
     app.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
-        _maybe_invoice_or_text(handle_invoice_message, handle_text),
+        handle_text,
     ))
 
 
-def _maybe_invoice_or_text(invoice_handler, text_handler):
-    """Wrap two MessageHandlers so the invoice wizard gets first crack
-    at text input.  Telegram-bot doesn't support handler-priority for
-    the same filter, so we chain manually: if the user has an
-    ``_invoice`` wizard state pending, deliver to that; otherwise
-    fall through to the generic text handler.
+async def _invoice_moved(update, context) -> None:
+    """Point drivers at the app now that the bot's invoice wizard is gone.
+
+    Answers both ``/invoice`` and a photo/document sent in a DM — the
+    two ways someone used to start the old flow.
     """
-    async def _dispatch(update, context):
-        if context.user_data.get("_invoice"):
-            await invoice_handler(update, context)
-            return
-        await text_handler(update, context)
-    return _dispatch
+    msg = getattr(update, "effective_message", None)
+    if msg is None:
+        return
+    await msg.reply_text(
+        "🧾 Shop invoices moved to the app.\n\n"
+        "Open 4truck on the web or your phone → Work Orders → New, and "
+        "attach the invoice there. Scanning it fills the details in for you.",
+    )
 
 
 # ── Front-door login bot handler set ─────────────────────────────
