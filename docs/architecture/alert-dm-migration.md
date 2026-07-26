@@ -1,6 +1,6 @@
 # ADR: Alert DM delivery moves to the notifications spine
 
-- **Status:** COMPLETE (2026-07-26) — spine DMs always-on for `send_alert`; legacy DM loop deleted. Trial verified live on the production account (perfect parity, ack/edit round-trip). Remaining follow-on (outside this ADR's scope): migrate the lite-path producers' direct driver DMs + their `dnd_alert_queue` use to the spine, then drop the queue.
+- **Status:** COMPLETE (2026-07-26), follow-on included — spine DMs always-on; legacy DM loop deleted; `dnd_alert_queue` DROPPED (migration 165, every deferral rides the spine's quiet queue via `quiet_hours.defer_notification`). Still-legacy niche: three producers' LIVE per-recipient DMs (documents driver notice, camera personalized digest, parking threaded replies) call the bot directly — per-recipient content; their conversion to targeted spine notices is an open low-urgency item.
 - **Owners:** alerting (`capabilities/alerting/`) + notifications (`capabilities/notifications/`)
 - **Related:** [notifications.md](notifications.md) (spine architecture), [bot-topology.md](bot-topology.md) (bot vs group split)
 
@@ -98,11 +98,13 @@ spine instead of its own loop).
   `alert_dm_spine` switch — spine DMs are unconditional. A fanout
   returning False (unregistered category / spine error) logs loudly and
   skips DMs for that occurrence; group post + history unaffected.
-- **Deliberately KEPT** (scope honesty): `dnd_alert_queue` + the
-  `deliver_dnd_alerts` shift report + escalation's queue branch — three
-  lite-path producers (driver-doc expiry driver DMs, camera, parking
-  formatting) still write it (~24k rows live). Their migration to the
-  spine is the follow-on work item; the queue drops with it.
+- **Queue retired (same day, follow-on executed):**
+  `quiet_hours.defer_notification()` became the one deferral door —
+  camera + documents defer through it, parking resolution became a
+  spine `update_delivery` edit, escalation's queue branches and the
+  shift report's queue reads were removed, and migration 165 DROPs
+  `dnd_alert_queue`. The shift-handoff report (pending/resolved/
+  maintenance/history + PDF) remains a domain job.
 
 Risk control: hottest path in the product → per-account flag (same pattern
 as `NOTIFICATIONS_LIVE_DISPATCH`), parity logs during the dual window, the
