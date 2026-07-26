@@ -273,3 +273,28 @@ async def test_post_alert_to_topic_legacy_target_does_NOT_prepend_mention(
     sent = app.bot.send_message_text[0]
     assert 'href="tg://user?id=' not in sent
     assert sent == "legacy body"
+
+
+def test_heavy_path_call_kwargs_bind_to_post_one_target_signature():
+    """Every kwarg ``_try_post_to_topic`` passes to ``_post_one_target``
+    must exist in its signature.
+
+    Pins the call/signature compatibility statically: a kwarg added to
+    the call but not the signature is a TypeError that only fires when a
+    group target resolves in production — exactly how the ``subtype=``
+    mismatch hid for weeks behind the wrong-scope NameError on the
+    neighbouring kwargs.  Any future drift fails here instead.
+    """
+    import inspect
+    import re as _re
+
+    src = inspect.getsource(pipeline_mod._try_post_to_topic)
+    m = _re.search(r"_post_one_target\((.*?)\n\s*\)", src, _re.S)
+    assert m, "call site not found — did the function get renamed?"
+    passed = set(_re.findall(r"(\w+)=", m.group(1)))
+    params = set(inspect.signature(pipeline_mod._post_one_target).parameters)
+    unknown = passed - params
+    assert not unknown, (
+        f"_try_post_to_topic passes kwargs _post_one_target does not "
+        f"accept: {sorted(unknown)}"
+    )

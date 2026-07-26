@@ -831,7 +831,10 @@ async def _try_post_to_topic(
             event_id=event_id,
             event_time=event_time,
             maps_url=maps_url,
-            subtype=subtype,
+            # NOTE: no ``subtype`` here — the resolver already consumed it
+            # picking targets; ``_post_one_target`` neither accepts nor
+            # needs it (passing it was a latent TypeError masked for weeks
+            # by the wrong-scope NameError on the two kwargs above).
             send_text_plain=send_text_plain,
             ai_account_default=ai_account_default,
         )
