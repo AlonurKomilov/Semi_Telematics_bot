@@ -1,6 +1,6 @@
 # ADR: Alert DM delivery moves to the notifications spine
 
-- **Status:** ACCEPTED (owner decision, 2026-07-24) — Phases 0–2 landed; Phases 3–5 pending
+- **Status:** ACCEPTED (owner decision, 2026-07-24) — Phases 0–3 landed; Phases 4–5 pending
 - **Owners:** alerting (`capabilities/alerting/`) + notifications (`capabilities/notifications/`)
 - **Related:** [notifications.md](notifications.md) (spine architecture), [bot-topology.md](bot-topology.md) (bot vs group split)
 
@@ -71,7 +71,7 @@ spine instead of its own loop).
 | **0 — Lock the contract** ✅ 2026-07-24 | This ADR; boundary rule `capabilities/notifications ⇸ {capabilities.alerting, features}` in `test_layer_boundaries.py`; reverse import removed — role→alert-types now derived from the category registry (`categories_for_source("alert", role)`) | 0.5 d | yes |
 | **1 — Delivery ledger + handles** ✅ 2026-07-24 | `notification_deliveries` table; `DeliveryResult` returns handle; `update_delivery()`; per-channel `supports_edit` | 1 d | yes (additive) |
 | **2 — Actions + callback routing** ✅ 2026-07-24 | `actions` in content; keyboard render; `notif_act:{correlation_key}:{action}` callback dispatch to registered handlers; alerting registers `alert.ack` | 1 d | yes (additive) |
-| **3 — Quiet hours in the spine** | Quiet-window policy + deferral queue on the digest machinery; severity bypass; alerting registers the shift-handoff renderer (summary + PDF); retire `dnd_alert_queue` | 1 d | yes |
+| **3 — Quiet hours in the spine** ✅ 2026-07-24 | Quiet-window policy + deferral queue on the digest machinery; severity bypass; alerting registers the quiet rule + alert digest renderer; document-attachment rail | 1 d | yes |
 | **4 — The flip** | `alert_prefs` JSONB → `notification_pref` rows (idempotent migration, dual-read window); `send_alert` DM fanout → spine call **behind a per-account flag** with parity logging | 1 d | flag-gated |
 | **5 — Burn the old path** | Escalation/resolve edits via `update_delivery`; delete legacy loop + JSONB reader; full test pass | 0.5 d | after parity holds |
 
@@ -80,6 +80,47 @@ as `NOTIFICATIONS_LIVE_DISPATCH`), parity logs during the dual window, the
 existing alerting test suite + new contract tests per phase, and Phase 4
 (the only phase that touches `send_alert` itself) coordinated with a quiet
 deploy moment.
+
+## Phase 3 record (what changed and why it's safe)
+
+Additive; nothing defers until spine alert DMs exist (Phase 4). The
+legacy DND path (`dnd.py` + `dnd_alert_queue`) keeps serving the live
+pipeline until Phase 5 retires it.
+
+- `notifications/quiet_hours.py` (new) — the policy module: one global
+  registered async rule `(account_id, user_id) → is-quiet-now`
+  (FAIL-OPEN on none/error — a scheduling bug degrades to a too-eager
+  send, never a swallowed one); `severity_bypasses_quiet` (critical cuts
+  through); `QUIET_DEFER_CADENCE = "quiet"` rides the existing digest
+  queue but is NOT in `DIGEST_CADENCES` (clock flushes never drain it).
+- Channel contract: `respects_quiet_hours = True` marks disturbing
+  channels (`telegram_dm`, `web_push`); inbox is silent by nature, email
+  rides its own cadence system.
+- `dispatch()` — immediate sends on disturbing channels defer to the
+  quiet queue while the rule says quiet (user recipients only).
+- `flush_quiet_deferrals()` + hourly `notification_quiet_flush` job
+  (minute 7) — per recipient: still quiet → hold; window ended → ONE
+  summary per channel, send-time consent re-check, clear only on
+  success. Digest/quiet/daily/hourly all render via the new
+  source-renderer registry (`register_digest_renderer(source, fn)`,
+  single-source batches only; renderer errors fall back to the generic
+  digest so a bad renderer can't wedge a flush).
+- Document rail: `NotificationContent`/`Payload.document_bytes` +
+  `document_name`; Telegram sends `send_document` (caption-clamped),
+  handle `kind="document"`, edits via caption — so a future digest
+  renderer can attach the shift PDF.
+- `capabilities/alerting/spine_quiet.py` (new, boot-imported) —
+  registers (1) the quiet rule delegating to `dnd.is_user_dnd_active`
+  (THE SSOT: opt-out tier, assigned schedule, legacy override, role
+  work-hours; unknown user → deliver) and (2) the `alert` digest
+  renderer ("While you were off shift — N alerts": type-icon counts,
+  critical lines spelled out, envelope severity = max). The full
+  shift-handoff REPORT (summary + PDF from `get_shift_handoff_data`)
+  stays a domain job — it aggregates far more than the deferred queue;
+  `dnd_alert_queue` retirement moves to Phase 5.
+- Scheduler `_JOB_META` gains the Notifications category (the two
+  digest flushes were missing from it too).
+- Contract tests: `tests/test_notification_quiet_hours.py` (17).
 
 ## Phase 2 record (what changed and why it's safe)
 

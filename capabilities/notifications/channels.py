@@ -95,6 +95,11 @@ class NotificationContent:
     severity: str = "info"
     url: str = ""
     photo_bytes: bytes | None = None
+    # Optional document attachment (a digest renderer's PDF report, …).
+    # Channels that can carry a file attach it (Telegram document, one
+    # day an email attachment); channels that can't ignore it.
+    document_bytes: bytes | None = None
+    document_name: str = ""
     meta: dict = field(default_factory=dict)
     actions: list = field(default_factory=list)
     alert_type: str = ""            # deprecated alias for `category`
@@ -118,6 +123,8 @@ class Payload:
     parse_mode: str = "HTML"
     subject: str = ""           # email subject line; ignored by chat channels
     photo_bytes: bytes | None = None
+    document_bytes: bytes | None = None
+    document_name: str = ""
     markup: Any = None          # channel-specific reply markup (opaque here)
     extra: dict = field(default_factory=dict)
 
@@ -174,6 +181,13 @@ class Channel(Protocol):
     service layer is the only caller; channels without the flag are
     silently skipped there (an email can't be edited — the source decides
     whether to send a fresh notice instead).
+
+    Finally, ``respects_quiet_hours = True`` (same getattr pattern) marks
+    a channel as one that DISTURBS — buzzes a phone — so the dispatch
+    layer defers its non-critical sends while the recipient's registered
+    quiet-hours rule says "quiet" (``quiet_hours.py``).  The inbox is
+    silent by nature and email rides its own cadence system, so neither
+    sets it.
     """
     key: str
     personal: bool

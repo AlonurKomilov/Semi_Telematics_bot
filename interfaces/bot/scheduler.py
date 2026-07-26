@@ -59,6 +59,10 @@ _JOB_META = {
     "dnd_delivery":                   ("Alerts", "Deliver do-not-disturb-queued alerts"),
     "scorecard_drop_alerts":          ("Alerts", "Alert on significant driver score drops"),
     "driver_doc_expiry_check":        ("Alerts", "Alert on expiring driver documents"),
+    # ── Notifications (spine digests + quiet-hours flush) ──
+    "notification_digest_hourly":     ("Notifications", "Flush hourly notification digests"),
+    "notification_digest_daily":      ("Notifications", "Flush daily notification digests"),
+    "notification_quiet_flush":       ("Notifications", "Deliver quiet-hours-deferred notifications after the window ends"),
     # ── Scorecards & coaching ──
     "scorecard_snapshot":             ("Scorecards & coaching", "Write nightly driver/vehicle scorecard snapshots"),
     "coaching_nightly":               ("Scorecards & coaching", "Run the nightly auto-coaching evaluation"),
@@ -217,6 +221,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     from capabilities.notifications.jobs import (
         job_flush_daily_digests,
         job_flush_hourly_digests,
+        job_flush_quiet_deferrals,
     )
     scheduler.add_job(
         job_flush_hourly_digests, "cron",
@@ -226,6 +231,14 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     scheduler.add_job(
         job_flush_daily_digests, "cron",
         hour=13, minute=0, args=[app], id="notification_digest_daily",
+        max_instances=1, coalesce=True,
+    )
+    # Quiet-hours deferrals: hourly tick; per-recipient the registered
+    # quiet rule decides "window ended → flush".  Drains nothing until
+    # spine-delivered alert DMs ship (alert-dm-migration Phase 4).
+    scheduler.add_job(
+        job_flush_quiet_deferrals, "cron",
+        minute=7, args=[app], id="notification_quiet_flush",
         max_instances=1, coalesce=True,
     )
 

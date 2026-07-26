@@ -38,6 +38,24 @@ from capabilities.notifications.channels import NotificationContent
 from capabilities.notifications.telegram import render_telegram
 
 
+@pytest.fixture(autouse=True)
+def _registry_isolation():
+    """Snapshot/restore the spine's global registries — fake channels /
+    renderers / handlers registered here must never leak into other test
+    files sharing this worker (e.g. the routes tests iterate
+    personal_channels() and would see our fakes)."""
+    from capabilities.notifications import actions as _act
+    from capabilities.notifications import channels as _ch
+    from capabilities.notifications import service as _svc
+    ch_snap = dict(_ch._CHANNELS)
+    h_snap = dict(_act._HANDLERS)
+    r_snap = dict(_svc._DIGEST_RENDERERS)
+    yield
+    _ch._CHANNELS.clear(); _ch._CHANNELS.update(ch_snap)
+    _act._HANDLERS.clear(); _act._HANDLERS.update(h_snap)
+    _svc._DIGEST_RENDERERS.clear(); _svc._DIGEST_RENDERERS.update(r_snap)
+
+
 # ── callback data build / parse ─────────────────────────────────────
 
 def test_roundtrip_with_colons_in_correlation_key():

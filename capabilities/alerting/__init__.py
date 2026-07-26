@@ -7,6 +7,7 @@ Re-exports the full public API via
 # Register alert.* notification categories at boot (alerting -> notifications).
 from capabilities.alerting import notification_categories  # noqa: F401,E402
 from capabilities.alerting import spine_actions  # noqa: F401,E402
+from capabilities.alerting import spine_quiet  # noqa: F401,E402
 
 # ── pipeline (shared core) ───────────────────────────────────────
 from capabilities.alerting.pipeline import (              # noqa: F401

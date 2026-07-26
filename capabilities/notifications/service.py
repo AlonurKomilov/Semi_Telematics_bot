@@ -38,6 +38,11 @@ from capabilities.notifications.channels import (
     get_channel,
     list_channels,
 )
+from capabilities.notifications.quiet_hours import (
+    QUIET_DEFER_CADENCE,
+    is_recipient_quiet,
+    severity_bypasses_quiet,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -158,6 +163,19 @@ async def dispatch(
                 logger.warning("dispatch: unknown cadence %r (%s) — sending now",
                                cadence, key)
                 cadence = IMMEDIATE
+            # Quiet hours: an IMMEDIATE send on a disturbing channel is
+            # deferred while the recipient's registered rule says quiet
+            # (critical always cuts through).  The deferral rides the
+            # digest queue under the 'quiet' cadence; its own flush
+            # (flush_quiet_deferrals) drains it when the window ends.
+            if (cadence == IMMEDIATE
+                    and s["recipient_type"] == "user"
+                    and getattr(channel, "respects_quiet_hours", False)
+                    and not severity_bypasses_quiet(content.severity)
+                    and str(s["recipient_id"]).lstrip("-").isdigit()
+                    and await is_recipient_quiet(
+                        account_id, int(s["recipient_id"]))):
+                cadence = QUIET_DEFER_CADENCE
             if cadence != IMMEDIATE:
                 try:
                     await db.enqueue_digest_item(
@@ -373,6 +391,39 @@ async def update_delivery(
     return results
 
 
+# ── Digest renderers ─────────────────────────────────────────────────
+# A SOURCE may register its own digest renderer — `(items, cadence) ->
+# NotificationContent` — so a flushed batch of its notifications reads in
+# the source's voice (the alert quiet-flush summary with type icons, one
+# day a PDF attachment via content.document_bytes) instead of the generic
+# bullet list.  Keyed by the category namespace ("alert"); fallback is
+# build_digest_content.  Same one-way seam as categories/actions.
+
+_DIGEST_RENDERERS: dict[str, Callable[[list[dict], str], NotificationContent]] = {}
+
+
+def register_digest_renderer(
+    source: str, fn: Callable[[list[dict], str], NotificationContent],
+) -> None:
+    _DIGEST_RENDERERS[source] = fn
+
+
+def _render_digest(items: list[dict], cadence: str) -> NotificationContent:
+    """Pick the source renderer when EVERY item shares one source;
+    mixed-source batches (or renderer errors) fall back to the generic
+    digest so a bad renderer can't wedge the flush."""
+    sources = {str(i.get("category", "")).split(".", 1)[0] for i in items}
+    if len(sources) == 1:
+        fn = _DIGEST_RENDERERS.get(next(iter(sources)))
+        if fn is not None:
+            try:
+                return fn(items, cadence)
+            except Exception as e:
+                logger.error("digest renderer %r failed — generic fallback: %s",
+                             next(iter(sources)), e)
+    return build_digest_content(items, cadence)
+
+
 def build_digest_content(items: list[dict], cadence: str) -> NotificationContent:
     """Group a recipient's buffered items into ONE semantic digest.
 
@@ -470,13 +521,76 @@ async def flush_digests(db: Any, cadence: str, *, limit: int = 2000) -> int:
             or next((g["address"] for g in group if g["address"]), ""),
         )
         try:
-            content = build_digest_content(group, cadence)
+            content = _render_digest(group, cadence)
             res = await channel.send(rcpt, channel.render(rcpt, content))
         except Exception as e:
             logger.error("flush_digests: send failed (%s): %s", chan_key, e)
             continue
         if not res.ok:
             logger.warning("flush_digests: %s not delivered (%s) — items kept",
+                           chan_key, res.error)
+            continue
+        await db.clear_digest_items(ids, account_id=account_id)
+        sent += 1
+    return sent
+
+
+async def flush_quiet_deferrals(db: Any, *, limit: int = 2000) -> int:
+    """Deliver quiet-hours-deferred items to every recipient whose quiet
+    window has ENDED — one summary per (recipient, channel), rendered by
+    the source's digest renderer.  Returns the number of summaries sent.
+
+    Unlike the clock-driven digest flushes, this one asks the registered
+    quiet-hours rule per recipient: still quiet → items stay queued for
+    the next hourly run; no longer quiet → flush now.  Items clear only
+    on a successful send (same crash-safety as flush_digests), and the
+    same send-time consent re-check applies — a recipient who disabled
+    the channel while asleep doesn't get the backlog.
+    """
+    try:
+        items = await db.fetch_due_digest_items(QUIET_DEFER_CADENCE, limit)
+    except Exception as e:
+        logger.error("flush_quiet_deferrals: fetch failed: %s", e)
+        return 0
+    if not items:
+        return 0
+
+    groups: dict[tuple, list[dict]] = defaultdict(list)
+    for it in items:
+        groups[(it["account_id"], it["recipient_type"],
+                it["recipient_id"], it["channel"])].append(it)
+
+    sent = 0
+    for (account_id, rtype, rid, chan_key), group in groups.items():
+        if rtype == "user" and str(rid).lstrip("-").isdigit() \
+                and await is_recipient_quiet(account_id, int(rid)):
+            continue                       # still asleep — hold the batch
+        ids = [g["id"] for g in group]
+        channel = get_channel(chan_key)
+        if channel is None:
+            logger.warning("flush_quiet_deferrals: unknown channel %r — kept",
+                           chan_key)
+            continue
+        conn = await db.get_notification_channel(account_id, rtype, rid, chan_key)
+        if not conn or not conn.get("enabled_master") or not conn.get("verified"):
+            logger.info("flush_quiet_deferrals: %s no longer enabled for "
+                        "%s/%s — %d dropped", chan_key, rtype, rid, len(ids))
+            await db.clear_digest_items(ids, account_id=account_id)
+            continue
+        rcpt = Recipient(
+            account_id=account_id, type=rtype, id=str(rid),
+            address=conn.get("address")
+            or next((g["address"] for g in group if g["address"]), ""),
+        )
+        try:
+            content = _render_digest(group, QUIET_DEFER_CADENCE)
+            res = await channel.send(rcpt, channel.render(rcpt, content))
+        except Exception as e:
+            logger.error("flush_quiet_deferrals: send failed (%s): %s",
+                         chan_key, e)
+            continue
+        if not res.ok:
+            logger.warning("flush_quiet_deferrals: %s not delivered (%s) — kept",
                            chan_key, res.error)
             continue
         await db.clear_digest_items(ids, account_id=account_id)

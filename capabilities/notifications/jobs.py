@@ -30,6 +30,22 @@ async def job_flush_hourly_digests(_app=None) -> None:
     await _flush("hourly")
 
 
+async def job_flush_quiet_deferrals(_app=None) -> None:
+    """Hourly: deliver quiet-hours-deferred notifications to recipients
+    whose window has ended (the registered quiet-hours rule decides per
+    recipient — this job is just the clock tick)."""
+    import infra.platform as platform
+
+    from capabilities.notifications.service import flush_quiet_deferrals
+
+    db = getattr(platform, "_db", None)
+    if db is None:
+        return
+    sent = await flush_quiet_deferrals(db)
+    if sent:
+        logger.info("quiet-deferral flush: %d summaries sent", sent)
+
+
 async def job_flush_daily_digests(_app=None) -> None:
     """Fires at one fixed UTC hour.  Per-account local-morning delivery is
     a refinement for when Email ships — the queue is already keyed by

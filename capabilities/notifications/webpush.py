@@ -29,6 +29,7 @@ _BODY_MAX = 180          # OS toasts truncate around here anyway
 class WebPushChannel:
     key = "web_push"
     personal = True
+    respects_quiet_hours = True     # a push buzzes the phone/desktop
 
     def render(self, recipient: Recipient, content: NotificationContent) -> Payload:
         body = (content.body or "").split("\n", 1)[0].strip()

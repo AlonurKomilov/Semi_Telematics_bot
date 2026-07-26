@@ -85,10 +85,13 @@ def render_telegram(content: NotificationContent) -> Payload:
         parts.append(_html.escape(content.body))
     if content.url:
         parts.append(_html.escape(content.url))
-    limit = _TELEGRAM_CAPTION_MAX if content.photo_bytes else _TELEGRAM_TEXT_MAX
+    limit = _TELEGRAM_CAPTION_MAX \
+        if (content.photo_bytes or content.document_bytes) else _TELEGRAM_TEXT_MAX
     return Payload(
         text=_clamp("\n".join(parts), limit), parse_mode="HTML",
         photo_bytes=content.photo_bytes,
+        document_bytes=content.document_bytes,
+        document_name=content.document_name,
         markup=_action_markup(content),
     )
 
@@ -162,7 +165,17 @@ async def _send(app, *, chat_id: int, thread_id: int | None,
     if app is None:
         return DeliveryResult(ok=False, error="no_bot")
     try:
-        if payload.photo_bytes is not None:
+        if payload.document_bytes is not None:
+            msg = await _tg_send_with_retry(
+                lambda: app.bot.send_document(
+                    chat_id=chat_id, message_thread_id=thread_id,
+                    document=payload.document_bytes,
+                    filename=payload.document_name or "report.pdf",
+                    caption=_clamp(payload.text, _TELEGRAM_CAPTION_MAX),
+                    parse_mode=payload.parse_mode, reply_markup=payload.markup,
+                ), what=what,
+            )
+        elif payload.photo_bytes is not None:
             msg = await _tg_send_with_retry(
                 lambda: app.bot.send_photo(
                     chat_id=chat_id, message_thread_id=thread_id,
@@ -183,8 +196,10 @@ async def _send(app, *, chat_id: int, thread_id: int | None,
         # message again.  ``kind`` decides text-vs-caption edit later.
         handle: dict = {}
         if message_id is not None:
+            kind = ("document" if payload.document_bytes is not None
+                    else "photo" if payload.photo_bytes is not None else "text")
             handle = {"chat_id": chat_id, "message_id": int(message_id),
-                      "kind": "photo" if payload.photo_bytes is not None else "text"}
+                      "kind": kind}
             if thread_id is not None:
                 handle["thread_id"] = thread_id
         return DeliveryResult(ok=True, provider_ref=str(message_id or ""),
@@ -198,8 +213,9 @@ async def _edit(app, *, handle: dict, payload: Payload, what: str) -> DeliveryRe
     """Shared leaf edit — mutate a previously sent message in place, given
     the ``handle`` that message's ``_send`` returned.
 
-    ``kind`` picks the right Telegram verb: a photo message only accepts
-    ``edit_message_caption``; a text message only ``edit_message_text``.
+    ``kind`` picks the right Telegram verb: photo and document messages
+    only accept ``edit_message_caption``; a text message only
+    ``edit_message_text``.
     Telegram's "message is not modified" rejection is treated as success —
     the message already shows the desired content, which is all an edit
     promises (the pipeline's ack-swap makes the same call)."""
@@ -209,7 +225,7 @@ async def _edit(app, *, handle: dict, payload: Payload, what: str) -> DeliveryRe
     if not chat_id or not message_id:
         return DeliveryResult(ok=False, error="bad_handle")
     try:
-        if handle.get("kind") == "photo":
+        if handle.get("kind") in ("photo", "document"):
             await _tg_send_with_retry(
                 lambda: app.bot.edit_message_caption(
                     chat_id=chat_id, message_id=message_id,
@@ -240,6 +256,7 @@ class TelegramDmChannel:
     key = "telegram_dm"
     personal = True
     supports_edit = True
+    respects_quiet_hours = True     # a DM buzzes the phone
 
     def render(self, recipient: Recipient, content: NotificationContent) -> Payload:
         return render_telegram(content)
