@@ -83,6 +83,36 @@ async def create_part(
     return {"part": part, "created": created}
 
 
+class PriceContextQuery(BaseModel):
+    """The part names on the invoice being entered."""
+    names: list[str] = Field(default_factory=list, max_length=100)
+    months: int = Field(12, ge=1, le=60)
+
+
+@router.post("/price-context")
+async def price_context(
+    body: PriceContextQuery,
+    user: dict = Depends(
+        require_permission_any("can_parts", "can_work_orders_all")
+    ),
+    tenant_db=Depends(get_tenant_db),
+):
+    """"Is this price normal?" for the lines on an invoice, answered
+    from the account's OWN buying history.
+
+    Declared BEFORE ``/{part_id}`` so the literal path wins over the
+    int converter.  Keyed by NAME because the caller is a work order
+    being typed or scanned — the line exists before any catalog row is
+    resolved.  Read gate matches the catalog list (the work-order
+    editor needs it), and parts with fewer than two prior purchases
+    are simply absent from the response: one data point is a price,
+    not a range.
+    """
+    return {"context": await tenant_db.part_price_context(
+        user["account_id"], body.names, months=body.months,
+    )}
+
+
 @router.get("/public/browse")
 async def browse_public(
     q: str = "",

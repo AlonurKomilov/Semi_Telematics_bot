@@ -303,6 +303,34 @@ async def create_work_order_action(tool_args, samsara_client,
         f"{', '.join(bits)}, total ${grand:,.2f}."
     )
 
+    # Price sanity: does any line cost more than this account usually
+    # pays for that part?  Answered from their OWN purchase history, so
+    # it works without the three-fleet threshold market ranges need.
+    # Named in the summary — the user is approving the amounts, and
+    # this is the moment they could still question the shop.
+    price_note = ""
+    if db is not None and account_id is not None and norm["parts"]:
+        try:
+            ctx = await db.part_price_context(
+                account_id, [p["part_name"] for p in norm["parts"]],
+            )
+        except Exception:      # pragma: no cover — a bonus, never a blocker
+            ctx = {}
+        if ctx:
+            from adapters.storage.parts_catalog import part_name_key
+            over = [
+                p for p in norm["parts"]
+                if (c := ctx.get(part_name_key(p["part_name"])))
+                and p["unit_cost"] > 0 and p["unit_cost"] > c["high"]
+            ]
+            if over:
+                n = len(over)
+                price_note = (
+                    f" Heads up: {n} part{'s' if n > 1 else ''} priced above "
+                    f"what you usually pay ({', '.join(p['part_name'] for p in over[:3])}"
+                    f"{'\u2026' if n > 3 else ''})."
+                )
+
     # Maintenance auto-link: does this invoice cover work the vehicle
     # already has an open task for?  Matched server-side (deterministic,
     # no hallucinated ids) and NAMED IN THE SUMMARY — the user approves
@@ -342,7 +370,7 @@ async def create_work_order_action(tool_args, samsara_client,
 
     link_phrase = describe_links(described)
     return tool_propose(
-        "create_work_order", summary + defaults_note + link_phrase, norm,
+        "create_work_order", summary + defaults_note + price_note + link_phrase, norm,
         risk="low",
         consequence=(
             "Creates an OPEN work order draft you can edit or delete on "

@@ -18,6 +18,24 @@ def part_name_key(name: str) -> str:
     return " ".join((name or "").split()).casefold()
 
 
+def _percentile(sorted_values: list[float], q: float) -> float:
+    """Linear-interpolated percentile over a PRE-SORTED list.
+
+    Matches the market-intel rollup's p25/p75 so an account's own band
+    and a published market band are computed the same way — otherwise
+    showing them side by side would be comparing two different maths.
+    """
+    if not sorted_values:
+        return 0.0
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    pos = (len(sorted_values) - 1) * q
+    lo = int(pos)
+    hi = min(lo + 1, len(sorted_values) - 1)
+    frac = pos - lo
+    return sorted_values[lo] * (1 - frac) + sorted_values[hi] * frac
+
+
 def _avg_interval_days(
     first_date: Optional[str], last_date: Optional[str], visit_days: int,
 ) -> Optional[float]:
@@ -194,6 +212,79 @@ class PartsCatalogMixin:
         "CASE WHEN p.unit_cost > 0 THEN p.unit_cost "
         "     WHEN p.quantity > 0 THEN p.total_cost / p.quantity END"
     )
+
+    async def part_price_context(
+        self, account_id: int, names: list[str], *, months: int = 12,
+    ) -> dict[str, dict]:
+        """"Is this price normal?" — answered from the account's OWN
+        buying history, keyed by part NAME.
+
+        The same question market intelligence answers, but sourced from
+        data every account already has instead of needing three
+        consenting fleets.  Names (not ids) because the caller is an
+        invoice being typed or scanned: the line exists before any
+        catalog row is resolved.  Matching uses ``name_key``, so
+        "Brake Pad Set" and "brake  pad set" are the same part.
+
+        Returns ``{name_key: {buys, low, high, last_price,
+        cheapest_vendor, cheapest_price}}`` — low/high are the typical
+        band (p25–p75, same shape market ranges use, so the two read
+        alike when market data eventually exists beside this).  Parts
+        with fewer than 2 purchases are omitted: one prior data point
+        isn't a range, and pretending otherwise would flag noise.
+        """
+        keys = {part_name_key(n) for n in (names or []) if part_name_key(n)}
+        if not keys:
+            return {}
+        from datetime import datetime, timedelta, timezone
+        since = (datetime.now(timezone.utc)
+                 - timedelta(days=int(months) * 31)).date().isoformat()
+
+        placeholders = ",".join("?" * len(keys))
+        cur = await self._db.execute(
+            f"SELECT c.name_key AS name_key, "
+            f"       {self._UNIT_PRICE} AS unit_price, "
+            f"       w.service_date AS service_date, "
+            f"       COALESCE(v.name, w.vendor_name) AS vendor_name "
+            f"FROM work_order_parts p "
+            f"JOIN work_orders w ON w.id = p.work_order_id "
+            f"JOIN parts_catalog c ON c.id = p.part_id "
+            f"     AND c.account_id = w.account_id "
+            f"LEFT JOIN vendors v ON v.id = w.vendor_id "
+            f"     AND v.account_id = w.account_id "
+            f"WHERE w.account_id = ? "
+            f"  AND c.name_key IN ({placeholders}) "
+            f"  AND w.service_date IS NOT NULL AND w.service_date >= ? "
+            f"  AND w.status != 'void' AND w.payment_status != 'void' "
+            f"ORDER BY w.service_date DESC",
+            (account_id, *sorted(keys), since),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+
+        grouped: dict[str, list[dict]] = {}
+        for r in rows:
+            price = r.get("unit_price")
+            if price is None or float(price) <= 0:
+                continue
+            grouped.setdefault(r["name_key"], []).append(r)
+
+        out: dict[str, dict] = {}
+        for key, entries in grouped.items():
+            prices = sorted(float(e["unit_price"]) for e in entries)
+            if len(prices) < 2:
+                continue          # one point is a price, not a range
+            cheapest = min(entries, key=lambda e: float(e["unit_price"]))
+            out[key] = {
+                "buys": len(prices),
+                "low": round(_percentile(prices, 0.25), 2),
+                "high": round(_percentile(prices, 0.75), 2),
+                # ORDER BY service_date DESC put the newest first.
+                "last_price": round(float(entries[0]["unit_price"]), 2),
+                "cheapest_vendor": cheapest.get("vendor_name") or "",
+                "cheapest_price": round(float(cheapest["unit_price"]), 2),
+                "months": int(months),
+            }
+        return out
 
     async def part_analytics(
         self, part_id: int, account_id: int, purchases_limit: int = 200,

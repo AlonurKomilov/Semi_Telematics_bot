@@ -16,6 +16,10 @@ import {
 import {
   buildScanPatch, type InvoiceExtract, type ScanConflict,
 } from './scanInvoice';
+import {
+  priceKey, verdictFor, summaryFor, detailFor,
+  type PriceContextMap,
+} from './priceContext';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader, ErrorState } from '../../components/shell';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
@@ -609,6 +613,31 @@ export default function WorkOrderForm() {
   const groupLaborSubtotal = (task: string) =>
     laborEntriesFor(task).reduce((acc, e) => acc + (e.l.total_cost || 0), 0);
 
+  // "Is this price normal?" — from the account's OWN buying history.
+  // Answers the question at the moment it's actionable (invoice in
+  // hand) rather than on a part profile nobody visits mid-entry.
+  // Debounced on the set of part NAMES, so typing a name doesn't
+  // fire a request per keystroke.
+  const [priceCtx, setPriceCtx] = useState<PriceContextMap>({});
+  const partNamesKey = useMemo(
+    () => Array.from(new Set(
+      parts.map(p => priceKey(p.part_name)).filter(Boolean),
+    )).sort().join('|'),
+    [parts],
+  );
+  useEffect(() => {
+    if (!partNamesKey) { setPriceCtx({}); return; }
+    let alive = true;
+    const timer = setTimeout(() => {
+      apiJSON<{ context: PriceContextMap }>('/parts/price-context', {
+        method: 'POST', body: { names: partNamesKey.split('|') },
+      })
+        .then(r => { if (alive) setPriceCtx(r.context ?? {}); })
+        .catch(() => { /* context is a bonus, never a blocker */ });
+    }, 400);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [partNamesKey]);
+
   // Service-task vocabulary — the shared list Maintenance and this form
   // both pick from (features/service-tasks).  Also what "Add service
   // task" walks to open the next unused group.
@@ -725,6 +754,20 @@ export default function WorkOrderForm() {
                     placeholder={t('work_orders_page.ph_part_name')}
                     className="w-full bg-transparent border-0 px-1 py-0.5 text-sm focus:outline-none focus:bg-muted/40 rounded"
                   />
+                  {(() => {
+                    const c = priceCtx[priceKey(pt.part_name)];
+                    if (!c) return null;
+                    const v = verdictFor(pt.unit_cost, c);
+                    return (
+                      <Tip label={detailFor(c)}>
+                        <span className={`mt-0.5 block text-2xs cursor-help ${
+                          v === 'above' ? toneText('warn') : 'text-muted-foreground'
+                        }`}>
+                          {v === 'above' ? '\u2191 ' : ''}{summaryFor(c)}
+                        </span>
+                      </Tip>
+                    );
+                  })()}
                 </td>
                 <td className="py-1.5 px-2">
                   <input
