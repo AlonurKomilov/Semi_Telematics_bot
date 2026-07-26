@@ -270,6 +270,9 @@ async def _send_parking_resolved(
                 tenant, account_id, f"alert:{hist['id']}",
                 _NotifContent(title="", body=_strip_alert_html(text),
                               severity="info"),
+                # DM copies only — the group copy got its threaded
+                # reply above (reply-not-edit, owner decision).
+                channels=("telegram_dm",),
                 clear=True,
             )
     except Exception as e:

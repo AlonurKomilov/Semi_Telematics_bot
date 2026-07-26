@@ -244,7 +244,9 @@ async def _send(app, *, chat_id: int, thread_id: int | None,
                               handle=handle)
     except Exception as e:   # transport failure — the caller logs/records
         logger.warning("Telegram %s send failed: %s", what, e)
-        return DeliveryResult(ok=False, error=type(e).__name__)
+        # error carries the MESSAGE too — sources react to specific
+        # Telegram rejections ("topic deleted" → drift handling).
+        return DeliveryResult(ok=False, error=f"{type(e).__name__}: {e}"[:200])
 
 
 async def _edit(app, *, handle: dict, payload: Payload, what: str) -> DeliveryResult:
@@ -286,7 +288,7 @@ async def _edit(app, *, handle: dict, payload: Payload, what: str) -> DeliveryRe
             return DeliveryResult(ok=True, provider_ref=str(message_id),
                                   handle=dict(handle))
         logger.warning("Telegram %s edit failed: %s", what, e)
-        return DeliveryResult(ok=False, error=type(e).__name__)
+        return DeliveryResult(ok=False, error=f"{type(e).__name__}: {e}"[:200])
 
 
 class TelegramDmChannel:

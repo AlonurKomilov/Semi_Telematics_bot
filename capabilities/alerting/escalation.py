@@ -216,6 +216,10 @@ async def _auto_resolve_vehicle_alerts(
                       f"{_line}  🔖 #{hist['id']}"),
                 severity="info",
             ),
+            # DM copies only: a group copy gets a threaded REPLY below
+            # (owner decision — editing would erase the alert text for
+            # every other shift reading the topic).
+            channels=("telegram_dm",),
             clear=True,
         )
     except Exception as _se:
@@ -889,6 +893,13 @@ async def re_escalate_critical_alerts(app: Application):
                 # skipped — Telegram per-topic mute is each member's
                 # personal silencer in that case.
                 is_group_post = recipient_id == 0
+                if is_group_post and spine_reminded:
+                    # Plan-posted group copies live in the delivery
+                    # ledger — the spine edit above already updated them
+                    # (with the RIGHT sender bot).  Editing again here
+                    # would overwrite with the legacy format, and fails
+                    # anyway on Sub-bot posts (only the author edits).
+                    continue
                 if not is_group_post and not recipient_id:
                     continue
 

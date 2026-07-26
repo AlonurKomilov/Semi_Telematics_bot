@@ -282,6 +282,12 @@ _FORUM_CRITICAL_MIRROR = _os.getenv("FORUM_CRITICAL_MIRROR", "1") not in ("0", "
 _NOTIFICATIONS_LIVE_DISPATCH = _os.getenv(
     "NOTIFICATIONS_LIVE_DISPATCH", "0") not in ("0", "false", "False")
 
+# Group posting through the notifications delivery plan (the shared-target
+# seam).  ON by default; "0" falls back to the in-module legacy path —
+# emergency lever only, removed when the legacy group code burns.
+_GROUP_VIA_PLAN = _os.getenv(
+    "ALERT_GROUP_VIA_PLAN", "1") not in ("0", "false", "False")
+
 # ``alert_text`` is composed as Telegram HTML (sent with ParseMode.HTML)
 # — it carries tags (<b>, <code>, <a>) and HTML entities.  The
 # Notifications ``NotificationContent.body`` must be RAW plain text, so
@@ -1184,6 +1190,184 @@ async def _post_one_target(
         return False
 
 
+async def _deliver_groups_via_plan(
+    *,
+    account_id: int,
+    alert_type: str,
+    severity: AlertSeverity,
+    co: str,
+    vehicle_id: str,
+    vehicle_name: str,
+    send_text: str,
+    send_text_plain: "str | None",
+    ai_account_default: bool,
+    photo_bytes: "bytes | None",
+    video_url: str,
+    history_id: "int | None",
+    needs_ack: bool,
+    alert_key_detail: str,
+    subtype: str = "",
+) -> bool:
+    """Group-topic delivery as a notifications delivery PLAN.
+
+    Alerting keeps every decision — target resolution, per-persona AI
+    inclusion, on-shift mentions, ack-row state, drift policy — and the
+    spine executes the sends (Sub-bot pick, locks, ledger, ✅ button).
+    Returns True when at least one team copy landed.
+
+    The ✅ Acknowledge button on team copies is the spine action row
+    (history-level ack + fan-edit of every recorded copy — DMs and
+    groups together), replacing the legacy per-ack-row keyboard.  Ack
+    ROWS are still written from the returned handles so re-escalation /
+    resolve threading / the shift report keep their state until those
+    reads move to the ledger.
+    """
+    if not _FORUM_ROUTING_ENABLED:
+        return False
+    from .routing_resolver import resolve_alert_targets
+    sev_value = severity.value if hasattr(severity, "value") else str(severity)
+    targets = await resolve_alert_targets(
+        account_id=account_id, alert_type=alert_type, severity=sev_value,
+        subtype=subtype,
+    )
+    if not targets:
+        return False
+
+    from capabilities.notifications import (
+        DeliveryPlan,
+        NotificationContent as _NotifContent,
+        Target as _PlanTarget,
+        deliver as _plan_deliver,
+    )
+    route_key = _PIPELINE_TO_ROUTE_KEY.get(alert_type, alert_type)
+    correlation_key = f"alert:{int(history_id)}" if history_id else ""
+    actions = ([{"id": "ack", "label": "✅ Acknowledge"}]
+               if (needs_ack and correlation_key) else [])
+
+    def _mk(body: str) -> "_NotifContent":
+        return _NotifContent(
+            title="",
+            body=_strip_alert_html(body),
+            category=f"alert.{route_key}",
+            severity=sev_value,
+            photo_bytes=photo_bytes,
+            video_url=video_url or "",
+            actions=list(actions),
+        )
+
+    contents = [_mk(send_text)]
+    has_plain = send_text_plain is not None and send_text_plain != send_text
+    if has_plain:
+        contents.append(_mk(send_text_plain))
+
+    tenant = await get_tenant_db(account_id)
+    plan_targets: list = []
+    for t in targets:
+        # Shared-AI contract: persona toggle picks WITH-AI vs plain;
+        # the aggregate and legacy single-mode follow the account default.
+        idx = 0
+        if has_plain:
+            persona = getattr(t, "persona", "") or ""
+            if persona and not getattr(t, "is_aggregate", False):
+                try:
+                    v = await tenant.get_account_setting(
+                        account_id, f"persona_ai.{persona}.{route_key}",
+                        default="")
+                    include_ai = ai_account_default if not v else v != "0"
+                except Exception:
+                    include_ai = ai_account_default
+            else:
+                include_ai = ai_account_default
+            if not include_ai:
+                idx = 1
+        prefix = await _compose_persona_critical_mention(
+            account_id=account_id, target=t,
+            severity_is_critical=severity == AlertSeverity.CRITICAL,
+        )
+        thread = getattr(t, "message_thread_id", None)
+        addr = str(t.chat_id) + (f":{thread}" if thread is not None else "")
+        plan_targets.append(_PlanTarget(
+            channel="telegram_topic",
+            address=addr,
+            id=(getattr(t, "persona", "") or route_key or addr),
+            sender_hint="" if getattr(t, "is_aggregate", False)
+            else (getattr(t, "persona", "") or ""),
+            prefix_html=prefix,
+            content_index=idx,
+        ))
+
+    result = await _plan_deliver(
+        get_platform_db(), account_id,
+        DeliveryPlan(correlation_key=correlation_key, contents=contents,
+                     shared=plan_targets, personal=[]),
+    )
+
+    any_ok = False
+    alert_key = f"{co}:{vehicle_id}:{alert_key_detail}"
+    for orig, (_ptarget, res) in zip(targets, result.shared):
+        if res.ok:
+            any_ok = True
+            logger.info(
+                "forum alert posted acct=%d type=%s severity=%s chat=%s "
+                "thread=%s%s route=plan",
+                account_id, alert_type, sev_value, orig.chat_id,
+                getattr(orig, "message_thread_id", None) or "-",
+                " [aggregate]" if getattr(orig, "is_aggregate", False) else "",
+            )
+            mid = (res.handle or {}).get("message_id")
+            chat = (res.handle or {}).get("chat_id")
+            if mid and chat:
+                try:
+                    if needs_ack:
+                        await tenant.create_alert_ack(
+                            account_id=account_id, alert_type=alert_type,
+                            vehicle_id=vehicle_id, vehicle_name=vehicle_name,
+                            alert_key=alert_key, message_id=mid,
+                            chat_id=chat, sent_to=0, severity=sev_value,
+                        )
+                    else:
+                        await tenant.create_info_alert_ack(
+                            account_id=account_id, alert_type=alert_type,
+                            vehicle_id=vehicle_id, vehicle_name=vehicle_name,
+                            alert_key=alert_key, message_id=mid,
+                            chat_id=chat, sent_to=0,
+                        )
+                except Exception as ae:
+                    logger.debug("group ack-row write failed: %s", ae)
+            continue
+        # Failure policy — alerting's decision, spine's report.
+        err = (res.error or "").lower()
+        is_legacy = (getattr(orig, "message_thread_id", None) is not None
+                     and not getattr(orig, "persona", ""))
+        if (is_legacy and route_key and "topic" in err
+                and ("delet" in err or "not found" in err or "closed" in err)):
+            try:
+                await get_platform_db().set_alert_route_active(
+                    account_id, route_key, False)
+                logger.warning(
+                    "Forum route disabled (drift): acct=%d type=%s — %s",
+                    account_id, route_key, res.error,
+                )
+            except Exception:
+                logger.exception("Failed to disable broken route")
+        elif getattr(orig, "persona", ""):
+            try:
+                await get_platform_db().record_persona_group_failure(
+                    account_id, orig.persona, res.error or "send failed")
+            except Exception:
+                pass
+            logger.warning(
+                "Forum post failed acct=%d type=%s persona=%s — %s",
+                account_id, alert_type, orig.persona, res.error,
+            )
+        else:
+            logger.warning(
+                "Forum post failed acct=%d type=%s chat=%s — %s",
+                account_id, alert_type, orig.chat_id, res.error,
+            )
+    return any_ok
+
+
 async def send_alert(
     app: Application,
     *,
@@ -1450,6 +1634,25 @@ async def send_alert(
     _group_text_plain = _group_alert_text + history_footer
     posted_to_topic = False
     with _obs.time_block(timings, "group_post"):
+      if _GROUP_VIA_PLAN:
+        posted_to_topic = await _deliver_groups_via_plan(
+            account_id=account_id,
+            alert_type=alert_type,
+            severity=severity,
+            co=co,
+            vehicle_id=vid,
+            vehicle_name=vname,
+            send_text=_group_text,
+            send_text_plain=_group_text_plain,
+            ai_account_default=_include_ai_in_group,
+            photo_bytes=photo_bytes,
+            video_url=video_url,
+            history_id=(history_record or {}).get("id"),
+            needs_ack=needs_ack,
+            alert_key_detail=alert_key_detail,
+            subtype=subtype,
+        )
+      else:
         posted_to_topic = await _try_post_to_topic(
             bot_app,
             account_id=account_id,
