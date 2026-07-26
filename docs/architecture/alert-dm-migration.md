@@ -1,0 +1,97 @@
+# ADR: Alert DM delivery moves to the notifications spine
+
+- **Status:** ACCEPTED (owner decision, 2026-07-24) — Phase 0 landed; Phases 1–5 pending
+- **Owners:** alerting (`capabilities/alerting/`) + notifications (`capabilities/notifications/`)
+- **Related:** [notifications.md](notifications.md) (spine architecture), [bot-topology.md](bot-topology.md) (bot vs group split)
+
+## Decision
+
+Telegram **DM** delivery of alerts migrates from the alerting pipeline's own
+fanout loop into the notifications spine, alongside email / web push / in-app.
+Telegram **group-topic** delivery stays domain-owned in alerting.
+
+The boundary rule that this ADR locks (and `tests/test_layer_boundaries.py`
+now enforces):
+
+> **Notifications owns the VERBS** — send, remember-what-was-sent, edit,
+> action buttons, defer/quiet-hours, digests.
+> **Alerting owns the MEANING** — what "acknowledged" is, when to remind,
+> when resolved, who is on shift for which truck, group/topic routing.
+
+The reuse test for any piece of code: *"if a Work Order wants an Approve
+button in a DM tomorrow, is this code reused unchanged?"* Yes → it belongs
+in notifications. It mentions vehicles/alerts → it belongs in alerting.
+
+## Why
+
+- A DM is **personal delivery** — exactly what the spine exists for. Today
+  the DM path duplicates spine concerns with a *second* implementation:
+  legacy `alert_prefs` JSONB vs the `notification_pref` matrix, its own
+  company filter vs `recipient_filter`, its own quiet-hours (DND) vs
+  cadence/digests.
+- Group topics are **team-space, domain-stateful** delivery (persona routing,
+  Sub-bot senders, ack keyboards edited in place, on-shift mentions,
+  aggregate copies). Moving that into the spine would force the spine to
+  learn alert semantics and stop being generic — the opposite of clean.
+- Unifying the personal path fixes two audit findings for free: the dual
+  preference store, and the missing driver-truck scoping on email/push
+  (one shared `recipient_filter` predicate for all personal channels).
+
+## Target matrix — MOVES / STAYS / DIES
+
+| Thing | Today | Target |
+|---|---|---|
+| DM sending loop | `pipeline.py` fanout | ➡️ spine (`TelegramDmChannel`) |
+| Message handles ("what did I send where") | `alert_acknowledgments.message_id` | ➡️ spine `notification_deliveries` ledger (delivery_id, channel, recipient, handle, `correlation_key`) |
+| Editing sent DMs (reminder counter, ✅ acked, 🟢 resolved) | raw PTB calls in `escalation.py` | ➡️ spine `update_delivery(correlation_key, content)`; channels declare `supports_edit` |
+| Ack **buttons** | keyboard built in alerting | ➡️ spine renders `actions=[{id,label}]`, routes callbacks to registered domain handlers (`register_action_handler("alert.ack", fn)`) |
+| Ack **semantics** (cascade, status, TTL) | alerting | ✋ stays |
+| Re-escalation **policy** (when / how many) | alerting | ✋ stays — sends its reminder *through* `update_delivery` |
+| DND quiet-window **deferral** | `dnd_alert_queue` + own flush job | ➡️ spine recipient-level quiet-hours policy (generalizes cadence/digest); critical bypass = severity policy |
+| Shift-handoff **content** (summary + PDF) | `dnd.py` | ✋ stays as a digest **renderer** alerting registers; spine decides *when* to flush |
+| DM prefs | legacy `alert_prefs` JSONB | ➡️ `notification_pref` matrix ("matrix flip") |
+| Company + truck scoping | DM-only filters in alerting | ✋ stays alerting-owned, passed as the existing `recipient_filter` predicate — now applied to **all** personal channels |
+| Group topics path (routing_resolver, Sub bots, mentions, aggregate) | alerting | ✋ stays |
+| **Dies at the end** | `dnd_alert_queue` table · the DM fanout loop · raw PTB edits for DMs · the `alert_prefs` reader · notifications' reverse import of `alerting.relevance` (Phase 0 ✅) | |
+
+End state: **alerting never touches python-telegram-bot for DMs.** Its DM
+vocabulary is `dispatch(content, actions, recipient_filter)`,
+`update_delivery(...)`, plus two registered callbacks (action handler,
+digest renderer).
+
+Explicit non-goals: alerts stay **out** of the in-app inbox (the Board is
+the alert inbox — ack semantics ≠ read semantics); the group-fallback /
+critical-mirror orchestration stays in `send_alert` (it just calls the
+spine instead of its own loop).
+
+## Phases
+
+| Phase | Work | Size | Ships alone? |
+|---|---|---|---|
+| **0 — Lock the contract** ✅ 2026-07-24 | This ADR; boundary rule `capabilities/notifications ⇸ {capabilities.alerting, features}` in `test_layer_boundaries.py`; reverse import removed — role→alert-types now derived from the category registry (`categories_for_source("alert", role)`) | 0.5 d | yes |
+| **1 — Delivery ledger + handles** | `notification_deliveries` table; `DeliveryResult` returns handle; `update_delivery()`; per-channel `supports_edit` | 1 d | yes (additive) |
+| **2 — Actions + callback routing** | `actions` in content; keyboard render in `TelegramDmChannel`; `notif_act:{delivery}:{action}` callback dispatch to registered handlers; alerting registers `alert.ack` | 1 d | yes (additive) |
+| **3 — Quiet hours in the spine** | Quiet-window policy + deferral queue on the digest machinery; severity bypass; alerting registers the shift-handoff renderer (summary + PDF); retire `dnd_alert_queue` | 1 d | yes |
+| **4 — The flip** | `alert_prefs` JSONB → `notification_pref` rows (idempotent migration, dual-read window); `send_alert` DM fanout → spine call **behind a per-account flag** with parity logging | 1 d | flag-gated |
+| **5 — Burn the old path** | Escalation/resolve edits via `update_delivery`; delete legacy loop + JSONB reader; full test pass | 0.5 d | after parity holds |
+
+Risk control: hottest path in the product → per-account flag (same pattern
+as `NOTIFICATIONS_LIVE_DISPATCH`), parity logs during the dual window, the
+existing alerting test suite + new contract tests per phase, and Phase 4
+(the only phase that touches `send_alert` itself) coordinated with a quiet
+deploy moment.
+
+## Phase 0 record (what changed and why it's safe)
+
+- `capabilities/notifications/categories.py` — new `categories_for_source()`:
+  registry-derived "which alert types can this role see", order-stable
+  (registration order = `ALERT_TYPE_REQUIRED_PERM` order).
+- `capabilities/notifications/router.py` — the two `/prefs/{channel}`
+  handlers use the registry derivation instead of importing
+  `capabilities.alerting.relevance`. Behavior-identical: the registered
+  `alert.*` categories' `audience` closures ARE
+  `role_can_receive_alert(role, type)`, registered by alerting at boot
+  (`capabilities/alerting/notification_categories.py`, imported from the
+  package `__init__`, which the API app always loads).
+- `tests/test_layer_boundaries.py` — the spine's source-blindness is now a
+  parametrized rule, not a convention.

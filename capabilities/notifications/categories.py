@@ -63,3 +63,26 @@ def get_category(key: str) -> NotificationCategory | None:
 
 def list_categories() -> list[NotificationCategory]:
     return list(_CATEGORIES.values())
+
+
+def categories_for_source(
+    source: str, role: str | None = None,
+) -> list[NotificationCategory]:
+    """Registered categories of one source namespace (``"alert"``,
+    ``"system"``, …), optionally narrowed to those whose ``audience``
+    admits *role*.
+
+    This is how the HTTP layer asks "which alert types can this role
+    subscribe to" WITHOUT importing the alerting capability: the answer
+    was already registered here by the source itself (each category's
+    ``audience`` closure carries the source-side rule).  Registration
+    order is preserved, so UI toggle ordering stays stable.
+    """
+    out: list[NotificationCategory] = []
+    for cat in list_categories():
+        if cat.source != source:
+            continue
+        if role is not None and cat.audience is not None and not cat.audience(role):
+            continue
+        out.append(cat)
+    return out

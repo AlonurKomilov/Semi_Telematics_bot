@@ -12,6 +12,15 @@ platform (e.g. the Samsara ingest cycle triggers billing quantity sync) —
 capabilities→platform is a one-way service call, not a product dependency.
 
 Rationale + the "Whose money is it?" table: docs/FEATURES.md "Money domains".
+
+A second guarded seam: ``capabilities/notifications/`` is the GENERIC
+delivery spine (channels, inbox, prefs, digests).  Event sources
+(alerting, billing, …) import notifications to register categories and
+dispatch — never the reverse: the spine must stay source-blind, or the
+next domain (work orders, loads) can't reuse it.  Sources hand the spine
+closures (``audience``, ``recipient_filter``, renderers) instead of being
+imported.  Decision + DM-migration plan:
+docs/architecture/alert-dm-migration.md.
 """
 
 from __future__ import annotations
@@ -27,6 +36,8 @@ REPO = Path(__file__).resolve().parent.parent
 FORBIDDEN = {
     "features": ("capabilities.platform",),
     "capabilities/platform": ("features",),
+    # The delivery spine stays source-blind: sources register INTO it.
+    "capabilities/notifications": ("capabilities.alerting", "features"),
 }
 
 

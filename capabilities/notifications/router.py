@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from interfaces.api.deps import get_current_db_user, get_current_user
 from interfaces.api.rate_limit import limiter
 
+from capabilities.notifications.categories import categories_for_source
 from capabilities.notifications.lifecycle import (
     apply_unsubscribe,
     confirm_channel_verification,
@@ -111,14 +112,18 @@ async def get_channel_prefs(
     alert types, which are on, the channel cadence, and the connection
     state.  The state is returned under the channel's own key (``email`` /
     ``web_push``) so each channel card reads ``body[channel]``."""
-    from capabilities.alerting.relevance import alert_types_for_role
     from infra.platform import get_platform_db
     db = get_platform_db()
     db_user = await get_current_db_user(user, db)
     if not db_user:
         return {"relevant_types": [], channel: {}}
 
-    relevant = alert_types_for_role(db_user.role)
+    # Role-tailored alert types come from the category REGISTRY (each
+    # ``alert.*`` category carries its audience rule, registered by the
+    # alerting side) — never from importing alerting: the notification
+    # core stays source-blind (layer boundary, test-enforced).
+    relevant = [c.key.split(".", 1)[1]
+                for c in categories_for_source("alert", db_user.role)]
     rows = await db.list_recipient_notification_prefs(
         db_user.account_id, "user", db_user.id)
     ch_rows = [r for r in rows if r["channel"] == channel]
@@ -171,13 +176,16 @@ async def set_channel_type(
     channel's CURRENT cadence (or its default) so every row stays uniform
     — the UI models cadence as one channel-level choice, and letting a
     per-type override slip in would desync that."""
-    from capabilities.alerting.relevance import alert_types_for_role
     from infra.platform import get_platform_db
     db = get_platform_db()
     db_user = await get_current_db_user(user, db)
     if not db_user:
         return {"ok": False, "error": "user_not_found"}
-    if body.alert_type not in alert_types_for_role(db_user.role):
+    # Registry-derived role gate (see get_channel_prefs — same rule, no
+    # alerting import).
+    relevant = [c.key.split(".", 1)[1]
+                for c in categories_for_source("alert", db_user.role)]
+    if body.alert_type not in relevant:
         return {"ok": False, "error": "irrelevant_type"}
     rows = await db.list_recipient_notification_prefs(
         db_user.account_id, "user", db_user.id)
