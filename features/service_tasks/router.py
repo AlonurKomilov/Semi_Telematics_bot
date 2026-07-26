@@ -129,6 +129,82 @@ async def update_service_task(
     return await tenant_db.get_service_task(task_id, user["account_id"])
 
 
+@router.get("/defaults")
+async def service_task_defaults(
+    task: str,
+    user: dict = Depends(require_permission_any(
+        "can_service_tasks", "can_maintenance_all", "can_work_orders_all",
+    )),
+    tenant_db=Depends(get_tenant_db),
+):
+    """What picking ``task`` should pre-fill — its labor estimate and
+    usual parts.  Read-only by contract: an unknown task returns empty
+    rather than creating anything (the writers' fail-open resolver is
+    for WRITES; a lookup must never write).
+
+    Declared BEFORE ``/{task_id}`` so the literal path wins over the
+    int converter.
+    """
+    found = await tenant_db.service_task_defaults(user["account_id"], task)
+    if not found:
+        return {"found": False, "expected_labor_hours": 0, "parts": []}
+    return {"found": True, **found}
+
+
+class TaskPartLink(BaseModel):
+    part_id: int
+    quantity: float = Field(1, gt=0, le=10000)
+
+
+@router.get("/{task_id}/parts")
+async def list_task_parts(
+    task_id: int,
+    user: dict = Depends(require_permission_any(
+        "can_service_tasks", "can_maintenance_all", "can_work_orders_all",
+    )),
+    tenant_db=Depends(get_tenant_db),
+):
+    """The parts this task normally needs."""
+    if not await tenant_db.get_service_task(task_id, user["account_id"]):
+        raise HTTPException(status_code=404, detail="Service task not found")
+    return {"parts": await tenant_db.list_service_task_parts(
+        task_id, user["account_id"],
+    )}
+
+
+@router.post("/{task_id}/parts")
+async def link_task_part(
+    task_id: int,
+    body: TaskPartLink,
+    user: dict = Depends(require_permission("can_service_tasks")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Link a catalog part to this task so work orders pre-fill it."""
+    link = await tenant_db.add_service_task_part(
+        user["account_id"], task_id, body.part_id, quantity=body.quantity,
+    )
+    if not link:
+        raise HTTPException(
+            status_code=409,
+            detail="That part is already linked, or the task/part wasn't found.",
+        )
+    return link
+
+
+@router.delete("/{task_id}/parts/{link_id}")
+async def unlink_task_part(
+    task_id: int,
+    link_id: int,
+    user: dict = Depends(require_permission("can_service_tasks")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Unlink a part.  Work orders already created keep their lines —
+    this only changes what future ones pre-fill."""
+    if not await tenant_db.remove_service_task_part(user["account_id"], link_id):
+        raise HTTPException(status_code=404, detail="Link not found")
+    return {"deleted": True}
+
+
 @router.delete("/{task_id}")
 async def delete_service_task(
     task_id: int,

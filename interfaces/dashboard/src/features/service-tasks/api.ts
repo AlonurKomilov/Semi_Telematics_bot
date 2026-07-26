@@ -57,3 +57,31 @@ export async function updateServiceTask(
 export async function deleteServiceTask(id: number): Promise<void> {
   await apiJSON(`/service-tasks/${id}`, { method: 'DELETE' });
 }
+
+export interface LinkedPart {
+  id: number;
+  part_id: number;
+  quantity: number;
+  part_name: string;
+  part_number: string;
+}
+
+export async function fetchTaskParts(
+  taskId: number,
+): Promise<{ parts: LinkedPart[] }> {
+  return apiJSON(`/service-tasks/${taskId}/parts`);
+}
+
+export async function linkTaskPart(
+  taskId: number, part_id: number, quantity: number,
+): Promise<LinkedPart> {
+  return apiJSON(`/service-tasks/${taskId}/parts`, {
+    method: 'POST', body: { part_id, quantity },
+  });
+}
+
+export async function unlinkTaskPart(
+  taskId: number, linkId: number,
+): Promise<void> {
+  await apiJSON(`/service-tasks/${taskId}/parts/${linkId}`, { method: 'DELETE' });
+}

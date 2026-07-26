@@ -13,6 +13,7 @@ import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ClipboardList, Plus } from 'lucide-react';
+import TaskPartsDialog from './TaskPartsDialog';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
@@ -47,6 +48,8 @@ export default function ServiceTasks() {
   const [name, setName] = useState('');
   const [hours, setHours] = useState('');
   const [saving, setSaving] = useState(false);
+  // Row → its linked-parts editor (what a work order pre-fills).
+  const [partsFor, setPartsFor] = useState<ServiceTask | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: [...SERVICE_TASKS_KEY, 'all'],
@@ -121,10 +124,13 @@ export default function ServiceTasks() {
     },
   ];
 
-  const rowActions = canManage
-    ? (row: Record<string, unknown>) => {
+  const rowActions = (row: Record<string, unknown>) => {
         const t = row as unknown as ServiceTask;
-        const actions: MenuAction[] = [];
+        const actions: MenuAction[] = [{
+          key: 'parts', label: 'Usual parts…',
+          onSelect: () => setPartsFor(t),
+        }];
+        if (!canManage) return actions;
         if (t.status === 'active') {
           actions.push({
             key: 'archive', label: 'Archive',
@@ -145,8 +151,7 @@ export default function ServiceTasks() {
           });
         }
         return actions;
-      }
-    : undefined;
+      };
 
   return (
     <div>
@@ -181,6 +186,12 @@ export default function ServiceTasks() {
           tableId="service-tasks"
         />
       )}
+
+      <TaskPartsDialog
+        task={partsFor}
+        canManage={canManage}
+        onClose={() => setPartsFor(null)}
+      />
 
       <Dialog open={addOpen} onOpenChange={(o) => { if (!o) setAddOpen(false); }}>
         <DialogContent className="sm:max-w-md">

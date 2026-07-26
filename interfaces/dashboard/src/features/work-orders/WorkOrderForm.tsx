@@ -20,8 +20,10 @@ import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader, ErrorState } from '../../components/shell';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { toneClasses, toneText } from '../../lib/status';
-import TypePicker from '../maintenance/TypePicker';
-import { TASK_TYPE_OPTIONS } from '../maintenance/badges';
+import ServiceTaskPicker from '../service-tasks/ServiceTaskPicker';
+import {
+  SERVICE_TASKS_KEY, fetchServiceTasks, taskValue,
+} from '../service-tasks/api';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type {
   WorkOrder, WorkOrderDetail, WorkOrderAttachment,
@@ -607,16 +609,66 @@ export default function WorkOrderForm() {
   const groupLaborSubtotal = (task: string) =>
     laborEntriesFor(task).reduce((acc, e) => acc + (e.l.total_cost || 0), 0);
 
+  // Service-task vocabulary — the shared list Maintenance and this form
+  // both pick from (features/service-tasks).  Also what "Add service
+  // task" walks to open the next unused group.
+  const { data: serviceTasksData } = useQuery({
+    queryKey: SERVICE_TASKS_KEY,
+    queryFn: () => fetchServiceTasks(),
+    staleTime: 60_000,
+  });
+  const serviceTasks = serviceTasksData?.service_tasks;
+
+  /**
+   * Pull a task's DEFAULTS onto its group: the parts it usually needs
+   * and its labor estimate.  Fill-empty-only — a group that already
+   * has lines is left alone, so picking a task can never overwrite
+   * what someone typed (the same contract Scan invoice follows).  The
+   * toast keeps it from being a silent change.
+   */
+  const applyTaskDefaults = async (task: string) => {
+    if (!task) return;
+    if (entriesFor(task).length || laborEntriesFor(task).length) return;
+    let defaults: {
+      found: boolean; name?: string; expected_labor_hours: number;
+      parts: Array<{ part_name: string; part_number: string; quantity: number }>;
+    };
+    try {
+      defaults = await apiJSON(
+        `/service-tasks/defaults?task=${encodeURIComponent(task)}`,
+      );
+    } catch {
+      return;   // defaults are a convenience, never a blocker
+    }
+    if (!defaults?.found) return;
+    const newParts = (defaults.parts ?? []).map(p => ({
+      ...blankPart(task),
+      part_name: p.part_name,
+      part_number: p.part_number || '',
+      quantity: Number(p.quantity) || 1,
+    }));
+    const hours = Number(defaults.expected_labor_hours) || 0;
+    const newLabor = hours > 0
+      ? [{ ...blankLabor(task), description: defaults.name || task, hours }]
+      : [];
+    if (!newParts.length && !newLabor.length) return;
+    if (newParts.length) setParts(prev => [...prev, ...newParts]);
+    if (newLabor.length) setLaborLines(prev => [...prev, ...newLabor]);
+    toast.success(t('work_orders_page.task_defaults_applied', {
+      defaultValue: 'Added this task\u2019s usual parts — check the amounts.',
+    }));
+  };
+
   const addTaskGroup = () => {
     // Default the new group to the first built-in type not in use —
     // the operator immediately changes it via the header picker.
     const used = new Set(taskGroups);
-    const next = TASK_TYPE_OPTIONS
-      .map(o => o.value)
-      .filter(v => v !== 'custom')
+    const next = (serviceTasks ?? [])
+      .map(taskValue)
       .find(v => !used.has(v));
-    if (!next) return;   // every built-in already open — unlikely
+    if (!next) return;   // every task already open — unlikely
     setTaskGroups(prev => [...prev, next]);
+    void applyTaskDefaults(next);
   };
 
   const renameTaskGroup = (from: string, to: string) => {
@@ -625,6 +677,7 @@ export default function WorkOrderForm() {
     setTaskGroups(prev => Array.from(new Set(prev.map(g => (g === from ? to : g)))));
     setParts(prev => prev.map(pt => (pt.service_task === from ? { ...pt, service_task: to } : pt)));
     setLaborLines(prev => prev.map(l => (l.service_task === from ? { ...l, service_task: to } : l)));
+    void applyTaskDefaults(to);
   };
 
   const removeTaskGroup = (task: string) => {
@@ -1343,7 +1396,7 @@ export default function WorkOrderForm() {
       </section>
 
       {/* ── Parts editor — grouped by service task ──────────────
-          Task → parts hierarchy: each group header is a TypePicker
+          Task → parts hierarchy: each group header is a ServiceTaskPicker
           (same vocabulary as Maintenance, built-ins + the account's
           custom types) and the lines under it are that task's parts.
           Grouping is just the ``service_task`` tag on each line, so
@@ -1380,7 +1433,7 @@ export default function WorkOrderForm() {
             {taskGroups.map((gv) => (
               <div key={gv} className="border border-border rounded-lg overflow-hidden">
                 <div className="flex flex-wrap items-center gap-2 px-3 py-2 bg-muted/60 border-b border-border">
-                  <TypePicker
+                  <ServiceTaskPicker
                     value={gv}
                     onChange={(next) => renameTaskGroup(gv, next)}
                     canCreate={canManageTaskTypes}

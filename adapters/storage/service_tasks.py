@@ -347,3 +347,99 @@ class ServiceTasksMixin:
             account_id, value, created_by=created_by,
         )
         return int(task["id"]) if task else None
+
+    # ── Linked parts ─────────────────────────────────────────────────
+    #
+    # The parts a task normally needs.  This is the reason a task earns
+    # its own object: "Replace front brake pads" can carry its usual
+    # parts and labor estimate onto a work order instead of being
+    # retyped every visit.  Quantities here are DEFAULTS — the invoice
+    # is still the truth about what went on the truck.
+
+    async def list_service_task_parts(
+        self, service_task_id: int, account_id: int,
+    ) -> list[dict[str, Any]]:
+        """The task's linked parts, joined to their catalog names."""
+        cur = await self._db.execute(
+            "SELECT stp.id, stp.part_id, stp.quantity, "
+            "       c.name AS part_name, c.part_number "
+            "FROM service_task_parts stp "
+            "JOIN parts_catalog c ON c.id = stp.part_id "
+            "WHERE stp.service_task_id = ? AND stp.account_id = ? "
+            "ORDER BY c.name",
+            (service_task_id, account_id),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def add_service_task_part(
+        self, account_id: int, service_task_id: int, part_id: int,
+        *, quantity: float = 1.0,
+    ) -> Optional[dict[str, Any]]:
+        """Link a catalog part to a task.  Returns None when either side
+        doesn't belong to this account (never trust caller ids) or the
+        link already exists."""
+        task = await self.get_service_task(service_task_id, account_id)
+        if not task:
+            return None
+        cur = await self._db.execute(
+            "SELECT id FROM parts_catalog WHERE id = ? AND account_id = ?",
+            (part_id, account_id),
+        )
+        if not await cur.fetchone():
+            return None
+        cur = await self._db.execute(
+            "INSERT INTO service_task_parts "
+            "(account_id, service_task_id, part_id, quantity, created_at) "
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT (service_task_id, part_id) DO NOTHING "
+            "RETURNING id",
+            (account_id, service_task_id, part_id,
+             max(float(quantity or 1), 0.0) or 1.0, self._now()),
+        )
+        row = await cur.fetchone()
+        await self._db.commit()
+        if not row:
+            return None
+        links = await self.list_service_task_parts(service_task_id, account_id)
+        new_id = int(dict(row)["id"])
+        return next((l for l in links if int(l["id"]) == new_id), None)
+
+    async def remove_service_task_part(
+        self, account_id: int, link_id: int,
+    ) -> bool:
+        cur = await self._db.execute(
+            "DELETE FROM service_task_parts WHERE id = ? AND account_id = ?",
+            (link_id, account_id),
+        )
+        await self._db.commit()
+        return (cur.rowcount or 0) > 0
+
+    async def service_task_defaults(
+        self, account_id: int, value: str,
+    ) -> Optional[dict[str, Any]]:
+        """What picking this task should PRE-FILL — its labor estimate
+        and usual parts.
+
+        Read-only and lookup-only: unlike ``resolve_service_task`` this
+        does NOT create an archived task for an unknown value, because
+        merely asking "what are this task's defaults?" must never write.
+        Returns None when the task isn't known.
+        """
+        raw = (value or "").strip()
+        if not raw:
+            return None
+        cur = await self._db.execute(
+            "SELECT * FROM service_tasks "
+            "WHERE account_id = ? AND (canonical_key = ? OR name_key = ?)",
+            (account_id, raw.lower(), service_task_name_key(raw)),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        task = dict(row)
+        return {
+            "id": task["id"],
+            "name": task["name"],
+            "expected_labor_hours": float(task.get("expected_labor_hours") or 0),
+            "parts": await self.list_service_task_parts(task["id"], account_id),
+        }

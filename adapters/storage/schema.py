@@ -354,6 +354,24 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_service_tasks_account
             ON service_tasks(account_id, status);
 
+        -- The parts a service task normally needs ("Linked Parts" in
+        -- Fleetio's vocabulary).  This is why a task is worth being its
+        -- own object rather than a label: picking "Replace front brake
+        -- pads" on a work order can bring its usual parts and labor
+        -- estimate with it instead of being retyped every visit.
+        -- Quantity is the DEFAULT count; the invoice still decides.
+        CREATE TABLE IF NOT EXISTS service_task_parts (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL REFERENCES accounts(id),
+            service_task_id INTEGER NOT NULL,
+            part_id         INTEGER NOT NULL,
+            quantity        REAL    NOT NULL DEFAULT 1,
+            created_at      TEXT    NOT NULL DEFAULT '',
+            UNIQUE(service_task_id, part_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_service_task_parts_task
+            ON service_task_parts(account_id, service_task_id);
+
         -- account_settings: per-account key/value store for feature flags,
         -- AI model preferences, pillar caps, etc.  Isolation is enforced
         -- by the account_id predicate on every read/write (same pattern

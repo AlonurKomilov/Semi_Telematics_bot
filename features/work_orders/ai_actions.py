@@ -128,8 +128,13 @@ def _normalize(args: dict) -> dict | None:
             continue
         if tid > 0 and tid not in link_ids:
             link_ids.append(tid)
+    service_task = _s(args.get("service_task"), 200)
+    if service_task:
+        for line in (*parts, *labor):
+            line["service_task"] = service_task
     return {
         "vehicle_name": vehicle,
+        "service_task": service_task,
         "vehicle_type": (
             _s(args.get("vehicle_type"), 10).lower()
             if _s(args.get("vehicle_type"), 10).lower() in ("truck", "trailer")
@@ -214,6 +219,15 @@ def _normalize(args: dict) -> dict | None:
                 "type": "array", "items": {"type": "string"},
                 "description": "Names of the files attached to THIS message the work order is based on.",
             },
+            "service_task": {
+                "type": "string",
+                "description": (
+                    "The kind of work this visit covers (e.g. 'Brake "
+                    "Service'). Groups the line items and, when the "
+                    "invoice itself has no itemization, pulls the "
+                    "account's usual parts for that task."
+                ),
+            },
             "link_task_ids": {
                 "type": "array", "items": {"type": "number"},
                 "description": (
@@ -239,6 +253,43 @@ async def create_work_order_action(tool_args, samsara_client,
             "A vehicle is required to create a work order — ask the user "
             "which unit this is for.",
         )
+    # Service-task defaults: when a task is named but the documents
+    # carried no itemization, start from the parts that task usually
+    # needs.  Fill-empty-only — real invoice lines always win — and
+    # SAID OUT LOUD in the summary, because the user would be
+    # approving parts that came from their catalog, not their invoice.
+    defaults_note = ""
+    if db is not None and account_id is not None and norm["service_task"] \
+            and not norm["parts"] and not norm["labor"]:
+        try:
+            defaults = await db.service_task_defaults(
+                account_id, norm["service_task"],
+            )
+        except Exception:      # pragma: no cover — defaults are a bonus
+            defaults = None
+        if defaults:
+            for lp in defaults.get("parts", []):
+                norm["parts"].append({
+                    "part_name": lp["part_name"],
+                    "part_number": lp.get("part_number") or "",
+                    "quantity": float(lp.get("quantity") or 1),
+                    "unit_cost": 0.0, "total_cost": 0.0,
+                    "service_task": norm["service_task"],
+                })
+            hours = float(defaults.get("expected_labor_hours") or 0)
+            if hours > 0:
+                norm["labor"].append({
+                    "description": defaults["name"], "hours": hours,
+                    "rate": 0.0, "total_cost": 0.0,
+                    "service_task": norm["service_task"],
+                })
+            if norm["parts"] or norm["labor"]:
+                defaults_note = (
+                    f" These are the usual lines for "
+                    f"\u201c{defaults['name']}\u201d at $0 \u2014 the invoice "
+                    f"had no itemization, so set the amounts."
+                )
+
     lines_total = round(
         sum(p["total_cost"] for p in norm["parts"])
         + sum(l["total_cost"] for l in norm["labor"]), 2,
@@ -291,7 +342,7 @@ async def create_work_order_action(tool_args, samsara_client,
 
     link_phrase = describe_links(described)
     return tool_propose(
-        "create_work_order", summary + link_phrase, norm,
+        "create_work_order", summary + defaults_note + link_phrase, norm,
         risk="low",
         consequence=(
             "Creates an OPEN work order draft you can edit or delete on "

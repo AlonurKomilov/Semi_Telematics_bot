@@ -7137,3 +7137,55 @@ async def migrate_service_tasks_ssot(conn) -> None:
         "Migration 162: service_tasks seeded for %d accounts; %d rows linked",
         len(account_ids), filled,
     )
+
+
+@_register("163_service_task_parts")
+async def migrate_service_task_parts(conn) -> None:
+    """Linked parts per service task — the payoff of making tasks their
+    own object.
+
+    Picking "Replace front brake pads" on a work order can now bring
+    its usual parts (and the task's labor estimate) along instead of
+    the operator retyping them every visit; the AI's work-order
+    proposals get the same defaults.  Quantity here is a DEFAULT — the
+    invoice still decides what actually went on the truck.
+    """
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS service_task_parts (
+            id              SERIAL PRIMARY KEY,
+            account_id      INTEGER NOT NULL REFERENCES accounts(id),
+            service_task_id INTEGER NOT NULL,
+            part_id         INTEGER NOT NULL,
+            quantity        REAL    NOT NULL DEFAULT 1,
+            created_at      TEXT    NOT NULL DEFAULT '',
+            UNIQUE(service_task_id, part_id)
+        )
+        """
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_service_task_parts_task "
+        "ON service_task_parts(account_id, service_task_id)"
+    )
+    await conn.commit()
+
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() in ("1", "true", "TRUE", "yes"):
+        try:
+            await conn.execute(
+                "ALTER TABLE service_task_parts ENABLE ROW LEVEL SECURITY")
+            await conn.execute(
+                "ALTER TABLE service_task_parts FORCE ROW LEVEL SECURITY")
+            await conn.execute(
+                "DROP POLICY IF EXISTS tenant_isolation ON service_task_parts")
+            await conn.execute(
+                """
+                CREATE POLICY tenant_isolation ON service_task_parts
+                USING       (account_id::text = current_setting('app.account_id', true))
+                WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+                """
+            )
+        except Exception as e:
+            logger.warning("Migration 163: service_task_parts RLS skipped (%s)", e)
+    await conn.commit()
+    logger.info("Migration 163: service_task_parts ready")
