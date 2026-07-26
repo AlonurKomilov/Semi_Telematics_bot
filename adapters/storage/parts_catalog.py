@@ -322,6 +322,7 @@ class PartsCatalogMixin:
 
     async def part_analytics(
         self, part_id: int, account_id: int, purchases_limit: int = 200,
+        *, company_codes: list[str] | None = None,
     ) -> Optional[dict]:
         """The part drill-down: recurrence per vehicle, price per
         vendor, and the raw purchase history (price-trend source).
@@ -329,11 +330,27 @@ class PartsCatalogMixin:
         ``avg_interval_days`` is the mean gap between distinct service
         visits for that vehicle (None with fewer than 2 visits) — the
         "this truck keeps eating this part" early-warning number.
+
+        ``company_codes`` scopes the profile to the caller's allowed
+        companies, because an account is not one company: this returns
+        per-VENDOR average prices and a dated purchase history, so an
+        unfiltered read would tell a Company A user what Company B pays
+        and to whom.  ``None`` = unrestricted (owners, unassigned
+        users); an EMPTY list means restricted to nothing and yields an
+        empty profile rather than everything — the same fail-closed
+        convention the rest of the scope plumbing uses.
         """
         part = await self.get_catalog_part(part_id, account_id)
         if not part:
             return None
-        args = (account_id, part_id)
+        if company_codes is not None and not company_codes:
+            return {**part, "by_vehicle": [], "by_vendor": [], "purchases": []}
+        co_clause, co_params = "", []
+        if company_codes:
+            co_clause = ("   AND UPPER(COALESCE(w.company_code, '')) IN ("
+                         + ",".join("?" * len(company_codes)) + ") ")
+            co_params = [str(c).strip().upper() for c in company_codes]
+        args = (account_id, part_id, *co_params)
 
         cur = await self._db.execute(
             "SELECT w.vehicle_name, "
@@ -344,7 +361,7 @@ class PartsCatalogMixin:
             "       MIN(w.service_date) AS first_date, "
             "       MAX(w.service_date) AS last_date, "
             "       COUNT(DISTINCT w.service_date) AS visit_days "
-            + self._LIVE_LINES +
+            + self._LIVE_LINES + co_clause +
             " GROUP BY w.vehicle_name "
             " ORDER BY usage_count DESC, total_spent DESC",
             args,
@@ -366,7 +383,7 @@ class PartsCatalogMixin:
             f"      MIN({self._UNIT_PRICE}) AS min_unit_price, "
             f"      MAX({self._UNIT_PRICE}) AS max_unit_price, "
             "       MAX(w.service_date) AS last_date "
-            + self._LIVE_LINES.replace(
+            + (self._LIVE_LINES + co_clause).replace(
                 "JOIN work_orders w ON w.id = p.work_order_id",
                 "JOIN work_orders w ON w.id = p.work_order_id "
                 "LEFT JOIN vendors v ON v.id = w.vendor_id "
@@ -388,7 +405,7 @@ class PartsCatalogMixin:
             "       COALESCE(v.name, w.vendor_name) AS vendor_name, "
             "       p.quantity, p.unit_cost, p.total_cost, p.service_task, "
             f"      {self._UNIT_PRICE} AS effective_unit_price "
-            + self._LIVE_LINES.replace(
+            + (self._LIVE_LINES + co_clause).replace(
                 "JOIN work_orders w ON w.id = p.work_order_id",
                 "JOIN work_orders w ON w.id = p.work_order_id "
                 "LEFT JOIN vendors v ON v.id = w.vendor_id "

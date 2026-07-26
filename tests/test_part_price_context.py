@@ -280,3 +280,30 @@ async def test_ai_proposal_respects_vehicle_scope(db, acct):
         "_scope_vehicles": ["234"],
     }, None, acct, db)
     assert "usually pay" not in out["artifacts"][0]["summary"]
+
+
+@pytest.mark.asyncio
+async def test_part_profile_is_company_scoped(db, acct):
+    """The part profile carries per-VENDOR prices and dated purchases —
+    an unfiltered read would tell a Company A user what Company B pays
+    and to whom."""
+    for price in (90, 95):
+        await _buy_for(db, acct, "AAA", "Profile Part", price, vendor="A Shop")
+    for price in (500, 600):
+        await _buy_for(db, acct, "BBB", "Profile Part", price, vendor="B Secret Shop")
+    part = await db.resolve_or_create_part(acct, "Profile Part")
+
+    scoped = await db.part_analytics(part["id"], acct, company_codes=["AAA"])
+    vendors = {v["vendor_name"] for v in scoped["by_vendor"]}
+    assert vendors == {"A Shop"}                     # B's shop invisible
+    assert len(scoped["purchases"]) == 2
+    assert all(p["effective_unit_price"] < 200 for p in scoped["purchases"])
+
+    # Unrestricted (owner) still sees the whole account.
+    everything = await db.part_analytics(part["id"], acct)
+    assert len(everything["purchases"]) == 4
+
+    # Empty scope fails closed — an empty profile, never everything.
+    closed = await db.part_analytics(part["id"], acct, company_codes=[])
+    assert closed["purchases"] == [] and closed["by_vendor"] == []
+    assert closed["name"] == part["name"]            # identity still resolves

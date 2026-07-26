@@ -158,7 +158,13 @@ async def get_part(
     count — same rule as every cost report.  When the part links to a
     public catalog entry, its identity rides along (category displays
     through this join — never copied onto the user's row)."""
-    data = await tenant_db.part_analytics(part_id, user["account_id"])
+    # Company-scoped: the profile carries per-VENDOR average prices and
+    # a dated purchase history, so an unfiltered read would tell a
+    # Company A user what Company B pays and to whom.
+    data = await tenant_db.part_analytics(
+        part_id, user["account_id"],
+        company_codes=(await get_user_company_codes(user)) or None,
+    )
     if not data:
         raise HTTPException(status_code=404, detail="Catalog part not found")
     public = None
