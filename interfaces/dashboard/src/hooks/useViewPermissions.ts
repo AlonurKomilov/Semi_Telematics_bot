@@ -6,6 +6,9 @@ interface UseViewPermissionsReturn {
   has: (flag: string) => boolean;
   hasAny: (...flags: string[]) => boolean;
   role: string | undefined;
+  /** See ``viewPermsReady`` on RoleViewContext.  Hiding UI on a false
+   * ``has`` is fine without it; REDIRECTING on one is not. */
+  ready: boolean;
 }
 
 /**
@@ -30,11 +33,11 @@ interface UseViewPermissionsReturn {
  * the previewed persona.
  */
 export function useViewPermissions(): UseViewPermissionsReturn {
-  const { viewHas, viewHasAny } = useRoleView();
+  const { viewHas, viewHasAny, viewPermsReady } = useRoleView();
   const { user } = useAuth();
   const has = useCallback((flag: string) => viewHas(flag), [viewHas]);
   const hasAny = useCallback(
     (...flags: string[]) => viewHasAny(...flags), [viewHasAny],
   );
-  return { has, hasAny, role: user?.role };
+  return { has, hasAny, role: user?.role, ready: viewPermsReady };
 }

@@ -1,120 +1,116 @@
 /**
- * Fleet hero strip — three counts derived client-side from the same
- * /alerts data the rest of the page is rendering.
+ * Fleet hero strip — open-alert counters above the board.
  *
- * Open faults, mechanical health, and low-fuel are the three states
- * the Fleet persona triages first.  All three are computed over the
- * CURRENT filter window (the chips above) so changing the date range
- * or vehicle search re-aggregates immediately — no separate request,
- * no stale snapshot.
+ * The counts are TOTALS over the whole open queue, fetched from
+ * /alerts/pending/by-type.  They deliberately do NOT follow the board's
+ * filters.  They used to: all three were tallied client-side from the
+ * page's own response, so filtering to Fuel drove "Open faults" to 0 in
+ * calm grey while hundreds of faults were open — a false all-clear on a
+ * safety surface.  Even unfiltered, a client tally only ever saw the
+ * first page_size rows of a longer queue.  A total that moves when you
+ * filter is not a total, so the number now stays put and SELECTION is
+ * drawn as a ring on the card instead.
  *
- * Clicking a card narrows the queue to that alert type via the URL
- * (the chip row above the queue reads the same URL and updates on
- * the next render).  Re-clicking an active card clears back to
- * "all" so the cards function as toggles, matching FilterChips.
+ * Clicking a card narrows the queue below to that type via the URL;
+ * clicking the active card clears back to "all", matching FilterChips.
  *
- * "Maintenance due" is intentionally NOT here — maintenance alerts
- * are posted via the lite forum-routing path, not stored in
- * alert_history, so a client-side count over /alerts always returns
- * 0.  When the maintenance-task aggregate endpoint lands, add a
- * fourth card sourced from /api/maintenance/summary.
+ * A card renders only when the server reported its type — the response
+ * omits types the active view may not see, and an omitted type must not
+ * render as 0 ("nothing wrong" ≠ "not yours to see").  This is why the
+ * low-fuel card is absent for Fleet: ``fuel`` routes to the Dispatcher
+ * persona, so a Fleet view never had fuel alerts to count.
+ *
+ * "Maintenance due" is intentionally NOT here — maintenance alerts are
+ * posted via the lite forum-routing path, not stored in alert_history,
+ * so any count over the alert queue returns 0.  When the maintenance-task
+ * aggregate endpoint lands, add a card sourced from it.
  */
-import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, HeartPulse, Fuel } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { KpiCard } from '../../../components/shell';
-import { useAlertsQuery } from '../_shared/useAlertsQuery';
+import { useAlertTypeCounts } from '../_shared/useAlertTypeCounts';
 import { useAlertsFilters } from '../_shared/useAlertsFilters';
-import type {
-  Alert, AlertsResponse, VehiclesAlertsResponse,
-} from '../../../types';
 import type { AlertType } from '../personaConfig';
 
-interface Counts {
-  faults: number;
-  health: number;
-  lowFuel: number;
+/** One card per concept, not per wire key: ``fault`` and ``faults`` are
+ *  live aliases for the same thing (both appear in the Fleet persona's
+ *  type set), so the card sums every key it owns and filters by the
+ *  canonical one the chip row uses. */
+interface CardSpec {
+  labelKey: string;
+  keys: string[];
+  filterAs: AlertType;
+  icon: LucideIcon;
+  tone: 'critical' | 'warning';
+  activeKey: string;
 }
 
-function emptyCounts(): Counts {
-  return { faults: 0, health: 0, lowFuel: 0 };
-}
-
-function tallyFromAlerts(alerts: Alert[]): Counts {
-  const c = emptyCounts();
-  for (const a of alerts) {
-    const t = a.alert_type;
-    if (t === 'fault' || t === 'faults') c.faults++;
-    else if (t === 'health') c.health++;
-    else if (t === 'fuel') c.lowFuel++;
-  }
-  return c;
-}
-
-function tallyFromResponse(
-  data: AlertsResponse | VehiclesAlertsResponse | undefined,
-): Counts {
-  if (!data) return emptyCounts();
-  if ('vehicles' in data && Array.isArray((data as VehiclesAlertsResponse).vehicles)) {
-    return (data as VehiclesAlertsResponse).vehicles.reduce<Counts>(
-      (acc, v) => {
-        const sub = tallyFromAlerts(v.alerts ?? []);
-        acc.faults  += sub.faults;
-        acc.health  += sub.health;
-        acc.lowFuel += sub.lowFuel;
-        return acc;
-      },
-      emptyCounts(),
-    );
-  }
-  if ('alerts' in data) {
-    return tallyFromAlerts((data as AlertsResponse).alerts ?? []);
-  }
-  return emptyCounts();
-}
+const CARDS: CardSpec[] = [
+  {
+    labelKey: 'alerts.vehicle_health.open_faults',
+    keys: ['fault', 'faults'],
+    filterAs: 'fault',
+    icon: AlertTriangle,
+    tone: 'critical',
+    activeKey: 'alerts.vehicle_health.showing_only_faults',
+  },
+  {
+    labelKey: 'alerts.vehicle_health.mechanical_health',
+    keys: ['health'],
+    filterAs: 'health',
+    icon: HeartPulse,
+    tone: 'warning',
+    activeKey: 'alerts.vehicle_health.showing_only_health',
+  },
+  {
+    labelKey: 'alerts.vehicle_health.low_fuel',
+    keys: ['fuel'],
+    filterAs: 'fuel',
+    icon: Fuel,
+    tone: 'warning',
+    activeKey: 'alerts.vehicle_health.showing_only_fuel',
+  },
+];
 
 export default function VehicleHealthSummary() {
   const { t } = useTranslation();
-  const { data, isLoading } = useAlertsQuery();
+  const { counts, isLoading } = useAlertTypeCounts();
   const { typeFilter, setTypeFilter } = useAlertsFilters();
-  const counts = useMemo(() => tallyFromResponse(data), [data]);
 
   const setOrClear = (type: AlertType) => () =>
     setTypeFilter(typeFilter === type ? 'all' : type);
   const clickToFilter = t('alerts.vehicle_health.click_to_filter');
 
+  // Present = the server counted this type for this view.  While the
+  // request is in flight nothing is known yet, so show the full strip
+  // with placeholders rather than guessing which cards will survive.
+  const visible = counts
+    ? CARDS.filter((c) => c.keys.some((k) => k in counts))
+    : CARDS;
+
+  if (!isLoading && visible.length === 0) return null;
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-      <KpiCard
-        label={t('alerts.vehicle_health.open_faults')}
-        value={isLoading ? '…' : counts.faults}
-        tone={counts.faults > 0 ? 'critical' : 'default'}
-        icon={AlertTriangle}
-        onClick={setOrClear('fault')}
-        hint={typeFilter === 'fault'
-          ? t('alerts.vehicle_health.showing_only_faults')
-          : clickToFilter}
-      />
-      <KpiCard
-        label={t('alerts.vehicle_health.mechanical_health')}
-        value={isLoading ? '…' : counts.health}
-        tone={counts.health > 0 ? 'warning' : 'default'}
-        icon={HeartPulse}
-        onClick={setOrClear('health')}
-        hint={typeFilter === 'health'
-          ? t('alerts.vehicle_health.showing_only_health')
-          : clickToFilter}
-      />
-      <KpiCard
-        label={t('alerts.vehicle_health.low_fuel')}
-        value={isLoading ? '…' : counts.lowFuel}
-        tone={counts.lowFuel > 0 ? 'warning' : 'default'}
-        icon={Fuel}
-        onClick={setOrClear('fuel')}
-        hint={typeFilter === 'fuel'
-          ? t('alerts.vehicle_health.showing_only_fuel')
-          : clickToFilter}
-      />
+      {visible.map((c) => {
+        const value = counts
+          ? c.keys.reduce((sum, k) => sum + (counts[k] ?? 0), 0)
+          : undefined;
+        const selected = typeFilter === c.filterAs;
+        return (
+          <KpiCard
+            key={c.filterAs}
+            label={t(c.labelKey)}
+            value={isLoading ? '…' : value}
+            tone={(value ?? 0) > 0 ? c.tone : 'default'}
+            icon={c.icon}
+            onClick={setOrClear(c.filterAs)}
+            selected={selected}
+            hint={selected ? t(c.activeKey) : clickToFilter}
+          />
+        );
+      })}
     </div>
   );
 }

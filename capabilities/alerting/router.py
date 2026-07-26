@@ -497,6 +497,80 @@ async def pending_alerts_count(
     return {"count": total}
 
 
+@router.get("/pending/by-type")
+async def pending_alerts_by_type(
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
+    tenant_db=Depends(get_tenant_db),
+    view_role: str = Depends(active_view),
+):
+    """Open-alert count PER TYPE, over the whole queue.
+
+    Feeds the board's hero counters.  Those used to be tallied client-side
+    from the page's own filtered, page-capped response, which made them
+    lie twice: filtering to Fuel drove "open faults" to 0, and even
+    unfiltered they only saw the first ``page_size`` rows of a larger
+    queue.  A count belongs on the server, where it can see everything.
+
+    Deliberately independent of the board's filters — these are TOTALS,
+    and a total that moves when you filter isn't one.  Always the open
+    queue (``ack_state='active'``, unwindowed), matching /pending/count.
+
+    Scoping mirrors /pending/count exactly: driver sees only their own
+    truck, a company-restricted user only their companies, and every role
+    only its own persona's types.  Types the active view may not see are
+    OMITTED rather than returned as 0 — a zero is a claim that nothing is
+    wrong, which is not the same as "not yours to see".
+    """
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
+
+    def _tally(alerts: list[dict], types: set[str] | None) -> dict[str, int]:
+        counts: dict[str, int] = {t: 0 for t in (types or set())}
+        for a in alerts:
+            at = a.get("alert_type") or ""
+            if types is not None and at not in types:
+                continue
+            counts[at] = counts.get(at, 0) + 1
+        return counts
+
+    if is_driver_scope:
+        # No persona filter: a driver gets EVERYTHING about their own
+        # truck (same rule as /pending and /pending/count).
+        rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
+        alerts = [_shape_history_for_pending_api(r) for r in rows]
+        alerts = await _filter_own(user, alerts)
+        return {"counts": _tally(alerts, None)}
+
+    from capabilities.alerting import persona_mapping
+    allowed_types = persona_mapping.alert_types_for_role(view_role)
+    if not allowed_types:
+        # Owner / Admin / accounting: no operational types at this scope,
+        # so there are no counters to show (they review escalations).
+        return {"counts": {}}
+
+    type_set = set(allowed_types)
+
+    company_codes = await get_user_company_codes(user)
+    if company_codes:
+        # alert_history has no company column, so the SQL COUNT fast path
+        # can't express this scope — fetch and filter, as /pending/count does.
+        rows = await tenant_db.get_active_alert_history_for_account(user["account_id"])
+        alerts = [_shape_history_for_pending_api(r) for r in rows]
+        veh_map = await _vehicle_company_map(user["account_id"], tenant_db)
+        alerts = filter_by_company_map(alerts, company_codes, veh_map, key="vehicle_id")
+        return {"counts": _tally(alerts, type_set)}
+
+    # Unrestricted: one filtered COUNT(*) per type.  Sequential, like
+    # /pending/count — the type set is ≤6 and each count is an
+    # index-covered aggregate, and gathering them would put concurrent
+    # queries on the task-pinned connection.
+    counts: dict[str, int] = {}
+    for at in allowed_types:
+        counts[at] = await tenant_db.count_active_alert_history_for_account_filtered(
+            user["account_id"], alert_type=at,
+        )
+    return {"counts": counts}
+
+
 @router.get("/history")
 async def alert_history(
     days: int = Query(7, ge=1, le=90),

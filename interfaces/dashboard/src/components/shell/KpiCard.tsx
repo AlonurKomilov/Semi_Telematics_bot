@@ -39,6 +39,11 @@ interface KpiCardProps {
   icon?: LucideIcon;
   onClick?: () => void;
   trailing?: ReactNode;
+  /** Card acts as an active toggle (e.g. "this filter is applied").
+   * Drawn as a ring so the VALUE never has to change to show state — a
+   * card that rewrites its own number to indicate selection is
+   * indistinguishable from the number really being that. */
+  selected?: boolean;
 }
 
 export default function KpiCard({
@@ -49,6 +54,7 @@ export default function KpiCard({
   icon: Icon,
   onClick,
   trailing,
+  selected = false,
 }: KpiCardProps) {
   const t = TONE_CLASSES[tone];
   const interactive = !!onClick;
@@ -58,8 +64,16 @@ export default function KpiCard({
   return (
     <Wrapper
       onClick={onClick}
-      className={`bg-card border border-border rounded-xl p-5 text-left w-full transition ${
-        interactive ? 'hover:border-primary/40 hover:bg-card/80 cursor-pointer' : ''
+      {...(interactive ? { 'aria-pressed': selected } : {})}
+      className={`bg-card border rounded-xl p-5 text-left w-full transition ${
+        selected ? 'border-primary ring-1 ring-primary' : 'border-border'
+      } ${
+        // The hover border is omitted while selected — it's a weaker
+        // primary than the selected one, so it would visually *undo* the
+        // selection under the cursor.
+        interactive
+          ? `cursor-pointer hover:bg-card/80 ${selected ? '' : 'hover:border-primary/40'}`
+          : ''
       }`}
     >
       <div className="flex items-start justify-between gap-3">
