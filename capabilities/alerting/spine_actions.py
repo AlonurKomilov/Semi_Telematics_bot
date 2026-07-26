@@ -50,7 +50,7 @@ async def _handle_ack(ctx: ActionContext) -> str:
         return "Invalid alert"
 
     from infra.platform import get_tenant_db
-    tenant = get_tenant_db(ctx.account_id)
+    tenant = await get_tenant_db(ctx.account_id)
     try:
         # History-level ack first (cascades per-delivery rows); fall back
         # to a per-delivery ack id — the exact _ack_one order the

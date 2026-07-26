@@ -196,7 +196,9 @@ async def test_alert_ack_registered_at_boot():
 @pytest.mark.asyncio
 async def test_alert_ack_acks_history_and_updates_deliveries(monkeypatch):
     tenant = _FakeTenant(history_ack=True)
-    monkeypatch.setattr("infra.platform.get_tenant_db", lambda aid: tenant)
+    async def _fake_tenant_db(aid):
+        return tenant
+    monkeypatch.setattr("infra.platform.get_tenant_db", _fake_tenant_db)
     updates: list = []
 
     async def fake_update(db, account_id, key, content, **kw):
@@ -218,7 +220,9 @@ async def test_alert_ack_acks_history_and_updates_deliveries(monkeypatch):
 @pytest.mark.asyncio
 async def test_alert_ack_falls_back_to_delivery_ack(monkeypatch):
     tenant = _FakeTenant(history_ack=False, delivery_ack=True)
-    monkeypatch.setattr("infra.platform.get_tenant_db", lambda aid: tenant)
+    async def _fake_tenant_db(aid):
+        return tenant
+    monkeypatch.setattr("infra.platform.get_tenant_db", _fake_tenant_db)
 
     async def fake_update(*a, **kw):
         return []
@@ -232,7 +236,9 @@ async def test_alert_ack_falls_back_to_delivery_ack(monkeypatch):
 @pytest.mark.asyncio
 async def test_alert_ack_already_acked(monkeypatch):
     tenant = _FakeTenant(history_ack=False, delivery_ack=False)
-    monkeypatch.setattr("infra.platform.get_tenant_db", lambda aid: tenant)
+    async def _fake_tenant_db(aid):
+        return tenant
+    monkeypatch.setattr("infra.platform.get_tenant_db", _fake_tenant_db)
     toast = await spine_actions._handle_ack(_ctx())
     assert toast == "Already acknowledged"
 
@@ -240,7 +246,9 @@ async def test_alert_ack_already_acked(monkeypatch):
 @pytest.mark.asyncio
 async def test_alert_ack_edit_failure_does_not_undo_ack(monkeypatch):
     tenant = _FakeTenant(history_ack=True)
-    monkeypatch.setattr("infra.platform.get_tenant_db", lambda aid: tenant)
+    async def _fake_tenant_db(aid):
+        return tenant
+    monkeypatch.setattr("infra.platform.get_tenant_db", _fake_tenant_db)
 
     async def broken_update(*a, **kw):
         raise RuntimeError("telegram down")
