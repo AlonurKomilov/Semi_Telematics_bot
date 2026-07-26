@@ -892,52 +892,6 @@ class TestSharedAcknowledgment:
 
 
 # ══════════════════════════════════════════════════════════════════
-# DND ALERT QUEUE
-# ══════════════════════════════════════════════════════════════════
-
-class TestDNDAlertQueue:
-    """Tests for DND alert queuing and delivery."""
-
-    async def test_queue_dnd_alert(self, seeded):
-        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        qid = await db.queue_dnd_alert(
-            account_id=account.id,
-            telegram_id=owner.telegram_id,
-            alert_type="fault",
-            vehicle_name="T100",
-            alert_text="Test alert text",
-        )
-        assert isinstance(qid, int)
-        assert qid > 0
-
-    async def test_get_pending_dnd_alerts(self, seeded):
-        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        await db.queue_dnd_alert(account.id, owner.telegram_id, "fault", "T100", "Alert 1")
-        await db.queue_dnd_alert(account.id, owner.telegram_id, "health", "T200", "Alert 2")
-        pending = await db.get_pending_dnd_alerts(owner.telegram_id)
-        assert len(pending) == 2
-
-    async def test_mark_dnd_delivered(self, seeded):
-        db, account, owner = seeded["db"], seeded["account"], seeded["owner"]
-        await db.queue_dnd_alert(account.id, owner.telegram_id, "fault", "T100", "Alert 1")
-        await db.queue_dnd_alert(account.id, owner.telegram_id, "fuel", "T200", "Alert 2")
-        count = await db.mark_dnd_alerts_delivered(owner.telegram_id)
-        assert count == 2
-        # No more pending
-        pending = await db.get_pending_dnd_alerts(owner.telegram_id)
-        assert len(pending) == 0
-
-    async def test_dnd_queue_isolation(self, seeded):
-        db, account, owner, driver = seeded["db"], seeded["account"], seeded["owner"], seeded["driver"]
-        await db.queue_dnd_alert(account.id, owner.telegram_id, "fault", "T100", "Owner alert")
-        await db.queue_dnd_alert(account.id, driver.telegram_id, "fault", "T101", "Driver alert")
-        owner_pending = await db.get_pending_dnd_alerts(owner.telegram_id)
-        driver_pending = await db.get_pending_dnd_alerts(driver.telegram_id)
-        assert len(owner_pending) == 1
-        assert len(driver_pending) == 1
-
-
-# ══════════════════════════════════════════════════════════════════
 # WORK SCHEDULES
 # ══════════════════════════════════════════════════════════════════
 

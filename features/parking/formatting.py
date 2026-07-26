@@ -14,7 +14,6 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import Application
 
-from adapters.storage import Role
 from capabilities.alerting.pipeline import AlertSeverity
 from capabilities.formatting.helpers import escape_html
 from capabilities.formatting.severity import badge
@@ -252,40 +251,27 @@ async def _send_parking_resolved(
         except Exception as e:
             logger.debug("Parking resolved → group topic post failed: %s", e)
 
-    # ── DM fanout for subscribers who didn't already get a threaded
-    # reply above (legacy callers without ``vid``, or new subscribers
-    # added after the alert fired).  DND check uses the SSoT helper.
-    subscribers = await get_platform_db().get_all_typed_subscribers("parking")
-    acct_subs = [s for s in subscribers if s.account_id == account_id]
-
-    for sub in acct_subs:
-        if sub.telegram_id in dm_replied:
-            continue  # already got the threaded resolve above
-        if sub.role == Role.DRIVER and sub.truck_num:
-            if sub.truck_num.lower() not in vname.lower():
-                continue
-        from capabilities.alerting.dnd import is_user_dnd_active
-        if await is_user_dnd_active(sub, tenant):
-            await tenant.queue_dnd_alert(
-                account_id=account_id,
-                telegram_id=sub.telegram_id,
-                alert_type="parking",
-                vehicle_name=vname,
-                alert_text=text,
+    # ── Spine DM copies: edit them to the resolve receipt in place ──
+    # The alert's personal DMs ride the notifications spine (delivery
+    # ledger keyed alert:{history_id}); one update edits every copy to
+    # 🟢 resolved and clears the ledger — the occurrence's final edit.
+    # Replaces the legacy fresh-DM fanout: a subscriber without a
+    # recorded copy never got the alert, so they need no receipt.
+    try:
+        hist = await tenant.get_active_alert_history(
+            account_id, "parking", vid) if vid else None
+        if hist:
+            from capabilities.notifications import (
+                NotificationContent as _NotifContent,
+                update_delivery as _update_delivery,
             )
-            continue
-        try:
-            await bot_app.bot.send_message(
-                chat_id=sub.telegram_id,
-                text=text,
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton(
-                        f"📋 View Vehicle #{vname_esc}",
-                        callback_data=f"covehicle_{co}_{vname}",
-                    )],
-                    [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
-                ]),
+            from capabilities.alerting.pipeline import _strip_alert_html
+            await _update_delivery(
+                tenant, account_id, f"alert:{hist['id']}",
+                _NotifContent(title="", body=_strip_alert_html(text),
+                              severity="info"),
+                clear=True,
             )
-        except Exception as e:
-            logger.debug(f"Parking resolved notification to {sub.telegram_id}: {e}")
+    except Exception as e:
+        logger.debug("Parking spine resolve edit failed (acct=%s vid=%s): %s",
+                     account_id, vid, e)

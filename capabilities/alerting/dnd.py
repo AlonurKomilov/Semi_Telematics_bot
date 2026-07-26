@@ -225,7 +225,10 @@ async def deliver_dnd_alerts(app: Application):
                 continue  # already sent today
 
             tenant = await get_tenant_db(sub.account_id)
-            queued = await tenant.get_pending_dnd_alerts(sub.telegram_id)
+            # Off-hours items now ride the notifications spine's quiet
+            # queue (delivered by its own hourly flush as an off-shift
+            # summary) — the report covers the rest of the handoff.
+            queued: list = []
 
             handoff = await tenant.get_shift_handoff_data(sub.account_id, sub.telegram_id)
             pending = handoff["pending_alerts"]
@@ -274,9 +277,6 @@ async def deliver_dnd_alerts(app: Application):
                     [InlineKeyboardButton("🔔 Pending Alerts", callback_data="cmd_pending_alerts")],
                     [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
                 ])
-
-                if queued:
-                    await tenant.mark_dnd_alerts_delivered(sub.telegram_id)
 
                 if pdf_buf:
                     filename = f"shift_report_{today_local}.pdf"

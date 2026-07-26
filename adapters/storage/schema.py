@@ -603,19 +603,6 @@ async def create_tables(conn) -> None:
         CREATE INDEX IF NOT EXISTS idx_audit_account
             ON audit_log(account_id, created_at);
 
-        CREATE TABLE IF NOT EXISTS dnd_alert_queue (
-            id              INTEGER PRIMARY KEY AUTOINCREMENT,
-            account_id      INTEGER NOT NULL REFERENCES accounts(id),
-            telegram_id     BIGINT  NOT NULL,
-            alert_type      TEXT    NOT NULL DEFAULT 'fault',
-            vehicle_name    TEXT    NOT NULL DEFAULT '',
-            alert_text      TEXT    NOT NULL DEFAULT '',
-            created_at      TEXT    NOT NULL,
-            delivered        INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE INDEX IF NOT EXISTS idx_dnd_queue_pending
-            ON dnd_alert_queue(telegram_id, delivered);
-
         CREATE TABLE IF NOT EXISTS alert_history (
             id                INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id        INTEGER NOT NULL REFERENCES accounts(id),

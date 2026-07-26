@@ -130,12 +130,18 @@ async def check_document_expirations(_app: Application | None = None) -> None:
                         # from ``by_user_id`` — a User dataclass with
                         # dnd_enabled + quiet_start/end populated.
                         if await is_user_dnd_active(driver, doc_tenant):
-                            await doc_tenant.queue_dnd_alert(
-                                account_id=acct.id,
-                                telegram_id=driver.telegram_id,
-                                alert_type="documents",
-                                vehicle_name=driver_name,
-                                alert_text=driver_text,
+                            # Spine quiet queue — lands in the driver's
+                            # off-shift summary at shift start (replaces
+                            # the retired private dnd_alert_queue).
+                            from capabilities.notifications.quiet_hours import (
+                                defer_notification)
+                            await defer_notification(
+                                doc_tenant, acct.id,
+                                user_id=driver.id,
+                                address=str(driver.telegram_id),
+                                category="alert.documents",
+                                line=f"📄 Document expiring — {driver_name}",
+                                severity="warning",
                             )
                             skip_driver_dm = True
                     except Exception as e:

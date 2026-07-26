@@ -7217,3 +7217,18 @@ async def migrate_service_tasks_vehicle_type(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 164: service_tasks.vehicle_type added")
+
+
+@_register("165_drop_dnd_alert_queue")
+async def migrate_drop_dnd_alert_queue(conn) -> None:
+    """Drop ``dnd_alert_queue`` — the private off-hours DM buffer.
+
+    Quiet-hours deferral moved to the notifications spine: sources
+    enqueue into ``notification_digest_queue`` under the ``quiet``
+    cadence (``quiet_hours.defer_notification``) and the hourly quiet
+    flush delivers each recipient's off-shift summary.  Nothing writes
+    or reads this table anymore; undelivered residue was one flush away
+    from stale (the shift report only ever surfaced same-day rows) and
+    the alert content itself lives on in ``alert_history``.
+    """
+    await conn.execute("DROP TABLE IF EXISTS dnd_alert_queue")

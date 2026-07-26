@@ -483,43 +483,6 @@ class AlertsMixin(_MixinBase):
 
     # ── DND Alert Queue ───────────────────────────────────────────
 
-    async def queue_dnd_alert(
-        self, account_id: int, telegram_id: int,
-        alert_type: str, vehicle_name: str, alert_text: str,
-    ) -> int:
-        """Queue a non-critical alert suppressed by DND for later delivery."""
-        now = self._now()
-        cur = await self._db.execute(
-            "INSERT INTO dnd_alert_queue "
-            "(account_id, telegram_id, alert_type, vehicle_name, alert_text, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            (account_id, telegram_id, alert_type, vehicle_name, alert_text, now),
-        )
-        await self._db.commit()
-        return cur.lastrowid
-
-    async def get_pending_dnd_alerts(self, telegram_id: int) -> list[dict]:
-        """Get all undelivered DND-queued alerts for a user."""
-        rows = await self.read_all(
-            "SELECT * FROM dnd_alert_queue "
-            "WHERE telegram_id = ? AND delivered = 0 "
-            "ORDER BY created_at",
-            (telegram_id,),
-        )
-        return [dict(r) for r in rows]
-
-    async def mark_dnd_alerts_delivered(self, telegram_id: int) -> int:
-        """Mark all pending DND alerts as delivered for a user. Returns count."""
-        cur = await self._db.execute(
-            "UPDATE dnd_alert_queue SET delivered = 1 "
-            "WHERE telegram_id = ? AND delivered = 0",
-            (telegram_id,),
-        )
-        await self._db.commit()
-        return cur.rowcount
-
-    # ── Alert History (consolidation) ────────────────────────────
-
     async def get_active_alert_history(
         self, account_id: int, alert_type: str, vehicle_id: str,
         alert_subkey: str = "",

@@ -445,13 +445,11 @@ async def _auto_resolve_vehicle_alerts(
             if recipient:
                 from capabilities.alerting.dnd import is_user_dnd_active
                 if await is_user_dnd_active(recipient, tenant):
-                    await tenant.queue_dnd_alert(
-                        account_id=account_id,
-                        telegram_id=recipient_id,
-                        alert_type=alert_type,
-                        vehicle_name=vname,
-                        alert_text=f"✅ Auto-resolved: {alert_type} alert cleared",
-                    )
+                    # Off-shift: skip the DM receipt — the shift report's
+                    # "resolved" section covers it, and the retired
+                    # private queue isn't replayed anymore.  (Spine DM
+                    # copies get their receipt as a silent in-place edit
+                    # regardless — edits don't buzz.)
                     continue
                 if not getattr(recipient, "alert_resolve_receipts", False):
                     # User opted out (or never opted in).  Skip the
@@ -894,35 +892,11 @@ async def re_escalate_critical_alerts(app: Application):
                 if not is_group_post and not recipient_id:
                     continue
 
-                if not is_group_post:
-                    # Respect DND: queue the reminder so it lands when the
-                    # recipient is back online.  Uses the SSoT helper —
-                    # per-user override first, else derived from the
-                    # account's Working Hours for the user's role.
-                    try:
-                        recipient = await _get_platform_db().get_user_by_telegram_id(recipient_id)
-                    except Exception:
-                        recipient = None
-                    if recipient:
-                        from capabilities.alerting.dnd import is_user_dnd_active
-                        try:
-                            in_dnd = await is_user_dnd_active(recipient, tenant)
-                        except Exception:
-                            in_dnd = False
-                        if in_dnd:
-                            try:
-                                await tenant.queue_dnd_alert(
-                                    account_id=account_id,
-                                    telegram_id=recipient_id,
-                                    alert_type=atype,
-                                    vehicle_name=vname,
-                                    alert_text=reminder_text,
-                                )
-                            except Exception:
-                                pass
-                            attempt_sent_anywhere = True
-                            continue
-
+                # (The old per-recipient DND queueing is gone with the
+                # private dnd queue — an in-place EDIT doesn't buzz the
+                # recipient, so quiet hours don't apply to reminders on
+                # existing messages; spine copies get the same treatment
+                # via update_delivery above.)
                 msg_id = delivery.get("message_id")
                 chat_id = delivery.get("chat_id")
                 edited = False

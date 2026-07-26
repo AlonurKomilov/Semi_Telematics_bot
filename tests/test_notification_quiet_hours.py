@@ -373,3 +373,31 @@ async def test_send_document_branch_and_handle_kind():
     assert res.ok
     assert bot.docs[0]["filename"] == "shift.pdf"
     assert res.handle["kind"] == "document"
+
+
+# ── source-side deferral (the retired private queue's replacement) ──
+
+@pytest.mark.asyncio
+async def test_defer_notification_enqueues_quiet_item():
+    db = _FakeDb()
+    ok = await qh.defer_notification(
+        db, 7, user_id=42, address="1527638770",
+        category="alert.camera", line="📷 Camera alerts (2 warnings)",
+        severity="warning")
+    assert ok is True
+    item = db.enqueued[0]
+    assert item["cadence"] == QUIET_DEFER_CADENCE
+    assert item["recipient_id"] == "42" and item["channel"] == "telegram_dm"
+    assert item["category"] == "alert.camera"
+    assert item["severity"] == "warning"
+
+
+@pytest.mark.asyncio
+async def test_defer_notification_failure_returns_false():
+    class _Broken(_FakeDb):
+        async def enqueue_digest_item(self, *a, **kw):
+            raise RuntimeError("db down")
+    ok = await qh.defer_notification(
+        _Broken(), 7, user_id=42, address="x",
+        category="alert.documents", line="l")
+    assert ok is False                            # caller may send live

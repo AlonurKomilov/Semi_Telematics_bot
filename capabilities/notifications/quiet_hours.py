@@ -77,3 +77,34 @@ async def is_recipient_quiet(account_id: int, user_id: int) -> bool:
         logger.error("quiet-hours provider failed for %s/%s: %s",
                      account_id, user_id, e)
         return False
+
+
+async def defer_notification(
+    db,
+    account_id: int,
+    *,
+    user_id: int,
+    address: str,
+    category: str,
+    line: str,
+    severity: str = "info",
+    channel: str = "telegram_dm",
+) -> bool:
+    """Queue ONE notification line for a quiet recipient — the source
+    already decided "this person is quiet right now" (its own DND check)
+    and hands the spine the deferred line instead of keeping a private
+    queue.  Delivered by the hourly quiet flush as part of the
+    recipient's off-shift summary (source digest renderer).  Returns
+    False on enqueue failure — the caller decides whether to send live
+    instead (a too-eager notification beats a lost one)."""
+    try:
+        await db.enqueue_digest_item(
+            account_id, "user", str(user_id), channel,
+            QUIET_DEFER_CADENCE, category, line, str(address or ""),
+            severity=severity,
+        )
+        return True
+    except Exception as e:
+        logger.error("defer_notification failed (%s/%s %s): %s",
+                     account_id, user_id, category, e)
+        return False

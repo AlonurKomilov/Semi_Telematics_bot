@@ -325,12 +325,16 @@ async def _check_cameras_account(
                         f"#{first_v}"
                         + (f" +{len(sub_issues) - 1} more" if len(sub_issues) > 1 else "")
                     )
-                    await _camera_tenant.queue_dnd_alert(
-                        account_id=account_id,
-                        telegram_id=sub.telegram_id,
-                        alert_type="camera",
-                        vehicle_name=first_v,
-                        alert_text=queued_text,
+                    # Spine quiet queue — delivered in the recipient's
+                    # off-shift summary by the hourly quiet flush
+                    # (replaces the retired private dnd_alert_queue).
+                    from capabilities.notifications.quiet_hours import (
+                        defer_notification)
+                    await defer_notification(
+                        _camera_tenant, account_id,
+                        user_id=sub.id, address=str(sub.telegram_id),
+                        category="alert.camera", line=queued_text,
+                        severity="warning",
                     )
                     continue
             except Exception as e:

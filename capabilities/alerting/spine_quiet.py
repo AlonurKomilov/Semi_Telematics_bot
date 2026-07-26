@@ -14,10 +14,9 @@ blind to:
 
 Importing this module (from ``capabilities.alerting`` at boot, like
 ``notification_categories`` / ``spine_actions``) performs both
-registrations.  Nothing defers until spine-delivered alert DMs ship
-(the fanout flip); the legacy DND path (``dnd.py`` + ``dnd_alert_queue``)
-keeps serving the live pipeline until the legacy-path cleanup retires
-it.  The full
+registrations.  Every deferral rides the spine's quiet queue (the
+private ``dnd_alert_queue`` is gone — sources call
+``quiet_hours.defer_notification``).  The full
 shift-handoff REPORT (summary + PDF from ``get_shift_handoff_data``)
 stays a domain job — it aggregates far more than the deferred queue and
 is a report, not a flush.
@@ -40,7 +39,7 @@ logger = logging.getLogger(__name__)
 _TYPE_ICONS = {
     "faults": "⚠️", "fault": "⚠️", "health": "🏥", "fuel": "⛽",
     "events": "🚨", "geofence": "📍", "camera": "📷", "parking": "🅿️",
-    "maintenance": "🔧",
+    "maintenance": "🔧", "documents": "📄", "scorecard": "🏆",
 }
 
 
