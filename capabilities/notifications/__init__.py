@@ -28,6 +28,7 @@ from capabilities.notifications.service import (  # noqa: F401,E402
     dispatch,
     flush_digests,
     notify_user,
+    update_delivery,
 )
 from capabilities.notifications.categories import (  # noqa: F401,E402
     BROADCAST,

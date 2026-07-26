@@ -197,6 +197,7 @@ async def run_all(conn) -> None:
     await migrate_notification_matrix(conn)
     await migrate_notification_digest_queue(conn)
     await migrate_notification_inbox(conn)
+    await migrate_notification_deliveries(conn)
     await migrate_push_subscriptions(conn)
     # Capacity monitoring (operator console): platform metric history +
     # per-account request metering.
@@ -516,6 +517,39 @@ async def migrate_notification_matrix(conn) -> None:
         logger.info("Migration: backfilled notification matrix (telegram_dm)")
     except Exception as e:
         logger.error("notification matrix backfill failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+async def migrate_notification_deliveries(conn) -> None:
+    """Create ``notification_deliveries`` — the delivery ledger behind
+    ``update_delivery()`` (edit-addresses of sent messages, keyed by the
+    source's correlation_key).  Additive; nothing writes until a dispatch
+    caller passes a ``correlation_key``
+    (docs/architecture/alert-dm-migration.md, Phase 1)."""
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS notification_deliveries (
+                id              SERIAL  PRIMARY KEY,
+                account_id      INTEGER NOT NULL,
+                channel         TEXT    NOT NULL,
+                recipient_type  TEXT    NOT NULL,
+                recipient_id    TEXT    NOT NULL,
+                category        TEXT    NOT NULL DEFAULT '',
+                correlation_key TEXT    NOT NULL,
+                handle          TEXT    NOT NULL DEFAULT '{}',
+                created_at      TEXT    NOT NULL
+            )
+        """)
+        await conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_notification_deliveries_corr"
+            " ON notification_deliveries(account_id, correlation_key)"
+        )
+        await conn.commit()
+    except Exception as e:
+        logger.error("notification deliveries migration failed: %s", e)
         try:
             await conn.rollback()
         except Exception:

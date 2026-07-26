@@ -113,9 +113,23 @@ class Payload:
 
 @dataclass
 class DeliveryResult:
+    """Outcome of one ``send``/``edit``.
+
+    ``handle`` is the channel-specific address of the SENT message —
+    everything the channel itself needs to find it again for a later
+    ``edit()`` (Telegram: ``{"chat_id", "message_id", "thread_id?",
+    "kind"}``).  Opaque to everyone but the emitting channel; empty when
+    the channel can't edit (email) or the send failed.  The service
+    layer persists it in the ``notification_deliveries`` ledger keyed by
+    the caller's ``correlation_key`` — that's how a source updates a
+    delivered message later ("reminder 2/4", "✅ acked") without ever
+    speaking the transport's dialect (docs/architecture/
+    alert-dm-migration.md, Phase 1).
+    """
     ok: bool
     error: str = ""
     provider_ref: str = ""      # e.g. Telegram message_id
+    handle: dict = field(default_factory=dict)
 
 
 @runtime_checkable
@@ -138,6 +152,17 @@ class Channel(Protocol):
     broadcast recipients opt-OUT (all eligible users minus explicit
     mutes) instead of opt-in, because a passive record nobody pre-enables
     would otherwise stay empty forever.
+
+    A channel may also declare ``supports_edit = True`` (same getattr
+    pattern) and provide::
+
+        async def edit(self, recipient, handle, payload) -> DeliveryResult
+
+    to mutate an ALREADY-DELIVERED message in place, given the ``handle``
+    its own earlier ``send`` returned.  ``update_delivery()`` in the
+    service layer is the only caller; channels without the flag are
+    silently skipped there (an email can't be edited — the source decides
+    whether to send a fresh notice instead).
     """
     key: str
     personal: bool

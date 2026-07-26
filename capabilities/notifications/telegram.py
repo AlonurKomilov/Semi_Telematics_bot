@@ -150,9 +150,60 @@ async def _send(app, *, chat_id: int, thread_id: int | None,
                     reply_markup=payload.markup,
                 ), what=what,
             )
-        return DeliveryResult(ok=True, provider_ref=str(getattr(msg, "message_id", "")))
+        message_id = getattr(msg, "message_id", None)
+        # The edit handle: everything ``_edit`` needs to find this exact
+        # message again.  ``kind`` decides text-vs-caption edit later.
+        handle: dict = {}
+        if message_id is not None:
+            handle = {"chat_id": chat_id, "message_id": int(message_id),
+                      "kind": "photo" if payload.photo_bytes is not None else "text"}
+            if thread_id is not None:
+                handle["thread_id"] = thread_id
+        return DeliveryResult(ok=True, provider_ref=str(message_id or ""),
+                              handle=handle)
     except Exception as e:   # transport failure — the caller logs/records
         logger.warning("Telegram %s send failed: %s", what, e)
+        return DeliveryResult(ok=False, error=type(e).__name__)
+
+
+async def _edit(app, *, handle: dict, payload: Payload, what: str) -> DeliveryResult:
+    """Shared leaf edit — mutate a previously sent message in place, given
+    the ``handle`` that message's ``_send`` returned.
+
+    ``kind`` picks the right Telegram verb: a photo message only accepts
+    ``edit_message_caption``; a text message only ``edit_message_text``.
+    Telegram's "message is not modified" rejection is treated as success —
+    the message already shows the desired content, which is all an edit
+    promises (the pipeline's ack-swap makes the same call)."""
+    if app is None:
+        return DeliveryResult(ok=False, error="no_bot")
+    chat_id, message_id = handle.get("chat_id"), handle.get("message_id")
+    if not chat_id or not message_id:
+        return DeliveryResult(ok=False, error="bad_handle")
+    try:
+        if handle.get("kind") == "photo":
+            await _tg_send_with_retry(
+                lambda: app.bot.edit_message_caption(
+                    chat_id=chat_id, message_id=message_id,
+                    caption=payload.text, parse_mode=payload.parse_mode,
+                    reply_markup=payload.markup,
+                ), what=what,
+            )
+        else:
+            await _tg_send_with_retry(
+                lambda: app.bot.edit_message_text(
+                    chat_id=chat_id, message_id=message_id,
+                    text=payload.text, parse_mode=payload.parse_mode,
+                    reply_markup=payload.markup,
+                ), what=what,
+            )
+        return DeliveryResult(ok=True, provider_ref=str(message_id),
+                              handle=dict(handle))
+    except Exception as e:
+        if "not modified" in str(e).lower():
+            return DeliveryResult(ok=True, provider_ref=str(message_id),
+                                  handle=dict(handle))
+        logger.warning("Telegram %s edit failed: %s", what, e)
         return DeliveryResult(ok=False, error=type(e).__name__)
 
 
@@ -160,6 +211,7 @@ class TelegramDmChannel:
     """Bot → USER private chat.  PERSONAL (per-user address)."""
     key = "telegram_dm"
     personal = True
+    supports_edit = True
 
     def render(self, recipient: Recipient, content: NotificationContent) -> Payload:
         return render_telegram(content)
@@ -175,6 +227,13 @@ class TelegramDmChannel:
             payload=payload, what="dm",
         )
 
+    async def edit(self, recipient: Recipient, handle: dict,
+                   payload: Payload) -> DeliveryResult:
+        return await _edit(
+            _bot_for(recipient.account_id), handle=handle, payload=payload,
+            what="dm-edit",
+        )
+
 
 class TelegramTopicChannel:
     """Bot → GROUP topic.  SHARED (per-account/topic destination).
@@ -184,6 +243,7 @@ class TelegramTopicChannel:
     cross-post uses the primary bot, not the persona bot)."""
     key = "telegram_topic"
     personal = False
+    supports_edit = True
 
     def render(self, recipient: Recipient, content: NotificationContent) -> Payload:
         return render_telegram(content)
@@ -199,6 +259,13 @@ class TelegramTopicChannel:
         return await _send(
             _bot_for(recipient.account_id, sender_app),
             chat_id=chat_id, thread_id=thread_id, payload=payload, what="topic",
+        )
+
+    async def edit(self, recipient: Recipient, handle: dict, payload: Payload,
+                   *, sender_app=None) -> DeliveryResult:
+        return await _edit(
+            _bot_for(recipient.account_id, sender_app), handle=handle,
+            payload=payload, what="topic-edit",
         )
 
 

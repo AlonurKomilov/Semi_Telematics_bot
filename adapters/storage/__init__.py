@@ -91,6 +91,7 @@ from .ai_chat import AIChatHistoryMixin
 from .ai_actions import AIActionProposalsMixin
 from .notification_prefs import NotificationPrefsMixin
 from .notification_inbox import NotificationInboxMixin
+from .notification_deliveries import NotificationDeliveriesMixin
 from .push_subscriptions import PushSubscriptionsMixin
 from .errors import ErrorLogMixin
 from .scan_log import ScanLogMixin
@@ -156,6 +157,7 @@ class Database(
     AIActionProposalsMixin,
     NotificationPrefsMixin,
     NotificationInboxMixin,
+    NotificationDeliveriesMixin,
     PushSubscriptionsMixin,
     ErrorLogMixin,
     ScanLogMixin,

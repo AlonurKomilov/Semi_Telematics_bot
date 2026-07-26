@@ -71,6 +71,7 @@ async def dispatch(
     *,
     channels: Iterable[str] | None = None,
     recipient_filter: Callable[[int, str | None], bool] | None = None,
+    correlation_key: str = "",
 ) -> list[DeliveryResult]:
     """Deliver one semantic event to every subscriber on every channel.
 
@@ -98,6 +99,14 @@ async def dispatch(
     are covered) and FAIL-OPEN: a predicate that raises keeps the recipient.
     Non-user (shared) recipients are never filtered — parity with the
     Telegram path, where shared group topics aren't per-user gated.
+
+    ``correlation_key`` is the source's stable name for this logical event
+    (e.g. ``alert:{history_id}``).  When set, each successful immediate
+    send that returns an edit ``handle`` is recorded in the
+    ``notification_deliveries`` ledger so :func:`update_delivery` can later
+    mutate the delivered messages in place.  Empty (the default) keeps the
+    ledger untouched — fire-and-forget events don't pay for memory they
+    never use.
     """
     cat = get_category(content.category)
     if cat is not None and cat.kind == TARGETED:
@@ -162,11 +171,35 @@ async def dispatch(
             )
             try:
                 payload = channel.render(rcpt, content)
-                results.append(await channel.send(rcpt, payload))
+                res = await channel.send(rcpt, payload)
+                results.append(res)
+                await _record_delivery(db, rcpt, key, content.category,
+                                       correlation_key, res)
             except Exception as e:                  # one bad address ≠ dead fan-out
                 logger.error("dispatch: send failed (%s): %s", key, e)
                 results.append(DeliveryResult(ok=False, error="exception"))
     return results
+
+
+async def _record_delivery(
+    db: Any, rcpt: Recipient, channel_key: str, category: str,
+    correlation_key: str, res: DeliveryResult,
+) -> None:
+    """Ledger write for one successful send — only when the caller named
+    the event (``correlation_key``) and the channel returned an edit
+    ``handle``.  Best-effort: a ledger failure must never sink a delivery
+    that already happened."""
+    if not correlation_key or not res.ok or not res.handle:
+        return
+    try:
+        await db.record_notification_delivery(
+            rcpt.account_id, channel=channel_key, recipient_type=rcpt.type,
+            recipient_id=rcpt.id, category=category,
+            correlation_key=correlation_key, handle=res.handle,
+        )
+    except Exception as e:
+        logger.error("dispatch: delivery ledger write failed (%s): %s",
+                     channel_key, e)
 
 
 async def _filter_recipients(db, subs, audience, recipient_filter) -> list[dict]:
@@ -213,6 +246,7 @@ async def notify_user(
     content: NotificationContent,
     *,
     channels: Iterable[str] | None = None,
+    correlation_key: str = "",
 ) -> list[DeliveryResult]:
     """Deliver a TARGETED notification to ONE user (the actor / affected
     person) — e.g. ``team.invite_accepted``.
@@ -263,10 +297,74 @@ async def notify_user(
         rcpt = Recipient(account_id=account_id, type="user", id=str(user_id),
                          address=conn.get("address", ""))
         try:
-            results.append(await channel.send(rcpt, channel.render(rcpt, content)))
+            res = await channel.send(rcpt, channel.render(rcpt, content))
+            results.append(res)
+            await _record_delivery(db, rcpt, key, content.category,
+                                   correlation_key, res)
         except Exception as e:
             logger.error("notify_user: send failed (%s): %s", key, e)
             results.append(DeliveryResult(ok=False, error="exception"))
+    return results
+
+
+async def update_delivery(
+    db: Any,
+    account_id: int,
+    correlation_key: str,
+    content: NotificationContent,
+    *,
+    channels: Iterable[str] | None = None,
+    clear: bool = False,
+) -> list[DeliveryResult]:
+    """Edit every recorded delivery of one logical event IN PLACE.
+
+    This is the generic "the thing I told you about has changed" verb: the
+    source renders the NEW content and every message the ledger remembers
+    (``dispatch``/``notify_user`` with the same ``correlation_key``) is
+    edited via its channel's ``edit()``.  Channels that can't edit
+    (``supports_edit`` unset — email) are skipped silently: an immutable
+    transport's message stays as sent, and the source decides whether that
+    event deserves a fresh notice instead.
+
+    ``clear=True`` drops the ledger rows afterwards — the event's FINAL
+    edit ("🟢 resolved"), after which nothing should update it again.
+    Rows are kept on partial failure so a later retry can finish the job.
+    """
+    try:
+        rows = await db.get_notification_deliveries(account_id, correlation_key)
+    except Exception as e:
+        logger.error("update_delivery: ledger read failed (%s): %s",
+                     correlation_key, e)
+        return []
+    wanted = set(channels) if channels is not None else None
+    results: list[DeliveryResult] = []
+    all_ok = True
+    for row in rows:
+        key = row["channel"]
+        if wanted is not None and key not in wanted:
+            continue
+        channel = get_channel(key)
+        if channel is None or not getattr(channel, "supports_edit", False):
+            continue
+        rcpt = Recipient(
+            account_id=account_id, type=row["recipient_type"],
+            id=str(row["recipient_id"]),
+        )
+        try:
+            payload = channel.render(rcpt, content)
+            res = await channel.edit(rcpt, row.get("handle") or {}, payload)
+        except Exception as e:
+            logger.error("update_delivery: edit failed (%s): %s", key, e)
+            res = DeliveryResult(ok=False, error="exception")
+        results.append(res)
+        if not res.ok:
+            all_ok = False
+    if clear and all_ok:
+        try:
+            await db.clear_notification_deliveries(account_id, correlation_key)
+        except Exception as e:
+            logger.error("update_delivery: ledger clear failed (%s): %s",
+                         correlation_key, e)
     return results
 
 

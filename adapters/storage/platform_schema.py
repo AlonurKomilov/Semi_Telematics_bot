@@ -451,6 +451,26 @@ async def create_tables(conn) -> None:
             ON notification_inbox(account_id, user_id)
             WHERE read_at = '';
 
+        -- Delivery ledger: the edit-address of each SENT message a source
+        -- may update later ("reminder 2/4", "acked").  handle = the
+        -- channel's opaque JSON (Telegram: chat_id/message_id/kind);
+        -- correlation_key = the source's stable event key
+        -- (docs/architecture/alert-dm-migration.md, Phase 1).  Rows only
+        -- exist when the dispatch caller passed a correlation_key.
+        CREATE TABLE IF NOT EXISTS notification_deliveries (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            channel         TEXT    NOT NULL,
+            recipient_type  TEXT    NOT NULL,
+            recipient_id    TEXT    NOT NULL,
+            category        TEXT    NOT NULL DEFAULT '',
+            correlation_key TEXT    NOT NULL,
+            handle          TEXT    NOT NULL DEFAULT '{}',
+            created_at      TEXT    NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_notification_deliveries_corr
+            ON notification_deliveries(account_id, correlation_key);
+
         -- Web-push device subscriptions: PER-DEVICE (a user can have
         -- push on the laptop but not the phone), so they are sub-entities
         -- of the user rather than a single notification_channel address.

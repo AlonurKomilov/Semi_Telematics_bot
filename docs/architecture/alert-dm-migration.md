@@ -1,6 +1,6 @@
 # ADR: Alert DM delivery moves to the notifications spine
 
-- **Status:** ACCEPTED (owner decision, 2026-07-24) — Phase 0 landed; Phases 1–5 pending
+- **Status:** ACCEPTED (owner decision, 2026-07-24) — Phases 0–1 landed; Phases 2–5 pending
 - **Owners:** alerting (`capabilities/alerting/`) + notifications (`capabilities/notifications/`)
 - **Related:** [notifications.md](notifications.md) (spine architecture), [bot-topology.md](bot-topology.md) (bot vs group split)
 
@@ -69,7 +69,7 @@ spine instead of its own loop).
 | Phase | Work | Size | Ships alone? |
 |---|---|---|---|
 | **0 — Lock the contract** ✅ 2026-07-24 | This ADR; boundary rule `capabilities/notifications ⇸ {capabilities.alerting, features}` in `test_layer_boundaries.py`; reverse import removed — role→alert-types now derived from the category registry (`categories_for_source("alert", role)`) | 0.5 d | yes |
-| **1 — Delivery ledger + handles** | `notification_deliveries` table; `DeliveryResult` returns handle; `update_delivery()`; per-channel `supports_edit` | 1 d | yes (additive) |
+| **1 — Delivery ledger + handles** ✅ 2026-07-24 | `notification_deliveries` table; `DeliveryResult` returns handle; `update_delivery()`; per-channel `supports_edit` | 1 d | yes (additive) |
 | **2 — Actions + callback routing** | `actions` in content; keyboard render in `TelegramDmChannel`; `notif_act:{delivery}:{action}` callback dispatch to registered handlers; alerting registers `alert.ack` | 1 d | yes (additive) |
 | **3 — Quiet hours in the spine** | Quiet-window policy + deferral queue on the digest machinery; severity bypass; alerting registers the shift-handoff renderer (summary + PDF); retire `dnd_alert_queue` | 1 d | yes |
 | **4 — The flip** | `alert_prefs` JSONB → `notification_pref` rows (idempotent migration, dual-read window); `send_alert` DM fanout → spine call **behind a per-account flag** with parity logging | 1 d | flag-gated |
@@ -80,6 +80,36 @@ as `NOTIFICATIONS_LIVE_DISPATCH`), parity logs during the dual window, the
 existing alerting test suite + new contract tests per phase, and Phase 4
 (the only phase that touches `send_alert` itself) coordinated with a quiet
 deploy moment.
+
+## Phase 1 record (what changed and why it's safe)
+
+All additive — nothing writes until a caller passes `correlation_key`:
+
+- `channels.py` — `DeliveryResult.handle` (channel-opaque edit-address,
+  empty on failure / immutable channels) + the `supports_edit` /
+  `edit(recipient, handle, payload)` protocol extension (getattr-read,
+  like `intrinsic`, so existing channels need no change).
+- `telegram.py` — `_send` populates the handle
+  (`chat_id`/`message_id`/`kind`, `thread_id` for topics); new shared
+  `_edit` leaf picks text-vs-caption by `kind`, treats Telegram's
+  "message is not modified" as success, reuses the flood-retry primitive.
+  Both Telegram channels declare `supports_edit` and route `edit()`.
+- `service.py` — `dispatch()`/`notify_user()` accept `correlation_key`
+  and record each successful immediate send with a handle into the
+  ledger (best-effort — a ledger failure never sinks a delivery); new
+  `update_delivery(db, account_id, correlation_key, content, *,
+  channels, clear)` re-renders and edits every recorded row, skipping
+  non-editable channels; `clear=True` drops rows only when every edit
+  succeeded (partial failure keeps them for retry).
+- Storage: `NotificationDeliveriesMixin`
+  (`adapters/storage/notification_deliveries.py`, registered on
+  `Database`), table in `platform_schema.py` + idempotent
+  `migrate_notification_deliveries` for existing DBs, retention target
+  `notifications.deliveries` (30 d — outlives the longest re-escalation
+  schedule; sources clear their own rows on an event's final edit).
+- Contract tests: `tests/test_notification_deliveries.py` (14 — handle
+  population, edit-verb selection, not-modified-as-success, ledger
+  recording rules, update/skip/clear semantics), all on fakes.
 
 ## Phase 0 record (what changed and why it's safe)
 

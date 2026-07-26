@@ -41,3 +41,17 @@ register_need(RetentionNeed(
     "bell-dropdown recent notices; read/unread state matters for weeks, "
     "not months — pruned regardless of read state",
 ))
+
+# Delivery ledger: edit-addresses of sent messages (update_delivery()).
+# A source edits a message within its live window (reminders, acks,
+# resolve receipts) — days, not months; sources that finish an event
+# clear their own rows, so this sweep only catches abandoned ones.
+register_target(RetentionTarget(
+    "notifications.deliveries", "Notification delivery ledger", "platform",
+    lambda db, _acct, days: db.prune_notification_deliveries(days=days),
+))
+register_need(RetentionNeed(
+    "notifications", "notifications.deliveries", 30,
+    "edit-window for delivered-message updates (reminder counters, ack "
+    "swaps); outlives the longest re-escalation schedule",
+))
