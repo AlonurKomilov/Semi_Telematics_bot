@@ -86,10 +86,12 @@ def render_telegram(content: NotificationContent) -> Payload:
     if content.url:
         parts.append(_html.escape(content.url))
     limit = _TELEGRAM_CAPTION_MAX \
-        if (content.photo_bytes or content.document_bytes) else _TELEGRAM_TEXT_MAX
+        if (content.photo_bytes or content.document_bytes
+            or content.video_url) else _TELEGRAM_TEXT_MAX
     return Payload(
         text=_clamp("\n".join(parts), limit), parse_mode="HTML",
         photo_bytes=content.photo_bytes,
+        video_url=content.video_url,
         document_bytes=content.document_bytes,
         document_name=content.document_name,
         markup=_action_markup(content),
@@ -97,29 +99,55 @@ def render_telegram(content: NotificationContent) -> Payload:
 
 
 def _action_markup(content: NotificationContent):
-    """``content.actions`` → an inline keyboard, or None.
+    """``content.actions`` (+ optional ``meta["tg_buttons"]`` rows) → an
+    inline keyboard, or None.
 
-    Buttons need a routing address: the dispatch-time ``correlation_key``
+    ACTIONS need a routing address: the dispatch-time ``correlation_key``
     (stamped into ``content.meta`` by the service).  No key, or a key too
-    long for Telegram's 64-byte callback cap → the whole row is dropped
-    (a message without buttons beats one with dead buttons)."""
-    if not content.actions:
-        return None
-    correlation_key = content.meta.get("correlation_key", "")
-    if not correlation_key:
-        logger.warning("actions without correlation_key — dropped (%s)",
-                       content.category)
-        return None
+    long for Telegram's 64-byte callback cap → the action row is dropped
+    (a message without buttons beats one with dead buttons).
+
+    ``meta["tg_buttons"]`` is the source-provided EXTRA rows — plain
+    specs ``[[{"text", "url"|"callback_data"}]]`` the source already
+    routes itself (deep links, its own bot callbacks).  The spine just
+    renders them under the action row; malformed specs are skipped, not
+    fatal."""
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-    from .actions import build_action_callback_data
-    buttons = []
-    for a in content.actions:
-        data = build_action_callback_data(correlation_key, str(a.get("id", "")))
-        if data is None or not a.get("label"):
-            return None
-        buttons.append(InlineKeyboardButton(str(a["label"]), callback_data=data))
-    return InlineKeyboardMarkup([buttons])
+    rows: list = []
+    if content.actions:
+        correlation_key = content.meta.get("correlation_key", "")
+        if not correlation_key:
+            logger.warning("actions without correlation_key — dropped (%s)",
+                           content.category)
+        else:
+            from .actions import build_action_callback_data
+            buttons = []
+            for a in content.actions:
+                data = build_action_callback_data(
+                    correlation_key, str(a.get("id", "")))
+                if data is None or not a.get("label"):
+                    buttons = []
+                    break
+                buttons.append(
+                    InlineKeyboardButton(str(a["label"]), callback_data=data))
+            if buttons:
+                rows.append(buttons)
+    for spec_row in content.meta.get("tg_buttons") or []:
+        buttons = []
+        for spec in spec_row or []:
+            text = str(spec.get("text", "") or "")
+            url = spec.get("url")
+            cb = spec.get("callback_data")
+            if not text or (not url and not cb):
+                continue
+            if cb is not None and len(str(cb).encode("utf-8")) > 64:
+                continue
+            buttons.append(
+                InlineKeyboardButton(text, url=url, callback_data=cb))
+        if buttons:
+            rows.append(buttons)
+    return InlineKeyboardMarkup(rows) if rows else None
 
 
 async def _tg_send_with_retry(send, *, what: str):
@@ -175,6 +203,15 @@ async def _send(app, *, chat_id: int, thread_id: int | None,
                     parse_mode=payload.parse_mode, reply_markup=payload.markup,
                 ), what=what,
             )
+        elif payload.video_url:
+            msg = await _tg_send_with_retry(
+                lambda: app.bot.send_video(
+                    chat_id=chat_id, message_thread_id=thread_id,
+                    video=payload.video_url,
+                    caption=_clamp(payload.text, _TELEGRAM_CAPTION_MAX),
+                    parse_mode=payload.parse_mode, reply_markup=payload.markup,
+                ), what=what,
+            )
         elif payload.photo_bytes is not None:
             msg = await _tg_send_with_retry(
                 lambda: app.bot.send_photo(
@@ -197,6 +234,7 @@ async def _send(app, *, chat_id: int, thread_id: int | None,
         handle: dict = {}
         if message_id is not None:
             kind = ("document" if payload.document_bytes is not None
+                    else "video" if payload.video_url
                     else "photo" if payload.photo_bytes is not None else "text")
             handle = {"chat_id": chat_id, "message_id": int(message_id),
                       "kind": kind}
@@ -225,7 +263,7 @@ async def _edit(app, *, handle: dict, payload: Payload, what: str) -> DeliveryRe
     if not chat_id or not message_id:
         return DeliveryResult(ok=False, error="bad_handle")
     try:
-        if handle.get("kind") in ("photo", "document"):
+        if handle.get("kind") in ("photo", "video", "document"):
             await _tg_send_with_retry(
                 lambda: app.bot.edit_message_caption(
                     chat_id=chat_id, message_id=message_id,

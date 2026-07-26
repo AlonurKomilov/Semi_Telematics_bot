@@ -401,6 +401,21 @@ async def _dm_via_spine(tenant, account_id: int) -> bool:
         return False
 
 
+def _keyboard_rows_as_specs(markup) -> list:
+    """InlineKeyboardMarkup → the generic ``meta["tg_buttons"]`` specs
+    the spine renders — so the spine never learns Telegram markup types
+    and the DM buttons stay byte-identical with the legacy builder."""
+    specs: list = []
+    for row in getattr(markup, "inline_keyboard", []) or []:
+        specs.append([
+            {"text": b.text,
+             **({"url": b.url} if b.url else {}),
+             **({"callback_data": b.callback_data} if b.callback_data else {})}
+            for b in row
+        ])
+    return specs
+
+
 async def _spine_dm_fanout(
     *,
     account_id: int,
@@ -414,6 +429,11 @@ async def _spine_dm_fanout(
     needs_ack: bool,
     subscribers: list,
     co: str,
+    ai_note: str = "",
+    vehicle_id: str = "",
+    event_id: str = "",
+    event_time: str = "",
+    maps_url: str | None = None,
 ) -> bool:
     """Personal DM delivery through the notifications spine.
 
@@ -475,23 +495,73 @@ async def _spine_dm_fanout(
 
         correlation_key = (
             f"alert:{int(history_id)}" if history_id else "")
-        content = _NotifContent(
-            title="",
-            body=_strip_alert_html(alert_text),
-            category=category,
-            severity=severity.value,
-            url=video_url or "",
-            photo_bytes=photo_bytes,
-            actions=[{"id": "ack", "label": "✅ Acknowledge"}]
-            if (needs_ack and correlation_key) else [],
-        )
+        # The DM's utility buttons (AI Diagnose / Open in Samsara / View
+        # on map / View Truck) come from the SAME legacy builder, passed
+        # to the spine as generic specs — byte-identical rows, default
+        # language (one shared render replaces per-user keyboards).
+        # ack_id=None: the ✅ Acknowledge action row is spine-routed.
+        tg_buttons: list = []
+        try:
+            tg_buttons = _keyboard_rows_as_specs(build_alert_keyboard(
+                severity, co, vname, ack_id=None, alert_type=alert_type,
+                vehicle_id=vehicle_id, event_id=event_id,
+                event_time=event_time, maps_url=maps_url,
+            ))
+        except Exception as ke:
+            logger.debug("spine-dm keyboard build failed: %s", ke)
+
+        actions = [{"id": "ack", "label": "✅ Acknowledge"}] \
+            if (needs_ack and correlation_key) else []
+        base_body = _strip_alert_html(alert_text)
+
+        def _content(body: str) -> "_NotifContent":
+            return _NotifContent(
+                title="",
+                body=body,
+                category=category,
+                severity=severity.value,
+                video_url=video_url or "",
+                photo_bytes=photo_bytes,
+                actions=list(actions),
+                meta={"tg_buttons": tg_buttons} if tg_buttons else {},
+            )
+
         pdb = get_platform_db()
-        await _notif_dispatch(
-            pdb, account_id, content,
-            channels=("telegram_dm",),
-            recipient_filter=_pred,
-            correlation_key=correlation_key,
-        )
+        # Per-user AI-note toggle (users.ai_<type>): two cohorts, same
+        # correlation key — recipients with the toggle get the note
+        # appended, everyone else the base text.  One dispatch when the
+        # note is empty or nobody opted in.
+        ai_field = {"fault": "ai_fault", "health": "ai_health",
+                    "fuel": "ai_fuel", "events": "ai_events",
+                    "parking": "ai_parking"}.get(alert_type)
+        ai_on_ids = {
+            s.id for s in subscribers
+            if ai_field and getattr(s, ai_field, False)
+        } if ai_note else set()
+
+        if ai_on_ids:
+            await _notif_dispatch(
+                pdb, account_id,
+                _content(_strip_alert_html(alert_text + ai_note)),
+                channels=("telegram_dm",),
+                recipient_filter=lambda uid, role: (
+                    uid in ai_on_ids and _pred(uid, role)),
+                correlation_key=correlation_key,
+            )
+            await _notif_dispatch(
+                pdb, account_id, _content(base_body),
+                channels=("telegram_dm",),
+                recipient_filter=lambda uid, role: (
+                    uid not in ai_on_ids and _pred(uid, role)),
+                correlation_key=correlation_key,
+            )
+        else:
+            await _notif_dispatch(
+                pdb, account_id, _content(base_body),
+                channels=("telegram_dm",),
+                recipient_filter=_pred,
+                correlation_key=correlation_key,
+            )
 
         # Parity line (dual-implementation window): the legacy loop's
         # would-be recipient set vs what the ledger says the spine sent.
@@ -1451,6 +1521,11 @@ async def send_alert(
                 needs_ack=needs_ack,
                 subscribers=subscribers,
                 co=co,
+                ai_note=ai_note,
+                vehicle_id=vid,
+                event_id=event_id,
+                event_time=event_time,
+                maps_url=maps_url,
             )
         if _spine_handled:
             timings["total"] = round(

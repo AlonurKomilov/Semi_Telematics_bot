@@ -188,3 +188,66 @@ async def test_company_scope_composes_with_truck_rule(monkeypatch):
     pred = disp.calls[0]["recipient_filter"]
     assert pred(7, "fleet") is False              # scoped out of OSY
     assert pred(8, "fleet") is True
+
+
+# ── restored DM cosmetics (video, utility buttons, AI-note cohorts) ──
+
+@pytest.mark.asyncio
+async def test_video_and_utility_buttons_ride_the_content(monkeypatch):
+    disp = _RecordingDispatch()
+    _patch(monkeypatch, disp)
+    await _spine_dm_fanout(
+        account_id=1, alert_type="fault", severity=AlertSeverity.CRITICAL,
+        alert_text="x", vname="Truck 105", photo_bytes=None,
+        video_url="https://cdn.example/clip.mp4", history_id=5,
+        needs_ack=True, subscribers=[], co="G1",
+        vehicle_id="v-1", maps_url="https://maps.example/p")
+    content = disp.calls[0]["content"]
+    assert content.video_url == "https://cdn.example/clip.mp4"
+    rows = content.meta.get("tg_buttons") or []
+    # The legacy builder's utility rows made it across as generic specs
+    # (View-on-map URL row is deterministic — maps_url was given).
+    assert any(b.get("url") == "https://maps.example/p"
+               for row in rows for b in row)
+    # And no duplicated ack row inside the specs — ack is spine-routed.
+    assert not any("ack_alert" in str(b.get("callback_data", ""))
+                   for row in rows for b in row)
+
+
+@pytest.mark.asyncio
+async def test_ai_note_cohorts_split_one_correlation_key(monkeypatch):
+    disp = _RecordingDispatch()
+    _patch(monkeypatch, disp)
+    subs = [_Sub(1, Role.FLEET), _Sub(2, Role.FLEET)]
+    subs[0].ai_fault = True                      # user 1 wants AI notes
+    await _spine_dm_fanout(
+        account_id=1, alert_type="fault", severity=AlertSeverity.CRITICAL,
+        alert_text="body", vname="T", photo_bytes=None, video_url="",
+        history_id=9, needs_ack=True, subscribers=subs, co="G1",
+        ai_note="\nAI: check the DEF sensor")
+    assert len(disp.calls) == 2                  # two cohorts
+    with_note, without_note = disp.calls
+    assert "AI: check the DEF sensor" in with_note["content"].body
+    assert "AI:" not in without_note["content"].body
+    assert with_note["correlation_key"] == without_note["correlation_key"] \
+        == "alert:9"
+    # Predicates partition: user 1 only in the note cohort, user 2 only
+    # in the base cohort.
+    assert with_note["recipient_filter"](1, "fleet") is True
+    assert with_note["recipient_filter"](2, "fleet") is False
+    assert without_note["recipient_filter"](1, "fleet") is False
+    assert without_note["recipient_filter"](2, "fleet") is True
+
+
+@pytest.mark.asyncio
+async def test_no_ai_note_keeps_single_dispatch(monkeypatch):
+    disp = _RecordingDispatch()
+    _patch(monkeypatch, disp)
+    subs = [_Sub(1, Role.FLEET)]
+    subs[0].ai_fault = True
+    await _spine_dm_fanout(
+        account_id=1, alert_type="fault", severity=AlertSeverity.CRITICAL,
+        alert_text="body", vname="T", photo_bytes=None, video_url="",
+        history_id=9, needs_ack=True, subscribers=subs, co="G1",
+        ai_note="")
+    assert len(disp.calls) == 1

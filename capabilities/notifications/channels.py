@@ -95,9 +95,11 @@ class NotificationContent:
     severity: str = "info"
     url: str = ""
     photo_bytes: bytes | None = None
-    # Optional document attachment (a digest renderer's PDF report, …).
-    # Channels that can carry a file attach it (Telegram document, one
-    # day an email attachment); channels that can't ignore it.
+    # Optional media/attachment. Channels that can carry them do
+    # (Telegram video/document, one day email attachments); channels
+    # that can't ignore them.  ``video_url`` is a provider-hosted URL
+    # (Telegram fetches it server-side).
+    video_url: str = ""
     document_bytes: bytes | None = None
     document_name: str = ""
     meta: dict = field(default_factory=dict)
@@ -123,6 +125,7 @@ class Payload:
     parse_mode: str = "HTML"
     subject: str = ""           # email subject line; ignored by chat channels
     photo_bytes: bytes | None = None
+    video_url: str = ""
     document_bytes: bytes | None = None
     document_name: str = ""
     markup: Any = None          # channel-specific reply markup (opaque here)
