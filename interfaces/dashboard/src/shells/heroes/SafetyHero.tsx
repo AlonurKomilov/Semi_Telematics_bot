@@ -38,7 +38,7 @@ export default function SafetyHero() {
           label="Open alerts"
           value={pending_alerts}
           tone={pending_alerts > 0 ? 'critical' : 'positive'}
-          title="Alerts awaiting acknowledgement"
+          title="Alerts awaiting acknowledgement, limited to the types this view handles. The Alerts board lists every type, so its total is larger."
         />
       )}
       <HeroChip

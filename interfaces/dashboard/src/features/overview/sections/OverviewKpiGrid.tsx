@@ -49,11 +49,17 @@ export default function OverviewKpiGrid({
   const allKpis: KpiDef[] = [
     {
       key: 'pendingAlerts',
-      label: 'Pending alerts',
+      // "Open", not "Pending": ``pending_alerts`` is the wire key, and the
+      // board calls this the open queue.  One object, one noun.
+      label: 'Open alerts',
       value: stats.pending_alerts ?? 0,
       tone: (stats.pending_alerts ?? 0) > 0 ? 'info' : 'default',
       icon: Bell,
-      hint: 'Need acknowledgement',
+      // The scope is the whole point of this hint.  This number counts
+      // only the alert types the ACTIVE VIEW handles, while the board
+      // lists every type — so the two legitimately differ, and without
+      // saying so they just look like one of them is wrong.
+      hint: 'Awaiting acknowledgement, in this view',
       href: '/alerts',
       permission: (h) => h('can_alerts_all') || h('can_alerts_vehicle'),
       showWhen: () => stats.pending_alerts !== undefined,

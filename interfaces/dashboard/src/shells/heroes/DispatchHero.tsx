@@ -37,7 +37,7 @@ export default function DispatchHero() {
       <HeroChip label="Stopped" value={trucks.stopped} tone="neutral" />
       <HeroChip label="Trucks" value={trucks.total} tone="info" />
       {pending_alerts !== undefined && pending_alerts > 0 && (
-        <HeroChip label="Pending alerts" value={pending_alerts} tone="critical" title="Alerts awaiting acknowledgement" />
+        <HeroChip label="Open alerts" value={pending_alerts} tone="critical" title="Alerts awaiting acknowledgement, limited to the types this view handles. The Alerts board lists every type, so its total is larger." />
       )}
       {unsafe_parking !== undefined && unsafe_parking > 0 && (
         <HeroChip label="Parked unsafely" value={unsafe_parking} tone="critical" title="Vehicles parked outside safe zones" />
