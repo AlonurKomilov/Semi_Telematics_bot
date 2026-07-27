@@ -33,6 +33,7 @@ const FROZEN_KEYS: readonly string[] = [
   'assistant.panelWidth',
   'assistant.expanded',
   'roleView.previewAsManager',
+  'roleView.activeView',
 ];
 
 /** Legacy keys we promised to keep reading.  Dropping one abandons the
@@ -50,6 +51,7 @@ const FROZEN_LEGACY: Readonly<Record<string, readonly string[]>> = {
   'assistant.panelWidth': ['assistant.panelWidth'],
   'assistant.expanded': ['assistant.expanded'],
   'roleView.previewAsManager': ['roleView.previewAsManager'],
+  'roleView.activeView': ['roleView.activeView'],
 };
 
 describe('preferences registry — frozen keys', () => {

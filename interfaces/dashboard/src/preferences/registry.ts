@@ -291,6 +291,24 @@ export const DEFS = {
   }),
 
   // ── Role preview (Owner/Admin "view as") ──────────────────────────
+  // The previewed persona.  '' = no explicit choice (fall back to the
+  // subdomain hint, then the user's real role).
+  //
+  // device, like previewAsManager: a preview must not follow the operator
+  // to a machine where they expect their OWN view.
+  //
+  // Structural guard only — the DOMAIN check (is this one of
+  // PREVIEWABLE_ROLES?) stays in RoleViewContext where that list lives.
+  // Duplicating the list here would either drift or create a
+  // registry → context import cycle.
+  'roleView.activeView': def<string>({
+    default: '',
+    scope: 'device',
+    legacyKeys: ['roleView.activeView'],
+    fromLegacy: (raw) => raw,
+    sanitize: (v) => (typeof v === 'string' ? v : undefined),
+    note: 'Persona currently being previewed.',
+  }),
   // device: a preview affordance for THIS session's window, and it must
   // not follow the operator to a machine where they expect their own view.
   'roleView.previewAsManager': def<boolean>({

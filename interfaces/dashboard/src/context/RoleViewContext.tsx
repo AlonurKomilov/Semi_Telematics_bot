@@ -64,11 +64,10 @@ const SWITCHABLE_ROLES = ['owner', 'admin'];
 // recruiter for presentation; only its permission set differs.
 const PREVIEWABLE_ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'hr', 'accounting', 'recruiter'];
 
-// localStorage key — survives reloads so the dashboard reopens in the
+// Storage key note — survives reloads so the dashboard reopens in the
 // same persona the user last chose.  We deliberately do NOT clear it on
 // logout: the next login resets activeView to the user's real role anyway
 // (see the useEffect below).
-const STORAGE_KEY = 'roleView.activeView';
 // Preview tier for manager-capable roles (Manager vs Employee) — persisted so
 // re-picking the role keeps the operator's last choice.
 
@@ -212,16 +211,17 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
   // back to localStorage).  Anything invalid in localStorage (e.g. a
   // stale 'driver' from an older code path) is rejected at read time
   // AND removed so the dead value doesn't linger.
-  const [savedChoice, setSavedChoice] = useState<string | null>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved && PREVIEWABLE_ROLES.includes(saved)) return saved;
-      if (saved) localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      /* localStorage disabled */
-    }
-    return null;
-  });
+  // Stored as a preference ('' = no explicit choice).  The registry owns
+  // storage + the legacy 'roleView.activeView' key; the DOMAIN check
+  // (is it a previewable role?) stays here, in the derivation below,
+  // because PREVIEWABLE_ROLES lives in this module.
+  const { value: storedChoice, setValue: setStoredChoice } =
+    usePreference('roleView.activeView');
+  const savedChoice = storedChoice || null;
+  const setSavedChoice = useCallback(
+    (role: string | null) => setStoredChoice(role ?? ''),
+    [setStoredChoice],
+  );
 
   // activeView is fully derived — recomputed in every render from
   // (realRole, canSwitch, savedChoice, current hostname).  No
@@ -323,12 +323,7 @@ export function RoleViewProvider({ children }: { children: ReactNode }) {
     }
 
     setSavedChoice(role);
-    try {
-      localStorage.setItem(STORAGE_KEY, role);
-    } catch {
-      /* localStorage disabled */
-    }
-  }, [canSwitch]);
+  }, [canSwitch, setSavedChoice]);
 
   // For the active view, use server-fetched permission sets if available.
   const activeViewSupportsManager = canSwitch && roleSupportsManager(activeView);

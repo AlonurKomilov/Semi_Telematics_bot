@@ -27,8 +27,16 @@ vi.mock('../api/client', () => ({
 vi.mock('./AuthContext', () => ({
   useAuth: () => ({ user: authUser }),
 }));
+// The provider reads TWO preferences: previewAsManager (boolean) and
+// activeView (the previewed role, '' = none).  The mock must be
+// key-aware — returning one value for every key made activeView resolve
+// to `true`, which silently fell through to the user's real role.
+let mockActiveView = '';
 vi.mock('../preferences', () => ({
-  usePreference: () => ({ value: true, setValue: () => {} }),
+  usePreference: (key: string) => ({
+    value: key === 'roleView.activeView' ? mockActiveView : true,
+    setValue: () => {},
+  }),
 }));
 
 import { RoleViewProvider, useRoleView } from './RoleViewContext';
@@ -48,12 +56,13 @@ beforeEach(() => {
   apiJSON.mockClear();
   authUser.role = 'owner';
   localStorage.clear();
+  mockActiveView = '';   // no preview unless a test opts in
 });
 afterEach(cleanup);
 
 describe('viewPermsReady', () => {
   it('waits while a PREVIEW view’s permission sets are in flight', async () => {
-    localStorage.setItem('roleView.activeView', 'fleet');   // Owner previewing Fleet
+    mockActiveView = 'fleet';   // Owner previewing Fleet
     mount();
     expect(readout()).toBe('fleet:waiting');
 
@@ -65,7 +74,7 @@ describe('viewPermsReady', () => {
     // A stock admin can't read /admin/permissions/roles (403).  If this
     // stayed false the guard would wait forever and the page would never
     // render — the failure mode opposite to the redirect bug.
-    localStorage.setItem('roleView.activeView', 'safety');
+    mockActiveView = 'safety';
     mount();
     expect(readout()).toBe('safety:waiting');
 
