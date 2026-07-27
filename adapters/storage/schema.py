@@ -348,6 +348,9 @@ async def create_tables(conn) -> None:
             -- '' = any vehicle (the default); 'truck' / 'trailer' narrow
             -- the picker on a mixed fleet without hiding anything.
             vehicle_type         TEXT    NOT NULL DEFAULT '',
+            -- The reporting axis above a task ("Brakes cost us $12k").
+            -- Ours, not VMRS — see adapters/storage/service_tasks.py.
+            system_key           TEXT    NOT NULL DEFAULT '',
             status               TEXT    NOT NULL DEFAULT 'active',
             created_by           INTEGER NOT NULL DEFAULT 0,
             created_at           TEXT    NOT NULL DEFAULT '',

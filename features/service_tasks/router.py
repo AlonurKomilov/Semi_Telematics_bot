@@ -39,6 +39,7 @@ class ServiceTaskCreate(BaseModel):
     expected_labor_hours: float = Field(0, ge=0, le=1000)
     parent_id: int | None = None
     vehicle_type: str = Field("", pattern="^(truck|trailer|)$")
+    system_key: str = Field("", max_length=40)
 
 
 class ServiceTaskUpdate(BaseModel):
@@ -50,6 +51,7 @@ class ServiceTaskUpdate(BaseModel):
     # from "leave it alone".
     parent_id: int | None = Field(None, ge=0)
     vehicle_type: str | None = Field(None, pattern="^(truck|trailer|)$")
+    system_key: str | None = Field(None, max_length=40)
     status: str | None = Field(None, pattern="^(active|archived)$")
 
 
@@ -86,6 +88,7 @@ async def create_service_task(
         expected_labor_hours=body.expected_labor_hours,
         parent_id=body.parent_id,
         vehicle_type=body.vehicle_type,
+        system_key=body.system_key,
         created_by=await resolve_user_id(user),
     )
     if not task:
@@ -164,6 +167,24 @@ async def update_service_task(
         target_type="service_task", target_id=str(task_id),
     )
     return await tenant_db.get_service_task(task_id, user["account_id"])
+
+
+@router.get("/systems")
+async def list_systems(
+    user: dict = Depends(require_permission_any(
+        "can_service_tasks", "can_maintenance_all", "can_work_orders_all",
+    )),
+):
+    """The system vocabulary — the reporting axis above a task.
+
+    Served rather than hardcoded in the dashboard on purpose: a second
+    copy in the frontend is exactly how the old task vocabulary drifted
+    into three disagreeing lists.  One source, fetched.
+
+    Declared BEFORE ``/{task_id}`` so the literal path wins.
+    """
+    from adapters.storage.service_tasks import SERVICE_TASK_SYSTEMS
+    return {"systems": list(SERVICE_TASK_SYSTEMS)}
 
 
 class MergeBody(BaseModel):

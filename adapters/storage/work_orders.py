@@ -1111,6 +1111,73 @@ class WorkOrdersMixin:
         )
         return rows
 
+    async def cost_by_system(
+        self, account_id: int, since: Optional[str] = None,
+    ) -> list[dict]:
+        """Spend grouped by SYSTEM — "what are brakes costing us?".
+
+        The question a flat task list can't answer.  Parts and labor
+        are summed separately (same split as the per-task report) and
+        rows whose task has no system land in 'Unassigned', kept
+        visible rather than dropped so the total still reconciles.
+        """
+        from adapters.storage.service_tasks import SYSTEM_LABELS
+
+        totals: dict[str, dict] = {}
+
+        def _bucket(key: str) -> dict:
+            k = key or ""
+            return totals.setdefault(k, {
+                "system_key": k,
+                "system": SYSTEM_LABELS.get(k, "Unassigned"),
+                "total_spent": 0.0, "labor_spent": 0.0, "work_order_count": 0,
+            })
+
+        q = (
+            "SELECT COALESCE(st.system_key, '') AS system_key, "
+            "       COUNT(DISTINCT w.id) AS work_order_count, "
+            "       SUM(p.total_cost) AS total_spent "
+            "FROM work_order_parts p "
+            "JOIN work_orders w ON w.id = p.work_order_id "
+            "LEFT JOIN service_tasks st ON st.id = p.service_task_id "
+            "WHERE w.account_id = ? AND w.service_date IS NOT NULL "
+            "  AND w.status != 'void' AND w.payment_status != 'void'"
+        )
+        params: list = [account_id]
+        if since:
+            q += " AND w.service_date >= ?"
+            params.append(since)
+        q += " GROUP BY COALESCE(st.system_key, '')"
+        cur = await self._db.execute(q, params)
+        for r in (dict(x) for x in await cur.fetchall()):
+            b = _bucket(r["system_key"])
+            b["total_spent"] = round(float(r["total_spent"] or 0), 2)
+            b["work_order_count"] = int(r["work_order_count"] or 0)
+
+        q = (
+            "SELECT COALESCE(st.system_key, '') AS system_key, "
+            "       SUM(l.total_cost) AS labor_spent "
+            "FROM work_order_labor l "
+            "JOIN work_orders w ON w.id = l.work_order_id "
+            "     AND w.account_id = l.account_id "
+            "LEFT JOIN service_tasks st ON st.id = l.service_task_id "
+            "WHERE l.account_id = ? AND w.service_date IS NOT NULL "
+            "  AND w.status != 'void' AND w.payment_status != 'void'"
+        )
+        params = [account_id]
+        if since:
+            q += " AND w.service_date >= ?"
+            params.append(since)
+        q += " GROUP BY COALESCE(st.system_key, '')"
+        cur = await self._db.execute(q, params)
+        for r in (dict(x) for x in await cur.fetchall()):
+            _bucket(r["system_key"])["labor_spent"] = round(
+                float(r["labor_spent"] or 0), 2)
+
+        rows = list(totals.values())
+        rows.sort(key=lambda r: r["total_spent"] + r["labor_spent"], reverse=True)
+        return rows
+
     async def cost_by_part(
         self, account_id: int, since: Optional[str] = None,
         limit: int = 25,

@@ -777,6 +777,20 @@ async def report_per_service_task(
     return {"days": days, "rows": rows}
 
 
+@router.get("/reports/per-system")
+async def report_per_system(
+    days: int = Query(90, ge=1, le=3650),
+    user: dict = Depends(require_permission("can_cost_reports")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Spend per SYSTEM — "what are brakes costing us?".  Rows whose
+    task has no system land in 'Unassigned' so the total reconciles."""
+    from datetime import datetime, timedelta, timezone
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    return {"days": days,
+            "rows": await tenant_db.cost_by_system(user["account_id"], since=since)}
+
+
 @router.get("/reports/per-part")
 async def report_per_part(
     days: int = Query(90, ge=1, le=3650),

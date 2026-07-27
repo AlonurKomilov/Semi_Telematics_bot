@@ -4195,4 +4195,19 @@ async def migrate_service_task_library(conn) -> None:
             (entry["key"], entry["name"], now, now),
         )
     await conn.commit()
+    # Systems: the reporting axis, backfilled onto the seeded standards
+    # so a fresh fan-out carries it.  See migration 166 for why this is
+    # our own taxonomy rather than VMRS.
+    from adapters.storage.service_tasks import _STANDARD_SYSTEMS
+    await conn.execute(
+        "ALTER TABLE service_task_library "
+        "ADD COLUMN IF NOT EXISTS system_key TEXT NOT NULL DEFAULT ''"
+    )
+    for key, system in _STANDARD_SYSTEMS.items():
+        await conn.execute(
+            "UPDATE service_task_library SET system_key = ? "
+            "WHERE canonical_key = ? AND system_key = ''",
+            (system, key),
+        )
+    await conn.commit()
     logger.info("Platform migration: service_task_library ready")

@@ -7356,3 +7356,46 @@ async def migrate_service_task_backfill_sweep(conn) -> None:
 
     await conn.commit()
     logger.info("Migration 165: swept %d stragglers onto service_task_id", swept)
+
+
+@_register("166_service_task_system")
+async def migrate_service_task_system(conn) -> None:
+    """Group service tasks into SYSTEMS — the reporting axis a fleet
+    actually asks for ("what are brakes costing us?").
+
+    A flat list of task names can't answer that; a system can.  This is
+    OUR taxonomy deliberately: VMRS is the industry standard for the
+    same idea but its code set is licensed from TMC/ATA on a revenue-
+    scaled subscription, and what that licence buys — OEM warranty
+    claims, cross-industry benchmarking — needs interoperability that
+    only matters once customers ask for it.  The internal value needs
+    no licence, and a ``vmrs_code`` column can sit beside this one
+    later without disturbing anything.
+
+    Backfills the seeded standards from the code map; an account's own
+    tasks stay uncategorized until someone assigns them (a guess here
+    would be worse than a blank, since the whole point is trustworthy
+    rollups).
+    """
+    from adapters.storage.service_tasks import _STANDARD_SYSTEMS
+
+    await conn.execute(
+        "ALTER TABLE service_tasks "
+        "ADD COLUMN IF NOT EXISTS system_key TEXT NOT NULL DEFAULT ''"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_service_tasks_system "
+        "ON service_tasks(account_id, system_key)"
+    )
+    await conn.commit()
+
+    filled = 0
+    for key, system in _STANDARD_SYSTEMS.items():
+        cur = await conn.execute(
+            "UPDATE service_tasks SET system_key = ? "
+            "WHERE canonical_key = ? AND system_key = ''",
+            (system, key),
+        )
+        filled += cur.rowcount or 0
+    await conn.commit()
+    logger.info("Migration 166: system_key added; %d standard tasks grouped", filled)

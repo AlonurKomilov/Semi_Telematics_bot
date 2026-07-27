@@ -424,3 +424,79 @@ async def test_work_order_lines_derive_their_task_too(db, acct):
     part = next(p for p in await db.list_work_order_parts(wo) if p["id"] == pid)
     line = next(l for l in await db.list_work_order_labor(wo, acct) if l["id"] == lid)
     assert part["service_task"] == "brakes" and line["service_task"] == "brakes"
+
+
+# ── Systems: the reporting axis above a task ────────────────────────
+
+@pytest.mark.asyncio
+async def test_seeded_standards_carry_a_system(db, acct):
+    from adapters.storage.service_tasks import _STANDARD_SYSTEMS
+    tasks = {t["canonical_key"]: t for t in await db.list_service_tasks(acct)}
+    assert tasks["brakes"]["system_key"] == "brakes"
+    assert tasks["oil"]["system_key"] == "engine"
+    assert tasks["dot_inspection"]["system_key"] == "inspection"
+    # Every standard task is mapped — an unmapped one silently lands in
+    # 'Unassigned' and quietly breaks the rollup it exists for.
+    for key in _STANDARD_SYSTEMS:
+        if key in tasks:
+            assert tasks[key]["system_key"], f"{key} has no system"
+
+
+@pytest.mark.asyncio
+async def test_system_assignment_and_validation(db, acct):
+    t = await db.create_service_task(acct, "Kingpin Job", system_key="trailer")
+    assert t["system_key"] == "trailer"
+    # An unknown system is refused on update…
+    assert await db.update_service_task(t["id"], acct, system_key="spaceship") is False
+    # …and silently dropped on create (a bad value must not block a write).
+    t2 = await db.create_service_task(acct, "Odd Job", system_key="nonsense")
+    assert t2["system_key"] == ""
+    # Clearing back to unassigned is allowed.
+    assert await db.update_service_task(t["id"], acct, system_key="") is True
+
+
+@pytest.mark.asyncio
+async def test_spend_by_system_answers_the_real_question(db, acct):
+    """'What are brakes costing us?' — the report a flat task list
+    can't produce."""
+    wo = await db.add_work_order(acct, "", "234", "Shop A",
+                                 service_date="2026-07-01")
+    await db.add_work_order_part(
+        wo, part_name="Pad", service_task="brakes", total_cost=300)
+    await db.add_work_order_labor(
+        wo, acct, description="Brake job", service_task="brakes", total_cost=200)
+    await db.add_work_order_part(
+        wo, part_name="Filter", service_task="oil", total_cost=50)
+    # A line with no task at all still has to show up somewhere.
+    await db.add_work_order_part(wo, part_name="Misc", total_cost=25)
+
+    rows = {r["system"]: r for r in await db.cost_by_system(acct)}
+    assert rows["Brakes"]["total_spent"] == 300
+    assert rows["Brakes"]["labor_spent"] == 200
+    assert rows["Engine"]["total_spent"] == 50
+    assert rows["Unassigned"]["total_spent"] == 25   # nothing vanishes
+    # Sorted by biggest spend first.
+    assert (await db.cost_by_system(acct))[0]["system"] == "Brakes"
+
+
+@pytest.mark.asyncio
+async def test_spend_by_system_excludes_void(db, acct):
+    wo = await db.add_work_order(acct, "", "234", "Shop", service_date="2026-07-01",
+                                 payment_status="void")
+    await db.add_work_order_part(
+        wo, part_name="Pad", service_task="brakes", total_cost=9999)
+    assert all(r["total_spent"] == 0 for r in await db.cost_by_system(acct))
+
+
+@pytest.mark.asyncio
+async def test_api_serves_the_system_vocabulary(api):
+    """Served, not hardcoded in the dashboard — a second copy is how
+    the old task vocabulary drifted into three disagreeing lists."""
+    from adapters.storage.service_tasks import SERVICE_TASK_SYSTEMS
+    async with AsyncClient(transport=ASGITransport(app=api["app"]),
+                           base_url="http://t") as c:
+        r = await c.get("/api/service-tasks/systems", headers=_h(api["owner"]))
+        assert r.status_code == 200, r.text
+        got = r.json()["systems"]
+        assert len(got) == len(SERVICE_TASK_SYSTEMS)
+        assert {"key": "brakes", "label": "Brakes"} in got

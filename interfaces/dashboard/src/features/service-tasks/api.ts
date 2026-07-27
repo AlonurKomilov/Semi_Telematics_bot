@@ -21,6 +21,9 @@ export interface ServiceTask {
   parent_id: number | null;
   /** '' = any vehicle; narrows the picker on a mixed fleet. */
   vehicle_type: '' | 'truck' | 'trailer';
+  /** The reporting axis above a task ("what are brakes costing us?").
+   *  '' = unassigned. Ours, not VMRS — see the storage module. */
+  system_key: string;
   status: 'active' | 'archived';
   created_at: string;
   updated_at: string;
@@ -47,6 +50,7 @@ export async function createServiceTask(body: {
   description?: string;
   expected_labor_hours?: number;
   vehicle_type?: string;
+  system_key?: string;
 }): Promise<ServiceTask> {
   return apiJSON('/service-tasks', { method: 'POST', body });
 }
@@ -55,7 +59,7 @@ export async function updateServiceTask(
   id: number,
   body: Partial<Pick<ServiceTask,
     'name' | 'description' | 'expected_labor_hours' | 'status'
-    | 'vehicle_type' | 'parent_id'>>,
+    | 'vehicle_type' | 'parent_id' | 'system_key'>>,
 ): Promise<ServiceTask> {
   return apiJSON(`/service-tasks/${id}`, { method: 'PUT', body });
 }
@@ -100,4 +104,15 @@ export async function mergeServiceTasks(
   await apiJSON('/service-tasks/merge', {
     method: 'POST', body: { loser_id, winner_id },
   });
+}
+
+export interface TaskSystem { key: string; label: string }
+
+/** The system vocabulary, FETCHED not hardcoded — a second copy in the
+ *  frontend is exactly how the old task vocabulary drifted into three
+ *  disagreeing lists. */
+export const SYSTEMS_KEY = ['service-task-systems'] as const;
+
+export async function fetchTaskSystems(): Promise<{ systems: TaskSystem[] }> {
+  return apiJSON('/service-tasks/systems');
 }

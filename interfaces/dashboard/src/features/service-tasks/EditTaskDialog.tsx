@@ -22,8 +22,10 @@ import {
 } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
 import { toneClasses } from '../../lib/status';
+import { useQuery } from '@tanstack/react-query';
 import {
-  SERVICE_TASKS_KEY, updateServiceTask, type ServiceTask,
+  SERVICE_TASKS_KEY, SYSTEMS_KEY, fetchTaskSystems, updateServiceTask,
+  type ServiceTask,
 } from './api';
 
 const inputCls =
@@ -46,6 +48,7 @@ export default function EditTaskDialog({
   const [hours, setHours] = useState('');
   const [vehicleType, setVehicleType] = useState('');
   const [parentId, setParentId] = useState('');
+  const [systemKey, setSystemKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [clash, setClash] = useState<ServiceTask | null>(null);
 
@@ -58,12 +61,18 @@ export default function EditTaskDialog({
     setHours(task.expected_labor_hours ? String(task.expected_labor_hours) : '');
     setVehicleType(task.vehicle_type ?? '');
     setParentId(task.parent_id ? String(task.parent_id) : '');
+    setSystemKey(task.system_key ?? '');
     setClash(null);
   }, [task]);
 
   // A valid parent is top-level, isn't this task, and isn't one of this
   // task's own children (nesting is one level deep). Offering an
   // invalid option and then rejecting it would just be rude.
+  const { data: systemsData } = useQuery({
+    queryKey: SYSTEMS_KEY, queryFn: fetchTaskSystems, staleTime: 5 * 60_000,
+  });
+  const systems = systemsData?.systems ?? [];
+
   const parentOptions = allTasks.filter(
     (t) => !t.parent_id && t.id !== task?.id && t.status === 'active',
   );
@@ -90,6 +99,7 @@ export default function EditTaskDialog({
         description,
         expected_labor_hours: Number(hours) || 0,
         vehicle_type: vehicleType as ServiceTask['vehicle_type'],
+        system_key: systemKey,
         // 0 detaches — see the API's parent_id contract.
         parent_id: parentId ? Number(parentId) : 0,
       });
@@ -187,6 +197,26 @@ export default function EditTaskDialog({
               </select>
             </label>
           </div>
+
+          <label className="block">
+            <span className="block text-xs text-muted-foreground mb-1">
+              System
+            </span>
+            <select
+              value={systemKey}
+              onChange={(e) => setSystemKey(e.target.value)}
+              className={inputCls}
+            >
+              <option value="">Unassigned</option>
+              {systems.map((sy) => (
+                <option key={sy.key} value={sy.key}>{sy.label}</option>
+              ))}
+            </select>
+            <span className="mt-1 block text-2xs text-muted-foreground">
+              Groups this task for spend reporting — “what are brakes
+              costing us?”
+            </span>
+          </label>
 
           <label className="block">
             <span className="block text-xs text-muted-foreground mb-1">

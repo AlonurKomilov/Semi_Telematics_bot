@@ -31,7 +31,9 @@ from __future__ import annotations
 import logging
 from typing import Any, Optional
 
-from adapters.storage.service_tasks import service_task_name_key
+from adapters.storage.service_tasks import (
+    SYSTEM_KEYS, service_task_name_key,
+)
 
 logger = logging.getLogger("bot.storage")
 
@@ -93,6 +95,7 @@ class ServiceTaskLibraryMixin:
         description: str = "",
         expected_labor_hours: float = 0.0,
         vehicle_type: str = "",
+        system_key: str = "",
     ) -> Optional[dict[str, Any]]:
         """Add a standard task and hand it to every account.
 
@@ -108,13 +111,13 @@ class ServiceTaskLibraryMixin:
         cur = await self._db.execute(
             "INSERT INTO service_task_library "
             "(canonical_key, name, description, expected_labor_hours, "
-            " vehicle_type, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            " vehicle_type, system_key, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (canonical_key) DO NOTHING "
             "RETURNING id",
             (key, name, description, float(expected_labor_hours or 0),
              vehicle_type if vehicle_type in ("truck", "trailer") else "",
-             now, now),
+             system_key if system_key in SYSTEM_KEYS else "", now, now),
         )
         row = await cur.fetchone()
         await self._db.commit()
@@ -135,7 +138,7 @@ class ServiceTaskLibraryMixin:
         if not entry:
             return False
         allowed = {"name", "description", "expected_labor_hours",
-                   "vehicle_type", "status"}
+                   "vehicle_type", "system_key", "status"}
         updates = {k: v for k, v in fields.items()
                    if k in allowed and v is not None}
         if not updates:
@@ -147,6 +150,11 @@ class ServiceTaskLibraryMixin:
             if vt not in ("", "truck", "trailer"):
                 return False
             updates["vehicle_type"] = vt
+        if "system_key" in updates:
+            sk = str(updates["system_key"]).strip().lower()
+            if sk and sk not in SYSTEM_KEYS:
+                return False
+            updates["system_key"] = sk
         if "name" in updates:
             nm = str(updates["name"]).strip()
             if not nm:
@@ -164,6 +172,7 @@ class ServiceTaskLibraryMixin:
         if fresh and fresh["status"] == LIB_ACTIVE and (
             "name" in updates or "description" in updates
             or "expected_labor_hours" in updates or "vehicle_type" in updates
+            or "system_key" in updates
         ):
             await self.fan_out_service_task_library_entry(fresh)
         return True
@@ -185,11 +194,13 @@ class ServiceTaskLibraryMixin:
 
         await self._db.execute(
             "UPDATE service_tasks SET name = ?, name_key = ?, description = ?, "
-            "       expected_labor_hours = ?, vehicle_type = ?, updated_at = ? "
+            "       expected_labor_hours = ?, vehicle_type = ?, "
+            "       system_key = ?, updated_at = ? "
             "WHERE canonical_key = ?",
             (name, service_task_name_key(name), entry.get("description") or "",
              float(entry.get("expected_labor_hours") or 0),
-             entry.get("vehicle_type") or "", now, key),
+             entry.get("vehicle_type") or "", entry.get("system_key") or "",
+             now, key),
         )
 
         cur = await self._db.execute(
@@ -202,14 +213,16 @@ class ServiceTaskLibraryMixin:
             c = await self._db.execute(
                 "INSERT INTO service_tasks "
                 "(account_id, name, name_key, canonical_key, description, "
-                " expected_labor_hours, vehicle_type, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                " expected_labor_hours, vehicle_type, system_key, "
+                " created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (account_id, name_key) DO NOTHING "
                 "RETURNING id",
                 (int(row["id"]), name, service_task_name_key(name), key,
                  entry.get("description") or "",
                  float(entry.get("expected_labor_hours") or 0),
-                 entry.get("vehicle_type") or "", now, now),
+                 entry.get("vehicle_type") or "",
+                 entry.get("system_key") or "", now, now),
             )
             if await c.fetchone():
                 created += 1

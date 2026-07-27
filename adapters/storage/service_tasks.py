@@ -40,6 +40,78 @@ def service_task_name_key(name: str) -> str:
     return " ".join((name or "").split()).casefold()
 
 
+# ── Systems: the reporting axis above a task ────────────────────────
+#
+# "Brakes cost us $12k this quarter" is the question a fleet actually
+# asks, and a flat list of ~40 task names can't answer it.  A system is
+# the coarse bucket every task belongs to.
+#
+# This is OUR taxonomy, not VMRS.  VMRS is the industry standard for
+# the same idea, but its code set is licensed from TMC/ATA per-seat on
+# revenue (verified 2026-07-27) and its value — OEM warranty claims,
+# cross-industry benchmarking — needs interoperability we can't use
+# yet.  The INTERNAL value (spend per system, failure patterns, a
+# picker that stays usable) needs no licence at all, which is what this
+# delivers.  A ``vmrs_code`` column can sit beside ``system_key`` later
+# without disturbing any of it.
+#
+# Deliberately a CONSTANT, not an operator-curated table: this is the
+# reporting axis, so consistency matters more than flexibility, and a
+# stray extra system would fragment exactly the report it exists to
+# produce.  It is served over the API (``GET /service-tasks/systems``)
+# so the frontend never keeps a second copy — that second copy is
+# precisely how the old task vocabulary drifted.
+SERVICE_TASK_SYSTEMS: tuple[dict[str, str], ...] = (
+    {"key": "pm",           "label": "Preventive Maintenance"},
+    {"key": "inspection",   "label": "Inspection & Compliance"},
+    {"key": "engine",       "label": "Engine"},
+    {"key": "cooling",      "label": "Cooling System"},
+    {"key": "fuel",         "label": "Fuel System"},
+    {"key": "exhaust",      "label": "Exhaust & Aftertreatment"},
+    {"key": "drivetrain",   "label": "Drivetrain & Transmission"},
+    {"key": "brakes",       "label": "Brakes"},
+    {"key": "air_system",   "label": "Air System"},
+    {"key": "suspension",   "label": "Suspension"},
+    {"key": "steering",     "label": "Steering & Alignment"},
+    {"key": "tires_wheels", "label": "Tires & Wheels"},
+    {"key": "electrical",   "label": "Electrical"},
+    {"key": "lighting",     "label": "Lighting"},
+    {"key": "hvac",         "label": "HVAC"},
+    {"key": "body_cab",     "label": "Body & Cab"},
+    {"key": "trailer",      "label": "Trailer"},
+    {"key": "other",        "label": "Other"},
+)
+
+SYSTEM_KEYS = frozenset(s["key"] for s in SERVICE_TASK_SYSTEMS)
+SYSTEM_LABELS = {s["key"]: s["label"] for s in SERVICE_TASK_SYSTEMS}
+
+
+def normalize_system_key(value: str) -> str:
+    """A recognised system key, else '' (uncategorized).  Never raises —
+    an unknown value must not block a task write."""
+    v = (value or "").strip().lower()
+    return v if v in SYSTEM_KEYS else ""
+
+
+# Which system each seeded standard task belongs to.  Kept beside the
+# task list so the two can't drift apart.
+_STANDARD_SYSTEMS: dict[str, str] = {
+    "inspection": "inspection", "dot_inspection": "inspection",
+    "pm_service": "pm",         "lube": "pm",
+    "oil": "engine",            "air_filter": "engine",
+    "coolant": "cooling",       "fuel_filter": "fuel",
+    "dpf_regen": "exhaust",     "def_refill": "exhaust",
+    "transmission": "drivetrain",
+    "brakes": "brakes",         "air_system": "air_system",
+    "suspension": "suspension", "alignment": "steering",
+    "tires": "tires_wheels",
+    "electrical": "electrical", "battery": "electrical",
+    "lighting": "lighting",     "hvac": "hvac",
+    "trailer_service": "trailer",
+    "custom": "other",
+}
+
+
 # The seeded library.  Keys deliberately REUSE the historical slugs
 # (oil, tires, brakes, …) so the backfill maps existing rows 1:1 with
 # no guesswork; the extra entries are standard truck/trailer work the
@@ -103,10 +175,13 @@ class ServiceTasksMixin:
             return [{"key": r["canonical_key"], "name": r["name"],
                      "description": r.get("description") or "",
                      "hours": float(r.get("expected_labor_hours") or 0),
-                     "vehicle_type": r.get("vehicle_type") or ""}
+                     "vehicle_type": r.get("vehicle_type") or "",
+                     "system": r.get("system_key")
+                               or _STANDARD_SYSTEMS.get(r["canonical_key"], "")}
                     for r in rows]
         return [{"key": e["key"], "name": e["name"], "description": "",
-                 "hours": 0.0, "vehicle_type": ""}
+                 "hours": 0.0, "vehicle_type": "",
+                 "system": _STANDARD_SYSTEMS.get(e["key"], "")}
                 for e in STANDARD_SERVICE_TASKS]
 
     async def seed_service_tasks(self, account_id: int) -> int:
@@ -122,14 +197,15 @@ class ServiceTasksMixin:
             cur = await self._db.execute(
                 "INSERT INTO service_tasks "
                 "(account_id, name, name_key, canonical_key, description, "
-                " expected_labor_hours, vehicle_type, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                " expected_labor_hours, vehicle_type, system_key, "
+                " created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (account_id, name_key) DO NOTHING "
                 "RETURNING id",
                 (account_id, entry["name"], service_task_name_key(entry["name"]),
                  entry["key"], entry.get("description", ""),
                  entry.get("hours", 0.0), entry.get("vehicle_type", ""),
-                 now, now),
+                 entry.get("system", ""), now, now),
             )
             created += 1 if await cur.fetchone() else 0
         await self._db.commit()
@@ -204,6 +280,7 @@ class ServiceTasksMixin:
         parent_id: Optional[int] = None,
         canonical_key: str = "",
         vehicle_type: str = "",
+        system_key: str = "",
         created_by: int = 0,
     ) -> Optional[dict[str, Any]]:
         """Create a task; ``None`` when the name collides (the caller
@@ -228,15 +305,15 @@ class ServiceTasksMixin:
         cur = await self._db.execute(
             "INSERT INTO service_tasks "
             "(account_id, name, name_key, canonical_key, description, "
-            " expected_labor_hours, parent_id, vehicle_type, created_by, "
-            " created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            " expected_labor_hours, parent_id, vehicle_type, system_key, "
+            " created_by, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (account_id, name_key) DO NOTHING "
             "RETURNING id",
             (account_id, name, service_task_name_key(name), canonical_key,
              description, float(expected_labor_hours or 0), parent_id,
              vehicle_type if vehicle_type in ("truck", "trailer") else "",
-             created_by, now, now),
+             normalize_system_key(system_key), created_by, now, now),
         )
         row = await cur.fetchone()
         await self._db.commit()
@@ -254,7 +331,7 @@ class ServiceTasksMixin:
         if not task:
             return False
         allowed = {"description", "expected_labor_hours", "status",
-                   "parent_id", "vehicle_type"}
+                   "parent_id", "vehicle_type", "system_key"}
         if not task.get("canonical_key"):
             allowed.add("name")
         updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
@@ -267,6 +344,11 @@ class ServiceTasksMixin:
             if vt not in ("", "truck", "trailer"):
                 return False
             updates["vehicle_type"] = vt
+        if "system_key" in updates:
+            sk = str(updates["system_key"]).strip().lower()
+            if sk and sk not in SYSTEM_KEYS:
+                return False
+            updates["system_key"] = sk
         if "parent_id" in updates:
             pid = updates["parent_id"]
             if pid:

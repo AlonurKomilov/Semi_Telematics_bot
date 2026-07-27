@@ -258,6 +258,7 @@ async def create_tables(conn) -> None:
             description          TEXT    NOT NULL DEFAULT '',
             expected_labor_hours REAL    NOT NULL DEFAULT 0,
             vehicle_type         TEXT    NOT NULL DEFAULT '',
+            system_key           TEXT    NOT NULL DEFAULT '',
             status               TEXT    NOT NULL DEFAULT 'active',
             created_at           TEXT    NOT NULL,
             updated_at           TEXT    NOT NULL DEFAULT ''

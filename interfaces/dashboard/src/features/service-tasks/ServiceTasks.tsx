@@ -30,8 +30,9 @@ import { toneClasses } from '../../lib/status';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { AnyColumn } from '../../types';
 import {
-  SERVICE_TASKS_KEY, createServiceTask, deleteServiceTask,
-  fetchServiceTasks, updateServiceTask, type ServiceTask,
+  SERVICE_TASKS_KEY, SYSTEMS_KEY, createServiceTask, deleteServiceTask,
+  fetchServiceTasks, fetchTaskSystems, updateServiceTask,
+  type ServiceTask,
 } from './api';
 
 const SEGMENTS: DataGridSegment[] = [
@@ -53,6 +54,7 @@ export default function ServiceTasks() {
   const [hours, setHours] = useState('');
   const [addDescription, setAddDescription] = useState('');
   const [addVehicleType, setAddVehicleType] = useState('');
+  const [addSystem, setAddSystem] = useState('');
   const [saving, setSaving] = useState(false);
   // Row → its linked-parts editor (what a work order pre-fills).
   const [partsFor, setPartsFor] = useState<ServiceTask | null>(null);
@@ -67,6 +69,15 @@ export default function ServiceTasks() {
     queryKey: [...SERVICE_TASKS_KEY, 'all'],
     queryFn: () => fetchServiceTasks(true),
   });
+
+  // Fetched, never hardcoded — a second copy in the frontend is how
+  // the old task vocabulary drifted.
+  const { data: systemsData } = useQuery({
+    queryKey: SYSTEMS_KEY, queryFn: fetchTaskSystems, staleTime: 5 * 60_000,
+  });
+  const systems = systemsData?.systems ?? [];
+  const systemLabel = (k: unknown) =>
+    systems.find((sy) => sy.key === k)?.label ?? '';
 
   const rows = useMemo(
     () => (data?.service_tasks ?? []) as unknown as Record<string, unknown>[],
@@ -96,12 +107,14 @@ export default function ServiceTasks() {
         description: addDescription,
         expected_labor_hours: Number(hours) || 0,
         vehicle_type: addVehicleType,
+        system_key: addSystem,
       });
       setAddOpen(false);
       setName('');
       setHours('');
       setAddDescription('');
       setAddVehicleType('');
+      setAddSystem('');
       refresh();
       // Linking parts needs the task to exist, so it can't live in this
       // dialog without creating the row behind the user's back.  Offer
@@ -135,6 +148,12 @@ export default function ServiceTasks() {
       render: (v) => (Number(v)
         ? <span className="tabular-nums">{Number(v)} h</span>
         : <span className="text-muted-foreground">—</span>),
+    },
+    {
+      key: 'system_key', label: 'System', sortable: true, filterable: true,
+      render: (v) => (v
+        ? <span className="text-sm">{systemLabel(v) || String(v)}</span>
+        : <span className="text-muted-foreground">Unassigned</span>),
     },
     {
       key: 'vehicle_type', label: 'Applies to', sortable: true, filterable: true,
@@ -293,6 +312,21 @@ export default function ServiceTasks() {
                 placeholder="What this job involves"
                 className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
               />
+            </label>
+            <label className="block">
+              <span className="block text-xs text-muted-foreground mb-1">
+                System
+              </span>
+              <select
+                value={addSystem}
+                onChange={(e) => setAddSystem(e.target.value)}
+                className="w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm text-foreground focus:outline-none focus:border-ring"
+              >
+                <option value="">Unassigned</option>
+                {systems.map((sy) => (
+                  <option key={sy.key} value={sy.key}>{sy.label}</option>
+                ))}
+              </select>
             </label>
             <label className="block">
               <span className="block text-xs text-muted-foreground mb-1">
