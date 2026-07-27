@@ -213,6 +213,75 @@ class TestSegmentCounts:
             assert r.status_code in (401, 403, 422)
 
 
+class TestAllIsTheUnionOfItsParts:
+    """The three tabs sit side by side with their counts showing, so they
+    have to add up.
+
+    The date window bounds resolved history but never open work — an
+    unacknowledged alert is open regardless of age.  Applied per-QUERY
+    that made 'all' drop old open rows which 'active' kept, and the board
+    read "Not acknowledged 3,984 · All 3,295": a total smaller than one of
+    its own parts.  Each number was defensible alone; together they were
+    nonsense.  The rule is per-ROW now.
+    """
+
+    async def test_an_old_open_alert_stays_in_all(self, seeded, pg_db):
+        from datetime import datetime, timedelta, timezone
+        acct = seeded["acct"]
+        old = (datetime.now(timezone.utc) - timedelta(days=400)).isoformat()
+        await pg_db._db.execute(
+            "UPDATE alert_history SET first_seen = ? "
+            "WHERE account_id = ? AND vehicle_id = ?",
+            (old, acct.id, "V1"),
+        )
+        # A 30-day window must not hide it from EITHER tab.
+        active = await _pending(seeded["app"], seeded["token"],
+                                "ack_state=active&days=30")
+        every = await _pending(seeded["app"], seeded["token"],
+                               "ack_state=all&days=30")
+        assert "T-100" in {a["vehicle_name"] for a in active["alerts"]}
+        assert "T-100" in {a["vehicle_name"] for a in every["alerts"]}
+
+    async def test_counts_add_up(self, seeded, pg_db):
+        """all == active + acknowledged, exactly."""
+        from datetime import datetime, timedelta, timezone
+        acct = seeded["acct"]
+        rows = await pg_db.get_active_alert_history_for_account(acct.id)
+        await pg_db.acknowledge_alert_history(rows[0]["id"], 9101, account_id=acct.id)
+        # ...and age an open one past the window, the case that broke it.
+        old = (datetime.now(timezone.utc) - timedelta(days=400)).isoformat()
+        await pg_db._db.execute(
+            "UPDATE alert_history SET first_seen = ? "
+            "WHERE account_id = ? AND vehicle_id = ?",
+            (old, acct.id, "V5"),
+        )
+
+        counts = (await _get(
+            seeded["app"], seeded["token"],
+            "/api/alerts/pending/segment-counts?days=30"))["counts"]
+        assert counts["all"] == counts["active"] + counts["acknowledged"]
+        assert counts["all"] >= counts["active"]
+
+    async def test_an_old_RESOLVED_alert_is_still_windowed_out(self, seeded, pg_db):
+        """The window must keep doing its job on history — otherwise 'all'
+        would grow without bound and the date control would be a lie in
+        the other direction."""
+        from datetime import datetime, timedelta, timezone
+        acct = seeded["acct"]
+        rows = await pg_db.get_active_alert_history_for_account(acct.id)
+        target = next(r for r in rows if r["vehicle_id"] == "V4")
+        await pg_db.acknowledge_alert_history(target["id"], 9101, account_id=acct.id)
+        old = (datetime.now(timezone.utc) - timedelta(days=400)).isoformat()
+        await pg_db._db.execute(
+            "UPDATE alert_history SET first_seen = ? "
+            "WHERE account_id = ? AND vehicle_id = ?",
+            (old, acct.id, "V4"),
+        )
+        every = await _pending(seeded["app"], seeded["token"],
+                               "ack_state=all&days=30")
+        assert "T-400" not in {a["vehicle_name"] for a in every["alerts"]}
+
+
 class TestSegmentCountsUnderRestrictedScope:
     """The counts and the list are computed by DIFFERENT code paths for a
     scoped user (both fall out of SQL into Python filtering).  A badge

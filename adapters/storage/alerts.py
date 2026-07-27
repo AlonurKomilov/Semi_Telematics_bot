@@ -842,24 +842,34 @@ class AlertsMixin(_MixinBase):
         elif ack_state == "acknowledged":
             clauses.append(f"{p}status <> 'active'")
         # "all" → no status predicate
-        # The date window bounds HISTORY, never the open queue.
+        # The date window bounds RESOLVED HISTORY, never open work.
         #
         # ``first_seen`` is stamped once and never bumped on a re-fire, so a
         # window applied to active rows hides the longest-running unresolved
         # problems — a fault still firing today drops off a 30-day board
         # simply because it started 40 days ago.  For a safety queue that is
-        # backwards: an unacknowledged alert is open regardless of age.  So
-        # 'active' is UNWINDOWED, and the window still bounds the
-        # acknowledged / all views, where "last 30 days" is what the
-        # operator means.  (Owner decision; the UI disables the date control
-        # while viewing the open queue so it can't look like it applies.)
-        if days and ack_state != "active":
+        # backwards: an unacknowledged alert is open regardless of age.
+        #
+        # The rule is therefore per-ROW (by status), not per-QUERY (by
+        # ack_state).  Applying it per-query made 'all' drop old open rows
+        # that 'active' kept, so the board's tabs could read
+        # "Not acknowledged 3,984 · All 3,295" — a total smaller than one
+        # of its own parts, which is nonsense however true each number is
+        # in isolation.  Now 'all' is exactly the union of the other two.
+        # (Owner decision; the UI disables the date control while viewing
+        # the open queue so it can't look like it applies there.)
+        if days:
             from datetime import datetime, timedelta, timezone
             cutoff = (
                 datetime.now(timezone.utc) - timedelta(days=int(days))
             ).isoformat()
-            clauses.append(f"{p}first_seen >= ?")
-            params.append(cutoff)
+            if ack_state == "acknowledged":
+                clauses.append(f"{p}first_seen >= ?")
+                params.append(cutoff)
+            elif ack_state != "active":
+                # 'all': window the resolved rows, keep every open one.
+                clauses.append(f"({p}status = 'active' OR {p}first_seen >= ?)")
+                params.append(cutoff)
         def _in_clause(column: str, raw: str) -> None:
             values = [v.strip() for v in raw.split(",") if v.strip()]
             if not values:

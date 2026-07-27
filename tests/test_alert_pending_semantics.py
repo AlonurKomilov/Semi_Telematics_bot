@@ -12,7 +12,9 @@ and both are the kind of thing a refactor would "simplify" back:
 2. The open queue is UNWINDOWED.  ``first_seen`` is stamped once and never
    bumped on a re-fire, so windowing active rows hid the longest-running
    unresolved problems — exactly backwards for a safety queue.  The window
-   still bounds the acknowledged / all views.
+   bounds RESOLVED history instead, per row rather than per view: an open
+   alert stays visible in 'all' too, so that tab is exactly the union of
+   the other two and their counts add up.
 """
 
 from __future__ import annotations
@@ -101,9 +103,30 @@ class TestOpenQueueIgnoresAge:
         assert old_id not in ids             # outside it — correctly hidden
 
     @pytest.mark.asyncio
-    async def test_all_view_is_windowed_too(self, db):
+    async def test_all_keeps_an_old_OPEN_alert(self, db):
+        """'all' is the union of the other two tabs, so anything the open
+        queue shows must appear here as well.
+
+        This once asserted the opposite — that the window bounds 'all'
+        wholesale.  Each rule was defensible alone, but together they let
+        the board print "Not acknowledged 3,984 · All 3,295": a total
+        smaller than one of its own parts.  The window bounds resolved
+        history; an unacknowledged alert is open regardless of age, in
+        every view that contains it."""
         database, acct = db
         old_id = await _fire(database, acct, "V1", "T1")
+        await _age(database, old_id, 40)
+        rows = await database.get_active_alert_history_for_account_paged(
+            acct, ack_state="all", days=30)
+        assert old_id in {r["id"] for r in rows}
+
+    @pytest.mark.asyncio
+    async def test_all_still_windows_out_old_RESOLVED_history(self, db):
+        """The window has to keep doing its job on the other half, or
+        'all' grows without bound and the date control means nothing."""
+        database, acct = db
+        old_id = await _fire(database, acct, "V2", "T2")
+        await database.acknowledge_alert_history(old_id, 1, account_id=acct)
         await _age(database, old_id, 40)
         rows = await database.get_active_alert_history_for_account_paged(
             acct, ack_state="all", days=30)
