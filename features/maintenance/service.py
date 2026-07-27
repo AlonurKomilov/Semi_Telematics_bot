@@ -674,17 +674,25 @@ async def spawn_recurring_if_completed(
 # J1939 SPN → maintenance task-type mapping (SSOT).
 # Moved here from capabilities/alerting/ai_maintenance.py so maintenance
 # domain logic is not scattered inside the alerting layer.
+# SPN → service-task canonical key.  These predate the service-task
+# vocabulary, when everything not oil/brakes had to be "custom" — which
+# now resolves to Custom/Other and lands fault-driven spend in the
+# report's junk bucket.  Mapped to the real tasks so the spend-by-system
+# rollup fills itself from telematics with zero human input.
 _SPN_MAINTENANCE_MAP: dict[int, str] = {
-    110: "custom",   # Coolant temp
-    111: "custom",   # Coolant level
-    100: "oil",      # Oil pressure
-    101: "oil",      # Oil level
-    91: "brakes",    # Brake pressure
-    97: "custom",    # Water in fuel
-    190: "custom",   # Engine overspeed
-    4331: "custom",  # DEF quality
-    3031: "custom",  # DEF level
-    5246: "custom",  # DEF tank
+    110: "coolant",      # Coolant temp        → Cooling System
+    111: "coolant",      # Coolant level       → Cooling System
+    100: "oil",          # Oil pressure        → Engine
+    101: "oil",          # Oil level           → Engine
+    91: "brakes",        # Brake pressure      → Brakes
+    97: "fuel_filter",   # Water in fuel       → Fuel System
+    # Overspeed is a DRIVER event, not a repair — deliberately kept in
+    # Custom/Other (owner decision 2026-07-27) so it never pollutes
+    # maintenance spend.
+    190: "custom",
+    4331: "def_refill",  # DEF quality         → Exhaust & Aftertreatment
+    3031: "def_refill",  # DEF level           → Exhaust & Aftertreatment
+    5246: "def_refill",  # DEF tank            → Exhaust & Aftertreatment
 }
 
 _SPN_DESCRIPTIONS: dict[int, str] = {

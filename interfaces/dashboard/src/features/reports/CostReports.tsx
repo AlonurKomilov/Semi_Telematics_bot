@@ -20,6 +20,14 @@ import DataGrid from '../../components/datagrid';
 import { Tip } from '../../components/tooltip';
 
 // Backend response envelopes for each /reports/* endpoint.
+interface SystemRow {
+  system_key: string;
+  system: string;
+  total_spent: number;    // parts
+  labor_spent: number;
+  work_order_count: number;
+}
+
 interface ReportResponse {
   days: number;
   rows: WorkOrderCostRow[];
@@ -133,6 +141,14 @@ export default function Reports() {
     queryKey: ['wo-reports', 'per-part', days],
     queryFn: () => apiJSON<ReportResponse>(`/reports/cost-reports/per-part?days=${days}`),
   });
+  // Spend per SYSTEM — the coarse "what are brakes costing us" axis.
+  // Unlike the per-task donut, labor IS attributable here (the system
+  // rides the task, which labor lines carry), so the bar shows the
+  // combined number and the tooltip splits it.
+  const perSystem = useQuery<{ days: number; rows: SystemRow[] }>({
+    queryKey: ['wo-reports', 'per-system', days],
+    queryFn: () => apiJSON(`/reports/cost-reports/per-system?days=${days}`),
+  });
   const perVendor = useQuery<ReportResponse>({
     queryKey: ['wo-reports', 'per-vendor', days],
     queryFn: () => apiJSON<ReportResponse>(`/reports/cost-reports/per-vendor?days=${days}`),
@@ -144,7 +160,7 @@ export default function Reports() {
 
   const loading = summaryQuery.isLoading || perVehicle.isLoading
     || perType.isLoading || perVendor.isLoading || monthly.isLoading
-    || perPart.isLoading;
+    || perPart.isLoading || perSystem.isLoading;
   const firstError =
     summaryQuery.error || perVehicle.error || perType.error
     || perVendor.error || monthly.error;
@@ -196,6 +212,15 @@ export default function Reports() {
       .map(r => ({ ...r, label: labelOf(String(r.service_task ?? '')) }));
   }, [perType.data]);
 
+  // System bars — combined parts+labor, biggest first.
+  const systemChart = useMemo(
+    () => (perSystem.data?.rows ?? [])
+      .map(r => ({ ...r, combined: r.total_spent + (r.labor_spent ?? 0) }))
+      .filter(r => r.combined > 0)
+      .sort((a, b) => b.combined - a.combined),
+    [perSystem.data],
+  );
+
   // Top parts — highest spend first; the backend already caps at 25.
   const partRows = useMemo(
     () => (perPart.data?.rows ?? []).slice().sort((a, b) => b.total_spent - a.total_spent),
@@ -236,6 +261,12 @@ export default function Reports() {
     csv.push('task_type,work_order_count,total_spent');
     for (const r of (perType.data?.rows ?? [])) {
       csv.push(`"${(r.task_type ?? '').replace(/"/g, '""')}",${r.work_order_count},${r.total_spent.toFixed(2)}`);
+    }
+    csv.push('');
+    csv.push('# Spend by System');
+    csv.push('system,work_order_count,parts_spent,labor_spent');
+    for (const r of (perSystem.data?.rows ?? [])) {
+      csv.push(`"${r.system.replace(/"/g, '""')}",${r.work_order_count},${r.total_spent.toFixed(2)},${(r.labor_spent ?? 0).toFixed(2)}`);
     }
     csv.push('');
     csv.push('# Spend by Vendor');
@@ -464,6 +495,39 @@ export default function Reports() {
               )}
             </ChartCard>
           </div>
+
+          {/* ── Spend by system — the coarse rollup ─────────────── */}
+          <ChartCard title={t('cost_reports.spend_by_system', { defaultValue: 'Spend by system' })}
+            hint={t('cost_reports.spend_by_system_hint', { defaultValue: 'Parts + labor rolled up to the system each task belongs to — the "what are brakes costing us" view. Unassigned = tasks without a system yet.' })}>
+            {systemChart.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No data.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height={Math.max(200, systemChart.length * 34)}>
+                <BarChart data={systemChart} layout="vertical"
+                  margin={{ left: 8, right: 16 }}>
+                  <XAxis type="number" tickFormatter={money} tick={{ fontSize: 11 }} />
+                  <YAxis type="category" dataKey="system" width={170}
+                    tick={{ fontSize: 11 }} />
+                  <Tooltip
+                    formatter={(value, _name, entry) => {
+                      const p = entry?.payload as SystemRow | undefined;
+                      return [
+                        `${moneyDetail(Number(p?.total_spent ?? 0))} parts · ${moneyDetail(Number(p?.labor_spent ?? 0))} labor`,
+                        `${moneyDetail(Number(value))} total`,
+                      ];
+                    }}
+                    itemStyle={{ color: 'var(--foreground)' }}
+                    contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
+                  />
+                  <Bar dataKey="combined">
+                    {systemChart.map((_, i) => (
+                      <Cell key={i} fill={BAR_PALETTE[i % BAR_PALETTE.length]} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </ChartCard>
 
           {/* ── Vendor table + monthly trend ────────────────────── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

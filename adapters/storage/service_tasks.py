@@ -108,6 +108,7 @@ _STANDARD_SYSTEMS: dict[str, str] = {
     "electrical": "electrical", "battery": "electrical",
     "lighting": "lighting",     "hvac": "hvac",
     "trailer_service": "trailer",
+    "body_cab_repair": "body_cab",
     "custom": "other",
 }
 
@@ -138,6 +139,10 @@ STANDARD_SERVICE_TASKS: tuple[dict[str, str], ...] = (
     {"key": "hvac",            "name": "HVAC / A-C Service"},
     {"key": "lighting",        "name": "Lighting Repair"},
     {"key": "trailer_service", "name": "Trailer Service"},
+    # Owner decision 2026-07-27: Body & Cab was the one system with no
+    # task pointing at it — a door/mirror/cab invoice had nowhere to
+    # land except Custom/Other.
+    {"key": "body_cab_repair", "name": "Body & Cab Repair"},
     # The legacy catch-all the old dropdown shipped with.  Kept as a
     # standard entry so historical rows tagged 'custom' keep a label.
     {"key": "custom",          "name": "Custom / Other"},

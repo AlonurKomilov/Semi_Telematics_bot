@@ -7399,3 +7399,38 @@ async def migrate_service_task_system(conn) -> None:
         filled += cur.rowcount or 0
     await conn.commit()
     logger.info("Migration 166: system_key added; %d standard tasks grouped", filled)
+
+
+@_register("167_body_cab_task")
+async def migrate_body_cab_task(conn) -> None:
+    """Seed the Body & Cab Repair standard task into EXISTING accounts.
+
+    Body & Cab was the one system with no task pointing at it, so a
+    door/mirror/cab-damage invoice could only land in Custom/Other.
+    New accounts pick it up from the seed tuple / operator library;
+    this reaches the accounts that were created before it existed.
+    """
+    from adapters.storage.service_tasks import (
+        _STANDARD_SYSTEMS, service_task_name_key,
+    )
+    name, key = "Body & Cab Repair", "body_cab_repair"
+    now = __import__("datetime").datetime.now(
+        __import__("datetime").timezone.utc
+    ).isoformat()
+    cur = await conn.execute("SELECT id FROM accounts")
+    created = 0
+    for row in [dict(r) for r in await cur.fetchall()]:
+        c = await conn.execute(
+            "INSERT INTO service_tasks "
+            "(account_id, name, name_key, canonical_key, system_key, "
+            " created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (account_id, name_key) DO NOTHING "
+            "RETURNING id",
+            (int(row["id"]), name, service_task_name_key(name), key,
+             _STANDARD_SYSTEMS[key], now, now),
+        )
+        if await c.fetchone():
+            created += 1
+    await conn.commit()
+    logger.info("Migration 167: Body & Cab Repair seeded into %d accounts", created)

@@ -500,3 +500,64 @@ async def test_api_serves_the_system_vocabulary(api):
         got = r.json()["systems"]
         assert len(got) == len(SERVICE_TASK_SYSTEMS)
         assert {"key": "brakes", "label": "Brakes"} in got
+
+
+# ── Phase 1 of the 3-level scheme: the L1 holes ─────────────────────
+
+@pytest.mark.asyncio
+async def test_spn_faults_land_in_real_systems(db, acct):
+    """The SPN→task map predates the vocabulary — 6 of 10 faults were
+    mapped to 'custom' and landed fault-driven spend in the report's
+    junk bucket.  A coolant fault must now roll up under Cooling."""
+    from features.maintenance.service import _SPN_MAINTENANCE_MAP
+    from adapters.storage.service_tasks import _STANDARD_SYSTEMS
+
+    landings = {
+        spn: _STANDARD_SYSTEMS.get(task, "")
+        for spn, task in _SPN_MAINTENANCE_MAP.items()
+    }
+    assert landings[110] == "cooling" and landings[111] == "cooling"
+    assert landings[97] == "fuel"
+    assert landings[4331] == landings[3031] == landings[5246] == "exhaust"
+    assert landings[100] == landings[101] == "engine"
+    assert landings[91] == "brakes"
+    # Owner decision: overspeed is a driver event, not a repair — it
+    # STAYS in Other so it never pollutes maintenance spend.
+    assert landings[190] == "other"
+
+    # And end-to-end: writing a task with the mapped slug resolves to
+    # a real service task in the right system.
+    tid = await db.add_maintenance_task(
+        acct, "", "234", _SPN_MAINTENANCE_MAP[110], "Coolant temperature issue")
+    task = await db.get_maintenance_task(tid, acct)
+    st = await db.get_service_task(task["service_task_id"], acct)
+    assert st["system_key"] == "cooling"
+
+
+@pytest.mark.asyncio
+async def test_body_cab_task_seeded_and_reachable(db, acct):
+    """Body & Cab was the one system with no task pointing at it —
+    a cab-damage invoice could only land in Custom/Other."""
+    tasks = {t["canonical_key"]: t for t in await db.list_service_tasks(acct)}
+    assert "body_cab_repair" in tasks
+    assert tasks["body_cab_repair"]["system_key"] == "body_cab"
+
+    # The migration reaches EXISTING accounts (idempotently).
+    from adapters.storage.migrations import migrate_body_cab_task
+    await migrate_body_cab_task(db._db)
+    await migrate_body_cab_task(db._db)
+    again = [t for t in await db.list_service_tasks(acct)
+             if t["canonical_key"] == "body_cab_repair"]
+    assert len(again) == 1
+
+
+@pytest.mark.asyncio
+async def test_per_system_report_is_reexported(api):
+    """The endpoint existed with no UI and no /reports re-export — the
+    system layer produced a report nobody could see.  Pin the mount."""
+    async with AsyncClient(transport=ASGITransport(app=api["app"]),
+                           base_url="http://t") as c:
+        r = await c.get("/api/reports/cost-reports/per-system?days=90",
+                        headers=_h(api["owner"]))
+        assert r.status_code == 200, r.text
+        assert "rows" in r.json()
