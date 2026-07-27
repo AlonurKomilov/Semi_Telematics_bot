@@ -359,7 +359,7 @@
     },
     "drillin": {
       "close": "Close",
-      "open_incident_details": "Open incident details",
+      "open_alert_details": "Open alert details",
       "description_label": "Description",
       "quick_links": "Quick links",
       "vehicle_page": "Vehicle page",

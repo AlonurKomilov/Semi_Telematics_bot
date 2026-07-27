@@ -62,6 +62,6 @@ export const ALERTS_SECTIONS: SectionRegistry<AlertsSectionProps> = {
   },
   incident_drillin_drawer: {
     Component: lazy(() => import('./sections/IncidentDrillInDrawer')),
-    label: 'Safety incident drill-in drawer (slides over)',
+    label: 'Alert details drawer (slides over)',
   },
 };

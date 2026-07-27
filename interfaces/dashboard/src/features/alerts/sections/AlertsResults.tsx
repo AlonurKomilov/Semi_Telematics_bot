@@ -35,14 +35,12 @@ import {
   ErrorState,
   TableSkeleton,
 } from '../../../components/shell';
-import { useQueryClient } from '@tanstack/react-query';
-import { apiJSON } from '../../../api/client';
 import DataGrid, { type BulkAction } from '../../../components/datagrid';
+import { Tip } from '../../../components/tooltip';
 import type {
   Alert,
   AlertsResponse,
   AnyColumn,
-  BulkAckResponse,
   VehiclesAlertsResponse,
 } from '../../../types';
 import { formatAlertDescription } from '../../../utils/alertDescription';
@@ -52,6 +50,7 @@ import { toneClasses } from '../../../lib/status';
 import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import { useAlertsQuery } from '../_shared/useAlertsQuery';
+import { useAckAlerts } from '../useRecentAlerts';
 import {
   AckMarker,
   SeverityDot,
@@ -69,7 +68,6 @@ const MAX_WINDOW_DAYS = 90;
 export default function AlertsResults() {
   const { t } = useTranslation();
   const tz = useTimezone();
-  const qc = useQueryClient();
   const { ackState, narrowed, resetToDefaults, days, setDays } = useAlertsFilters();
   // DataGrid owns the checkbox column + the bulk-action bar now, but
   // the SELECTION still lives in the shared context (LiveAckPanel's
@@ -79,6 +77,7 @@ export default function AlertsResults() {
     selected, setSelected, openDrillIn, setAcking, setBulkError,
   } = useAlertsSelection();
   const { data, isLoading, error: queryError, refetch } = useAlertsQuery();
+  const ackAlerts = useAckAlerts();
 
   // Discriminate the response shape by what the payload actually
   // contains — react-query hands back the previous response as
@@ -113,14 +112,11 @@ export default function AlertsResults() {
     setAcking(true);
     setBulkError('');
     try {
-      // Backend BulkAckRequest expects int ids — coerce or the
-      // validator 422s (Alert.id is widened to string|number).
-      const ids = rows.map((r) => Number((r as unknown as Alert).id));
-      await apiJSON<BulkAckResponse>('/alerts/bulk-ack', {
-        method: 'POST',
-        body: { ids },
-      });
-      await qc.invalidateQueries({ queryKey: ['alerts'] });
+      // The shared helper POSTs and invalidates BOTH ['alerts'] (board +
+      // hero counts) and ['shell','overview-stats'] (the bell badge and
+      // the Overview card).  Acking here used to refresh only the first,
+      // leaving the badge claiming work that was already done.
+      await ackAlerts(rows.map((r) => (r as unknown as Alert).id));
       // Clear the selection as the LAST synchronous statement before
       // the finally's setAcking(false) — with NO await between them,
       // React 18 batches both into one commit, so LiveAckPanel's
@@ -150,8 +146,9 @@ export default function AlertsResults() {
       {
         key: 'id', label: 'Alert', sortable: true,
         render: (v, row) => (
-          // Clicking the alert-id opens the IncidentDrillInDrawer
-          // when one is mounted in the active persona's layout.
+          // Keyboard path to the drawer.  The whole row is clickable
+          // (onRowClick below), but a row handler is mouse-only, so the
+          // id stays a real focusable button.
           <button
             type="button"
             onClick={(e) => {
@@ -159,7 +156,10 @@ export default function AlertsResults() {
               openDrillIn(row as unknown as Alert);
             }}
             className="font-mono text-xs text-muted-foreground hover:text-primary hover:underline focus:outline-none focus:text-primary"
-            title="Open incident details"
+            // The row itself is clickable now, so this needs no hover
+            // label — it needs a NAME, for the keyboard and screen-reader
+            // path where the row's own handler isn't reachable.
+            aria-label={t('alerts.drillin.open_alert_details')}
           >
             #{String(v)}
           </button>
@@ -190,12 +190,13 @@ export default function AlertsResults() {
               {/* Occurrence-count badge — "× 5" when this same logical
                   alert has fired multiple times without being cleared. */}
               {(a.occurrence_count ?? 1) > 1 && (
-                <span
-                  className={`ml-2 inline-block px-2 py-0.5 rounded-md text-xs font-bold ${toneClasses('warn')}`}
-                  title={t('alerts.total_occurrences')}
-                >
-                  × {a.occurrence_count}
-                </span>
+                <Tip label={t('alerts.total_occurrences')}>
+                  <span
+                    className={`ml-2 inline-block px-2 py-0.5 rounded-md text-xs font-bold ${toneClasses('warn')}`}
+                  >
+                    × {a.occurrence_count}
+                  </span>
+                </Tip>
               )}
             </span>
           );
@@ -204,13 +205,19 @@ export default function AlertsResults() {
       {
         key: 'message', label: 'Description', sortable: false,
         render: (_v, row) => {
-          const a = row as unknown as Alert & { last_detail?: string };
+          const a = row as unknown as Alert;
+          const text = formatAlertDescription(a);
+          // The description is the most task-relevant cell in the row, so
+          // it reads at normal weight — it used to be the FAINTEST thing
+          // on screen while the id and severity dominated.
+          //
+          // No hover text: this used to expose ``last_detail`` raw
+          // ("parking:unsafe:8h", "crash:281474998895725-1782771648515"),
+          // which is a machine key, not copy.  The full sentence lives in
+          // the details drawer, which the row now opens.
           return (
-            <span
-              className="text-muted-foreground"
-              title={a.last_detail || a.message || ''}
-            >
-              {truncate(formatAlertDescription(a), 80)}
+            <span className="text-foreground">
+              {truncate(text, 80)}
             </span>
           );
         },
@@ -219,8 +226,15 @@ export default function AlertsResults() {
         key: 'location', label: 'Location', sortable: false,
         render: (v) => {
           const s = String(v ?? '');
+          // Truncated at 30 chars, so the full address needs to stay
+          // reachable — via the tooltip primitive, not a native title
+          // (unthemed, and invisible on touch).
           return s
-            ? <span className="text-muted-foreground" title={s}>{truncate(s, 30)}</span>
+            ? (
+              <Tip label={s}>
+                <span className="text-muted-foreground">{truncate(s, 30)}</span>
+              </Tip>
+            )
             : <span className="text-muted-foreground">—</span>;
         },
       },
@@ -365,6 +379,13 @@ export default function AlertsResults() {
         // note in AlertsFilterChips.
         columns={columns}
         data={alerts as unknown as Record<string, unknown>[]}
+        // The WHOLE row opens the details drawer.  Previously only the
+        // small grey id was clickable, so clicking the vehicle, the
+        // description or the time — the parts an operator actually reads
+        // — did nothing.  DataGrid draws the pointer cursor for us; the
+        // id stays a real <button> so the row is still keyboard-reachable
+        // (a click handler on the row alone is mouse-only).
+        onRowClick={(row) => openDrillIn(row as unknown as Alert)}
         // Location only.  Vehicle already has an authoritative SERVER
         // search in the filter bar; a second client-side vehicle search
         // over the loaded batch would silently disagree with it whenever

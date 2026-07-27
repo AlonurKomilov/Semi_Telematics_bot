@@ -1,6 +1,12 @@
 /**
- * Safety persona's incident drawer — slides over the page when the
- * operator clicks an alert id in AlertsResults.
+ * Alert details drawer — slides over the page when the operator opens
+ * a row in AlertsResults (any cell, or the alert id by keyboard).
+ *
+ * Named "alert" throughout, deliberately: the board, the checkbox, the
+ * bell and this drawer all address the same object, and it had grown
+ * four different nouns.  The file/registry key still says "incident"
+ * (internal identifiers only) to avoid churning the persona layout
+ * lists mid-flight.
  *
  * Composes existing widgets without duplicating their data layer:
  *   • Header  — type badge, severity dot, vehicle name, last seen.
@@ -15,10 +21,11 @@
  *                     /safety/events/{event_id}/video to refresh the
  *                     S3 signature on demand (existing endpoint).
  *
- * The drawer mounts only on the safety persona's layout, but the
- * underlying open-state machinery is in AlertsSelectionContext so
- * other personas could host the drawer in their own layouts without
- * touching AlertsResults again.  See AlertsSelectionContext.drillInAlert.
+ * Mounted for EVERY persona (see layouts.ts — it's in UNIVERSAL and in
+ * each named list).  That matters: the queue row no longer carries the
+ * full description as hover text, so this drawer is the only place the
+ * untruncated text exists.  Open-state lives in AlertsSelectionContext
+ * (drillInAlert) rather than here, so any layout can host it.
  *
  * Permission-gated:
  *   • can_camera ⇒ video preview block shown
@@ -30,14 +37,17 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
+import { toast } from 'sonner';
 import {
-  X, ExternalLink, Truck, BarChart3, GraduationCap, Video,
+  X, ExternalLink, Truck, BarChart3, GraduationCap, Video, CheckCircle2,
 } from 'lucide-react';
 import { apiJSON, ApiError } from '../../../api/client';
+import { Button } from '../../../components/ui/button';
 import { useViewPermissions } from '../../../hooks/useViewPermissions';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
+import { useAckAlerts } from '../useRecentAlerts';
 import {
-  TypeBadge, SeverityDot,
+  TypeBadge, SeverityDot, AckMarker, isAckable,
 } from '../_shared/components';
 import { formatAlertDescription } from '../../../utils/alertDescription';
 import { formatDate } from '../../../utils/datetime';
@@ -72,11 +82,12 @@ export default function IncidentDrillInDrawer() {
           on wide monitors. */}
       <aside
         role="dialog"
-        aria-label={t('alerts.drillin.open_incident_details')}
+        aria-label={`Alert #${drillInAlert.id} details`}
         className="fixed top-0 right-0 bottom-0 z-50 w-full sm:max-w-md bg-background border-l border-border shadow-2xl flex flex-col"
       >
         <DrawerHeader alert={drillInAlert} onClose={closeDrillIn} />
         <DrawerBody alert={drillInAlert} />
+        <DrawerFooter alert={drillInAlert} onAcknowledged={closeDrillIn} />
       </aside>
     </>
   );
@@ -104,7 +115,7 @@ function DrawerHeader({ alert, onClose }: {
         </h2>
         {alert.last_seen && (
           <p className="text-xs text-muted-foreground mt-0.5">
-            last seen {formatDate(alert.last_seen, { timeZone: tz })}
+            Last fired {formatDate(alert.last_seen, { timeZone: tz })}
             {(alert.occurrence_count ?? 1) > 1 && (
               <span className="ml-2 text-warn">
                 × {alert.occurrence_count}
@@ -122,6 +133,67 @@ function DrawerHeader({ alert, onClose }: {
         <X size={16} />
       </button>
     </header>
+  );
+}
+
+
+/**
+ * The one thing an operator opens an alert to DO.
+ *
+ * Without it the drawer was read-only: you had to close it, find the row
+ * again, tick its checkbox and use the bulk bar — so the detail view
+ * didn't contain the action it exists to enable.  Acknowledging closes
+ * the drawer, because the record has left the queue you were working.
+ */
+function DrawerFooter({ alert, onAcknowledged }: {
+  alert: Alert;
+  onAcknowledged: () => void;
+}) {
+  const ackAlerts = useAckAlerts();
+  const [busy, setBusy] = useState(false);
+
+  // Already acknowledged / auto-resolved: state the outcome instead of
+  // offering an action that would no-op.
+  if (!isAckable(alert)) {
+    return (
+      <footer className="px-5 py-4 border-t border-border shrink-0">
+        <AckMarker alert={alert} />
+      </footer>
+    );
+  }
+
+  const acknowledge = async () => {
+    setBusy(true);
+    try {
+      // The shared helper, not a local POST: it also invalidates
+      // ['shell','overview-stats'], which is where the bell badge and the
+      // Overview card read from.  Invalidating ['alerts'] alone refreshes
+      // the board and the hero counts but leaves the badge stale for up
+      // to a minute — it doesn't even refetch on focus.
+      await ackAlerts([alert.id]);
+      toast.success(`Alert #${alert.id} acknowledged`);
+      onAcknowledged();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Couldn’t acknowledge');
+      setBusy(false);   // stay open so the operator can retry
+    }
+  };
+
+  return (
+    <footer className="px-5 py-4 border-t border-border shrink-0">
+      <Button
+        size="lg"
+        onClick={() => { void acknowledge(); }}
+        disabled={busy}
+        className="w-full"
+      >
+        <CheckCircle2 size={16} aria-hidden />
+        {busy ? 'Acknowledging…' : 'Acknowledge'}
+      </Button>
+      <p className="text-2xs text-muted-foreground mt-2 text-center">
+        Recorded under your name, and the alert leaves the open queue.
+      </p>
+    </footer>
   );
 }
 
@@ -284,7 +356,7 @@ function VideoBlock({ alert }: { alert: Alert }) {
         </div>
       )}
       {!loading && url && (
-        // controls only — autoplay is rude for an incident drawer
+        // controls only — autoplay is rude for an alert drawer
         // that may open in a crowded ops room.
         <video
           src={url}

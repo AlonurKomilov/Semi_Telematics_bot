@@ -15,8 +15,8 @@
  *      pending.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, renderHook, act } from '@testing-library/react';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { cleanup, renderHook, act, waitFor } from '@testing-library/react';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useAlertsFilters } from './useAlertsFilters';
 
@@ -31,12 +31,21 @@ function setPersona(persona: string) {
   mockUseShellConfig.mockReturnValue({ persona });
 }
 
+// Records the live query string so tests can assert on params the hook
+// writes (or must leave alone), not just on the values it returns.
+let lastSearch = '';
+function SearchRecorder() {
+  lastSearch = useLocation().search;
+  return null;
+}
+
 function makeWrapper(initialUrl: string) {
+  lastSearch = '';
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <MemoryRouter initialEntries={[initialUrl]}>
         <Routes>
-          <Route path="/alerts" element={<>{children}</>} />
+          <Route path="/alerts" element={<><SearchRecorder />{children}</>} />
         </Routes>
       </MemoryRouter>
     );
@@ -142,6 +151,35 @@ describe('useAlertsFilters — resetToDefaults', () => {
     expect(result.current.typeFilter).toBe('safety_events');
     expect(result.current.days).toBe(7);
     expect(result.current.page).toBe(1);
+  });
+});
+
+
+describe('useAlertsFilters — params this hook does not own', () => {
+  // The notification bell links to a bare /alerts?alertId=N.  Landing
+  // there has no filter params, so the first-load effect writes persona
+  // defaults — and it used to build a fresh query string, silently
+  // deleting alertId.  The deep link died a tick after arriving and the
+  // alert never opened.
+  it('preserves ?alertId when writing first-load defaults', async () => {
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?alertId=11101'),
+    });
+    await waitFor(() => expect(result.current.days).toBe(30));   // fleet default
+    expect(lastSearch).toContain('alertId=11101');
+  });
+
+  it('preserves ?alertId through resetToDefaults', async () => {
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?alertId=11101&typeFilter=fuel'),
+    });
+    act(() => result.current.resetToDefaults());
+    // "Clear all filters" clears FILTERS — it doesn't close the record
+    // the operator is reading.
+    expect(lastSearch).toContain('alertId=11101');
+    expect(result.current.typeFilter).not.toBe('fuel');
   });
 });
 

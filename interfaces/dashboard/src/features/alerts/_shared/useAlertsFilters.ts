@@ -90,8 +90,22 @@ function readDefaults(params: URLSearchParams, defaults: FilterDefaults): {
   return { typeFilter, severityFilter, ackState, vehicleSearch, days, page };
 }
 
-function writeDefaults(defaults: FilterDefaults): URLSearchParams {
-  const next = new URLSearchParams();
+/**
+ * Persona defaults written over ``prev``, PRESERVING any param this hook
+ * doesn't own.
+ *
+ * Building a fresh URLSearchParams here silently dropped every foreign
+ * param — including ``?alertId``, which the notification bell links with.
+ * Landing on /alerts from the bell writes defaults on first load, so the
+ * deep link was erased a tick after arriving and the alert never opened.
+ * Only the keys below are ours to overwrite.
+ */
+function writeDefaults(
+  defaults: FilterDefaults,
+  prev?: URLSearchParams,
+): URLSearchParams {
+  const next = new URLSearchParams(prev);
+  next.delete('vehicleSearch');   // re-added below only when non-empty
   next.set('typeFilter', defaults.typeFilter);
   next.set('severityFilter', defaults.severityFilter);
   next.set('ackState', defaults.ackState);
@@ -119,7 +133,7 @@ export function useAlertsFilters(): AlertsFiltersAPI {
       wroteDefaultsRef.current = true;
       return;
     }
-    setParams(writeDefaults(defaults), { replace: true });
+    setParams((prev) => writeDefaults(defaults, prev), { replace: true });
     wroteDefaultsRef.current = true;
     // We intentionally do NOT include `defaults` in deps — they change
     // by persona, but a persona switch SHOULDN'T overwrite a URL the
@@ -176,7 +190,10 @@ export function useAlertsFilters(): AlertsFiltersAPI {
     setDays: (v) => setParam('days', v),
     setPage: (v) => setParam('page', v, { resetPage: false }),
     resetToDefaults: () => {
-      setParams(writeDefaults(defaults), { replace: true });
+      // Clearing FILTERS, not the page: an open drawer's ``?alertId``
+      // survives, because "clear all filters" never meant "close what
+      // I'm reading".
+      setParams((prev) => writeDefaults(defaults, prev), { replace: true });
     },
   };
 }

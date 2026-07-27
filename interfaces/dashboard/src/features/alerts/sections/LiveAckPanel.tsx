@@ -27,6 +27,7 @@ import { useAlertsQuery } from '../_shared/useAlertsQuery';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import type { AlertsResponse, VehiclesAlertsResponse } from '../../../types';
 import { usePreference } from '../../../preferences';
+import { Tip } from '../../../components/tooltip';
 
 const LAST_ACK_KEY = '4truck_dispatch_last_ack_iso';
 
@@ -178,6 +179,7 @@ export default function LiveAckPanel() {
         label={t('alerts.live_ack.last_ack')}
         value={lastAckLabel}
       />
+      <Tip label={t(soundOn ? 'alerts.live_ack.sound_on_title' : 'alerts.live_ack.sound_off_title')}>
       <button
         type="button"
         onClick={toggleSound}
@@ -186,11 +188,11 @@ export default function LiveAckPanel() {
             ? 'bg-primary/10 border-primary/40 text-primary'
             : 'bg-muted/40 border-border text-muted-foreground hover:text-foreground'
         }`}
-        title={t(soundOn ? 'alerts.live_ack.sound_on_title' : 'alerts.live_ack.sound_off_title')}
       >
         {soundOn ? <Volume2 size={14} /> : <VolumeX size={14} />}
         {t(soundOn ? 'alerts.live_ack.sound_on' : 'alerts.live_ack.enable_sound')}
       </button>
+      </Tip>
       <span className="ml-auto self-center text-2xs text-muted-foreground">
         {t('alerts.live_ack.hotkey_hint')}{' '}
         <kbd className="px-1 py-px rounded bg-muted text-foreground/80 text-3xs">

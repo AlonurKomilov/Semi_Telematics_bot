@@ -10,6 +10,7 @@ import { CheckCircle2 } from 'lucide-react';
 import { statusTone, toneText } from '../../../lib/status';
 import { formatDate } from '../../../utils/datetime';
 import type { Alert } from '../../../types';
+import { Tip } from '../../../components/tooltip';
 
 // Raw alert_type → the SAME words the Type filter chips show, so a row and
 // the control that filters it name the thing identically.  Multi-word keys
@@ -88,23 +89,21 @@ export function AckMarker({ alert, tz }: { alert: Alert; tz?: string }) {
   if (human) {
     const who = alert.acknowledged_by_name || 'user';
     return (
-      <span
-        className="inline-flex items-center gap-1 text-xs font-medium text-ok"
-        title={when ? `Acknowledged ${when}` : undefined}
-      >
-        <CheckCircle2 size={14} aria-hidden />
-        Acknowledged by {who}
-      </span>
+      <Tip label={when ? `Acknowledged ${when}` : ''}>
+        <span className="inline-flex items-center gap-1 text-xs font-medium text-ok">
+          <CheckCircle2 size={14} aria-hidden />
+          Acknowledged by {who}
+        </span>
+      </Tip>
     );
   }
   return (
-    <span
-      className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground"
-      title={when ? `Auto-resolved ${when}` : undefined}
-    >
-      <CheckCircle2 size={14} aria-hidden />
-      Auto-resolved
-    </span>
+    <Tip label={when ? `Auto-resolved ${when}` : ''}>
+      <span className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground">
+        <CheckCircle2 size={14} aria-hidden />
+        Auto-resolved
+      </span>
+    </Tip>
   );
 }
 

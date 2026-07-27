@@ -27,6 +27,7 @@ import { useTranslation } from 'react-i18next';
 import { FilterBar, FilterChips } from '../../../components/shell';
 import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
+import { Tip } from '../../../components/tooltip';
 
 const ALERT_TYPES = ['all', 'fault', 'health', 'fuel', 'events', 'parking'] as const;
 const ACK_STATES = ['active', 'acknowledged', 'all'] as const;
@@ -86,6 +87,7 @@ export default function AlertsFilterChips() {
         value={severityFilter}
         onChange={(v) => setSeverityFilter(v)}
       />
+      <Tip label='Substring match on vehicle name — e.g. typing "23" finds Truck 237 and Trailer 1230'>
       <input
         type="text"
         placeholder={t(
@@ -95,8 +97,8 @@ export default function AlertsFilterChips() {
         value={vehicleSearch}
         onChange={(e) => setVehicleSearch(e.target.value)}
         className="bg-background border border-border rounded-md px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-ring w-64"
-        title='Substring match on vehicle name — e.g. typing "23" finds Truck 237 and Trailer 1230'
       />
+      </Tip>
     </FilterBar>
   );
 }
