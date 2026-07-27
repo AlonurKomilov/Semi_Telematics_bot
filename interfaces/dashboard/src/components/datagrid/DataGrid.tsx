@@ -282,7 +282,8 @@ interface DataGridProps {
   // narrowing happens where the whole set lives.
 
   /** Controlled column filters.  Supply with ``onColumnFiltersChange``;
-   *  omit both to let the grid keep its own. */
+   *  omit both to let the grid keep its own.  Don't switch between
+   *  controlled and uncontrolled after mount. */
   columnFilters?: ColumnFiltersState;
   /** Called with the NEXT filter state whenever the grid would change it
    *  (column menu, a removed chip, "clear all"). */
@@ -293,10 +294,18 @@ interface DataGridProps {
    *  does the work. */
   manualFiltering?: boolean;
 
-  /** Controlled segment/tab selection (the key of the active tab). */
+  /** Controlled segment/tab selection (the key of the active tab).
+   *  Don't switch a grid between controlled and uncontrolled after
+   *  mount — the internal fallback state goes stale while controlled. */
   segmentKey?: string;
-  /** Called with the key of the tab the operator picked. */
-  onSegmentChange?: (key: string) => void;
+  /** Called with the key of the tab the operator picked.  For a SAVED
+   *  tab the second argument carries what that tab actually selects, so
+   *  a server-filtered page can put it in the query — the key alone is
+   *  an opaque id and the tab would appear to do nothing. */
+  onSegmentChange?: (
+    key: string,
+    tab?: { filters: ColumnFiltersState; search: string },
+  ) => void;
   /** Authoritative per-segment counts, keyed by segment key.  Without
    *  this the badge counts LOADED rows, which on a server-filtered grid
    *  prints a confidently wrong number in the most prominent place on
@@ -590,6 +599,9 @@ export default function DataGrid({
   // require rebuilding every column def.
   const manualFilteringRef = useRef(manualFiltering);
   manualFilteringRef.current = manualFiltering;
+  // Filled below, once the persisted tabs have loaded — read at call
+  // time by setSegmentPref, so declaration order doesn't matter.
+  const savedTabListRef = useRef<SavedTab[]>([]);
 
   // Column filters — grid-owned unless the page supplies them.  The
   // setter keeps a ``Dispatch<SetStateAction>`` shape in both modes so
@@ -682,12 +694,19 @@ export default function DataGrid({
       return {
         key: TAB_PREFIX + v.id,
         label: v.name,
-        match: base ? (row) => base(row) && own(row) : own,
+        // Under ``manualFiltering`` the tab's criteria go to the SERVER
+        // (they ride along on onSegmentChange) — applying them here too
+        // would narrow an already-narrowed page and report that as the
+        // answer, the exact defect this whole feature exists to prevent.
+        match: manualFiltering
+          ? undefined
+          : (base ? (row) => base(row) && own(row) : own),
         tone: v.tone,
         iconKey: v.icon,
       };
     });
-  }, [savedTabsEnabled, savedTabList, columns, searchKeys, segments]);
+  }, [savedTabsEnabled, savedTabList, columns, searchKeys, segments, manualFiltering]);
+  savedTabListRef.current = savedTabList;
   const effectiveSegments = useMemo<DataGridSegment[]>(() => {
     const builtIn = segments ?? [];
     if (!savedTabsEnabled) return builtIn;
@@ -712,7 +731,16 @@ export default function DataGrid({
         : updater;
       segmentPrefRef.current = next;
       if (!segmentControlled) setOwnSegmentPref(next);
-      onSegmentChangeRef.current?.(next);
+      // A saved tab IS a filter set.  A controlled page needs its
+      // criteria, not just its id, or it can't put them in the query —
+      // the key alone is opaque and the tab would do nothing.
+      const tab = next.startsWith(TAB_PREFIX)
+        ? savedTabListRef.current.find(v => TAB_PREFIX + v.id === next)
+        : undefined;
+      onSegmentChangeRef.current?.(
+        next,
+        tab ? { filters: tab.filters, search: tab.search ?? '' } : undefined,
+      );
     },
     [segmentControlled],
   );
@@ -741,6 +769,11 @@ export default function DataGrid({
     // would permanently skip applying it.  (Resolves immediately when
     // syncing is off, and even if the read FAILS, so this can't hang.)
     if (!prefsLoaded) return;
+    // A CONTROLLED grid's tab is the page's to choose.  Auto-applying a
+    // stored default here would call onSegmentChange on mount and
+    // silently discard the value the page passed in — a controlled prop
+    // that the child overrules isn't controlled.
+    if (segmentControlled) { appliedDefault.current = true; return; }
     if (!defaultTab) { appliedDefault.current = true; return; }
     const key = TAB_PREFIX + defaultTab;
     if (effectiveSegments.some(s => s.key === key)) {
@@ -749,7 +782,7 @@ export default function DataGrid({
     // Whether or not the (possibly-deleted) default tab resolved, the
     // one-shot is spent once the preferences have loaded.
     appliedDefault.current = true;
-  }, [prefsLoaded, defaultTab, effectiveSegments]);
+  }, [prefsLoaded, defaultTab, effectiveSegments, segmentControlled]);
 
   // Applying a tab's captured SORT when it becomes the active tab (click
   // or default-on-load).  Keyed only on the active TAB id, so it fires
@@ -1771,6 +1804,23 @@ export default function DataGrid({
   // Values the operator has ALREADY selected stay visible even when
   // the other filters drive their count to 0 — hiding them would make
   // the tick impossible to remove.
+  // Dev-only: catch the misconfiguration at wiring time rather than as a
+  // field report.  Deriving options from loaded rows is fine until the
+  // rows are a server-filtered slice — then picking a value unloads every
+  // other value and the menu strands the operator on their own choice.
+  if (import.meta.env.DEV && manualFiltering) {
+    for (const col of columns) {
+      if (col.filterable && col.filterMode !== 'range'
+          && col.filterMode !== 'date-range' && !col.filterOptions) {
+        console.warn(
+          `[DataGrid] column "${col.key}" is filterable on a manualFiltering `
+          + 'grid but declares no filterOptions — its menu will collapse to '
+          + 'whatever the current server filter left loaded.',
+        );
+      }
+    }
+  }
+
   const uniquesByCol = useMemo(() => {
     const out: Record<string, {
       options: Array<{ value: string; label: string }>;

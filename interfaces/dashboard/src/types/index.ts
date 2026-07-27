@@ -495,6 +495,17 @@ export interface Column<T = Record<string, unknown>> {
    *     so a filter like "2025-11-15 → 2025-11-15" keeps rows from
    *     that whole day. */
   filterMode?: 'select' | 'range' | 'date-range';
+  /** For ``filterMode: 'select'`` — the option list, declared instead of
+   *  derived from the loaded rows.
+   *
+   *  Needed whenever the grid does NOT hold the whole set: options are
+   *  normally collected from the rows in hand, so on a server-filtered
+   *  grid picking "Fault" leaves only faults loaded and the menu
+   *  collapses to the one value you already chose — with no way back.
+   *  A fixed enum (alert types, severities, statuses) should just say so.
+   *  Counts are omitted for declared options: the grid can't count what
+   *  it wasn't given. */
+  filterOptions?: Array<{ value: string; label: string }>;
   /** For ``filterMode: 'range'`` — optional bounds and unit.  When
    *  omitted, min/max are auto-computed from the data (whatever's
    *  currently loaded).  ``step`` drives the browser's number-input

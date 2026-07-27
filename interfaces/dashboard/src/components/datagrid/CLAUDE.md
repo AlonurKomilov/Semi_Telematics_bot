@@ -160,6 +160,57 @@ applies as an ISOLATED SCOPE (not a removable filter). The engine + dialog
 ([`tabs/`](tabs/) — `savedTabs.ts`, `SavedTabDialog.tsx`). Don't hand-roll
 saved-filter tabs on a page.
 
+## Bigger than one fetch? Hand the grid's view-state to the page
+
+DataGrid only ever sees the rows it was given. On a page whose data
+exceeds one fetch (the server caps a page at N rows), **every client-side
+narrowing silently lies**: it filters the loaded N, then reports that as
+the answer for the whole set. A grid holding 2,000 of 3,938 alerts,
+filtered to `critical`, shows a confident number missing ~1,900 rows.
+Segment tabs make it worse — they print a count *badge*, so the wrong
+number lands in the most authoritative-looking spot on the page.
+
+The fix is not to move filtering back onto the page (that splits the UI
+into a chip bar plus a grid, two surfaces for one job). It's to keep the
+filter UI here and let the PAGE own the state, so it can put the filters
+into its server query. Opt in per grid — every prop below is optional and
+omitting them leaves today's behaviour exactly as it was:
+
+- `columnFilters` + `onColumnFiltersChange` — controlled filter state.
+  The grid renders what it's handed and reports intent outward (column
+  menus, removable chips, "clear all" all route through it).
+- `manualFiltering` — "these rows ARRIVED filtered; don't filter them
+  again." **Separate from being controlled on purpose**: a page may
+  control the filters only to mirror them into the URL while the grid
+  still does the work. Without this flag a server-filtered grid
+  double-filters and drops rows. Note it neutralises the per-column
+  `filterFn`, NOT the filter state — the state stays real so the column
+  menus, the header tint and the ⋮ badge keep showing what's active. (It
+  also deliberately does not use tanstack's own `manualFiltering` option:
+  that short-circuits the entire filtered row model, and GLOBAL SEARCH
+  lives in there too, so the search box would silently stop working.)
+- `segmentKey` + `onSegmentChange` — controlled lifecycle tab. Give the
+  segments no `match` fn when the server does the slicing. For a SAVED
+  tab, `onSegmentChange`'s second argument carries that tab's captured
+  `{ filters, search }`, because the key alone is an opaque id — a
+  server-filtered page needs the criteria to put them in its query.
+  Saved tabs also stop matching locally under `manualFiltering`, so they
+  can't re-narrow an already-narrowed page. A controlled grid does not
+  auto-apply the operator's stored default tab either: the page's
+  `segmentKey` wins, since a controlled prop the child overrules isn't
+  controlled.
+- `segmentCounts` — authoritative per-segment counts. **Required** for
+  server-driven segments: without it the badge tallies loaded rows.
+  Keys you leave out fall back to the local tally.
+- Column `filterOptions` — declare a `filterMode: 'select'` column's
+  options instead of deriving them from loaded rows. Also required on a
+  server-filtered grid: derivation reads the rows in hand, so choosing
+  "Fault" unloads every other type and the menu collapses to the one
+  value you already picked, with no way back.
+
+Search stays local by design (it's scoped to the loaded page) — say so
+above the table rather than implying it searched everything.
+
 ## Right-click row actions = the `rowActions` prop
 
 `rowActions={(row) => MenuAction[]}` wraps each data row in a right-click
