@@ -53,6 +53,17 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
 - **Compose primitives.** Build from [`src/components/ui/`](src/components/ui/)
   and [`src/components/shell/`](src/components/shell/) — don't re-implement
   buttons, badges, dialogs, empty/error/loading states.
+- **Mine-vs-shared = always "My X" / "Shared".** Any feature with an
+  account-owned side and a cross-account side (Vendors, Parts, Service
+  Tasks, assemblies next) labels the split with those two words —
+  page tabs, merge-scope pickers, picker group headings, and the
+  Source badge (`Mine` / `Shared`). Do NOT invent a per-feature noun
+  for the shared half (Directory, Catalog, Standard, Library): the
+  user is answering one binary — *mine or everyone's?* — and a
+  different vocabulary per feature is a learning cost with no payoff.
+  The industry noun still earns its keep in **explanatory copy**
+  ("the same shop as a public directory entry") where it names the
+  specific thing rather than the tab.
 - **Role words never in shared identifiers or shared copy.** Persona
   words (`fleet`, `safety`, …) are live role identifiers (subdomains,
   shells); role-flavored text ("Fleet Overview") is GENERATED from the

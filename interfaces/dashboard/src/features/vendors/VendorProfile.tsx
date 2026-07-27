@@ -556,10 +556,11 @@ export default function VendorProfile() {
         </DialogContent>
       </Dialog>
 
-      {/* Merge dialog — two dedup scopes, two verbs.  "Your vendors"
-          folds THIS vendor into the chosen survivor (destructive);
-          "Public directory" LINKS it to the entry the auto name-match
-          missed (non-destructive, reversible via Unlink). */}
+      {/* Merge dialog — the same My-vs-Shared binary as the page tabs,
+          so the same two words.  "My vendors" folds THIS vendor into
+          the chosen survivor (destructive); "Shared" LINKS it to the
+          public-directory entry the auto name-match missed
+          (non-destructive, reversible via Unlink). */}
       <Dialog open={mergeOpen} onOpenChange={(o) => { if (!o) setMergeOpen(false); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -571,7 +572,7 @@ export default function VendorProfile() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-1 rounded-md border border-border p-1 bg-muted/40" role="tablist" aria-label="Duplicate scope">
-            {([['mine', 'Your vendors'], ['directory', 'Public directory']] as const).map(([scope, label]) => (
+            {([['mine', 'My vendors'], ['directory', 'Shared']] as const).map(([scope, label]) => (
               <button
                 key={scope}
                 type="button"

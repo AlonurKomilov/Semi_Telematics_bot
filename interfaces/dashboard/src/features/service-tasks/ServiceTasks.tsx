@@ -2,7 +2,7 @@
  * Service Tasks — the shared task list behind Maintenance and Work
  * Orders (features/service_tasks).
  *
- * Standard tasks ship with every account and carry a cross-account
+ * Shared tasks ship with every account and carry a cross-account
  * key, so "what does a brake job cost" compares honestly between
  * fleets; they're archive-only and name-locked for exactly that
  * reason.  Your own tasks are free to rename, archive or delete —
@@ -35,10 +35,11 @@ import {
   type ServiceTask,
 } from './api';
 
-// My tasks / Standard are PAGE tabs (the Vendors "My vendors |
-// Directory" presentation — owner call), so the grid keeps only the
-// lifecycle segments.  Truck/trailer narrowing lives on the
-// "Applies to" column filter, not as tabs.
+// My tasks / Shared are PAGE tabs, the same My-vs-Shared binary
+// every cross-account feature uses (owner call: one vocabulary, not
+// a different noun per feature), so the grid keeps only the lifecycle
+// segments.  Truck/trailer narrowing lives on the "Applies to" column
+// filter, not as tabs.
 const SEGMENTS: DataGridSegment[] = [
   { key: 'all', label: 'All' },
   { key: 'archived', label: 'Archived', match: (r) => r.status === 'archived' },
@@ -114,7 +115,7 @@ export default function ServiceTasks() {
       });
       setAddOpen(false);
       // A task you add is always your own — land on the tab that holds
-      // it, or adding from Standard looks like nothing happened.
+      // it, or adding from Shared looks like nothing happened.
       setTab('mine');
       setName('');
       setHours('');
@@ -144,7 +145,7 @@ export default function ServiceTasks() {
       key: 'canonical_key', label: 'Source', sortable: true, filterable: true,
       render: (v) => (
         <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses(v ? 'info' : 'neutral')}`}>
-          {v ? 'Standard' : 'Yours'}
+          {v ? 'Shared' : 'Mine'}
         </span>
       ),
     },
@@ -264,7 +265,7 @@ export default function ServiceTasks() {
       <div role="tablist" aria-label="Service task sections" className="flex gap-1 mb-4 border-b border-border">
         {([
           { key: 'mine' as const, label: 'My tasks' },
-          { key: 'standard' as const, label: 'Standard' },
+          { key: 'standard' as const, label: 'Shared' },
         ]).map(({ key, label }) => {
           const sel = tab === key;
           return (
@@ -292,13 +293,13 @@ export default function ServiceTasks() {
           <EmptyState
             icon={ClipboardList}
             title="No tasks of your own yet"
-            description="The Standard tab covers the common jobs — add your own here for work specific to your fleet."
+            description="The Shared tab covers the common jobs — add your own here for work specific to your fleet."
           />
         ) : (
           <EmptyState
             icon={ClipboardList}
-            title="No standard tasks"
-            description="Standard tasks are added automatically — if this list is empty, try reloading."
+            title="No shared tasks"
+            description="Shared tasks are added automatically — if this list is empty, try reloading."
           />
         )
       )}

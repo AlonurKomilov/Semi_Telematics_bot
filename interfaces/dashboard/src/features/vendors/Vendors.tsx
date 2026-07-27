@@ -194,7 +194,7 @@ export default function Vendors() {
       <div role="tablist" aria-label="Vendor sections" className="flex gap-1 mb-4 border-b border-border">
         {([
           { key: 'mine' as const, label: 'My vendors' },
-          { key: 'directory' as const, label: 'Directory' },
+          { key: 'directory' as const, label: 'Shared' },
         ]).map(({ key, label }) => {
           const sel = tab === key;
           return (

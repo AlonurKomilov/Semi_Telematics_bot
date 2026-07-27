@@ -168,7 +168,7 @@ export default function ServiceTaskPicker({
         {orphan && <SelectItem value={orphan}>{orphan}</SelectItem>}
         {standard.length > 0 && (
           <SelectGroup>
-            <SelectLabel>Standard</SelectLabel>
+            <SelectLabel>Shared</SelectLabel>
             {standard.map(([t, isChild]) => (
               <SelectItem key={t.id} value={taskValue(t)}>
                 {isChild ? `\u2514 ${t.name}` : t.name}
@@ -178,7 +178,7 @@ export default function ServiceTaskPicker({
         )}
         {custom.length > 0 && (
           <SelectGroup>
-            <SelectLabel>Your tasks</SelectLabel>
+            <SelectLabel>My tasks</SelectLabel>
             {custom.map(([t, isChild]) => (
               <SelectItem key={t.id} value={taskValue(t)}>
                 {isChild ? `\u2514 ${t.name}` : t.name}

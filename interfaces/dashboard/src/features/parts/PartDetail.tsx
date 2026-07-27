@@ -604,10 +604,11 @@ export default function PartDetail() {
         </DialogContent>
       </Dialog>
 
-      {/* Merge dialog — two dedup scopes, two verbs.  "Your parts"
-          folds THIS part into the chosen survivor (destructive);
-          "Catalog" LINKS it to the canonical entry
-          (non-destructive, reversible via Unlink). */}
+      {/* Merge dialog — the same My-vs-Shared binary as the page tabs,
+          so the same two words.  "My parts" folds THIS part into the
+          chosen survivor (destructive); "Shared" LINKS it to the
+          canonical catalog entry (non-destructive, reversible via
+          Unlink). */}
       <Dialog open={mergeOpen} onOpenChange={(o) => { if (!o) setMergeOpen(false); }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -619,7 +620,7 @@ export default function PartDetail() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex items-center gap-1 rounded-md border border-border p-1 bg-muted/40" role="tablist" aria-label="Duplicate scope">
-            {([['mine', 'Your parts'], ['public', 'Catalog']] as const).map(([scope, label]) => (
+            {([['mine', 'My parts'], ['public', 'Shared']] as const).map(([scope, label]) => (
               <button
                 key={scope}
                 type="button"

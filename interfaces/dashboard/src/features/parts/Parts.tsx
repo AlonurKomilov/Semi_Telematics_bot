@@ -262,7 +262,7 @@ export default function Parts() {
       <div role="tablist" aria-label="Part sections" className="flex gap-1 mb-4 border-b border-border">
         {([
           { key: 'mine' as const, label: 'My parts' },
-          { key: 'public' as const, label: 'Catalog' },
+          { key: 'public' as const, label: 'Shared' },
         ]).map(({ key, label }) => {
           const sel = tab === key;
           return (
