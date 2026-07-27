@@ -220,6 +220,14 @@ export default function PivotView({
         )}
       </table>
       </div>
+      {/* Row count of the REPORT (groups), distinct from the source-row
+          count in the line above — an operator comparing the two can see
+          how much the grouping collapsed. */}
+      {result.bodyRows.length > 0 && (
+        <p className="px-3 py-2 text-2xs text-muted-foreground text-right border-t border-border">
+          {result.bodyRows.length.toLocaleString()} group{result.bodyRows.length === 1 ? '' : 's'}
+        </p>
+      )}
     </div>
   );
 }

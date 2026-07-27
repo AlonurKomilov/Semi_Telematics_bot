@@ -78,6 +78,9 @@ export interface PivotResult {
 }
 
 const EMPTY_LABEL = '—';
+/** Joins a column PATH ("North" + "Q1").  U+0000 can't occur in a bucket
+ *  value, so a path id is unambiguous however the data is shaped. */
+const PATH_SEP = '\u0000';
 
 /** The bucket a row falls into for a given field.
  *
@@ -121,7 +124,12 @@ export function pivot(
 ): PivotResult {
   const cols = byKey(columns);
   const rowCol = model.rows[0] ? cols.get(model.rows[0]) : undefined;
-  const colCol = model.columns[0] ? cols.get(model.columns[0]) : undefined;
+  // N column dimensions -> N header levels above the value row
+  // (Region > Quarter > Sales).  Rows stay single-level in this phase;
+  // nesting THOSE needs an expand/collapse tree, not just more headers.
+  const colCols = model.columns
+    .map((k) => cols.get(k))
+    .filter((c): c is AnyColumn => !!c);
   const valueFields = model.values.filter((v) => cols.has(v.key));
 
   const blank: PivotResult = {
@@ -135,22 +143,26 @@ export function pivot(
   // Sorted so the output is deterministic (and so 'YYYY-MM' month
   // buckets fall in chronological order for free).
   const rowBuckets: string[] = [];
-  const colBuckets: string[] = [];
   const seenRow = new Set<string>();
-  const seenCol = new Set<string>();
+  // A column PATH is one bucket per column dimension ("North" + "Q1").
+  const colPaths: string[][] = [];
+  const seenPath = new Set<string>();
   for (const r of rows) {
     const rb = bucketOf(r, rowCol);
     if (!seenRow.has(rb)) { seenRow.add(rb); rowBuckets.push(rb); }
-    if (colCol) {
-      const cb = bucketOf(r, colCol);
-      if (!seenCol.has(cb)) { seenCol.add(cb); colBuckets.push(cb); }
+    if (colCols.length) {
+      const path = colCols.map((c) => bucketOf(r, c));
+      const id = path.join(PATH_SEP);
+      if (!seenPath.has(id)) { seenPath.add(id); colPaths.push(path); }
     }
   }
   rowBuckets.sort();
-  colBuckets.sort();
-  // No column field → a single implicit bucket, so the value fields
-  // still render as leaves.
-  const effectiveColBuckets = colCol ? colBuckets : [''];
+  // Lexicographic by segment keeps a parent's children contiguous, which
+  // is what lets one header cell span them.
+  colPaths.sort((a, b) => a.join(PATH_SEP).localeCompare(b.join(PATH_SEP)));
+  // No column field → one implicit path, so value fields still render.
+  const effectiveColPaths = colCols.length ? colPaths : [[]];
+  const effectiveColBuckets = effectiveColPaths.map((p) => p.join(PATH_SEP));
 
   // ── Leaves ─────────────────────────────────────────────────────────
   const leafIds: string[] = [];
@@ -164,7 +176,7 @@ export function pivot(
 
   // ── Headers ────────────────────────────────────────────────────────
   const valueLevel: PivotHeaderCell[] = [];
-  for (const cb of effectiveColBuckets) {
+  for (const _ of effectiveColPaths) {
     for (const v of valueFields) {
       valueLevel.push({
         label: cols.get(v.key)?.label ?? v.key,
@@ -173,16 +185,28 @@ export function pivot(
       });
     }
   }
-  const headerLevels: PivotHeaderCell[][] = colCol
-    ? [
-        // Outer level: one spanning cell per column bucket.
-        effectiveColBuckets.map((cb) => ({
-          label: labelOf(cb, colCol),
-          span: valueFields.length,
-        })),
-        valueLevel,
-      ]
-    : [valueLevel];
+  // One level per column dimension.  A cell spans every leaf beneath it,
+  // i.e. (paths sharing this prefix) x (value fields).  Paths are sorted,
+  // so equal prefixes are adjacent and a run is a simple scan.
+  const dimensionLevels: PivotHeaderCell[][] = colCols.map((dimCol, depth) => {
+    const level: PivotHeaderCell[] = [];
+    let i = 0;
+    while (i < effectiveColPaths.length) {
+      const prefix = effectiveColPaths[i].slice(0, depth + 1).join(PATH_SEP);
+      let j = i;
+      while (
+        j < effectiveColPaths.length
+        && effectiveColPaths[j].slice(0, depth + 1).join(PATH_SEP) === prefix
+      ) j += 1;
+      level.push({
+        label: labelOf(effectiveColPaths[i][depth], dimCol),
+        span: (j - i) * valueFields.length,
+      });
+      i = j;
+    }
+    return level;
+  });
+  const headerLevels: PivotHeaderCell[][] = [...dimensionLevels, valueLevel];
 
   // ── Cells ──────────────────────────────────────────────────────────
   // Collect the contributing numbers per (rowBucket, leaf), then reduce
@@ -204,7 +228,9 @@ export function pivot(
 
   for (const r of rows) {
     const rb = bucketOf(r, rowCol);
-    const cb = colCol ? bucketOf(r, colCol) : '';
+    const cb = colCols.length
+      ? colCols.map((c) => bucketOf(r, c)).join(PATH_SEP)
+      : '';
     bump(rowCounts, rb);
     bump(cellCounts, `${rb} ${cb}`);
     bump(colCounts, cb);

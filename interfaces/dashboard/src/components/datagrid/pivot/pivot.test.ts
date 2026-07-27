@@ -177,3 +177,66 @@ describe('pivot — guards', () => {
     expect(r.empty).toBe(false);
   });
 });
+
+describe('pivot — multi-level columns (Region > Quarter)', () => {
+  const COLS: AnyColumn[] = [
+    { key: 'product', label: 'Product', pivotable: true },
+    { key: 'region', label: 'Region', pivotable: true },
+    { key: 'quarter', label: 'Quarter', pivotable: true },
+    { key: 'sales', label: 'Sales', aggregable: true },
+  ];
+  const DATA = [
+    { product: 'Apples', region: 'North', quarter: 'Q1', sales: 1000 },
+    { product: 'Apples', region: 'North', quarter: 'Q2', sales: 1100 },
+    { product: 'Apples', region: 'South', quarter: 'Q1', sales: 1200 },
+    { product: 'Oranges', region: 'North', quarter: 'Q1', sales: 800 },
+  ];
+  const twoLevel: PivotModel = {
+    rows: ['product'],
+    columns: ['region', 'quarter'],
+    values: [{ key: 'sales', aggFn: 'sum' }],
+  };
+
+  it('emits one header level per column dimension, plus the value level', () => {
+    const r = pivot(DATA, twoLevel, COLS);
+    expect(r.headerLevels).toHaveLength(3);
+    expect(r.headerLevels[0].map((h) => h.label)).toEqual(['North', 'South']);
+    expect(r.headerLevels[1].map((h) => h.label)).toEqual(['Q1', 'Q2', 'Q1']);
+    expect(r.headerLevels[2].every((h) => h.aggFn === 'sum')).toBe(true);
+  });
+
+  it('spans a parent across exactly its own children', () => {
+    const r = pivot(DATA, twoLevel, COLS);
+    // North covers Q1+Q2 (2 leaves), South only Q1 (1 leaf).
+    expect(r.headerLevels[0].map((h) => h.span)).toEqual([2, 1]);
+    expect(r.headerLevels[1].map((h) => h.span)).toEqual([1, 1, 1]);
+    expect(r.leafIds).toHaveLength(3);
+  });
+
+  it('spans parents across MULTIPLE value fields too', () => {
+    const r = pivot(DATA, {
+      ...twoLevel,
+      values: [{ key: 'sales', aggFn: 'sum' }, { key: 'sales', aggFn: 'avg' }],
+    }, COLS);
+    // North (2 quarters) x 2 values = 4 leaves beneath it.
+    expect(r.headerLevels[0].map((h) => h.span)).toEqual([4, 2]);
+    expect(r.leafIds).toHaveLength(6);
+  });
+
+  it('aggregates into the right (row x path) cell', () => {
+    const r = pivot(DATA, twoLevel, COLS);
+    const apples = r.bodyRows.find((b) => b.label === 'Apples')!;
+    const oranges = r.bodyRows.find((b) => b.label === 'Oranges')!;
+    // leaves: North/Q1, North/Q2, South/Q1
+    expect(apples.cells).toEqual([1000, 1100, 1200]);
+    expect(oranges.cells).toEqual([800, null, null]);
+    expect(r.grandTotal).toEqual([1800, 1100, 1200]);
+  });
+
+  it('keeps a parent contiguous even when the source rows are shuffled', () => {
+    const shuffled = [DATA[2], DATA[0], DATA[3], DATA[1]];
+    const r = pivot(shuffled, twoLevel, COLS);
+    expect(r.headerLevels[0].map((h) => h.label)).toEqual(['North', 'South']);
+    expect(r.headerLevels[0].map((h) => h.span)).toEqual([2, 1]);
+  });
+});

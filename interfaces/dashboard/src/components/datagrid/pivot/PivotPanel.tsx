@@ -46,11 +46,18 @@ export default function PivotPanel({
 
   // Rows and Columns are mutually exclusive: the same field on both axes
   // would pivot a dimension against itself (one populated diagonal).
+  //
+  // COLUMNS accepts several (Region > Quarter nests as header levels, in
+  // pick order).  ROWS is still single — nesting rows needs an
+  // expand/collapse tree, not just another header level.
   const setDimension = (axis: 'rows' | 'columns', key: string, on: boolean) => {
     const other = axis === 'rows' ? 'columns' : 'rows';
+    const nextAxis = axis === 'columns'
+      ? (on ? [...model.columns, key] : model.columns.filter((k) => k !== key))
+      : (on ? [key] : []);
     onChange({
       ...model,
-      [axis]: on ? [key] : [],
+      [axis]: nextAxis,
       [other]: model[other].filter((k) => k !== key),
     });
   };
@@ -116,16 +123,30 @@ export default function PivotPanel({
           {dimensions.filter(match).length === 0 && <Hint>No matching fields.</Hint>}
         </Section>
 
-        <Section title="Columns" hint="Spread across the top." count={model.columns.length}>
-          {dimensions.filter(match).map((c) => (
-            <FieldRow
-              key={c.key}
-              label={c.label}
-              checked={model.columns.includes(c.key)}
-              disabledReason={model.rows.includes(c.key) ? 'in Rows' : undefined}
-              onToggle={(on) => setDimension('columns', c.key, on)}
-            />
-          ))}
+        <Section
+          title="Columns"
+          hint="Spread across the top. Pick several to nest them."
+          count={model.columns.length}
+        >
+          {dimensions.filter(match).map((c) => {
+            const at = model.columns.indexOf(c.key);
+            return (
+              <FieldRow
+                key={c.key}
+                label={c.label}
+                checked={at >= 0}
+                disabledReason={model.rows.includes(c.key) ? 'in Rows' : undefined}
+                onToggle={(on) => setDimension('columns', c.key, on)}
+                // Nesting order is the pick order and it changes the
+                // header shape, so it has to be visible.
+                trailing={at >= 0 && model.columns.length > 1 && (
+                  <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
+                    {at + 1}
+                  </span>
+                )}
+              />
+            );
+          })}
           {dimensions.filter(match).length === 0 && <Hint>No matching fields.</Hint>}
         </Section>
 

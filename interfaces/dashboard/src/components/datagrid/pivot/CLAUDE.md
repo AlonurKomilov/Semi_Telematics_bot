@@ -79,9 +79,27 @@ is reserved; don't build it until asked.
 Ships: 1 row field × 1 column field × N values, `(n)` counts, grand-total
 row, persistence.
 
-**Deliberately deferred** — don't add without a reason: drag-and-drop
-(nothing to reorder at 1×1), multi-level rows/columns + expand/collapse,
-pivot-side sorting, cell drill-down, saved-tab capture, matrix CSV export.
+**Not built** (measured against MUI's pivoting docs — the full list, so
+nobody has to rediscover a gap):
+
+| Missing | Note |
+|---|---|
+| multi-level ROWS + expand/collapse | needs a row tree; columns went multi-level in Phase 2 |
+| drag-and-drop reorder | checkbox pickers cover 1–2 levels |
+| pivot-side sorting (sort by a measure) | |
+| cell drill-down (click a cell → its rows) | |
+| saved-tab capture of the pivot model | `SavedTab.pivot?` name is reserved |
+| matrix CSV export | export currently emits the flat rows |
+| unassigned-field list with `+` | we list every field in each section instead |
+| collapsible panel sections, per-field ⋮ | no per-field actions yet to hold |
+| controlled props (`pivotModel`/`pivotActive`/`pivotPanelOpen`) | ours is uncontrolled + persisted; add when a page must own the state |
+| sticky column-GROUP labels | we sticky the row-label column instead |
+
+Deliberate DIFFERENCES from MUI (not gaps): `pivotable` is opt-**in**
+here (our grids carry 15+ columns, so opt-out would make the picker
+useless); the pivot toggle lives in the toolbar rather than inside the
+panel (the panel is transient, the toggle shouldn't vanish with it);
+there is no `disablePivoting` — a grid simply doesn't pass `pivot`.
 
 ⚠️ **Client-complete data only.** Pivot aggregates the rows the grid
 holds; on a server-paged grid it would summarise one page and present it
