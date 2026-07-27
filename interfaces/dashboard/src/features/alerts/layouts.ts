@@ -2,7 +2,7 @@
  * Alerts per-persona layouts.
  *
  * Today every persona renders the same 6 sections in header →
- * control_bar → filter_chips → bulk_error → results → pagination
+ * control_bar → bulk_error → results → pagination
  * order.  The persona value lives entirely in the URL filter
  * defaults that useAlertsFilters writes on first land (see
  * personaConfig.ts).
@@ -28,7 +28,6 @@ import type { LayoutMap } from '../_lib/types';
 const UNIVERSAL: ReadonlyArray<string> = [
   'header',
   'control_bar',
-  'filter_chips',
   'bulk_error',
   'results',
   'pagination',
@@ -48,19 +47,19 @@ export const ALERTS_LAYOUTS: LayoutMap = {
   dispatcher: [
     'header',
     'live_ack_panel',
-    'control_bar', 'filter_chips', 'bulk_error', 'results', 'pagination',
+    'control_bar', 'bulk_error', 'results', 'pagination',
     'incident_drillin_drawer',
   ],
   fleet: [
     'header',
     'vehicle_health_summary',
-    'control_bar', 'filter_chips', 'bulk_error', 'results', 'pagination',
+    'control_bar', 'bulk_error', 'results', 'pagination',
     'incident_drillin_drawer',
   ],
   safety: [
     'header',
     'safety_summary_strip',
-    'control_bar', 'filter_chips', 'bulk_error', 'results', 'pagination',
+    'control_bar', 'bulk_error', 'results', 'pagination',
     // Drawer renders nothing until openDrillIn writes to context.  It
     // lives at the tail of the layout so its fixed-position overlay
     // mounts AFTER the rest of the safety page is in the tree — keeps
@@ -74,14 +73,14 @@ export const ALERTS_LAYOUTS: LayoutMap = {
     'header',
     'escalation_status_card',
     'account_alert_summary',
-    'control_bar', 'filter_chips', 'bulk_error', 'results', 'pagination',
+    'control_bar', 'bulk_error', 'results', 'pagination',
     'incident_drillin_drawer',
   ],
   admin: [
     'header',
     'escalation_status_card',
     'account_alert_summary',
-    'control_bar', 'filter_chips', 'bulk_error', 'results', 'pagination',
+    'control_bar', 'bulk_error', 'results', 'pagination',
     'incident_drillin_drawer',
   ],
   // Personas without dedicated sections render the universal layout.

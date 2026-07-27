@@ -27,7 +27,7 @@
  * specific summary cards live in dedicated sections (LiveAckPanel,
  * SafetySummaryStrip, VehicleHealthSummary).
  */
-import { useMemo } from 'react';
+import { useMemo, useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bell, CheckCircle2 } from 'lucide-react';
 import {
@@ -36,6 +36,7 @@ import {
   TableSkeleton,
 } from '../../../components/shell';
 import DataGrid, { type BulkAction } from '../../../components/datagrid';
+import type { ColumnFiltersState } from '@tanstack/react-table';
 import { Tip } from '../../../components/tooltip';
 import type {
   Alert,
@@ -51,6 +52,8 @@ import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import { useAlertsQuery } from '../_shared/useAlertsQuery';
 import { useAckAlerts } from '../useRecentAlerts';
+import { useAlertSegmentCounts } from '../_shared/useAlertSegmentCounts';
+import { toGridFilters, fromGridFilters } from '../_shared/gridFilterAdapters';
 import { familyText,
   AckMarker,
   SeverityDot,
@@ -61,6 +64,42 @@ import { familyText,
 
 const SEV_RANK: Record<string, number> = { critical: 0, warning: 1, info: 2 };
 
+// Declared filter options for the two server-backed column filters.
+//
+// These are the account-wide vocabularies, not "whatever is on screen".
+// A grid derives select options from its loaded rows, which is right only
+// when it holds everything — here it holds a capped page, so choosing one
+// value would unload the rest and the menu would offer only that value
+// back.  Labels are Title case to match the badges in the cells.
+const TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'fault', label: 'Fault' },
+  { value: 'health', label: 'Health' },
+  { value: 'fuel', label: 'Fuel' },
+  { value: 'events', label: 'Events' },
+  { value: 'parking', label: 'Parking' },
+  // No "Maintenance Due": those alerts route through the lite forum path
+  // and are never written to alert_history, so the filter would always
+  // return an empty board.  Offering a control that can only disappoint
+  // is worse than not offering it.  (Same reason VehicleHealthSummary has
+  // no maintenance card.)
+];
+
+const SEVERITY_OPTIONS: { value: string; label: string }[] = [
+  { value: 'critical', label: 'Critical' },
+  { value: 'warning', label: 'Warning' },
+  { value: 'info', label: 'Info' },
+];
+
+// Status is a LIFECYCLE dimension, so it's grid tabs rather than a column
+// filter — and it changes what the server returns (an acknowledged row
+// isn't in the response at all while viewing the open queue), which is
+// why it can't be a column filter even in principle.
+const ACK_SEGMENTS = [
+  { key: 'active', label: 'Not acknowledged' },
+  { key: 'acknowledged', label: 'Acknowledged' },
+  { key: 'all', label: 'All' },
+];
+
 // The API caps the window at 90 days (days: ge=1, le=90), so this is the
 // widest honest "have I really seen everything" check we can offer.
 const MAX_WINDOW_DAYS = 90;
@@ -68,7 +107,46 @@ const MAX_WINDOW_DAYS = 90;
 export default function AlertsResults() {
   const { t } = useTranslation();
   const tz = useTimezone();
-  const { ackState, narrowed, resetToDefaults, days, setDays } = useAlertsFilters();
+  const {
+    ackState, setAckState, narrowed, resetToDefaults, days, setDays,
+    typeFilter, setTypeFilter, severityFilter, setSeverityFilter,
+    vehicleSearch, setVehicleSearch,
+  } = useAlertsFilters();
+  const { counts: segmentCounts } = useAlertSegmentCounts();
+
+  // ── The grid's view-state IS the page's URL state ────────────────
+  //
+  // Type / Severity / search / Status all narrow on the SERVER, because
+  // the board holds a capped page of a much larger queue: a client-side
+  // narrowing would filter the loaded rows and report that as the answer
+  // for all of them.  So the grid renders the controls and reports
+  // intent, and these adapters turn that intent into the query.
+  //
+  // ``'all'`` is the absence of a filter, which is why it's a sentinel in
+  // the URL rather than a value in the option lists.
+  const gridFilters = useMemo(
+    () => toGridFilters(typeFilter, severityFilter),
+    [typeFilter, severityFilter],
+  );
+
+  // The search box types into a DRAFT and lands in the URL on a pause.
+  // Every keystroke otherwise fires two server round-trips (the 2,000-row
+  // list and the tab counts, which share this filter), and an unsettled
+  // URL also spams the history.  The draft follows the URL when it
+  // changes from elsewhere — "clear all filters", a shared link.
+  const [searchDraft, setSearchDraft] = useState(vehicleSearch);
+  useEffect(() => { setSearchDraft(vehicleSearch); }, [vehicleSearch]);
+  useEffect(() => {
+    if (searchDraft === vehicleSearch) return;
+    const id = setTimeout(() => setVehicleSearch(searchDraft), 300);
+    return () => clearTimeout(id);
+  }, [searchDraft, vehicleSearch, setVehicleSearch]);
+
+  const onGridFiltersChange = useCallback((next: ColumnFiltersState) => {
+    const { typeFilter: type, severityFilter: sev } = fromGridFilters(next);
+    setTypeFilter(type);
+    setSeverityFilter(sev);
+  }, [setTypeFilter, setSeverityFilter]);
   // DataGrid owns the checkbox column + the bulk-action bar now, but
   // the SELECTION still lives in the shared context (LiveAckPanel's
   // sound cue, AlertsBulkError, and the filter-chip clear all read it),
@@ -177,14 +255,18 @@ export default function AlertsResults() {
         // Rank-based sort so critical outranks warning outranks info
         // (alphabetical would bury critical in the middle).
         sortKey: (row) => SEV_RANK[String((row as Alert).severity ?? 'warning')] ?? 3,
-        // No column filter: Severity has an authoritative SERVER control in
-        // the filter bar.  A client-side twin would filter only the loaded
-        // batch and silently disagree with it once the window overflows one
-        // fetch — two controls per dimension, one of them quietly wrong.
+        // Filters the SERVER query (see the DataGrid props below), so it
+        // narrows the whole queue rather than the loaded page.  Options are
+        // declared, not derived: derivation reads the rows in hand, so
+        // picking "Critical" would unload every other severity and leave
+        // the menu offering only the value already chosen.
+        filterable: true,
+        filterMode: 'select',
+        filterOptions: SEVERITY_OPTIONS,
         render: (v) => <SeverityDot severity={v as string} />,
       },
-      // Vehicle: sortable, but filtered from the server search above (see
-      // the Severity note).
+      // Vehicle: sortable; narrowing is the grid's search box, which runs
+      // server-side over vehicle name AND location.
       { key: 'vehicle_name', label: 'Vehicle', sortable: true },
       {
         // Owning FEATURE family — answers "Fuel belongs to Vehicle,
@@ -193,8 +275,8 @@ export default function AlertsResults() {
         // row (see ``rows`` below), so sorting and ⋮ "Group rows by
         // this" work through the plain column path.  Deliberately NOT
         // client-filterable — this grid filters server-side only (see
-        // the savedTabs note on <DataGrid>); to narrow by family,
-        // select its types in the Type chips.
+        // the DataGrid props below); to narrow by family, pick its types
+        // in the Type column filter.
         key: 'feature', label: 'Feature', sortable: true,
         render: (v) => (
           <span className="text-muted-foreground">{v as string}</span>
@@ -202,7 +284,10 @@ export default function AlertsResults() {
       },
       {
         key: 'alert_type', label: 'Type', sortable: true,
-        // Filtered from the server Type chips above (see the Severity note).
+        // Server-backed, declared options — same reasoning as Severity.
+        filterable: true,
+        filterMode: 'select',
+        filterOptions: TYPE_OPTIONS,
         render: (v, row) => {
           const a = row as unknown as Alert;
           return (
@@ -372,14 +457,14 @@ export default function AlertsResults() {
           server pager (AlertsPagination below the table) steps through
           the overflow. */}
       {totalCount > alerts.length && (
-        /* The numbers + batch navigation live in ONE place (the pager
-           below); this says the part nothing else does — that search,
-           filters and sorting only see the loaded batch. */
+        /* Filtering, search and Status all run on the SERVER now, so they
+           see every alert.  What remains page-scoped is SORTING and
+           grouping, which reorder the rows in hand — say only that, and
+           say what to do about it. */
         <p className="mb-2 text-xs text-muted-foreground">
-          Search, filters and sorting apply to the loaded batch
-          {ackState === 'active'
-            ? ' — use the Type and Severity filters to bring everything into one batch.'
-            : ' — narrow the date window to bring everything into one batch.'}
+          Sorting and grouping apply to the {alerts.length.toLocaleString()} rows
+          loaded here — narrow with the column filters or search to bring the
+          rest into view.
         </p>
       )}
       <DataGrid
@@ -389,15 +474,15 @@ export default function AlertsResults() {
         // old Per-vehicle / Per-alert toggle — that was a hardcoded
         // special case of this, offering only Vehicle.
         tableId="alerts"
-        // savedTabs is deliberately NOT enabled yet.  Saved tabs capture the
-        // grid's COLUMN filters, and this grid intentionally has none: every
-        // dimension (status / type / severity / vehicle / date) is filtered
-        // server-side, because a client filter would silently scope to the
-        // loaded batch and disagree with the real total.  Turning tabs on
-        // today would give operators a picker with nothing in it.  They
-        // become genuinely useful in the same step that moves the filter bar
-        // INTO the grid (column filters writing the server query) — see the
-        // note in AlertsFilterChips.
+        // savedTabs stays OFF for one more step.  The filters a tab
+        // captures are now server-truthful, which was the blocker — but a
+        // tab and an ack-state are both "the active segment", and this
+        // page models that slot as ackState alone.  Selecting a tab would
+        // hand ``tab:<id>`` to setAckState, which normalises to 'active',
+        // so the tab's filters would be dropped and it wouldn't even show
+        // as selected.  Turning it on needs a page-side segment key that
+        // can hold either kind; DataGrid already passes a tab's captured
+        // {filters, search} to onSegmentChange for exactly that.
         columns={columns}
         data={rows as unknown as Record<string, unknown>[]}
         // The WHOLE row opens the details drawer.  Previously only the
@@ -407,14 +492,29 @@ export default function AlertsResults() {
         // id stays a real <button> so the row is still keyboard-reachable
         // (a click handler on the row alone is mouse-only).
         onRowClick={(row) => openDrillIn(row as unknown as Alert)}
-        // Location only.  Vehicle already has an authoritative SERVER
-        // search in the filter bar; a second client-side vehicle search
-        // over the loaded batch would silently disagree with it whenever
-        // the window overflows one fetch.  Location has no server
-        // equivalent, so this is the one place it's searchable — scoped to
-        // the loaded batch, which the notice above the table states.
-        searchKey={['location']}
-        searchPlaceholder="Search location in this batch…"
+        // Every narrowing on this board happens on the SERVER — see the
+        // adapters at the top of this component.  The grid renders the
+        // controls and reports intent; it must not also narrow the rows,
+        // or it would filter the loaded page and call that the answer.
+        manualFiltering
+        columnFilters={gridFilters}
+        onColumnFiltersChange={onGridFiltersChange}
+        // Status: a lifecycle dimension, and one the server owns — an
+        // acknowledged row isn't in the response at all while the open
+        // queue is showing, so it could never have been a column filter.
+        // Counts come from the server for the same reason the filters do.
+        segments={ACK_SEGMENTS}
+        segmentKey={ackState}
+        onSegmentChange={(key) => setAckState(key as typeof ackState)}
+        segmentCounts={segmentCounts}
+        // One search box, searching vehicle name AND location across the
+        // whole queue.  It replaces two controls that each told a partial
+        // truth: a server vehicle search that ignored location, and a
+        // location search scoped to the rows already loaded.
+        searchKey={['vehicle_name', 'location']}
+        searchPlaceholder="Search vehicle or location…"
+        globalFilter={searchDraft}
+        onGlobalFilterChange={setSearchDraft}
         // Bulk selection is DataGrid's (checkbox column + top bar);
         // CONTROLLED so the shared context stays the owner.  Only
         // un-acknowledged alerts are selectable, and Acknowledge is the

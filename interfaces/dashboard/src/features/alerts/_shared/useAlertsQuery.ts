@@ -69,7 +69,11 @@ export function useAlertsQuery(): UseAlertsQueryResult {
       const params = new URLSearchParams();
       if (typeFilter !== 'all') params.set('alert_type', typeFilter);
       if (severityFilter !== 'all') params.set('severity', severityFilter);
-      if (vehicleSearch) params.set('vehicle', vehicleSearch);
+      // ``q`` searches vehicle name OR location server-side.  The old
+      // ``vehicle`` param matched names only, and location was searchable
+      // solely within the rows already loaded — which quietly meant "some
+      // of your alerts".  One box, one meaning, whole queue.
+      if (vehicleSearch) params.set('q', vehicleSearch);
       params.set('ack_state', ackState);
       params.set('days', String(days));
       params.set('page_size', String(pageSize));

@@ -24,10 +24,6 @@ export const ALERTS_SECTIONS: SectionRegistry<AlertsSectionProps> = {
     Component: lazy(() => import('./sections/AlertsControlBar')),
     label: 'View-mode + date-range control bar',
   },
-  filter_chips: {
-    Component: lazy(() => import('./sections/AlertsFilterChips')),
-    label: 'Filter chips + vehicle search',
-  },
   bulk_error: {
     Component: lazy(() => import('./sections/AlertsBulkError')),
     label: 'Bulk-action error banner',

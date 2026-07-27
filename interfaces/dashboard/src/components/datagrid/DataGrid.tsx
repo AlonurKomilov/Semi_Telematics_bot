@@ -25,7 +25,7 @@ import {
 import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Rows3, Rows2, Rows4,
   Search, X, Columns3, Download, Copy, Filter as FilterIcon, ArrowUpDown,
-  CornerUpRight, ListTree, Plus, Pencil, Trash2, Star,
+  CornerUpRight, ListTree, Plus, Pencil, Trash2, Star, TableProperties,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
@@ -69,6 +69,9 @@ import { Tip } from '../tooltip';
 import { toast } from 'sonner';
 import { exportRowsAsCsv, buildTsv, writeToClipboard } from '../../lib/csv';
 import { usePreference, useTablePreference, useSyncLoaded } from '../../preferences';
+import PivotView from './pivot/PivotView';
+import PivotPanel from './pivot/PivotPanel';
+import { prunePivotModel, type PivotModel } from './pivot/pivot';
 
 type Density = 'compact' | 'default' | 'roomy';
 
@@ -162,6 +165,15 @@ interface DataGridProps {
    *  Additive: left-click / inline buttons are untouched.  Pages gate the
    *  actions by permission themselves (return fewer items when read-only). */
   rowActions?: (row: Record<string, unknown>) => MenuAction[];
+  /** Enable PIVOT mode — a toolbar toggle that swaps the record list for
+   *  a cross-tab report (rows x columns x aggregated values).
+   *
+   *  Requires ``tableId`` (the model persists per table) and a
+   *  CLIENT-COMPLETE dataset: pivot aggregates the rows the grid holds,
+   *  so on a server-paged grid it would summarise one page and present
+   *  it as the whole truth.  Mark dimensions with ``pivotable`` and
+   *  measures with ``aggregable`` on the column config. */
+  pivot?: boolean;
   searchKey?: string | string[];
   stickyHeader?: string;
   searchPlaceholder?: string;
@@ -293,6 +305,11 @@ interface DataGridProps {
    *  control them just to mirror them into the URL while the grid still
    *  does the work. */
   manualFiltering?: boolean;
+  /** Controlled search text.  Supply with ``onGlobalFilterChange``; omit
+   *  both to let the grid keep its own.  Under ``manualFiltering`` the
+   *  grid stops applying it to rows — the page searched already. */
+  globalFilter?: string;
+  onGlobalFilterChange?: (next: string) => void;
 
   /** Controlled segment/tab selection (the key of the active tab).
    *  Don't switch a grid between controlled and uncontrolled after
@@ -570,6 +587,7 @@ const noShiftStrategy: SortingStrategy = () => null;
 
 export default function DataGrid({
   columns, data: sourceData, onRowClick, rowActions, searchKey, stickyHeader, searchPlaceholder,
+  pivot: pivotEnabled = false,
   headerToolbar, tableId, firstColumnLeading, rowGroupHeader, defaultRowGroup,
   defaultAggregation,
   enableToolbar = true, enablePagination = true, segments,
@@ -577,6 +595,7 @@ export default function DataGrid({
   bulkSelection = false, onBulkSelectionChange, bulkActions, bulkRowLabel,
   isRowSelectable, selectedIds: controlledSelectedIds, onSelectedIdsChange,
   columnFilters: controlledColumnFilters, onColumnFiltersChange,
+  globalFilter: controlledGlobalFilter, onGlobalFilterChange,
   manualFiltering = false,
   segmentKey: controlledSegmentKey, onSegmentChange, segmentCounts: serverSegmentCounts,
 }: DataGridProps) {
@@ -587,7 +606,26 @@ export default function DataGrid({
   // so useTimezone → useAuth is always inside a provider here.
   const timeZone = useTimezone();
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [globalFilter, setGlobalFilter] = useState('');
+  // Search — grid-owned unless the page supplies it.  Same dual-mode
+  // shape as the filters; on a server-filtered grid the page drives this
+  // into its query, so the box searches the whole set rather than the
+  // page's slice of it.
+  const [ownGlobalFilter, setOwnGlobalFilter] = useState('');
+  const globalFilterControlled = controlledGlobalFilter !== undefined;
+  const globalFilter = controlledGlobalFilter ?? ownGlobalFilter;
+  const globalFilterRef = useRef(globalFilter);
+  globalFilterRef.current = globalFilter;
+  const setGlobalFilter = useCallback<Dispatch<SetStateAction<string>>>(
+    (updater) => {
+      const next = typeof updater === 'function'
+        ? (updater as (prev: string) => string)(globalFilterRef.current)
+        : updater;
+      globalFilterRef.current = next;
+      if (!globalFilterControlled) setOwnGlobalFilter(next);
+      onGlobalFilterChangeRef.current?.(next);
+    },
+    [globalFilterControlled],
+  );
   // Callback refs so the setters below keep a STABLE identity: they feed
   // tanstack's table options and several dependency arrays, and a page
   // passing an inline arrow would otherwise re-create them every render.
@@ -595,6 +633,8 @@ export default function DataGrid({
   onColumnFiltersChangeRef.current = onColumnFiltersChange;
   const onSegmentChangeRef = useRef(onSegmentChange);
   onSegmentChangeRef.current = onSegmentChange;
+  const onGlobalFilterChangeRef = useRef(onGlobalFilterChange);
+  onGlobalFilterChangeRef.current = onGlobalFilterChange;
   // Read inside memoised column definitions, so flipping the flag can't
   // require rebuilding every column def.
   const manualFilteringRef = useRef(manualFiltering);
@@ -1369,7 +1409,10 @@ export default function DataGrid({
       : undefined,
     state: {
       sorting,
-      globalFilter: hasSearch ? globalFilter : undefined,
+      // Withheld under manualFiltering: the page already searched
+      // server-side, so re-applying it here would narrow the result a
+      // second time by the same needle against a narrower column set.
+      globalFilter: (hasSearch && !manualFiltering) ? globalFilter : undefined,
       // Always the REAL filters, even under ``manualFiltering``.  The
       // menus, the header tint and the 3-dot badge all read the value
       // back through ``column.getFilterValue()``, which reads THIS — so
@@ -2256,6 +2299,34 @@ export default function DataGrid({
 
   const padding = DENSITY_PADDING[density];
 
+  // ── Pivot ──────────────────────────────────────────────────────────
+  // The model persists per table; ``enabled`` lives inside it so turning
+  // pivot off keeps the configuration for next time.  The PANEL's
+  // open/closed state is session-only — it's a configuration surface, not
+  // a preference.
+  const { value: pivotPref, setValue: setPivotPref } =
+    useTablePreference(pivotEnabled ? tableId : undefined, 'pivot');
+  const [pivotPanelOpen, setPivotPanelOpen] = useState(false);
+  const pivotModel = useMemo<PivotModel>(() => {
+    const stored = pivotPref?.model;
+    const base: PivotModel = stored
+      ? { rows: stored.rows ?? [], columns: stored.columns ?? [], values: stored.values ?? [] }
+      : { rows: [], columns: [], values: [] };
+    // A saved model can name columns this grid no longer has.
+    return prunePivotModel(base, columns);
+  }, [pivotPref, columns]);
+  const pivotOn = pivotEnabled && !!pivotPref?.enabled;
+  const setPivotModel = useCallback((model: PivotModel) => {
+    setPivotPref({ enabled: true, model });
+  }, [setPivotPref]);
+  const togglePivot = useCallback(() => {
+    const next = !pivotOn;
+    setPivotPref({ enabled: next, model: pivotModel });
+    // Opening pivot with nothing configured would show only an empty
+    // state — bring the panel so the first click has somewhere to go.
+    setPivotPanelOpen(next && pivotModel.values.length === 0);
+  }, [pivotOn, pivotModel, setPivotPref]);
+
   // ── Custom horizontal scrollbar ─────────────────────────────
   //
   // Native scrollbar spans the whole container including under the
@@ -2762,6 +2833,40 @@ export default function DataGrid({
                   persistent number here read as an unresolved "notification"
                   to clear.  Filter/Sort keep their badges (those ARE active
                   view constraints); "columns hidden" is just layout. */}
+              {pivotEnabled && (
+                <Tip label={pivotOn ? 'Back to the row list' : 'Summarise as a pivot table'}>
+                  <Button
+                    type="button"
+                    variant={pivotOn ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={togglePivot}
+                    aria-pressed={pivotOn}
+                    className="h-8"
+                  >
+                    <TableProperties size={14} /> Pivot
+                  </Button>
+                </Tip>
+              )}
+              {pivotEnabled && pivotOn && (
+                <Tip label="Choose rows, columns and values">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPivotPanelOpen((o) => !o)}
+                    aria-pressed={pivotPanelOpen}
+                    className="h-8"
+                  >
+                    Fields
+                  </Button>
+                </Tip>
+              )}
+              {/* Column machinery is SUPERSEDED in pivot mode (the columns
+                  are synthesized from the model), so it's hidden rather
+                  than greyed — a disabled control the operator can never
+                  satisfy is worse than one that isn't there.  The stored
+                  layout prefs are untouched and return on exit. */}
+              {!pivotOn && (
               <Tip label="Show / hide columns">
               <Button
                 ref={manageAnchorRef}
@@ -2774,6 +2879,7 @@ export default function DataGrid({
                 <Columns3 />
               </Button>
               </Tip>
+              )}
               {/* Export scope picker — "this page" vs "everything
                   that matches the current filters" (all pages). */}
               <MenuPrimitive.Root>
@@ -2857,6 +2963,31 @@ export default function DataGrid({
       </div>
       )}
 
+      {pivotOn ? (
+        // PIVOT MODE — a report, not a record list.  Fed the SAME
+        // post-segment/filter/search rows the footer aggregation reduces,
+        // so the pivot's numbers can never disagree with the grid's.
+        <div className="flex items-stretch">
+          <div className="flex-1 min-w-0">
+            <PivotView
+              rows={table.getFilteredRowModel().rows
+                .filter((r) => !r.getIsGrouped())
+                .map((r) => r.original as Record<string, unknown>)}
+              model={pivotModel}
+              columns={columns}
+              padding={padding}
+            />
+          </div>
+          {pivotPanelOpen && (
+            <PivotPanel
+              columns={columns}
+              model={pivotModel}
+              onChange={setPivotModel}
+              onClose={() => setPivotPanelOpen(false)}
+            />
+          )}
+        </div>
+      ) : (
       <div className="relative">
       <div
         ref={scrollContainerRef}

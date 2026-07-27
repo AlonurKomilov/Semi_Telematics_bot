@@ -78,8 +78,20 @@ export default function VehicleHealthSummary() {
   const { counts, isLoading } = useAlertTypeCounts();
   const { typeFilter, setTypeFilter } = useAlertsFilters();
 
-  const setOrClear = (type: AlertType) => () =>
-    setTypeFilter(typeFilter === type ? 'all' : type);
+  // typeFilter is a comma LIST now (the grid's Type menu is multi-select),
+  // so these cards toggle MEMBERSHIP.  Exact-equality would make a card
+  // stop looking selected the moment a second type was ticked, and
+  // clicking it would overwrite the whole selection down to one value —
+  // silently dropping the other type with no way to undo it.
+  const activeTypes = typeFilter && typeFilter !== 'all'
+    ? typeFilter.split(',')
+    : [];
+  const setOrClear = (type: AlertType) => () => {
+    const next = activeTypes.includes(type)
+      ? activeTypes.filter((t) => t !== type)
+      : [...activeTypes, type];
+    setTypeFilter(next.length ? next.join(',') : 'all');
+  };
   const clickToFilter = t('alerts.vehicle_health.click_to_filter');
 
   // Present = the server counted this type for this view.  While the
@@ -97,7 +109,7 @@ export default function VehicleHealthSummary() {
         const value = counts
           ? c.keys.reduce((sum, k) => sum + (counts[k] ?? 0), 0)
           : undefined;
-        const selected = typeFilter === c.filterAs;
+        const selected = activeTypes.includes(c.filterAs);
         return (
           <KpiCard
             key={c.filterAs}

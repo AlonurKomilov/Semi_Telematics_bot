@@ -801,6 +801,7 @@ class AlertsMixin(_MixinBase):
         alert_type: str | None = None,
         severity: str | None = None,
         vehicle_substring: str | None = None,
+        text_search: str | None = None,
         ack_state: str = "active",
         days: int | None = None,
         alias: str = "",
@@ -817,6 +818,16 @@ class AlertsMixin(_MixinBase):
         fired) so a 7d view shows alerts that started in the last 7
         days — a chronic alert that began 60 days ago doesn't leak
         into the recent window even if it keeps re-firing.
+
+        ``alert_type`` and ``severity`` accept a COMMA-SEPARATED list and
+        become an ``IN`` — the dashboard's column filters are multi-select,
+        so "Fault or Health" has to be one query rather than two.  A single
+        value behaves exactly as before.
+
+        ``text_search`` matches vehicle name OR location.  One box covering
+        both is what lets the board drop its separate vehicle-search
+        control: location used to be searchable only within the rows already
+        loaded, which quietly meant "some of your alerts".
 
         ``alias`` prefixes columns (e.g. "h") for joined queries; pass
         "" for single-table queries.  Returns ``(" AND ...", params)``
@@ -849,15 +860,47 @@ class AlertsMixin(_MixinBase):
             ).isoformat()
             clauses.append(f"{p}first_seen >= ?")
             params.append(cutoff)
+        def _in_clause(column: str, raw: str) -> None:
+            values = [v.strip() for v in raw.split(",") if v.strip()]
+            if not values:
+                # A value that was PROVIDED but reduces to nothing (",,,")
+                # must narrow to empty, never fall through to no predicate:
+                # dropping the clause here would widen the result to every
+                # type, which is the opposite of what the caller asked for.
+                clauses.append("1 = 0")
+                return
+            if len(values) == 1:
+                clauses.append(f"{p}{column} = ?")
+                params.append(values[0])
+            else:
+                placeholders = ", ".join("?" for _ in values)
+                clauses.append(f"{p}{column} IN ({placeholders})")
+                params.extend(values)
+
         if alert_type:
-            clauses.append(f"{p}alert_type = ?")
-            params.append(alert_type)
+            _in_clause("alert_type", alert_type)
         if severity:
-            clauses.append(f"{p}severity = ?")
-            params.append(severity)
+            _in_clause("severity", severity)
         if vehicle_substring:
             clauses.append(f"LOWER({p}vehicle_name) LIKE ?")
             params.append(f"%{vehicle_substring.lower()}%")
+        if text_search:
+            # Escape the LIKE metacharacters so a literal '%' or '_' in the
+            # search box matches itself instead of "anything" — an operator
+            # typing a percentage should not silently select the whole
+            # queue.  Backslash is the escape, declared via ESCAPE.
+            escaped = (
+                text_search.lower()
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            needle = f"%{escaped}%"
+            clauses.append(
+                f"(LOWER({p}vehicle_name) LIKE ? ESCAPE '\\' "
+                f"OR LOWER(COALESCE({p}location, '')) LIKE ? ESCAPE '\\')"
+            )
+            params.extend([needle, needle])
         sql = (" AND " + " AND ".join(clauses)) if clauses else ""
         return sql, params
 
@@ -866,6 +909,7 @@ class AlertsMixin(_MixinBase):
         alert_type: str | None = None,
         vehicle_substring: str | None = None,
         severity: str | None = None,
+        text_search: str | None = None,
         ack_state: str = "active",
         days: int | None = None,
         limit: int | None = None,
@@ -907,7 +951,7 @@ class AlertsMixin(_MixinBase):
         params: list = [account_id]
         frag, fp = self._alert_filter_clause(
             alert_type=alert_type, severity=severity,
-            vehicle_substring=vehicle_substring,
+            vehicle_substring=vehicle_substring, text_search=text_search,
             ack_state=ack_state, days=days, alias="h",
         )
         sql += frag + " "
@@ -925,6 +969,7 @@ class AlertsMixin(_MixinBase):
         alert_type: str | None = None,
         vehicle_substring: str | None = None,
         severity: str | None = None,
+        text_search: str | None = None,
         ack_state: str = "active",
         days: int | None = None,
     ) -> int:
@@ -941,7 +986,7 @@ class AlertsMixin(_MixinBase):
         params: list = [account_id]
         frag, fp = self._alert_filter_clause(
             alert_type=alert_type, severity=severity,
-            vehicle_substring=vehicle_substring,
+            vehicle_substring=vehicle_substring, text_search=text_search,
             ack_state=ack_state, days=days,
         )
         sql += frag

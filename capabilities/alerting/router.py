@@ -192,8 +192,13 @@ def _attach_company(alerts: list[dict], veh_map: dict) -> list[dict]:
 async def pending_alerts(
     alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
     vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
+    # One search box over vehicle name OR location.  ``vehicle`` stays for
+    # older clients; ``q`` is what the board's grid search sends, and it
+    # covers location too — that used to be searchable only inside the
+    # rows already loaded, i.e. "some of your alerts".
+    q: str | None = Query(None, description="Search vehicle name or location"),
     severity: str | None = Query(None, description="Filter: critical, warning, info"),
-    # Ack-state chip: 'active' (not acknowledged, default), 'acknowledged'
+    # Ack-state tab: 'active' (not acknowledged, default), 'acknowledged'
     # (human-acked or auto-resolved), or 'all'.
     ack_state: str | None = Query(None, description="active | acknowledged | all"),
     # Date window on first_seen — bounds the acknowledged / all views only.
@@ -249,7 +254,7 @@ async def pending_alerts(
         rows = await tenant_db.get_active_alert_history_for_account_paged(
             user["account_id"],
             alert_type=alert_type, vehicle_substring=vehicle,
-            severity=severity, ack_state=state, days=days,
+            severity=severity, text_search=q, ack_state=state, days=days,
         )
         alerts = [_shape_history_for_pending_api(r) for r in rows]
         if is_driver_scope:
@@ -267,12 +272,12 @@ async def pending_alerts(
     offset = (page - 1) * page_size
     total = await tenant_db.count_active_alert_history_for_account_filtered(
         user["account_id"], alert_type=alert_type, vehicle_substring=vehicle,
-        severity=severity, ack_state=state, days=days,
+        severity=severity, text_search=q, ack_state=state, days=days,
     )
     rows = await tenant_db.get_active_alert_history_for_account_paged(
         user["account_id"],
         alert_type=alert_type, vehicle_substring=vehicle,
-        severity=severity, ack_state=state, days=days,
+        severity=severity, text_search=q, ack_state=state, days=days,
         limit=page_size, offset=offset,
     )
     alerts = _attach_company(
@@ -513,6 +518,73 @@ async def pending_alerts_count(
             user["account_id"], alert_type=at,
         )
     return {"count": total}
+
+
+@router.get("/pending/segment-counts")
+async def pending_alerts_segment_counts(
+    alert_type: str | None = Query(None),
+    severity: str | None = Query(None),
+    q: str | None = Query(None, description="Search vehicle name or location"),
+    days: int | None = Query(None, ge=1, le=90),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Row count per ack-state tab, under the board's CURRENT filters.
+
+    The board's Status tabs render their count as a badge.  A grid can
+    only tally the rows it holds, and this board holds a capped page of a
+    larger queue — so a locally-tallied badge would print an
+    authoritative-looking number that is simply wrong, in the most
+    prominent spot on the page.  These come from the same COUNT the list
+    itself is paginated by, so the tab and the list can't disagree.
+
+    Filters mirror /pending (type, severity, search, window) so switching
+    tabs changes ONLY the ack-state.  The window is deliberately passed
+    through unchanged: it doesn't apply to the open queue (see
+    _alert_filter_clause), so 'active' is unwindowed while the other two
+    honour it — the same asymmetry the list has.
+    """
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
+    company_codes = await get_user_company_codes(user)
+
+    states = ("active", "acknowledged", "all")
+
+    # Driver / company scope can't be expressed in SQL (no company column;
+    # the truck filter joins user→vehicle in Python), so those paths count
+    # rows the same way /pending builds them.  Mirrors /pending/count.
+    #
+    # Three fetches rather than one bucketed pass, deliberately: the date
+    # window applies to 'acknowledged' and 'all' but NOT to 'active' (an
+    # unacknowledged alert is open regardless of age — see
+    # _alert_filter_clause), so the three sets aren't slices of a common
+    # one and can't be derived from a single query without re-implementing
+    # that rule here, where it would drift.
+    if is_driver_scope or company_codes:
+        veh_map = (await _vehicle_company_map(user["account_id"], tenant_db)
+                   if company_codes else {})
+        counts: dict[str, int] = {}
+        for state in states:
+            rows = await tenant_db.get_active_alert_history_for_account_paged(
+                user["account_id"], alert_type=alert_type, severity=severity,
+                text_search=q, ack_state=state, days=days,
+            )
+            alerts = [_shape_history_for_pending_api(r) for r in rows]
+            if is_driver_scope:
+                alerts = _filter_types_by_permission(user, alerts)
+                alerts = await _filter_own(user, alerts)
+            if company_codes:
+                alerts = filter_by_company_map(
+                    alerts, company_codes, veh_map, key="vehicle_id")
+            counts[state] = len(alerts)
+        return {"counts": counts}
+
+    counts = {}
+    for state in states:
+        counts[state] = await tenant_db.count_active_alert_history_for_account_filtered(
+            user["account_id"], alert_type=alert_type, severity=severity,
+            text_search=q, ack_state=state, days=days,
+        )
+    return {"counts": counts}
 
 
 @router.get("/pending/by-type")

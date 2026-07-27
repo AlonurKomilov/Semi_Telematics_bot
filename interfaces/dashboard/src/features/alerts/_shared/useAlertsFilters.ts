@@ -29,8 +29,6 @@ import { useShellConfig } from '../../../hooks/useShellConfig';
 import {
   resolveFilterDefaults,
   type AlertAckState,
-  type AlertSeverity,
-  type AlertType,
   type FilterDefaults,
 } from '../personaConfig';
 
@@ -46,14 +44,19 @@ const FILTER_PARAM_KEYS = [
 type FilterParamKey = (typeof FILTER_PARAM_KEYS)[number];
 
 export interface AlertsFiltersAPI {
-  typeFilter: AlertType;
-  severityFilter: AlertSeverity;
+  /** ``'all'`` or a COMMA-SEPARATED list of types — the board's Type
+   *  control is a multi-select, and the API turns a list into an ``IN``.
+   *  Persona defaults are single values, which are lists of one. */
+  typeFilter: string;
+  /** Same comma-list shape as ``typeFilter``. */
+  severityFilter: string;
   ackState: AlertAckState;
+  /** Free text matched against vehicle name OR location, server-side. */
   vehicleSearch: string;
   days: number;
   page: number;
-  setTypeFilter: (v: AlertType) => void;
-  setSeverityFilter: (v: AlertSeverity) => void;
+  setTypeFilter: (v: string) => void;
+  setSeverityFilter: (v: string) => void;
   setAckState: (v: AlertAckState) => void;
   setVehicleSearch: (v: string) => void;
   setDays: (v: number) => void;
@@ -71,16 +74,15 @@ export interface AlertsFiltersAPI {
 }
 
 function readDefaults(params: URLSearchParams, defaults: FilterDefaults): {
-  typeFilter: AlertType;
-  severityFilter: AlertSeverity;
+  typeFilter: string;
+  severityFilter: string;
   ackState: AlertAckState;
   vehicleSearch: string;
   days: number;
   page: number;
 } {
-  const typeFilter = (params.get('typeFilter') as AlertType) || defaults.typeFilter;
-  const severityFilter =
-    (params.get('severityFilter') as AlertSeverity) || defaults.severityFilter;
+  const typeFilter = params.get('typeFilter') || defaults.typeFilter;
+  const severityFilter = params.get('severityFilter') || defaults.severityFilter;
   const ackState = (params.get('ackState') as AlertAckState) || defaults.ackState;
   const vehicleSearch = params.get('vehicleSearch') ?? defaults.vehicleSearch;
   const daysRaw = parseInt(params.get('days') ?? '', 10);

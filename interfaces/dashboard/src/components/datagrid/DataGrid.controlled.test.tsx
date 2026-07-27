@@ -132,17 +132,22 @@ describe('DataGrid — controlled column filters', () => {
   });
 });
 
-describe('DataGrid — manualFiltering keeps local search alive', () => {
-  it('still filters by the search box while ignoring the column filters', async () => {
-    // tanstack's own ``manualFiltering`` option short-circuits the whole
-    // filtered row model — and GLOBAL SEARCH lives in there too, so using
-    // it would silently disable the search box.  We withhold the column
-    // filters from the table instead.  This test is the guard.
+describe('DataGrid — manualFiltering hands search to the page too', () => {
+  it('reports typing outward and does NOT re-narrow the rows itself', async () => {
+    // ``manualFiltering`` means every narrowing already happened
+    // upstream — search included.  Re-applying it here would filter by
+    // the grid's ``searchKey`` columns, which need not be the columns the
+    // SERVER searched: the board's server search covers vehicle AND
+    // location, so a local pass over one of them would drop rows the
+    // server correctly returned.
+    const onSearch = vi.fn();
     render(
       <DataGrid
         columns={COLUMNS}
         data={ROWS}
         searchKey={['name']}
+        globalFilter=""
+        onGlobalFilterChange={onSearch}
         columnFilters={[{ id: 'type', value: ['fault'] }]}
         onColumnFiltersChange={() => {}}
         manualFiltering
@@ -157,8 +162,24 @@ describe('DataGrid — manualFiltering keeps local search alive', () => {
       setter.call(box, 'Truck 3');
       box.dispatchEvent(new Event('input', { bubbles: true }));
     });
-    // Search narrowed to Truck 3 — even though the 'fault' column filter
-    // (which Truck 3 fails) is active and deliberately not applied.
+    // The page is told what to query...
+    expect(onSearch).toHaveBeenCalledWith('Truck 3');
+    // ...and the grid renders exactly the rows it was handed until the
+    // page comes back with a narrower set.
+    expect(bodyText()).toContain('Truck 1');
+    expect(bodyText()).toContain('Truck 3');
+  });
+
+  it('keeps searching locally when the grid is NOT manual', async () => {
+    render(<DataGrid columns={COLUMNS} data={ROWS} searchKey={['name']} />);
+    const box = document.querySelector('input[type="text"], input:not([type])') as HTMLInputElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value',
+      )!.set!;
+      setter.call(box, 'Truck 3');
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
     expect(bodyText()).toContain('Truck 3');
     expect(bodyText()).not.toContain('Truck 1');
   });
