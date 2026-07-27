@@ -29,18 +29,23 @@ const TYPE_TEXT: Record<string, string> = {
   system: 'System', samsara_sync: 'Sync', reescalate: 'Re-escalation',
 };
 
-// Alert type → owning FEATURE family (mirrors FEATURE_GROUPS in the
-// delivery config — the product taxonomy).  Answers "which feature does
-// this alert belong to?": Fuel is a child of Vehicle, Events of Safety…
+// Alert type → owning FEATURE, named as the feature catalog names it
+// (featureCatalog.ts ids → their English nav labels; familyText.test.ts
+// guards the mirror).  Answers "which feature does this alert belong
+// to?": Fuel is a child of Vehicles, Events of Safety Events.  NEVER a
+// persona word — "Safety" is a role here, not a feature (PERSONA.md).
 // English product vocabulary, same rule as TYPE_TEXT.
 const TYPE_FAMILY: Record<string, string> = {
-  fault: 'Vehicle', faults: 'Vehicle', health: 'Vehicle', fuel: 'Vehicle',
-  events: 'Safety', event: 'Safety', safety_events: 'Safety',
-  camera: 'Safety', parking: 'Safety',
+  fault: 'Vehicles', faults: 'Vehicles', health: 'Vehicles', fuel: 'Vehicles',
+  events: 'Safety Events', event: 'Safety Events', safety_events: 'Safety Events',
+  camera: 'Cameras',
+  parking: 'Parking',
   geofence: 'Geofences',
   scorecard: 'Scorecards',
   maintenance: 'Maintenance',
   documents: 'Drivers', doc_expiry: 'Drivers',
+  // Owner/admin housekeeping (sync failures, re-escalations) — not a
+  // catalog feature; the pipeline homes these on the system route.
   system: 'System', samsara_sync: 'System', reescalate: 'System',
 };
 
