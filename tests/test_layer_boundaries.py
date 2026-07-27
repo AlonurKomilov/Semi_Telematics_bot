@@ -38,6 +38,10 @@ FORBIDDEN = {
     "capabilities/platform": ("features",),
     # The delivery spine stays source-blind: sources register INTO it.
     "capabilities/notifications": ("capabilities.alerting", "features"),
+    # THE WALL (alert-dm-migration end state): alerting detects, stores
+    # and decides — it never touches the transport.  Every send, edit,
+    # button and deferral goes through capabilities/notifications.
+    "capabilities/alerting": ("telegram",),
 }
 
 # Narrow, deliberate exemptions (path prefixes, repo-relative).

@@ -5,86 +5,11 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ParseMode
-from telegram.error import BadRequest as TGBadRequest
-from telegram.ext import Application
 
-from capabilities.alerting.pipeline import (
-    AlertSeverity,
-    build_alert_keyboard,
-)
-from infra.bot_registry import get_app_for_account
-from infra.context import get_company_display
-from infra.services import get_db, get_platform_db, get_tenant_db
+from infra.services import get_platform_db, get_tenant_db
 from capabilities.alerting.registry import register_alert_source
 
 logger = logging.getLogger("bot")
-
-
-# ── Alert Acknowledgment Handler ─────────────────────────────────
-
-async def handle_alert_ack(update, context, ack_id: int):
-    """Handle the ✅ Acknowledge button press on a critical alert."""
-    query = update.callback_query
-    try:
-        user = context.user_data.get("_db_user")
-        tid = query.from_user.id
-        acct_id = user.account_id if user else 0
-        tenant = await get_tenant_db(acct_id) if acct_id else get_db()
-        await tenant.acknowledge_alert(ack_id, tid)
-
-        # Update the message to show it's been acknowledged.  The
-        # Option A grammar appends a chip suffix to the existing 🔖 id
-        # line so the alert stays a single coherent block instead of
-        # gaining a trailing "Acknowledged by …" stanza on its own.
-        # Falls back to appending a new line when no id chip is found
-        # (legacy alerts, manually-edited messages, …).
-        try:
-            original_text = query.message.text_html or query.message.text or ""
-            ack_name = query.from_user.full_name or str(tid)
-            ack_chip = (
-                f"  ·  ✅ Acked by "
-                f"<a href='tg://user?id={tid}'>{ack_name}</a>"
-            )
-            lines = original_text.split("\n")
-            patched = False
-            for i, ln in enumerate(lines):
-                if ln.lstrip().startswith("🔖"):
-                    lines[i] = ln + ack_chip
-                    patched = True
-                    break
-            ack_text = "\n".join(lines) if patched else (
-                original_text + f"\n\n✅ <b>Acknowledged</b> by "
-                f"<a href='tg://user?id={tid}'>{ack_name}</a>"
-            )
-            # Keep only the truck view button
-            new_kb = InlineKeyboardMarkup([
-                row for row in (query.message.reply_markup.inline_keyboard
-                                if query.message.reply_markup else [])
-                if any("ack_alert" not in (b.callback_data or "") for b in row)
-            ])
-            await query.edit_message_text(
-                text=ack_text,
-                parse_mode=ParseMode.HTML,
-                reply_markup=new_kb if new_kb.inline_keyboard else None,
-            )
-        except Exception:
-            logger.debug("Failed to edit ack message for alert %d", ack_id)
-        await query.answer("✅ Alert acknowledged!", show_alert=False)
-
-        # Audit log
-        if user:
-            await tenant.add_audit_log(
-                account_id=user.account_id,
-                user_id=user.id,
-                action="alert_acknowledged",
-                target_type="alert",
-                target_id=str(ack_id),
-            )
-    except Exception as e:
-        logger.error("ACK alert %d failed: %s", ack_id, e, exc_info=True)
-        await query.answer("Error acknowledging alert", show_alert=True)
 
 
 # ── Auto-Resolve Helpers ─────────────────────────────────────────
@@ -139,13 +64,13 @@ def _build_resolve_detail(alert_type: str, detail: str) -> str:
 
 
 async def _auto_resolve_vehicle_alerts(
-    app: Application,
+    app,   # unused transport handle — kept for caller compatibility
     account_id: int,
     alert_type: str,
     vehicle_id: str,
     vehicle_name: str,
     co: str,
-    bot_app: Application | None = None,
+    bot_app=None,   # unused — kept for caller compatibility
 ):
     """Auto-resolve all unacked alerts for a vehicle when the source check
     detects the condition has cleared.
@@ -244,13 +169,6 @@ async def _auto_resolve_vehicle_alerts(
     )
     if not reply_targets:
         return  # never delivered anywhere — nothing to send a receipt to
-
-    # Resolve per-account bot — skip if no account bot registered
-    if bot_app is None:
-        bot_app = get_app_for_account(account_id)
-    if not bot_app:
-        logger.warning("No bot for account %d — skipping auto-resolve", account_id)
-        return
 
     from capabilities.formatting.helpers import escape_html
     vname = escape_html(str(vehicle_name or reply_targets[0].get("vehicle_name", "?")))
@@ -359,24 +277,6 @@ async def _auto_resolve_vehicle_alerts(
 
     resolve_text = "\n".join(resolve_lines)
 
-    # Per-recipient: try to EDIT the existing alert message into a
-    # ✅ resolved receipt instead of delete-old + send-new.  The user's
-    # chat now shows one persistent record per logical alert with its
-    # final state ("auto-resolved 6m ago"), no extra notification ping.
-    # Falls back to delete + send when the edit fails (msg deleted, > 48h
-    # old, ParseMode mismatch, …) so the user still gets the resolution.
-    # DM resolves keep the View Truck button — the recipient is the
-    # only viewer of their own DM, so editing-in-place is harmless.
-    resolved_kb_dm = InlineKeyboardMarkup([
-        [InlineKeyboardButton(
-            f"📋 View Truck #{vname}",
-            callback_data=f"covehicle_{alert_co}_{vname}",
-        )],
-    ])
-    # Group resolves drop the button entirely — its callback rewrites
-    # the message in place and would erase the "AUTO-RESOLVED" receipt
-    # for every other shift reading the topic.
-    resolved_kb_group = None
 
     # Look up the forum topic for this alert type once so group resolves
     # can route explicitly.  Telegram only routes a reply into the same
@@ -426,133 +326,45 @@ async def _auto_resolve_vehicle_alerts(
             account_id, alert_type, e,
         )
 
-    for alert in reply_targets:
-        recipient_id = alert.get("sent_to")
-        msg_id = alert.get("message_id")
-        chat_id = alert.get("chat_id")
-        is_group_post = recipient_id == 0  # sentinel from _try_post_to_topic
-
-        # DND: skip Telegram delivery (audit log still happens below).
-        # Group posts skip DND entirely — Telegram per-topic mute is
-        # each member's personal silencer.  Personal DND uses the SSoT
-        # helper that prefers per-user override and falls back to the
-        # account's Working Hours for the user's role.
-        #
-        # Per-user resolve-receipt gate (migration 080): users who
-        # haven't opted in via the dashboard "My Notifications" page
-        # don't get the 🟢 RESOLVED DM at all (default off).  The
-        # original alert message in their DM stays as-is; the next
-        # alert delivery still happens normally.
-        recipient = None
-        if recipient_id and not is_group_post:
-            recipient = await get_platform_db().get_user_by_telegram_id(recipient_id)
-            if recipient:
-                from capabilities.alerting.dnd import is_user_dnd_active
-                if await is_user_dnd_active(recipient, tenant):
-                    # Off-shift: skip the DM receipt — the shift report's
-                    # "resolved" section covers it, and the retired
-                    # private queue isn't replayed anymore.  (Spine DM
-                    # copies get their receipt as a silent in-place edit
-                    # regardless — edits don't buzz.)
-                    continue
-                if not getattr(recipient, "alert_resolve_receipts", False):
-                    # User opted out (or never opted in).  Skip the
-                    # DM receipt entirely.  Don't queue for DND replay
-                    # either — they explicitly don't want these.
-                    continue
-
-        # ── Group posts: send resolution as a REPLY to the original ──
-        # In a forum topic the original "🚨 ALERT" message has to stay
-        # visible — different shifts read the same topic at different
-        # times and the alert text + duration + AI analysis is the
-        # context they need.  Editing-in-place would erase that and
-        # leave only "✅ AUTO-RESOLVED" with no clue what the alert
-        # said.  So for group posts we post a NEW resolution message
-        # as a reply to the original, preserving both in the thread.
-        if is_group_post and not group_receipt_enabled:
-            # Admin has muted the resolve receipt for this topic.  The
-            # original alert message stays; only the new "RESOLVED"
-            # message is suppressed.
-            continue
-        if is_group_post:
-            if msg_id and chat_id:
-                try:
-                    await bot_app.bot.send_message(
-                        chat_id=chat_id,
-                        message_thread_id=group_thread_id,
-                        text=resolve_text,
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=resolved_kb_group,
-                        reply_to_message_id=msg_id,
-                    )
-                except Exception as e:
-                    logger.debug(
-                        "Group auto-resolve reply failed (chat=%s msg=%s): %s",
-                        chat_id, msg_id, e,
-                    )
-                    # Last resort: post into the topic without a reply
-                    # link so at least the resolution lands somewhere.
-                    # ``message_thread_id`` still applies — the reply was
-                    # only context, not what kept us inside the topic.
-                    try:
-                        await bot_app.bot.send_message(
-                            chat_id=chat_id,
-                            message_thread_id=group_thread_id,
-                            text=resolve_text,
-                            parse_mode=ParseMode.HTML,
-                            reply_markup=resolved_kb_group,
-                        )
-                    except Exception as e2:
-                        logger.debug("Group auto-resolve plain-send also failed: %s", e2)
-            continue
-
-        # ── DM posts: original behavior (edit-in-place) ──
-        # The recipient is the only viewer of their own DM, so
-        # collapsing alert+resolve into one persistent record keeps
-        # their feed tidy.  Falls back to delete+send only when the
-        # edit physically can't happen (msg deleted, >48 h old).
-        edited = False
-        if msg_id and chat_id:
+    # Group receipts: a threaded REPLY under each original group post
+    # (reply-not-edit — other shifts still need the alert text), sent
+    # through the delivery plan with the receipt's pre-rendered HTML
+    # riding the prefix rail and reply_to threading into the topic.
+    # Legacy DM rows get nothing here — spine DM copies already got
+    # their in-place 🟢 edit above.
+    if group_receipt_enabled:
+        from capabilities.notifications import (
+            DeliveryPlan,
+            NotificationContent as _NC,
+            Target as _PT,
+            deliver as _plan_deliver,
+        )
+        _receipt_targets: list = []
+        for alert in reply_targets:
+            if alert.get("sent_to") != 0:
+                continue                     # group rows only
+            msg_id = alert.get("message_id")
+            chat_id = alert.get("chat_id")
+            if not (msg_id and chat_id):
+                continue
+            addr = (f"{chat_id}:{group_thread_id}"
+                    if group_thread_id is not None else str(chat_id))
+            _receipt_targets.append(_PT(
+                channel="telegram_topic", address=addr,
+                id=_PIPELINE_TO_ROUTE_KEY.get(alert_type, alert_type),
+                prefix_html=resolve_text,
+                reply_to_message_id=int(msg_id),
+            ))
+        if _receipt_targets:
             try:
-                await bot_app.bot.edit_message_text(
-                    chat_id=chat_id,
-                    message_id=msg_id,
-                    text=resolve_text,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=resolved_kb_dm,
+                await _plan_deliver(
+                    get_platform_db(), account_id,
+                    DeliveryPlan(contents=[_NC(title="", body="")],
+                                 shared=_receipt_targets, personal=[]),
                 )
-                edited = True
-            except TGBadRequest as e:
-                if "not modified" in str(e).lower():
-                    edited = True
-                else:
-                    logger.debug(
-                        "Auto-resolve edit failed for msg %s: %s — falling back to send-new",
-                        msg_id, e,
-                    )
-            except Exception as e:
-                logger.debug("Auto-resolve edit error for msg %s: %s", msg_id, e)
-
-        if edited:
-            continue
-
-        if msg_id and chat_id:
-            try:
-                await bot_app.bot.delete_message(chat_id=chat_id, message_id=msg_id)
-            except Exception:
-                logger.debug(
-                    "Failed to delete old alert msg %s during auto-resolve fallback",
-                    msg_id,
-                )
-        try:
-            await bot_app.bot.send_message(
-                chat_id=alert["sent_to"],
-                text=resolve_text,
-                parse_mode=ParseMode.HTML,
-                reply_markup=resolved_kb_dm,
-            )
-        except Exception as e:
-            logger.debug("Could not send auto-resolve message: %s", e)
+            except Exception as _ge:
+                logger.debug("group resolve receipts failed (%s/%s): %s",
+                             account_id, vehicle_id, _ge)
 
     await tenant.add_audit_log(
         account_id=account_id,
@@ -569,84 +381,6 @@ async def _auto_resolve_vehicle_alerts(
         "Auto-resolved %s alert for Truck %s — notified %d subscriber(s)",
         alert_type, vname, len(reply_targets),
     )
-
-async def handle_back_to_alert(update, context, ack_id: int):
-    """Re-render the alert summary + keyboard when user presses Back from AI Diagnose, etc."""
-    query = update.callback_query
-    await query.answer()
-    try:
-        user = context.user_data.get("_db_user")
-        acct_id = user.account_id if user else 0
-        tenant = await get_tenant_db(acct_id) if acct_id else get_db()
-        row = await tenant.get_alert_ack_by_id(ack_id)
-        if not row:
-            await query.edit_message_text("Alert not found.", parse_mode=ParseMode.HTML)
-            return
-
-        alert_key = row.get("alert_key", "")
-        parts = alert_key.split(":", 2)
-        co = parts[0] if parts else "?"
-        vname = row.get("vehicle_name", "?")
-        alert_type = row.get("alert_type", "fault")
-        detail = parts[2] if len(parts) > 2 else ""
-        co_display = get_company_display().get(co, co)
-
-        # Determine severity
-        severity = (AlertSeverity.CRITICAL if alert_type == "health"
-                    else AlertSeverity.WARNING)
-
-        # Status line
-        acked = row.get("acknowledged_at")
-        status = row.get("status", "active")
-        if acked:
-            status_line = "  ✅ <b>Acknowledged</b>"
-        elif status == "expired":
-            status_line = "  ⏳ <b>Expired</b>"
-        else:
-            status_line = "  🔴 <b>Unacknowledged</b>"
-
-        # Build alert type header/icon
-        type_icons = {
-            "fault": "⚙️", "health": "🩺", "fuel": "⛽",
-            "events": "🚨", "parking": "🅿️",
-        }
-        icon = type_icons.get(alert_type, "🔔")
-
-        # Build detail lines from alert_key
-        detail_lines = ""
-        if alert_type == "fault" and detail:
-            for item in detail.split("|")[:3]:
-                spn_fmi, _, desc = item.partition(":")
-                detail_lines += f"\n  {icon} {spn_fmi}"
-                if desc:
-                    detail_lines += f"\n     {desc}"
-        elif detail:
-            detail_lines = f"\n  {icon} {detail}"
-
-        text = (
-            "━━━━━━━━━━━━━━━━━━━\n"
-            f"  🔔  <b>{alert_type.upper()} ALERT</b>\n"
-            "━━━━━━━━━━━━━━━━━━━\n"
-            f"\n  🚛 Truck: <b>#{vname}</b>  ({co_display})"
-            f"{detail_lines}\n"
-            f"\n{status_line}"
-        )
-
-        kb = build_alert_keyboard(
-            severity, co, vname, ack_id=ack_id,
-            alert_type=alert_type,
-            vehicle_id=row.get("vehicle_id", ""),
-            lang=getattr(user, "language", None) or "en",
-        )
-
-        await query.edit_message_text(
-            text=text, parse_mode=ParseMode.HTML, reply_markup=kb,
-        )
-    except Exception as e:
-        logger.error(f"Back to alert {ack_id}: {e}")
-
-
-# ── Re-escalation of unacknowledged CRITICAL alerts ──────────────
 
 def _backoff_hours_for_attempt(attempt_index: int, schedule: tuple[int, ...]) -> int:
     """Pick the wait-hours for the next reminder.
@@ -665,7 +399,7 @@ def _backoff_hours_for_attempt(attempt_index: int, schedule: tuple[int, ...]) ->
 
 
 @register_alert_source("critical_reescalate", trigger="interval", hours=1)
-async def re_escalate_critical_alerts(app: Application):
+async def re_escalate_critical_alerts(app=None):
     """Hourly job: bump unacknowledged CRITICAL/WARNING alerts.
 
     Major rewrite (2026-05) addressing the 360+ reminders/recipient noise
@@ -742,9 +476,6 @@ async def re_escalate_critical_alerts(app: Application):
         if not candidates:
             continue
 
-        bot_app = get_app_for_account(account_id) or app
-        if not bot_app:
-            continue
 
         for hist in candidates:
             atype = hist.get("alert_type", "alert")
@@ -869,102 +600,11 @@ async def re_escalate_critical_alerts(app: Application):
                     pass
                 continue
 
-            # Keyboard for re-escalation reminders.
-            # DM deliveries get a callback "Open alert" button — safe
-            # since the recipient is the only viewer.  Group-post
-            # deliveries (sent_to=0) get NO keyboard: the back_alert
-            # callback would rewrite the edited reminder back into
-            # the original alert, erasing it for every other shift.
-            kb_dm = InlineKeyboardMarkup([[
-                InlineKeyboardButton(
-                    "🔎 Open alert",
-                    callback_data=f"back_alert_{deliveries[0]['id']}",
-                ),
-            ]]) if deliveries else None
-            kb_group = None
-
+            # Per-copy reminder edits ride the delivery ledger
+            # (the spine block above) — every current post, DM and
+            # group alike, is recorded there.  Pre-ledger rows age
+            # out unedited.
             attempt_sent_anywhere = False
-            for delivery in deliveries:
-                recipient_id = delivery.get("sent_to")
-                # sent_to == 0 is the sentinel for a forum-group post
-                # (one message visible to many users).  Group posts get
-                # edited in place via (chat_id, message_id) just like a
-                # DM delivery, but the DND-queue / per-user lookup is
-                # skipped — Telegram per-topic mute is each member's
-                # personal silencer in that case.
-                is_group_post = recipient_id == 0
-                if is_group_post and spine_reminded:
-                    # Plan-posted group copies live in the delivery
-                    # ledger — the spine edit above already updated them
-                    # (with the RIGHT sender bot).  Editing again here
-                    # would overwrite with the legacy format, and fails
-                    # anyway on Sub-bot posts (only the author edits).
-                    continue
-                if not is_group_post and not recipient_id:
-                    continue
-
-                # (The old per-recipient DND queueing is gone with the
-                # private dnd queue — an in-place EDIT doesn't buzz the
-                # recipient, so quiet hours don't apply to reminders on
-                # existing messages; spine copies get the same treatment
-                # via update_delivery above.)
-                msg_id = delivery.get("message_id")
-                chat_id = delivery.get("chat_id")
-                edited = False
-                if msg_id and chat_id:
-                    try:
-                        await bot_app.bot.edit_message_text(
-                            chat_id=chat_id,
-                            message_id=msg_id,
-                            text=reminder_text,
-                            parse_mode=ParseMode.HTML,
-                            reply_markup=kb_group if is_group_post else kb_dm,
-                        )
-                        edited = True
-                    except TGBadRequest as e:
-                        if "not modified" in str(e).lower():
-                            edited = True
-                        else:
-                            logger.debug(
-                                "re_escalate: edit failed for delivery %s: %s",
-                                delivery.get("id"), e,
-                            )
-                    except Exception as e:
-                        logger.debug(
-                            "re_escalate: edit error for delivery %s: %s",
-                            delivery.get("id"), e,
-                        )
-
-                if not edited:
-                    if is_group_post:
-                        # Group-post edit failed (topic deleted, message
-                        # >48h old).  Skip the fresh-send fallback —
-                        # we'd need the topic's message_thread_id and
-                        # we'd also be spamming the topic with stale
-                        # reminders.  Next escalation cycle will retry.
-                        logger.debug(
-                            "re_escalate: skipping group-post fallback for delivery %s",
-                            delivery.get("id"),
-                        )
-                        continue
-                    # DM fallback: send fresh.  Only reached when edit
-                    # is impossible (msg deleted, > 48 h old, etc.).
-                    # ``is_group_post`` is False here (already bailed
-                    # above), so the DM-keyboard is the right choice.
-                    try:
-                        await bot_app.bot.send_message(
-                            chat_id=recipient_id,
-                            text=reminder_text,
-                            parse_mode=ParseMode.HTML,
-                            reply_markup=kb_dm,
-                        )
-                    except Exception as e:
-                        logger.debug(
-                            "re_escalate: send fallback failed for %s: %s",
-                            recipient_id, e,
-                        )
-                        continue
-                attempt_sent_anywhere = True
 
             if attempt_sent_anywhere or spine_reminded:
                 try:

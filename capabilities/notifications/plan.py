@@ -56,6 +56,11 @@ class Target:
     sender_hint: str = ""
     prefix_html: str = ""
     content_index: int = 0
+    # Thread the send as a REPLY to an earlier message in the same
+    # destination (resolve receipts under their original alert).  The
+    # channel falls back to a plain send when the target message is
+    # gone — a receipt must land even if the alert was deleted.
+    reply_to_message_id: "int | None" = None
 
 
 @dataclass(frozen=True)
@@ -135,6 +140,8 @@ async def _send_shared(db, account_id: int, plan: DeliveryPlan,
     )
     try:
         payload = channel.render(rcpt, content)
+        if target.reply_to_message_id:
+            payload.extra["reply_to_message_id"] = target.reply_to_message_id
         if target.prefix_html:
             # Applied post-render: the prefix is already-safe HTML the
             # source built (mention links), never user text.

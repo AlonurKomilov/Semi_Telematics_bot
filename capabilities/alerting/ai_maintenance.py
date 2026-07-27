@@ -5,13 +5,10 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ParseMode
-from telegram.ext import Application
 
 import infra.cache as rcache
 from capabilities.formatting.helpers import escape_html
-from infra.services import get_tenant_db, get_platform_db
+from infra.services import get_platform_db
 from capabilities.alerting.pipeline import SYSTEM_USER_ID
 
 logger = logging.getLogger("bot")
@@ -26,7 +23,7 @@ _api_alert_sent: dict[str, float] = {}
 
 
 async def _notify_api_errors(
-    bot_app: Application,
+    bot_app,   # unused transport handle — kept for caller compatibility
     account_id: int,
     skipped_codes: list[str],
 ):
@@ -78,18 +75,27 @@ async def _notify_api_errors(
         "  Check your Samsara dashboard or\n"
         "  re-add the API key to resolve."
     )
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("🔍 Check Status", callback_data="cmd_api_status")],
-        [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
-    ])
-
+    # Targeted spine notice per admin (alert.api_error): DM with the
+    # two nav buttons as generic specs; muteable in preferences.
+    from capabilities.alerting.pipeline import _strip_alert_html
+    from capabilities.notifications import NotificationContent, notify_user
     for admin in admins:
         try:
-            await bot_app.bot.send_message(
-                chat_id=admin.telegram_id,
-                text=text,
-                parse_mode=ParseMode.HTML,
-                reply_markup=kb,
+            await notify_user(
+                get_platform_db(), account_id, admin.id,
+                NotificationContent(
+                    title="",
+                    body=_strip_alert_html(text),
+                    category="alert.api_error",
+                    severity="warning",
+                    meta={"tg_buttons": [
+                        [{"text": "🔍 Check Status",
+                          "callback_data": "cmd_api_status"}],
+                        [{"text": "◀️ Main Menu",
+                          "callback_data": "cmd_menu"}],
+                    ]},
+                ),
+                channels=("telegram_dm",),
             )
         except Exception as e:
             logger.error("API alert to admin %s failed: %s", admin.telegram_id, e)

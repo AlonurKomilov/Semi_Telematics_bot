@@ -92,7 +92,7 @@ from interfaces.bot.knowledge import (
     cmd_tips, cmd_kb_category, cmd_kb_pinned, cmd_kb_article,
     cmd_kb_search,
 )
-from capabilities.alerting import handle_alert_ack
+from interfaces.bot.callbacks.alert_actions import handle_alert_ack
 from interfaces.bot.vehicles import show_vehicle_list
 
 # ── Import domain handler submodules ─────────────────────────────
@@ -497,7 +497,7 @@ async def _back_alert(u, c):
     except (ValueError, IndexError):
         await u.callback_query.answer("Invalid alert", show_alert=True)
         return
-    from capabilities.alerting import handle_back_to_alert
+    from interfaces.bot.callbacks.alert_actions import handle_back_to_alert
     await handle_back_to_alert(u, c, ack_id=ack_id)
 
 _router.prefix("back_alert_", _back_alert)

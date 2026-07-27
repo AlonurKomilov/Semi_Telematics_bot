@@ -221,13 +221,28 @@ async def _send(app, *, chat_id: int, thread_id: int | None,
                 ), what=what,
             )
         else:
-            msg = await _tg_send_with_retry(
-                lambda: app.bot.send_message(
-                    chat_id=chat_id, message_thread_id=thread_id,
-                    text=payload.text, parse_mode=payload.parse_mode,
-                    reply_markup=payload.markup,
-                ), what=what,
-            )
+            _reply_to = payload.extra.get("reply_to_message_id")
+            try:
+                msg = await _tg_send_with_retry(
+                    lambda: app.bot.send_message(
+                        chat_id=chat_id, message_thread_id=thread_id,
+                        text=payload.text, parse_mode=payload.parse_mode,
+                        reply_markup=payload.markup,
+                        reply_to_message_id=_reply_to,
+                    ), what=what,
+                )
+            except Exception as re_err:
+                # Reply target gone (deleted / >48h) — the message must
+                # still land; resend unthreaded.
+                if not _reply_to or "repl" not in str(re_err).lower():
+                    raise
+                msg = await _tg_send_with_retry(
+                    lambda: app.bot.send_message(
+                        chat_id=chat_id, message_thread_id=thread_id,
+                        text=payload.text, parse_mode=payload.parse_mode,
+                        reply_markup=payload.markup,
+                    ), what=what,
+                )
         message_id = getattr(msg, "message_id", None)
         # The edit handle: everything ``_edit`` needs to find this exact
         # message again.  ``kind`` decides text-vs-caption edit later.

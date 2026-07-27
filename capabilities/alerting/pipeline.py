@@ -8,13 +8,8 @@ Universal alert pipeline with severity tiers:
 
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application
-from telegram.constants import ParseMode
 
 from adapters.storage import Role
 from adapters.samsara.client import (
@@ -33,55 +28,6 @@ from infra.config import (
 )
 from infra.services import get_tenant_db
 from infra.platform import get_platform_db
-from infra.observability import record_alert_flood
-
-
-async def _tg_send_with_retry(send, *, what: str):
-    """Run one ``bot.send_*`` coroutine factory, retrying ONCE after
-    Telegram flood control.
-
-    The Application-level AIORateLimiter queues sends under the global
-    limits, but the per-group window (~20 msg/min) can still return
-    ``RetryAfter`` during an alert burst — without this, that alert was
-    silently lost.  ``send`` is a zero-arg callable returning a fresh
-    coroutine (a lambda around the send call) so the retry re-issues
-    the request instead of awaiting a spent coroutine.  A second
-    ``RetryAfter`` propagates to the caller's existing failure handling
-    and is counted as ``dropped``.
-    """
-    from telegram.error import RetryAfter
-    try:
-        return await send()
-    except RetryAfter as e:
-        delay = float(getattr(e, "retry_after", 3)) + 0.5
-        record_alert_flood("retried")
-        logger.warning("Telegram flood control on %s — retrying in %.1fs", what, delay)
-        await asyncio.sleep(delay)
-        try:
-            result = await send()
-            record_alert_flood("delivered_after_retry")
-            return result
-        except RetryAfter:
-            record_alert_flood("dropped")
-            logger.error("Telegram flood control persisted on %s — send dropped", what)
-            raise
-
-
-def _pick_sender(primary: Application, account_id: int, target) -> Application:
-    """The Application that posts THIS target: the role's Sub bot
-    when one is attached and running, else the account's primary bot.
-
-    The owner_admin AGGREGATE cross-post always uses the primary bot —
-    it's the account-level digest, not a role surface.  Fail-open
-    toward the primary: an attached-but-down Sub bot never eats alerts.
-    """
-    if getattr(target, "is_aggregate", False):
-        return primary
-    persona = getattr(target, "persona", "") or ""
-    if not persona:
-        return primary
-    from infra.bot_registry import get_sender_for_persona
-    return get_sender_for_persona(account_id, persona) or primary
 
 
 # Maps each alert_type the pipeline knows about to the canonical
@@ -112,65 +58,6 @@ _PIPELINE_TO_ROUTE_KEY: dict[str, str] = {
 logger = logging.getLogger("bot")
 
 
-# Telegram media-caption limit — applies to both ``send_photo`` and
-# ``send_video``.  Used by the photo+text merge path to decide whether
-# the assembled alert body fits inside one caption (preferred — one
-# coherent message) or has to fall back to the legacy two-message
-# pattern (photo, then text reply).  We leave a small safety margin
-# under the documented 1024 so HTML entity expansion or trailing
-# history-footer rows don't push us over.
-_CAPTION_CHAR_LIMIT = 1024
-
-
-def _caption_fits(text: str) -> bool:
-    """Whether ``text`` is short enough to sit inside one media caption."""
-    return len(text or "") <= _CAPTION_CHAR_LIMIT
-
-
-# ─────────────────────────────────────────────────────────────────────
-# Per-topic post lock — keeps photo+text pairs atomic in forum topics.
-#
-# Why: parking and camera alerts post a *photo* (the map / snapshot) and
-# then a *text reply* threaded to it.  Multiple vehicles run their
-# alert pipelines in parallel (``asyncio.gather`` over vehicles inside
-# the per-account check loop), so without serialization the two
-# send_photo / send_message calls from different vehicles interleave
-# on the Telegram API:
-#
-#   vehicle A: send_photo  → photoA
-#   vehicle B: send_photo  → photoB
-#   vehicle A: send_message (replies to photoA)
-#   vehicle B: send_message (replies to photoB)
-#
-# The reply links are intact, but the chat renders top-to-bottom as
-# ``photoA, photoB, textA, textB`` instead of ``photoA, textA, photoB,
-# textB`` — operators see two photos with no captions, then two
-# captions with no photos and can't tell which map belongs to which
-# alert.
-#
-# The lock is keyed by the Telegram *destination* (chat_id,
-# message_thread_id) rather than (account_id, alert_type) because
-# per_persona_groups mode collapses several alert_types onto one
-# persona chat (e.g. parking + fuel + geofence all land in the
-# dispatcher chat).  Keying by destination preserves legacy
-# single_group behaviour byte-for-byte (each forum topic has a unique
-# (chat_id, thread_id) pair, same lock-granularity as before) AND
-# correctly serializes per-persona-mode posts to the same persona
-# chat across different alert_types — preventing photo+text
-# interleaving for the CRITICAL aggregate cross-post too.
-_TOPIC_POST_LOCKS: dict[tuple[int, Optional[int]], asyncio.Lock] = {}
-
-
-def _topic_post_lock(
-    chat_id: int, message_thread_id: Optional[int] = None,
-) -> asyncio.Lock:
-    """Get or create the lock for a Telegram destination."""
-    key = (chat_id, message_thread_id)
-    lock = _TOPIC_POST_LOCKS.get(key)
-    if lock is None:
-        lock = asyncio.Lock()
-        _TOPIC_POST_LOCKS[key] = lock
-    return lock
 
 
 async def _compose_persona_critical_mention(
@@ -282,11 +169,6 @@ _FORUM_CRITICAL_MIRROR = _os.getenv("FORUM_CRITICAL_MIRROR", "1") not in ("0", "
 _NOTIFICATIONS_LIVE_DISPATCH = _os.getenv(
     "NOTIFICATIONS_LIVE_DISPATCH", "0") not in ("0", "false", "False")
 
-# Group posting through the notifications delivery plan (the shared-target
-# seam).  ON by default; "0" falls back to the in-module legacy path —
-# emergency lever only, removed when the legacy group code burns.
-_GROUP_VIA_PLAN = _os.getenv(
-    "ALERT_GROUP_VIA_PLAN", "1") not in ("0", "false", "False")
 
 # ``alert_text`` is composed as Telegram HTML (sent with ParseMode.HTML)
 # — it carries tags (<b>, <code>, <a>) and HTML entities.  The
@@ -495,11 +377,11 @@ async def _spine_dm_fanout(
         # ack_id=None: the ✅ Acknowledge action row is spine-routed.
         tg_buttons: list = []
         try:
-            tg_buttons = _keyboard_rows_as_specs(build_alert_keyboard(
+            tg_buttons = build_alert_button_specs(
                 severity, co, vname, ack_id=None, alert_type=alert_type,
                 vehicle_id=vehicle_id, event_id=event_id,
                 event_time=event_time, maps_url=maps_url,
-            ))
+            )
         except Exception as ke:
             logger.debug("spine-dm keyboard build failed: %s", ke)
 
@@ -591,7 +473,7 @@ async def _spine_dm_fanout(
         return False
 
 
-def build_alert_keyboard(
+def build_alert_button_specs(
     severity: AlertSeverity,
     co: str,
     vehicle_name: str,
@@ -603,7 +485,7 @@ def build_alert_keyboard(
     lang: str | None = None,
     for_group: bool = False,
     maps_url: str | None = None,
-) -> InlineKeyboardMarkup:
+) -> list:
     """Build keyboard for an alert message based on severity.
 
     CRITICAL/WARNING with ack_id → ACK + AI Diagnose + Open in Samsara + View Truck
@@ -625,14 +507,13 @@ def build_alert_keyboard(
     never touches the group message).
     """
     from capabilities.localization.i18n import t
-    rows: list[list[InlineKeyboardButton]] = []
+    rows: list = []
 
     if severity in (AlertSeverity.CRITICAL, AlertSeverity.WARNING):
         if ack_id is not None:
-            rows.append([InlineKeyboardButton(
-                t("alert_actions.acknowledge", lang=lang),
-                callback_data=f"ack_alert_{ack_id}",
-            )])
+            rows.append([{"text": t("alert_actions.acknowledge", lang=lang),
+                "callback_data": f"ack_alert_{ack_id}",
+            }])
         # AI Diagnose: callback rewrites the message in place.  Safe in
         # 1:1 DM (the requester is the only viewer), unsafe in a forum
         # topic (other shifts would lose the alert).  Skip in group.
@@ -640,10 +521,9 @@ def build_alert_keyboard(
             ai_diag_cb = f"ai_diag_{alert_type}_{co}_{vehicle_name}"
             if ack_id is not None:
                 ai_diag_cb += f":{ack_id}"
-            rows.append([InlineKeyboardButton(
-                t("alert_actions.ai_diagnose", lang=lang),
-                callback_data=ai_diag_cb,
-            )])
+            rows.append([{"text": t("alert_actions.ai_diagnose", lang=lang),
+                "callback_data": ai_diag_cb,
+            }])
 
     # "Open in Samsara" deep-link (URL button — opens browser)
     org_id = get_org_ids().get(co, "")
@@ -657,10 +537,9 @@ def build_alert_keyboard(
     else:
         samsara_url = samsara_vehicle_url(org_id, vehicle_id, alert_type)
     if samsara_url:
-        rows.append([InlineKeyboardButton(
-            t("alert_actions.open_in_samsara", lang=lang),
-            url=samsara_url,
-        )])
+        rows.append([{"text": t("alert_actions.open_in_samsara", lang=lang),
+            "url": samsara_url,
+        }])
 
     # "View on map" URL button — same family as "Open in Samsara":
     # tap-target friendly, opens in a browser, never touches the
@@ -670,39 +549,36 @@ def build_alert_keyboard(
     # alerts where a specific lat/lng is meaningful (parking,
     # safety events, future telematics events).
     if maps_url:
-        rows.append([InlineKeyboardButton(
-            t("alert_actions.view_on_map", lang=lang),
-            url=maps_url,
-        )])
+        rows.append([{"text": t("alert_actions.view_on_map", lang=lang),
+            "url": maps_url,
+        }])
 
     # View Truck + Main Menu both rewrite the message via callback.
     # Same group-safety reasoning as AI Diagnose above — only render
     # them in 1:1 DM where the requester is the sole viewer.
     if for_group:
-        return InlineKeyboardMarkup(rows)
+        return rows
 
     truck_cb = f"covehicle_{co}_{vehicle_name}"
     if ack_id is not None:
         truck_cb += f":{ack_id}"
-    rows.append([InlineKeyboardButton(
-        t("vehicle.view_vehicle", lang=lang, name=vehicle_name),
-        callback_data=truck_cb,
-    )])
-    rows.append([InlineKeyboardButton(
-        t("menu.back_main", lang=lang),
-        callback_data="cmd_menu",
-    )])
+    rows.append([{"text": t("vehicle.view_vehicle", lang=lang, name=vehicle_name),
+        "callback_data": truck_cb,
+    }])
+    rows.append([{"text": t("menu.back_main", lang=lang),
+        "callback_data": "cmd_menu",
+    }])
 
-    return InlineKeyboardMarkup(rows)
+    return rows
 
 
 async def post_alert_to_topic(
-    bot_app: Application,
+    bot_app,   # unused transport handle — kept for caller compatibility
     *,
     account_id: int,
     alert_type: str,
     text: str,
-    parse_mode: str = ParseMode.HTML,
+    parse_mode: str = "HTML",   # kept for caller compat; plan renders
     reply_markup=None,
     photo_bytes: bytes | None = None,
     video_url: str = "",
@@ -803,456 +679,83 @@ async def post_alert_to_topic(
     if not targets:
         return False
 
-    db = get_platform_db()
-    sev_lower = (severity or "").strip().lower()
-    severity_is_critical = sev_lower == "critical"
-    any_success = False
-    for target in targets:
-        chat_id = target.chat_id
-        thread_id = target.message_thread_id
-        # Role Sub bot when attached; primary otherwise.
-        send_app = _pick_sender(bot_app, account_id, target)
-
-        # CRITICAL persona-mode primary targets get on-shift @-mentions
-        # the same way the send_alert path does (shared composer).
-        mention_html = await _compose_persona_critical_mention(
-            account_id=account_id,
-            target=target,
-            severity_is_critical=severity_is_critical,
+    # ── Group delivery via the notifications plan ────────────────
+    # Same executor as send_alert's heavy path: sender hints pick Sub
+    # bots, per-destination locks live in the channel, on-shift
+    # mentions ride as post-render prefixes.  Lite posts carry no
+    # actions (the trio isn't ackable; digest-style posts have no
+    # history to correlate) and write no ack rows — nothing read them.
+    from capabilities.notifications import (
+        DeliveryPlan,
+        NotificationContent as _NotifContent,
+        Target as _PlanTarget,
+        deliver as _plan_deliver,
+    )
+    sev_norm = (severity or "info").strip().lower() or "info"
+    content = _NotifContent(
+        title="",
+        body=_strip_alert_html(text),
+        category=f"alert.{_PIPELINE_TO_ROUTE_KEY.get(alert_type, alert_type)}",
+        severity=sev_norm,
+        photo_bytes=photo_bytes,
+        video_url=video_url or "",
+        meta=({"tg_buttons": _keyboard_rows_as_specs(reply_markup)}
+              if reply_markup is not None else {}),
+    )
+    plan_targets: list = []
+    for t in targets:
+        prefix = await _compose_persona_critical_mention(
+            account_id=account_id, target=t,
+            severity_is_critical=(sev_norm == "critical"),
         )
-        send_text = f"{mention_html}\n{text}" if mention_html else text
-
-        try:
-            # Hold the per-destination post lock for the duration of
-            # the photo+text pair so this lite path serializes against
-            # concurrent posts to the same chat/thread — both other
-            # lite-path callers AND the heavy send_alert path that
-            # acquires the same lock in ``_post_one_target``.  Without
-            # this, a camera digest's photo + caption can interleave
-            # with a maintenance text post on the same persona group.
-            async with _topic_post_lock(chat_id, thread_id):
-                reply_to: int | None = None
-                if video_url:
-                    try:
-                        vmsg = await send_app.bot.send_video(
-                            chat_id=chat_id, message_thread_id=thread_id,
-                            video=video_url, read_timeout=30, write_timeout=30,
-                        )
-                        reply_to = vmsg.message_id
-                    except Exception as ve:
-                        logger.debug("Forum video failed acct=%d type=%s: %s",
-                                     account_id, alert_type, ve)
-                elif photo_bytes:
-                    try:
-                        import io as _io
-                        pmsg = await send_app.bot.send_photo(
-                            chat_id=chat_id, message_thread_id=thread_id,
-                            photo=_io.BytesIO(photo_bytes),
-                            read_timeout=15, write_timeout=15,
-                        )
-                        reply_to = pmsg.message_id
-                    except Exception as pe:
-                        logger.debug("Forum photo failed acct=%d type=%s: %s",
-                                     account_id, alert_type, pe)
-
-                await _tg_send_with_retry(
-                    lambda: send_app.bot.send_message(
-                        chat_id=chat_id, message_thread_id=thread_id,
-                        text=send_text, parse_mode=parse_mode,
-                        reply_markup=reply_markup, reply_to_message_id=reply_to,
-                    ),
-                    what=f"forum alert acct={account_id} type={alert_type}",
-                )
-            logger.info(
-                "forum alert posted (lite) acct=%d type=%s chat=%d thread=%s%s",
-                account_id, alert_type, chat_id,
-                thread_id if thread_id is not None else "-",
-                " [aggregate]" if target.is_aggregate else "",
-            )
+        thread = getattr(t, "message_thread_id", None)
+        addr = str(t.chat_id) + (f":{thread}" if thread is not None else "")
+        plan_targets.append(_PlanTarget(
+            channel="telegram_topic",
+            address=addr,
+            id=(getattr(t, "persona", "")
+                or _PIPELINE_TO_ROUTE_KEY.get(alert_type, alert_type) or addr),
+            sender_hint="" if getattr(t, "is_aggregate", False)
+            else (getattr(t, "persona", "") or ""),
+            prefix_html=prefix,
+        ))
+    result = await _plan_deliver(
+        get_platform_db(), account_id,
+        DeliveryPlan(contents=[content], shared=plan_targets, personal=[]),
+    )
+    any_success = False
+    for orig, (_pt, res) in zip(targets, result.shared):
+        if res.ok:
             any_success = True
-        except Exception as e:
-            # Drift auto-disable applies to the LEGACY single_group
-            # route only.  Per-persona groups aren't soft-disabled
-            # automatically — the admin UI inspects them when an
-            # operator notices missing alerts, because Telegram-side
-            # group permissions changes (bot kicked, lost admin) are
-            # a different failure mode than a deleted topic and need
-            # a human in the loop.
-            msg = str(e).lower()
-            is_legacy = target.message_thread_id is not None and not target.persona
-            if is_legacy and "topic" in msg and (
-                "delete" in msg or "not found" in msg or "closed" in msg
-            ):
-                route_key = _PIPELINE_TO_ROUTE_KEY.get(alert_type)
-                if route_key:
-                    try:
-                        await db.set_alert_route_active(account_id, route_key, False)
-                        logger.warning(
-                            "Forum route auto-disabled (drift): acct=%d type=%s — %s",
-                            account_id, route_key, e,
-                        )
-                    except Exception:
-                        logger.exception("Failed to disable broken route")
-            else:
-                logger.warning(
-                    "Forum post (lite) failed acct=%d type=%s chat=%d: %s",
-                    account_id, alert_type, chat_id, e,
-                )
             continue
-    return any_success
-
-
-async def _try_post_to_topic(
-    bot_app: Application,
-    *,
-    account_id: int,
-    alert_type: str,
-    severity: AlertSeverity,
-    co: str,
-    vehicle_id: str,
-    vehicle_name: str,
-    send_text: str,
-    video_url: str,
-    photo_bytes: bytes | None,
-    event_id: str,
-    event_time: str,
-    maps_url: str | None = None,
-    subtype: str = "",
-    send_text_plain: str | None = None,
-    ai_account_default: bool = True,
-) -> bool:
-    """If a forum route exists for ``(account_id, alert_type)`` post the
-    alert there and return True.  Returns False when no route is
-    configured, the feature is disabled, or posting failed (in which
-    case the caller falls back to the DM fanout path).
-
-    The route is auto-marked inactive on ``Bad Request: topic_*`` —
-    that's how the system self-heals when an admin deletes a topic
-    out from under us.
-    """
-    if not _FORUM_ROUTING_ENABLED:
-        return False
-
-    from .routing_resolver import resolve_alert_targets
-    sev_value = severity.value if hasattr(severity, "value") else str(severity)
-    targets = await resolve_alert_targets(
-        account_id=account_id, alert_type=alert_type, severity=sev_value,
-        subtype=subtype,
-    )
-    if not targets:
-        return False
-
-    any_success = False
-    for target in targets:
-        ok = await _post_one_target(
-            bot_app,
-            target=target,
-            account_id=account_id,
-            alert_type=alert_type,
-            severity=severity,
-            co=co,
-            vehicle_id=vehicle_id,
-            vehicle_name=vehicle_name,
-            send_text=send_text,
-            video_url=video_url,
-            photo_bytes=photo_bytes,
-            event_id=event_id,
-            event_time=event_time,
-            maps_url=maps_url,
-            # NOTE: no ``subtype`` here — the resolver already consumed it
-            # picking targets; ``_post_one_target`` neither accepts nor
-            # needs it (passing it was a latent TypeError masked for weeks
-            # by the wrong-scope NameError on the two kwargs above).
-            send_text_plain=send_text_plain,
-            ai_account_default=ai_account_default,
-        )
-        if ok:
-            any_success = True
-    return any_success
-
-
-async def _post_one_target(
-    bot_app: Application,
-    *,
-    target,  # routing_resolver.AlertTarget
-    account_id: int,
-    alert_type: str,
-    severity: AlertSeverity,
-    co: str,
-    vehicle_id: str,
-    vehicle_name: str,
-    send_text: str,
-    video_url: str,
-    photo_bytes: bytes | None,
-    event_id: str,
-    event_time: str,
-    maps_url: str | None,
-    send_text_plain: str | None = None,
-    ai_account_default: bool = True,
-) -> bool:
-    """Post one alert message to a single resolved target (chat ±
-    thread).  Returns True on success.  Extracted from
-    ``_try_post_to_topic`` so the same per-target body powers both the
-    legacy single_group target and the per-persona-groups primary +
-    aggregate targets.
-
-    Drift detection (Telegram "topic deleted" / "not found") only
-    auto-disables the LEGACY route — per-persona group failures
-    require an admin to inspect (different failure modes:
-    bot-removed, lost admin, group-deleted).
-    """
-    chat_id = target.chat_id
-    thread_id = target.message_thread_id
-    route_key = _PIPELINE_TO_ROUTE_KEY.get(alert_type)
-    # Role Sub bot when attached; the caller's primary otherwise.
-    # Every send below rides this pick.
-    bot_app = _pick_sender(bot_app, account_id, target)
-
-    # Shared-AI contract (owner decision): the AI answer is generated
-    # ONCE per alert; each role's toggle only chooses whether THEIR
-    # post includes it.  persona_ai.{role}.{key} falls back to the
-    # account-wide forum_ai default; the aggregate follows the default.
-    if send_text_plain is not None and send_text_plain != send_text:
-        _persona = getattr(target, "persona", "") or ""
-        if _persona and not getattr(target, "is_aggregate", False):
+        err = (res.error or "").lower()
+        is_legacy = (getattr(orig, "message_thread_id", None) is not None
+                     and not getattr(orig, "persona", ""))
+        rk = _PIPELINE_TO_ROUTE_KEY.get(alert_type)
+        if (is_legacy and rk and "topic" in err
+                and ("delet" in err or "not found" in err or "closed" in err)):
             try:
-                _t = await get_tenant_db(account_id)
-                _v = await _t.get_account_setting(
-                    account_id, f"persona_ai.{_persona}.{route_key}", default="",
-                )
-                _include_ai = ai_account_default if not _v else _v != "0"
-            except Exception:
-                _include_ai = ai_account_default
-            if not _include_ai:
-                send_text = send_text_plain
-
-    # CRITICAL-only @-mention for per-persona-mode primary targets.
-    # Composed by the shared helper so the lite ``post_alert_to_topic``
-    # path (camera digest, parking, doc-expiry, etc.) and this heavy
-    # path apply the same mention rules.
-    send_text_for_target = send_text
-    mention_html = await _compose_persona_critical_mention(
-        account_id=account_id,
-        target=target,
-        severity_is_critical=(severity == AlertSeverity.CRITICAL),
-    )
-    if mention_html:
-        send_text_for_target = f"{mention_html}\n{send_text}"
-
-    try:
-        # Hold the per-destination post lock for the duration of the
-        # photo+text pair so concurrent vehicles posting to the same
-        # Telegram chat/topic don't interleave (see ``_TOPIC_POST_LOCKS``
-        # rationale).  Keyed by the resolved chat+thread so per-persona
-        # mode (which collapses several alert_types onto one chat)
-        # serializes correctly alongside the legacy one-topic-per-type
-        # case.
-        async with _topic_post_lock(chat_id, thread_id):
-            # Build the keyboard once — used either on the merged
-            # photo-with-caption message OR on the trailing text
-            # reply in the fallback path.
-            basic_kb = build_alert_keyboard(
-                severity, co, vehicle_name, alert_type=alert_type,
-                vehicle_id=vehicle_id, event_id=event_id, event_time=event_time,
-                lang="en",
-                for_group=True,
-                maps_url=maps_url,
-            )
-
-            # ── Merged path (preferred): one message per alert ──
-            # When there's media AND the alert body fits in a caption
-            # we send ``send_photo(caption=send_text)`` so the photo
-            # IS the alert.  Reads as a single coherent block in the
-            # topic — no more "two photos then two captions" confusion
-            # the operators reported on parking-rich check cycles.
-            msg = None
-            if (video_url or photo_bytes) and _caption_fits(send_text_for_target):
-                try:
-                    if video_url:
-                        msg = await bot_app.bot.send_video(
-                            chat_id=chat_id,
-                            message_thread_id=thread_id,
-                            video=video_url,
-                            caption=send_text_for_target,
-                            parse_mode=ParseMode.HTML,
-                            reply_markup=basic_kb,
-                            read_timeout=30, write_timeout=30,
-                        )
-                    else:
-                        import io as _io
-                        # Compound guard ``(video_url or photo_bytes)`` above
-                        # already proves ``photo_bytes`` is non-None on this
-                        # branch (else taken iff ``not video_url`` so
-                        # ``photo_bytes`` must be truthy).  Narrow for mypy.
-                        assert photo_bytes is not None
-                        msg = await bot_app.bot.send_photo(
-                            chat_id=chat_id,
-                            message_thread_id=thread_id,
-                            photo=_io.BytesIO(photo_bytes),
-                            caption=send_text_for_target,
-                            parse_mode=ParseMode.HTML,
-                            reply_markup=basic_kb,
-                            read_timeout=15, write_timeout=15,
-                        )
-                except Exception as me:
-                    # Media send failed (Telegram-side error, S3 expiry on
-                    # video URL, etc.).  Drop through to the two-message
-                    # fallback so the alert still ships.
-                    logger.debug(
-                        "Forum media-with-caption send failed for %s: %s — "
-                        "falling back to media+reply", vehicle_name, me,
-                    )
-                    msg = None
-
-            # ── Fallback path (legacy two-message) ──
-            # Triggered when (a) there's no media, (b) the caption
-            # overflows the 1024-char Telegram limit, or (c) the
-            # media send above failed.  Identical behaviour to the
-            # pre-merge implementation.
-            if msg is None:
-                reply_to: int | None = None
-                if video_url:
-                    try:
-                        vmsg = await bot_app.bot.send_video(
-                            chat_id=chat_id,
-                            message_thread_id=thread_id,
-                            video=video_url,
-                            caption=f"🎥 {vehicle_name}",
-                            read_timeout=30, write_timeout=30,
-                        )
-                        reply_to = vmsg.message_id
-                    except Exception as ve:
-                        logger.debug("Forum video send failed for %s: %s", vehicle_name, ve)
-                elif photo_bytes:
-                    try:
-                        import io as _io
-                        pmsg = await bot_app.bot.send_photo(
-                            chat_id=chat_id,
-                            message_thread_id=thread_id,
-                            photo=_io.BytesIO(photo_bytes),
-                            caption=f"📍 Parking location — #{vehicle_name}",
-                            read_timeout=15, write_timeout=15,
-                        )
-                        reply_to = pmsg.message_id
-                    except Exception as pe:
-                        logger.debug("Forum photo send failed for %s: %s", vehicle_name, pe)
-
-                msg = await _tg_send_with_retry(
-                    lambda: bot_app.bot.send_message(
-                        chat_id=chat_id,
-                        message_thread_id=thread_id,
-                        text=send_text_for_target,
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=basic_kb,
-                        reply_to_message_id=reply_to,
-                    ),
-                    what="parking group post",
-                )
-
-        # Record one alert_ack for the group post so the existing
-        # callback-router can resolve the ack by id.  ``sent_to=0``
-        # is the sentinel meaning "group post, no specific user" —
-        # the callback handler reads the calling user's telegram id
-        # from update.effective_user instead.
-        tenant = await get_tenant_db(account_id)
-        alert_key = f"{co}:{vehicle_id}:group"
-        needs_ack = severity in (AlertSeverity.CRITICAL, AlertSeverity.WARNING)
-        if needs_ack:
-            ack_id = await tenant.create_alert_ack(
-                account_id=account_id,
-                alert_type=alert_type,
-                vehicle_id=vehicle_id,
-                vehicle_name=vehicle_name,
-                alert_key=alert_key,
-                message_id=msg.message_id,
-                chat_id=chat_id,
-                sent_to=0,
-                severity=severity.value if hasattr(severity, "value") else str(severity),
-            )
-            ack_kb = build_alert_keyboard(
-                severity, co, vehicle_name, ack_id=ack_id, alert_type=alert_type,
-                vehicle_id=vehicle_id, event_id=event_id, event_time=event_time,
-                lang="en",
-                for_group=True,
-                maps_url=maps_url,
-            )
-            try:
-                await bot_app.bot.edit_message_reply_markup(
-                    chat_id=chat_id,
-                    message_id=msg.message_id,
-                    reply_markup=ack_kb,
-                )
-            except Exception as e:
-                logger.debug("Forum ack-keyboard edit failed: %s", e)
-        else:
-            await tenant.create_info_alert_ack(
-                account_id=account_id,
-                alert_type=alert_type,
-                vehicle_id=vehicle_id,
-                vehicle_name=vehicle_name,
-                alert_key=alert_key,
-                message_id=msg.message_id,
-                chat_id=chat_id,
-                sent_to=0,
-            )
-
-        logger.info(
-            "forum alert posted acct=%d type=%s severity=%s chat=%d thread=%s%s",
-            account_id, alert_type, severity.value, chat_id,
-            thread_id if thread_id is not None else "-",
-            " [aggregate]" if target.is_aggregate else "",
-        )
-        if target.persona:
-            # A success heals the roster's delivery-failing stamp
-            # (no-op write unless one is set).
-            try:
-                await get_platform_db().clear_persona_group_failure(
-                    account_id, target.persona)
-            except Exception:
-                pass
-        return True
-
-    except Exception as e:
-        # Drift detection: Telegram returns "Bad Request: topic was
-        # deleted" / "message thread not found" when an admin removed
-        # the topic.  Soft-disable the legacy ``alert_routing`` row so
-        # subsequent alerts fall to DM instead of repeatedly failing.
-        # Per-persona group failures (target.persona != "") aren't
-        # auto-disabled — they need an admin to investigate because
-        # the failure modes (bot kicked, lost group admin, group
-        # deleted) require human resolution, not silent rerouting.
-        is_legacy = thread_id is not None and not target.persona
-        msg = str(e).lower()
-        if (
-            is_legacy
-            and route_key
-            and "topic" in msg
-            and ("delete" in msg or "not found" in msg or "closed" in msg)
-        ):
-            try:
-                db = get_platform_db()
-                await db.set_alert_route_active(account_id, route_key, False)
+                await get_platform_db().set_alert_route_active(
+                    account_id, rk, False)
                 logger.warning(
-                    "Forum route disabled (drift): acct=%d type=%s — %s",
-                    account_id, route_key, e,
-                )
+                    "Forum route auto-disabled (drift): acct=%d type=%s — %s",
+                    account_id, rk, res.error)
             except Exception:
                 logger.exception("Failed to disable broken route")
+        elif getattr(orig, "persona", ""):
+            try:
+                await get_platform_db().record_persona_group_failure(
+                    account_id, orig.persona, res.error or "send failed")
+            except Exception:
+                pass
+            logger.warning("Forum post (lite) failed acct=%d type=%s "
+                           "persona=%s — %s",
+                           account_id, alert_type, orig.persona, res.error)
         else:
-            logger.warning(
-                "Forum post failed acct=%d type=%s chat=%d — %s",
-                account_id, alert_type, chat_id, e,
-            )
-            if target.persona:
-                # Not auto-disabled (needs a human) — but no longer
-                # invisible either: stamp the row so the Group delivery
-                # roster shows "delivery failing" until a post succeeds.
-                try:
-                    await get_platform_db().record_persona_group_failure(
-                        account_id, target.persona, str(e))
-                except Exception:
-                    logger.debug("persona failure stamp failed", exc_info=True)
-        return False
+            logger.warning("Forum post (lite) failed acct=%d type=%s "
+                           "chat=%s — %s",
+                           account_id, alert_type, orig.chat_id, res.error)
+    return any_success
 
 
 async def _deliver_groups_via_plan(
@@ -1434,7 +937,7 @@ async def _deliver_groups_via_plan(
 
 
 async def send_alert(
-    app: Application,
+    app,   # unused transport handle — kept for caller compatibility
     *,
     account_id: int,
     alert_type: str,
@@ -1451,7 +954,7 @@ async def send_alert(
     event_id: str = "",
     event_time: str = "",
     photo_bytes: bytes | None = None,
-    bot_app: Application | None = None,
+    bot_app=None,   # unused — kept for caller compatibility
     maps_url: str | None = None,
 ):
     """Universal alert delivery pipeline.
@@ -1699,8 +1202,7 @@ async def send_alert(
     _group_text_plain = _group_alert_text + history_footer
     posted_to_topic = False
     with _obs.time_block(timings, "group_post"):
-      if _GROUP_VIA_PLAN:
-        posted_to_topic = await _deliver_groups_via_plan(
+      posted_to_topic = await _deliver_groups_via_plan(
             account_id=account_id,
             alert_type=alert_type,
             severity=severity,
@@ -1717,25 +1219,7 @@ async def send_alert(
             alert_key_detail=alert_key_detail,
             subtype=subtype,
         )
-      else:
-        posted_to_topic = await _try_post_to_topic(
-            bot_app,
-            account_id=account_id,
-            alert_type=alert_type,
-            severity=severity,
-            co=co,
-            vehicle_id=vid,
-            vehicle_name=vname,
-            send_text=_group_text,
-            video_url=video_url,
-            photo_bytes=photo_bytes,
-            event_id=event_id,
-            event_time=event_time,
-            maps_url=maps_url,
-            subtype=subtype,
-            send_text_plain=_group_text_plain,
-            ai_account_default=_include_ai_in_group,
-        )
+
 
     # If the group post succeeded AND this isn't a CRITICAL we're
     # done — no DM fanout.  CRITICAL alerts still DM every

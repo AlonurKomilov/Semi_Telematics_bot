@@ -13,7 +13,7 @@ from __future__ import annotations
 import pytest
 from telegram.error import RetryAfter
 
-from capabilities.alerting.pipeline import _tg_send_with_retry
+from capabilities.notifications.telegram import _tg_send_with_retry
 
 
 class _FlakySend:
@@ -52,7 +52,7 @@ async def test_success_path_sends_exactly_once():
 async def test_second_flood_propagates_as_dropped(monkeypatch):
     outcomes: list[str] = []
     monkeypatch.setattr(
-        "capabilities.alerting.pipeline.record_alert_flood", outcomes.append,
+        "infra.observability.record_alert_flood", outcomes.append,
     )
     send = _FlakySend(fail_times=2)
     with pytest.raises(RetryAfter):

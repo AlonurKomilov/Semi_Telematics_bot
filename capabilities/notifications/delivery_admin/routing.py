@@ -10,20 +10,15 @@ unchanged.
 router.py-style module: the only notifications files importing
 ``interfaces.api.deps`` are HTTP skins like this one.
 """
-import asyncio
 import logging
-import os
-import time
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional
 
 from interfaces.api.deps import (
-    require_permission, get_current_user, get_current_db_user, get_tenant_db,
+    require_permission, get_current_user, get_tenant_db,
     get_platform_db,
 )
-from adapters.storage.models import Role
 
 logger = logging.getLogger(__name__)
 

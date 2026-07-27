@@ -103,6 +103,12 @@ def register_targeted_alert_notices() -> None:
         label="Shift handoff report",
         kind=TARGETED,
     ))
+    register_category(NotificationCategory(
+        key="alert.api_error",
+        label="Integration API errors",
+        kind=TARGETED,
+        audience=lambda role: str(role) in ("owner", "admin"),
+    ))
 
 
 register_targeted_alert_notices()

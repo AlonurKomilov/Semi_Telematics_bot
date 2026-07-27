@@ -653,10 +653,10 @@ class TestReAlertConfig:
         assert AlertSeverity.INFO.value == "info"
 
     def test_build_keyboard_critical_with_ack(self):
-        from capabilities.alerting import build_alert_keyboard, AlertSeverity
-        kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101", ack_id=42)
-        labels = [b.text for r in kb.inline_keyboard for b in r]
-        callbacks = [b.callback_data for r in kb.inline_keyboard for b in r]
+        from capabilities.alerting import build_alert_button_specs, AlertSeverity
+        kb = build_alert_button_specs(AlertSeverity.CRITICAL, "CO1", "101", ack_id=42)
+        labels = [b["text"] for r in kb for b in r]
+        callbacks = [b.get("callback_data") for r in kb for b in r]
         assert "✅ Acknowledge" in labels
         assert "🤖 AI Diagnose" in labels
         assert "📋 View Truck #101" in labels
@@ -665,63 +665,63 @@ class TestReAlertConfig:
         assert "ai_diag_fault_CO1_101:42" in callbacks
 
     def test_build_keyboard_warning_with_ack(self):
-        from capabilities.alerting import build_alert_keyboard, AlertSeverity
-        kb = build_alert_keyboard(AlertSeverity.WARNING, "CO1", "202", ack_id=99)
-        labels = [b.text for r in kb.inline_keyboard for b in r]
+        from capabilities.alerting import build_alert_button_specs, AlertSeverity
+        kb = build_alert_button_specs(AlertSeverity.WARNING, "CO1", "202", ack_id=99)
+        labels = [b["text"] for r in kb for b in r]
         assert "✅ Acknowledge" in labels
         assert "🤖 AI Diagnose" in labels
 
     def test_build_keyboard_health_type(self):
-        from capabilities.alerting import build_alert_keyboard, AlertSeverity
-        kb = build_alert_keyboard(
+        from capabilities.alerting import build_alert_button_specs, AlertSeverity
+        kb = build_alert_button_specs(
             AlertSeverity.WARNING, "CO1", "303", ack_id=10,
             alert_type="health",
         )
-        callbacks = [b.callback_data for r in kb.inline_keyboard for b in r]
+        callbacks = [b.get("callback_data") for r in kb for b in r]
         assert "ai_diag_health_CO1_303:10" in callbacks
 
     def test_build_keyboard_fuel_type(self):
-        from capabilities.alerting import build_alert_keyboard, AlertSeverity
-        kb = build_alert_keyboard(
+        from capabilities.alerting import build_alert_button_specs, AlertSeverity
+        kb = build_alert_button_specs(
             AlertSeverity.CRITICAL, "CO1", "404", ack_id=20,
             alert_type="fuel",
         )
-        callbacks = [b.callback_data for r in kb.inline_keyboard for b in r]
+        callbacks = [b.get("callback_data") for r in kb for b in r]
         assert "ai_diag_fuel_CO1_404:20" in callbacks
 
     def test_build_keyboard_critical_no_ack(self):
-        from capabilities.alerting import build_alert_keyboard, AlertSeverity
-        kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101")
-        labels = [b.text for r in kb.inline_keyboard for b in r]
+        from capabilities.alerting import build_alert_button_specs, AlertSeverity
+        kb = build_alert_button_specs(AlertSeverity.CRITICAL, "CO1", "101")
+        labels = [b["text"] for r in kb for b in r]
         assert "✅ Acknowledge" not in labels
         assert "🤖 AI Diagnose" in labels
         assert "📋 View Truck #101" in labels
 
     def test_build_keyboard_info_no_ack_no_ai(self):
-        from capabilities.alerting import build_alert_keyboard, AlertSeverity
-        kb = build_alert_keyboard(AlertSeverity.INFO, "CO1", "303")
-        labels = [b.text for r in kb.inline_keyboard for b in r]
+        from capabilities.alerting import build_alert_button_specs, AlertSeverity
+        kb = build_alert_button_specs(AlertSeverity.INFO, "CO1", "303")
+        labels = [b["text"] for r in kb for b in r]
         assert "✅ Acknowledge" not in labels
         assert "🤖 AI Diagnose" not in labels
         assert "📋 View Truck #303" in labels
         assert "◀️ Main Menu" in labels
 
     def test_build_keyboard_has_samsara_link(self):
-        from capabilities.alerting import build_alert_keyboard, AlertSeverity
+        from capabilities.alerting import build_alert_button_specs, AlertSeverity
         from adapters.samsara.client import ORG_IDS
         ORG_IDS["CO1"] = "123"
         try:
-            kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101", ack_id=1,
+            kb = build_alert_button_specs(AlertSeverity.CRITICAL, "CO1", "101", ack_id=1,
                                       vehicle_id="12345")
-            urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
+            urls = [b.get("url") for r in kb for b in r if b.get("url")]
             assert any("cloud.samsara.com" in u for u in urls)
         finally:
             ORG_IDS.pop("CO1", None)
 
     def test_build_keyboard_no_samsara_link_without_id(self):
-        from capabilities.alerting import build_alert_keyboard, AlertSeverity
-        kb = build_alert_keyboard(AlertSeverity.CRITICAL, "CO1", "101", ack_id=1)
-        urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
+        from capabilities.alerting import build_alert_button_specs, AlertSeverity
+        kb = build_alert_button_specs(AlertSeverity.CRITICAL, "CO1", "101", ack_id=1)
+        urls = [b.get("url") for r in kb for b in r if b.get("url")]
         assert not urls
 
     def test_cooldown_hours_per_type(self):
@@ -788,45 +788,45 @@ class TestSamsaraDeepLinks:
         assert samsara_vehicle_url("", "v999", "health") is None
 
     def test_keyboard_includes_url_button_when_org_known(self):
-        from capabilities.alerting import build_alert_keyboard, AlertSeverity
+        from capabilities.alerting import build_alert_button_specs, AlertSeverity
         import adapters.samsara.client as samsara_client
         samsara_client.ORG_IDS["TEST"] = "org123"
         try:
-            kb = build_alert_keyboard(
+            kb = build_alert_button_specs(
                 AlertSeverity.CRITICAL, "TEST", "T100",
                 ack_id=1, alert_type="fault", vehicle_id="v555",
             )
-            urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
+            urls = [b.get("url") for r in kb for b in r if b.get("url")]
             assert any("org123" in u and "v555" in u for u in urls)
-            labels = [b.text for r in kb.inline_keyboard for b in r]
+            labels = [b["text"] for r in kb for b in r]
             assert any("Samsara" in lbl for lbl in labels)
         finally:
             samsara_client.ORG_IDS.pop("TEST", None)
 
     def test_keyboard_no_url_button_when_org_unknown(self):
-        from capabilities.alerting import build_alert_keyboard, AlertSeverity
+        from capabilities.alerting import build_alert_button_specs, AlertSeverity
         import adapters.samsara.client as samsara_client
         samsara_client.ORG_IDS.pop("NOPE", None)
-        kb = build_alert_keyboard(
+        kb = build_alert_button_specs(
             AlertSeverity.CRITICAL, "NOPE", "T100",
             ack_id=1, alert_type="fault", vehicle_id="v555",
         )
-        urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
+        urls = [b.get("url") for r in kb for b in r if b.get("url")]
         assert len(urls) == 0
 
     def test_keyboard_info_severity_with_url(self):
-        from capabilities.alerting import build_alert_keyboard, AlertSeverity
+        from capabilities.alerting import build_alert_button_specs, AlertSeverity
         import adapters.samsara.client as samsara_client
         samsara_client.ORG_IDS["CO2"] = "org456"
         try:
-            kb = build_alert_keyboard(
+            kb = build_alert_button_specs(
                 AlertSeverity.INFO, "CO2", "T200",
                 alert_type="events", vehicle_id="v777",
             )
-            urls = [b.url for r in kb.inline_keyboard for b in r if b.url]
+            urls = [b.get("url") for r in kb for b in r if b.get("url")]
             assert len(urls) == 1
             assert "/devices/" in urls[0] and "/vehicle" in urls[0]
-            labels = [b.text for r in kb.inline_keyboard for b in r]
+            labels = [b["text"] for r in kb for b in r]
             # INFO → no ACK, no AI Diagnose, but should have URL + View Truck + Menu
             assert "✅ Acknowledge" not in labels
             assert "🤖 AI Diagnose" not in labels

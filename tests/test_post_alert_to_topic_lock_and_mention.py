@@ -1,300 +1,179 @@
-"""Tests that the lite ``post_alert_to_topic`` path (camera digest,
-parking, doc-expiry, scorecard, samsara_sync, maintenance) honors the
-same per-destination lock + CRITICAL-only @-mention rules as the heavy
-``send_alert`` → ``_post_one_target`` path.
+"""Lite group posts (maintenance / documents / scorecard / camera digest
+/ samsara-sync) ride the SAME delivery plan as the heavy path.
 
-These cover the second-round adversarial findings:
+Replaces the pre-plan suite that pinned the deleted in-module send loop.
+Pins the surviving guarantees:
 
-  N1 — pre-fix, ``post_alert_to_topic`` had its own inlined send path
-       that never acquired ``_topic_post_lock``, so two lite-path
-       callers (or lite + heavy) racing on the same persona chat could
-       interleave photo+text pairs.
+  • the lite call builds ONE plan: per-target on-shift mention prefixes
+    (CRITICAL persona primaries only), Sub-bot sender hints (aggregate →
+    primary), a caller-supplied PTB reply_markup crossing as generic
+    ``tg_buttons`` specs, and NO action row (lite posts have no history
+    to correlate — the trio isn't ackable by profile)
+  • failure policy stays alerting's: legacy target + "topic deleted" →
+    route auto-disable; persona target failures → roster stamp
+  • returns True iff ≥1 team copy landed (callers' DM-fallback contract)
+  • per-destination serialization now lives in the TOPIC CHANNEL: two
+    concurrent sends to one (chat, thread) never interleave
 
-  N2 — pre-fix, the F9 @-mention path lived only in
-       ``_post_one_target``, so a CRITICAL camera digest posted to the
-       safety persona chat with no on-shift ping.
+All fakes — no Telegram, no Postgres.
 """
 
 from __future__ import annotations
 
 import asyncio
+
 import pytest
 
-from capabilities.alerting import pipeline as pipeline_mod
+import capabilities.alerting.pipeline as pipeline_mod
+import capabilities.notifications.telegram as tg_mod
+from capabilities.alerting.pipeline import post_alert_to_topic
 from capabilities.alerting.routing_resolver import AlertTarget
+from capabilities.notifications.channels import DeliveryResult, Payload, Recipient
+from capabilities.notifications.plan import PlanResult
+from capabilities.notifications.telegram import TelegramTopicChannel
 
 
-class _FakeBot:
-    """Minimal Telegram bot stub recording send order with a sleep so
-    interleavings would show up if the lock weren't held."""
+class _Deliver:
+    def __init__(self, results=None):
+        self.plans: list = []
+        self._results = results
+
+    async def __call__(self, db, account_id, plan):
+        self.plans.append(plan)
+        res = PlanResult()
+        for i, t in enumerate(plan.shared):
+            scripted = (self._results or {}).get(t.address)
+            res.shared.append((t, scripted or DeliveryResult(
+                ok=True, handle={"chat_id": 1, "message_id": i, "kind": "text"})))
+        return res
+
+
+class _Platform:
     def __init__(self):
-        self.calls: list[str] = []
-        self._lock_probe = asyncio.Lock()  # exposes contention
-        self.send_message_text: list[str] = []
+        self.disabled: list = []
+        self.stamps: list = []
 
-    async def send_photo(self, **kwargs):
-        await asyncio.sleep(0.01)
-        self.calls.append(f"photo:{kwargs['chat_id']}")
+    async def set_alert_route_active(self, account_id, rk, active):
+        self.disabled.append((rk, active))
 
-        class _R:
-            message_id = 1
-        return _R()
-
-    async def send_video(self, **kwargs):
-        await asyncio.sleep(0.01)
-        self.calls.append(f"video:{kwargs['chat_id']}")
-
-        class _R:
-            message_id = 1
-        return _R()
-
-    async def send_message(self, **kwargs):
-        await asyncio.sleep(0.01)
-        self.calls.append(f"text:{kwargs['chat_id']}")
-        self.send_message_text.append(kwargs.get("text", ""))
-
-        class _R:
-            message_id = 2
-        return _R()
+    async def record_persona_group_failure(self, account_id, persona, error):
+        self.stamps.append((persona, error))
 
 
-class _FakeApp:
-    def __init__(self):
-        self.bot = _FakeBot()
+def _tgt(chat=-100, thread=None, persona="", aggregate=False) -> AlertTarget:
+    return AlertTarget(chat_id=chat, message_thread_id=thread,
+                       is_aggregate=aggregate, persona=persona)
 
 
-@pytest.fixture
-def _patched_resolver(monkeypatch):
-    """Return a configurable target list so the test owns the routing
-    decision without standing up a real Postgres."""
-    targets: list[AlertTarget] = []
+async def _post(monkeypatch, targets, *, deliver=None, platform=None,
+                severity="warning", reply_markup=None, alert_type="maintenance"):
+    deliver = deliver or _Deliver()
+    platform = platform or _Platform()
 
-    async def _fake_resolve(*, account_id, alert_type, severity="", subtype=""):
+    async def _resolve(**kw):
         return list(targets)
-
     monkeypatch.setattr(
         "capabilities.alerting.routing_resolver.resolve_alert_targets",
-        _fake_resolve,
-    )
-    # Some imports inside post_alert_to_topic reach for get_platform_db
-    # for the drift-disable branch; provide a stub that's never called
-    # on the success paths.
-    monkeypatch.setattr(
-        pipeline_mod, "get_platform_db", lambda: object(),
-    )
+        _resolve)
+    monkeypatch.setattr("capabilities.notifications.deliver", deliver)
+    monkeypatch.setattr(pipeline_mod, "get_platform_db", lambda: platform)
     monkeypatch.setattr(pipeline_mod, "_FORUM_ROUTING_ENABLED", True)
-    return targets
 
-
-@pytest.mark.asyncio
-async def test_post_alert_to_topic_acquires_destination_lock_serializing_concurrent_calls(
-    _patched_resolver,
-):
-    """Two concurrent lite-path posts to the same persona chat must
-    serialize so each (photo, text) pair stays atomic in the chat.
-
-    Without the lock the two photos would land before either text,
-    producing ``photo, photo, text, text`` (the bug F1 was meant to
-    prevent — and that the second-round review found uncovered).
-    """
-    _patched_resolver.append(AlertTarget(
-        chat_id=-100777, message_thread_id=None,
-        is_aggregate=False, persona="dispatcher",
-    ))
-    app = _FakeApp()
-    # Two concurrent callers racing on the SAME chat.
-    photo = b"\x89PNG\r\n\x1a\n"  # minimal valid header
-    coros = [
-        pipeline_mod.post_alert_to_topic(
-            app, account_id=1, alert_type="parking",
-            text="A", photo_bytes=photo, severity="info",
-        ),
-        pipeline_mod.post_alert_to_topic(
-            app, account_id=1, alert_type="parking",
-            text="B", photo_bytes=photo, severity="info",
-        ),
-    ]
-    await asyncio.gather(*coros)
-
-    # Expected serialized order: photo-text photo-text (4 calls, paired)
-    assert app.bot.calls == [
-        "photo:-100777", "text:-100777",
-        "photo:-100777", "text:-100777",
-    ], f"Calls interleaved (lock not held): {app.bot.calls}"
-
-
-@pytest.mark.asyncio
-async def test_post_alert_to_topic_does_NOT_serialize_different_destinations(
-    _patched_resolver,
-):
-    """Lock is per-destination; concurrent posts to DIFFERENT chats
-    must not block each other (legacy single_group used to rely on
-    that for cross-topic throughput)."""
-    # Two targets that resolve in sequence within one call.
-    _patched_resolver.append(AlertTarget(
-        chat_id=-1, message_thread_id=None, persona="dispatcher",
-    ))
-    # Verify the SAME chat across two CALLS — but to prove the
-    # different-destination case independently we run two callers each
-    # with their own single-target list (mutating between awaits).
-    app1 = _FakeApp()
-    _patched_resolver.clear()
-    _patched_resolver.append(AlertTarget(
-        chat_id=-111, message_thread_id=None, persona="dispatcher",
-    ))
-    await pipeline_mod.post_alert_to_topic(
-        app1, account_id=1, alert_type="parking", text="A",
-        severity="info",
-    )
-
-    app2 = _FakeApp()
-    _patched_resolver.clear()
-    _patched_resolver.append(AlertTarget(
-        chat_id=-222, message_thread_id=None, persona="fleet",
-    ))
-    await pipeline_mod.post_alert_to_topic(
-        app2, account_id=1, alert_type="faults", text="B",
-        severity="info",
-    )
-
-    # Different chats → independent locks → each call records its own
-    # sequence with no cross-contention.
-    assert app1.bot.calls == ["text:-111"]
-    assert app2.bot.calls == ["text:-222"]
-
-
-@pytest.mark.asyncio
-async def test_post_alert_to_topic_critical_persona_prepends_mention(
-    _patched_resolver, monkeypatch,
-):
-    """CRITICAL severity on a persona-mode primary target must prepend
-    an HTML mention prefix the same way ``_post_one_target`` does for
-    the send_alert path (closes the N2 gap — the camera digest case)."""
-    _patched_resolver.append(AlertTarget(
-        chat_id=-1000, message_thread_id=None,
-        is_aggregate=False, persona="safety",
-    ))
-
-    # Stub the on-shift query so the test doesn't depend on a real DB.
-    async def _fake_on_shift(account_id, persona):
-        from capabilities.alerting.on_shift import OnShiftUser
-        return [OnShiftUser(user_id=1, telegram_id=42, display_name="Alice")]
-
+    async def _mention(*, account_id, target, severity_is_critical):
+        return "<a>@shift</a>" if (severity_is_critical and target.persona
+                                   and not target.is_aggregate) else ""
     monkeypatch.setattr(
-        "capabilities.alerting.on_shift.users_on_shift_for_persona",
-        _fake_on_shift,
-    )
-
-    app = _FakeApp()
-    ok = await pipeline_mod.post_alert_to_topic(
-        app, account_id=1, alert_type="camera",
-        text="Camera Issues body", severity="critical",
-    )
-    assert ok is True
-    assert len(app.bot.send_message_text) == 1
-    sent = app.bot.send_message_text[0]
-    assert 'href="tg://user?id=42"' in sent, (
-        f"Mention prefix missing from CRITICAL persona-mode lite post: {sent!r}"
-    )
-    assert sent.endswith("Camera Issues body")
+        pipeline_mod, "_compose_persona_critical_mention", _mention)
+    posted = await post_alert_to_topic(
+        None, account_id=1, alert_type=alert_type,
+        text="<b>Camera Issues</b> body", severity=severity,
+        reply_markup=reply_markup)
+    return posted, deliver, platform
 
 
 @pytest.mark.asyncio
-async def test_post_alert_to_topic_warning_does_NOT_prepend_mention(
-    _patched_resolver,
-):
-    """Non-critical severity must not trigger mentions even on a
-    persona target — keeps the maintenance/doc-expiry/scorecard streams
-    from pinging the entire on-shift team for routine warnings."""
-    _patched_resolver.append(AlertTarget(
-        chat_id=-1000, message_thread_id=None,
-        is_aggregate=False, persona="fleet",
-    ))
-    app = _FakeApp()
-    await pipeline_mod.post_alert_to_topic(
-        app, account_id=1, alert_type="maintenance",
-        text="Overdue body", severity="warning",
-    )
-    sent = app.bot.send_message_text[0]
-    assert 'href="tg://user?id=' not in sent, (
-        f"Non-critical post should NOT carry mentions: {sent!r}"
-    )
+async def test_lite_builds_one_plan_with_hints_and_mentions(monkeypatch):
+    posted, deliver, _ = await _post(monkeypatch, [
+        _tgt(chat=-7, thread=9, persona="safety"),
+        _tgt(chat=-8, persona="owner_admin", aggregate=True),
+    ], severity="critical")
+    assert posted is True
+    plan = deliver.plans[0]
+    t1, t2 = plan.shared
+    assert t1.address == "-7:9" and t1.sender_hint == "safety"
+    assert t1.prefix_html == "<a>@shift</a>"
+    assert t2.sender_hint == ""                    # aggregate → primary bot
+    assert plan.contents[0].actions == []          # lite: never an action row
+    assert "<b>" not in plan.contents[0].body      # raw plain text
 
 
 @pytest.mark.asyncio
-async def test_post_alert_to_topic_aggregate_target_does_NOT_prepend_mention(
-    _patched_resolver, monkeypatch,
-):
-    """The owner_admin aggregate cross-post must NOT carry mentions —
-    the operational persona group is the pager; the aggregate is the
-    cross-cutting digest.  Mentioning on-shift safety on the owner's
-    cross-post would double-ping them."""
-    _patched_resolver.append(AlertTarget(
-        chat_id=-9000, message_thread_id=None,
-        is_aggregate=True, persona="owner_admin",
-    ))
+async def test_caller_reply_markup_crosses_as_specs(monkeypatch):
+    class _Btn:
+        def __init__(self):
+            self.text = "✓ Done"
+            self.callback_data = "maint_done_5"
+            self.url = None
 
-    async def _fake_on_shift(account_id, persona):
-        from capabilities.alerting.on_shift import OnShiftUser
-        return [OnShiftUser(user_id=1, telegram_id=42, display_name="Alice")]
+    class _Markup:
+        inline_keyboard = [[_Btn()]]
 
-    monkeypatch.setattr(
-        "capabilities.alerting.on_shift.users_on_shift_for_persona",
-        _fake_on_shift,
-    )
-
-    app = _FakeApp()
-    await pipeline_mod.post_alert_to_topic(
-        app, account_id=1, alert_type="camera",
-        text="body", severity="critical",
-    )
-    sent = app.bot.send_message_text[0]
-    assert 'href="tg://user?id=' not in sent, (
-        f"Aggregate cross-post should NOT carry mentions: {sent!r}"
-    )
+    posted, deliver, _ = await _post(
+        monkeypatch, [_tgt(chat=-1, persona="fleet")], reply_markup=_Markup())
+    specs = deliver.plans[0].contents[0].meta["tg_buttons"]
+    assert specs == [[{"text": "✓ Done", "callback_data": "maint_done_5"}]]
 
 
 @pytest.mark.asyncio
-async def test_post_alert_to_topic_legacy_target_does_NOT_prepend_mention(
-    _patched_resolver,
-):
-    """Legacy single_group targets carry no persona, so even on
-    CRITICAL they must NOT get the mention treatment — topics don't
-    map to on-shift state."""
-    _patched_resolver.append(AlertTarget(
-        chat_id=-100999, message_thread_id=42,
-        is_aggregate=False, persona="",  # legacy single_group
-    ))
-    app = _FakeApp()
-    await pipeline_mod.post_alert_to_topic(
-        app, account_id=1, alert_type="faults",
-        text="legacy body", severity="critical",
+async def test_legacy_topic_deleted_disables_route(monkeypatch):
+    deliver = _Deliver(results={"-1:9": DeliveryResult(
+        ok=False, error="BadRequest: topic was deleted")})
+    posted, _, platform = await _post(
+        monkeypatch, [_tgt(chat=-1, thread=9, persona="")], deliver=deliver)
+    assert posted is False
+    assert platform.disabled == [("maintenance", False)]
+
+
+@pytest.mark.asyncio
+async def test_persona_failure_stamped(monkeypatch):
+    deliver = _Deliver(results={"-2": DeliveryResult(
+        ok=False, error="Forbidden: bot was kicked")})
+    posted, _, platform = await _post(
+        monkeypatch, [_tgt(chat=-2, persona="hr")], deliver=deliver)
+    assert posted is False
+    assert platform.stamps and platform.stamps[0][0] == "hr"
+
+
+# ── per-destination serialization (now channel-owned) ───────────────
+
+class _SlowBot:
+    def __init__(self):
+        self.order: list[str] = []
+
+    async def send_message(self, **kw):
+        self.order.append(f"start:{kw['text']}")
+        await asyncio.sleep(0.01)
+        self.order.append(f"end:{kw['text']}")
+
+        class _R:
+            message_id = 1
+        return _R()
+
+
+@pytest.mark.asyncio
+async def test_topic_channel_serializes_same_destination(monkeypatch):
+    bot = _SlowBot()
+    app = type("A", (), {"bot": bot})()
+    monkeypatch.setattr(tg_mod, "_bot_for",
+                        lambda account_id, override=None: override or app)
+    ch = TelegramTopicChannel()
+    rcpt = Recipient(account_id=1, type="topic", id="x", address="-5:7")
+    await asyncio.gather(
+        ch.send(rcpt, Payload(text="A")),
+        ch.send(rcpt, Payload(text="B")),
     )
-    sent = app.bot.send_message_text[0]
-    assert 'href="tg://user?id=' not in sent
-    assert sent == "legacy body"
-
-
-def test_heavy_path_call_kwargs_bind_to_post_one_target_signature():
-    """Every kwarg ``_try_post_to_topic`` passes to ``_post_one_target``
-    must exist in its signature.
-
-    Pins the call/signature compatibility statically: a kwarg added to
-    the call but not the signature is a TypeError that only fires when a
-    group target resolves in production — exactly how the ``subtype=``
-    mismatch hid for weeks behind the wrong-scope NameError on the
-    neighbouring kwargs.  Any future drift fails here instead.
-    """
-    import inspect
-    import re as _re
-
-    src = inspect.getsource(pipeline_mod._try_post_to_topic)
-    m = _re.search(r"_post_one_target\((.*?)\n\s*\)", src, _re.S)
-    assert m, "call site not found — did the function get renamed?"
-    passed = set(_re.findall(r"(\w+)=", m.group(1)))
-    params = set(inspect.signature(pipeline_mod._post_one_target).parameters)
-    unknown = passed - params
-    assert not unknown, (
-        f"_try_post_to_topic passes kwargs _post_one_target does not "
-        f"accept: {sorted(unknown)}"
+    # Serialized: each send completes before the next begins.
+    assert bot.order in (
+        ["start:A", "end:A", "start:B", "end:B"],
+        ["start:B", "end:B", "start:A", "end:A"],
     )

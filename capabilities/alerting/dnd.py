@@ -7,7 +7,6 @@ import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from telegram.ext import Application
 
 from adapters.storage import Role
 from infra.services import get_platform_db, get_tenant_db
@@ -187,7 +186,7 @@ def _filter_handoff_for_driver(
 
 
 @register_alert_source("dnd_delivery", trigger="cron", minute=0)
-async def deliver_dnd_alerts(app: Application):
+async def deliver_dnd_alerts(app=None):
     """Deliver shift handoff report when working hours start.
 
     Runs hourly. When a user transitions from outside→inside working hours,

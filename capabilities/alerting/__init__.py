@@ -16,7 +16,7 @@ from capabilities.alerting.pipeline import (              # noqa: F401
     COOLANT_SPNS,
     _COOLDOWN_HOURS,
     _warmup_done,
-    build_alert_keyboard,
+    build_alert_button_specs,
     send_alert,
     is_vehicle_suppressed,
 )
@@ -47,8 +47,6 @@ from features.cameras.alert import (      # noqa: F401
 
 # ── escalation (ACK, auto-resolve) ───────────────────────────────
 from capabilities.alerting.escalation import (            # noqa: F401
-    handle_alert_ack,
-    handle_back_to_alert,
     _auto_resolve_vehicle_alerts,
     re_escalate_critical_alerts,
 )
