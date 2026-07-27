@@ -1,7 +1,12 @@
-import { useCallback, useSyncExternalStore } from 'react';
+import { useCallback, useState, useSyncExternalStore } from 'react';
 
 import type { PrefKey, PrefValue } from './registry';
-import { get, set, reset, subscribe } from './store';
+import {
+  get, set, reset, subscribe, isSyncLoaded, subscribeSyncLoaded,
+} from './store';
+import {
+  tableKey, TABLE_PARTS, type TablePart, type TablePartValue,
+} from './registry';
 
 /**
  * Read + write one preference.  The type comes from the registry, so no
@@ -38,4 +43,59 @@ export function usePreference<K extends PrefKey>(key: K): {
   const resetValue = useCallback(() => reset(key), [key]);
 
   return { value, setValue, resetValue };
+}
+
+/**
+ * One DataGrid preference for one table — the family counterpart of
+ * ``usePreference``.  The key is built by ``tableKey`` so the stored
+ * string stays byte-identical to what the grid wrote before.
+ *
+ * ``defaultValue`` overrides the family default for call sites whose
+ * default is per-instance (a grid's ``defaultRowGroup`` prop).
+ */
+export function useTablePreference<P extends TablePart>(
+  tableId: string | undefined,
+  part: P,
+  defaultValue?: TablePartValue<P>,
+): {
+  value: TablePartValue<P>;
+  setValue: (next: TablePartValue<P> | ((prev: TablePartValue<P>) => TablePartValue<P>)) => void;
+} {
+  // No tableId → nothing is persisted; fall back to in-memory state so a
+  // grid without one still works (the pre-service behaviour).
+  const key = tableId ? tableKey(tableId, part) : '';
+  const fallback = (defaultValue !== undefined
+    ? defaultValue
+    : TABLE_PARTS[part].default) as TablePartValue<P>;
+  const [local, setLocal] = useState<TablePartValue<P>>(fallback);
+
+  const stored = useSyncExternalStore(
+    useCallback((fn: () => void) => (key ? subscribe(key, fn) : () => {}), [key]),
+    useCallback(() => (key ? get(key) as TablePartValue<P> : undefined), [key]),
+    useCallback(() => (key ? get(key) as TablePartValue<P> : undefined), [key]),
+  );
+
+  const value = key ? (stored as TablePartValue<P>) : local;
+  const setValue = useCallback(
+    (next: TablePartValue<P> | ((prev: TablePartValue<P>) => TablePartValue<P>)) => {
+      if (!key) { setLocal(next as TablePartValue<P>); return; }
+      set(key, typeof next === 'function'
+        ? (next as (p: unknown) => unknown)(get(key))
+        : next);
+    },
+    [key],
+  );
+
+  return { value, setValue };
+}
+
+/**
+ * Has the account's copy of the synced preferences arrived?
+ *
+ * Consumers that must act exactly once on an authoritative value — e.g.
+ * DataGrid opening its default tab — gate on this rather than guessing
+ * from a provisional local value.  Always true when syncing is off.
+ */
+export function useSyncLoaded(): boolean {
+  return useSyncExternalStore(subscribeSyncLoaded, isSyncLoaded, isSyncLoaded);
 }

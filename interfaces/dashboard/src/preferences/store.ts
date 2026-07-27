@@ -20,9 +20,9 @@
  * existing call site keeps working untouched.
  */
 
-import { DEFS, type PrefKey, type PrefValue, type PrefDef } from './registry';
+import { DEFS, defFor, type PrefKey, type PrefValue, type PrefDef } from './registry';
 import {
-  readPref, writePref, removePref, prefKeyFromStorageEvent, sanitize,
+  readPref, writePref, removePref, prefKeyFromStorageEvent, sanitize, LS_PREFIX,
 } from './local';
 
 /**
@@ -50,25 +50,29 @@ function notify(key: string): void {
 /** Current value for a key — reads through to localStorage (migrating a
  *  legacy value forward) the first time, then serves from memory so
  *  ``useSyncExternalStore`` gets a stable reference. */
-export function get<K extends PrefKey>(key: K): PrefValue<K> {
-  if (!values.has(key)) values.set(key, readPref(key));
-  return values.get(key) as PrefValue<K>;
+export function get<K extends PrefKey>(key: K): PrefValue<K>;
+export function get(key: string): unknown;
+export function get(key: string): unknown {
+  if (!values.has(key)) values.set(key, readPref(key as PrefKey));
+  return values.get(key);
 }
 
 export function set<K extends PrefKey>(
   key: K,
   next: PrefValue<K> | ((prev: PrefValue<K>) => PrefValue<K>),
-): void {
+): void;
+export function set(key: string, next: unknown): void;
+export function set(key: string, next: unknown): void {
   const prev = get(key);
   const value = typeof next === 'function'
-    ? (next as (p: PrefValue<K>) => PrefValue<K>)(prev)
+    ? (next as (p: unknown) => unknown)(prev)
     : next;
   if (Object.is(prev, value)) return;
   values.set(key, value);
   writePref(key, value);
   // Only 'synced' keys are ever pushed remotely; 'device' ones stay put
   // even once a backend is registered.
-  if (backend && DEFS[key].scope === 'synced') {
+  if (backend && defFor(key)?.scope === 'synced') {
     backend.put(key, JSON.stringify(value));
   }
   notify(key);
@@ -76,16 +80,52 @@ export function set<K extends PrefKey>(
 
 /** Reset one key to its registry default (and stop it syncing back from
  *  whichever device wrote it last). */
-export function reset<K extends PrefKey>(key: K): void {
-  values.set(key, DEFS[key].default);
+export function reset<K extends PrefKey>(key: K): void;
+export function reset(key: string): void;
+export function reset(key: string): void {
+  const d = defFor(key);
+  if (!d) return;
+  values.set(key, d.default);
   removePref(key);
-  if (backend && DEFS[key].scope === 'synced') backend.del(key);
+  if (backend && d.scope === 'synced') backend.del(key);
   notify(key);
 }
 
-/** Reset EVERY preference — the "back to defaults" path. */
+/**
+ * Reset EVERY preference — the "back to defaults" path.
+ *
+ * Must sweep more than ``DEFS``: per-table FAMILY keys
+ * (``table.<id>.views`` …) have no registry entry, so iterating DEFS
+ * alone would leave an operator's column layouts and saved tabs behind
+ * after they clicked "Reset all".
+ */
 export function resetAll(): void {
-  (Object.keys(DEFS) as PrefKey[]).forEach(reset);
+  const keys = new Set<string>([...Object.keys(DEFS), ...values.keys()]);
+  try {
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const raw = localStorage.key(i);
+      if (raw?.startsWith(LS_PREFIX)) keys.add(raw.slice(LS_PREFIX.length));
+    }
+  } catch { /* storage unavailable — reset what's in memory */ }
+  keys.forEach((k) => { if (defFor(k)) reset(k); });
+}
+
+// ── "Has the account's copy arrived?" ────────────────────────────────
+// Local values are readable synchronously, but SYNCED ones only become
+// authoritative after the bulk read lands.  Consumers that must not act
+// on a provisional value — DataGrid applies its default tab exactly once
+// — gate on this instead of a per-key `hydrated` flag.
+const SYNC_LOADED = '__syncLoaded__';
+let syncLoaded = false;
+
+/** True once a backend's bulk read has been adopted (or when syncing is
+ *  off, since then the local value IS the authority). */
+export function isSyncLoaded(): boolean {
+  return backend === null || syncLoaded;
+}
+
+export function subscribeSyncLoaded(fn: Listener): () => void {
+  return subscribe(SYNC_LOADED, fn);
 }
 
 export function subscribe(key: string, fn: Listener): () => void {
@@ -101,9 +141,8 @@ export function subscribe(key: string, fn: Listener): () => void {
  * only — it must NOT echo back to the source it came from.
  */
 export function adoptRaw(key: string, rawJson: string | null): void {
-  if (!Object.prototype.hasOwnProperty.call(DEFS, key)) return;
-  const k = key as PrefKey;
-  const d = DEFS[k] as PrefDef<unknown>;
+  const d = defFor(key);
+  if (!d) return;
   let value: unknown;
   if (rawJson == null) {
     value = d.default;                       // cleared elsewhere → default
@@ -115,9 +154,9 @@ export function adoptRaw(key: string, rawJson: string | null): void {
     if (clean === undefined) return;
     value = clean;
   }
-  if (Object.is(values.get(k), value)) return;
-  values.set(k, value);
-  notify(k);
+  if (Object.is(values.get(key), value)) return;
+  values.set(key, value);
+  notify(key);
 }
 
 /** Phase 2 entry point: register the remote backend and merge what the
@@ -125,12 +164,26 @@ export function adoptRaw(key: string, rawJson: string | null): void {
  *  key is owned by the account, so the server copy is adopted. */
 export async function attachBackend(next: SyncBackend): Promise<void> {
   backend = next;
-  const items = await next.loadAll();
-  for (const { key, value } of items) adoptRaw(key, value);
+  syncLoaded = false;
+  notify(SYNC_LOADED);
+  try {
+    const items = await next.loadAll();
+    for (const { key, value } of items) adoptRaw(key, value);
+  } finally {
+    // Even a FAILED bulk read resolves the gate: consumers would
+    // otherwise wait forever on an offline device.  The local value is
+    // then the best available answer.
+    syncLoaded = true;
+    notify(SYNC_LOADED);
+  }
 }
 
 export function detachBackend(): void {
   backend = null;
+  syncLoaded = false;
+  // With no backend the gate is open again (isSyncLoaded() returns true
+  // for backend === null) — notify so anything waiting re-reads.
+  notify(SYNC_LOADED);
 }
 
 /** Cross-tab sync — cheap, and it's the local rehearsal for the

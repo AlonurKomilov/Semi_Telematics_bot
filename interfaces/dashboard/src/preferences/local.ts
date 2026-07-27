@@ -15,7 +15,7 @@
  * rolling the release back doesn't lose it.
  */
 
-import { DEFS, type PrefKey, type PrefDef } from './registry';
+import { DEFS, type PrefKey, type PrefDef, defFor } from './registry';
 
 /** Canonical prefix — shared with the legacy useUserPreference cache. */
 export const LS_PREFIX = '4truck.pref.';
@@ -67,8 +67,13 @@ export function sanitize<T>(d: PrefDef<T>, candidate: T | undefined): T | undefi
  * Read a preference: canonical → legacy (migrating forward) → default,
  * with each candidate sanitized before it's accepted.
  */
-export function readPref<K extends PrefKey>(key: K): unknown {
-  const d = DEFS[key] as PrefDef<unknown>;
+export function readPref<K extends PrefKey>(key: K): unknown;
+export function readPref(key: string): unknown;
+export function readPref(key: string): unknown {
+  // ``defFor`` — not DEFS[key] — because per-table FAMILY keys
+  // (table.<id>.views …) have no fixed registry entry.
+  const d = defFor(key);
+  if (!d) return undefined;
 
   const canonical = sanitize(d, parseCanonical<unknown>(safeGet(lsKey(key))));
   if (canonical !== undefined) return canonical;

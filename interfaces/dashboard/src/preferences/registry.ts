@@ -326,6 +326,62 @@ export const DEFS = {
 
 /** Every valid preference key — autocompleted at call sites. */
 export type PrefKey = keyof typeof DEFS;
+
+// ── KEY FAMILIES (dynamic keys) ──────────────────────────────────────
+//
+// Most preferences have one fixed key.  DataGrid's don't: it stores a set
+// of them PER TABLE — `table.maintenance-tasks.visibility`,
+// `table.loads.views`, … — so the key isn't knowable at registry time.
+//
+// A family declares the def ONCE per part; the concrete key is built by
+// ``tableKey(tableId, part)``.  The produced strings must stay
+// byte-identical to what DataGrid already stored, because they address
+// real rows (column layouts and SAVED TABS).  `tableKey` is the only
+// place those strings are constructed — the frozen test pins its output.
+export const TABLE_PARTS = {
+  visibility:  def<Record<string, boolean>>({ default: {}, scope: 'synced', note: 'Hidden columns.' }),
+  order:       def<string[]>({ default: [], scope: 'synced', note: 'Column order.' }),
+  pinning:     def<{ left?: string[]; right?: string[] }>({ default: {}, scope: 'synced', note: 'Pinned columns.' }),
+  colWidths:   def<Record<string, number>>({ default: {}, scope: 'synced', note: 'Column widths.' }),
+  groups:      def<Record<string, string | null>>({ default: {}, scope: 'synced', note: 'Column bracket groups.' }),
+  rowGroup:    def<string | null>({ default: null, scope: 'synced', note: 'Column rows are grouped by.' }),
+  aggregation: def<Record<string, string>>({ default: {}, scope: 'synced', note: 'Footer totals per column.' }),
+  pageSize:    def<number>({ default: 25, scope: 'synced', note: 'Rows per page.' }),
+  // The saved-tab pair.  NOTE the stored suffixes are '.views' and
+  // '.defaultView' — the ORIGINAL names, kept through the view→tab
+  // rename.  Renaming them orphans every saved tab.
+  views:       def<unknown[]>({ default: [], scope: 'synced', note: 'Your saved tabs.' }),
+  defaultView: def<string>({ default: '', scope: 'synced', note: 'Tab that opens by default.' }),
+} satisfies Record<string, PrefDef<unknown>>;
+
+export type TablePart = keyof typeof TABLE_PARTS;
+export type TablePartValue<P extends TablePart> =
+  (typeof TABLE_PARTS)[P] extends PrefDef<infer T> ? T : never;
+
+/** The one place a per-table key string is built. */
+export const tableKey = <P extends TablePart>(tableId: string, part: P) =>
+  `table.${tableId}.${part}` as `table.${string}.${P}`;
+
+// Two dots minimum, so the fixed key `table.density` can never match.
+const TABLE_KEY_RE = /^table\.(.+)\.([A-Za-z]+)$/;
+
+/**
+ * Resolve the def for ANY key — fixed or family.  Used by the store for
+ * values arriving from storage / another tab / the server, where all we
+ * have is the raw key string.  Returns null for keys we don't own (the
+ * store then ignores them, which is how unrelated localStorage noise
+ * stays harmless).
+ */
+export function defFor(key: string): PrefDef<unknown> | null {
+  if (Object.prototype.hasOwnProperty.call(DEFS, key)) {
+    return DEFS[key as PrefKey] as PrefDef<unknown>;
+  }
+  const m = TABLE_KEY_RE.exec(key);
+  if (m && Object.prototype.hasOwnProperty.call(TABLE_PARTS, m[2])) {
+    return TABLE_PARTS[m[2] as TablePart] as PrefDef<unknown>;
+  }
+  return null;
+}
 /** The value type for a given key. */
 export type PrefValue<K extends PrefKey> = (typeof DEFS)[K] extends PrefDef<infer T> ? T : never;
 

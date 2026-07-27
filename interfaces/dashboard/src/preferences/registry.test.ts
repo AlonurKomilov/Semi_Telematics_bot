@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { DEFS, type PrefKey } from './registry';
+import {
+  DEFS, TABLE_PARTS, tableKey, defFor, type PrefKey, type TablePart,
+} from './registry';
 import { LS_PREFIX, readPref, writePref } from './local';
 import * as store from './store';
 
@@ -207,5 +209,74 @@ describe('store semantics', () => {
     expect(store.get('theme')).toEqual({ color: 'light', density: 'default', radius: 'rounded' });
     // Came from another tab / the server — must not be written back.
     expect(localStorage.getItem(`${LS_PREFIX}theme`)).toBeNull();
+  });
+});
+
+/**
+ * FROZEN FAMILY KEYS — the DataGrid per-table addresses.
+ *
+ * These hold column layouts and SAVED TABS.  ``tableKey`` is the only
+ * place they're built, so pinning its output here is what stops a rename
+ * from silently wiping a user's tabs (the exact bug this project already
+ * hit once).
+ */
+const FROZEN_TABLE_KEYS: Readonly<Record<string, string>> = {
+  visibility:  'table.my-grid.visibility',
+  order:       'table.my-grid.order',
+  pinning:     'table.my-grid.pinning',
+  colWidths:   'table.my-grid.colWidths',
+  groups:      'table.my-grid.groups',
+  rowGroup:    'table.my-grid.rowGroup',
+  aggregation: 'table.my-grid.aggregation',
+  pageSize:    'table.my-grid.pageSize',
+  // The original suffixes, kept through the view→tab rename.
+  views:       'table.my-grid.views',
+  defaultView: 'table.my-grid.defaultView',
+};
+
+describe('preferences registry — key families', () => {
+  it('builds exactly the historical per-table key strings', () => {
+    for (const [part, expected] of Object.entries(FROZEN_TABLE_KEYS)) {
+      expect(tableKey('my-grid', part as TablePart)).toBe(expected);
+    }
+  });
+
+  it('covers every declared family part', () => {
+    expect(Object.keys(TABLE_PARTS).sort())
+      .toEqual(Object.keys(FROZEN_TABLE_KEYS).sort());
+  });
+
+  it('resolves a def for family keys and rejects strangers', () => {
+    expect(defFor('table.loads.views')).toBe(TABLE_PARTS.views);
+    expect(defFor('table.vehicle-inventory-fleet.order')).toBe(TABLE_PARTS.order);
+    // A fixed key still wins.
+    expect(defFor('theme')).toBe(DEFS.theme);
+    // Not ours → ignored (this is what keeps unrelated storage noise safe).
+    expect(defFor('table.loads.somethingElse')).toBeNull();
+    expect(defFor('poi_v2_repair_1_2')).toBeNull();
+    expect(defFor('nonsense')).toBeNull();
+  });
+
+  it('never mistakes the fixed table.density key for a family key', () => {
+    // 'table.density' is a single-dot key; the family regex needs two.
+    expect(defFor('table.density')).toBeNull();
+  });
+
+  it('marks every table family as synced', () => {
+    for (const part of Object.keys(TABLE_PARTS) as TablePart[]) {
+      expect(TABLE_PARTS[part].scope).toBe('synced');
+    }
+  });
+});
+
+describe('resetAll sweeps family keys', () => {
+  it('clears a per-table value that has no registry entry', () => {
+    localStorage.clear();
+    store.set('table.my-grid.views', [{ id: 'a', name: 'Mine' }]);
+    expect(localStorage.getItem(`${LS_PREFIX}table.my-grid.views`)).not.toBeNull();
+    store.resetAll();
+    // Reset all must not leave saved tabs behind.
+    expect(localStorage.getItem(`${LS_PREFIX}table.my-grid.views`)).toBeNull();
+    expect(store.get('table.my-grid.views')).toEqual([]);
   });
 });
