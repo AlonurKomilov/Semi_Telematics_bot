@@ -47,8 +47,15 @@ export interface PivotHeaderCell {
 }
 
 export interface PivotBodyRow {
-  /** Raw bucket value — stable identity for React keys. */
+  /** Full path id — stable identity for React keys AND the expand key. */
   key: string;
+  /** One bucket per row dimension, outermost first. */
+  path: string[];
+  /** 0 = a top-level group.  Drives indentation. */
+  depth: number;
+  /** Whether anything sits beneath it (so the view knows to draw a
+   *  chevron).  A leaf at the deepest level has none. */
+  hasChildren: boolean;
   /** What the operator reads (``pivotLabel`` applied, or the raw value). */
   label: string;
   /** How many source rows fell in this bucket — the "Apples (4)" count. */
@@ -123,7 +130,6 @@ export function pivot(
   columns: AnyColumn[],
 ): PivotResult {
   const cols = byKey(columns);
-  const rowCol = model.rows[0] ? cols.get(model.rows[0]) : undefined;
   // N column dimensions -> N header levels above the value row
   // (Region > Quarter > Sales).  Rows stay single-level in this phase;
   // nesting THOSE needs an expand/collapse tree, not just more headers.
@@ -137,30 +143,43 @@ export function pivot(
     rowFieldLabel: '', bodyRows: [], grandTotal: [], empty: true,
   };
   // A pivot needs something to break down BY and something to measure.
-  if (!rowCol || valueFields.length === 0) return blank;
+  if (model.rows.length === 0 || valueFields.length === 0) return blank;
 
   // ── Buckets ────────────────────────────────────────────────────────
   // Sorted so the output is deterministic (and so 'YYYY-MM' month
   // buckets fall in chronological order for free).
-  const rowBuckets: string[] = [];
-  const seenRow = new Set<string>();
-  // A column PATH is one bucket per column dimension ("North" + "Q1").
+  // Row dimensions nest: [Company, Customer] gives a Company group with
+  // Customer rows beneath it.  Every LEVEL gets its own aggregate row,
+  // so a collapsed parent still shows real totals rather than a blank.
+  const rowDims = model.rows
+    .map((k) => cols.get(k))
+    .filter((c): c is AnyColumn => !!c);
+
+  const rowPathIds: string[] = [];        // every prefix, DFS order
+  const seenRowPath = new Set<string>();
   const colPaths: string[][] = [];
   const seenPath = new Set<string>();
+  const pathOf = (r: Record<string, unknown>) => rowDims.map((c) => bucketOf(r, c));
+
   for (const r of rows) {
-    const rb = bucketOf(r, rowCol);
-    if (!seenRow.has(rb)) { seenRow.add(rb); rowBuckets.push(rb); }
     if (colCols.length) {
       const path = colCols.map((c) => bucketOf(r, c));
       const id = path.join(PATH_SEP);
       if (!seenPath.has(id)) { seenPath.add(id); colPaths.push(path); }
     }
+    // Register EVERY prefix so parents exist even when a child is the
+    // only thing that produced them.
+    const rp = pathOf(r);
+    for (let d = 1; d <= rp.length; d += 1) {
+      const id = rp.slice(0, d).join(PATH_SEP);
+      if (!seenRowPath.has(id)) { seenRowPath.add(id); rowPathIds.push(id); }
+    }
   }
-  rowBuckets.sort();
-  // Lexicographic by segment keeps a parent's children contiguous, which
-  // is what lets one header cell span them.
+  // Sorting the full prefix list lexicographically IS depth-first order:
+  // "Acme" < "Acme\0Bolt" < "Beta", so a parent always precedes its
+  // children and siblings stay together.
+  rowPathIds.sort();
   colPaths.sort((a, b) => a.join(PATH_SEP).localeCompare(b.join(PATH_SEP)));
-  // No column field → one implicit path, so value fields still render.
   const effectiveColPaths = colCols.length ? colPaths : [[]];
   const effectiveColBuckets = effectiveColPaths.map((p) => p.join(PATH_SEP));
 
@@ -227,22 +246,28 @@ export function pivot(
   let totalRowCount = 0;
 
   for (const r of rows) {
-    const rb = bucketOf(r, rowCol);
+    const rp = pathOf(r);
     const cb = colCols.length
       ? colCols.map((c) => bucketOf(r, c)).join(PATH_SEP)
       : '';
-    bump(rowCounts, rb);
-    bump(cellCounts, `${rb} ${cb}`);
-    bump(colCounts, cb);
     totalRowCount += 1;
+    bump(colCounts, cb);
+    // A source row contributes to its own group AND to every ancestor,
+    // which is what makes a collapsed parent show a real total.
+    for (let d = 1; d <= rp.length; d += 1) {
+      const rb = rp.slice(0, d).join(PATH_SEP);
+      bump(rowCounts, rb);
+      bump(cellCounts, `${rb} ${cb}`);
+      for (const v of valueFields) {
+        const n = measureOf(r, cols.get(v.key)!);
+        if (!Number.isFinite(n)) continue;
+        push(collected, `${rb} ${cb}${'||'}${v.key}`, n);
+      }
+    }
     for (const v of valueFields) {
       const n = measureOf(r, cols.get(v.key)!);
-      // NaN = missing / non-numeric.  Skipped rather than pushed, so
-      // sum/avg/min/max never see a phantom 0 (aggregation.ts's rule).
       if (!Number.isFinite(n)) continue;
-      const leaf = `${cb}||${v.key}`;
-      push(collected, `${rb} ${leaf}`, n);
-      push(totals, leaf, n);
+      push(totals, `${cb}||${v.key}`, n);
     }
   }
 
@@ -256,19 +281,31 @@ export function pivot(
   };
   const colOf = (leaf: string) => leaf.slice(0, leaf.lastIndexOf('||'));
 
-  const bodyRows: PivotBodyRow[] = rowBuckets.map((rb) => ({
-    key: rb,
-    label: labelOf(rb, rowCol),
-    count: rowCounts.get(rb) ?? 0,
-    cells: leafIds.map((leaf, i) => {
-      const v = valueFields.find((f) => f.key === leafValueKeys[i])!;
-      return reduce(
-        v.aggFn,
-        collected.get(`${rb} ${leaf}`),
-        cellCounts.get(`${rb} ${colOf(leaf)}`) ?? 0,
-      );
-    }),
-  }));
+  const hasChild = new Set(
+    rowPathIds
+      .map((id) => id.slice(0, id.lastIndexOf(PATH_SEP)))
+      .filter((p) => p !== ''),
+  );
+  const bodyRows: PivotBodyRow[] = rowPathIds.map((rb) => {
+    const parts = rb.split(PATH_SEP);
+    const depth = parts.length - 1;
+    return {
+      key: rb,
+      path: parts,
+      depth,
+      hasChildren: hasChild.has(rb),
+      label: labelOf(parts[depth], rowDims[depth]),
+      count: rowCounts.get(rb) ?? 0,
+      cells: leafIds.map((leaf, i) => {
+        const v = valueFields.find((f) => f.key === leafValueKeys[i])!;
+        return reduce(
+          v.aggFn,
+          collected.get(`${rb} ${leaf}`),
+          cellCounts.get(`${rb} ${colOf(leaf)}`) ?? 0,
+        );
+      }),
+    };
+  });
 
   const grandTotal = leafIds.map((leaf, i) => {
     const v = valueFields.find((f) => f.key === leafValueKeys[i])!;
@@ -279,7 +316,7 @@ export function pivot(
     headerLevels,
     leafIds,
     leafValueKeys,
-    rowFieldLabel: rowCol.label,
+    rowFieldLabel: rowDims.map((c) => c.label).join(' / '),
     bodyRows,
     grandTotal,
     empty: false,

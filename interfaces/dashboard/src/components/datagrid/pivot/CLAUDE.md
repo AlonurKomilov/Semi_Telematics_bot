@@ -95,15 +95,21 @@ is reserved; don't build it until asked.
 
 ## Phase 1 boundary
 
-Ships: 1 row field × 1 column field × N values, `(n)` counts, grand-total
-row, persistence.
+Ships: N row fields (an expand/collapse tree) × N column fields (nested
+header levels) × N values, `(n)` counts, grand-total row, matrix CSV,
+derived date grains, persistence.
+
+Rows nest as a TREE: every level gets its own aggregate row, so a
+collapsed parent still shows a real total rather than a blank. Collapse
+state is SESSION state, not a preference — it's a reading position, and
+restoring yesterday's half-open tree would surprise more than it helps.
+Default is expanded, so data is visible before the chevron is learned.
 
 **Not built** (measured against MUI's pivoting docs — the full list, so
 nobody has to rediscover a gap):
 
 | Missing | Note |
 |---|---|
-| multi-level ROWS + expand/collapse | needs a row tree; COLUMNS nest (Phase 2) |
 | drag-and-drop reorder | checkbox pickers cover 1–2 levels |
 | pivot-side sorting (sort by a measure) | |
 | cell drill-down (click a cell → its rows) | |

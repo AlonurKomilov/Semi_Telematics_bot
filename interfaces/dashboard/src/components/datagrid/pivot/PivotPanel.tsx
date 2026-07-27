@@ -47,14 +47,12 @@ export default function PivotPanel({
   // Rows and Columns are mutually exclusive: the same field on both axes
   // would pivot a dimension against itself (one populated diagonal).
   //
-  // COLUMNS accepts several (Region > Quarter nests as header levels, in
-  // pick order).  ROWS is still single — nesting rows needs an
-  // expand/collapse tree, not just another header level.
+  // BOTH axes accept several fields, nesting in pick order: columns
+  // become header levels, rows become an expand/collapse tree.
   const setDimension = (axis: 'rows' | 'columns', key: string, on: boolean) => {
     const other = axis === 'rows' ? 'columns' : 'rows';
-    const nextAxis = axis === 'columns'
-      ? (on ? [...model.columns, key] : model.columns.filter((k) => k !== key))
-      : (on ? [key] : []);
+    const cur = model[axis];
+    const nextAxis = on ? [...cur, key] : cur.filter((k) => k !== key);
     onChange({
       ...model,
       [axis]: nextAxis,
@@ -110,16 +108,28 @@ export default function PivotPanel({
       </div>
 
       <div className="overflow-y-auto flex-1">
-        <Section title="Rows" hint="One line per value." count={model.rows.length}>
-          {dimensions.filter(match).map((c) => (
-            <FieldRow
-              key={c.key}
-              label={c.label}
-              checked={model.rows.includes(c.key)}
-              disabledReason={model.columns.includes(c.key) ? 'in Columns' : undefined}
-              onToggle={(on) => setDimension('rows', c.key, on)}
-            />
-          ))}
+        <Section
+          title="Rows"
+          hint="One line per value. Pick several to nest them."
+          count={model.rows.length}
+        >
+          {dimensions.filter(match).map((c) => {
+            const at = model.rows.indexOf(c.key);
+            return (
+              <FieldRow
+                key={c.key}
+                label={c.label}
+                checked={at >= 0}
+                disabledReason={model.columns.includes(c.key) ? 'in Columns' : undefined}
+                onToggle={(on) => setDimension('rows', c.key, on)}
+                trailing={at >= 0 && model.rows.length > 1 && (
+                  <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
+                    {at + 1}
+                  </span>
+                )}
+              />
+            );
+          })}
           {dimensions.filter(match).length === 0 && <Hint>No matching fields.</Hint>}
         </Section>
 

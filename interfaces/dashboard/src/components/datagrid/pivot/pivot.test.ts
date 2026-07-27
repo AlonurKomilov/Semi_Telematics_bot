@@ -277,3 +277,73 @@ describe('pivot — CSV export matches what is on screen', () => {
     expect(pivotToCsvRows(pivot(ROWS, model({ values: [] }), COLUMNS))).toEqual([]);
   });
 });
+
+describe('pivot — multi-level ROWS (Company > Customer)', () => {
+  const COLS: AnyColumn[] = [
+    { key: 'company', label: 'Company', pivotable: true },
+    { key: 'customer', label: 'Customer', pivotable: true },
+    { key: 'rate', label: 'Rate', aggregable: true },
+  ];
+  const DATA = [
+    { company: 'PTG', customer: 'Acme', rate: 100 },
+    { company: 'PTG', customer: 'Acme', rate: 200 },
+    { company: 'PTG', customer: 'Bolt', rate: 50 },
+    { company: 'CFT', customer: 'Zed', rate: 10 },
+  ];
+  const nested: PivotModel = {
+    rows: ['company', 'customer'],
+    columns: [],
+    values: [{ key: 'rate', aggFn: 'sum' }],
+  };
+
+  it('emits a row per LEVEL, parents before their children', () => {
+    const r = pivot(DATA, nested, COLS);
+    expect(r.bodyRows.map((b) => `${b.depth}:${b.label}`)).toEqual([
+      '0:CFT', '1:Zed', '0:PTG', '1:Acme', '1:Bolt',
+    ]);
+  });
+
+  it('gives a parent a REAL total, not a blank', () => {
+    const r = pivot(DATA, nested, COLS);
+    const ptg = r.bodyRows.find((b) => b.depth === 0 && b.label === 'PTG')!;
+    // 100 + 200 + 50 — a collapsed parent must still answer the question.
+    expect(ptg.cells[0]).toBe(350);
+    expect(ptg.count).toBe(3);
+    expect(r.bodyRows.find((b) => b.label === 'Acme')!.cells[0]).toBe(300);
+  });
+
+  it('marks which rows have children so the view can draw a chevron', () => {
+    const r = pivot(DATA, nested, COLS);
+    expect(r.bodyRows.find((b) => b.label === 'PTG')!.hasChildren).toBe(true);
+    expect(r.bodyRows.find((b) => b.label === 'Acme')!.hasChildren).toBe(false);
+  });
+
+  it('carries the full path so the view can hide orphans of a collapsed parent', () => {
+    const r = pivot(DATA, nested, COLS);
+    expect(r.bodyRows.find((b) => b.label === 'Acme')!.path).toEqual(['PTG', 'Acme']);
+    expect(r.bodyRows.find((b) => b.label === 'PTG')!.path).toEqual(['PTG']);
+  });
+
+  it('nests rows and columns at the same time', () => {
+    const r = pivot(
+      [
+        { company: 'PTG', customer: 'Acme', region: 'N', rate: 100 },
+        { company: 'PTG', customer: 'Acme', region: 'S', rate: 200 },
+      ],
+      { ...nested, columns: ['region'] },
+      [...COLS, { key: 'region', label: 'Region', pivotable: true }],
+    );
+    expect(r.headerLevels[0].map((h) => h.label)).toEqual(['N', 'S']);
+    expect(r.bodyRows.find((b) => b.label === 'PTG')!.cells).toEqual([100, 200]);
+  });
+
+  it('names the corner cell after every row dimension', () => {
+    expect(pivot(DATA, nested, COLS).rowFieldLabel).toBe('Company / Customer');
+  });
+
+  it('still behaves exactly as before with ONE row dimension', () => {
+    const r = pivot(DATA, { ...nested, rows: ['company'] }, COLS);
+    expect(r.bodyRows.every((b) => b.depth === 0 && !b.hasChildren)).toBe(true);
+    expect(r.bodyRows.map((b) => b.label)).toEqual(['CFT', 'PTG']);
+  });
+});

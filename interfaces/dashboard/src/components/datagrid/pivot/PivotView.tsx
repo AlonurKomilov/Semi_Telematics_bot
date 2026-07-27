@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
-import { TableProperties } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { TableProperties, ChevronRight, ChevronDown } from 'lucide-react';
 
 import { cn } from '../../../lib/utils';
 import { EmptyState } from '../../shell';
@@ -45,6 +45,25 @@ export default function PivotView({
     () => new Map(columns.map((c) => [c.key, c])),
     [columns],
   );
+
+  // Collapsed groups, by path id.  Session state, not a preference: it's
+  // a reading position, and restoring yesterday's half-open tree would be
+  // more surprising than starting expanded.  Default = expanded, so the
+  // data is visible before the operator has learned the chevron.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  const toggle = (key: string) => setCollapsed((prev) => {
+    const next = new Set(prev);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  // A row is hidden when ANY ancestor is collapsed — checking every
+  // prefix (not just the parent) keeps a deep tree correct.
+  const visibleRows = useMemo(() => result.bodyRows.filter((row) => {
+    for (let d = 1; d < row.path.length; d += 1) {
+      if (collapsed.has(row.path.slice(0, d).join('\u0000'))) return false;
+    }
+    return true;
+  }), [result.bodyRows, collapsed]);
 
   if (result.empty) {
     // Name the MISSING piece rather than restating both requirements —
@@ -152,7 +171,7 @@ export default function PivotView({
         </thead>
 
         <tbody>
-          {result.bodyRows.map((row, rowIdx) => (
+          {visibleRows.map((row, rowIdx) => (
             <tr
               key={row.key}
               className={cn(
@@ -169,11 +188,34 @@ export default function PivotView({
                   rowIdx % 2 === 1 && 'bg-muted/30',
                 )}
               >
-                {row.label}
-                {/* How many source rows produced this line — the operator
-                    can tell a 1-load average from a 40-load one. */}
-                <span className="ml-1.5 text-2xs font-normal text-muted-foreground tabular-nums">
-                  ({row.count.toLocaleString()})
+                <span
+                  className="inline-flex items-center gap-1"
+                  // Nesting depth as indentation — the only cue that a
+                  // row belongs to the group above it.
+                  style={{ paddingLeft: row.depth * 16 }}
+                >
+                  {row.hasChildren ? (
+                    <button
+                      type="button"
+                      onClick={() => toggle(row.key)}
+                      aria-expanded={!collapsed.has(row.key)}
+                      aria-label={collapsed.has(row.key) ? `Expand ${row.label}` : `Collapse ${row.label}`}
+                      className="shrink-0 -ml-1 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                    >
+                      {collapsed.has(row.key)
+                        ? <ChevronRight size={14} />
+                        : <ChevronDown size={14} />}
+                    </button>
+                  ) : (
+                    // Keep leaves aligned with their expandable siblings.
+                    row.depth > 0 && <span aria-hidden className="w-[18px] shrink-0" />
+                  )}
+                  {row.label}
+                  {/* How many source rows produced this line — the operator
+                      can tell a 1-load average from a 40-load one. */}
+                  <span className="text-2xs font-normal text-muted-foreground tabular-nums">
+                    ({row.count.toLocaleString()})
+                  </span>
                 </span>
               </th>
               {row.cells.map((value, i) => (
@@ -223,9 +265,9 @@ export default function PivotView({
       {/* Row count of the REPORT (groups), distinct from the source-row
           count in the line above — an operator comparing the two can see
           how much the grouping collapsed. */}
-      {result.bodyRows.length > 0 && (
+      {visibleRows.length > 0 && (
         <p className="px-3 py-2 text-2xs text-muted-foreground text-right border-t border-border">
-          {result.bodyRows.length.toLocaleString()} group{result.bodyRows.length === 1 ? '' : 's'}
+          {visibleRows.length.toLocaleString()} row{visibleRows.length === 1 ? '' : 's'}
         </p>
       )}
     </div>
