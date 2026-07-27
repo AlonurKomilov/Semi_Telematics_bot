@@ -12,7 +12,7 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { ClipboardList, Plus } from 'lucide-react';
+import { Check, ClipboardList, Plus } from 'lucide-react';
 import TaskPartsDialog from './TaskPartsDialog';
 import MergeTaskDialog from './MergeTaskDialog';
 import EditTaskDialog from './EditTaskDialog';
@@ -151,9 +151,29 @@ export default function ServiceTasks() {
     },
     {
       key: 'system_key', label: 'System', sortable: true, filterable: true,
-      render: (v) => (v
-        ? <span className="text-sm">{systemLabel(v) || String(v)}</span>
-        : <span className="text-muted-foreground">Unassigned</span>),
+      render: (v, row) => {
+        if (v) return <span className="text-sm">{systemLabel(v) || String(v)}</span>;
+        const t = row as unknown as ServiceTask;
+        // Suggest-confirm fill: the server guessed from the name; one
+        // click applies it, nothing happens without the click.
+        if (t.suggested_system && canManage) {
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                void act('System set', () =>
+                  updateServiceTask(t.id, { system_key: t.suggested_system }));
+              }}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition hover:brightness-110 ${toneClasses('info')}`}
+            >
+              <Check size={12} aria-hidden />
+              {systemLabel(t.suggested_system) || t.suggested_system}?
+            </button>
+          );
+        }
+        return <span className="text-muted-foreground">Unassigned</span>;
+      },
     },
     {
       key: 'vehicle_type', label: 'Applies to', sortable: true, filterable: true,

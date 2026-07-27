@@ -70,6 +70,16 @@ async def list_service_tasks(
         user["account_id"], include_archived=include_archived,
         vehicle_type=vehicle_type,
     )
+    # Suggest-confirm fill for the system layer: unassigned tasks get a
+    # best-guess system the UI offers as a one-click chip.  A
+    # suggestion, never an assignment — nothing is written until the
+    # user confirms (the owner's standing rule for every fill path).
+    from adapters.storage.service_tasks import suggest_system_for
+    for r in rows:
+        if not r.get("system_key") and r.get("status") == "active":
+            hint = suggest_system_for(r.get("name") or "")
+            if hint:
+                r["suggested_system"] = hint
     return {"service_tasks": rows, "count": len(rows)}
 
 
@@ -82,6 +92,18 @@ async def create_service_task(
     """Add a task.  Names are unique per account (Fleetio's rule — two
     spellings of one task silently split every report), so a collision
     is a 409 rather than a second row."""
+    from adapters.storage.service_tasks import (
+        SYSTEM_LABELS, system_bucket_collision,
+    )
+    bucket = system_bucket_collision(body.name)
+    if bucket:
+        raise HTTPException(
+            status_code=422,
+            detail=f"“{body.name.strip()}” is just the "
+                   f"{SYSTEM_LABELS.get(bucket, bucket)} system again — use "
+                   f"that system's existing general task, or name the "
+                   f"specific job (e.g. “Brake Caliper Replacement”).",
+        )
     task = await tenant_db.create_service_task(
         user["account_id"], body.name,
         description=body.description,
@@ -129,6 +151,17 @@ async def update_service_task(
     # the user is told which thing was wrong instead of a menu of
     # three possibilities.
     if body.name is not None:
+        from adapters.storage.service_tasks import (
+            SYSTEM_LABELS as _SL, system_bucket_collision as _sbc,
+        )
+        _bucket = _sbc(body.name)
+        if _bucket:
+            raise HTTPException(
+                status_code=422,
+                detail=f"“{body.name.strip()}” is just the "
+                       f"{_SL.get(_bucket, _bucket)} system again — keep a "
+                       f"specific job name instead.",
+            )
         clash = await tenant_db.find_service_task_by_name(
             user["account_id"], body.name,
         )

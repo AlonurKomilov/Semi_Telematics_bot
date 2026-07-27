@@ -561,3 +561,78 @@ async def test_per_system_report_is_reexported(api):
                         headers=_h(api["owner"]))
         assert r.status_code == 200, r.text
         assert "rows" in r.json()
+
+
+# ── Phase 2: suggest-confirm fill + the catch-all guard ─────────────
+
+def test_suggest_system_for_names():
+    from adapters.storage.service_tasks import suggest_system_for
+    assert suggest_system_for("Radiator hose replacement") == "cooling"
+    assert suggest_system_for("Alternator swap") == "electrical"
+    assert suggest_system_for("Landing gear repair") == "trailer"
+    assert suggest_system_for("Windshield crack") == "body_cab"
+    # Longest keyword wins, not declaration order.
+    assert suggest_system_for("Kingpin grease") == "steering"
+    # Word boundary: 'def' must not hit 'defrost'.
+    assert suggest_system_for("Defrost switch") != "exhaust"
+    # Nothing specific → no suggestion, never a guess.
+    assert suggest_system_for("Mystery thing") == ""
+    assert suggest_system_for("") == ""
+
+
+def test_system_bucket_collision():
+    from adapters.storage.service_tasks import system_bucket_collision
+    # A name that is just a system plus filler = a duplicate bucket.
+    assert system_bucket_collision("Brakes Repair") == "brakes"
+    assert system_bucket_collision("electrical") == "electrical"
+    assert system_bucket_collision("Cooling System Work") == "cooling"
+    # Specific jobs pass.
+    assert system_bucket_collision("Brake Caliper Replacement") == ""
+    assert system_bucket_collision("Battery Service") == ""
+    assert system_bucket_collision("Tire Service") == ""
+
+
+@pytest.mark.asyncio
+async def test_list_offers_suggestions_only_where_needed(db, acct):
+    """Unassigned active tasks get a hint; assigned ones don't; the
+    hint is a SUGGESTION — nothing is written until confirmed."""
+    hinted = await db.create_service_task(acct, "Radiator Hose Swap")
+    assigned = await db.create_service_task(
+        acct, "Coolant Flush Special", system_key="cooling")
+
+    import infra.platform as cp
+    cp._db = db
+    from adapters.storage import Role
+    from interfaces.api.app import create_api
+    a2 = await db.create_user(970001, acct, role=Role.OWNER)
+    tok = create_jwt(a2.telegram_id, acct, "owner")
+    async with AsyncClient(transport=ASGITransport(app=create_api()),
+                           base_url="http://t") as c:
+        r = await c.get("/api/service-tasks", headers=_h(tok))
+        rows = {t["id"]: t for t in r.json()["service_tasks"]}
+        assert rows[hinted["id"]].get("suggested_system") == "cooling"
+        assert "suggested_system" not in rows[assigned["id"]]
+        # Still unassigned in storage — suggestion wrote nothing.
+        assert (await db.get_service_task(hinted["id"], acct))["system_key"] == ""
+
+
+@pytest.mark.asyncio
+async def test_api_blocks_duplicate_system_buckets(api):
+    """'Brakes Repair' isn't a job — it's the Brakes bucket again, and
+    a second bucket splits the report the system layer exists for."""
+    async with AsyncClient(transport=ASGITransport(app=api["app"]),
+                           base_url="http://t") as c:
+        r = await c.post("/api/service-tasks", headers=_h(api["owner"]),
+                         json={"name": "Brakes Repair"})
+        assert r.status_code == 422 and "Brakes" in r.json()["detail"]
+
+        # The specific job sails through.
+        r = await c.post("/api/service-tasks", headers=_h(api["owner"]),
+                         json={"name": "Brake Caliper Replacement"})
+        assert r.status_code == 200
+        tid = r.json()["id"]
+
+        # …and can't be RENAMED into a bucket either.
+        r = await c.put(f"/api/service-tasks/{tid}", headers=_h(api["owner"]),
+                        json={"name": "Suspension Repairs"})
+        assert r.status_code == 422 and "Suspension" in r.json()["detail"]

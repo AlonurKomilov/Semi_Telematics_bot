@@ -93,6 +93,117 @@ def normalize_system_key(value: str) -> str:
     return v if v in SYSTEM_KEYS else ""
 
 
+# ── Suggesting a system from a task's name ─────────────────────────
+#
+# The fill path for tasks a human typed: suggest-confirm, never silent
+# (the owner's standing rule).  Same discipline as the work-order link
+# matcher: word-boundary matching and SPECIFIC words only — one hit is
+# enough to suggest, so a generic word here would mislabel half the
+# list.  A task the map doesn't recognise simply gets no suggestion.
+_SYSTEM_KEYWORDS: dict[str, tuple[str, ...]] = {
+    "pm":           ("pm service", "preventive", "lube", "grease",
+                     "lubrication"),
+    "inspection":   ("inspection", "inspect", "dot", "fmcsa", "annual"),
+    "engine":       ("engine", "oil change", "oil filter", "air filter",
+                     "turbo", "turbocharger", "injector", "cylinder",
+                     "valve cover", "crankcase", "egr"),
+    "cooling":      ("coolant", "radiator", "water pump", "thermostat",
+                     "antifreeze", "fan clutch", "overheat"),
+    "fuel":         ("fuel filter", "fuel pump", "fuel line", "fuel tank",
+                     "water separator", "diesel"),
+    "exhaust":      ("dpf", "def", "regen", "aftertreatment", "scr",
+                     "urea", "adblue", "exhaust", "muffler", "doc",
+                     "nox sensor"),
+    "drivetrain":   ("transmission", "clutch", "driveline", "driveshaft",
+                     "differential", "gearbox", "u joint", "pto"),
+    "brakes":       ("brake", "brakes", "rotor", "caliper", "drum",
+                     "pad", "pads", "shoe", "shoes", "slack adjuster",
+                     "abs"),
+    "air_system":   ("air line", "air lines", "air dryer", "air leak",
+                     "glad hand", "gladhand", "air compressor",
+                     "air tank", "air bag", "airbag"),
+    "suspension":   ("suspension", "spring", "shock", "bushing",
+                     "torque rod", "leaf spring"),
+    "steering":     ("steering", "alignment", "align", "tie rod",
+                     "drag link", "kingpin", "king pin", "toe", "camber"),
+    "tires_wheels": ("tire", "tires", "tyre", "wheel", "rim", "hub",
+                     "bearing", "wheel seal", "rotation", "balance",
+                     "retread", "flat"),
+    "electrical":   ("electrical", "wiring", "harness", "battery",
+                     "batteries", "alternator", "starter", "fuse",
+                     "solenoid", "sensor"),
+    "lighting":     ("light", "lights", "headlight", "taillight",
+                     "marker", "bulb", "led"),
+    "hvac":         ("hvac", "a/c", "ac ", "air conditioning", "heater",
+                     "blower", "condenser", "evaporator", "apu",
+                     "bunk heater"),
+    "body_cab":     ("door", "mirror", "windshield", "glass", "cab",
+                     "hood", "fender", "bumper", "seat", "paint",
+                     "body"),
+    "trailer":      ("trailer", "landing gear", "fifth wheel", "reefer",
+                     "liftgate", "lift gate", "mud flap", "tarp",
+                     "roll door", "swing door"),
+}
+
+import re as _re
+
+
+def suggest_system_for(name: str) -> str:
+    """Best-guess system for a task NAME, or '' when nothing specific
+    matches.  A suggestion, never an assignment — the caller shows it
+    and a human confirms.  Word-boundary matching so 'def' can't hit
+    'defrost' (the same guard the link matcher uses); first match in
+    declaration order wins, and the more specific multiword phrases
+    are listed before the words they contain."""
+    hay = " ".join((name or "").lower().split())
+    if not hay:
+        return ""
+    # Longest matched keyword wins, not declaration order — "Kingpin
+    # grease" must go to Steering (kingpin) even though PM's "grease"
+    # also hits.  Specificity is length, near enough.
+    best_system, best_len = "", 0
+    for system, words in _SYSTEM_KEYWORDS.items():
+        for w in words:
+            if len(w) > best_len and _re.search(
+                    rf"\b{_re.escape(w)}\b", hay):
+                best_system, best_len = system, len(w)
+    return best_system
+
+
+# Filler that carries no meaning when comparing a task name against a
+# system label — "Brakes Repair" IS the Brakes system plus noise.
+_BUCKET_FILLER = frozenset({
+    "repair", "repairs", "service", "services", "general", "other",
+    "system", "systems", "work", "job", "jobs", "fix", "fixes",
+    "and", "a", "c", "of", "the",
+})
+
+
+def system_bucket_collision(name: str) -> str:
+    """The system key a task NAME collapses onto, or ''.
+
+    Guard for the degenerate case the task list is designed to avoid:
+    a user creating "Brakes Repair" or "Electrical" as a custom task —
+    that's not a job, it's the system's general bucket again, and a
+    second bucket splits the very report the system layer exists for.
+    The seeded catch-alls are the sanctioned buckets; this stops the
+    9th, 10th, 11th being born.
+    """
+    def toks(text: str) -> frozenset:
+        return frozenset(
+            t for t in _re.findall(r"[a-z0-9]+", (text or "").lower())
+            if t not in _BUCKET_FILLER
+        )
+    name_toks = toks(name)
+    if not name_toks:
+        return ""
+    for sy in SERVICE_TASK_SYSTEMS:
+        if name_toks == toks(sy["label"]) or name_toks == toks(
+                sy["key"].replace("_", " ")):
+            return sy["key"]
+    return ""
+
+
 # Which system each seeded standard task belongs to.  Kept beside the
 # task list so the two can't drift apart.
 _STANDARD_SYSTEMS: dict[str, str] = {

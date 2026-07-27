@@ -24,6 +24,9 @@ export interface ServiceTask {
   /** The reporting axis above a task ("what are brakes costing us?").
    *  '' = unassigned. Ours, not VMRS — see the storage module. */
   system_key: string;
+  /** Server-side best guess for an UNASSIGNED task — shown as a
+   *  one-click confirm chip, never auto-applied. */
+  suggested_system?: string;
   status: 'active' | 'archived';
   created_at: string;
   updated_at: string;
