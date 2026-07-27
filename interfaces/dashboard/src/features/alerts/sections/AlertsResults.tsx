@@ -297,7 +297,7 @@ export default function AlertsResults() {
           const a = row as unknown as Alert;
           return (
             <span className="inline-flex items-center">
-              <TypeBadge type={(v as string) || 'unknown'} />
+              <TypeBadge type={(v as string) || 'unknown'} kind={a.kind} />
               {/* Occurrence-count badge — "× 5" when this same logical
                   alert has fired multiple times without being cleared. */}
               {(a.occurrence_count ?? 1) > 1 && (

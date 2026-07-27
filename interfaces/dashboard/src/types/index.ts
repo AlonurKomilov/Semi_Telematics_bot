@@ -319,6 +319,10 @@ export interface Alert {
    *  a unit belongs to.  '' / undefined → no company chip. */
   company?: string;
   alert_type?: string;
+  /** Per-row kind within the type, when the server can derive one from
+   *  the stored row ("braking", "unsafe", …).  '' / undefined → the UI
+   *  falls back to the generic type label. */
+  kind?: string;
   /** Server-authoritative severity — written by pipeline.send_alert.
    *  Frontends must NOT re-derive from alert_type. */
   severity?: AlertSeverity;

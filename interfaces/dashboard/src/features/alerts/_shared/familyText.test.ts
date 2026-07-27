@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { FEATURE_CATALOG } from '../../../config/featureCatalog';
-import { FEATURE_GROUPS } from '../../notifications/delivery/alertRoutingConstants';
+import {
+  FEATURE_GROUPS,
+  SUBTYPE_LABELS,
+} from '../../notifications/delivery/alertRoutingConstants';
 import en from '../../../locales/en.json';
-import { familyText } from './components';
+import { familyText, kindText } from './components';
 
 // The Board's TYPE_FAMILY map names each alert type's owning FEATURE as
 // the feature catalog names it (English nav label — feature names stay
@@ -53,6 +56,18 @@ describe('familyText mirrors the feature catalog', () => {
     expect(familyText('event')).toBe(familyText('events'));
     expect(familyText('safety_events')).toBe(familyText('events'));
     expect(familyText('doc_expiry')).toBe(familyText('documents'));
+  });
+
+  it('names event kinds exactly as the routing UI does', () => {
+    for (const [kind, label] of Object.entries(SUBTYPE_LABELS)) {
+      expect(kindText(kind), `kind "${kind}"`).toBe(label);
+    }
+  });
+
+  it('labels the parking classifier classes', () => {
+    expect(kindText('unsafe')).toBe('Unsafe Parking');
+    expect(kindText('unknown')).toBe('Unverified Parking');
+    expect(kindText('no_such_kind')).toBe('');
   });
 
   it('homes owner housekeeping types on System, unknowns on Other', () => {

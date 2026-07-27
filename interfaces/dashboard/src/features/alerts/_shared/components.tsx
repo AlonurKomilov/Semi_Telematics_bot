@@ -12,21 +12,35 @@ import { formatDate } from '../../../utils/datetime';
 import type { Alert } from '../../../types';
 import { Tip } from '../../../components/tooltip';
 
-// Raw alert_type → the SAME words the Type filter chips show, so a row and
-// the control that filters it name the thing identically.  Multi-word keys
-// need the map (CSS `capitalize` would render "Doc_expiry").
+// Raw alert_type → the row's noun when no per-row kind is stored.  The
+// Feature column carries the family, so the type label names the THING
+// ("Low Fuel", not a "Fuel" echo of a Vehicles feature).  The server
+// Type filter still filters by family word — that divergence is
+// deliberate (owner decision 2026-07-27).
 const TYPE_TEXT: Record<string, string> = {
-  fault: 'Fault', faults: 'Fault',
-  health: 'Health',
-  fuel: 'Fuel',
+  fault: 'Engine Fault', faults: 'Engine Fault',
+  health: 'Engine Health',
+  fuel: 'Low Fuel',
   events: 'Events', event: 'Events', safety_events: 'Events',
   parking: 'Parking',
-  camera: 'Camera',
+  camera: 'Camera Issue',
   geofence: 'Geofence',
   maintenance: 'Maintenance',
   documents: 'Documents', doc_expiry: 'Documents',
   scorecard: 'Scorecard',
   system: 'System', samsara_sync: 'Sync', reescalate: 'Re-escalation',
+};
+
+// Per-row kind → display noun.  Kinds arrive from the server only when
+// the stored row provably encodes one (Alert.kind): safety-event
+// sub-kinds (mirrors SUBTYPE_LABELS in the routing UI — guarded by
+// familyText.test.ts) and the parking classifier's location class
+// ('unknown' renders as Unverified, matching the alert message).
+const KIND_TEXT: Record<string, string> = {
+  crash: 'Crash', braking: 'Harsh Braking', acceleration: 'Harsh Acceleration',
+  harshTurn: 'Harsh Turn', rollingStop: 'Rolling Stop',
+  followingDistance: 'Following Distance', laneDeparture: 'Lane Departure',
+  unsafe: 'Unsafe Parking', unknown: 'Unverified Parking',
 };
 
 // Alert type → owning FEATURE, named as the feature catalog names it
@@ -53,6 +67,10 @@ export function familyText(type: string): string {
   return TYPE_FAMILY[type] ?? 'Other';
 }
 
+export function kindText(kind: string): string {
+  return KIND_TEXT[kind] ?? '';
+}
+
 function typeText(type: string): string {
   return TYPE_TEXT[type]
     ?? type.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
@@ -69,10 +87,10 @@ function typeText(type: string): string {
  *  Shape is the grammar: a borderless PILL means "this is a fact about the
  *  row"; the bordered rounded-rect chips in the filter bar mean "click me
  *  to filter". Same words, different shapes, no ambiguity. */
-export function TypeBadge({ type }: { type: string }) {
+export function TypeBadge({ type, kind }: { type: string; kind?: string }) {
   return (
     <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
-      {typeText(type)}
+      {(kind && KIND_TEXT[kind]) || typeText(type)}
     </span>
   );
 }

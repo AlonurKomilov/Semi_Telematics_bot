@@ -103,6 +103,31 @@ def _dedup_by_alert_key(alerts: list[dict]) -> list[dict]:
     return list(seen.values())
 
 
+def _kind_from_row(alert_type: str, subkey: str) -> str:
+    """Best-effort per-row kind, ONLY where the stored subkey provably
+    encodes one — everything else returns "" and the UI falls back to
+    the generic type label.
+
+    - events: the caller-passed event_type rides as the subkey prefix
+      ("braking" or "braking:{ts}:{detail}" depending on dedup mode).
+      A bare "{ts}:{detail}" subkey starts with an ISO date — skipped.
+    - parking: the classifier's location class is embedded by the
+      sender as "parking:{cls}:{N}h" ('unsafe' or 'unknown'; the UI
+      labels 'unknown' as Unverified Parking, matching the message).
+    """
+    if not subkey:
+        return ""
+    if alert_type in ("events", "event"):
+        head = subkey.split(":", 1)[0]
+        if head and not head[0].isdigit():
+            return head
+        return ""
+    if alert_type == "parking":
+        m = re.search(r"parking:([a-z]+):", subkey)
+        return m.group(1) if m else ""
+    return ""
+
+
 def _shape_history_for_pending_api(row: dict) -> dict:
     """Translate an `alert_history` row into the shape the dashboard +
     mini-app already expect for the pending list.
@@ -120,6 +145,11 @@ def _shape_history_for_pending_api(row: dict) -> dict:
     return {
         "id": row.get("id"),
         "alert_type": row.get("alert_type"),
+        # Per-row KIND within the type ("braking", "unsafe", …) so the
+        # Board's Type column can name the specific thing instead of
+        # echoing the feature ("Unsafe Parking", not "Parking").
+        "kind": _kind_from_row(row.get("alert_type") or "",
+                               row.get("alert_subkey") or ""),
         "vehicle_id": row.get("vehicle_id"),
         "vehicle_name": row.get("vehicle_name"),
         # Severity + location are now SSOT on alert_history (writes by

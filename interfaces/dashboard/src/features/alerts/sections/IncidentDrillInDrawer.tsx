@@ -105,7 +105,7 @@ function DrawerHeader({ alert, onClose }: {
       <SeverityDot severity={alert.severity} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <TypeBadge type={alert.alert_type || 'unknown'} />
+          <TypeBadge type={alert.alert_type || 'unknown'} kind={alert.kind} />
           <span className="text-xs text-muted-foreground font-mono">
             #{alert.id}
           </span>
