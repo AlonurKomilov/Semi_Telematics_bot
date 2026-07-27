@@ -57,34 +57,37 @@ async def test_mixin_crud_roundtrip(db):
     assert await db.get_bot_instance(acct.id, "safety") is None
 
 
-# ── Sender pick (pipeline fallback contract) ───────────────────────
+# ── Sender resolution (notifications spine fallback contract) ──────
+#
+# The pipeline's _pick_sender died with the legacy group path; the
+# spine's telegram_topic channel resolves the author bot from the plan
+# target's ``sender_hint`` instead.  Same fallback rules, new door.
+# (The fourth legacy rule — the owner_admin AGGREGATE always rides the
+# primary — moved to plan construction: the pipeline emits
+# ``sender_hint=""`` for aggregate targets; see test_alert_group_plan.)
 
-def test_pick_sender_fallback_rules(monkeypatch):
-    from capabilities.alerting.pipeline import _pick_sender
+def test_resolve_sender_fallback_rules(monkeypatch):
+    import capabilities.notifications.telegram as nt
     import infra.bot_registry as reg
 
     primary = object()
     sub = object()
 
-    class _StubRegistry:
-        def get_sub(self, account_id, persona):
-            return sub if persona == "safety" else None
+    monkeypatch.setattr(
+        reg, "get_sender_for_persona",
+        lambda account_id, persona: sub if persona == "safety" else None,
+    )
+    monkeypatch.setattr(nt, "_bot_for", lambda account_id: primary)
 
-        def get(self, account_id):
-            return primary
-
-    monkeypatch.setattr(reg, "_registry", _StubRegistry())
-
-    t = lambda persona, agg=False: SimpleNamespace(persona=persona, is_aggregate=agg)
-    # attached + running → the role's Sub bot
-    assert _pick_sender(primary, 1, t("safety")) is sub
-    # no sub for this persona → primary
-    assert _pick_sender(primary, 1, t("dispatcher")) is primary
-    # legacy single_group targets carry no persona → primary
-    assert _pick_sender(primary, 1, t("")) is primary
-    # the owner_admin aggregate ALWAYS rides the primary, even if a sub
-    # exists for that persona
-    assert _pick_sender(primary, 1, t("safety", agg=True)) is primary
+    # attached + running → the hinted persona's Sub bot
+    assert nt._resolve_sender(1, "safety") is sub
+    # no sub for this persona → fail-open to the primary
+    assert nt._resolve_sender(1, "dispatcher") is primary
+    # no hint (aggregate / legacy single_group) → primary
+    assert nt._resolve_sender(1, "") is primary
+    # an explicit override always wins
+    forced = object()
+    assert nt._resolve_sender(1, "safety", forced) is forced
 
 
 # ── HTTP endpoints (permission model) ──────────────────────────────
