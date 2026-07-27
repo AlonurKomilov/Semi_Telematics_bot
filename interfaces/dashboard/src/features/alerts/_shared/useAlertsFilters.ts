@@ -42,6 +42,7 @@ const FILTER_PARAM_KEYS = [
   'pageSize',
   'sort',
   'dir',
+  'tab',
 ] as const;
 
 type FilterParamKey = (typeof FILTER_PARAM_KEYS)[number];
@@ -67,6 +68,11 @@ export interface AlertsFiltersAPI {
    *  recency. */
   sort: string;
   dir: 'asc' | 'desc';
+  /** Id of the operator's saved tab currently applied, or ''.  A saved tab
+   *  is a NAMED filter set, so applying one writes its filters into the
+   *  URL like any other narrowing — this param only records WHICH one, so
+   *  the grid can show it as the active tab. */
+  tab: string;
   setTypeFilter: (v: string) => void;
   setSeverityFilter: (v: string) => void;
   setAckState: (v: AlertAckState) => void;
@@ -75,6 +81,23 @@ export interface AlertsFiltersAPI {
   setPage: (v: number) => void;
   setPageSize: (v: number) => void;
   setSort: (key: string, dir: 'asc' | 'desc') => void;
+  /** Apply a saved tab: its filters, its search and the lifecycle slice it
+   *  was saved under, in ONE history entry.  Written together because they
+   *  are one act — applying them separately would fire a server query per
+   *  key and leave intermediate states in the address bar. */
+  applyTab: (id: string, next: {
+    typeFilter: string;
+    severityFilter: string;
+    vehicleSearch: string;
+    ackState?: AlertAckState;
+    /** The tab's captured order.  Absent means "revert to triage order" —
+     *  a tab that inherited whatever sort you happened to be browsing
+     *  under wouldn't be the view you saved. */
+    sort?: string;
+    dir?: 'asc' | 'desc';
+  }) => void;
+  /** Leave the saved tab without disturbing the filters it left behind. */
+  clearTab: () => void;
   /** True when the view is NARROWED beyond this persona's defaults —
    *  i.e. the user actively picked a type / severity / vehicle.  Callers
    *  use it to tell "nothing matches your filters" apart from a genuine
@@ -97,6 +120,7 @@ function readDefaults(params: URLSearchParams, defaults: FilterDefaults): {
   pageSize: number;
   sort: string;
   dir: 'asc' | 'desc';
+  tab: string;
 } {
   const typeFilter = params.get('typeFilter') || defaults.typeFilter;
   const severityFilter = params.get('severityFilter') || defaults.severityFilter;
@@ -110,11 +134,12 @@ function readDefaults(params: URLSearchParams, defaults: FilterDefaults): {
   const pageSize = Number.isFinite(sizeRaw) && sizeRaw >= 1
     ? Math.min(sizeRaw, 2000)      // the server's own ceiling
     : 25;
+  const tab = params.get('tab') ?? '';
   const sort = params.get('sort') ?? '';
   const dir = params.get('dir') === 'asc' ? 'asc' as const : 'desc' as const;
   return {
     typeFilter, severityFilter, ackState, vehicleSearch, days, page,
-    pageSize, sort, dir,
+    pageSize, sort, dir, tab,
   };
 }
 
@@ -134,6 +159,14 @@ function writeDefaults(
 ): URLSearchParams {
   const next = new URLSearchParams(prev);
   next.delete('vehicleSearch');   // re-added below only when non-empty
+  // Restoring defaults leaves NO saved tab applied.  Without this the tab
+  // stayed highlighted while the query underneath had been reset to the
+  // persona defaults — the strip claiming "Critical faults" over a board
+  // showing everything.  Order goes too: the grid's own "clear all" clears
+  // sorting, so this stays consistent with it.
+  next.delete('tab');
+  next.delete('sort');
+  next.delete('dir');
   next.set('typeFilter', defaults.typeFilter);
   next.set('severityFilter', defaults.severityFilter);
   next.set('ackState', defaults.ackState);
@@ -190,6 +223,20 @@ export function useAlertsFilters(): AlertsFiltersAPI {
         if (opts?.resetPage !== false && key !== 'page') {
           next.set('page', '1');
         }
+        // Editing a filter by hand means you've LEFT the saved tab — its
+        // whole meaning is "this exact set", so a tab that stayed
+        // highlighted while showing something else would be a lie about
+        // what you're looking at.  Paging and re-sorting are navigation
+        // WITHIN a scope, so they keep it.
+        // Navigation WITHIN a scope keeps the tab; changing the scope
+        // leaves it.  Listed here so the rule lives in one place — note
+        // ``setSort`` writes sort/dir through its own atomic setParams and
+        // relies on the same rule, so a future refactor routing it through
+        // here must not start dropping the tab on every sort click.
+        const inScopeNavigation: FilterParamKey[] = ['page', 'pageSize', 'sort', 'dir', 'tab'];
+        if (!inScopeNavigation.includes(key)) {
+          next.delete('tab');
+        }
         return next;
       });
     },
@@ -218,6 +265,27 @@ export function useAlertsFilters(): AlertsFiltersAPI {
     setDays: (v) => setParam('days', v),
     setPage: (v) => setParam('page', v, { resetPage: false }),
     setPageSize: (v) => setParam('pageSize', v),
+    applyTab: (id, nextState) => {
+      setParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('tab', id);
+        next.set('typeFilter', nextState.typeFilter);
+        next.set('severityFilter', nextState.severityFilter);
+        if (nextState.vehicleSearch) next.set('vehicleSearch', nextState.vehicleSearch);
+        else next.delete('vehicleSearch');
+        if (nextState.ackState) next.set('ackState', nextState.ackState);
+        if (nextState.sort) {
+          next.set('sort', nextState.sort);
+          next.set('dir', nextState.dir ?? 'desc');
+        } else {
+          next.delete('sort');
+          next.delete('dir');
+        }
+        next.set('page', '1');
+        return next;
+      });
+    },
+    clearTab: () => setParam('tab', undefined, { resetPage: false }),
     setSort: (key, direction) => {
       setParams((prev) => {
         const next = new URLSearchParams(prev);

@@ -121,6 +121,7 @@ export default function AlertsResults() {
     typeFilter, setTypeFilter, severityFilter, setSeverityFilter,
     vehicleSearch, setVehicleSearch,
     page, setPage, pageSize, setPageSize, sort, dir, setSort,
+    tab, applyTab, clearTab,
   } = useAlertsFilters();
   const { counts: segmentCounts } = useAlertSegmentCounts();
 
@@ -487,15 +488,10 @@ export default function AlertsResults() {
         // old Per-vehicle / Per-alert toggle — that was a hardcoded
         // special case of this, offering only Vehicle.
         tableId="alerts"
-        // savedTabs stays OFF for one more step.  The filters a tab
-        // captures are now server-truthful, which was the blocker — but a
-        // tab and an ack-state are both "the active segment", and this
-        // page models that slot as ackState alone.  Selecting a tab would
-        // hand ``tab:<id>`` to setAckState, which normalises to 'active',
-        // so the tab's filters would be dropped and it wouldn't even show
-        // as selected.  Turning it on needs a page-side segment key that
-        // can hold either kind; DataGrid already passes a tab's captured
-        // {filters, search} to onSegmentChange for exactly that.
+        // Personal saved tabs.  A tab captures the column filters, and
+        // those write the SERVER query, so a tab scopes the whole queue
+        // rather than the page that happened to be loaded.
+        savedTabs
         columns={columns}
         data={rows as unknown as Record<string, unknown>[]}
         // The WHOLE row opens the details drawer.  Previously only the
@@ -549,8 +545,37 @@ export default function AlertsResults() {
         // queue is showing, so it could never have been a column filter.
         // Counts come from the server for the same reason the filters do.
         segments={ACK_SEGMENTS}
-        segmentKey={ackState}
-        onSegmentChange={(key) => setAckState(key as typeof ackState)}
+        // ONE slot, two kinds of occupant: a lifecycle tab or a saved one.
+        // The URL records which, so a saved tab survives a refresh and can
+        // be shared like any other view.
+        segmentKey={tab ? `tab:${tab}` : ackState}
+        onSegmentChange={(key, savedTab) => {
+          clearSelection();
+          if (savedTab) {
+            // A saved tab IS its filters — applied in one write so the
+            // board makes a single query and the address bar never shows
+            // a half-applied scope.  ``baseSegment`` restores the
+            // lifecycle slice it was saved under; without it a tab saved
+            // among the un-acknowledged would silently widen to all.
+            const { typeFilter: type, severityFilter: sev } =
+              fromGridFilters(savedTab.filters);
+            const captured = savedTab.sort?.[0];
+            applyTab(key.slice('tab:'.length), {
+              typeFilter: type,
+              severityFilter: sev,
+              vehicleSearch: savedTab.search,
+              ackState: savedTab.baseSegment as typeof ackState | undefined,
+              sort: captured?.id,
+              dir: captured?.desc === false ? 'asc' : 'desc',
+            });
+            return;
+          }
+          // No clearTab() here: setAckState writes through setParam, which
+          // drops `tab` already.  Calling both pushed TWO history entries
+          // for one click, so Back landed on a half-changed URL nobody
+          // asked for.
+          setAckState(key as typeof ackState);
+        }}
         segmentCounts={segmentCounts}
         // One search box, searching vehicle name AND location across the
         // whole queue.  It replaces two controls that each told a partial

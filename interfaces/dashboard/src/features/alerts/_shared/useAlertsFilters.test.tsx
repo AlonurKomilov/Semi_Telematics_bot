@@ -19,6 +19,8 @@ import { cleanup, renderHook, act, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { useAlertsFilters } from './useAlertsFilters';
+import { resolveFilterDefaults } from '../personaConfig';
+import type { Persona } from '../../_lib/types';
 
 afterEach(cleanup);
 
@@ -26,6 +28,10 @@ const mockUseShellConfig = vi.fn();
 vi.mock('../../../hooks/useShellConfig', () => ({
   useShellConfig: () => mockUseShellConfig(),
 }));
+
+function defaultsFor(persona: Persona) {
+  return resolveFilterDefaults(persona);
+}
 
 function setPersona(persona: string) {
   mockUseShellConfig.mockReturnValue({ persona });
@@ -246,6 +252,130 @@ describe('useAlertsFilters — server paging state', () => {
     act(() => result.current.setSort('', 'desc'));
     expect(result.current.sort).toBe('');
     expect(lastSearch).not.toContain('sort=');
+  });
+});
+
+
+describe('useAlertsFilters — saved tabs', () => {
+  it('applies a tab as ONE history entry, not a write per key', async () => {
+    // Written together because it's one act; separately it would fire a
+    // server query per key and leave half-applied scopes in the URL.
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?page=5'),
+    });
+    act(() => result.current.applyTab('t1', {
+      typeFilter: 'fault,health',
+      severityFilter: 'critical',
+      vehicleSearch: 'Battle',
+      ackState: 'acknowledged',
+    }));
+    expect(result.current.tab).toBe('t1');
+    expect(result.current.typeFilter).toBe('fault,health');
+    expect(result.current.severityFilter).toBe('critical');
+    expect(result.current.vehicleSearch).toBe('Battle');
+    expect(result.current.ackState).toBe('acknowledged');
+    expect(result.current.page).toBe(1);      // a new scope starts at page 1
+  });
+
+  it('a tab survives in the URL, so it can be refreshed and shared', () => {
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?tab=t9&typeFilter=fuel'),
+    });
+    expect(result.current.tab).toBe('t9');
+    expect(result.current.typeFilter).toBe('fuel');
+  });
+
+  it('editing a filter LEAVES the tab', () => {
+    // A tab means "this exact set".  Staying highlighted while showing
+    // something else would misreport what you're looking at.
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?tab=t1&typeFilter=fault'),
+    });
+    act(() => result.current.setSeverityFilter('critical'));
+    expect(result.current.tab).toBe('');
+    expect(result.current.severityFilter).toBe('critical');   // the edit stands
+  });
+
+  it('paging and re-sorting stay INSIDE the tab', () => {
+    // Navigation within a scope, not a change of scope.
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?tab=t1&typeFilter=fault'),
+    });
+    act(() => result.current.setPage(3));
+    expect(result.current.tab).toBe('t1');
+    act(() => result.current.setPageSize(100));
+    expect(result.current.tab).toBe('t1');
+  });
+
+  it('re-SORTING stays inside the tab', () => {
+    // setSort writes sort/dir through its own atomic setParams; the
+    // in-scope-navigation rule is what keeps the tab.  Untested before,
+    // and a plausible "cleanup" refactor would have broken it silently.
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?tab=t1&typeFilter=fault'),
+    });
+    act(() => result.current.setSort('vehicle_name', 'asc'));
+    expect(result.current.tab).toBe('t1');
+    expect(result.current.sort).toBe('vehicle_name');
+  });
+
+  it('applies a tab\'s captured ORDER in the same single write', () => {
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts'),
+    });
+    act(() => result.current.applyTab('t1', {
+      typeFilter: 'fault', severityFilter: 'all', vehicleSearch: '',
+      sort: 'vehicle_name', dir: 'asc',
+    }));
+    expect(result.current.sort).toBe('vehicle_name');
+    expect(result.current.dir).toBe('asc');
+    expect(result.current.tab).toBe('t1');
+  });
+
+  it('a tab with NO captured order reverts to triage order', () => {
+    // Otherwise it silently inherits whatever you were browsing under,
+    // which isn't the view that was saved.
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?sort=vehicle_name&dir=asc'),
+    });
+    act(() => result.current.applyTab('t2', {
+      typeFilter: 'fuel', severityFilter: 'all', vehicleSearch: '',
+    }));
+    expect(result.current.sort).toBe('');
+    expect(result.current.tab).toBe('t2');
+  });
+
+  it('resetToDefaults drops the tab, not just its filters', () => {
+    // "Clear all filters" used to leave the tab lit over a board showing
+    // the persona defaults — the strip naming a scope that wasn't applied.
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?tab=t1&typeFilter=fault&sort=vehicle_name'),
+    });
+    act(() => result.current.resetToDefaults());
+    expect(result.current.tab).toBe('');
+    expect(result.current.sort).toBe('');
+    expect(result.current.typeFilter).toBe(defaultsFor('fleet' as Persona).typeFilter);
+  });
+
+  it('clearTab leaves the filters the tab put there', () => {
+    // Switching to a Status tab shouldn't silently widen the board — the
+    // operator chose those filters by choosing the tab.
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?tab=t1&typeFilter=fault&severityFilter=critical'),
+    });
+    act(() => result.current.clearTab());
+    expect(result.current.tab).toBe('');
+    expect(result.current.typeFilter).toBe('fault');
+    expect(result.current.severityFilter).toBe('critical');
   });
 });
 

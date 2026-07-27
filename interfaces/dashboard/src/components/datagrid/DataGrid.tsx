@@ -355,7 +355,20 @@ interface DataGridProps {
    *  an opaque id and the tab would appear to do nothing. */
   onSegmentChange?: (
     key: string,
-    tab?: { filters: ColumnFiltersState; search: string },
+    tab?: {
+      filters: ColumnFiltersState;
+      search: string;
+      /** The built-in segment the tab was SAVED under, if any.  A tab is
+       *  a scope WITHIN a lifecycle slice ("my critical faults, among the
+       *  un-acknowledged"), so a server-filtered page has to restore that
+       *  slice as well as the filters or the tab widens silently. */
+      baseSegment?: string;
+      /** The tab's captured ORDER.  Handed over with everything else so a
+       *  controlled page can apply the whole tab in ONE write — otherwise
+       *  the sort arrives via a separate effect and the tab costs two
+       *  queries and two history entries. */
+      sort?: SortingState;
+    },
   ) => void;
   /** Authoritative per-segment counts, keyed by segment key.  Without
    *  this the badge counts LOADED rows, which on a server-filtered grid
@@ -905,7 +918,14 @@ export default function DataGrid({
         : undefined;
       onSegmentChangeRef.current?.(
         next,
-        tab ? { filters: tab.filters, search: tab.search ?? '' } : undefined,
+        tab
+          ? {
+            filters: tab.filters,
+            search: tab.search ?? '',
+            baseSegment: tab.baseSegment,
+            sort: tab.sort,
+          }
+          : undefined,
       );
     },
     [segmentControlled],
@@ -958,6 +978,11 @@ export default function DataGrid({
     ? activeSegment.key.slice(TAB_PREFIX.length) : null;
   useEffect(() => {
     if (!activeTabId) return;
+    // A page that controls BOTH the sort and the segment receives the
+    // tab's sort in onSegmentChange and applies it with the rest of the
+    // tab.  Restoring it here as well would issue a second query and a
+    // second history entry for one click.
+    if (sortingControlled && segmentControlled) return;
     const v = savedTabList.find(x => x.id === activeTabId);
     if (v?.sort) setSorting(v.sort);
     // A tab saved before pivot existed carries none — leave the current
