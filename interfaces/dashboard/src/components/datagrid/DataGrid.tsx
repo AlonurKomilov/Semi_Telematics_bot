@@ -643,6 +643,69 @@ export default function DataGrid({
   // date SSOT.  DataGrid only ever renders inside the authed dashboard,
   // so useTimezone → useAuth is always inside a provider here.
   const timeZone = useTimezone();
+
+  // A grid holding only a SLICE can't answer for the whole set — pivot,
+  // and the export scope label, both key off this.
+  const holdsPartialData = totalRows !== undefined && totalRows > sourceData.length;
+
+  // ── Pivot ──────────────────────────────────────────────────────────
+  // The model persists per table; ``enabled`` lives inside it so turning
+  // pivot off keeps the configuration for next time.  The PANEL's
+  // open/closed state is session-only — it's a configuration surface, not
+  // a preference.
+  const { value: pivotPref, setValue: setPivotPref } =
+    useTablePreference(pivotEnabled ? tableId : undefined, 'pivot');
+  // Date columns become Year / Quarter / Month dimensions automatically —
+  // a raw timestamp is a useless bucket (one column per row).  Synthetic:
+  // these exist only for the pivot pickers, never in the grid's columns.
+  const pivotColumns = useMemo(
+    () => (pivotEnabled ? derivePivotDimensions(columns, timeZone) : columns),
+    [pivotEnabled, columns, timeZone],
+  );
+  const [pivotPanelOpen, setPivotPanelOpen] = useState(false);
+  const pivotModel = useMemo<PivotModel>(() => {
+    const stored = pivotPref?.model;
+    const base: PivotModel = stored
+      ? { rows: stored.rows ?? [], columns: stored.columns ?? [], values: stored.values ?? [] }
+      : { rows: [], columns: [], values: [] };
+    // A saved model can name columns this grid no longer has.
+    return prunePivotModel(base, pivotColumns);
+  }, [pivotPref, pivotColumns]);
+  // A pivot is an aggregate presented as an answer, and it aggregates
+  // the rows the grid HOLDS.  Over a slice it would summarise 2,000 of
+  // 11,200 and print totals that look authoritative — the same defect as
+  // a sorted fragment, but harder to spot because a cross-tab shows no
+  // rows to count.  So it stays off entirely while the data is partial;
+  // the preference survives, and it returns once the view is narrowed.
+  const pivotOn = pivotEnabled && !!pivotPref?.enabled && !holdsPartialData;
+  const setPivotModel = useCallback((model: PivotModel) => {
+    setPivotPref({ enabled: true, model });
+  }, [setPivotPref]);
+  const togglePivot = useCallback(() => {
+    const next = !pivotOn;
+    // A STARTER model on first enable: the first click should produce a
+    // report, not an empty state the operator must then configure three
+    // times.  First pivotable dimension x first aggregable measure is the
+    // obvious summary (Loads -> Customer x Rate); the panel still opens
+    // so it reads as a suggestion to refine, not a decision made for them.
+    let model = pivotModel;
+    if (next && model.rows.length === 0 && model.values.length === 0) {
+      const firstDim = pivotColumns.find((c) => c.pivotable);
+      const firstMeasure = pivotColumns.find((c) => c.aggregable);
+      if (firstDim && firstMeasure) {
+        model = {
+          rows: [firstDim.key],
+          columns: [],
+          values: [{ key: firstMeasure.key, aggFn: offeredAggFns(firstMeasure)[0] ?? 'sum' }],
+        };
+      }
+    }
+    setPivotPref({ enabled: next, model });
+    // Open the panel on the way IN so the suggestion is visible and
+    // immediately editable.
+    setPivotPanelOpen(next);
+  }, [pivotOn, pivotModel, pivotColumns, setPivotPref]);
+
   const [ownSorting, setOwnSorting] = useState<SortingState>([]);
   const sortingControlled = controlledSorting !== undefined;
   const sorting = controlledSorting ?? ownSorting;
@@ -662,7 +725,7 @@ export default function DataGrid({
     [sortingControlled],
   );
   // True when the page told us the real total and we hold less than it.
-  const holdsPartialData = totalRows !== undefined && totalRows > sourceData.length;
+  // (``holdsPartialData`` is declared above — pivot's guard needs it.)
   // ...but an operation that runs UPSTREAM is correct on a slice.  Sorting
   // 25 server-ordered rows of 11,200 is honest; sorting 25 rows locally
   // and calling it sorted is not.  Only the latter gets gated.
@@ -897,6 +960,11 @@ export default function DataGrid({
     if (!activeTabId) return;
     const v = savedTabList.find(x => x.id === activeTabId);
     if (v?.sort) setSorting(v.sort);
+    // A tab saved before pivot existed carries none — leave the current
+    // report alone rather than silently switching it off.
+    if (pivotEnabled && v?.pivot) {
+      setPivotPref({ enabled: v.pivot.enabled, model: v.pivot.model });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTabId]);
   const segmentCounts = useMemo(() => {
@@ -942,6 +1010,7 @@ export default function DataGrid({
         ? cur : undefined;
       setSavedTabList(prev => [...prev, {
         id, name, filters, search: search || undefined, sort: liveSort, baseSegment,
+        pivot: pivotEnabled ? { enabled: pivotOn, model: pivotModel } : undefined,
         tone, icon,
       }]);
       setSegmentPref(TAB_PREFIX + id);
@@ -956,11 +1025,20 @@ export default function DataGrid({
       // actually ON — otherwise ``sorting`` is some OTHER tab's sort and
       // would stomp this tab's saved one.  Keep its own sort otherwise.
       const sort = editId === activeTabId ? liveSort : tabDialog.sort;
+      // Same rule as sort: only RE-capture the live pivot when editing the
+      // tab you're actually on — otherwise you'd stamp this tab with some
+      // other tab's report.
+      const pivotSnap = !pivotEnabled
+        ? tabDialog.pivot
+        : editId === activeTabId
+          ? { enabled: pivotOn, model: pivotModel }
+          : tabDialog.pivot;
       setSavedTabList(prev => prev.map(v => (
-        v.id === editId ? { ...v, name, filters, search: search || undefined, sort, tone, icon } : v
+        v.id === editId ? { ...v, name, filters, search: search || undefined, sort, tone, icon, pivot: pivotSnap } : v
       )));
     }
-  }, [tabDialog, segmentPref, setSavedTabList, sorting, activeTabId, tabCoachSeen, setTabCoachSeen]);
+  }, [tabDialog, segmentPref, setSavedTabList, sorting, activeTabId, tabCoachSeen,
+      setTabCoachSeen, pivotEnabled, pivotOn, pivotModel]);
   const deleteTab = useCallback((id: string) => {
     // Capture the tab + its position BEFORE removal so Undo can restore it
     // in place — a saved tab took effort (name, filters, colour, icon), so
@@ -2411,63 +2489,6 @@ export default function DataGrid({
 
   const padding = DENSITY_PADDING[density];
 
-  // ── Pivot ──────────────────────────────────────────────────────────
-  // The model persists per table; ``enabled`` lives inside it so turning
-  // pivot off keeps the configuration for next time.  The PANEL's
-  // open/closed state is session-only — it's a configuration surface, not
-  // a preference.
-  const { value: pivotPref, setValue: setPivotPref } =
-    useTablePreference(pivotEnabled ? tableId : undefined, 'pivot');
-  // Date columns become Year / Quarter / Month dimensions automatically —
-  // a raw timestamp is a useless bucket (one column per row).  Synthetic:
-  // these exist only for the pivot pickers, never in the grid's columns.
-  const pivotColumns = useMemo(
-    () => (pivotEnabled ? derivePivotDimensions(columns, timeZone) : columns),
-    [pivotEnabled, columns, timeZone],
-  );
-  const [pivotPanelOpen, setPivotPanelOpen] = useState(false);
-  const pivotModel = useMemo<PivotModel>(() => {
-    const stored = pivotPref?.model;
-    const base: PivotModel = stored
-      ? { rows: stored.rows ?? [], columns: stored.columns ?? [], values: stored.values ?? [] }
-      : { rows: [], columns: [], values: [] };
-    // A saved model can name columns this grid no longer has.
-    return prunePivotModel(base, pivotColumns);
-  }, [pivotPref, pivotColumns]);
-  // A pivot is an aggregate presented as an answer, and it aggregates
-  // the rows the grid HOLDS.  Over a slice it would summarise 2,000 of
-  // 11,200 and print totals that look authoritative — the same defect as
-  // a sorted fragment, but harder to spot because a cross-tab shows no
-  // rows to count.  So it stays off entirely while the data is partial;
-  // the preference survives, and it returns once the view is narrowed.
-  const pivotOn = pivotEnabled && !!pivotPref?.enabled && !holdsPartialData;
-  const setPivotModel = useCallback((model: PivotModel) => {
-    setPivotPref({ enabled: true, model });
-  }, [setPivotPref]);
-  const togglePivot = useCallback(() => {
-    const next = !pivotOn;
-    // A STARTER model on first enable: the first click should produce a
-    // report, not an empty state the operator must then configure three
-    // times.  First pivotable dimension x first aggregable measure is the
-    // obvious summary (Loads -> Customer x Rate); the panel still opens
-    // so it reads as a suggestion to refine, not a decision made for them.
-    let model = pivotModel;
-    if (next && model.rows.length === 0 && model.values.length === 0) {
-      const firstDim = pivotColumns.find((c) => c.pivotable);
-      const firstMeasure = pivotColumns.find((c) => c.aggregable);
-      if (firstDim && firstMeasure) {
-        model = {
-          rows: [firstDim.key],
-          columns: [],
-          values: [{ key: firstMeasure.key, aggFn: offeredAggFns(firstMeasure)[0] ?? 'sum' }],
-        };
-      }
-    }
-    setPivotPref({ enabled: next, model });
-    // Open the panel on the way IN so the suggestion is visible and
-    // immediately editable.
-    setPivotPanelOpen(next);
-  }, [pivotOn, pivotModel, pivotColumns, setPivotPref]);
 
   // ── Custom horizontal scrollbar ─────────────────────────────
   //

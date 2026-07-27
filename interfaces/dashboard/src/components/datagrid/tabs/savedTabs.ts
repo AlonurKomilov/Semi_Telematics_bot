@@ -24,6 +24,7 @@
 
 import type { ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import type { AnyColumn } from '../../../types';
+import type { PivotModel } from '../pivot/pivot';
 import type { Tone } from '../../../lib/status';
 
 export interface SavedTab {
@@ -46,6 +47,10 @@ export interface SavedTab {
    *  archived ones too.  Undefined on grids with no segments (or when
    *  saved from the implicit "All" tab). */
   baseSegment?: string;
+  /** The pivot configuration this tab opens with, if any.  Optional and
+   *  added late on purpose — a tab saved before pivot existed simply has
+   *  none, and switching to it leaves the current pivot alone. */
+  pivot?: { enabled: boolean; model: PivotModel } | null;
   /** Optional customization (personal recognition — no effect on scope).
    *  ``tone`` colours ONLY the count badge (the number), via toneClasses;
    *  ``icon`` is a leading lucide icon key from tabs/tabIcons. */

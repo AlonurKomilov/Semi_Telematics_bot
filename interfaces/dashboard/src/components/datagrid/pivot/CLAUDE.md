@@ -103,9 +103,13 @@ One per-table key, `TABLE_PARTS.pivot` (frozen in `registry.test.ts`):
 pivot off keeps the configuration. The model's arrays mean multi-level
 pivoting can arrive **without changing the key's shape**.
 
-Saved tabs stay orthogonal for now — `SavedTab` is a stored object, so an
-optional `pivot?` field can be added backward-compatibly later. The name
-is reserved; don't build it until asked.
+A saved tab CARRIES its pivot (`SavedTab.pivot?`), so "Revenue by
+customer" can be one tab and the raw list another. Captured on save and
+applied on select, following the same rule as the tab's sort: the live
+pivot is only RE-captured when you edit the tab you're actually on —
+otherwise you'd stamp this tab with another tab's report. A tab saved
+before pivot existed carries none, and selecting it leaves the current
+report alone rather than silently switching it off.
 
 ## Phase 1 boundary
 
@@ -126,7 +130,6 @@ nobody has to rediscover a gap):
 |---|---|
 | drag-and-drop reorder | checkbox pickers cover 1–2 levels |
 | cell drill-down (click a cell → its rows) | |
-| saved-tab capture of the pivot model | `SavedTab.pivot?` name is reserved |
 | unassigned-field list with `+` | we list every field in each section instead |
 | collapsible panel sections, per-field ⋮ | no per-field actions yet to hold |
 | controlled props (`pivotModel`/`pivotActive`/`pivotPanelOpen`) | ours is uncontrolled + persisted; add when a page must own the state |
