@@ -47,11 +47,25 @@ export default function PivotView({
   );
 
   if (result.empty) {
+    // Name the MISSING piece rather than restating both requirements —
+    // an operator who already picked Rows shouldn't be told to pick Rows.
+    const needsRows = model.rows.length === 0;
+    const needsValues = model.values.length === 0;
     return (
       <EmptyState
         icon={TableProperties}
-        title="Choose what to summarise"
-        description="Pick a field to group rows by and at least one value to measure."
+        title={
+          needsRows && needsValues ? 'Choose what to summarise'
+            : needsValues ? 'Choose a value to measure'
+              : 'Choose a field to group by'
+        }
+        description={
+          needsRows && needsValues
+            ? 'Open Fields, pick what each line should represent (Rows) and the numbers to total (Values).'
+            : needsValues
+              ? 'Open Fields → Values and pick the numbers to total, e.g. Rate.'
+              : 'Open Fields → Rows and pick what each line should represent, e.g. Customer.'
+        }
       />
     );
   }
@@ -76,8 +90,19 @@ export default function PivotView({
   const stickyCol = 'sticky left-0 z-10 bg-card';
   const stickyHead = 'sticky left-0 z-20 bg-muted';
 
+  const sourceRows = rows.length;
+
   return (
-    <div className="overflow-x-auto">
+    <div>
+      {/* What this report covers, and why two familiar controls are gone.
+          A control that vanishes on a mode switch owes the user a line —
+          hiding beats greying, but SILENT removal reads as breakage. */}
+      <p className="px-3 py-2 text-2xs text-muted-foreground border-b border-border">
+        Summarising all {sourceRows.toLocaleString()} row{sourceRows === 1 ? '' : 's'} that
+        match your current tab, filters and search — column layout and paging
+        don't apply here.
+      </p>
+      <div className="overflow-x-auto">
       <table className="w-full text-sm border-collapse">
         <thead>
           {result.headerLevels.map((level, levelIdx) => {
@@ -194,6 +219,7 @@ export default function PivotView({
           </tfoot>
         )}
       </table>
+      </div>
     </div>
   );
 }

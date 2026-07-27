@@ -103,31 +103,33 @@ export default function PivotPanel({
       </div>
 
       <div className="overflow-y-auto flex-1">
-        <Section title="Rows" count={model.rows.length}>
+        <Section title="Rows" hint="One line per value." count={model.rows.length}>
           {dimensions.filter(match).map((c) => (
             <FieldRow
               key={c.key}
               label={c.label}
               checked={model.rows.includes(c.key)}
+              disabledReason={model.columns.includes(c.key) ? 'in Columns' : undefined}
               onToggle={(on) => setDimension('rows', c.key, on)}
             />
           ))}
           {dimensions.filter(match).length === 0 && <Hint>No matching fields.</Hint>}
         </Section>
 
-        <Section title="Columns" count={model.columns.length}>
+        <Section title="Columns" hint="Spread across the top." count={model.columns.length}>
           {dimensions.filter(match).map((c) => (
             <FieldRow
               key={c.key}
               label={c.label}
               checked={model.columns.includes(c.key)}
+              disabledReason={model.rows.includes(c.key) ? 'in Rows' : undefined}
               onToggle={(on) => setDimension('columns', c.key, on)}
             />
           ))}
           {dimensions.filter(match).length === 0 && <Hint>No matching fields.</Hint>}
         </Section>
 
-        <Section title="Values" count={model.values.length}>
+        <Section title="Values" hint="The numbers to total." count={model.values.length} required>
           {measures.filter(match).map((c) => {
             const picked = valueOf(c.key);
             return (
@@ -164,39 +166,64 @@ export default function PivotPanel({
   );
 }
 
-function Section({ title, count, children }: {
-  title: string; count: number; children: React.ReactNode;
+function Section({ title, hint, count, required, children }: {
+  title: string;
+  /** Plain-language gloss.  "Columns" already means TABLE columns in this
+   *  app (the Manage-columns popover), so the spreadsheet sense needs
+   *  spelling out or an operator reads the wrong thing. */
+  hint: string;
+  count: number;
+  required?: boolean;
+  children: React.ReactNode;
 }) {
   return (
     <div className="border-b border-border last:border-b-0">
-      <div className="flex items-center justify-between px-3 py-2">
+      <div className="flex items-baseline justify-between gap-2 px-3 pt-2">
         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
           {title}
+          {required && (
+            <span className="ml-1.5 normal-case tracking-normal font-normal text-2xs">
+              required
+            </span>
+          )}
         </span>
         <span className="text-2xs tabular-nums text-muted-foreground">{count}</span>
       </div>
+      <p className="px-3 pb-1.5 text-2xs text-muted-foreground">{hint}</p>
       <div className="pb-1">{children}</div>
     </div>
   );
 }
 
-function FieldRow({ label, checked, onToggle, trailing }: {
+function FieldRow({ label, checked, onToggle, trailing, disabledReason }: {
   label: string;
   checked: boolean;
   onToggle: (on: boolean) => void;
   trailing?: React.ReactNode;
+  /** Why this field can't be picked HERE (it's on the other axis).
+   *  Shown inline so the exclusivity is visible BEFORE the click —
+   *  silently clearing the other section's checkbox reads as a bug. */
+  disabledReason?: string;
 }) {
+  const disabled = !!disabledReason;
   return (
     <label className={cn(
-      'flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer hover:bg-muted/50 transition-colors',
+      'flex items-center gap-2 px-3 py-1.5 text-xs transition-colors',
+      disabled
+        ? 'cursor-not-allowed opacity-50'
+        : 'cursor-pointer hover:bg-muted/50',
     )}>
       <input
         type="checkbox"
         checked={checked}
+        disabled={disabled}
         onChange={(e) => onToggle(e.target.checked)}
         className="shrink-0"
       />
       <span className="flex-1 min-w-0 truncate text-foreground">{label}</span>
+      {disabledReason && (
+        <span className="shrink-0 text-2xs text-muted-foreground italic">{disabledReason}</span>
+      )}
       {trailing}
     </label>
   );
