@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 
-// This project doesn't enable RTL's automatic cleanup, so without this
-// each render leaves its nodes in the document and the next test's
-// queries find the PREVIOUS test's output.
+// Redundant with the central cleanup in src/test/setup.ts (cleanup is
+// idempotent), kept as a local reminder that these tests render.
 afterEach(cleanup);
 
 /**

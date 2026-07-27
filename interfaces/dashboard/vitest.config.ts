@@ -18,6 +18,12 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: false,
+    // Unmounts rendered components between tests.  REQUIRED here rather
+    // than optional: Testing Library's own auto-cleanup installs on the
+    // global afterEach, which ``globals: false`` removes — so without
+    // this, renders accumulate and a test can pass by finding the
+    // PREVIOUS test's DOM.  See src/test/setup.ts.
+    setupFiles: ['./src/test/setup.ts'],
     // src/**/*.test.{ts,tsx} — application code tests.
     // scripts/**/*.test.mjs  — integration tests for the audit
     // scripts (check-role-drift, check-layout-coverage); they

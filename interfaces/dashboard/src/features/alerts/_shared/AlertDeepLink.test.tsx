@@ -59,6 +59,8 @@ const click = async (label: string) => {
   await act(async () => { screen.getByText(label).click(); });
 };
 
+// Unmounting between tests is handled centrally (src/test/setup.ts).
+//
 // NOTE: no beforeEach reset of ``apiJSON``.  Clearing a vi.fn between
 // tests confuses vitest's promise-result bookkeeping, and the one test
 // here that makes the request FAIL then gets its (properly caught)
