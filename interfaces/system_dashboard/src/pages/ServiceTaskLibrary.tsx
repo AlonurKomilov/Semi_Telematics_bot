@@ -137,7 +137,7 @@ export default function ServiceTaskLibraryPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <h1 className="text-xl font-semibold text-slate-100 mb-1">Service Task Library</h1>
+      <h1 className="text-xl font-semibold text-slate-100 mb-1">Service Tasks</h1>
       <p className="text-sm text-slate-500 mb-5">
         The standard tasks every account is seeded with. Adding or renaming one
         <span className="text-slate-300"> pushes to every existing account</span>;

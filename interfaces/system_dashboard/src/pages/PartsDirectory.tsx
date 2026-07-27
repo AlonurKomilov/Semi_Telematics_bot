@@ -172,7 +172,7 @@ export default function PartsDirectoryPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <h1 className="text-xl font-semibold text-slate-100 mb-1">Parts Catalog</h1>
+      <h1 className="text-xl font-semibold text-slate-100 mb-1">Parts</h1>
       <p className="text-sm text-slate-500 mb-5">
         Canonical public part identities. Promote only <span className="text-slate-300">specific,
         product-identifying</span> names — "Labor", "Shop Supplies" and friends mean something

@@ -119,18 +119,21 @@ const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
   },
   {
     // The other half of every "My X / Shared" split on the customer
-    // dashboard.  These pages ARE the shared side — an operator has no
-    // fleet of their own, so nothing here is "mine" and the specific
-    // noun (directory / catalog / library) is the right name: it says
-    // WHICH shared pool you're editing.  Grouped because editing them
-    // reaches every tenant at once, which is a different job from the
-    // monitoring pages above.
+    // dashboard.  Shared is the ONLY kind here — an operator has no
+    // fleet, and no per-account vendor/parts/task view exists on this
+    // console — so the items are plain nouns.  Qualifying them
+    // (Vendor directory, Parts catalog, Service task library) would
+    // disambiguate against something that doesn't exist on this
+    // surface, and this heading already says "shared" once for all of
+    // them.  Grouped because editing any of these reaches every tenant
+    // at once — a different job, and a much bigger blast radius, than
+    // the monitoring pages above.
     title: 'Shared data',
     items: [
-      { to: '/vendor-directory', label: 'Vendor directory', icon: Store },
-      { to: '/parts-directory', label: 'Parts catalog', icon: Cog },
-      { to: '/service-tasks', label: 'Service task library', icon: ClipboardList },
-      { to: '/service-assemblies', label: 'Service assemblies', icon: Boxes },
+      { to: '/vendor-directory', label: 'Vendors', icon: Store },
+      { to: '/parts-directory', label: 'Parts', icon: Cog },
+      { to: '/service-tasks', label: 'Service tasks', icon: ClipboardList },
+      { to: '/service-assemblies', label: 'Assemblies', icon: Boxes },
       { to: '/market-intel', label: 'Market intelligence', icon: TrendingUp },
     ],
   },

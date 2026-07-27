@@ -235,7 +235,7 @@ export default function VendorDirectoryPage() {
   return (
     <div className="max-w-5xl">
       <header className="mb-4">
-        <h1 className="text-xl font-semibold text-slate-100">Vendor Directory</h1>
+        <h1 className="text-xl font-semibold text-slate-100">Vendors</h1>
         <p className="text-sm text-slate-500 mt-1 max-w-2xl">
           Global repair-shop identities every account can link to. Identity data only —
           no account's invoices or spend ever appear here. Approve or reject the
