@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { pivot, isPivotReady, prunePivotModel, bucketOf } from './pivot';
+import { pivot, isPivotReady, prunePivotModel, bucketOf, pivotToCsvRows } from './pivot';
 import type { PivotModel } from './pivot';
 import type { AnyColumn } from '../../../types';
 
@@ -238,5 +238,42 @@ describe('pivot — multi-level columns (Region > Quarter)', () => {
     const r = pivot(shuffled, twoLevel, COLS);
     expect(r.headerLevels[0].map((h) => h.label)).toEqual(['North', 'South']);
     expect(r.headerLevels[0].map((h) => h.span)).toEqual([2, 1]);
+  });
+});
+
+describe('pivot — CSV export matches what is on screen', () => {
+  it('flattens nested headers into one unambiguous name per column', () => {
+    const COLS: AnyColumn[] = [
+      { key: 'product', label: 'Product', pivotable: true },
+      { key: 'region', label: 'Region', pivotable: true },
+      { key: 'sales', label: 'Sales', aggregable: true },
+    ];
+    const grid = pivotToCsvRows(pivot(
+      [{ product: 'Apples', region: 'North', sales: 10 }],
+      { rows: ['product'], columns: ['region'], values: [{ key: 'sales', aggFn: 'sum' }] },
+      COLS,
+    ));
+    expect(grid[0]).toEqual(['Product', 'Rows', 'North / Sales (sum)']);
+  });
+
+  it('keeps two measures on one bucket distinguishable by their agg fn', () => {
+    const grid = pivotToCsvRows(pivot(ROWS, model({
+      columns: [],
+      values: [{ key: 'rate', aggFn: 'sum' }, { key: 'rate', aggFn: 'avg' }],
+    }), COLUMNS));
+    // Without the fn suffix these would be two identical "Rate" columns.
+    expect(grid[0]).toEqual(['Customer', 'Rows', 'Rate (sum)', 'Rate (avg)']);
+  });
+
+  it('emits raw numbers and a total row, with empties left EMPTY', () => {
+    const grid = pivotToCsvRows(pivot(ROWS, model(), COLUMNS));
+    expect(grid[1]).toEqual(['Acme', '3', '400', '50']);
+    // Bolt has no January — blank, not 0, exactly like the dash on screen.
+    expect(grid[2]).toEqual(['Bolt', '1', '', '200']);
+    expect(grid[grid.length - 1]).toEqual(['Total', '4', '400', '250']);
+  });
+
+  it('exports nothing when the pivot is not configured', () => {
+    expect(pivotToCsvRows(pivot(ROWS, model({ values: [] }), COLUMNS))).toEqual([]);
   });
 });

@@ -67,11 +67,13 @@ import { Button } from '../ui/button';
 import { ContextMenu, type MenuAction } from '../ui/context-menu';
 import { Tip } from '../tooltip';
 import { toast } from 'sonner';
-import { exportRowsAsCsv, buildTsv, writeToClipboard } from '../../lib/csv';
+import {
+  exportRowsAsCsv, buildTsv, writeToClipboard, buildCsvFromRows, downloadCsv,
+} from '../../lib/csv';
 import { usePreference, useTablePreference, useSyncLoaded } from '../../preferences';
 import PivotView from './pivot/PivotView';
 import PivotPanel from './pivot/PivotPanel';
-import { prunePivotModel, type PivotModel } from './pivot/pivot';
+import { prunePivotModel, pivot, pivotToCsvRows, type PivotModel } from './pivot/pivot';
 import { derivePivotDimensions } from './pivot/derived';
 
 type Density = 'compact' | 'default' | 'roomy';
@@ -2646,6 +2648,21 @@ export default function DataGrid({
    *  honour the active filters, sort, column visibility and order. */
   const handleExportCsv = (scope: 'page' | 'all') => {
     if (!tableId) return;
+    const today0 = new Date().toISOString().slice(0, 10);
+    // In pivot mode the flat record list is NOT what's on screen —
+    // exporting it would hand the operator a different artifact from the
+    // one they configured and are reading.  Export the matrix instead.
+    // Scope is ignored here on purpose: a pivot already summarises every
+    // filtered row, so "this page" has no meaning.
+    if (pivotOn) {
+      const rowsForPivot = table.getPrePaginationRowModel().rows
+        .filter((r) => !r.getIsGrouped())
+        .map((r) => r.original as Record<string, unknown>);
+      const grid = pivotToCsvRows(pivot(rowsForPivot, pivotModel, pivotColumns));
+      if (grid.length === 0) return;      // nothing configured yet
+      downloadCsv(`${tableId}-pivot-${today0}.csv`, buildCsvFromRows(grid));
+      return;
+    }
     const visibleColIdsInOrder = table.getVisibleLeafColumns().map(c => c.id);
     const colByKey = new Map(columns.map(c => [c.key, c]));
     const exportCols = visibleColIdsInOrder
@@ -3033,6 +3050,25 @@ export default function DataGrid({
                       {(() => {
                         const pageCount = flattenLeaves(table.getRowModel().rows).length;
                         const allCount = table.getFilteredRowModel().rows.length;
+                        // A pivot already summarises EVERY filtered row, so
+                        // "current page" has no meaning here — offering it
+                        // would imply a distinction that doesn't exist.
+                        if (pivotOn) {
+                          return (
+                            <MenuPrimitive.Item
+                              onClick={() => handleExportCsv('all')}
+                              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent"
+                            >
+                              <Download size={14} className="text-muted-foreground" />
+                              <span className="flex-1 text-foreground text-left">
+                                Pivot table
+                              </span>
+                              <span className="text-2xs text-muted-foreground tabular-nums">
+                                {allCount.toLocaleString()} rows
+                              </span>
+                            </MenuPrimitive.Item>
+                          );
+                        }
                         return (
                           <>
                             <MenuPrimitive.Item

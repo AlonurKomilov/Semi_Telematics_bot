@@ -66,6 +66,22 @@ prefs are untouched and return when pivot is switched off.
 PivotView is fed the **same post-filter/search rows the footer
 aggregation reduces**, so the two can never disagree.
 
+## Export
+
+The toolbar's **Export to CSV** is mode-aware — one button, because an
+export must produce WHAT IS ON SCREEN. In pivot mode it emits the matrix
+(`pivotToCsvRows`), not the flat record list, and the scope menu collapses
+to a single item: a pivot already summarises every filtered row, so
+"current page" would imply a distinction that doesn't exist.
+
+Nested headers flatten to one unambiguous name per column ("North / Q1 /
+Sales (sum)") — spreadsheets have no spanning cells, and the agg fn is
+part of a measure's identity (two "Rate" columns differing only by
+sum/avg must not collide). Numbers export RAW: a CSV is opened to be
+computed with, and "$1,234.50" is a string there, not money. An empty
+intersection stays EMPTY, never 0 — the same distinction the dash draws
+on screen.
+
 ## Persistence
 
 One per-table key, `TABLE_PARTS.pivot` (frozen in `registry.test.ts`):
@@ -92,7 +108,6 @@ nobody has to rediscover a gap):
 | pivot-side sorting (sort by a measure) | |
 | cell drill-down (click a cell → its rows) | |
 | saved-tab capture of the pivot model | `SavedTab.pivot?` name is reserved |
-| matrix CSV export | export currently emits the flat rows |
 | unassigned-field list with `+` | we list every field in each section instead |
 | collapsible panel sections, per-field ⋮ | no per-field actions yet to hold |
 | controlled props (`pivotModel`/`pivotActive`/`pivotPanelOpen`) | ours is uncontrolled + persisted; add when a page must own the state |

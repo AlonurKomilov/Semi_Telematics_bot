@@ -303,3 +303,56 @@ export function prunePivotModel(model: PivotModel, columns: AnyColumn[]): PivotM
     values: model.values.filter((v) => keys.has(v.key)),
   };
 }
+
+
+/**
+ * The pivot matrix as CSV rows (a 2-D string grid; the caller joins it).
+ *
+ * The export must produce WHAT IS ON SCREEN.  In pivot mode the flat
+ * record list isn't on screen — exporting it would hand the operator a
+ * different artifact from the one they configured and are looking at.
+ *
+ * Nested headers flatten into one readable name per leaf, outermost
+ * first: "North / Q1 / Sales (sum)".  Spreadsheets have no notion of our
+ * spanning header cells, so a single unambiguous name per column beats
+ * trying to reproduce the visual nesting with blank cells.
+ *
+ * Numbers are emitted RAW (unformatted) on purpose: a CSV is opened in a
+ * spreadsheet to be computed with, and "$1,234.50" is a string there,
+ * not money.  An empty intersection stays EMPTY rather than 0 — the same
+ * distinction the matrix draws with its dash.
+ */
+export function pivotToCsvRows(result: PivotResult): string[][] {
+  if (result.empty) return [];
+
+  // Build one flattened label per leaf by walking the dimension levels
+  // and repeating each cell across the leaves it spans.
+  const perLevelLabels: string[][] = result.headerLevels.map((level) => {
+    const out: string[] = [];
+    for (const cell of level) {
+      for (let i = 0; i < cell.span; i += 1) out.push(cell.label);
+    }
+    return out;
+  });
+  const leafHeaders = result.leafIds.map((_, i) => {
+    const parts = perLevelLabels.map((labels) => labels[i]).filter(Boolean);
+    const last = result.headerLevels[result.headerLevels.length - 1][i];
+    // The measure's agg fn is part of the column's identity — two
+    // "Rate" columns differing only by sum/avg must not collide.
+    if (last?.aggFn) parts[parts.length - 1] = `${parts[parts.length - 1]} (${last.aggFn})`;
+    return parts.join(' / ');
+  });
+
+  const header = [result.rowFieldLabel, 'Rows', ...leafHeaders];
+  const body = result.bodyRows.map((row) => [
+    row.label,
+    String(row.count),
+    ...row.cells.map((v) => (v === null ? '' : String(v))),
+  ]);
+  const total = [
+    'Total',
+    String(result.bodyRows.reduce((n, r) => n + r.count, 0)),
+    ...result.grandTotal.map((v) => (v === null ? '' : String(v))),
+  ];
+  return [header, ...body, total];
+}

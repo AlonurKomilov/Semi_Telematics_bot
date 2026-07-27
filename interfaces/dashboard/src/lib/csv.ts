@@ -146,3 +146,14 @@ export async function writeToClipboard(text: string): Promise<boolean> {
     return false;
   }
 }
+
+
+/**
+ * CSV from a raw 2-D string grid (first row = header).  Used by the
+ * pivot export, whose columns are SYNTHESIZED per configuration and so
+ * have no ``AnyColumn`` to describe them.
+ */
+export function buildCsvFromRows(rows: string[][]): string {
+  const body = rows.map(r => r.map(csvField).join(',')).join('\r\n');
+  return '\ufeff' + body + '\r\n';
+}
