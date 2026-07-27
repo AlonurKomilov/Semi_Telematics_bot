@@ -230,15 +230,33 @@ class ServiceTaskLibraryMixin:
             (key, service_task_name_key(name)),
         )
 
+        # Identity is pushed; local tuning is only FILLED.
+        #
+        # Name and system_key overwrite unconditionally — they are the
+        # shared contract, and a fleet holding a stale name or a
+        # different reporting axis is exactly the drift the canonical
+        # key exists to prevent.
+        #
+        # description / expected_labor_hours / vehicle_type land only
+        # while the account's value is still blank.  Before this, an
+        # operator fixing a typo in one entry silently reset every
+        # fleet's tuned labor estimate — the same "never silently
+        # overwrite" rule the invoice prefill follows.
         await self._db.execute(
-            "UPDATE service_tasks SET name = ?, name_key = ?, description = ?, "
-            "       expected_labor_hours = ?, vehicle_type = ?, "
-            "       system_key = ?, updated_at = ? "
+            "UPDATE service_tasks SET name = ?, name_key = ?, system_key = ?, "
+            "       description = CASE WHEN COALESCE(description, '') = '' "
+            "                          THEN ? ELSE description END, "
+            "       expected_labor_hours = CASE "
+            "                          WHEN COALESCE(expected_labor_hours, 0) = 0 "
+            "                          THEN ? ELSE expected_labor_hours END, "
+            "       vehicle_type = CASE WHEN COALESCE(vehicle_type, '') = '' "
+            "                          THEN ? ELSE vehicle_type END, "
+            "       updated_at = ? "
             "WHERE canonical_key = ?",
-            (name, service_task_name_key(name), entry.get("description") or "",
+            (name, service_task_name_key(name), entry.get("system_key") or "",
+             entry.get("description") or "",
              float(entry.get("expected_labor_hours") or 0),
-             entry.get("vehicle_type") or "", entry.get("system_key") or "",
-             now, key),
+             entry.get("vehicle_type") or "", now, key),
         )
 
         cur = await self._db.execute(

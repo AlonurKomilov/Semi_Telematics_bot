@@ -172,7 +172,7 @@ export default function ServiceTasks() {
         const t = row as unknown as ServiceTask;
         // Suggest-confirm fill: the server guessed from the name; one
         // click applies it, nothing happens without the click.
-        if (t.suggested_system && canManage) {
+        if (t.suggested_system && canManage && !t.canonical_key) {
           return (
             <button
               type="button"

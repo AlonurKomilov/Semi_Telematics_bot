@@ -440,16 +440,31 @@ class ServiceTasksMixin:
     async def update_service_task(
         self, task_id: int, account_id: int, **fields: Any,
     ) -> bool:
-        """Update a task.  A STANDARD task's name is locked (renaming
-        it would break the cross-account ``canonical_key`` contract);
-        its description/labor estimate stay editable."""
+        """Update a task.
+
+        On a STANDARD task the split is: identity is the operator's,
+        local tuning is the account's.
+
+        Locked here and pushed by fan-out — NAME, because it is the
+        task's identity, and SYSTEM_KEY, because it is the axis every
+        fleet's spend rolls up on.  Either one differing per account
+        breaks the promise that makes the shared key worth having:
+        "what does a brake job cost" has to mean the same thing in
+        every fleet.
+
+        Editable here and never overwritten — description, labor
+        estimate, vehicle_type and status.  Shop rates and crews
+        genuinely differ, so a fleet that knows its brake job takes
+        2.5h must be able to say so; the fan-out fills these only
+        while they are still blank.
+        """
         task = await self.get_service_task(task_id, account_id)
         if not task:
             return False
         allowed = {"description", "expected_labor_hours", "status",
-                   "parent_id", "vehicle_type", "system_key"}
+                   "parent_id", "vehicle_type"}
         if not task.get("canonical_key"):
-            allowed.add("name")
+            allowed.update({"name", "system_key"})
         updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if not updates:
             return False

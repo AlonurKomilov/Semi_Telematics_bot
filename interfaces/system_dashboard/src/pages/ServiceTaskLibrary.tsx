@@ -14,6 +14,8 @@ import { apiJSON } from '../api/client';
 //     being seeded into NEW ones; existing accounts may have years of
 //     history under it, and hiding it is their decision.
 
+interface TaskSystem { key: string; label: string }
+
 interface Candidate {
   name_key: string;
   sample_name: string;
@@ -27,6 +29,10 @@ interface LibraryEntry {
   description: string;
   expected_labor_hours: number;
   vehicle_type: '' | 'truck' | 'trailer';
+  /** The reporting axis. On a standard task this is the OPERATOR's to
+   *  set — accounts can't change it, so a wrong value here is wrong in
+   *  every fleet until it's fixed here. */
+  system_key: string;
   status: 'active' | 'archived';
   /** How many accounts currently hold this task. */
   accounts: number;
@@ -48,6 +54,7 @@ const btnCls =
 export default function ServiceTaskLibraryPage() {
   const [entries, setEntries] = useState<LibraryEntry[]>([]);
   const [cands, setCands] = useState<Candidate[]>([]);
+  const [systems, setSystems] = useState<TaskSystem[]>([]);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState('');
@@ -57,16 +64,19 @@ export default function ServiceTaskLibraryPage() {
   const [draft, setDraft] = useState<Partial<LibraryEntry>>({});
   const [newForm, setNewForm] = useState({
     name: '', description: '', expected_labor_hours: '', vehicle_type: '',
+    system_key: '',
   });
 
   const load = useCallback(async () => {
     try {
-      const [r, c] = await Promise.all([
+      const [r, c, sy] = await Promise.all([
         apiJSON<{ entries: LibraryEntry[] }>('/system/service-task-library'),
         apiJSON<{ candidates: Candidate[] }>('/system/service-task-library/candidates'),
+        apiJSON<{ systems: TaskSystem[] }>('/system/service-task-library/systems'),
       ]);
       setEntries(r.entries);
       setCands(c.candidates);
+      setSystems(sy.systems);
       setErr('');
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Load failed');
@@ -98,9 +108,11 @@ export default function ServiceTaskLibraryPage() {
           description: newForm.description,
           expected_labor_hours: Number(newForm.expected_labor_hours) || 0,
           vehicle_type: newForm.vehicle_type,
+          system_key: newForm.system_key,
         }),
       }).then(() => setNewForm({
         name: '', description: '', expected_labor_hours: '', vehicle_type: '',
+        system_key: '',
       })));
 
   const saveEdit = (id: number) =>
@@ -112,6 +124,7 @@ export default function ServiceTaskLibraryPage() {
           description: draft.description,
           expected_labor_hours: draft.expected_labor_hours,
           vehicle_type: draft.vehicle_type,
+          system_key: draft.system_key,
         }),
       }).then(() => setEditing(null)));
 
@@ -182,7 +195,7 @@ export default function ServiceTaskLibraryPage() {
       {/* ── Add ── */}
       <div className="mb-6 border border-slate-800 rounded-lg p-3">
         <div className="text-sm font-medium text-slate-300 mb-2">Add a standard task</div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
           <input
             className={inputCls} placeholder="Name (e.g. Kingpin Service)"
             value={newForm.name}
@@ -199,6 +212,15 @@ export default function ServiceTaskLibraryPage() {
             value={newForm.expected_labor_hours}
             onChange={(e) => setNewForm({ ...newForm, expected_labor_hours: e.target.value })}
           />
+          <select
+            className={inputCls} value={newForm.system_key}
+            onChange={(e) => setNewForm({ ...newForm, system_key: e.target.value })}
+          >
+            <option value="">No system</option>
+            {systems.map((sy) => (
+              <option key={sy.key} value={sy.key}>{sy.label}</option>
+            ))}
+          </select>
           <div className="flex gap-2">
             <select
               className={inputCls} value={newForm.vehicle_type}
@@ -233,6 +255,7 @@ export default function ServiceTaskLibraryPage() {
               <th className="text-left px-3 py-2 font-medium">Task</th>
               <th className="text-left px-3 py-2 font-medium">Key</th>
               <th className="text-left px-3 py-2 font-medium">Est. labor</th>
+              <th className="text-left px-3 py-2 font-medium">System</th>
               <th className="text-left px-3 py-2 font-medium">Applies to</th>
               <th className="text-left px-3 py-2 font-medium">Accounts</th>
               <th className="text-left px-3 py-2 font-medium">Status</th>
@@ -263,6 +286,23 @@ export default function ServiceTaskLibraryPage() {
                 </td>
                 <td className="px-3 py-2 text-slate-400 tabular-nums">
                   {e.expected_labor_hours ? `${e.expected_labor_hours} h` : '—'}
+                </td>
+                <td className="px-3 py-2 text-slate-400">
+                  {editing === e.id ? (
+                    <select
+                      className={inputCls}
+                      value={draft.system_key ?? e.system_key}
+                      onChange={(ev) => setDraft({ ...draft, system_key: ev.target.value })}
+                    >
+                      <option value="">No system</option>
+                      {systems.map((sy) => (
+                        <option key={sy.key} value={sy.key}>{sy.label}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    systems.find((sy) => sy.key === e.system_key)?.label
+                      || <span className="text-amber-400">Unassigned</span>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-slate-400 capitalize">
                   {e.vehicle_type ? `${e.vehicle_type}s only` : 'Any'}

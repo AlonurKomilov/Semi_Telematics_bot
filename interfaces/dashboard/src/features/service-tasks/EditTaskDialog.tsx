@@ -204,8 +204,9 @@ export default function EditTaskDialog({
             </span>
             <select
               value={systemKey}
+              disabled={isStandard}
               onChange={(e) => setSystemKey(e.target.value)}
-              className={inputCls}
+              className={`${inputCls} disabled:opacity-60`}
             >
               <option value="">Unassigned</option>
               {systems.map((sy) => (
@@ -213,8 +214,9 @@ export default function EditTaskDialog({
               ))}
             </select>
             <span className="mt-1 block text-2xs text-muted-foreground">
-              Groups this task for spend reporting — “what are brakes
-              costing us?”
+              {isStandard
+                ? 'Groups this task for spend reporting. Set centrally on a standard task, for the same reason the name is — a system that means Brakes in one fleet and Other in another makes the comparison worthless.'
+                : 'Groups this task for spend reporting — “what are brakes costing us?”'}
             </span>
           </label>
 

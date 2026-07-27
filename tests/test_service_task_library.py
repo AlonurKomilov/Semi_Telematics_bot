@@ -231,3 +231,80 @@ async def test_candidates_signal(lib):
     assert await lib.create_service_task_library_entry("Reefer Door Seal")
     after = {r["name_key"] for r in await lib.service_task_candidates(min_accounts=2)}
     assert "reefer door seal" not in after
+
+
+# ── The split: identity is the operator's, tuning is the account's ──
+
+@pytest.mark.asyncio
+async def test_fanout_never_overwrites_what_the_account_tuned(lib):
+    """The bug this rule exists to stop: an operator fixing a typo in
+    one entry silently resetting every fleet's labor estimate.  Shop
+    rates and crews differ, so a fleet that knows its brake job takes
+    2.5h has to be able to say so and keep it."""
+    a = (await lib.create_account("Tuner Co")).id
+    entry = await lib.create_service_task_library_entry(
+        "Brake Job", expected_labor_hours=2.0)
+    mine = next(t for t in await lib.list_service_tasks(a)
+                if t["canonical_key"] == "brake_job")
+    assert await lib.update_service_task(
+        mine["id"], a, expected_labor_hours=2.5,
+        description="Ours includes the slack adjusters",
+        vehicle_type="truck") is True
+
+    # The operator edits the entry — any push runs the fan-out.
+    assert await lib.update_service_task_library_entry(
+        entry["id"], description="Standard brake service",
+        expected_labor_hours=2.0, vehicle_type="trailer") is True
+
+    fresh = await lib.get_service_task(mine["id"], a)
+    assert fresh["expected_labor_hours"] == 2.5              # theirs stands
+    assert fresh["description"] == "Ours includes the slack adjusters"
+    assert fresh["vehicle_type"] == "truck"
+
+
+@pytest.mark.asyncio
+async def test_fanout_still_fills_blanks_and_pushes_identity(lib):
+    """Fill-empty-only must not become fill-never: an account that
+    never touched a field still gets the operator's value."""
+    a = (await lib.create_account("Blank Co")).id
+    entry = await lib.create_service_task_library_entry("Fill Me")
+    mine = next(t for t in await lib.list_service_tasks(a)
+                if t["canonical_key"] == "fill_me")
+    assert not mine["description"] and not mine["expected_labor_hours"]
+
+    assert await lib.update_service_task_library_entry(
+        entry["id"], name="Fill Me In", description="Now documented",
+        expected_labor_hours=1.25, system_key="brakes") is True
+
+    fresh = await lib.get_service_task(mine["id"], a)
+    assert fresh["description"] == "Now documented"     # blank → filled
+    assert fresh["expected_labor_hours"] == 1.25
+    assert fresh["name"] == "Fill Me In"                # identity pushed
+    assert fresh["system_key"] == "brakes"              # axis pushed
+
+
+@pytest.mark.asyncio
+async def test_account_cannot_move_a_shared_task_to_another_system(lib):
+    """A system that means Brakes in one fleet and Other in another
+    makes cross-fleet spend meaningless — so on a standard task the
+    axis is the operator's, exactly like the name."""
+    a = (await lib.create_account("Drifter Co")).id
+    entry = await lib.create_service_task_library_entry(
+        "Axle Service", system_key="brakes")
+    shared = next(t for t in await lib.list_service_tasks(a)
+                  if t["canonical_key"] == "axle_service")
+    assert shared["system_key"] == "brakes"
+
+    assert await lib.update_service_task(
+        shared["id"], a, system_key="other") is False
+    assert (await lib.get_service_task(shared["id"], a))["system_key"] == "brakes"
+
+    # Their OWN task's system is still theirs.
+    ours = await lib.create_service_task(a, "Our Own Job")
+    assert await lib.update_service_task(
+        ours["id"], a, system_key="other") is True
+
+    # And the operator moving it reaches the fleet.
+    assert await lib.update_service_task_library_entry(
+        entry["id"], system_key="suspension") is True
+    assert (await lib.get_service_task(shared["id"], a))["system_key"] == "suspension"

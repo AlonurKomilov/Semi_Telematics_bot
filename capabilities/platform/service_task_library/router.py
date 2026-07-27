@@ -42,6 +42,20 @@ class EntryUpdate(BaseModel):
     status: str | None = Field(None, pattern="^(active|archived)$")
 
 
+@router.get("/systems")
+async def list_systems(_user: dict = Depends(require_system_owner)):
+    """The reporting axes a library entry can be filed under.
+
+    Served rather than hardcoded in the operator page: a second copy of
+    this vocabulary in a frontend is exactly how the old task list
+    drifted.  On a standard task the system is the OPERATOR's to set —
+    accounts can't change it, because an axis that means Brakes in one
+    fleet and Other in another makes cross-fleet spend meaningless.
+    """
+    from adapters.storage.service_tasks import SERVICE_TASK_SYSTEMS
+    return {"systems": list(SERVICE_TASK_SYSTEMS)}
+
+
 @router.get("")
 async def list_entries(
     _user: dict = Depends(require_system_owner),

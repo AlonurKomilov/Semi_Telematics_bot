@@ -127,7 +127,7 @@ export default function ServiceTaskDetail() {
           </div>
           <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
             {shared
-              ? 'A shared task — every account has it under the same key, which is what lets "what does a brake job cost" compare honestly between fleets. You can still change how it behaves for your fleet below.'
+              ? 'A shared task — every account has it under the same key, which is what lets "what does a brake job cost" compare honestly between fleets. Its name and system are set centrally to keep that true; the labor estimate, description and applies-to are yours to tune and are never overwritten.'
               : 'Your own task. Rename, retune or delete it freely — delete only while nothing references it, so history never loses its label.'}
           </p>
         </div>
@@ -161,12 +161,14 @@ export default function ServiceTaskDetail() {
               ? <span className="capitalize">{task.vehicle_type}s only</span>
               : 'Any vehicle'}
           </Field>
-          <Field label="Name">
+          <Field label="Set centrally">
             {shared ? (
               <span className="inline-flex items-center gap-1 text-muted-foreground">
-                <Lock size={12} aria-hidden /> Locked
+                <Lock size={12} aria-hidden /> Name and system
               </span>
-            ) : 'Yours to change'}
+            ) : (
+              <span className="text-muted-foreground">Nothing — it's yours</span>
+            )}
           </Field>
         </div>
         {task.description && (
