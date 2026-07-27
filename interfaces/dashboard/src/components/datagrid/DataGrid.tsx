@@ -743,6 +743,14 @@ export default function DataGrid({
   // 25 server-ordered rows of 11,200 is honest; sorting 25 rows locally
   // and calling it sorted is not.  Only the latter gets gated.
   const gateClientSideOps = holdsPartialData && !manualSorting;
+  // Says WHY, and names BOTH ways out.  "Narrow the view first" alone was
+  // the wrong advice on page 1 of 160: getting under one page by filtering
+  // is a big ask, and raising Rows per page is the other route — omitting
+  // it left the operator with a dead end that looked like their fault.
+  const gateReason = holdsPartialData
+    ? `This works over the rows the table holds — ${sourceData.length.toLocaleString()} of `
+      + `${totalRows!.toLocaleString()}. Narrow the view, or raise Rows per page, to cover them all.`
+    : undefined;
   // Search — grid-owned unless the page supplies it.  Same dual-mode
   // shape as the filters; on a server-filtered grid the page drives this
   // into its query, so the box searches the whole set rather than the
@@ -2277,7 +2285,7 @@ export default function DataGrid({
       {trimmedGlobal && (
         <span className={chipCls}>
           <Search size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
-          <span className="truncate max-w-[16rem]">“{trimmedGlobal}”</span>
+          <span className="truncate max-w-64">“{trimmedGlobal}”</span>
           <button type="button" onClick={() => setGlobalFilter('')}
             aria-label="Clear search" className={chipX}>
             <X size={12} />
@@ -2290,7 +2298,7 @@ export default function DataGrid({
           <span key={`f-${f.id}`} className={chipCls}>
             <FilterIcon size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
             <Tip label={`${col?.label || f.id}: ${describeFilter(f.id, f.value)}`}>
-              <span className="truncate max-w-[18rem]">
+              <span className="truncate max-w-72">
                 <span className="font-medium">{col?.label || f.id}</span>
                 {': '}{describeFilter(f.id, f.value)}
               </span>
@@ -2309,7 +2317,7 @@ export default function DataGrid({
           <span key={`s-${s.id}`} className={chipCls}>
             <ArrowUpDown size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
             <Tip label={`Sorted by ${col?.label || s.id} · ${s.desc ? 'descending' : 'ascending'}`}>
-              <span className="truncate max-w-[18rem]">
+              <span className="truncate max-w-72">
                 Sorted by <span className="font-medium">{col?.label || s.id}</span>
                 {s.desc ? ' ↓' : ' ↑'}
               </span>
@@ -2325,7 +2333,7 @@ export default function DataGrid({
       {rowGroupBy && (
         <span className={chipCls}>
           <ListTree size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
-          <span className="truncate max-w-[18rem]">
+          <span className="truncate max-w-72">
             Grouped by <span className="font-medium">{groupedCol?.label || rowGroupBy}</span>
           </span>
           <button type="button" onClick={() => setRowGroupPref(null)}
@@ -3039,7 +3047,7 @@ export default function DataGrid({
               {pivotEnabled && (
                 <Tip label={
                   holdsPartialData
-                    ? `Narrow the view first — a pivot would summarise the ${sourceData.length.toLocaleString()} rows loaded, not all ${totalRows!.toLocaleString()}`
+                    ? `A pivot would summarise the ${sourceData.length.toLocaleString()} rows loaded, not all ${totalRows!.toLocaleString()}. Narrow the view, or raise Rows per page.`
                     : (pivotOn ? 'Back to the row list' : 'Summarise as a pivot table')
                 }>
                   {/* Disabled-with-reason rather than hidden: a control
@@ -3381,6 +3389,7 @@ export default function DataGrid({
                       <ColumnHeaderCell
                         gateSort={gateClientSideOps}
                         gateGroup={holdsPartialData}
+                        gateReason={gateReason}
                         key={header.id}
                         header={header}
                         stickyHeader={!!stickyHeader}
@@ -3937,6 +3946,8 @@ interface ColumnHeaderCellProps {
   gateSort?: boolean;
   /** Row-grouping is always local, so a slice groups a fragment. */
   gateGroup?: boolean;
+  /** Full reason + both remedies, for the gated items' tooltip. */
+  gateReason?: string;
   /** Source column config — we look up ``filterMode``/``filterRange``
    *  here since tanstack's column meta doesn't expose them.  Kept as
    *  an optional parallel prop so DataGrid can pass the matched
@@ -3995,7 +4006,7 @@ function ColumnHeaderCell({
   onOpenManage, onMeasureWidth, leadingContent,
   groupNames, currentGroup, onAssignGroup, onNewGroup, onUngroup,
   rowGrouped, onRowGroup, aggCurrent, aggFns, onSetAgg,
-  fixedWidths, onAutosize, densityClass, gateSort, gateGroup,
+  fixedWidths, onAutosize, densityClass, gateSort, gateGroup, gateReason,
 }: ColumnHeaderCellProps) {
   const canSort = header.column.getCanSort();
   const sortedRaw = header.column.getIsSorted();
@@ -4119,7 +4130,18 @@ function ColumnHeaderCell({
   // operators still see at a glance which columns are narrowing the
   // rows; the count + popover are reached via the 3-dot menu's
   // "Filter…" item.
-  const labelContent = (
+  // The active filter's VALUE, on hover.  Was a native ``title=`` — the
+  // design system bans it (unthemed, and a touch user can never see it),
+  // and this is the one place a header says WHAT it's filtered to.
+  const filterSummary = isFiltered
+    ? isRangeFilter
+      ? `${headerText}: ${rangeFilter[0] ?? '−∞'} – ${rangeFilter[1] ?? '+∞'}`
+      : isDateRangeFilter
+        ? `${headerText}: ${dateRangeFilter[0] ?? '−∞'} – ${dateRangeFilter[1] ?? '+∞'}`
+        : `${headerText}: ${filterValueArr.join(', ')}`
+    : '';
+
+  const labelInner = (
     <span
       className={cn(
         // ``min-w-0`` lets the label shrink inside the flex chain so
@@ -4131,13 +4153,7 @@ function ColumnHeaderCell({
         sortedRaw && 'text-foreground',
         dragEnabled && 'cursor-grab active:cursor-grabbing',
       )}
-      title={isFiltered
-        ? isRangeFilter
-          ? `${headerText}: ${rangeFilter[0] ?? '−∞'} – ${rangeFilter[1] ?? '+∞'}`
-          : isDateRangeFilter
-            ? `${headerText}: ${dateRangeFilter[0] ?? '−∞'} – ${dateRangeFilter[1] ?? '+∞'}`
-            : `${headerText}: ${filterValueArr.join(', ')}`
-        : undefined}
+
     >
       {/* Leading content (bulk-select master checkbox etc.) sits
           OUTSIDE the drag-handle visual cue but inside the label
@@ -4164,6 +4180,10 @@ function ColumnHeaderCell({
       {sortIndicator && <span className="shrink-0 inline-flex">{sortIndicator}</span>}
     </span>
   );
+
+  const labelContent = filterSummary
+    ? <Tip label={filterSummary}>{labelInner}</Tip>
+    : labelInner;
 
   // Compose dnd-kit's ref with our own — both need to attach to the
   // same DOM node (dnd-kit needs the draggable, we need the anchor
@@ -4263,6 +4283,7 @@ function ColumnHeaderCell({
               canSort={canSort}
               gateSort={gateSort}
               gateGroup={gateGroup}
+              gateReason={gateReason}
               sorted={sortedRaw === 'asc' || sortedRaw === 'desc' ? sortedRaw : false}
               onSortAsc={() => header.column.toggleSorting(false)}
               onSortDesc={() => header.column.toggleSorting(true)}

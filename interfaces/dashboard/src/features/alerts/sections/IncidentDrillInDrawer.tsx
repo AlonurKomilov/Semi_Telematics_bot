@@ -49,6 +49,7 @@ import { useAckAlerts } from '../useRecentAlerts';
 import {
   TypeBadge, SeverityDot, AckMarker, isAckable,
 } from '../_shared/components';
+import { toneText } from '../../../lib/status';
 import { formatAlertDescription } from '../../../utils/alertDescription';
 import { formatDate } from '../../../utils/datetime';
 import { useTimezone } from '../../../hooks/useTimezone';
@@ -117,7 +118,7 @@ function DrawerHeader({ alert, onClose }: {
           <p className="text-xs text-muted-foreground mt-0.5">
             Last fired {formatDate(alert.last_seen, { timeZone: tz })}
             {(alert.occurrence_count ?? 1) > 1 && (
-              <span className="ml-2 text-warn">
+              <span className={`ml-2 ${toneText('warn')}`}>
                 × {alert.occurrence_count}
               </span>
             )}

@@ -7,6 +7,7 @@ import {
   MoveHorizontal, Sigma,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { Tip } from '../tooltip';
 import { type AggFn, AGG_FN_LABELS } from '../../types';
 
 /**
@@ -39,6 +40,9 @@ interface ColumnHeaderMenuProps {
    *  right slice.  Offered disabled with the reason rather than hidden:
    *  an operator who reaches for sort deserves to learn why. */
   gateSort?: boolean;
+  /** The full "why, and how to fix it" sentence for the gated items.
+   *  Built by the grid because only it knows the row counts. */
+  gateReason?: string;
   /** The grid holds only a SLICE.  Row-grouping is always local, so it
    *  groups a fragment however the rows were chosen. */
   gateGroup?: boolean;
@@ -98,7 +102,7 @@ interface ColumnHeaderMenuProps {
 }
 
 export default function ColumnHeaderMenu({
-  sorted, canSort, gateSort = false, gateGroup = false,
+  sorted, canSort, gateSort = false, gateGroup = false, gateReason,
   onSortAsc, onSortDesc, onClearSort, onHide, canHide, onManage,
   pinned, onPinLeft, onPinRight, onUnpin,
   canFilter, onFilter, filterActive,
@@ -168,7 +172,8 @@ export default function ColumnHeaderMenu({
                           active={sorted === 'asc'}
                           onClick={onSortAsc}
                           disabled={gateSort}
-                          hint={gateSort ? 'narrow the view first' : undefined}
+                          hint={gateSort ? 'needs every row' : undefined}
+                          hintTip={gateSort ? gateReason : undefined}
                         />
                         <MenuItem
                           icon={<ArrowDown size={14} />}
@@ -176,7 +181,8 @@ export default function ColumnHeaderMenu({
                           active={sorted === 'desc'}
                           onClick={onSortDesc}
                           disabled={gateSort}
-                          hint={gateSort ? 'narrow the view first' : undefined}
+                          hint={gateSort ? 'needs every row' : undefined}
+                          hintTip={gateSort ? gateReason : undefined}
                         />
                         {sorted && (
                           <>
@@ -324,7 +330,8 @@ export default function ColumnHeaderMenu({
               // Ungrouping is always allowed — it only ever widens what
               // you see, so it can't mislead.
               disabled={gateGroup && !rowGrouped}
-              hint={gateGroup && !rowGrouped ? 'narrow the view first' : undefined}
+              hint={gateGroup && !rowGrouped ? 'needs every row' : undefined}
+              hintTip={gateGroup && !rowGrouped ? gateReason : undefined}
             />
             {/* Aggregate → submenu: pick a footer total function for
                 this column (only on columns that opted in via
@@ -409,7 +416,7 @@ export default function ColumnHeaderMenu({
 }
 
 function MenuItem({
-  icon, label, active, onClick, badge, disabled, hint,
+  icon, label, active, onClick, badge, disabled, hint, hintTip,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -424,8 +431,12 @@ function MenuItem({
   disabled?: boolean;
   /** Muted trailing reason shown when disabled (e.g. "last column"). */
   hint?: string;
+  /** Full explanation on hover.  The trailing hint has room for a few
+   *  words; a disabled control still owes the operator the REASON and
+   *  every way to undo it, which doesn't fit there. */
+  hintTip?: string;
 }) {
-  return (
+  const item = (
     <MenuPrimitive.Item
       disabled={disabled}
       className={cn(
@@ -451,4 +462,5 @@ function MenuItem({
       )}
     </MenuPrimitive.Item>
   );
+  return hintTip ? <Tip label={hintTip}>{item}</Tip> : item;
 }

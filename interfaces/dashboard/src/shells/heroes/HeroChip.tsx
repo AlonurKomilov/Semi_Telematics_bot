@@ -37,3 +37,18 @@ export default function HeroChip({ label, value, tone = 'neutral', title }: Hero
   );
   return title ? <Tip label={title}>{chip}</Tip> : chip;
 }
+
+
+/** "9d" / "14h" / "40m" — the age of the oldest open critical.
+ *
+ *  Coarse on purpose: the decision it feeds is "is anything rotting?",
+ *  and a precise duration invites reading it as a countdown. */
+export function oldestCriticalAge(firstSeenIso: string): string {
+  const ms = Date.now() - new Date(firstSeenIso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const mins = Math.floor(ms / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 48) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}

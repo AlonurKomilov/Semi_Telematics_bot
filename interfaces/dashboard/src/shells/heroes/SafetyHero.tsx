@@ -15,7 +15,7 @@
  * "harsh events today" chip more aligned with safety's workflow.
  */
 import { useShellStats } from './useShellStats';
-import HeroChip from './HeroChip';
+import HeroChip, { oldestCriticalAge } from './HeroChip';
 
 export default function SafetyHero() {
   const { data, isLoading, isError } = useShellStats();
@@ -27,7 +27,7 @@ export default function SafetyHero() {
       </div>
     );
   }
-  const { pending_alerts } = data;
+  const { pending_alerts, oldest_critical_first_seen } = data;
   // Role-neutral key with legacy-alias fallback (pre-rename API).
   const vehicles = data.vehicles ?? data.fleet ?? {};
   const trucks = vehicles.trucks ?? vehicles;
@@ -39,6 +39,14 @@ export default function SafetyHero() {
           value={pending_alerts}
           tone={pending_alerts > 0 ? 'critical' : 'positive'}
           title="Alerts awaiting acknowledgement, limited to the types this view handles. The Alerts board lists every type, so its total is larger."
+        />
+      )}
+      {oldest_critical_first_seen && (
+        <HeroChip
+          label="Oldest critical"
+          value={oldestCriticalAge(oldest_critical_first_seen)}
+          tone="critical"
+          title="How long the longest-waiting open critical has been unacknowledged. A count tells you how much is open; this tells you whether anything is being left."
         />
       )}
       <HeroChip

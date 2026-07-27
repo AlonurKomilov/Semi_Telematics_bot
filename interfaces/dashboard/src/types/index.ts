@@ -287,6 +287,11 @@ export interface DashboardStats {
   faults?: number;
   low_fuel?: number;
   pending_alerts?: number;
+  /** ISO first_seen of the OLDEST still-open critical in this view, or
+   *  absent when there is none.  A count says how much is open; this says
+   *  how long the worst of it has waited, which is the number that should
+   *  drive triage order. */
+  oldest_critical_first_seen?: string;
   unsafe_parking?: number;
   unknown_parking?: number;
   maintenance_due?: number;

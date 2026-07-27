@@ -290,6 +290,18 @@ async def overview_stats(
                 if (a.get("alert_type") or "") in allowed_types
             ]
             result["pending_alerts"] = len(relevant_alerts)
+            # How long the WORST thing has been waiting.  A count answers
+            # "how much is open" but never "how badly are we doing" — a
+            # steady 400 could be 400 fresh alerts or one critical ignored
+            # for a fortnight, and only the second is an emergency.  Free
+            # here: these rows are already in memory for the count above.
+            oldest = min(
+                (a.get("first_seen") for a in relevant_alerts
+                 if (a.get("severity") or "") == "critical" and a.get("first_seen")),
+                default=None,
+            )
+            if oldest:
+                result["oldest_critical_first_seen"] = oldest
         # else: omit pending_alerts entirely so the SPA's
         # ``showWhen: stats.pending_alerts !== undefined`` check hides
         # the card on owner/admin views — they don't triage alerts.

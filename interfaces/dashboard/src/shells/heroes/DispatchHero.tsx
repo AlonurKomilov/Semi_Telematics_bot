@@ -12,7 +12,7 @@
  * /overview/stats).
  */
 import { useShellStats } from './useShellStats';
-import HeroChip from './HeroChip';
+import HeroChip, { oldestCriticalAge } from './HeroChip';
 
 export default function DispatchHero() {
   const { data, isLoading, isError } = useShellStats();
@@ -24,7 +24,10 @@ export default function DispatchHero() {
       </div>
     );
   }
-  const { pending_alerts, unsafe_parking, unknown_parking, low_fuel } = data;
+  const {
+    pending_alerts, unsafe_parking, unknown_parking, low_fuel,
+    oldest_critical_first_seen,
+  } = data;
   // Role-neutral key with legacy-alias fallback (pre-rename API).
   const vehicles = data.vehicles ?? data.fleet ?? {};
   // Dispatch routes powered units — motion chips read the TRUCK bucket
@@ -38,6 +41,14 @@ export default function DispatchHero() {
       <HeroChip label="Trucks" value={trucks.total} tone="info" />
       {pending_alerts !== undefined && pending_alerts > 0 && (
         <HeroChip label="Open alerts" value={pending_alerts} tone="critical" title="Alerts awaiting acknowledgement, limited to the types this view handles. The Alerts board lists every type, so its total is larger." />
+      )}
+      {oldest_critical_first_seen && (
+        <HeroChip
+          label="Oldest critical"
+          value={oldestCriticalAge(oldest_critical_first_seen)}
+          tone="critical"
+          title="How long the longest-waiting open critical has been unacknowledged. A count tells you how much is open; this tells you whether anything is being left."
+        />
       )}
       {unsafe_parking !== undefined && unsafe_parking > 0 && (
         <HeroChip label="Parked unsafely" value={unsafe_parking} tone="critical" title="Vehicles parked outside safe zones" />
