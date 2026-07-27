@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { FEATURE_CATALOG } from '../../../config/featureCatalog';
+import { FEATURE_GROUPS } from '../../notifications/delivery/alertRoutingConstants';
 import en from '../../../locales/en.json';
 import { familyText } from './components';
 
@@ -36,6 +37,14 @@ describe('familyText mirrors the feature catalog', () => {
   it('names every alert type after its owning catalog feature', () => {
     for (const [type, featureId] of Object.entries(TYPE_TO_FEATURE_ID)) {
       expect(familyText(type), `type "${type}"`).toBe(catalogLabel(featureId));
+    }
+  });
+
+  it('delivery-settings sections use the same family names', () => {
+    for (const group of FEATURE_GROUPS) {
+      for (const type of group.types) {
+        expect(familyText(type), `type "${type}"`).toBe(group.label);
+      }
     }
   });
 

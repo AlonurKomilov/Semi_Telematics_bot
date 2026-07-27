@@ -24,12 +24,17 @@ export const TYPE_LABELS: Record<string, string> = {
   documents: 'Driver Documents', system: 'Sync & System',
 };
 
-// Feature hierarchy — topics render grouped under their owning FEATURE
-// (mirrors the product taxonomy: Vehicle telemetry, Safety, …), not as
-// one flat list.  Both modes group identically.
+// Feature hierarchy — topics render grouped under their owning FEATURE,
+// named as the feature catalog names it (never a persona word: "Safety"
+// is a role here, not a feature — PERSONA.md).  Single-type groups skip
+// their caps heading at render, so the split costs no visual clutter.
+// The Board's Feature column shows the same names; familyText.test.ts
+// guards all three surfaces (catalog / Board / these sections) as one.
 export const FEATURE_GROUPS: { label: string; types: string[] }[] = [
-  { label: 'Vehicle', types: ['faults', 'health', 'fuel'] },
-  { label: 'Safety', types: ['events', 'camera', 'parking'] },
+  { label: 'Vehicles', types: ['faults', 'health', 'fuel'] },
+  { label: 'Safety Events', types: ['events'] },
+  { label: 'Cameras', types: ['camera'] },
+  { label: 'Parking', types: ['parking'] },
   { label: 'Geofences', types: ['geofence'] },
   { label: 'Scorecards', types: ['scorecard'] },
   { label: 'Maintenance', types: ['maintenance'] },
