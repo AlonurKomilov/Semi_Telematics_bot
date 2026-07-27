@@ -208,6 +208,28 @@ omitting them leaves today's behaviour exactly as it was:
   "Fault" unloads every other type and the menu collapses to the one
   value you already picked, with no way back.
 
+### Holding a slice? Say so — `totalRows`
+
+Filtering server-side fixes the FILTERS. It doesn't fix everything else
+that assumes the grid holds the whole result. Pass `totalRows` (the true
+count behind the grid) whenever the page hands it a capped page, and the
+grid stops answering for the whole from a part:
+
+| Operation | Silently wrong on a slice | With `totalRows` |
+|---|---|---|
+| Sort | orders the loaded rows, reads as sorted | disabled, "narrow the view first" |
+| Group rows by | groups a fragment | disabled (ungroup always allowed) |
+| Export → all | writes a `-all` file of the loaded rows | "All loaded rows", both counts, `-loaded` suffix |
+| Pivot | summarises a fragment as a total | disabled with the reason |
+
+Pivot is the worst of the four: a cross-tab shows no rows, so there's
+nothing to count and notice the shortfall by.
+
+Disabled **with the reason**, never hidden — a control that vanishes
+teaches nothing, and "narrow the view first" is something an operator can
+act on. Omit `totalRows` on any grid that holds its whole dataset and
+nothing changes.
+
 Search stays local by design (it's scoped to the loaded page) — say so
 above the table rather than implying it searched everything.
 

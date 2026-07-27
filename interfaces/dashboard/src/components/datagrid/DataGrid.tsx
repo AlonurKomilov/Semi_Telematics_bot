@@ -305,6 +305,17 @@ interface DataGridProps {
    *  control them just to mirror them into the URL while the grid still
    *  does the work. */
   manualFiltering?: boolean;
+  /** The TRUE number of rows behind this grid, when the page hands it
+   *  only a slice (a server-capped page of a larger result set).
+   *
+   *  Without it the grid assumes the rows it holds ARE the result, and
+   *  every whole-set operation quietly answers for the whole from a
+   *  part: sorting orders 2,000 of 11,200 and calls it sorted, grouping
+   *  groups a fragment, "export all rows" writes a file named -all
+   *  containing 18% of the data.  Told the truth, the grid disables
+   *  those with a reason instead — and says "loaded" where it means it.
+   *  Omit on any grid that holds its whole dataset. */
+  totalRows?: number;
   /** Controlled search text.  Supply with ``onGlobalFilterChange``; omit
    *  both to let the grid keep its own.  Under ``manualFiltering`` the
    *  grid stops applying it to rows — the page searched already. */
@@ -596,6 +607,7 @@ export default function DataGrid({
   isRowSelectable, selectedIds: controlledSelectedIds, onSelectedIdsChange,
   columnFilters: controlledColumnFilters, onColumnFiltersChange,
   globalFilter: controlledGlobalFilter, onGlobalFilterChange,
+  totalRows,
   manualFiltering = false,
   segmentKey: controlledSegmentKey, onSegmentChange, segmentCounts: serverSegmentCounts,
 }: DataGridProps) {
@@ -606,6 +618,8 @@ export default function DataGrid({
   // so useTimezone → useAuth is always inside a provider here.
   const timeZone = useTimezone();
   const [sorting, setSorting] = useState<SortingState>([]);
+  // True when the page told us the real total and we hold less than it.
+  const holdsPartialData = totalRows !== undefined && totalRows > sourceData.length;
   // Search — grid-owned unless the page supplies it.  Same dual-mode
   // shape as the filters; on a server-filtered grid the page drives this
   // into its query, so the box searches the whole set rather than the
@@ -2315,17 +2329,40 @@ export default function DataGrid({
     // A saved model can name columns this grid no longer has.
     return prunePivotModel(base, columns);
   }, [pivotPref, columns]);
-  const pivotOn = pivotEnabled && !!pivotPref?.enabled;
+  // A pivot is an aggregate presented as an answer, and it aggregates
+  // the rows the grid HOLDS.  Over a slice it would summarise 2,000 of
+  // 11,200 and print totals that look authoritative — the same defect as
+  // a sorted fragment, but harder to spot because a cross-tab shows no
+  // rows to count.  So it stays off entirely while the data is partial;
+  // the preference survives, and it returns once the view is narrowed.
+  const pivotOn = pivotEnabled && !!pivotPref?.enabled && !holdsPartialData;
   const setPivotModel = useCallback((model: PivotModel) => {
     setPivotPref({ enabled: true, model });
   }, [setPivotPref]);
   const togglePivot = useCallback(() => {
     const next = !pivotOn;
-    setPivotPref({ enabled: next, model: pivotModel });
-    // Opening pivot with nothing configured would show only an empty
-    // state — bring the panel so the first click has somewhere to go.
-    setPivotPanelOpen(next && pivotModel.values.length === 0);
-  }, [pivotOn, pivotModel, setPivotPref]);
+    // A STARTER model on first enable: the first click should produce a
+    // report, not an empty state the operator must then configure three
+    // times.  First pivotable dimension x first aggregable measure is the
+    // obvious summary (Loads -> Customer x Rate); the panel still opens
+    // so it reads as a suggestion to refine, not a decision made for them.
+    let model = pivotModel;
+    if (next && model.rows.length === 0 && model.values.length === 0) {
+      const firstDim = columns.find((c) => c.pivotable);
+      const firstMeasure = columns.find((c) => c.aggregable);
+      if (firstDim && firstMeasure) {
+        model = {
+          rows: [firstDim.key],
+          columns: [],
+          values: [{ key: firstMeasure.key, aggFn: offeredAggFns(firstMeasure)[0] ?? 'sum' }],
+        };
+      }
+    }
+    setPivotPref({ enabled: next, model });
+    // Open the panel on the way IN so the suggestion is visible and
+    // immediately editable.
+    setPivotPanelOpen(next);
+  }, [pivotOn, pivotModel, columns, setPivotPref]);
 
   // ── Custom horizontal scrollbar ─────────────────────────────
   //
@@ -2535,7 +2572,7 @@ export default function DataGrid({
       : table.getRowModel().rows;
     const exportRows = flattenLeaves(sourceRows);
     const today = new Date().toISOString().slice(0, 10);
-    const suffix = scope === 'all' ? '-all' : '';
+    const suffix = scope === 'all' ? (holdsPartialData ? '-loaded' : '-all') : '';
     exportRowsAsCsv(`${tableId}${suffix}-${today}.csv`, exportCols, exportRows);
   };
 
@@ -2834,13 +2871,21 @@ export default function DataGrid({
                   to clear.  Filter/Sort keep their badges (those ARE active
                   view constraints); "columns hidden" is just layout. */}
               {pivotEnabled && (
-                <Tip label={pivotOn ? 'Back to the row list' : 'Summarise as a pivot table'}>
+                <Tip label={
+                  holdsPartialData
+                    ? `Narrow the view first — a pivot would summarise the ${sourceData.length.toLocaleString()} rows loaded, not all ${totalRows!.toLocaleString()}`
+                    : (pivotOn ? 'Back to the row list' : 'Summarise as a pivot table')
+                }>
+                  {/* Disabled-with-reason rather than hidden: a control
+                      that vanishes teaches nothing, and the operator
+                      can act on "narrow the view first". */}
                   <Button
                     type="button"
                     variant={pivotOn ? 'default' : 'outline'}
                     size="sm"
                     onClick={togglePivot}
                     aria-pressed={pivotOn}
+                    disabled={holdsPartialData}
                     className="h-8"
                   >
                     <TableProperties size={14} /> Pivot
@@ -2916,14 +2961,24 @@ export default function DataGrid({
                                 {pageCount.toLocaleString()} rows
                               </span>
                             </MenuPrimitive.Item>
+                            {/* "All rows" means all the grid HAS.  On a
+                                slice that isn't all the rows there are, so
+                                it says "loaded" and shows both numbers —
+                                exporting what you're looking at is useful,
+                                exporting 18% of the data into a file named
+                                "-all" is not. */}
                             <MenuPrimitive.Item
                               onClick={() => handleExportCsv('all')}
                               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent"
                             >
                               <Download size={14} className="text-muted-foreground" />
-                              <span className="flex-1 text-foreground text-left">All rows</span>
+                              <span className="flex-1 text-foreground text-left">
+                                {holdsPartialData ? 'All loaded rows' : 'All rows'}
+                              </span>
                               <span className="text-2xs text-muted-foreground tabular-nums">
-                                {allCount.toLocaleString()} rows
+                                {holdsPartialData
+                                  ? `${allCount.toLocaleString()} of ${totalRows!.toLocaleString()}`
+                                  : `${allCount.toLocaleString()} rows`}
                               </span>
                             </MenuPrimitive.Item>
                           </>
@@ -3138,6 +3193,7 @@ export default function DataGrid({
                   <TableRow data-header-row="leaf" className="bg-muted hover:bg-muted">
                     {headerGroup.headers.map((header, hIdx) => (
                       <ColumnHeaderCell
+                        partialData={holdsPartialData}
                         key={header.id}
                         header={header}
                         stickyHeader={!!stickyHeader}
@@ -3685,6 +3741,9 @@ function pinnedStyle(
 interface ColumnHeaderCellProps {
   header: Header<Record<string, unknown>, unknown>;
   stickyHeader: boolean;
+  /** The grid holds a slice of a larger result set — sort and row-group
+   *  would reorder a fragment while answering for the whole. */
+  partialData?: boolean;
   /** Source column config — we look up ``filterMode``/``filterRange``
    *  here since tanstack's column meta doesn't expose them.  Kept as
    *  an optional parallel prop so DataGrid can pass the matched
@@ -3743,7 +3802,7 @@ function ColumnHeaderCell({
   onOpenManage, onMeasureWidth, leadingContent,
   groupNames, currentGroup, onAssignGroup, onNewGroup, onUngroup,
   rowGrouped, onRowGroup, aggCurrent, aggFns, onSetAgg,
-  fixedWidths, onAutosize, densityClass,
+  fixedWidths, onAutosize, densityClass, partialData,
 }: ColumnHeaderCellProps) {
   const canSort = header.column.getCanSort();
   const sortedRaw = header.column.getIsSorted();
@@ -4009,6 +4068,7 @@ function ColumnHeaderCell({
             <ColumnHeaderMenu
               columnLabel={headerText}
               canSort={canSort}
+              partialData={partialData}
               sorted={sortedRaw === 'asc' || sortedRaw === 'desc' ? sortedRaw : false}
               onSortAsc={() => header.column.toggleSorting(false)}
               onSortDesc={() => header.column.toggleSorting(true)}

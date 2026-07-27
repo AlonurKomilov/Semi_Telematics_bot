@@ -33,6 +33,13 @@ import { type AggFn, AGG_FN_LABELS } from '../../types';
 interface ColumnHeaderMenuProps {
   sorted: false | 'asc' | 'desc';
   canSort: boolean;
+  /** The grid holds only a SLICE of the real result set (the page told
+   *  it so via ``totalRows``).  Sorting and row-grouping reorder the rows
+   *  in hand, so on a slice they'd answer for the whole set while seeing
+   *  part of it — "sorted by Vehicle" over 2,000 of 11,200.  Offered
+   *  disabled with the reason rather than hidden: an operator who reaches
+   *  for sort deserves to learn why it's unavailable and what to do. */
+  partialData?: boolean;
   onSortAsc: () => void;
   onSortDesc: () => void;
   onClearSort: () => void;
@@ -89,7 +96,8 @@ interface ColumnHeaderMenuProps {
 }
 
 export default function ColumnHeaderMenu({
-  sorted, canSort, onSortAsc, onSortDesc, onClearSort, onHide, canHide, onManage,
+  sorted, canSort, partialData = false,
+  onSortAsc, onSortDesc, onClearSort, onHide, canHide, onManage,
   pinned, onPinLeft, onPinRight, onUnpin,
   canFilter, onFilter, filterActive,
   groupNames, currentGroup, onAssignGroup, onNewGroup, onUngroup,
@@ -157,12 +165,16 @@ export default function ColumnHeaderMenu({
                           label="Ascending"
                           active={sorted === 'asc'}
                           onClick={onSortAsc}
+                          disabled={partialData}
+                          hint={partialData ? 'narrow the view first' : undefined}
                         />
                         <MenuItem
                           icon={<ArrowDown size={14} />}
                           label="Descending"
                           active={sorted === 'desc'}
                           onClick={onSortDesc}
+                          disabled={partialData}
+                          hint={partialData ? 'narrow the view first' : undefined}
                         />
                         {sorted && (
                           <>
@@ -307,6 +319,10 @@ export default function ColumnHeaderMenu({
               label={rowGrouped ? 'Ungroup rows' : 'Group rows by this'}
               active={rowGrouped}
               onClick={onRowGroup}
+              // Ungrouping is always allowed — it only ever widens what
+              // you see, so it can't mislead.
+              disabled={partialData && !rowGrouped}
+              hint={partialData && !rowGrouped ? 'narrow the view first' : undefined}
             />
             {/* Aggregate → submenu: pick a footer total function for
                 this column (only on columns that opted in via

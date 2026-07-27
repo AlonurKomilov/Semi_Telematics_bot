@@ -497,6 +497,10 @@ export default function AlertsResults() {
         // controls and reports intent; it must not also narrow the rows,
         // or it would filter the loaded page and call that the answer.
         manualFiltering
+        // The board holds a server-capped page of a bigger queue.  Telling
+        // the grid the real total is what stops it sorting / grouping /
+        // pivoting / exporting a fragment while presenting it as the whole.
+        totalRows={totalCount}
         columnFilters={gridFilters}
         onColumnFiltersChange={onGridFiltersChange}
         // Status: a lifecycle dimension, and one the server owns — an

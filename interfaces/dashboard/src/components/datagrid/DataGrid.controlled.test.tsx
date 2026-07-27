@@ -28,6 +28,10 @@ vi.mock('react-i18next', () => ({
     t: (k: string, d?: unknown) =>
       (typeof d === 'string' ? d : (d as { defaultValue?: string })?.defaultValue) ?? k,
   }),
+  // The pivot module chain reaches src/i18n.ts, which calls
+  // .use(initReactI18next) at import time — without this the whole file
+  // fails to COLLECT, which reads as "no tests" rather than a failure.
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 vi.mock('../../hooks/useTimezone', () => ({ useTimezone: () => 'UTC' }));
 // Per-table preferences resolve their default from the registry, so the
@@ -308,5 +312,50 @@ describe('DataGrid — controlled segment selection', () => {
     // A built-in segment carries no criteria: the page already knows what
     // its own segment keys mean.  (Saved tabs DO carry theirs.)
     expect(onSegment).toHaveBeenCalledWith('active', undefined);
+  });
+});
+
+
+describe('DataGrid — a grid that holds only a SLICE stops pretending', () => {
+  // Without ``totalRows`` a grid assumes the rows it holds ARE the result,
+  // so every whole-set operation answers for the whole from a part.  These
+  // pin the four that did.
+  const partial = {
+    columns: COLUMNS,
+    data: ROWS,               // 3 rows in hand...
+    totalRows: 11200,         // ...of 11,200 behind them
+    tableId: 'sliced',
+  };
+
+  it('labels CSV export "loaded" and shows both numbers', () => {
+    render(<DataGrid {...partial} />);
+    // "All rows" would name a file -all containing 3 of 11,200.
+    expect(document.body.textContent).not.toContain('All rows');
+  });
+
+  it('disables Pivot with a reason instead of summarising a fragment', () => {
+    render(<DataGrid {...partial} pivot />);
+    const btn = Array.from(document.querySelectorAll('button'))
+      .find((b) => b.textContent?.includes('Pivot'));
+    expect(btn).toBeTruthy();
+    expect((btn as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('leaves Pivot usable when the grid holds everything', () => {
+    render(<DataGrid columns={COLUMNS} data={ROWS} tableId="whole" pivot />);
+    const btn = Array.from(document.querySelectorAll('button'))
+      .find((b) => b.textContent?.includes('Pivot'));
+    expect((btn as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('treats an exact-fit total as complete, not partial', () => {
+    // totalRows === rows held: nothing is missing, so nothing is gated.
+    render(
+      <DataGrid columns={COLUMNS} data={ROWS} totalRows={ROWS.length}
+        tableId="exact" pivot />,
+    );
+    const btn = Array.from(document.querySelectorAll('button'))
+      .find((b) => b.textContent?.includes('Pivot'));
+    expect((btn as HTMLButtonElement).disabled).toBe(false);
   });
 });
