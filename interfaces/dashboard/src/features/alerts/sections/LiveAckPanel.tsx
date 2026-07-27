@@ -96,7 +96,7 @@ function relativeTime(iso: string | null, t: TFn): string {
 export default function LiveAckPanel() {
   const { t } = useTranslation();
   const { data, isLoading } = useAlertsQuery();
-  const { selected, acking } = useAlertsSelection();
+  const { selected, acking, ackCompletedAt } = useAlertsSelection();
 
   // Device-scoped preference: a wall-mounted dispatch screen should chime,
   // a laptop in a shared office should not.  Storage + the legacy
@@ -127,19 +127,17 @@ export default function LiveAckPanel() {
   // selection on success).  We piggyback on selection size dropping
   // from non-zero to zero while acking transitioned true→false in the
   // same render to avoid stamping on a user-driven clear.
-  const prevAcking = useRef(acking);
-  const prevSelectedSize = useRef(selected.size);
+  // Stamps when an acknowledgement actually COMMITTED.  This used to be
+  // inferred — "selection emptied while acking went true→false in the
+  // same render" — which died silently when acknowledging became staged:
+  // the selection now clears at click time, ten seconds before the
+  // commit, so the two signals never coincide again.  An explicit event
+  // can't drift out from under this the next time the flow changes.
   useEffect(() => {
-    const justFinishedAck =
-      prevAcking.current && !acking && prevSelectedSize.current > 0 && selected.size === 0;
-    if (justFinishedAck) {
-      const stamp = new Date().toISOString();
-      setLastAck(stamp);
-      try { localStorage.setItem(LAST_ACK_KEY, stamp); } catch { /* ignore */ }
-    }
-    prevAcking.current = acking;
-    prevSelectedSize.current = selected.size;
-  }, [acking, selected.size]);
+    if (!ackCompletedAt) return;
+    setLastAck(ackCompletedAt);
+    try { localStorage.setItem(LAST_ACK_KEY, ackCompletedAt); } catch { /* ignore */ }
+  }, [ackCompletedAt]);
 
   // Tick once a minute so "last ack" relative time stays fresh
   // without re-rendering the heavy results table.

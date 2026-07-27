@@ -56,6 +56,8 @@ import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import { useAlertsQuery } from '../_shared/useAlertsQuery';
 import { useAckAlerts } from '../useRecentAlerts';
+import { addStagedAcks, removeStagedAcks, useStagedAckIds } from '../stagedAcks';
+import { stagedAction } from '../../../components/banners/stagedAction';
 import { useAlertSegmentCounts } from '../_shared/useAlertSegmentCounts';
 import { toGridFilters, fromGridFilters } from '../_shared/gridFilterAdapters';
 import { familyText,
@@ -70,10 +72,18 @@ import { familyText,
 
 const SEV_RANK: Record<string, number> = { critical: 0, warning: 1, info: 2 };
 
-// Above this many rows, acknowledging asks first.  Chosen to sit above
-// routine triage (an operator clearing a few related alerts) and below a
-// full page selection, which is the accident worth catching.
-const ACK_CONFIRM_THRESHOLD = 10;
+// Above this many rows, acknowledging asks BEFORE staging.
+//
+// Set to a full default page (25), because SELECT-ALL is the accident
+// this catches and select-all on the default page is exactly 25.  Moving
+// it to 50 — reasoning only about "volume" once the cancel window
+// existed — silently let the most likely mistake through: a countdown
+// protects against instant regret, not against not-realising the header
+// checkbox took the whole page.
+//
+// Below it the window carries the protection alone, which is right: a
+// modal an operator meets all shift becomes a reflex click.
+const ACK_CONFIRM_THRESHOLD = 25;
 
 // Declared filter options for the two server-backed column filters.
 //
@@ -164,6 +174,7 @@ export default function AlertsResults() {
   // so it's passed to DataGrid as a CONTROLLED selection.
   const {
     selected, setSelected, clearSelection, openDrillIn, setAcking, setBulkError,
+    markAckCompleted,
   } = useAlertsSelection();
   const { data, isLoading, error: queryError, refetch } = useAlertsQuery();
   const ackAlerts = useAckAlerts();
@@ -190,43 +201,84 @@ export default function AlertsResults() {
 
   // Rows carry the derived feature family so the Feature column's
   // sort / row-grouping read a real field like any other column.
+  //
+  // Rows inside an un-committed acknowledge window are HIDDEN: the
+  // operator has said they're done with them, so leaving them sitting
+  // there invites acknowledging the same alert twice.  They come back if
+  // the window is cancelled or the commit fails — the shared store is
+  // module-level because it must outlive this section unmounting.
+  const stagedIds = useStagedAckIds();
   const rows = useMemo(
-    () => alerts.map((a) => ({ ...a, feature: familyText(a.alert_type ?? '') })),
-    [alerts],
+    () => alerts
+      .filter((a) => !stagedIds.has(String(a.id)))
+      .map((a) => ({ ...a, feature: familyText(a.alert_type ?? '') })),
+    [alerts, stagedIds],
   );
 
   // Selection ↔ DataGrid bridge.  DataGrid keys rows by ``id`` string
   // (getRowId), so the context set is projected to strings in, and
   // written back as strings out.  ``acking`` is toggled around the POST
-  // so LiveAckPanel's success cue still fires on true→false.
+  // so any consumer watching it sees the commit window.
   const selectedStr = useMemo(
     () => new Set(Array.from(selected, String)),
     [selected],
   );
 
-  const ackSelected = async (rows: Record<string, unknown>[]) => {
-    setAcking(true);
+  // Acknowledging is STAGED, not immediate.  It writes an accountability
+  // record per alert under this operator's name and there is no
+  // un-acknowledge, so the protection has to come BEFORE the write: the
+  // request fires when the countdown ends, and Cancel means nothing was
+  // ever sent — no reversal, no "acked then un-acked" noise in a trail
+  // someone may have to produce in an audit.
+  //
+  // Same primitive and same store as the bell's "Acknowledge all", so the
+  // two surfaces behave identically and a window survives either one
+  // unmounting.
+  const ackSelected = (rows: Record<string, unknown>[]) => {
+    const ids = rows.map((r) => (r as unknown as Alert).id);
+    if (!ids.length) return;
+    const strIds = ids.map(String);
+    const n = ids.length;
+    const noun = `${n} alert${n === 1 ? '' : 's'}`;
+
     setBulkError('');
-    try {
-      // The shared helper POSTs and invalidates BOTH ['alerts'] (board +
-      // hero counts) and ['shell','overview-stats'] (the bell badge and
-      // the Overview card).  Acking here used to refresh only the first,
-      // leaving the badge claiming work that was already done.
-      await ackAlerts(rows.map((r) => (r as unknown as Alert).id));
-      // Clear the selection as the LAST synchronous statement before
-      // the finally's setAcking(false) — with NO await between them,
-      // React 18 batches both into one commit, so LiveAckPanel's
-      // detector sees "selection 0 AND acking true→false" in the same
-      // render and fires its sound cue.  (An await here would split
-      // them across commits and silently kill the cue.)  DataGrid also
-      // clears post-onRun — a no-op once this has run.
-      setSelected(new Set());
-    } catch (e) {
-      setBulkError(e instanceof Error ? e.message : 'Bulk acknowledge failed');
-      throw e; // keep the selection so the user can retry
-    } finally {
-      setAcking(false);
-    }
+    addStagedAcks(strIds);            // rows vanish for the window
+    // Selection clears now: the operator is done with these rows, and
+    // leaving them ticked behind a banner invites a second click.
+    setSelected(new Set());
+
+    stagedAction({
+      label: `Acknowledging ${noun}`,
+      detail: 'Each acknowledgement is recorded under your name.',
+      commit: async (hint) => {
+        setAcking(true);
+        try {
+          // The shared helper invalidates BOTH ['alerts'] (board + hero
+          // counts) and ['shell','overview-stats'] (bell badge, Overview
+          // card), so no surface is left claiming work already done.
+          await ackAlerts(ids, hint);
+          // Explicit "an ack landed" event for LiveAckPanel's
+          // "Last acknowledged" chip.
+          markAckCompleted();
+        } catch (e) {
+          // The staged banner is transient and offers Retry; AlertsBulkError
+          // is the PERSISTENT inline surface, mounted in every layout for
+          // exactly this.  Feeding only the banner left it permanently
+          // blank and the failure easy to scroll past.
+          setBulkError(e instanceof Error ? e.message : 'Bulk acknowledge failed');
+          throw e;      // let stagedAction show its Retry banner too
+        } finally {
+          // Committed: the refetch proves it.  Failed: the rows come
+          // BACK rather than staying hidden behind a banner offering
+          // Retry — a hidden row the operator thinks is handled is the
+          // worse of the two failures.
+          removeStagedAcks(strIds);
+          setAcking(false);
+        }
+      },
+      successMessage: `Acknowledged ${noun}`,
+      onCancel: () => removeStagedAcks(strIds),
+    });
   };
 
   const bulkActions: BulkAction[] = [
@@ -243,10 +295,13 @@ export default function AlertsResults() {
       // Deliberately NOT a prompt on every action: a modal an operator
       // sees twenty times a shift becomes a reflex click, which protects
       // less than no modal at all while feeling like it protects more.
+      // NOT "this cannot be undone" any more — that stopped being true
+      // the moment the action became staged, and a warning that overstates
+      // the stakes is its own kind of dishonesty.
       confirm: (count) => (count >= ACK_CONFIRM_THRESHOLD
         ? `Acknowledge ${count} alerts?\n\n`
           + 'Each is recorded under your name and leaves the open queue. '
-          + 'This cannot be undone.'
+          + 'You get a few seconds to cancel before anything is sent.'
         : ''),
       onRun: ackSelected,
     },

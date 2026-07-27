@@ -46,6 +46,14 @@ export interface AlertsSelectionAPI {
   drillInAlert: Alert | null;
   openDrillIn: (a: Alert) => void;
   closeDrillIn: () => void;
+
+  /** ISO stamp of the last acknowledgement that actually COMMITTED, or
+   *  null.  An explicit signal because the alternative — inferring it
+   *  from "selection emptied while acking went true→false in the same
+   *  render" — silently died the moment acknowledging became staged and
+   *  the selection cleared at click time instead of at commit. */
+  ackCompletedAt: string | null;
+  markAckCompleted: () => void;
 }
 
 const NOOP_API: AlertsSelectionAPI = {
@@ -61,6 +69,8 @@ const NOOP_API: AlertsSelectionAPI = {
   drillInAlert: null,
   openDrillIn: () => {},
   closeDrillIn: () => {},
+  ackCompletedAt: null,
+  markAckCompleted: () => {},
 };
 
 const AlertsSelectionContext = createContext<AlertsSelectionAPI>(NOOP_API);
@@ -73,6 +83,7 @@ export function AlertsSelectionProvider({ children }: { children: ReactNode }) {
   const [bulkError, setBulkError] = useState('');
   const [acking, setAcking] = useState(false);
   const [drillInAlert, setDrillInAlert] = useState<Alert | null>(null);
+  const [ackCompletedAt, setAckCompletedAt] = useState<string | null>(null);
 
   const api: AlertsSelectionAPI = useMemo(
     () => ({
@@ -88,8 +99,10 @@ export function AlertsSelectionProvider({ children }: { children: ReactNode }) {
       drillInAlert,
       openDrillIn: (a: Alert) => setDrillInAlert(a),
       closeDrillIn: () => setDrillInAlert(null),
+      ackCompletedAt,
+      markAckCompleted: () => setAckCompletedAt(new Date().toISOString()),
     }),
-    [selected, expandedVehicles, bulkError, acking, drillInAlert],
+    [selected, expandedVehicles, bulkError, acking, drillInAlert, ackCompletedAt],
   );
 
   return (
