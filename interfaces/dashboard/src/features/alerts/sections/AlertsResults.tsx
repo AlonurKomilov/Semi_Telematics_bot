@@ -68,6 +68,11 @@ import { familyText,
 
 const SEV_RANK: Record<string, number> = { critical: 0, warning: 1, info: 2 };
 
+// Above this many rows, acknowledging asks first.  Chosen to sit above
+// routine triage (an operator clearing a few related alerts) and below a
+// full page selection, which is the accident worth catching.
+const ACK_CONFIRM_THRESHOLD = 10;
+
 // Declared filter options for the two server-backed column filters.
 //
 // These are the account-wide vocabularies, not "whatever is on screen".
@@ -224,8 +229,26 @@ export default function AlertsResults() {
   };
 
   const bulkActions: BulkAction[] = [
-    { label: t('alerts.acknowledge', { defaultValue: 'Acknowledge' }),
-      icon: CheckCircle2, onRun: ackSelected },
+    {
+      label: t('alerts.acknowledge', { defaultValue: 'Acknowledge' }),
+      icon: CheckCircle2,
+      // Acknowledging is a COMPLIANCE record — it stamps the operator's
+      // name on each alert and takes it out of the open queue, and there
+      // is no un-acknowledge.  So the scope gets confirmed above a
+      // handful: working through a few rows stays friction-free, while
+      // "select all, then click" — the accident this guards — is
+      // questioned with the number spelled out.
+      //
+      // Deliberately NOT a prompt on every action: a modal an operator
+      // sees twenty times a shift becomes a reflex click, which protects
+      // less than no modal at all while feeling like it protects more.
+      confirm: (count) => (count >= ACK_CONFIRM_THRESHOLD
+        ? `Acknowledge ${count} alerts?\n\n`
+          + 'Each is recorded under your name and leaves the open queue. '
+          + 'This cannot be undone.'
+        : ''),
+      onRun: ackSelected,
+    },
   ];
 
   // Column set — conditional Status column only when the view can

@@ -146,8 +146,11 @@ export interface BulkAction {
   /** Visual weight of the button (default = neutral).  ``danger``
    *  paints the icon red. */
   tone?: 'default' | 'danger';
-  /** window.confirm prompt before running; receives the selection
-   *  count.  Omit for actions that need no confirmation. */
+  /** Prompt before running; receives the selection count.  Return an
+   *  EMPTY string to skip the prompt at that count — gate on scope so
+   *  routine work isn't interrupted and only a large, probably-accidental
+   *  selection is questioned.  Omit entirely for actions that never
+   *  confirm. */
   confirm?: (count: number) => string;
   /** When present, the button opens a MENU of these options instead of
    *  running directly; the chosen option's ``value`` is passed to
@@ -1910,7 +1913,13 @@ export default function DataGrid({
   const runBulkAction = async (action: BulkAction, value?: string) => {
     const rows = selectedOriginals();
     if (rows.length === 0) return;
-    if (action.confirm && !window.confirm(action.confirm(rows.length))) return;
+    // An EMPTY message means "no confirmation at this count", so a
+    // consumer can gate the prompt on scope: routine triage of a few rows
+    // stays friction-free while an accidental select-all gets stopped.
+    // A modal on every action trains people to dismiss modals, which is
+    // worse protection than none.
+    const confirmMsg = action.confirm?.(rows.length);
+    if (confirmMsg && !window.confirm(confirmMsg)) return;
     try {
       await action.onRun(rows, value);
       // Act → selection resets (the acted rows usually leave the list).

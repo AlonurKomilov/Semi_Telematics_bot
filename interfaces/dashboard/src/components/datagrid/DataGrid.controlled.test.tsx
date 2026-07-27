@@ -359,3 +359,65 @@ describe('DataGrid — a grid that holds only a SLICE stops pretending', () => {
     expect((btn as HTMLButtonElement).disabled).toBe(false);
   });
 });
+
+
+describe('DataGrid — bulk confirm gated on scope', () => {
+  // A modal on every action becomes a reflex click, so ``confirm`` may
+  // return '' to mean "not at this count".  These pin both branches,
+  // because getting it backwards either interrupts routine work or
+  // silently lets a select-all through.
+  const rowsFor = (n: number) => Array.from({ length: n }, (_, i) => ({
+    id: i + 1, type: 'fault', name: `Truck ${i + 1}`,
+  }));
+
+  function renderWithBulk(count: number, confirmFn: (n: number) => string) {
+    const onRun = vi.fn();
+    const data = rowsFor(count);
+    render(
+      <DataGrid
+        columns={COLUMNS}
+        data={data}
+        tableId="bulk"
+        bulkSelection
+        selectedIds={new Set(data.map((r) => String(r.id)))}
+        onSelectedIdsChange={() => {}}
+        bulkActions={[{ label: 'Acknowledge', confirm: confirmFn, onRun }]}
+      />,
+    );
+    return onRun;
+  }
+
+  const clickAcknowledge = async () => {
+    const btn = Array.from(document.querySelectorAll('button'))
+      .find((b) => b.getAttribute('aria-label') === 'Acknowledge'
+        || b.textContent?.trim() === 'Acknowledge');
+    expect(btn, 'the bulk Acknowledge control').toBeTruthy();
+    await act(async () => { (btn as HTMLButtonElement).click(); });
+  };
+
+  it('runs WITHOUT prompting when the message is empty', async () => {
+    const spy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const onRun = renderWithBulk(3, (n) => (n >= 10 ? `Acknowledge ${n}?` : ''));
+    await clickAcknowledge();
+    expect(spy).not.toHaveBeenCalled();      // routine work, uninterrupted
+    expect(onRun).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('prompts with the COUNT once the selection is large', async () => {
+    const spy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const onRun = renderWithBulk(12, (n) => (n >= 10 ? `Acknowledge ${n} alerts?` : ''));
+    await clickAcknowledge();
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('12'));
+    expect(onRun).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('does NOT run when the operator declines', async () => {
+    const spy = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const onRun = renderWithBulk(12, (n) => (n >= 10 ? `Acknowledge ${n} alerts?` : ''));
+    await clickAcknowledge();
+    expect(onRun).not.toHaveBeenCalled();    // declining must mean nothing happened
+    spy.mockRestore();
+  });
+});
