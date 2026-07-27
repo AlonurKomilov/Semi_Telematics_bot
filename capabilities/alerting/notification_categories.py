@@ -33,6 +33,7 @@ def _extra_type_audience(alert_type: str, role) -> bool:
     return perms is not None and perms_allow_alert_type(perms, alert_type)
 from capabilities.notifications.categories import (
     BROADCAST,
+    TARGETED,
     NotificationCategory,
     register_category,
 )
@@ -78,3 +79,30 @@ def register_alert_categories() -> None:
 
 
 register_alert_categories()
+
+
+def register_targeted_alert_notices() -> None:
+    """Personal alert-adjacent NOTICES (targeted: one affected person,
+    opt-out) — delivered via notify_user, muteable in the
+    account-activity preferences section.
+
+    • alert.document_expiry — "your CDL/medical/DQF is expiring".
+      Audience: drivers (the only role these target), so the mute
+      toggle doesn't clutter other roles' preference pages.
+    • alert.shift_report — the morning shift-handoff summary + PDF for
+      users with a quiet window configured.  Any role can have one.
+    """
+    register_category(NotificationCategory(
+        key="alert.document_expiry",
+        label="Document expiry (your documents)",
+        kind=TARGETED,
+        audience=lambda role: str(role) == "driver",
+    ))
+    register_category(NotificationCategory(
+        key="alert.shift_report",
+        label="Shift handoff report",
+        kind=TARGETED,
+    ))
+
+
+register_targeted_alert_notices()

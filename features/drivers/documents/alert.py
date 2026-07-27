@@ -150,15 +150,29 @@ async def check_document_expirations(_app: Application | None = None) -> None:
                             driver.telegram_id, e,
                         )
                     if not skip_driver_dm:
+                        # Targeted spine notice (alert.document_expiry):
+                        # DM now, email/push too when the driver
+                        # connected them; muteable in preferences;
+                        # recorded like every personal delivery.
                         try:
-                            await bot_app.bot.send_message(
-                                chat_id=driver.telegram_id,
-                                text=driver_text,
-                                parse_mode=ParseMode.HTML,
+                            from capabilities.alerting.pipeline import (
+                                _strip_alert_html)
+                            from capabilities.notifications import (
+                                NotificationContent, notify_user)
+                            await notify_user(
+                                pdb, acct.id, driver.id,
+                                NotificationContent(
+                                    title="",
+                                    body=_strip_alert_html(driver_text),
+                                    category="alert.document_expiry",
+                                    severity="warning",
+                                ),
+                                channels=("telegram_dm", "email",
+                                          "web_push"),
                             )
                         except Exception as e:
                             logger.debug(
-                                "Driver-doc alert to %s failed: %s",
+                                "Driver-doc notice to %s failed: %s",
                                 driver.telegram_id, e,
                             )
 

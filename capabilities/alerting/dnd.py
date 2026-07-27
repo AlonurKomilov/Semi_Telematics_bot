@@ -7,12 +7,9 @@ import logging
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.constants import ParseMode
 from telegram.ext import Application
 
 from adapters.storage import Role
-from infra.bot_registry import get_app_for_account
 from infra.services import get_platform_db, get_tenant_db
 from capabilities.alerting.registry import register_alert_source
 
@@ -269,30 +266,36 @@ async def deliver_dnd_alerts(app: Application):
 
             # ── Send ───────────────────────────────────────────
             try:
-                bot_app = get_app_for_account(sub.account_id)
-                if not bot_app:
-                    logger.warning("No bot for account %d — skipping DND delivery", sub.account_id)
-                    continue
-                kb = InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🔔 Pending Alerts", callback_data="cmd_pending_alerts")],
-                    [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
-                ])
-
-                if pdf_buf:
-                    filename = f"shift_report_{today_local}.pdf"
-                    await bot_app.bot.send_document(
-                        chat_id=sub.telegram_id,
-                        document=pdf_buf,
-                        filename=filename,
-                        caption="🌅 Shift Handoff Report",
-                    )
-
-                await bot_app.bot.send_message(
-                    chat_id=sub.telegram_id,
-                    text=summary_text,
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=kb,
+                # One targeted spine notice: the PDF as a document with
+                # the summary as its caption + the two nav buttons as
+                # generic specs.  notify_user resolves the connection,
+                # honors mutes, and records the delivery.
+                from capabilities.alerting.pipeline import _strip_alert_html
+                from capabilities.notifications import (
+                    NotificationContent, notify_user)
+                results = await notify_user(
+                    get_platform_db(), sub.account_id, sub.id,
+                    NotificationContent(
+                        title="",
+                        body=_strip_alert_html(summary_text),
+                        category="alert.shift_report",
+                        severity="info",
+                        document_bytes=(pdf_buf.getvalue() if pdf_buf else None),
+                        document_name=f"shift_report_{today_local}.pdf",
+                        meta={"tg_buttons": [
+                            [{"text": "🔔 Pending Alerts",
+                              "callback_data": "cmd_pending_alerts"}],
+                            [{"text": "◀️ Main Menu",
+                              "callback_data": "cmd_menu"}],
+                        ]},
+                    ),
+                    channels=("telegram_dm",),
                 )
+                if not any(r.ok for r in results):
+                    logger.warning(
+                        "Shift report not delivered to user %d — will retry "
+                        "next window", sub.id)
+                    continue
 
                 await get_platform_db().update_user(sub.id, last_shift_report=today_local)
             except Exception as e:

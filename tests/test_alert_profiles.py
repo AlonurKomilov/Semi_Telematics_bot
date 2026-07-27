@@ -199,3 +199,34 @@ async def test_personal_fanout_carries_company_predicate(monkeypatch):
     assert rf is not None
     assert rf(7, "dispatcher") is False    # G1-restricted user dropped
     assert rf(8, "dispatcher") is True
+
+
+# ── targeted alert notices (documents driver DM + shift report) ─────
+
+def test_targeted_notice_categories_registered():
+    from capabilities.notifications.categories import TARGETED
+    doc = get_category("alert.document_expiry")
+    assert doc is not None and doc.kind == TARGETED
+    assert doc.audience("driver") and not doc.audience("dispatcher")
+    rep = get_category("alert.shift_report")
+    assert rep is not None and rep.kind == TARGETED
+    assert rep.audience is None                   # any role can have one
+
+
+@pytest.mark.asyncio
+async def test_notify_user_accepts_the_targeted_notices():
+    """notify_user rejects BROADCAST categories — the two notices must
+    be TARGETED or the converted producers would crash at send time."""
+    from capabilities.notifications.service import notify_user
+
+    class _Db:
+        async def get_notification_channel(self, *a):
+            return None                           # nothing connected → no-op
+
+    for cat in ("alert.document_expiry", "alert.shift_report"):
+        from capabilities.notifications.channels import NotificationContent
+        results = await notify_user(
+            _Db(), 1, 42,
+            NotificationContent(title="", body="x", category=cat),
+            channels=("telegram_dm",))
+        assert results == []                      # no raise, no connection
