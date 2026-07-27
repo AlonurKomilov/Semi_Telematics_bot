@@ -399,6 +399,43 @@ def _backoff_hours_for_attempt(attempt_index: int, schedule: tuple[int, ...]) ->
 
 
 @register_alert_source("critical_reescalate", trigger="interval", hours=1)
+
+async def _spine_remind(tenant, account_id: int, history_id: int, *,
+                        vname: str, atype: str, age_str: str,
+                        attempt_n: int) -> bool:
+    """Edit the spine-delivered PERSONAL copies of an unacknowledged
+    alert into reminder text, keeping the ✅ Acknowledge action.
+
+    DM copies ONLY (owner decision 2026-07-27, same rule as the
+    resolve edit): a reminder edit on the GROUP copy replaced the
+    alert text for the whole team and hung a personal Acknowledge
+    button in a shared topic.  Rows are NOT cleared — later reminders
+    and the final ack/resolve edit reuse them.
+    """
+    from capabilities.notifications import (
+        NotificationContent as _NotifContent,
+        update_delivery as _update_delivery,
+    )
+    from capabilities.alerting.spine_actions import ACK_ACTION
+    from infra.config import REESCALATE_MAX_ATTEMPTS
+    _plain = (
+        f"🟡 Reminder {attempt_n}/{REESCALATE_MAX_ATTEMPTS}"
+        " — unacknowledged alert\n"
+        f"🚛 Vehicle #{vname}\n"
+        f"⏱ {atype.title()} active for {age_str}\n"
+        "💡 Acknowledge or mute — auto-clears when the "
+        "condition lifts\n"
+        f"🔖 #{history_id}"
+    )
+    results = await _update_delivery(
+        tenant, account_id, f"alert:{history_id}",
+        _NotifContent(title="", body=_plain, severity="warning",
+                      actions=[dict(ACK_ACTION)]),
+        channels=("telegram_dm",),
+    )
+    return any(r.ok for r in results)
+
+
 async def re_escalate_critical_alerts(app=None):
     """Hourly job: bump unacknowledged CRITICAL/WARNING alerts.
 
@@ -551,26 +588,11 @@ async def re_escalate_critical_alerts(app=None):
             # final ack/resolve edit reuse them.
             spine_reminded = False
             try:
-                from capabilities.notifications import (
-                    NotificationContent as _NotifContent,
-                    update_delivery as _update_delivery,
+                spine_reminded = await _spine_remind(
+                    tenant, account_id, history_id,
+                    vname=vname, atype=atype, age_str=age_str,
+                    attempt_n=attempt_n,
                 )
-                from capabilities.alerting.spine_actions import ACK_ACTION
-                _plain = (
-                    f"🟡 Reminder {attempt_n}/{REESCALATE_MAX_ATTEMPTS}"
-                    " — unacknowledged alert\n"
-                    f"🚛 Vehicle #{vname}\n"
-                    f"⏱ {atype.title()} active for {age_str}\n"
-                    "💡 Acknowledge or mute — auto-clears when the "
-                    "condition lifts\n"
-                    f"🔖 #{history_id}"
-                )
-                _results = await _update_delivery(
-                    tenant, account_id, f"alert:{history_id}",
-                    _NotifContent(title="", body=_plain, severity="warning",
-                                  actions=[dict(ACK_ACTION)]),
-                )
-                spine_reminded = any(r.ok for r in _results)
             except Exception as _se:
                 logger.debug("re_escalate: spine reminder failed for #%s: %s",
                              history_id, _se)

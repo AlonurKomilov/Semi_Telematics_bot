@@ -831,10 +831,14 @@ async def _deliver_groups_via_plan(
     )
     route_key = _PIPELINE_TO_ROUTE_KEY.get(alert_type, alert_type)
     correlation_key = f"alert:{int(history_id)}" if history_id else ""
-    actions = ([{"id": "ack", "label": "✅ Acknowledge"}]
-               if (needs_ack and correlation_key) else [])
 
     def _mk(body: str) -> "_NotifContent":
+        # NO Acknowledge action on group posts (owner decision
+        # 2026-07-27): acking is a PERSONAL act and lives on the DM
+        # copies — a shared topic button let anyone clear an alert the
+        # team was still reading.  The ack ROWS below still track the
+        # group message ids (reminders/receipts/drift edit through
+        # them); only the button is gone.
         return _NotifContent(
             title="",
             body=_strip_alert_html(body),
@@ -842,7 +846,6 @@ async def _deliver_groups_via_plan(
             severity=sev_value,
             photo_bytes=photo_bytes,
             video_url=video_url or "",
-            actions=list(actions),
         )
 
     contents = [_mk(send_text)]

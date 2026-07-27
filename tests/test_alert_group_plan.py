@@ -6,8 +6,9 @@ Pins the flip's contract (docs/architecture/alert-dm-migration.md):
     sender_hint = persona (aggregate → primary bot via ""), stable id
   • per-persona AI toggle picks WITH-AI vs plain content (aggregate and
     legacy single-mode follow the account default)
-  • ✅ Acknowledge action rides ackable severities WITH a history id;
-    INFO carries none
+  • group posts carry NO Acknowledge action at any severity (owner
+    decision 2026-07-27 — acking is personal, DM copies only); the
+    spine REMINDER edit targets telegram_dm rows exclusively
   • ack ROWS are written from the returned handles (sent_to=0) so
     escalation / resolve threading / shift report keep their state
   • failure policy stays alerting's: legacy target + "topic deleted" →
@@ -18,6 +19,8 @@ All fakes — no Telegram, no Postgres.
 """
 
 from __future__ import annotations
+
+from types import SimpleNamespace
 
 import pytest
 
@@ -132,7 +135,10 @@ async def test_targets_become_plan_targets(monkeypatch):
     assert t2.address == "-9" and t2.sender_hint == ""  # aggregate → primary
     assert t2.prefix_html == ""
     assert plan.correlation_key == "alert:42"
-    assert plan.contents[0].actions == [{"id": "ack", "label": "✅ Acknowledge"}]
+    # Group posts carry NO Acknowledge action (owner decision
+    # 2026-07-27): acking is personal and lives on the DM copies; a
+    # shared topic button let anyone clear an alert mid-triage.
+    assert plan.contents[0].actions == []
 
 
 @pytest.mark.asyncio
@@ -200,3 +206,35 @@ async def test_partial_success_returns_true(monkeypatch):
     ], deliver=deliver)
     assert ok is True
     assert len(tenant.acks) == 1                  # only the landed copy
+
+
+@pytest.mark.asyncio
+async def test_spine_reminder_edits_dm_copies_only(monkeypatch):
+    """Reminders are personal: the spine edit must target the
+    telegram_dm rows and never the group-topic copies (owner decision
+    2026-07-27 — a topic edit replaced the alert text for the whole
+    team and hung a personal Acknowledge button in a shared group)."""
+    import capabilities.notifications as notif
+    from capabilities.alerting.escalation import _spine_remind
+
+    calls = {}
+
+    async def fake_update_delivery(tenant, account_id, correlation_key,
+                                   content, *, channels=None, clear=False):
+        calls["channels"] = channels
+        calls["correlation_key"] = correlation_key
+        calls["actions"] = content.actions
+        calls["clear"] = clear
+        return [SimpleNamespace(ok=True)]
+
+    monkeypatch.setattr(notif, "update_delivery", fake_update_delivery)
+    ok = await _spine_remind(
+        object(), 1, 42, vname="132", atype="fault",
+        age_str="10h 57m", attempt_n=2,
+    )
+    assert ok is True
+    assert calls["channels"] == ("telegram_dm",)
+    assert calls["correlation_key"] == "alert:42"
+    assert calls["clear"] is False
+    # the DM reminder KEEPS the personal Acknowledge action
+    assert [a["id"] for a in calls["actions"]] == ["ack"]
