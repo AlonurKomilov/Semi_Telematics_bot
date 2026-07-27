@@ -1,6 +1,6 @@
 # ADR: Alert DM delivery moves to the notifications spine
 
-- **Status:** COMPLETE (2026-07-26), follow-on included — spine DMs always-on; legacy DM loop deleted; `dnd_alert_queue` DROPPED (migration 165, every deferral rides the spine's quiet queue via `quiet_hours.defer_notification`). Still-legacy niche: three producers' LIVE per-recipient DMs (documents driver notice, camera personalized digest, parking threaded replies) call the bot directly — per-recipient content; their conversion to targeted spine notices is an open low-urgency item.
+- **Status:** COMPLETE + WALLED (2026-07-27) — `capabilities/alerting` imports zero `telegram`, CI-enforced (`test_layer_boundaries.py`). Every send, edit, button, deferral and group post rides `capabilities/notifications` (plans, ledger, actions, quiet hours). Remaining known exception: the camera per-subscriber digest DM loop in `features/cameras/` (bot-conversation UX, outside the wall's scope, spine-deferred during quiet hours).
 - **Owners:** alerting (`capabilities/alerting/`) + notifications (`capabilities/notifications/`)
 - **Related:** [notifications.md](notifications.md) (spine architecture), [bot-topology.md](bot-topology.md) (bot vs group split)
 
