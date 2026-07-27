@@ -18,7 +18,7 @@ import type {
 } from '../../types';
 
 const entryCols: AnyColumn[] = [
-  { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
+  { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true, pivotable: true },
   { key: 'date', label: 'Date', sortable: true,
     filterable: true, filterMode: 'date-range',
     // Earliest / latest fill-up in the filtered (or grouped) set.
@@ -274,6 +274,11 @@ export default function FuelCosts() {
           columns={tab === 'entries' ? entryCols : summaryCols}
           data={(tab === 'entries' ? entries : summaryData) as unknown as Record<string, unknown>[]}
           searchKey="vehicle_name"
+          // Fuel spend by truck x month.  ENTRIES only — the summary tab
+          // is already one row per vehicle, so pivoting it would
+          // re-aggregate an aggregate and quietly produce averages of
+          // averages.
+          pivot={tab === 'entries'}
         />
       )}
     </div>

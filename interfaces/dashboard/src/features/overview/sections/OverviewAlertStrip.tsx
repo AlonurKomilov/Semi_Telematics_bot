@@ -38,7 +38,7 @@ export default function OverviewAlertStrip({ stats, has, kpiPriority }: Overview
     (has('can_alerts_all') || has('can_alerts_vehicle'))
   ) {
     alertItems.push({
-      label: 'pending alerts',
+      label: 'open alerts',
       count: stats.pending_alerts ?? 0,
       href: '/alerts',
       icon: Bell,

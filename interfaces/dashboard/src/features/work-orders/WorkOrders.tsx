@@ -149,12 +149,12 @@ const titleCase = (s: string) =>
 function makeColumns(tz: string): AnyColumn[] {
   return [
   { key: 'id', label: '#', sortable: true, render: (v) => <span className="font-mono text-xs text-muted-foreground">{`#${v}`}</span> },
-  { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
+  { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true, pivotable: true },
   // Compact company CODE on the list (the full name lives on the WO
   // detail page).  Set from the MC/DOT match during sync; '—' if none.
-  { key: 'company_code', label: 'Company', sortable: true, filterable: true,
+  { key: 'company_code', label: 'Company', sortable: true, filterable: true, pivotable: true,
     render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
-  { key: 'vendor_name', label: 'Vendor', sortable: true, filterable: true,
+  { key: 'vendor_name', label: 'Vendor', sortable: true, filterable: true, pivotable: true,
     render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   {
     key: 'service_date', label: 'Service Date', sortable: true,
@@ -176,7 +176,7 @@ function makeColumns(tz: string): AnyColumn[] {
       ? <span className="tabular-nums">{value.toLocaleString()}</span>
       : <MoneyCell value={value} />,
     render: (v) => <MoneyCell value={v} /> },
-  { key: 'status', label: 'Status', sortable: true, filterable: true,
+  { key: 'status', label: 'Status', sortable: true, filterable: true, pivotable: true,
     filterValue: (row) => String((row as { status?: string }).status ?? ''),
     filterLabel: (row) => titleCase(String((row as { status?: string }).status ?? '')),
     render: (v) => <Pill value={v} palette={STATUS_TONE} labels={STATUS_LABEL} /> },
@@ -377,6 +377,10 @@ export default function WorkOrders() {
       ) : (
         <DataGrid
           tableId="work-orders"
+          // Repair spend by vendor x month is the question this data
+          // exists to answer.  Service Date generates its own Year/
+          // Quarter/Month grains (aggType: 'date').
+          pivot
           segments={WO_SEGMENTS}
           columns={makeColumns(tz)}
           data={workOrders as unknown as Record<string, unknown>[]}

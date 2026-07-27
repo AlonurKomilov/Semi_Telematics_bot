@@ -307,9 +307,18 @@ export default function AlertsResults() {
         // the DataGrid props below); to narrow by family, pick its types
         // in the Type column filter.
         key: 'feature', label: 'Feature', sortable: true,
-        render: (v) => (
-          <span className="text-muted-foreground">{v as string}</span>
-        ),
+        render: (v, row) => {
+          const family = String(v ?? '');
+          // Parking's family IS "Parking", so the row printed the same
+          // word twice under two headings in two treatments — which reads
+          // as a mistake, not as information.  The cell earns its space
+          // only when the family adds something the Type chip didn't.
+          const typeLabel = typeText((row as unknown as Alert).alert_type ?? '');
+          if (!family || family === typeLabel) {
+            return <span className="text-muted-foreground">—</span>;
+          }
+          return <span className="text-muted-foreground">{family}</span>;
+        },
       },
       {
         key: 'alert_type', label: 'Type', sortable: true,
@@ -464,7 +473,7 @@ export default function AlertsResults() {
         icon={Bell}
         title={
           ackState === 'active'
-            ? 'No pending alerts'
+            ? 'No open alerts'
             : ackState === 'acknowledged'
               ? 'No acknowledged alerts in this window'
               : 'No alerts in this window'

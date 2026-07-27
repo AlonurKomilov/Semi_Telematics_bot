@@ -37,7 +37,7 @@ export default function AlertsControlBar() {
     <div className="flex items-center justify-end gap-2 mb-4 border-b border-border pb-3">
       {!windowApplies && (
         <span className="text-2xs text-muted-foreground">
-          Pending alerts aren’t date-limited
+          Open alerts are never hidden by age
         </span>
       )}
       <DateRangePresets

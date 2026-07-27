@@ -230,10 +230,10 @@ export default function PartDetail() {
       aggregable: true, aggType: 'date',
       render: (v) => (v ? formatDay(String(v), { timeZone: tz }) : '—'),
     },
-    { key: 'vehicle_name', label: 'Vehicle', sortable: true },
-    { key: 'vendor_name', label: 'Vendor', sortable: true },
+    { key: 'vehicle_name', label: 'Vehicle', sortable: true, pivotable: true },
+    { key: 'vendor_name', label: 'Vendor', sortable: true, pivotable: true },
     {
-      key: 'service_task', label: 'Task', sortable: false,
+      key: 'service_task', label: 'Task', sortable: false, pivotable: true,
       render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>),
     },
     {
@@ -550,6 +550,11 @@ export default function PartDetail() {
                 <h2 className="text-lg font-semibold text-foreground mb-2">Purchase history</h2>
                 <DataGrid
                   tableId="part-purchases"
+                  // "What did this part cost us, by vendor, by month?" —
+                  // the purchase LINES are transactional, so pivoting them
+                  // is honest.  The by-vehicle / by-vendor grids above are
+                  // already aggregates and stay un-pivoted.
+                  pivot
                   columns={purchaseColumns}
                   data={data.purchases as unknown as Record<string, unknown>[]}
                   onRowClick={(row) => {

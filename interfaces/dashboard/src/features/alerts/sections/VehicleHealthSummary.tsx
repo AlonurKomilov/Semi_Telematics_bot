@@ -94,32 +94,37 @@ export default function VehicleHealthSummary() {
   };
   const clickToFilter = t('alerts.vehicle_health.click_to_filter');
 
-  // Present = the server counted this type for this view.  While the
-  // request is in flight nothing is known yet, so show the full strip
-  // with placeholders rather than guessing which cards will survive.
-  const visible = counts
-    ? CARDS.filter((c) => c.keys.some((k) => k in counts))
-    : CARDS;
+  // Every card keeps its slot.  A type the server didn't count isn't
+  // zero — it's not this view's to report — but silently dropping the
+  // card left a gap where one used to be, which is its own puzzle.  So
+  // the slot stays and says so, and only a strip with NOTHING to report
+  // disappears entirely.
+  const isOurs = (c: CardSpec) => !counts || c.keys.some((k) => k in counts);
 
-  if (!isLoading && visible.length === 0) return null;
+  if (!isLoading && counts && !CARDS.some(isOurs)) return null;
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-      {visible.map((c) => {
-        const value = counts
+      {CARDS.map((c) => {
+        const ours = isOurs(c);
+        const value = counts && ours
           ? c.keys.reduce((sum, k) => sum + (counts[k] ?? 0), 0)
           : undefined;
-        const selected = activeTypes.includes(c.filterAs);
+        const selected = ours && activeTypes.includes(c.filterAs);
         return (
           <KpiCard
             key={c.filterAs}
             label={t(c.labelKey)}
-            value={isLoading ? '…' : value}
-            tone={(value ?? 0) > 0 ? c.tone : 'default'}
+            // An em-dash, never 0 — "nothing wrong" is a claim this view
+            // has no standing to make about alerts routed elsewhere.
+            value={isLoading ? '…' : (ours ? value : '—')}
+            tone={ours && (value ?? 0) > 0 ? c.tone : 'default'}
             icon={c.icon}
-            onClick={setOrClear(c.filterAs)}
+            onClick={ours ? setOrClear(c.filterAs) : undefined}
             selected={selected}
-            hint={selected ? t(c.activeKey) : clickToFilter}
+            hint={ours
+              ? (selected ? t(c.activeKey) : clickToFilter)
+              : 'Not routed to this view'}
           />
         );
       })}

@@ -8,7 +8,8 @@
  * personaConfig.ts).
  *
  * Planned persona-specific additions — wire here when each section lands:
- *   • dispatcher → ``live_ack_panel`` before ``control_bar``
+ *   • dispatcher / fleet / safety → ``live_ack_panel`` before
+ *     ``control_bar`` (the queue-progress signal)
  *   • safety     → ``safety_summary_strip``
  *   • fleet      → ``vehicle_health_summary``
  *   • owner/admin → ``escalation_status_card`` + ``account_alert_summary``
@@ -52,12 +53,18 @@ export const ALERTS_LAYOUTS: LayoutMap = {
   fleet: [
     'header',
     'vehicle_health_summary',
+    // ``live_ack_panel`` is the only surface that shows PROGRESS — last
+    // acknowledgement, how many arrived since you last looked.  Fleet and
+    // Safety work the largest queues and had none of that: the open count
+    // moves only by their own acks and never reads as getting anywhere.
+    'live_ack_panel',
     'control_bar', 'bulk_error', 'results',
     'incident_drillin_drawer',
   ],
   safety: [
     'header',
     'safety_summary_strip',
+    'live_ack_panel',
     'control_bar', 'bulk_error', 'results',
     // Drawer renders nothing until openDrillIn writes to context.  It
     // lives at the tail of the layout so its fixed-position overlay
