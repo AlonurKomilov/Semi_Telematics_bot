@@ -14,10 +14,10 @@ from capabilities.localization.i18n import t
 def _own_only(user) -> bool:
     """True when this caller may only see parking events for their own truck.
 
-    A driver who lacks ``can_parking_all`` (the fleet-wide flag) but holds
+    A driver who lacks ``can_parking_all`` (the account-wide flag) but holds
     ``can_parking_vehicle`` falls into this branch.  The list/history/detail
     callbacks must filter results to the user's assigned truck before they
-    are rendered or the bot will leak the entire fleet's parking activity.
+    are rendered or the bot will leak every vehicle's parking activity.
     """
     return (
         user.role == Role.DRIVER
@@ -147,7 +147,7 @@ async def _handle_parking_detail(update, context, user, event_id: int):
                     keyboard=back_kb())
         return
 
-    # Drivers without fleet-wide access may only inspect events for the
+    # Drivers without account-wide access may only inspect events for the
     # truck they are assigned to.  Without this gate any driver could
     # enumerate other vehicles' parking history just by guessing event
     # ids in the parking_detail_<id> callback.

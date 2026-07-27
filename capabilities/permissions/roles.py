@@ -62,7 +62,30 @@ def is_system_owner(telegram_id: int) -> bool:
 
 @dataclass(frozen=True)
 class FeatureSet:
-    """What a role can see/do."""
+    """What a role can see/do.
+
+    SCOPE CLASSES — read this before touching any ``*_all`` /
+    ``*_vehicle`` pair.  The pair is one feature with two scope
+    classes, not two features:
+
+        ``*_all``      → account-wide access (every vehicle)
+        ``*_vehicle``  → access ONLY for the caller's assigned
+                         vehicle(s) — the driver self-service scope
+
+    Neither flag names a truck or company.  Effective visibility is
+    always the intersection of three layers::
+
+        scope class (this FeatureSet)
+          ∩ Team-Management company selection (user_company_codes)
+          ∩ driver↔truck assignment (resolves WHICH vehicle, live)
+
+    ``*_vehicle`` is what the driver surfaces consume — mini-app tabs
+    (BottomNav permKeys), the bot's own-truck screens, and the alert
+    fan-out's own-truck predicate.  Staff roles normally hold
+    ``*_all``; access gates are ANY-OF pairs so one check serves both.
+    ``OWN_VEHICLE_SCOPE_FLAGS`` below is the registry of every
+    own-vehicle flag (guard-tested for completeness).
+    """
     # Fleet reports
     can_faults: bool = False         # /faults  PDF
     can_fuel: bool = False           # /fuel
@@ -75,7 +98,7 @@ class FeatureSet:
     # (it's a system service); derive_service_perms() only sets the SCOPE from
     # the role's vehicle scope.  The field defaults below are placeholders the
     # resolver replaces.
-    can_alerts_all: bool = False     # fleet-wide Alerts inbox  (derived)
+    can_alerts_all: bool = False     # account-wide Alerts inbox (derived)
     can_alerts_vehicle: bool = False     # own-vehicle Alerts inbox (derived)
     # Parking — own feature (NOT part of Alerts).  Defaults mirror the old
     # alerts/vehicle gate: everyone sees all, drivers see their assigned vehicle.
@@ -182,6 +205,36 @@ class FeatureSet:
     # only).  Info-only — not wired to the apply flow or any other feature.
     can_carrier_directory: bool = False
     can_manage_carrier_directory: bool = False
+
+
+# ─── Own-vehicle scope registry ──────────────────────────────────
+#
+# Every ``*_vehicle`` flag in FeatureSet, in one place, so a developer
+# reading a pair like ``can_inspections_vehicle`` doesn't have to
+# reverse-engineer who consumes it.  These are the DRIVER self-service
+# grants: the dashboard's "Driver — self-service" panel edits them, the
+# mini-app tab bar and the bot's own-truck screens gate on them, and
+# the alert fan-out narrows their holders to the assigned truck.
+#
+# Guard-tested (tests/test_permission_scope_registry.py): a new
+# ``*_vehicle`` field that isn't registered here fails CI, and vice
+# versa.  ``can_location_vehicle`` pairs with ``can_location_map``
+# (naming predates the ``*_all`` convention); ``can_alerts_vehicle``
+# is DERIVED from the vehicle grant by ``derive_service_perms`` —
+# never seeded directly.
+OWN_VEHICLE_SCOPE_FLAGS: tuple[str, ...] = (
+    "can_vehicle_vehicle",       # mini-app Vehicles tab + AI assistant ride this
+    "can_alerts_vehicle",        # own-vehicle Alerts inbox (derived)
+    "can_events_vehicle",        # safety events, own truck
+    "can_geofence_vehicle",      # geofence alerts, own truck
+    "can_parking_vehicle",       # parking events + bot parking screens, own truck
+    "can_maintenance_vehicle",   # maintenance schedule, own truck
+    "can_work_orders_vehicle",   # work orders, own truck
+    "can_inspections_vehicle",   # PTI / inspections, own truck
+    "can_location_vehicle",      # live location, own truck (pairs w/ can_location_map)
+    "can_route_vehicle",         # route replay, own truck
+    "can_scorecard_vehicle",     # scorecard, own subject
+)
 
 
 # ─── Role → Permission Map ───────────────────────────────────────
@@ -411,26 +464,34 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     # Hierarchy rank is 2 (not 1 like driver) so a matrix-granted
     # can_invite actually lets the recruiter invite drivers.
     Role.RECRUITER: FeatureSet(
+        # Recruiter is an EMPLOYMENT role: it operates account-wide or
+        # not at all — own-vehicle scope belongs to Driver only.  The
+        # original seed was copied from the driver template, which
+        # granted a truckless role 14 own-vehicle/own-record flags that
+        # all resolved to empty surfaces (cleaned 2026-07-27).  An
+        # owner who wants a recruiter to see vehicle data grants the
+        # ``*_all`` flag per-account in the Permissions matrix — the
+        # matrix stays the single truth of access for every role.
         can_faults=False, can_fuel=False,
         can_efficiency=False, can_health=False,
-        can_vehicle_all=False, can_vehicle_vehicle=True,
+        can_vehicle_all=False, can_vehicle_vehicle=False,
         can_invite=False, can_manage_users=False,
         can_manage_companies=False, can_manage_account=False,
-        can_geofence_all=False, can_geofence_vehicle=True,
-        can_maintenance_all=False, can_maintenance_vehicle=True,
-        can_work_orders_all=False, can_work_orders_vehicle=True,
-        can_parking_all=False, can_parking_vehicle=True,
-        can_scorecard_all=False, can_scorecard_vehicle=True,
-        can_location_map=False, can_location_vehicle=True,
+        can_geofence_all=False, can_geofence_vehicle=False,
+        can_maintenance_all=False, can_maintenance_vehicle=False,
+        can_work_orders_all=False, can_work_orders_vehicle=False,
+        can_parking_all=False, can_parking_vehicle=False,
+        can_scorecard_all=False, can_scorecard_vehicle=False,
+        can_location_map=False, can_location_vehicle=False,
         can_fuel_cost=False,
-        can_route_all=False, can_route_vehicle=True,
+        can_route_all=False, can_route_vehicle=False,
         can_cost_per_mile=False,
-        can_events_all=False, can_events_vehicle=True,
-        can_risk_report_all=False, can_risk_report_own=True,
-        can_driver_pay_admin=False, can_driver_pay_view_own=True,
-        can_coaching_admin=False, can_coaching_view_own=True,
-        can_manage_driver_docs=False, can_driver_docs_own=True,
-        can_inspections_all=False, can_inspections_vehicle=True,
+        can_events_all=False, can_events_vehicle=False,
+        can_risk_report_all=False, can_risk_report_own=False,
+        can_driver_pay_admin=False, can_driver_pay_view_own=False,
+        can_coaching_admin=False, can_coaching_view_own=False,
+        can_manage_driver_docs=False, can_driver_docs_own=False,
+        can_inspections_all=False, can_inspections_vehicle=False,
         # Recruiting IS the recruiter's defining function — granted by
         # default so the role is usable out of the box.  Owners can
         # narrow to screening-only by revoking can_convert_to_driver in
@@ -667,10 +728,10 @@ def derive_service_perms(fs: FeatureSet) -> FeatureSet:
       * Alerts inbox — every role HAS the inbox; it is a system service, not a
         feature, so it is never withheld.  Only the *scope* is derived, from
         the role's vehicle scope: account-wide visibility (``can_vehicle_all``)
-        → fleet-wide inbox (``can_alerts_all``); otherwise the own-vehicle
+        → account-wide inbox (``can_alerts_all``); otherwise the own-vehicle
         inbox (``can_alerts_vehicle``).  The two scopes are mutually exclusive,
         and ``require_permission_any(can_alerts_all, can_alerts_vehicle)``
-        matches ``_all`` first, so a fleet-wide role never needs the vehicle
+        matches ``_all`` first, so an account-wide role never needs the vehicle
         flag.  WHAT the inbox shows is gated per-feature downstream
         (relevance.py); a role with no alert-bearing features simply sees an
         empty inbox — the surface is still there.
@@ -1191,7 +1252,7 @@ def build_role_guidance(role_str: str, is_manager: bool = False) -> str:
         )
     elif role in (Role.OWNER, Role.ADMIN):
         lines.append(
-            "Include cost analysis, fleet-wide metrics, management insights."
+            "Include cost analysis, account-wide metrics, management insights."
         )
     elif role == Role.DISPATCHER:
         lines.append(
