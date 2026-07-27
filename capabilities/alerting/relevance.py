@@ -42,17 +42,20 @@ from capabilities.permissions.roles import ROLE_PERMISSIONS, FeatureSet
 # Mapping from canonical alert type → required permission(s).
 #
 # When the value is a list, the role needs ANY ONE of the listed
-# permissions (so a driver with only ``can_geofence_vehicle`` still gets
-# parking + geofence toggles for their own truck).
+# permissions (so a driver with only ``can_parking_vehicle`` still gets
+# the parking toggle for their own truck).
 #
 # Adding a new alert type: add an entry here AND make sure the
 # corresponding ``users.alert_<type>`` column exists.  See
 # ``adapters/storage/platform_schema.py`` for the column list.
 ALERT_TYPE_REQUIRED_PERM: dict[str, Union[str, list[str]]] = {
-    # Engine fault codes (SPN/FMI).  Camera-issue alerts piggy-back on
-    # the same permission since they're vehicle-health adjacent.
+    # Engine fault codes (SPN/FMI).
     "faults":   "can_faults",
-    "camera":   "can_faults",
+    # Camera-issue alerts belong to the Cameras feature and gate on its
+    # own permission.  (They rode ``can_faults`` until 2026-07-27 as a
+    # "vehicle-health adjacent" shortcut — owner decision: each alert
+    # type obeys its owning feature's permission.)
+    "camera":   "can_cameras",
     # Mechanical telemetry — oil / coolant / battery / DEF readings.
     "health":   "can_health",
     # Fuel level + DEF + fuel efficiency events.
@@ -61,10 +64,12 @@ ALERT_TYPE_REQUIRED_PERM: dict[str, Union[str, list[str]]] = {
     "events":   ["can_events_all", "can_events_vehicle"],
     # Geofence entry/exit alerts on platform-defined zones.
     "geofence": ["can_geofence_all", "can_geofence_vehicle"],
-    # Unauthorised-stop + long-idle parking alerts.  Uses geofence
-    # permission because parking detection sits in the geofencing
-    # capability today.
-    "parking":  ["can_geofence_all", "can_geofence_vehicle"],
+    # Unauthorised-stop + long-idle parking alerts.  Parking is its own
+    # feature with its own permissions — detection sitting in the
+    # geofencing capability is an implementation detail that must not
+    # decide who receives the alerts (rode ``can_geofence_*`` until
+    # 2026-07-27).
+    "parking":  ["can_parking_all", "can_parking_vehicle"],
     # Maintenance overdue + due-soon alerts.
     "maintenance": ["can_maintenance_all", "can_maintenance_vehicle"],
 }

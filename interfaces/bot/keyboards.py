@@ -41,7 +41,7 @@ def main_menu_kb(role: Role, company_codes: list[str] | None = None) -> InlineKe
         # fallbacks for cached buttons.
         has_reports = (perms.can_vehicle_all
                        or perms.can_events_all or perms.can_events_vehicle)
-        has_parking = perms.can_geofence_all or perms.can_geofence_vehicle
+        has_parking = perms.can_parking_all or perms.can_parking_vehicle
         has_fuel_cost = perms.can_fuel_cost
 
         row1 = []
