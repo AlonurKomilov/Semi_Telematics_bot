@@ -60,6 +60,19 @@ export function monthInTimeZone(value: string | number | Date, tz?: string): str
   }
 }
 
+/** The calendar YEAR a timestamp falls in, in the given timezone. */
+export function yearInTimeZone(value: string | number | Date, tz?: string): string {
+  return monthInTimeZone(value, tz).slice(0, 4);
+}
+
+/** The calendar QUARTER, as ``YYYY-Qn`` (sorts chronologically). */
+export function quarterInTimeZone(value: string | number | Date, tz?: string): string {
+  const ym = monthInTimeZone(value, tz);
+  if (!ym) return '';
+  const q = Math.floor((Number(ym.slice(5, 7)) - 1) / 3) + 1;
+  return `${ym.slice(0, 4)}-Q${q}`;
+}
+
 /** ``YYYY-MM`` -> "Jan 2026" for display. */
 export function formatMonth(bucket: string): string {
   const [y, m] = bucket.split('-');

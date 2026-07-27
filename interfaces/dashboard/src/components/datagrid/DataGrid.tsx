@@ -72,6 +72,7 @@ import { usePreference, useTablePreference, useSyncLoaded } from '../../preferen
 import PivotView from './pivot/PivotView';
 import PivotPanel from './pivot/PivotPanel';
 import { prunePivotModel, type PivotModel } from './pivot/pivot';
+import { derivePivotDimensions } from './pivot/derived';
 
 type Density = 'compact' | 'default' | 'roomy';
 
@@ -305,6 +306,23 @@ interface DataGridProps {
    *  control them just to mirror them into the URL while the grid still
    *  does the work. */
   manualFiltering?: boolean;
+  /** Controlled sort state.  Supply with ``onSortingChange``. */
+  sorting?: SortingState;
+  onSortingChange?: (next: SortingState) => void;
+  /** The rows arrived already sorted (the page put the order in its
+   *  query).  Like ``manualFiltering``: being controlled alone does not
+   *  imply it — a page may mirror sort into the URL and still want the
+   *  grid to do the work.  With this set, sorting a slice is CORRECT, so
+   *  the partial-data guard stops gating it. */
+  manualSorting?: boolean;
+  /** Controlled pagination — the page fetches one page at a time. */
+  pageIndex?: number;
+  pageSize?: number;
+  onPaginationChange?: (next: { pageIndex: number; pageSize: number }) => void;
+  /** Total pages behind the grid; required with ``manualPagination`` so
+   *  the pager can count pages it has never seen. */
+  pageCount?: number;
+  manualPagination?: boolean;
   /** The TRUE number of rows behind this grid, when the page hands it
    *  only a slice (a server-capped page of a larger result set).
    *
@@ -608,6 +626,9 @@ export default function DataGrid({
   columnFilters: controlledColumnFilters, onColumnFiltersChange,
   globalFilter: controlledGlobalFilter, onGlobalFilterChange,
   totalRows,
+  sorting: controlledSorting, onSortingChange, manualSorting = false,
+  pageIndex: controlledPageIndex, pageSize: controlledPageSize,
+  onPaginationChange, pageCount: controlledPageCount, manualPagination = false,
   manualFiltering = false,
   segmentKey: controlledSegmentKey, onSegmentChange, segmentCounts: serverSegmentCounts,
 }: DataGridProps) {
@@ -617,9 +638,30 @@ export default function DataGrid({
   // date SSOT.  DataGrid only ever renders inside the authed dashboard,
   // so useTimezone → useAuth is always inside a provider here.
   const timeZone = useTimezone();
-  const [sorting, setSorting] = useState<SortingState>([]);
+  const [ownSorting, setOwnSorting] = useState<SortingState>([]);
+  const sortingControlled = controlledSorting !== undefined;
+  const sorting = controlledSorting ?? ownSorting;
+  const sortingRef = useRef(sorting);
+  sortingRef.current = sorting;
+  const onSortingChangeRef = useRef(onSortingChange);
+  onSortingChangeRef.current = onSortingChange;
+  const setSorting = useCallback<Dispatch<SetStateAction<SortingState>>>(
+    (updater) => {
+      const next = typeof updater === 'function'
+        ? (updater as (prev: SortingState) => SortingState)(sortingRef.current)
+        : updater;
+      sortingRef.current = next;
+      if (!sortingControlled) setOwnSorting(next);
+      onSortingChangeRef.current?.(next);
+    },
+    [sortingControlled],
+  );
   // True when the page told us the real total and we hold less than it.
   const holdsPartialData = totalRows !== undefined && totalRows > sourceData.length;
+  // ...but an operation that runs UPSTREAM is correct on a slice.  Sorting
+  // 25 server-ordered rows of 11,200 is honest; sorting 25 rows locally
+  // and calling it sorted is not.  Only the latter gets gated.
+  const gateClientSideOps = holdsPartialData && !manualSorting;
   // Search — grid-owned unless the page supplies it.  Same dual-mode
   // shape as the filters; on a server-filtered grid the page drives this
   // into its query, so the box searches the whole set rather than the
@@ -649,6 +691,8 @@ export default function DataGrid({
   onSegmentChangeRef.current = onSegmentChange;
   const onGlobalFilterChangeRef = useRef(onGlobalFilterChange);
   onGlobalFilterChangeRef.current = onGlobalFilterChange;
+  const onPaginationChangeRef = useRef(onPaginationChange);
+  onPaginationChangeRef.current = onPaginationChange;
   // Read inside memoised column definitions, so flipping the flag can't
   // require rebuilding every column def.
   const manualFilteringRef = useRef(manualFiltering);
@@ -1206,14 +1250,38 @@ export default function DataGrid({
   // sessions / devices.  Page index is in-memory only — it resets
   // whenever the filter / search / sort changes so a narrowed view
   // doesn't start halfway through.
+  // Declared before the size/index merges below, which both branch on it.
+  const paginationControlled = controlledPageIndex !== undefined;
   const {
-    value: pageSize,
-    setValue: setPageSize,
+    value: preferredPageSize,
+    setValue: setPreferredPageSize,
   } = useTablePreference(tableId, 'pageSize', DEFAULT_PAGE_SIZE);
-  const [pageIndex, setPageIndex] = useState(0);
+  // Merged exactly like pageIndex.  Reading the stored preference while
+  // the PAGE fetched a different size makes the footer describe rows that
+  // aren't there ("1-100 of 3,984" over 25 rows) — and worse, the
+  // pagination handler forwards the stale size on every Next click, so
+  // merely paging would silently rewrite the operator's page size.
+  const pageSize = controlledPageSize ?? preferredPageSize;
+  const setPageSize = useCallback((next: number) => {
+    // A controlled size is the page's to persist (it owns the URL);
+    // storing it here too would fight that owner on the next mount.
+    if (!paginationControlled) setPreferredPageSize(next);
+  }, [paginationControlled, setPreferredPageSize]);
+  // Read inside the page-index setter, whose identity must stay stable.
+  const pageSizeRef = useRef(pageSize);
+  pageSizeRef.current = pageSize;
+  const [ownPageIndex, setOwnPageIndex] = useState(0);
+  const pageIndex = controlledPageIndex ?? ownPageIndex;
+  const setPageIndex = useCallback((next: number) => {
+    if (!paginationControlled) setOwnPageIndex(next);
+    onPaginationChangeRef.current?.({ pageIndex: next, pageSize: pageSizeRef.current });
+  }, [paginationControlled]);
   useEffect(() => {
-    setPageIndex(0);
-  }, [columnFilters, globalFilter, sorting, rowGroupBy]);
+    // Narrowing the view invalidates the page number — page 7 of a
+    // 3-page result is nowhere.  A CONTROLLED page is the owner's to
+    // reset; they hold the filters that caused it.
+    if (!paginationControlled) setOwnPageIndex(0);
+  }, [columnFilters, globalFilter, sorting, rowGroupBy, paginationControlled]);
 
   // Reconcile stored ids with the current column config.  Stale ids
   // (column renamed / removed) are dropped from order/visibility/
@@ -1481,7 +1549,10 @@ export default function DataGrid({
       const next = typeof updater === 'function'
         ? updater({ pageIndex, pageSize })
         : updater;
-      setPageIndex(next.pageIndex);
+      if (paginationControlled || next.pageSize !== pageSize) {
+        onPaginationChangeRef.current?.(next);
+      }
+      if (!paginationControlled) setOwnPageIndex(next.pageIndex);
       if (next.pageSize !== pageSize) setPageSize(next.pageSize);
     },
     onExpandedChange: setExpanded,
@@ -1502,7 +1573,13 @@ export default function DataGrid({
     // instead of a page slice.  The ``pagination`` state above is
     // still tracked (harmless) so toggling ``enablePagination`` back
     // on works instantly.
-    ...(enablePagination ? { getPaginationRowModel: getPaginationRowModel() } : {}),
+    // Under manualPagination the rows ARRIVED as one page, so slicing
+    // them again would show the first N of an already-N-row page.
+    manualPagination,
+    ...(manualPagination && controlledPageCount !== undefined
+      ? { pageCount: controlledPageCount } : {}),
+    ...(enablePagination && !manualPagination
+      ? { getPaginationRowModel: getPaginationRowModel() } : {}),
     globalFilterFn: hasSearch
       ? (row, _colId, filterValue) => {
           const needle = String(filterValue).toLowerCase();
@@ -2320,6 +2397,13 @@ export default function DataGrid({
   // a preference.
   const { value: pivotPref, setValue: setPivotPref } =
     useTablePreference(pivotEnabled ? tableId : undefined, 'pivot');
+  // Date columns become Year / Quarter / Month dimensions automatically —
+  // a raw timestamp is a useless bucket (one column per row).  Synthetic:
+  // these exist only for the pivot pickers, never in the grid's columns.
+  const pivotColumns = useMemo(
+    () => (pivotEnabled ? derivePivotDimensions(columns, timeZone) : columns),
+    [pivotEnabled, columns, timeZone],
+  );
   const [pivotPanelOpen, setPivotPanelOpen] = useState(false);
   const pivotModel = useMemo<PivotModel>(() => {
     const stored = pivotPref?.model;
@@ -2327,8 +2411,8 @@ export default function DataGrid({
       ? { rows: stored.rows ?? [], columns: stored.columns ?? [], values: stored.values ?? [] }
       : { rows: [], columns: [], values: [] };
     // A saved model can name columns this grid no longer has.
-    return prunePivotModel(base, columns);
-  }, [pivotPref, columns]);
+    return prunePivotModel(base, pivotColumns);
+  }, [pivotPref, pivotColumns]);
   // A pivot is an aggregate presented as an answer, and it aggregates
   // the rows the grid HOLDS.  Over a slice it would summarise 2,000 of
   // 11,200 and print totals that look authoritative — the same defect as
@@ -2348,8 +2432,8 @@ export default function DataGrid({
     // so it reads as a suggestion to refine, not a decision made for them.
     let model = pivotModel;
     if (next && model.rows.length === 0 && model.values.length === 0) {
-      const firstDim = columns.find((c) => c.pivotable);
-      const firstMeasure = columns.find((c) => c.aggregable);
+      const firstDim = pivotColumns.find((c) => c.pivotable);
+      const firstMeasure = pivotColumns.find((c) => c.aggregable);
       if (firstDim && firstMeasure) {
         model = {
           rows: [firstDim.key],
@@ -2362,7 +2446,7 @@ export default function DataGrid({
     // Open the panel on the way IN so the suggestion is visible and
     // immediately editable.
     setPivotPanelOpen(next);
-  }, [pivotOn, pivotModel, columns, setPivotPref]);
+  }, [pivotOn, pivotModel, pivotColumns, setPivotPref]);
 
   // ── Custom horizontal scrollbar ─────────────────────────────
   //
@@ -3029,13 +3113,13 @@ export default function DataGrid({
                 .filter((r) => !r.getIsGrouped())
                 .map((r) => r.original as Record<string, unknown>)}
               model={pivotModel}
-              columns={columns}
+              columns={pivotColumns}
               padding={padding}
             />
           </div>
           {pivotPanelOpen && (
             <PivotPanel
-              columns={columns}
+              columns={pivotColumns}
               model={pivotModel}
               onChange={setPivotModel}
               onClose={() => setPivotPanelOpen(false)}
@@ -3193,7 +3277,8 @@ export default function DataGrid({
                   <TableRow data-header-row="leaf" className="bg-muted hover:bg-muted">
                     {headerGroup.headers.map((header, hIdx) => (
                       <ColumnHeaderCell
-                        partialData={holdsPartialData}
+                        gateSort={gateClientSideOps}
+                        gateGroup={holdsPartialData}
                         key={header.id}
                         header={header}
                         stickyHeader={!!stickyHeader}
@@ -3578,7 +3663,12 @@ export default function DataGrid({
             </Select>
           </label>
           {(() => {
-            const totalFiltered = table.getFilteredRowModel().rows.length;
+            // Server-paged: the grid holds one page, so its own row count
+            // would read "1-25 of 25" on every page.  The true total is
+            // the one the page fetched with.
+            const totalFiltered = manualPagination && totalRows !== undefined
+              ? totalRows
+              : table.getFilteredRowModel().rows.length;
             const start = totalFiltered === 0 ? 0 : pageIndex * pageSize + 1;
             const end   = Math.min(totalFiltered, (pageIndex + 1) * pageSize);
             return (
@@ -3741,9 +3831,10 @@ function pinnedStyle(
 interface ColumnHeaderCellProps {
   header: Header<Record<string, unknown>, unknown>;
   stickyHeader: boolean;
-  /** The grid holds a slice of a larger result set — sort and row-group
-   *  would reorder a fragment while answering for the whole. */
-  partialData?: boolean;
+  /** Sorting happens locally on a slice — it would order a fragment. */
+  gateSort?: boolean;
+  /** Row-grouping is always local, so a slice groups a fragment. */
+  gateGroup?: boolean;
   /** Source column config — we look up ``filterMode``/``filterRange``
    *  here since tanstack's column meta doesn't expose them.  Kept as
    *  an optional parallel prop so DataGrid can pass the matched
@@ -3802,7 +3893,7 @@ function ColumnHeaderCell({
   onOpenManage, onMeasureWidth, leadingContent,
   groupNames, currentGroup, onAssignGroup, onNewGroup, onUngroup,
   rowGrouped, onRowGroup, aggCurrent, aggFns, onSetAgg,
-  fixedWidths, onAutosize, densityClass, partialData,
+  fixedWidths, onAutosize, densityClass, gateSort, gateGroup,
 }: ColumnHeaderCellProps) {
   const canSort = header.column.getCanSort();
   const sortedRaw = header.column.getIsSorted();
@@ -4068,7 +4159,8 @@ function ColumnHeaderCell({
             <ColumnHeaderMenu
               columnLabel={headerText}
               canSort={canSort}
-              partialData={partialData}
+              gateSort={gateSort}
+              gateGroup={gateGroup}
               sorted={sortedRaw === 'asc' || sortedRaw === 'desc' ? sortedRaw : false}
               onSortAsc={() => header.column.toggleSorting(false)}
               onSortDesc={() => header.column.toggleSorting(true)}

@@ -27,12 +27,15 @@ drag-reorder and pin offsets and already works.
 
 - **Dimensions** (Rows / Columns pickers): `pivotable: true`
 - **Measures** (Values picker): the existing `aggregable: true`
-- A dimension can bucket: `pivotValue: (row) => string`. That's how a
-  timestamp becomes a MONTH — and it **must** use the account timezone
-  (`monthInTimeZone` in utils/datetime.ts). A load delivered 23:00 on the
-  31st in Denver is the 1st in UTC, so a UTC bucket files its revenue in
-  the wrong month.
-- `pivotLabel: (bucket) => string` pretty-prints it (`2026-01` → `Jan 2026`).
+- **Date columns need nothing.** Any `pivotable` column that already
+  declares `aggType: 'date'` or `filterMode: 'date-range'` is REPLACED in
+  the pickers by generated **Year / Quarter / Month** dimensions
+  (`derived.ts`), bucketed in the account timezone. The raw date is
+  dropped as a dimension because grouping by an exact timestamp yields one
+  column per row.
+- Only override when the generated grains are wrong: a `pivotValue` on a
+  date column wins and suppresses generation. Non-date buckets still use
+  `pivotValue` + `pivotLabel` (`2026-01` → `Jan 2026`).
 - Accessor precedence: `pivotValue` → `filterValue` → the raw cell.
 
 ## Correctness rules the tests pin
@@ -84,7 +87,7 @@ nobody has to rediscover a gap):
 
 | Missing | Note |
 |---|---|
-| multi-level ROWS + expand/collapse | needs a row tree; columns went multi-level in Phase 2 |
+| multi-level ROWS + expand/collapse | needs a row tree; COLUMNS nest (Phase 2) |
 | drag-and-drop reorder | checkbox pickers cover 1–2 levels |
 | pivot-side sorting (sort by a measure) | |
 | cell drill-down (click a cell → its rows) | |

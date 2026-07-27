@@ -21,8 +21,6 @@ import { useRoleView } from '../../context/RoleViewContext';
 import { useAuth } from '../../context/AuthContext';
 import { statusClasses } from '../../lib/status';
 import type { AnyColumn } from '../../types';
-import { monthInTimeZone, formatMonth } from '../../utils/datetime';
-import { useTimezone } from '../../hooks/useTimezone';
 import LoadManageDialog from './LoadManageDialog';
 import LayoverDialog from './LayoverDialog';
 import type { PersonOption } from './LayoverDialog';
@@ -59,7 +57,7 @@ function SourceCell({ value }: { value: unknown }) {
   );
 }
 
-const makeColumns = (tz: string): AnyColumn[] => [
+const makeColumns = (): AnyColumn[] => [
   { key: 'seq', label: 'ID', sortable: true, render: (v) => (v ? <span className="font-mono text-xs text-muted-foreground">{`#${v}`}</span> : <span className="text-muted-foreground">—</span>) },
   { key: 'load_number', label: 'Load #', sortable: true, render: (v) => (v ? <span className="font-medium">{String(v)}</span> : <span className="text-muted-foreground">—</span>) },
   { key: 'customer', label: 'Customer', sortable: true, filterable: true, pivotable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
@@ -76,14 +74,10 @@ const makeColumns = (tz: string): AnyColumn[] => [
     // and formats the min/max as a day in the account timezone.
     aggregable: true,
     aggType: 'date',
-    // As a pivot DIMENSION this buckets to a calendar month — the
-    // "rate by customer x month" report.  The account timezone is
-    // load-bearing: a load delivered 23:00 on the 31st in Denver is the
-    // 1st in UTC, which would file its revenue in the wrong month.
+    // As a pivot DIMENSION this offers Year / Quarter / Month, generated
+    // from `aggType: 'date'` (see pivot/derived.ts) — no hand-written
+    // bucketing here, and the account timezone is applied for us.
     pivotable: true,
-    pivotValue: (row) => monthInTimeZone(
-      String((row as { delivery_date?: string }).delivery_date ?? ''), tz),
-    pivotLabel: formatMonth,
     render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>),
   },
   {
@@ -143,10 +137,7 @@ const TABS: { key: string; label: string }[] = [
 
 export default function Loads() {
   const { t } = useTranslation();
-  const tz = useTimezone();
-  // Rebuilt when the account timezone resolves — the month buckets the
-  // pivot groups by depend on it.
-  const columns = useMemo(() => makeColumns(tz), [tz]);
+  const columns = useMemo(() => makeColumns(), []);
   const { viewHas } = useRoleView();
   const qc = useQueryClient();
   const [tab, setTab] = useState('');
