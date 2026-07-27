@@ -681,12 +681,35 @@ class WorkOrdersMixin:
         await self._db.commit()
         return cur.lastrowid
 
+    @staticmethod
+    def _resolve_line_task(row: dict) -> dict:
+        """Let the service_tasks REFERENCE win over the legacy tag.
+
+        Same choke-point trick the maintenance reads use: the work-order
+        editor groups lines by this string and the per-task cost report
+        keys on it, so resolving here means both follow the reference
+        without either of them changing.  A line written before the
+        reference existed keeps its stored tag.
+        """
+        resolved = row.pop("_resolved_service_task", None)
+        if resolved:
+            row["service_task"] = resolved
+        return row
+
+    _LINE_TASK_SELECT = (
+        ", COALESCE(NULLIF(st.canonical_key, ''), st.name) "
+        "  AS _resolved_service_task "
+    )
+
     async def list_work_order_parts(self, work_order_id: int) -> list[dict]:
         cur = await self._db.execute(
-            "SELECT * FROM work_order_parts WHERE work_order_id = ? ORDER BY id",
+            "SELECT p.*" + self._LINE_TASK_SELECT
+            + "FROM work_order_parts p "
+            "LEFT JOIN service_tasks st ON st.id = p.service_task_id "
+            "WHERE p.work_order_id = ? ORDER BY p.id",
             (work_order_id,),
         )
-        return [dict(r) for r in await cur.fetchall()]
+        return [self._resolve_line_task(dict(r)) for r in await cur.fetchall()]
 
     async def list_work_order_parts_bulk(
         self, work_order_ids: list[int],
@@ -800,11 +823,13 @@ class WorkOrdersMixin:
         self, work_order_id: int, account_id: int,
     ) -> list[dict]:
         cur = await self._db.execute(
-            "SELECT * FROM work_order_labor "
-            "WHERE work_order_id = ? AND account_id = ? ORDER BY id",
+            "SELECT l.*" + self._LINE_TASK_SELECT
+            + "FROM work_order_labor l "
+            "LEFT JOIN service_tasks st ON st.id = l.service_task_id "
+            "WHERE l.work_order_id = ? AND l.account_id = ? ORDER BY l.id",
             (work_order_id, account_id),
         )
-        return [dict(r) for r in await cur.fetchall()]
+        return [self._resolve_line_task(dict(r)) for r in await cur.fetchall()]
 
     async def delete_work_order_labor(
         self, line_id: int, account_id: int, work_order_id: int,

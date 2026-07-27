@@ -203,17 +203,51 @@ class MaintenanceMixin(_MixinBase):
         await self._db.commit()
         return cur.lastrowid
 
+    @staticmethod
+    def _apply_resolved_task_type(row: dict) -> dict:
+        """Let the service_tasks REFERENCE win over the legacy string.
+
+        Every consumer of ``task_type`` — the DOT binder's
+        ``== 'dot_inspection'`` compliance filter, the CSV export, both
+        report PDFs, the AI tool, the dashboard grid — now reads a
+        value derived from ``service_task_id`` without any of them
+        changing, because the resolution happens here at the one read
+        choke point.  That's what makes the reference authoritative
+        instead of merely present.
+
+        A row written before the reference existed (or one whose task
+        was deleted) keeps its stored string, so nothing loses its
+        label.
+        """
+        resolved = row.pop("_resolved_task_type", None)
+        if resolved:
+            row["task_type"] = resolved
+        return row
+
+    # Resolution shared by both maintenance reads: a STANDARD task
+    # resolves to its canonical key (what 'dot_inspection' compares
+    # against), a custom one to its name.
+    _TASK_TYPE_JOIN = (
+        " LEFT JOIN service_tasks st ON st.id = m.service_task_id "
+    )
+    _TASK_TYPE_SELECT = (
+        ", COALESCE(NULLIF(st.canonical_key, ''), st.name) "
+        "  AS _resolved_task_type "
+    )
+
     async def get_maintenance_tasks(
         self, account_id: int, status: Optional[str] = None,
         vehicle_name: Optional[str] = None,
     ) -> list[dict]:
-        q = "SELECT * FROM maintenance_tasks WHERE account_id = ?"
+        q = ("SELECT m.*" + self._TASK_TYPE_SELECT
+             + "FROM maintenance_tasks m" + self._TASK_TYPE_JOIN
+             + "WHERE m.account_id = ?")
         params: list = [account_id]
         if status:
-            q += " AND status = ?"
+            q += " AND m.status = ?"
             params.append(status)
         if vehicle_name:
-            q += " AND vehicle_name = ?"
+            q += " AND m.vehicle_name = ?"
             params.append(vehicle_name)
         # Sort in three keys, all server-side:
         #   1. Status bucket  — overdue → in_progress → pending → others
@@ -225,7 +259,7 @@ class MaintenanceMixin(_MixinBase):
         # on legacy rows that pre-date the priority column.
         q += """
             ORDER BY
-              CASE status
+              CASE m.status
                 WHEN 'overdue'     THEN 0
                 WHEN 'in_progress' THEN 1
                 WHEN 'pending'     THEN 2
@@ -233,18 +267,18 @@ class MaintenanceMixin(_MixinBase):
                 WHEN 'completed'   THEN 4
                 ELSE 5
               END,
-              CASE LOWER(COALESCE(priority, 'medium'))
+              CASE LOWER(COALESCE(m.priority, 'medium'))
                 WHEN 'critical' THEN 0
                 WHEN 'high'     THEN 1
                 WHEN 'medium'   THEN 2
                 WHEN 'low'      THEN 3
                 ELSE 4
               END,
-              created_at DESC
+              m.created_at DESC
         """
         cur = await self._db.execute(q, params)
         rows = await cur.fetchall()
-        return [dict(r) for r in rows]
+        return [self._apply_resolved_task_type(dict(r)) for r in rows]
 
     async def update_maintenance_status(self, task_id: int, status: str, account_id: int = 0) -> bool:
         # Historical schism: the bot uses ``"done"``, the API + dashboard
@@ -390,17 +424,19 @@ class MaintenanceMixin(_MixinBase):
 
         If account_id is provided, the row must belong to that account.
         """
+        sel = ("SELECT m.*" + self._TASK_TYPE_SELECT
+               + "FROM maintenance_tasks m" + self._TASK_TYPE_JOIN)
         if account_id:
             cur = await self._db.execute(
-                "SELECT * FROM maintenance_tasks WHERE id = ? AND account_id = ?",
+                sel + "WHERE m.id = ? AND m.account_id = ?",
                 (task_id, account_id),
             )
         else:
             cur = await self._db.execute(
-                "SELECT * FROM maintenance_tasks WHERE id = ?", (task_id,),
+                sel + "WHERE m.id = ?", (task_id,),
             )
         row = await cur.fetchone()
-        return dict(row) if row else None
+        return self._apply_resolved_task_type(dict(row)) if row else None
 
     async def update_maintenance_task(self, task_id: int, account_id: int = 0, **kwargs) -> bool:
         """Update maintenance task fields.

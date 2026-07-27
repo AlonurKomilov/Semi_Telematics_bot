@@ -357,3 +357,70 @@ async def test_sweep_leaves_the_legacy_strings_alone(db):
     row = await db.get_maintenance_task(mt, a)
     assert row["task_type"] == "dot_inspection"      # compliance filter intact
     assert row["service_task_id"]
+
+
+# ── The reference is now authoritative on READ ──────────────────────
+#
+# Consumers still ask for ``task_type`` / ``service_task``; the value
+# they get is derived from service_task_id.  That's what lets the DOT
+# binder, CSV export, report PDFs, AI tool and dashboard grid follow
+# the reference without any of them changing.
+
+@pytest.mark.asyncio
+async def test_reads_derive_task_type_from_the_reference(db, acct):
+    tid = await db.add_maintenance_task(acct, "", "234", "brakes", "Squeal")
+    # Corrupt ONLY the legacy string; the reference still points at the
+    # real task, so reads must ignore the stale text.
+    await db._db.execute(
+        "UPDATE maintenance_tasks SET task_type = 'STALE-GARBAGE' WHERE id = ?",
+        (tid,))
+    await db._db.commit()
+
+    one = await db.get_maintenance_task(tid, acct)
+    assert one["task_type"] == "brakes"          # reference wins
+    listed = next(t for t in await db.get_maintenance_tasks(acct) if t["id"] == tid)
+    assert listed["task_type"] == "brakes"
+
+
+@pytest.mark.asyncio
+async def test_dot_compliance_filter_follows_the_reference(db, acct):
+    """capabilities/reporting/dot_binder.py selects the FMCSA binder's
+    inspections with task_type == 'dot_inspection'.  It must keep
+    matching once the reference is the source of truth."""
+    tid = await db.add_maintenance_task(
+        acct, "", "234", "dot_inspection", "Annual inspection")
+    await db._db.execute(
+        "UPDATE maintenance_tasks SET task_type = 'drifted' WHERE id = ?", (tid,))
+    await db._db.commit()
+    row = next(t for t in await db.get_maintenance_tasks(acct) if t["id"] == tid)
+    assert (row.get("task_type") or "") == "dot_inspection"
+
+
+@pytest.mark.asyncio
+async def test_rows_without_a_reference_keep_their_string(db, acct):
+    """A row written before the reference existed must not lose its
+    label just because the join finds nothing."""
+    tid = await db.add_maintenance_task(acct, "", "234", "brakes", "Old row")
+    await db._db.execute(
+        "UPDATE maintenance_tasks SET service_task_id = NULL, "
+        "task_type = 'legacy_value' WHERE id = ?", (tid,))
+    await db._db.commit()
+    row = await db.get_maintenance_task(tid, acct)
+    assert row["task_type"] == "legacy_value"
+
+
+@pytest.mark.asyncio
+async def test_work_order_lines_derive_their_task_too(db, acct):
+    wo = await db.add_work_order(acct, "", "234", "Shop")
+    pid = await db.add_work_order_part(wo, part_name="Pad", service_task="brakes")
+    lid = await db.add_work_order_labor(
+        wo, acct, description="Bleed", service_task="brakes")
+    await db._db.execute(
+        "UPDATE work_order_parts SET service_task = 'stale' WHERE id = ?", (pid,))
+    await db._db.execute(
+        "UPDATE work_order_labor SET service_task = 'stale' WHERE id = ?", (lid,))
+    await db._db.commit()
+
+    part = next(p for p in await db.list_work_order_parts(wo) if p["id"] == pid)
+    line = next(l for l in await db.list_work_order_labor(wo, acct) if l["id"] == lid)
+    assert part["service_task"] == "brakes" and line["service_task"] == "brakes"
