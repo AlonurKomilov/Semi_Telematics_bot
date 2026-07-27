@@ -59,6 +59,8 @@ import { useAckAlerts } from '../useRecentAlerts';
 import { useAlertSegmentCounts } from '../_shared/useAlertSegmentCounts';
 import { toGridFilters, fromGridFilters } from '../_shared/gridFilterAdapters';
 import { familyText,
+  STORED_ALERT_TYPES,
+  typeText,
   AckMarker,
   SeverityDot,
   TypeBadge,
@@ -81,26 +83,15 @@ const ACK_CONFIRM_THRESHOLD = 10;
 // value would unload the rest and the menu would offer only that value
 // back.
 //
-// Labels share the badge vocabulary: where a type maps 1:1 to a badge
-// noun the option uses the same noun (Engine Fault, Low Fuel…);
-// "Events" and "Parking" stay as families because one option covers
-// several kinds (Crash/Harsh Braking…, Unsafe/Unverified) — the same
-// family word the Feature column shows.  Values are the STORED
-// alert_type strings (fault is singular in alert_history).
-// Maintenance / Documents / Scorecard write Board rows since the
-// delivery-profiles work, so they filter like any other type.
-const TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'fault', label: 'Engine Fault' },
-  { value: 'health', label: 'Engine Health' },
-  { value: 'fuel', label: 'Low Fuel' },
-  { value: 'events', label: 'Events' },
-  { value: 'camera', label: 'Camera Issue' },
-  { value: 'parking', label: 'Parking' },
-  { value: 'geofence', label: 'Geofence' },
-  { value: 'maintenance', label: 'Maintenance' },
-  { value: 'documents', label: 'Documents' },
-  { value: 'scorecard', label: 'Scorecard' },
-];
+// Derived from the stored-type vocabulary + the badge nouns, so the
+// options can never name a type the database doesn't produce (the
+// 'safety_events' false-all-clear class of bug) and a filter option
+// always reads exactly like the badge it filters.  Multi-kind
+// families (Events, Parking) keep the family word the Feature column
+// shows.  Maintenance / Documents / Scorecard write Board rows since
+// the delivery-profiles work, so they filter like any other type.
+const TYPE_OPTIONS: { value: string; label: string }[] =
+  STORED_ALERT_TYPES.map((v) => ({ value: v, label: typeText(v) }));
 
 const SEVERITY_OPTIONS: { value: string; label: string }[] = [
   { value: 'critical', label: 'Critical' },

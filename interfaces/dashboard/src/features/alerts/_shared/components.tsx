@@ -14,9 +14,9 @@ import { Tip } from '../../../components/tooltip';
 
 // Raw alert_type → the row's noun when no per-row kind is stored.  The
 // Feature column carries the family, so the type label names the THING
-// ("Low Fuel", not a "Fuel" echo of a Vehicles feature).  The server
-// Type filter still filters by family word — that divergence is
-// deliberate (owner decision 2026-07-27).
+// ("Low Fuel", not a "Fuel" echo of a Vehicles feature).  The Type
+// filter options derive their labels from this map, so chip and badge
+// always read the same word (owner decision 2026-07-27).
 const TYPE_TEXT: Record<string, string> = {
   fault: 'Engine Fault', faults: 'Engine Fault',
   health: 'Engine Health',
@@ -67,11 +67,19 @@ export function familyText(type: string): string {
   return TYPE_FAMILY[type] ?? 'Other';
 }
 
+// The alert_type values rows can actually carry in alert_history — the
+// vocabulary the server filter, the persona defaults, and the Type
+// options must all stay inside.  (fault is stored SINGULAR.)
+export const STORED_ALERT_TYPES = [
+  'fault', 'health', 'fuel', 'events', 'camera', 'parking',
+  'geofence', 'maintenance', 'documents', 'scorecard',
+] as const;
+
 export function kindText(kind: string): string {
   return KIND_TEXT[kind] ?? '';
 }
 
-function typeText(type: string): string {
+export function typeText(type: string): string {
   return TYPE_TEXT[type]
     ?? type.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 }

@@ -19,9 +19,14 @@
  */
 import type { Persona } from '../_lib/types';
 
-/** Discrete filter values that compose the page's URL state. */
+/** Discrete filter values that compose the page's URL state.
+ *  Members are the STORED alert_type strings ('safety_events' was a
+ *  value the database never produces — a Safety/HR default naming it
+ *  queried nothing and rendered a false all-clear).  The guard test
+ *  in personaConfig.test.ts keeps defaults inside this vocabulary. */
 export type AlertType =
-  | 'all' | 'fault' | 'health' | 'fuel' | 'events' | 'parking' | 'safety_events';
+  | 'all' | 'fault' | 'health' | 'fuel' | 'events' | 'camera' | 'parking'
+  | 'geofence' | 'maintenance' | 'documents' | 'scorecard';
 export type AlertSeverity = 'all' | 'critical' | 'warning' | 'info';
 export type AlertAckState = 'active' | 'acknowledged' | 'all';
 
@@ -38,7 +43,7 @@ export interface FilterDefaults {
  *
  * Tuned per persona based on what they actually do every day:
  *   • Dispatcher — last 7 days, active queue
- *   • Safety / HR — safety_events only (pattern detection)
+ *   • Safety / HR — safety events only (pattern detection)
  *   • Fleet — last 30 days (more time for vehicle-health trends)
  *   • Owner / Admin — last 7 days, all types
  *   • Accounting — last 30 days (cost-trend window)
@@ -74,14 +79,14 @@ export const PERSONA_FILTER_DEFAULTS: Record<Persona, FilterDefaults> = {
     days: 7,
   },
   safety: {
-    typeFilter: 'safety_events',
+    typeFilter: 'events',
     severityFilter: 'all',
     ackState: 'active',
     vehicleSearch: '',
     days: 7,
   },
   hr: {
-    typeFilter: 'safety_events',
+    typeFilter: 'events',
     severityFilter: 'all',
     ackState: 'active',
     vehicleSearch: '',

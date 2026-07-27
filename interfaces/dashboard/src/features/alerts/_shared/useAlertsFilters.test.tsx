@@ -59,7 +59,7 @@ describe('useAlertsFilters — first-land persona defaults', () => {
       wrapper: makeWrapper('/alerts'),
     });
     // First-load effect runs after mount; values reflect Safety defaults.
-    expect(result.current.typeFilter).toBe('safety_events');
+    expect(result.current.typeFilter).toBe('events');
     expect(result.current.days).toBe(7);
     expect(result.current.ackState).toBe('active');
   });
@@ -148,7 +148,7 @@ describe('useAlertsFilters — resetToDefaults', () => {
     expect(result.current.typeFilter).toBe('fault');
     act(() => result.current.resetToDefaults());
     // Safety defaults are now in the URL
-    expect(result.current.typeFilter).toBe('safety_events');
+    expect(result.current.typeFilter).toBe('events');
     expect(result.current.days).toBe(7);
     expect(result.current.page).toBe(1);
   });
@@ -252,14 +252,14 @@ describe('useAlertsFilters — server paging state', () => {
 
 describe('useAlertsFilters — narrowed (gates the "all caught up" claim)', () => {
   it('is FALSE on a persona default view, even when the default is not "all"', () => {
-    // Safety lands on typeFilter='safety_events' by default — that is NOT
+    // Safety lands on typeFilter='events' by default — that is NOT
     // the user narrowing anything, so the genuine all-clear must stay
     // reachable for them.
     setPersona('safety');
     const { result } = renderHook(() => useAlertsFilters(), {
       wrapper: makeWrapper('/alerts'),
     });
-    expect(result.current.typeFilter).toBe('safety_events');
+    expect(result.current.typeFilter).toBe('events');
     expect(result.current.narrowed).toBe(false);
   });
 

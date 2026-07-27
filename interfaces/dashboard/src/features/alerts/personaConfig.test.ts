@@ -5,6 +5,14 @@
  * Locks the per-persona values so a future "we should default Safety
  * to 30 days" change has to update the test too — visible diff for
  * the reviewer.
+ *
+ * ALSO guards the vocabulary: a default naming a type the database
+ * never stores queries nothing — and because ``narrowed`` compares
+ * against the default, the board renders the GENUINE all-clear over
+ * thousands of open alerts.  Safety/HR shipped with
+ * typeFilter='safety_events' while rows store 'events', and this
+ * file's own lock asserted the broken value — locking values is not
+ * the same as validating them, hence the vocabulary suite below.
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import { cleanup } from '@testing-library/react';
@@ -12,6 +20,7 @@ import {
   PERSONA_FILTER_DEFAULTS,
   resolveFilterDefaults,
 } from './personaConfig';
+import { STORED_ALERT_TYPES } from './_shared/components';
 
 afterEach(cleanup);
 
@@ -26,9 +35,9 @@ describe('PERSONA_FILTER_DEFAULTS — per-persona first-land values', () => {
     });
   });
 
-  it('Safety lands on safety_events filtered, 7 days', () => {
+  it('Safety lands on safety events filtered, 7 days', () => {
     expect(PERSONA_FILTER_DEFAULTS.safety).toEqual({
-      typeFilter: 'safety_events',
+      typeFilter: 'events',
       severityFilter: 'all',
       ackState: 'active',
       vehicleSearch: '',
@@ -41,8 +50,8 @@ describe('PERSONA_FILTER_DEFAULTS — per-persona first-land values', () => {
     expect(PERSONA_FILTER_DEFAULTS.fleet.typeFilter).toBe('all');
   });
 
-  it('HR lands on safety_events, 30 days (pattern-finding window)', () => {
-    expect(PERSONA_FILTER_DEFAULTS.hr.typeFilter).toBe('safety_events');
+  it('HR lands on safety events, 30 days (pattern-finding window)', () => {
+    expect(PERSONA_FILTER_DEFAULTS.hr.typeFilter).toBe('events');
     expect(PERSONA_FILTER_DEFAULTS.hr.days).toBe(30);
   });
 
@@ -52,9 +61,32 @@ describe('PERSONA_FILTER_DEFAULTS — per-persona first-land values', () => {
   });
 });
 
+describe('persona defaults stay inside the stored vocabulary', () => {
+  const allowed = new Set<string>(['all', ...STORED_ALERT_TYPES]);
+
+  it('every persona typeFilter is a type the database can produce', () => {
+    for (const [persona, defaults] of Object.entries(PERSONA_FILTER_DEFAULTS)) {
+      expect(
+        allowed.has(defaults.typeFilter),
+        `${persona}: typeFilter '${defaults.typeFilter}' is not a stored alert_type`,
+      ).toBe(true);
+    }
+  });
+
+  it('severity defaults use the fixed severity vocabulary', () => {
+    const sev = new Set(['all', 'critical', 'warning', 'info']);
+    for (const [persona, defaults] of Object.entries(PERSONA_FILTER_DEFAULTS)) {
+      expect(
+        sev.has(defaults.severityFilter),
+        `${persona}: severityFilter '${defaults.severityFilter}'`,
+      ).toBe(true);
+    }
+  });
+});
+
 describe('resolveFilterDefaults — fallback chain', () => {
   it('returns the persona entry when present', () => {
-    expect(resolveFilterDefaults('safety').typeFilter).toBe('safety_events');
+    expect(resolveFilterDefaults('safety').typeFilter).toBe('events');
   });
 
   it('every canonical persona has an entry (no fallback ever triggers in real code)', () => {

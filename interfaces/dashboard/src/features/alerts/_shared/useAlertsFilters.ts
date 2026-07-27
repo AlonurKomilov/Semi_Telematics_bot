@@ -78,7 +78,7 @@ export interface AlertsFiltersAPI {
   /** True when the view is NARROWED beyond this persona's defaults —
    *  i.e. the user actively picked a type / severity / vehicle.  Callers
    *  use it to tell "nothing matches your filters" apart from a genuine
-   *  all-clear: a Safety persona lands on ``typeFilter='safety_events'``
+   *  all-clear: a Safety persona lands on ``typeFilter='events'``
    *  by default, so "not 'all'" alone would misread their default view as
    *  filtered and they'd never see the real all-clear. */
   narrowed: boolean;
