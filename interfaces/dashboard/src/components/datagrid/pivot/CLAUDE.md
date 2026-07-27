@@ -23,6 +23,32 @@ The multi-level header is a plain `rowSpan`/`colSpan` `<thead>`. It does
 **not** touch the grid's `groupRuns` bracket row, which is entangled with
 drag-reorder and pin offsets and already works.
 
+## Which grids get `pivot` — three tests, all three required
+
+Coverage is not "every grid eventually". A grid earns the toggle only
+when all three hold; failing any one makes the pivot confidently wrong
+or merely a slower version of row-grouping:
+
+1. **Rows are EVENTS, not entities.** One row per load / work order /
+   fuel purchase / inspection pivots. One row per vehicle / driver /
+   part / service task does not — those grids are already one row per
+   thing, so a pivot has nothing left to collapse.
+2. **At least one ADDITIVE measure.** Sums of sums are true; averages
+   of averages are not. A column that is itself a rollup (a driver's
+   period `score`, a `$/mile`) must not become a pivot value — the
+   matrix would print a confident number nobody can reproduce.
+3. **Two dimensions, or one plus a date.** With a single dimension and
+   no time axis the report degenerates into "group by X with totals",
+   which the grid already does via row-grouping + footer aggregation.
+
+Worked exclusions (checked, deliberately NOT wired): **Fuel summary**
+and **Cost Per Mile** (already per-vehicle aggregates — test 1+2),
+**Part Detail's** by-vehicle/by-vendor rollups (test 1), **Parts**
+(measures live on the catalog grid, the `category` dimension on the
+public one — nothing but Assembly is left, test 3), **Scorecards** (no
+date column at all and `score` is a per-driver average — test 2+3),
+**Vehicles** / **Service Tasks** (registries — test 1).
+
 ## Opting a column in
 
 - **Dimensions** (Rows / Columns pickers): `pivotable: true`
