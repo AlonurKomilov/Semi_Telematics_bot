@@ -251,6 +251,19 @@ async def create_tables(conn) -> None:
         -- so the library and the tenant rows line up by construction.
         -- status: active (seeded into new accounts) | archived (kept
         -- for history, no longer handed out).
+        -- Assemblies: level 2 of System -> Assembly -> Part.  Operator-
+        -- curated (owner decision); key + system_key IMMUTABLE after
+        -- creation (advisor: re-parenting rewrites historical rollups).
+        CREATE TABLE IF NOT EXISTS service_assembly_library (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            key         TEXT    NOT NULL UNIQUE,
+            label       TEXT    NOT NULL,
+            system_key  TEXT    NOT NULL,
+            status      TEXT    NOT NULL DEFAULT 'active',
+            created_at  TEXT    NOT NULL,
+            updated_at  TEXT    NOT NULL DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS service_task_library (
             id                   INTEGER PRIMARY KEY AUTOINCREMENT,
             canonical_key        TEXT    NOT NULL UNIQUE,

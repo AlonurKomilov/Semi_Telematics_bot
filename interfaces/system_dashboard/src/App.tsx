@@ -15,6 +15,7 @@ import RetentionPage from './pages/Retention';
 import VendorDirectoryPage from './pages/VendorDirectory';
 import PartsDirectoryPage from './pages/PartsDirectory';
 import ServiceTaskLibraryPage from './pages/ServiceTaskLibrary';
+import ServiceAssembliesPage from './pages/ServiceAssemblies';
 import MarketIntelPage from './pages/MarketIntel';
 import ScansPage from './pages/Scans';
 import SchedulerPage from './pages/Scheduler';
@@ -67,6 +68,7 @@ export default function App() {
             <Route path="/vendor-directory" element={<VendorDirectoryPage />} />
             <Route path="/parts-directory" element={<PartsDirectoryPage />} />
             <Route path="/service-tasks" element={<ServiceTaskLibraryPage />} />
+            <Route path="/service-assemblies" element={<ServiceAssembliesPage />} />
             <Route path="/market-intel" element={<MarketIntelPage />} />
             <Route path="/scans" element={<ScansPage />} />
             <Route path="/scheduler" element={<SchedulerPage />} />
@@ -114,6 +116,7 @@ const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
       { to: '/vendor-directory', label: 'Vendor directory', icon: Store },
       { to: '/parts-directory', label: 'Parts catalog', icon: Cog },
       { to: '/service-tasks', label: 'Service tasks', icon: ClipboardList },
+      { to: '/service-assemblies', label: 'Assemblies', icon: Cog },
       { to: '/market-intel', label: 'Market intel', icon: TrendingUp },
       { to: '/scans',     label: 'File scans', icon: ShieldCheck },
       { to: '/scheduler', label: 'Scheduler', icon: CalendarClock },

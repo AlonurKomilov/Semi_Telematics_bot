@@ -61,6 +61,7 @@ from features.vendors import router as vendors_routes
 from capabilities.platform.vendor_directory import router as vendor_directory_routes
 from capabilities.platform.part_directory import router as part_directory_routes
 from capabilities.platform.service_task_library import router as service_task_library_routes
+from capabilities.platform.service_assembly_library import router as service_assembly_library_routes
 from capabilities.platform.market_intel import router as market_intel_routes
 from capabilities.platform.capacity import router as capacity_routes
 from features.loads import router as loads_routes
@@ -478,6 +479,7 @@ def create_api() -> FastAPI:
         app.include_router(vendor_directory_routes.router, prefix=prefix)
         app.include_router(part_directory_routes.router, prefix=prefix)
         app.include_router(service_task_library_routes.router, prefix=prefix)
+        app.include_router(service_assembly_library_routes.router, prefix=prefix)
         app.include_router(market_intel_routes.router, prefix=prefix)
         app.include_router(capacity_routes.router, prefix=prefix)
         app.include_router(inspections_routes.router, prefix=prefix)

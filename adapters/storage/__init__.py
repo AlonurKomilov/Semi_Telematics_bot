@@ -53,6 +53,7 @@ from .vendors import VendorsMixin
 from .parts_catalog import PartsCatalogMixin
 from .service_tasks import ServiceTasksMixin
 from .service_task_library import ServiceTaskLibraryMixin
+from .service_assemblies import ServiceAssembliesMixin
 from .part_directory import PartDirectoryMixin
 from .platform_settings import PlatformSettingsMixin
 from .vendor_directory import VendorDirectoryMixin
@@ -127,6 +128,7 @@ class Database(
     PartDirectoryMixin,
     ServiceTasksMixin,
     ServiceTaskLibraryMixin,
+    ServiceAssembliesMixin,
     PlatformSettingsMixin,
     VendorDirectoryMixin,
     MarketIntelMixin,

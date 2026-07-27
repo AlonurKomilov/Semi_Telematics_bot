@@ -21,6 +21,7 @@ async def run_all(conn) -> None:
     await migrate_vendor_reviews(conn)
     await migrate_market_intel(conn)
     await migrate_service_task_library(conn)
+    await migrate_service_assembly_library(conn)
     await migrate_add_bot_columns(conn)
     await migrate_rename_fleet_manager_role(conn)
     await migrate_knowledge_base_to_platform(conn)
@@ -4211,3 +4212,41 @@ async def migrate_service_task_library(conn) -> None:
         )
     await conn.commit()
     logger.info("Platform migration: service_task_library ready")
+
+
+async def migrate_service_assembly_library(conn) -> None:
+    """Assembly vocabulary (level 2 of System→Assembly→Part).
+
+    Seeded from the advisor-reviewed tuple with ON CONFLICT DO NOTHING
+    and labels are NEVER re-asserted on boot — the operator's edits on
+    system.4truck.us win over the bootstrap, same contract as the
+    service-task library.
+    """
+    from adapters.storage.service_assemblies import SERVICE_ASSEMBLIES
+
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS service_assembly_library (
+            id          SERIAL PRIMARY KEY,
+            key         TEXT    NOT NULL UNIQUE,
+            label       TEXT    NOT NULL,
+            system_key  TEXT    NOT NULL,
+            status      TEXT    NOT NULL DEFAULT 'active',
+            created_at  TEXT    NOT NULL,
+            updated_at  TEXT    NOT NULL DEFAULT ''
+        )
+        """
+    )
+    now = __import__("datetime").datetime.now(
+        __import__("datetime").timezone.utc
+    ).isoformat()
+    for key, label, system in SERVICE_ASSEMBLIES:
+        await conn.execute(
+            "INSERT INTO service_assembly_library "
+            "(key, label, system_key, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?) "
+            "ON CONFLICT (key) DO NOTHING",
+            (key, label, system, now, now),
+        )
+    await conn.commit()
+    logger.info("Platform migration: service_assembly_library ready")

@@ -791,6 +791,24 @@ async def report_per_system(
             "rows": await tenant_db.cost_by_system(user["account_id"], since=since)}
 
 
+@router.get("/reports/per-assembly")
+async def report_per_assembly(
+    system: str,
+    days: int = Query(90, ge=1, le=3650),
+    user: dict = Depends(require_permission("can_cost_reports")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Assemblies within one system — the drill-down under a system
+    bar.  PARTS ONLY (labor has no part and never reaches level 2 —
+    the UI labels this permanently); 'Unassigned' stays a visible row
+    so the parts total reconciles."""
+    from datetime import datetime, timedelta, timezone
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    return {"days": days, "system": system,
+            "rows": await tenant_db.cost_by_assembly(
+                user["account_id"], system, since=since)}
+
+
 @router.get("/reports/per-part")
 async def report_per_part(
     days: int = Query(90, ge=1, le=3650),

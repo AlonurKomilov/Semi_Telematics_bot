@@ -28,6 +28,13 @@ interface SystemRow {
   work_order_count: number;
 }
 
+interface AssemblyRow {
+  assembly_key: string;
+  assembly: string;
+  line_count: number;
+  total_spent: number;
+}
+
 interface ReportResponse {
   days: number;
   rows: WorkOrderCostRow[];
@@ -148,6 +155,16 @@ export default function Reports() {
   const perSystem = useQuery<{ days: number; rows: SystemRow[] }>({
     queryKey: ['wo-reports', 'per-system', days],
     queryFn: () => apiJSON(`/reports/cost-reports/per-system?days=${days}`),
+  });
+  // Drill-down: assemblies within the clicked system.  PARTS ONLY by
+  // construction — labor has no part and never reaches level 2; the
+  // header says so permanently.
+  const [drillSystem, setDrillSystem] = useState<SystemRow | null>(null);
+  const perAssembly = useQuery<{ rows: AssemblyRow[] }>({
+    queryKey: ['wo-reports', 'per-assembly', drillSystem?.system_key, days],
+    queryFn: () => apiJSON(
+      `/reports/cost-reports/per-assembly?system=${encodeURIComponent(drillSystem!.system_key)}&days=${days}`),
+    enabled: !!drillSystem,
   });
   const perVendor = useQuery<ReportResponse>({
     queryKey: ['wo-reports', 'per-vendor', days],
@@ -519,13 +536,57 @@ export default function Reports() {
                     itemStyle={{ color: 'var(--foreground)' }}
                     contentStyle={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}
                   />
-                  <Bar dataKey="combined">
+                  <Bar dataKey="combined" style={{ cursor: 'pointer' }}
+                    onClick={(d) => setDrillSystem(d as unknown as SystemRow)}>
                     {systemChart.map((_, i) => (
                       <Cell key={i} fill={BAR_PALETTE[i % BAR_PALETTE.length]} />
                     ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+            )}
+            {drillSystem && (
+              <div className="mt-4 border-t border-border pt-3">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-sm font-semibold">
+                    {drillSystem.system} — by assembly
+                    <span className="ml-2 text-xs font-normal text-muted-foreground">
+                      parts only · labor isn’t attributable to an assembly
+                    </span>
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setDrillSystem(null)}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Close
+                  </button>
+                </div>
+                {perAssembly.isLoading ? (
+                  <p className="text-sm text-muted-foreground">Loading…</p>
+                ) : (perAssembly.data?.rows ?? []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    No part lines in this system for the selected period.
+                  </p>
+                ) : (
+                  <ul className="space-y-1">
+                    {(perAssembly.data?.rows ?? []).map((r) => (
+                      <li key={r.assembly_key || 'unassigned'}
+                        className="flex items-center gap-2 text-sm">
+                        <span className={r.assembly_key ? '' : 'text-muted-foreground'}>
+                          {r.assembly}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {r.line_count} line{r.line_count === 1 ? '' : 's'}
+                        </span>
+                        <span className="ml-auto tabular-nums font-medium">
+                          {moneyDetail(r.total_spent)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
           </ChartCard>
 

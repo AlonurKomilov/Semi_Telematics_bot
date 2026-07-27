@@ -7434,3 +7434,26 @@ async def migrate_body_cab_task(conn) -> None:
             created += 1
     await conn.commit()
     logger.info("Migration 167: Body & Cab Repair seeded into %d accounts", created)
+
+
+@_register("168_parts_assembly_key")
+async def migrate_parts_assembly_key(conn) -> None:
+    """Level 2 lands on the PART: ``parts_catalog.assembly_key``.
+
+    Optional by design (advisor rule) — consumables like grease and
+    hardware have no assembly, and a blank renders as "Unassigned"
+    rather than being forced into a junk bucket.  The vocabulary lives
+    in the platform ``service_assembly_library``; parts store the KEY
+    string, mirroring how ``canonical_key`` works for tasks.
+    """
+    await conn.execute(
+        "ALTER TABLE parts_catalog "
+        "ADD COLUMN IF NOT EXISTS assembly_key TEXT NOT NULL DEFAULT ''"
+    )
+    # Index here, never in schema.py (the known boot-crash gotcha).
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_parts_catalog_assembly "
+        "ON parts_catalog(account_id, assembly_key)"
+    )
+    await conn.commit()
+    logger.info("Migration 168: parts_catalog.assembly_key ready")

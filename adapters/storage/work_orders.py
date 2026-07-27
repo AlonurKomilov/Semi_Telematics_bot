@@ -1133,13 +1133,28 @@ class WorkOrdersMixin:
                 "total_spent": 0.0, "labor_spent": 0.0, "work_order_count": 0,
             })
 
+        # THE DELEGATION RULE (advisor, 2026-07-27): labor always rolls
+        # to the task's system, and parts on a COMPONENT-system task do
+        # too ("task wins").  But parts on an ACTIVITY-system task
+        # (pm / inspection / other / untagged) delegate to their
+        # assembly's system — otherwise an oil filter bought inside a
+        # PM counts as "PM spend" forever and the component systems
+        # stay empty for PM-heavy fleets.
         q = (
-            "SELECT COALESCE(st.system_key, '') AS system_key, "
+            "SELECT CASE WHEN COALESCE(st.system_key, '') "
+            "                 IN ('pm', 'inspection', 'other', '') "
+            "                 AND al.system_key IS NOT NULL "
+            "            THEN al.system_key "
+            "            ELSE COALESCE(st.system_key, '') END AS system_key, "
             "       COUNT(DISTINCT w.id) AS work_order_count, "
             "       SUM(p.total_cost) AS total_spent "
             "FROM work_order_parts p "
             "JOIN work_orders w ON w.id = p.work_order_id "
             "LEFT JOIN service_tasks st ON st.id = p.service_task_id "
+            "LEFT JOIN parts_catalog pc ON pc.id = p.part_id "
+            "     AND pc.account_id = w.account_id "
+            "LEFT JOIN service_assembly_library al "
+            "     ON al.key = pc.assembly_key AND pc.assembly_key <> '' "
             "WHERE w.account_id = ? AND w.service_date IS NOT NULL "
             "  AND w.status != 'void' AND w.payment_status != 'void'"
         )
@@ -1147,12 +1162,19 @@ class WorkOrdersMixin:
         if since:
             q += " AND w.service_date >= ?"
             params.append(since)
-        q += " GROUP BY COALESCE(st.system_key, '')"
+        q += (
+            " GROUP BY CASE WHEN COALESCE(st.system_key, '') "
+            "                    IN ('pm', 'inspection', 'other', '') "
+            "                    AND al.system_key IS NOT NULL "
+            "               THEN al.system_key "
+            "               ELSE COALESCE(st.system_key, '') END"
+        )
         cur = await self._db.execute(q, params)
         for r in (dict(x) for x in await cur.fetchall()):
             b = _bucket(r["system_key"])
-            b["total_spent"] = round(float(r["total_spent"] or 0), 2)
-            b["work_order_count"] = int(r["work_order_count"] or 0)
+            b["total_spent"] = round(
+                b["total_spent"] + float(r["total_spent"] or 0), 2)
+            b["work_order_count"] += int(r["work_order_count"] or 0)
 
         q = (
             "SELECT COALESCE(st.system_key, '') AS system_key, "
@@ -1177,6 +1199,56 @@ class WorkOrdersMixin:
         rows = list(totals.values())
         rows.sort(key=lambda r: r["total_spent"] + r["labor_spent"], reverse=True)
         return rows
+
+    async def cost_by_assembly(
+        self, account_id: int, system_key: str,
+        since: Optional[str] = None,
+    ) -> list[dict]:
+        """Parts spend within ONE system, grouped by assembly — the
+        drill-down under a system bar.  PARTS ONLY by construction
+        (labor has no part, so it can never reach level 2 — the UI
+        labels this permanently).  Rows whose part has no assembly
+        stay visible as 'Unassigned' so the parts total reconciles.
+
+        Membership uses the same delegation rule as cost_by_system, so
+        a bar and its drill-down agree about which lines they contain.
+        """
+        q = (
+            "SELECT COALESCE(NULLIF(pc.assembly_key, ''), '') AS assembly_key, "
+            "       COALESCE(al.label, NULLIF(pc.assembly_key, ''), "
+            "                'Unassigned') AS assembly, "
+            "       COUNT(*) AS line_count, "
+            "       SUM(p.total_cost) AS total_spent "
+            "FROM work_order_parts p "
+            "JOIN work_orders w ON w.id = p.work_order_id "
+            "LEFT JOIN service_tasks st ON st.id = p.service_task_id "
+            "LEFT JOIN parts_catalog pc ON pc.id = p.part_id "
+            "     AND pc.account_id = w.account_id "
+            "LEFT JOIN service_assembly_library al "
+            "     ON al.key = pc.assembly_key AND pc.assembly_key <> '' "
+            "WHERE w.account_id = ? AND w.service_date IS NOT NULL "
+            "  AND w.status != 'void' AND w.payment_status != 'void' "
+            "  AND (CASE WHEN COALESCE(st.system_key, '') "
+            "                 IN ('pm', 'inspection', 'other', '') "
+            "                 AND al.system_key IS NOT NULL "
+            "            THEN al.system_key "
+            "            ELSE COALESCE(st.system_key, '') END) = ?"
+        )
+        params: list = [account_id, system_key]
+        if since:
+            q += " AND w.service_date >= ?"
+            params.append(since)
+        q += (
+            " GROUP BY COALESCE(NULLIF(pc.assembly_key, ''), ''), "
+            "          COALESCE(al.label, NULLIF(pc.assembly_key, ''), "
+            "                   'Unassigned')"
+            " ORDER BY total_spent DESC"
+        )
+        cur = await self._db.execute(q, params)
+        return [
+            {**dict(r), "total_spent": round(float(r["total_spent"] or 0), 2)}
+            for r in (dict(x) for x in await cur.fetchall())
+        ]
 
     async def cost_by_part(
         self, account_id: int, since: Optional[str] = None,

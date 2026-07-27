@@ -178,7 +178,7 @@ class PartsCatalogMixin:
         ``name_key``; a collision with another part's key raises (the
         caller should offer merge instead).  ``part_name`` snapshots on
         line rows stay invoice-truth — never rewritten."""
-        allowed = {"name", "part_number", "notes"}
+        allowed = {"name", "part_number", "notes", "assembly_key"}
         updates = {k: v for k, v in kwargs.items() if k in allowed and v is not None}
         if not updates:
             return False
@@ -187,6 +187,19 @@ class PartsCatalogMixin:
             updates["name_key"] = part_name_key(updates["name"])
             if not updates["name_key"]:
                 return False
+        if "assembly_key" in updates:
+            from adapters.storage.service_assemblies import (
+                normalize_assembly_key,
+            )
+            ak = normalize_assembly_key(str(updates["assembly_key"]))
+            updates["assembly_key"] = ak
+            if ak:
+                current = await self.get_catalog_part(part_id, account_id)
+                # Archived keys stay valid on rows that already hold
+                # them; NEW assignments require an active library key
+                # (advisor rule — fail closed on vocabulary typos).
+                if (not current or current.get("assembly_key") != ak) and                         not await self.assembly_key_valid_for_assignment(ak):
+                    return False
         updates["updated_at"] = self._now()
         set_clause = ", ".join(f"{k} = ?" for k in updates)
         cur = await self._db.execute(

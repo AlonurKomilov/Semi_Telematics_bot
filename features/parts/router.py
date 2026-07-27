@@ -47,7 +47,16 @@ async def list_parts(
 ):
     """Catalog with usage rollups — the Parts page grid AND the
     work-order editor's autocomplete (hence the widened read gate)."""
-    return {"parts": await tenant_db.list_parts_catalog(user["account_id"])}
+    from adapters.storage.service_assemblies import suggest_assembly_for
+    rows = await tenant_db.list_parts_catalog(user["account_id"])
+    # Assembly fill is suggest-confirm: annotate blanks with the
+    # keyword guess; nothing is written until a human clicks.
+    for r in rows:
+        if not r.get("assembly_key"):
+            hint = suggest_assembly_for(r.get("name") or "")
+            if hint:
+                r["suggested_assembly"] = hint
+    return {"parts": rows}
 
 
 class PartCreate(BaseModel):
@@ -120,6 +129,60 @@ async def price_context(
         company_codes=codes or None,
         months=body.months,
     )}
+
+
+@router.get("/assemblies")
+async def list_assemblies(
+    user: dict = Depends(
+        require_permission_any("can_parts", "can_work_orders_all")
+    ),
+    tenant_db=Depends(get_tenant_db),
+):
+    """The assembly vocabulary (level 2 of System→Assembly→Part) —
+    ACTIVE entries, for the Parts page picker.  Served, never
+    hardcoded in the dashboard (the vocabulary-drift rule).  Declared
+    before ``/{part_id}`` so the literal path wins."""
+    rows = await tenant_db.list_service_assemblies(include_archived=False)
+    return {"assemblies": [
+        {"key": r["key"], "label": r["label"], "system_key": r["system_key"]}
+        for r in rows
+    ]}
+
+
+@router.post("/apply-assembly-suggestions")
+async def apply_assembly_suggestions(
+    user: dict = Depends(require_permission("can_parts")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Bulk-confirm the keyword suggestions for parts with NO assembly.
+
+    One human click applies all of them — that's still confirm, not
+    silent (the suggestions are visible per-row before this button).
+    Recomputed server-side at click time so what applies is what the
+    matcher says NOW, and only ever onto blank rows: a hand-assigned
+    assembly is never overwritten.
+    """
+    from adapters.storage.service_assemblies import suggest_assembly_for
+    parts = await tenant_db.list_parts_catalog(user["account_id"])
+    applied = 0
+    for part in parts:
+        if part.get("assembly_key"):
+            continue
+        hint = suggest_assembly_for(part.get("name") or "")
+        if not hint:
+            continue
+        ok = await tenant_db.update_catalog_part(
+            int(part["id"]), user["account_id"], assembly_key=hint,
+        )
+        if ok:
+            applied += 1
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "parts_assembly_bulk_apply",
+        target_type="parts_catalog", target_id="bulk",
+        details=f"{applied} suggestions applied",
+    )
+    return {"applied": applied}
 
 
 @router.get("/public/browse")
@@ -240,6 +303,10 @@ class PartUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     part_number: Optional[str] = Field(None, max_length=100)
     notes: Optional[str] = Field(None, max_length=2000)
+    # Level 2: '' clears back to Unassigned; a non-empty key must be an
+    # ACTIVE library entry (storage enforces; archived keys survive
+    # only on rows that already hold them).
+    assembly_key: Optional[str] = Field(None, max_length=60)
 
 
 @router.put("/{part_id}")

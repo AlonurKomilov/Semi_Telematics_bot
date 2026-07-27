@@ -9,11 +9,11 @@
  * Rows drill into the part profile (recurrence per vehicle, price per
  * vendor, purchase history); dedup/merge and edits live there too.
  */
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Cog, Globe, Plus } from 'lucide-react';
+import { Check, Cog, Globe, Plus, Wand2 } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';
 import { PageHeader, EmptyState, ErrorState, TableSkeleton } from '../../components/shell';
@@ -128,6 +128,32 @@ export default function Parts() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [tab, setTab] = useState<'mine' | 'public'>('mine');
+
+  // Assembly vocabulary (level 2 of System→Assembly→Part) — fetched,
+  // never hardcoded (the vocabulary-drift rule).
+  const { data: asmData } = useQuery<{ assemblies: Array<{ key: string; label: string; system_key: string }> }>({
+    queryKey: ['part-assemblies'],
+    queryFn: () => apiJSON('/parts/assemblies'),
+    staleTime: 5 * 60_000,
+  });
+  const asmLabel = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const a of asmData?.assemblies ?? []) m.set(a.key, a.label);
+    return m;
+  }, [asmData]);
+
+  // Bulk-confirm: one click applies every visible suggestion (only
+  // onto blank rows — a hand-assigned assembly is never overwritten).
+  const applyAll = useMutation({
+    mutationFn: () => apiJSON<{ applied: number }>(
+      '/parts/apply-assembly-suggestions', { method: 'POST' }),
+    onSuccess: (r) => {
+      toast.success(`Assembly set on ${r.applied} part${r.applied === 1 ? '' : 's'}`);
+      qc.invalidateQueries({ queryKey: ['parts-catalog'] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
+  });
+
   const [addOpen, setAddOpen] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
@@ -136,7 +162,57 @@ export default function Parts() {
     queryKey: ['parts-catalog'],
     queryFn: () => apiJSON<{ parts: CatalogPart[] }>('/parts'),
   });
-  const parts = data?.parts ?? [];
+  const parts = useMemo(() => data?.parts ?? [], [data]);
+
+  // My-parts columns + the Assembly column (label from the fetched
+  // vocabulary; suggest-confirm chip on blanks — one click applies,
+  // nothing happens without it).
+  const myColumns = useMemo<AnyColumn[]>(() => {
+    const assemblyCol: AnyColumn = {
+      key: 'assembly_key', label: 'Assembly', sortable: true, filterable: true,
+      filterValue: (row) => String((row as unknown as CatalogPart).assembly_key ?? ''),
+      render: (v, row) => {
+        const part = row as unknown as CatalogPart & { suggested_assembly?: string };
+        if (v) return <span className="text-sm">{asmLabel.get(String(v)) ?? String(v)}</span>;
+        if (part.suggested_assembly) {
+          return (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                apiJSON(`/parts/${part.id}`, {
+                  method: 'PUT',
+                  body: { assembly_key: part.suggested_assembly },
+                })
+                  .then(() => {
+                    toast.success('Assembly set');
+                    qc.invalidateQueries({ queryKey: ['parts-catalog'] });
+                  })
+                  .catch((err) => toast.error(err instanceof Error ? err.message : 'Failed'));
+              }}
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition hover:brightness-110 ${toneClasses('info')}`}
+            >
+              <Check size={12} aria-hidden />
+              {asmLabel.get(part.suggested_assembly) ?? part.suggested_assembly}?
+            </button>
+          );
+        }
+        return <span className="text-muted-foreground">—</span>;
+      },
+    };
+    const cols = [...partColumns];
+    cols.splice(2, 0, assemblyCol);   // after Part name
+    return cols;
+  }, [asmLabel, qc]);
+
+  const suggestionCount = useMemo(
+    () => parts.filter((pt) =>
+      !(pt as CatalogPart & { suggested_assembly?: string }).assembly_key
+      && (pt as CatalogPart & { suggested_assembly?: string }).suggested_assembly,
+    ).length,
+    [parts],
+  );
+
 
   const { data: pubData, isLoading: pubLoading, error: pubError } = useQuery<{ entries: PublicPartEntry[] }>({
     queryKey: ['parts-public-browse'],
@@ -221,7 +297,19 @@ export default function Parts() {
         ) : (
           <DataGrid
             tableId="parts-catalog"
-            columns={partColumns}
+            columns={myColumns}
+            headerToolbar={suggestionCount > 0 ? (
+              <Button
+                size="sm" variant="outline"
+                disabled={applyAll.isPending}
+                onClick={() => applyAll.mutate()}
+              >
+                <Wand2 size={14} />
+                {applyAll.isPending
+                  ? 'Applying…'
+                  : `Apply ${suggestionCount} suggested assembl${suggestionCount === 1 ? 'y' : 'ies'}`}
+              </Button>
+            ) : undefined}
             data={parts as unknown as Record<string, unknown>[]}
             searchKey={['name', 'part_number', 'notes']}
             searchPlaceholder="Search parts…"

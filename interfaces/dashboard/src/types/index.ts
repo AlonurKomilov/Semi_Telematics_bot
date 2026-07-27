@@ -1723,6 +1723,10 @@ export interface CatalogPart {
   total_spent?: number;
   /** Link to the platform public parts catalog (part_directory). */
   global_part_id?: number | null;
+  /** Level 2 of System→Assembly→Part; '' = Unassigned. */
+  assembly_key?: string;
+  /** Server-side keyword guess for a blank assembly — suggest-confirm. */
+  suggested_assembly?: string;
   /** Unlink honesty marker: TRUE after the user unlinks — the adopt
    *  fan-out never silently re-links a suppressed row. */
   public_link_suppressed?: boolean;
