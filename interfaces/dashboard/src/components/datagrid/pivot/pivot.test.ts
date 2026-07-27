@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 
-import { pivot, isPivotReady, prunePivotModel, bucketOf, pivotToCsvRows } from './pivot';
+import {
+  pivot, isPivotReady, prunePivotModel, bucketOf, pivotToCsvRows,
+  pivotCellRows, splitLeafId,
+} from './pivot';
 import type { PivotModel } from './pivot';
 import type { AnyColumn } from '../../../types';
 
@@ -411,5 +414,62 @@ describe('pivot — sorting by a measure', () => {
   it('falls back to label order when the sorted leaf no longer exists', () => {
     const r = pivot(DATA, { ...base, sort: { leaf: 'gone||rate', dir: 'desc' } }, COLS);
     expect(r.bodyRows.map((b) => b.label)).toEqual(['CFT', 'PTG']);
+  });
+});
+
+describe('pivot — drill-down', () => {
+  const COLS: AnyColumn[] = [
+    { key: 'company', label: 'Company', pivotable: true },
+    { key: 'customer', label: 'Customer', pivotable: true },
+    { key: 'region', label: 'Region', pivotable: true },
+    { key: 'rate', label: 'Rate', aggregable: true },
+  ];
+  const DATA = [
+    { id: 1, company: 'PTG', customer: 'Acme', region: 'N', rate: 100 },
+    { id: 2, company: 'PTG', customer: 'Acme', region: 'S', rate: 200 },
+    { id: 3, company: 'PTG', customer: 'Bolt', region: 'N', rate: 50 },
+    { id: 4, company: 'CFT', customer: 'Zed', region: 'N', rate: 10 },
+  ];
+  const m: PivotModel = {
+    rows: ['company', 'customer'], columns: ['region'],
+    values: [{ key: 'rate', aggFn: 'sum' }],
+  };
+
+  it('returns exactly the rows behind one cell', () => {
+    const got = pivotCellRows(DATA, m, COLS, ['PTG', 'Acme'], ['N']);
+    expect(got.map((r) => r.id)).toEqual([1]);
+  });
+
+  it('returns every descendant when the path is a COLLAPSED PARENT', () => {
+    // PTG/N shows 150 (Acme 100 + Bolt 50) — the drill-down must be the
+    // union, or the number and the list would disagree.
+    const got = pivotCellRows(DATA, m, COLS, ['PTG'], ['N']);
+    expect(got.map((r) => r.id)).toEqual([1, 3]);
+  });
+
+  it('treats an empty column path as "every column"', () => {
+    const got = pivotCellRows(DATA, m, COLS, ['PTG'], []);
+    expect(got.map((r) => r.id)).toEqual([1, 2, 3]);
+  });
+
+  it('returns nothing for an empty intersection', () => {
+    expect(pivotCellRows(DATA, m, COLS, ['CFT'], ['S'])).toEqual([]);
+  });
+
+  it('splits a leaf id back into its column path and measure', () => {
+    const r = pivot(DATA, m, COLS);
+    const parsed = r.leafIds.map(splitLeafId);
+    expect(parsed[0]).toEqual({ colPath: ['N'], valueKey: 'rate' });
+    // No column dimension → an empty path, not [''].
+    expect(splitLeafId('||rate')).toEqual({ colPath: [], valueKey: 'rate' });
+  });
+
+  it('the drilled rows re-aggregate to the number on screen', () => {
+    const r = pivot(DATA, m, COLS);
+    const ptg = r.bodyRows.find((b) => b.label === 'PTG')!;
+    const nIdx = r.leafIds.findIndex((l) => splitLeafId(l).colPath[0] === 'N');
+    const drilled = pivotCellRows(DATA, m, COLS, ptg.path, ['N']);
+    const sum = drilled.reduce((n, x) => n + Number(x.rate), 0);
+    expect(sum).toBe(ptg.cells[nIdx]);
   });
 });

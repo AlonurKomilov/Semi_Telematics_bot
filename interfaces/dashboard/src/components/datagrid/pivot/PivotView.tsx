@@ -5,10 +5,15 @@ import {
 
 import { cn } from '../../../lib/utils';
 import { EmptyState } from '../../shell';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from '../../ui/dialog';
 import { AGG_FN_LABELS } from '../../../types';
 import type { AnyColumn, AggFn } from '../../../types';
 import { formatAggDefault } from '../aggregation';
-import { pivot, type PivotModel } from './pivot';
+import {
+  pivot, pivotCellRows, splitLeafId, type PivotModel, type PivotBodyRow,
+} from './pivot';
 
 /**
  * The pivoted matrix — a READ-ONLY report view.
@@ -56,6 +61,10 @@ export default function PivotView({
   // more surprising than starting expanded.  Default = expanded, so the
   // data is visible before the operator has learned the chevron.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
+  // Which cell the operator opened.  Rows are computed on demand — the
+  // matrix would otherwise hold a row array per cell for a question asked
+  // about one of them.
+  const [drill, setDrill] = useState<{ row: PivotBodyRow; leafIdx: number } | null>(null);
   const toggle = (key: string) => setCollapsed((prev) => {
     const next = new Set(prev);
     if (next.has(key)) next.delete(key); else next.add(key);
@@ -255,9 +264,26 @@ export default function PivotView({
               {row.cells.map((value, i) => (
                 <td
                   key={result.leafIds[i]}
-                  className={cn(padding, 'text-right tabular-nums whitespace-nowrap')}
+                  className={cn(padding, 'text-right tabular-nums whitespace-nowrap p-0')}
                 >
-                  {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
+                  {value === null ? (
+                    <span className={cn(padding, 'block')}>
+                      {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
+                    </span>
+                  ) : (
+                    // Every non-empty number is a question: "which rows?"
+                    <button
+                      type="button"
+                      onClick={() => setDrill({ row, leafIdx: i })}
+                      className={cn(
+                        padding,
+                        'block w-full text-right tabular-nums hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer',
+                      )}
+                      title="Show the rows behind this number"
+                    >
+                      {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
+                    </button>
+                  )}
                 </td>
               ))}
             </tr>
@@ -299,6 +325,55 @@ export default function PivotView({
       {/* Row count of the REPORT (groups), distinct from the source-row
           count in the line above — an operator comparing the two can see
           how much the grouping collapsed. */}
+      {drill && (() => {
+        const { colPath, valueKey } = splitLeafId(result.leafIds[drill.leafIdx]);
+        const sourceRows = pivotCellRows(rows, model, columns, drill.row.path, colPath);
+        const measure = colByKey.get(valueKey);
+        // Show the grid's own columns (not the synthetic pivot ones) —
+        // these are real records again, so they should read like records.
+        const showCols = columns.filter((c) => !c.key.includes('::')).slice(0, 6);
+        return (
+          <Dialog open onOpenChange={(o) => { if (!o) setDrill(null); }}>
+            <DialogContent className="max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>
+                  {drill.row.label}
+                  {colPath.length > 0 && ` · ${colPath.join(' · ')}`}
+                </DialogTitle>
+                <DialogDescription>
+                  {sourceRows.length.toLocaleString()} row{sourceRows.length === 1 ? '' : 's'}
+                  {measure ? ` behind this ${measure.label.toLowerCase()}` : ''}.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="max-h-[60vh] overflow-auto">
+                <table className="w-full text-xs border-collapse">
+                  <thead className="sticky top-0 bg-muted">
+                    <tr>
+                      {showCols.map((c) => (
+                        <th key={c.key} className="px-2 py-1.5 text-left font-medium text-muted-foreground border-b border-border">
+                          {c.label}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sourceRows.map((r, i) => (
+                      <tr key={i} className={cn('border-b border-border', i % 2 === 1 && 'bg-muted/30')}>
+                        {showCols.map((c) => (
+                          <td key={c.key} className="px-2 py-1.5 whitespace-nowrap">
+                            {c.render ? c.render(r[c.key], r) : String(r[c.key] ?? '—')}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </DialogContent>
+          </Dialog>
+        );
+      })()}
+
       {visibleRows.length > 0 && (
         <p className="px-3 py-2 text-2xs text-muted-foreground text-right border-t border-border">
           {visibleRows.length.toLocaleString()} row{visibleRows.length === 1 ? '' : 's'}

@@ -437,3 +437,47 @@ export function pivotToCsvRows(result: PivotResult): string[][] {
   ];
   return [header, ...body, total];
 }
+
+
+/**
+ * The source rows behind one cell — "which loads made up that $400?".
+ *
+ * Recomputed on demand rather than cached per cell: a matrix of R x C
+ * cells would otherwise hold R x C row arrays alive for a question the
+ * operator asks about ONE of them.
+ *
+ * ``rowPath`` may be a PREFIX (a collapsed parent), in which case every
+ * descendant's rows are returned — the parent's number is their sum, so
+ * its drill-down has to be their union.  ``colPath`` empty means "every
+ * column" (the row-total case, and grids with no column dimension).
+ */
+export function pivotCellRows(
+  rows: Record<string, unknown>[],
+  model: PivotModel,
+  columns: AnyColumn[],
+  rowPath: string[],
+  colPath: string[],
+): Record<string, unknown>[] {
+  const cols = new Map(columns.map((c) => [c.key, c]));
+  const rowDims = model.rows.map((k) => cols.get(k)).filter((c): c is AnyColumn => !!c);
+  const colDims = model.columns.map((k) => cols.get(k)).filter((c): c is AnyColumn => !!c);
+  return rows.filter((r) => {
+    for (let i = 0; i < rowPath.length && i < rowDims.length; i += 1) {
+      if (bucketOf(r, rowDims[i]) !== rowPath[i]) return false;
+    }
+    for (let i = 0; i < colPath.length && i < colDims.length; i += 1) {
+      if (bucketOf(r, colDims[i]) !== colPath[i]) return false;
+    }
+    return true;
+  });
+}
+
+/** Split a leaf id back into its column path + value key. */
+export function splitLeafId(leaf: string): { colPath: string[]; valueKey: string } {
+  const cut = leaf.lastIndexOf('||');
+  const cb = leaf.slice(0, cut);
+  return {
+    colPath: cb === '' ? [] : cb.split(PATH_SEP),
+    valueKey: leaf.slice(cut + 2),
+  };
+}

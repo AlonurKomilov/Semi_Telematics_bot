@@ -80,6 +80,18 @@ directions — absent is not "smaller than every number". A sort naming a
 leaf that no longer exists falls back to label order rather than
 discarding the report.
 
+## Drill-down
+
+Every non-empty cell is a button: clicking it opens the SOURCE ROWS
+behind that number. Rows are recomputed on demand (`pivotCellRows`) —
+caching them per cell would hold an array for every cell in the matrix to
+answer a question asked about one.
+
+Clicking a COLLAPSED PARENT drills its whole subtree, because the
+parent's number IS the sum of its descendants — a drill-down that showed
+fewer rows than the number accounts for would be lying. A test asserts
+the drilled rows re-aggregate to the figure on screen.
+
 ## Export
 
 The toolbar's **Export to CSV** is mode-aware — one button, because an
@@ -129,7 +141,6 @@ nobody has to rediscover a gap):
 | Missing | Note |
 |---|---|
 | drag-and-drop reorder | checkbox pickers cover 1–2 levels |
-| cell drill-down (click a cell → its rows) | |
 | unassigned-field list with `+` | we list every field in each section instead |
 | collapsible panel sections, per-field ⋮ | no per-field actions yet to hold |
 | controlled props (`pivotModel`/`pivotActive`/`pivotPanelOpen`) | ours is uncontrolled + persisted; add when a page must own the state |
