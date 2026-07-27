@@ -28,6 +28,8 @@ const FROZEN_KEYS: readonly string[] = [
   'livemap.overlay.companycolors',
   'notifications.center.filter',
   'maintenance.viewMode',
+  'table.density',
+  'datagrid.savedTabCoachSeen',
   'onboarding.dismissed',
   'alerts.routingNudgeDismissed',
   'invites.lastChannel',
@@ -46,6 +48,7 @@ const FROZEN_LEGACY: Readonly<Record<string, readonly string[]>> = {
   'notif.bannerLevel': ['notif.bannerLevel'],
   'notif.position': ['notif.position'],
   'maintenance.viewMode': ['4truck.maintenance.viewMode'],
+  'table.density': ['4truck.table.density'],
   'onboarding.dismissed': ['4truck.onboarding.dismissed'],
   'alerts.routingNudgeDismissed': ['tg_routing_nudge_dismissed'],
   'invites.lastChannel': ['invites.lastChannel'],
@@ -258,8 +261,12 @@ describe('preferences registry — key families', () => {
   });
 
   it('never mistakes the fixed table.density key for a family key', () => {
-    // 'table.density' is a single-dot key; the family regex needs two.
-    expect(defFor('table.density')).toBeNull();
+    // 'table.density' is a single-dot key; the family pattern needs two.
+    // It must resolve to its own FIXED def — never to a table part (which
+    // would give every grid a per-table "density" row instead of the one
+    // shared setting).
+    expect(defFor('table.density')).toBe(DEFS['table.density']);
+    expect(Object.values(TABLE_PARTS)).not.toContain(defFor('table.density'));
   });
 
   it('marks every table family as synced', () => {

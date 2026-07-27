@@ -1,4 +1,4 @@
-import { Fragment, useState, useMemo, useEffect, useRef, useCallback, useLayoutEffect } from 'react';
+import { Fragment, useState, useMemo, useEffect, useRef, useCallback, useLayoutEffect, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useReactTable,
@@ -68,7 +68,7 @@ import { ContextMenu, type MenuAction } from '../ui/context-menu';
 import { Tip } from '../tooltip';
 import { toast } from 'sonner';
 import { exportRowsAsCsv, buildTsv, writeToClipboard } from '../../lib/csv';
-import { useUserPreference } from '../../hooks/useUserPreference';
+import { usePreference, useTablePreference, useSyncLoaded } from '../../preferences';
 
 type Density = 'compact' | 'default' | 'roomy';
 
@@ -268,6 +268,40 @@ interface DataGridProps {
    *  built-in segment (Active) COMPOSES with it, so it scopes within
    *  that lifecycle slice, not across all of them. */
   savedTabs?: boolean;
+
+  // ── Controlled view-state (opt-in) ───────────────────────────────
+  //
+  // Every prop below is OPTIONAL and defaults to the grid owning the
+  // state itself, exactly as before.  They exist for one case: a page
+  // whose data is larger than one fetch, where filtering has to happen
+  // on the SERVER.  A grid only ever sees the rows it was handed, so a
+  // client-side filter over a capped page silently disagrees with the
+  // real total — it narrows 2,000 loaded rows and reports that as the
+  // answer for 4,000.  Handing the page control lets the filter UI stay
+  // here (one surface, column menus, saved tabs) while the actual
+  // narrowing happens where the whole set lives.
+
+  /** Controlled column filters.  Supply with ``onColumnFiltersChange``;
+   *  omit both to let the grid keep its own. */
+  columnFilters?: ColumnFiltersState;
+  /** Called with the NEXT filter state whenever the grid would change it
+   *  (column menu, a removed chip, "clear all"). */
+  onColumnFiltersChange?: (next: ColumnFiltersState) => void;
+  /** Filtering already happened upstream, so don't filter the rows
+   *  again here.  Controlled filters alone do NOT imply this: a page may
+   *  control them just to mirror them into the URL while the grid still
+   *  does the work. */
+  manualFiltering?: boolean;
+
+  /** Controlled segment/tab selection (the key of the active tab). */
+  segmentKey?: string;
+  /** Called with the key of the tab the operator picked. */
+  onSegmentChange?: (key: string) => void;
+  /** Authoritative per-segment counts, keyed by segment key.  Without
+   *  this the badge counts LOADED rows, which on a server-filtered grid
+   *  prints a confidently wrong number in the most prominent place on
+   *  the page.  Keys left out fall back to the local tally. */
+  segmentCounts?: Record<string, number>;
 }
 
 // ── Server-side preference keys ───────────────────────────────
@@ -533,6 +567,9 @@ export default function DataGrid({
   savedTabs: savedTabsEnabled = false,
   bulkSelection = false, onBulkSelectionChange, bulkActions, bulkRowLabel,
   isRowSelectable, selectedIds: controlledSelectedIds, onSelectedIdsChange,
+  columnFilters: controlledColumnFilters, onColumnFiltersChange,
+  manualFiltering = false,
+  segmentKey: controlledSegmentKey, onSegmentChange, segmentCounts: serverSegmentCounts,
 }: DataGridProps) {
   const { t } = useTranslation();
   // Account timezone — used to format ``aggType: 'date'`` aggregates
@@ -542,7 +579,43 @@ export default function DataGrid({
   const timeZone = useTimezone();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [globalFilter, setGlobalFilter] = useState('');
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  // Callback refs so the setters below keep a STABLE identity: they feed
+  // tanstack's table options and several dependency arrays, and a page
+  // passing an inline arrow would otherwise re-create them every render.
+  const onColumnFiltersChangeRef = useRef(onColumnFiltersChange);
+  onColumnFiltersChangeRef.current = onColumnFiltersChange;
+  const onSegmentChangeRef = useRef(onSegmentChange);
+  onSegmentChangeRef.current = onSegmentChange;
+  // Read inside memoised column definitions, so flipping the flag can't
+  // require rebuilding every column def.
+  const manualFilteringRef = useRef(manualFiltering);
+  manualFilteringRef.current = manualFiltering;
+
+  // Column filters — grid-owned unless the page supplies them.  The
+  // setter keeps a ``Dispatch<SetStateAction>`` shape in both modes so
+  // every existing call site (chip removal, "clear all", the column
+  // menus) is untouched, including the ones that pass an updater fn.
+  const [ownColumnFilters, setOwnColumnFilters] = useState<ColumnFiltersState>([]);
+  const columnFiltersControlled = controlledColumnFilters !== undefined;
+  const columnFilters = controlledColumnFilters ?? ownColumnFilters;
+  // Read through a ref inside the setter: a controlled parent may batch
+  // several updates before re-rendering us, and a functional updater must
+  // see the latest value rather than the one captured at render.
+  const columnFiltersRef = useRef(columnFilters);
+  columnFiltersRef.current = columnFilters;
+  const setColumnFilters = useCallback<Dispatch<SetStateAction<ColumnFiltersState>>>(
+    (updater) => {
+      const next = typeof updater === 'function'
+        ? (updater as (prev: ColumnFiltersState) => ColumnFiltersState)(columnFiltersRef.current)
+        : updater;
+      // Advance the ref NOW so two calls in one synchronous batch chain
+      // off each other, the way a plain useState updater would.
+      columnFiltersRef.current = next;
+      if (!columnFiltersControlled) setOwnColumnFilters(next);
+      onColumnFiltersChangeRef.current?.(next);
+    },
+    [columnFiltersControlled],
+  );
   // Density is a personal reading preference — deliberately GLOBAL
   // across every table (one key, no tableId namespace) and synced
   // server-side so it follows the operator across devices like the
@@ -551,7 +624,7 @@ export default function DataGrid({
   const {
     value: densityPref,
     setValue: setDensity,
-  } = useUserPreference<Density>('table.density', readLegacyDensity());
+  } = usePreference('table.density');
   const density: Density = DENSITY_CYCLE.includes(densityPref)
     ? densityPref
     : 'default';
@@ -590,16 +663,12 @@ export default function DataGrid({
   const {
     value: savedTabList,
     setValue: setSavedTabList,
-    hydrated: tabsHydrated,
-  } = useUserPreference<SavedTab[]>(
-    savedTabsEnabled ? tabsKey(tableId) : '', NO_TABS,
-  );
+  } = useTablePreference(savedTabsEnabled ? tableId : undefined, 'views', NO_TABS);
   // One-time coach-mark: after an operator makes their FIRST personal tab,
   // teach right-click management (there's no ⋮ button).  Global per-user
   // flag so it fires once across every grid, not once per table.
-  const { value: tabCoachSeen, setValue: setTabCoachSeen } = useUserPreference<boolean>(
-    savedTabsEnabled ? 'datagrid.savedTabCoachSeen' : '', false,
-  );
+  const { value: tabCoachSeen, setValue: setTabCoachSeen } =
+    usePreference('datagrid.savedTabCoachSeen');
   const tabSegments = useMemo<DataGridSegment[]>(() => {
     if (!savedTabsEnabled) return [];
     return savedTabList.map(v => {
@@ -628,7 +697,25 @@ export default function DataGrid({
     return [...base, ...tabSegments];
   }, [segments, savedTabsEnabled, tabSegments]);
 
-  const [segmentPref, setSegmentPref] = useState<string>(effectiveSegments[0]?.key ?? '');
+  // Active tab — grid-owned unless the page supplies it.  Same
+  // dual-mode shape as the filters above; line 741's functional update
+  // (a deleted tab falling back) relies on the updater form working.
+  const [ownSegmentPref, setOwnSegmentPref] = useState<string>(effectiveSegments[0]?.key ?? '');
+  const segmentControlled = controlledSegmentKey !== undefined;
+  const segmentPref = controlledSegmentKey ?? ownSegmentPref;
+  const segmentPrefRef = useRef(segmentPref);
+  segmentPrefRef.current = segmentPref;
+  const setSegmentPref = useCallback<Dispatch<SetStateAction<string>>>(
+    (updater) => {
+      const next = typeof updater === 'function'
+        ? (updater as (prev: string) => string)(segmentPrefRef.current)
+        : updater;
+      segmentPrefRef.current = next;
+      if (!segmentControlled) setOwnSegmentPref(next);
+      onSegmentChangeRef.current?.(next);
+    },
+    [segmentControlled],
+  );
   const activeSegment = useMemo(() => {
     if (!effectiveSegments.length) return null;
     // Selected key may reference a tab that no longer exists (a tab was
@@ -641,26 +728,28 @@ export default function DataGrid({
   const {
     value: defaultTab,
     setValue: setDefaultTab,
-    hydrated: defaultHydrated,
-  } = useUserPreference<string>(
-    savedTabsEnabled ? defaultTabKey(tableId) : '', '',
-  );
+  } = useTablePreference(savedTabsEnabled ? tableId : undefined, 'defaultView');
+  // Both saved-tab prefs are 'synced', so their authoritative values only
+  // exist once the account's bulk read has landed.  One store-wide signal
+  // replaces the two per-key `hydrated` flags this used to await.
+  const prefsLoaded = useSyncLoaded();
   const appliedDefault = useRef(false);
   useEffect(() => {
     if (appliedDefault.current) return;
-    // Wait for the server value to land — on a fresh device the pref is
-    // '' until the fetch resolves; deciding "no default" before then
-    // would permanently skip applying it.
-    if (!defaultHydrated || !tabsHydrated) return;
+    // Wait for the account's copy to land — on a fresh device the pref is
+    // '' until the bulk read resolves; deciding "no default" before then
+    // would permanently skip applying it.  (Resolves immediately when
+    // syncing is off, and even if the read FAILS, so this can't hang.)
+    if (!prefsLoaded) return;
     if (!defaultTab) { appliedDefault.current = true; return; }
     const key = TAB_PREFIX + defaultTab;
     if (effectiveSegments.some(s => s.key === key)) {
       setSegmentPref(key);
     }
     // Whether or not the (possibly-deleted) default tab resolved, the
-    // one-shot is spent once both prefs are hydrated.
+    // one-shot is spent once the preferences have loaded.
     appliedDefault.current = true;
-  }, [defaultHydrated, tabsHydrated, defaultTab, effectiveSegments]);
+  }, [prefsLoaded, defaultTab, effectiveSegments]);
 
   // Applying a tab's captured SORT when it becomes the active tab (click
   // or default-on-load).  Keyed only on the active TAB id, so it fires
@@ -678,12 +767,18 @@ export default function DataGrid({
     if (!effectiveSegments.length) return {};
     const counts: Record<string, number> = {};
     for (const seg of effectiveSegments) {
+      // A server-supplied count WINS.  On a grid whose rows are a capped
+      // page of a larger set, tallying loaded rows would print a number
+      // that looks authoritative and isn't — and a tab badge is the most
+      // prominent number on the page.
+      const fromServer = serverSegmentCounts?.[seg.key];
+      if (fromServer !== undefined) { counts[seg.key] = fromServer; continue; }
       counts[seg.key] = seg.match
         ? sourceData.filter(seg.match).length
         : sourceData.length;
     }
     return counts;
-  }, [effectiveSegments, sourceData]);
+  }, [effectiveSegments, sourceData, serverSegmentCounts]);
   const data = useMemo(() => {
     if (!activeSegment?.match) return sourceData;
     return sourceData.filter(activeSegment.match);
@@ -846,7 +941,7 @@ export default function DataGrid({
   const {
     value: columnVisibility,
     setValue: setColumnVisibility,
-  } = useUserPreference<VisibilityState>(visibilityKey(tableId), {});
+  } = useTablePreference(tableId, 'visibility');
   // Effective visibility = column-level ``defaultHidden`` overlaid by
   // the operator's persisted choices.  Persisted always wins where
   // set, so unhiding a defaultHidden column sticks; Reset clears
@@ -863,14 +958,11 @@ export default function DataGrid({
   const {
     value: columnOrder,
     setValue: setColumnOrder,
-  } = useUserPreference<ColumnOrderState>(orderKey(tableId), []);
+  } = useTablePreference(tableId, 'order');
   const {
     value: columnPinning,
     setValue: setColumnPinning,
-  } = useUserPreference<ColumnPinningState>(
-    pinningKey(tableId),
-    { left: [], right: [] },
-  );
+  } = useTablePreference(tableId, 'pinning', { left: [], right: [] });
   // ColumnSizing is populated by a per-header ResizeObserver below
   // (see ColumnHeaderCell).  tanstack uses these values inside
   // ``column.getStart('left') / getAfter('right')`` to compute the
@@ -898,7 +990,7 @@ export default function DataGrid({
   const {
     value: userWidths,
     setValue: setUserWidths,
-  } = useUserPreference<Record<string, number>>(colWidthsKey(tableId), {});
+  } = useTablePreference(tableId, 'colWidths');
   const hasUserWidths = Object.keys(userWidths).length > 0;
   // What tanstack sees: measured widths (for pinned offsets on auto-
   // layout tables) overlaid by the operator's explicit widths.
@@ -916,7 +1008,7 @@ export default function DataGrid({
   const {
     value: groupOverrides,
     setValue: setGroupOverrides,
-  } = useUserPreference<Record<string, string | null>>(groupsKey(tableId), {});
+  } = useTablePreference(tableId, 'groups');
   const effectiveGroupByKey = useMemo(() => {
     const m = new Map<string, string | null>();
     for (const col of columns) {
@@ -971,7 +1063,7 @@ export default function DataGrid({
   const {
     value: rowGroupPref,
     setValue: setRowGroupPref,
-  } = useUserPreference<string | null>(rowGroupKey(tableId), defaultRowGroup ?? null);
+  } = useTablePreference(tableId, 'rowGroup', defaultRowGroup ?? null);
   // Drop a stale pref if the column was removed from the config.
   const rowGroupBy = rowGroupPref && columns.some(c => c.key === rowGroupPref)
     ? rowGroupPref
@@ -997,9 +1089,7 @@ export default function DataGrid({
   const {
     value: aggregationPref,
     setValue: setAggregationPref,
-  } = useUserPreference<Record<string, AggFn>>(
-    aggregationKey(tableId), defaultAggregation ?? {},
-  );
+  } = useTablePreference(tableId, 'aggregation', defaultAggregation ?? {});
   const aggregationModel = useMemo<Record<string, AggFn>>(() => {
     const out: Record<string, AggFn> = {};
     for (const [key, fn] of Object.entries(aggregationPref)) {
@@ -1032,7 +1122,7 @@ export default function DataGrid({
   const {
     value: pageSize,
     setValue: setPageSize,
-  } = useUserPreference<number>(pageSizeKey(tableId), DEFAULT_PAGE_SIZE);
+  } = useTablePreference(tableId, 'pageSize', DEFAULT_PAGE_SIZE);
   const [pageIndex, setPageIndex] = useState(0);
   useEffect(() => {
     setPageIndex(0);
@@ -1136,6 +1226,14 @@ export default function DataGrid({
           // every column uses ``accessorKey``, so ``row.getValue(key)``
           // equals ``row.original[key]``.)
           def.filterFn = (row, _colId, filterValue) => {
+            // ``manualFiltering``: the rows arrived already filtered, so
+            // applying the predicate again would double-filter them.
+            // Neutralised HERE rather than by withholding the state (the
+            // menus read the state back) or via tanstack's own
+            // ``manualFiltering`` option (that short-circuits the entire
+            // filtered row model, and GLOBAL SEARCH lives in it too — the
+            // search box would silently stop working).
+            if (manualFilteringRef.current) return true;
             if (isRange) {
               const range = filterValue as [number | null, number | null] | undefined;
               if (!range || (range[0] == null && range[1] == null)) return true;
@@ -1239,6 +1337,12 @@ export default function DataGrid({
     state: {
       sorting,
       globalFilter: hasSearch ? globalFilter : undefined,
+      // Always the REAL filters, even under ``manualFiltering``.  The
+      // menus, the header tint and the 3-dot badge all read the value
+      // back through ``column.getFilterValue()``, which reads THIS — so
+      // withholding it would leave an active filter showing a chip on the
+      // toolbar and an empty, unticked menu when you opened the column.
+      // Not filtering is handled in the filterFn instead (see below).
       columnFilters,
       columnVisibility: effectiveVisibility,
       columnOrder,
@@ -1677,6 +1781,16 @@ export default function DataGrid({
     const needle = hasSearch ? globalFilter.trim().toLowerCase() : '';
     for (const col of columns) {
       if (!col.filterable || col.filterMode === 'range' || col.filterMode === 'date-range') continue;
+      // A DECLARED option list short-circuits the derivation.  The
+      // derivation below reads the loaded rows, which is right only when
+      // the grid holds the whole set — otherwise choosing a value
+      // unloads every other value and the menu strands the operator on
+      // their own selection.  No counts: we weren't given the rows to
+      // count, and a wrong count is worse than none.
+      if (col.filterOptions) {
+        out[col.key] = { options: col.filterOptions, counts: {} };
+        continue;
+      }
       // Rows surviving every filter EXCEPT this column's own.
       const contextRows = data.filter(row => {
         if (needle) {

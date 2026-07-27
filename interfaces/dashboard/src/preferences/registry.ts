@@ -39,6 +39,15 @@
  *  - ``synced`` — belongs to the PERSON, so it should follow them to
  *    another browser.  Declared now; inert until Phase 2 attaches the
  *    remote backend. */
+// Type-only imports (no runtime dependency — the registry still owns the
+// stored SHAPE, it just doesn't re-declare types the consumer already
+// defines, which would let the two drift).
+import type {
+  VisibilityState, ColumnOrderState, ColumnPinningState,
+} from '@tanstack/react-table';
+import type { AggFn } from '../types';
+import type { SavedTab } from '../components/datagrid/tabs/savedTabs';
+
 export type PrefScope = 'device' | 'synced';
 
 export interface PrefDef<T = unknown> {
@@ -100,6 +109,8 @@ export type NotifPosition = 'top-right' | 'bottom-right' | 'bottom-center';
 export type BannerLevel = 'all' | 'critical' | 'off';
 export type MaintenanceViewMode = 'list' | 'calendar';
 export type InviteChannel = 'telegram' | 'url' | 'email';
+/** Row height shared by every DataGrid (mirrors DataGrid's Density). */
+export type TableDensity = 'compact' | 'default' | 'roomy';
 
 const THEME_DEFAULT: ThemeSetting = {
   color: 'dark-blue', density: 'default', radius: 'rounded',
@@ -243,6 +254,26 @@ export const DEFS = {
     note: 'Assistant panel expanded to full height.',
   }),
 
+  // ── DataGrid (the two keys that are NOT per-table) ────────────────
+  // Density is one setting for every grid — an operator who wants tight
+  // rows wants them everywhere — so it is a FIXED key, not a family.
+  // Single dot on purpose: `defFor` requires two for a family key, which
+  // is what keeps 'table.density' from being read as table id "density".
+  'table.density': def<TableDensity>({
+    default: 'default',
+    scope: 'synced',
+    legacyKeys: ['4truck.table.density'],
+    fromLegacy: (raw) => raw as TableDensity,
+    sanitize: oneOf<TableDensity>(['compact', 'default', 'roomy']),
+    note: 'Row height in every table.',
+  }),
+  'datagrid.savedTabCoachSeen': def<boolean>({
+    default: false,
+    scope: 'synced',
+    sanitize: asBool,
+    note: 'The one-time "right-click a tab" tip has been shown.',
+  }),
+
   // ── Dismissals ────────────────────────────────────────────────────
   // "I've seen this, stop showing it."  synced: having dismissed a
   // one-time explainer is a fact about the PERSON — being re-taught the
@@ -339,18 +370,18 @@ export type PrefKey = keyof typeof DEFS;
 // real rows (column layouts and SAVED TABS).  `tableKey` is the only
 // place those strings are constructed — the frozen test pins its output.
 export const TABLE_PARTS = {
-  visibility:  def<Record<string, boolean>>({ default: {}, scope: 'synced', note: 'Hidden columns.' }),
-  order:       def<string[]>({ default: [], scope: 'synced', note: 'Column order.' }),
-  pinning:     def<{ left?: string[]; right?: string[] }>({ default: {}, scope: 'synced', note: 'Pinned columns.' }),
+  visibility:  def<VisibilityState>({ default: {}, scope: 'synced', note: 'Hidden columns.' }),
+  order:       def<ColumnOrderState>({ default: [], scope: 'synced', note: 'Column order.' }),
+  pinning:     def<ColumnPinningState>({ default: { left: [], right: [] }, scope: 'synced', note: 'Pinned columns.' }),
   colWidths:   def<Record<string, number>>({ default: {}, scope: 'synced', note: 'Column widths.' }),
   groups:      def<Record<string, string | null>>({ default: {}, scope: 'synced', note: 'Column bracket groups.' }),
   rowGroup:    def<string | null>({ default: null, scope: 'synced', note: 'Column rows are grouped by.' }),
-  aggregation: def<Record<string, string>>({ default: {}, scope: 'synced', note: 'Footer totals per column.' }),
+  aggregation: def<Record<string, AggFn>>({ default: {}, scope: 'synced', note: 'Footer totals per column.' }),
   pageSize:    def<number>({ default: 25, scope: 'synced', note: 'Rows per page.' }),
   // The saved-tab pair.  NOTE the stored suffixes are '.views' and
   // '.defaultView' — the ORIGINAL names, kept through the view→tab
   // rename.  Renaming them orphans every saved tab.
-  views:       def<unknown[]>({ default: [], scope: 'synced', note: 'Your saved tabs.' }),
+  views:       def<SavedTab[]>({ default: [], scope: 'synced', note: 'Your saved tabs.' }),
   defaultView: def<string>({ default: '', scope: 'synced', note: 'Tab that opens by default.' }),
 } satisfies Record<string, PrefDef<unknown>>;
 

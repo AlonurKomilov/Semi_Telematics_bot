@@ -103,21 +103,22 @@ loses nothing.
   debounced. Per-key (never one blob) is what stops two devices writing
   different preferences from clobbering each other.
 
-## Known remaining work — DataGrid's per-table keys
+## DataGrid's per-table keys
 
-DataGrid still uses the older [`hooks/useUserPreference`](../hooks/useUserPreference.ts)
-for its ~10 per-table keys (`table.<id>.visibility|order|pinning|colWidths|`
-`groups|rowGroup|aggregation|pageSize|views|defaultView`) plus
-`table.density` and `datagrid.savedTabCoachSeen`.
+DataGrid stores a SET of preferences per table, so its keys aren't fixed:
+`table.<id>.visibility|order|pinning|colWidths|groups|rowGroup|`
+`aggregation|pageSize|views|defaultView`. They're declared once in
+`TABLE_PARTS` and addressed through **`useTablePreference(tableId, part,
+defaultValue?)`**; `tableKey()` is the only place the string is built and
+`registry.test.ts` pins its output for every part.
 
-This is deliberate, not an oversight:
-- That hook **respects `prefs.syncEnabled`**, so the profile toggle already
-  governs grid state and `usage.ts` already counts its bytes (it shares the
-  `4truck.pref.` prefix) — the user-visible behaviour is already correct.
-- Moving them needs dynamic KEY FAMILIES (`` `table.${string}.views` ``)
-  plus rewriting 10 pieces of state in the file that owns saved tabs — real
-  data-loss risk for **zero** user-visible gain.
+Two DataGrid keys are NOT families — `table.density` and
+`datagrid.savedTabCoachSeen` are one setting for every grid, so they're
+fixed keys. (`defFor` needs TWO dots to treat a key as a family, which is
+what stops `table.density` being read as table id "density".)
 
-If you do migrate them: add a `keyFamily()` helper with template-literal
-types, keep every stored key string byte-identical, and extend the frozen
-test to cover the families before touching a call site.
+`useSyncLoaded()` answers "has the account's copy arrived?" — DataGrid
+gates "apply the default tab exactly once" on it, replacing the per-key
+`hydrated` flag the retired `useUserPreference` hook exposed. It resolves
+immediately when syncing is off and even when the bulk read FAILS, so an
+offline device can't hang waiting for it.

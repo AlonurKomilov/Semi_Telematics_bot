@@ -10,7 +10,7 @@
  * ``capabilities/preferences/CLAUDE.md``.  Full guide: ./CLAUDE.md
  */
 
-export { usePreference } from './usePreference';
+export { usePreference, useTablePreference, useSyncLoaded } from './usePreference';
 export {
   DEFS,
   isPrefKey,
