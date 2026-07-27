@@ -97,6 +97,13 @@ function _formatDate(iso: string | null, tz?: string): string {
   return formatDay(iso, { timeZone: tz, intl: { year: 'numeric', month: 'short', day: 'numeric' } });
 }
 
+/** ``needs_service`` → ``Needs Service``.  Used by BOTH the filter menu
+ *  and the pivot headers so a status can't read one way in the dropdown
+ *  and another as a row label. */
+function _humanise(code: string): string {
+  return code ? code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '(none)';
+}
+
 
 // ── Columns ───────────────────────────────────────────────────────
 
@@ -104,17 +111,21 @@ const buildColumns = (tz?: string): AnyColumn[] => [
   { key: 'user_id',       label: 'Driver', sortable: true,
     render: (v) => <span className="font-mono text-xs">user {String(v ?? '—')}</span> },
   { key: 'vehicle_name',  label: 'Vehicle', sortable: true, filterable: true,
+    pivotable: true,
     render: (v) => <span className="font-mono">{String(v ?? '—')}</span> },
   { key: 'inspection_type', label: 'Type', sortable: true, filterable: true,
+    pivotable: true, pivotLabel: _humanise,
     filterValue: (row) => String((row as PTIInspectionRow).inspection_type ?? ''),
-    filterLabel: (row) => {
-      const s = String((row as PTIInspectionRow).inspection_type ?? '');
-      return s ? s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '(none)';
-    },
+    filterLabel: (row) => _humanise(String((row as PTIInspectionRow).inspection_type ?? '')),
     render: (v) => <span className="capitalize">{String(v ?? '—')}</span> },
   { key: 'submitted_at',  label: 'Submitted', sortable: true,
     filterable: true, filterMode: 'date-range',
     aggregable: true, aggType: 'date',
+    // The event date, so it's the one time axis a pivot offers (auto
+    // Year/Quarter/Month).  Due / Reviewed are schedule and workflow
+    // dates — pivoting defects by "when it was DUE" answers a question
+    // nobody asks, and three date columns would triple the picker.
+    pivotable: true,
     render: (v) => _formatDate(typeof v === 'string' ? v : null, tz) },
   { key: 'due_by',        label: 'Due', sortable: true,
     filterable: true, filterMode: 'date-range',
@@ -128,11 +139,9 @@ const buildColumns = (tz?: string): AnyColumn[] => [
     aggFormat: (value) => <span className="tabular-nums font-medium">{value.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>,
     render: (_v, row) => <DefectsCell row={row as PTIInspectionRow} /> },
   { key: 'status',        label: 'Status', sortable: true, filterable: true,
+    pivotable: true, pivotLabel: _humanise,
     filterValue: (row) => String((row as PTIInspectionRow).status ?? ''),
-    filterLabel: (row) => {
-      const s = String((row as PTIInspectionRow).status ?? '');
-      return s ? s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '(none)';
-    },
+    filterLabel: (row) => _humanise(String((row as PTIInspectionRow).status ?? '')),
     render: (_v, row) => <StatusChip row={row as PTIInspectionRow} /> },
   { key: 'reviewed_at',   label: 'Reviewed', sortable: true,
     // Date agg — earliest / latest review date (nulls drop out).
@@ -420,6 +429,7 @@ export default function Inspections() {
             columns={columns}
             data={rows as unknown as Record<string, unknown>[]}
             searchKey="vehicle_name"
+            pivot
             onRowClick={(row) => setSelected(row as unknown as PTIInspectionRow)}
           />
           <p className="text-xs text-muted-foreground mt-2">
