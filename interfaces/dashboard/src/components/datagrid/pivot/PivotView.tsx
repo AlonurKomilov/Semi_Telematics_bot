@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react';
-import { TableProperties, ChevronRight, ChevronDown } from 'lucide-react';
+import {
+  TableProperties, ChevronRight, ChevronDown, ArrowUp, ArrowDown,
+} from 'lucide-react';
 
 import { cn } from '../../../lib/utils';
 import { EmptyState } from '../../shell';
@@ -27,7 +29,7 @@ import { pivot, type PivotModel } from './pivot';
  * footer-aggregation treatment (``bg-muted font-semibold text-primary``).
  */
 export default function PivotView({
-  rows, model, columns, padding,
+  rows, model, columns, padding, onModelChange,
 }: {
   /** MUST be the same post-segment/filter/search rows the grid's own
    *  footer aggregation reduces, so the two can never disagree. */
@@ -36,6 +38,9 @@ export default function PivotView({
   columns: AnyColumn[];
   /** The density padding classes the grid is currently using. */
   padding: string;
+  /** Sorting writes back to the model, so the choice persists like the
+   *  rest of the report's configuration. */
+  onModelChange?: (next: PivotModel) => void;
 }) {
   const result = useMemo(
     () => pivot(rows, model, columns),
@@ -156,12 +161,41 @@ export default function PivotView({
                     )}
                   >
                     {cell.aggFn ? (
-                      <span className="inline-flex flex-col items-end leading-tight">
-                        <span>{cell.label}</span>
+                      // Clicking a measure header sorts rows BY that
+                      // measure: desc (biggest first — the question people
+                      // actually ask) -> asc -> back to label order.
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!onModelChange) return;
+                          const leaf = result.leafIds[i];
+                          const cur = model.sort;
+                          const next = cur?.leaf !== leaf
+                            ? { leaf, dir: 'desc' as const }
+                            : cur.dir === 'desc'
+                              ? { leaf, dir: 'asc' as const }
+                              : null;
+                          onModelChange({ ...model, sort: next });
+                        }}
+                        className={cn(
+                          'inline-flex flex-col items-end leading-tight w-full',
+                          onModelChange && 'hover:text-foreground transition-colors cursor-pointer',
+                          model.sort?.leaf === result.leafIds[i] && 'text-foreground',
+                        )}
+                        title={onModelChange ? `Sort rows by ${cell.label}` : undefined}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {model.sort?.leaf === result.leafIds[i] && (
+                            model.sort.dir === 'desc'
+                              ? <ArrowDown size={12} />
+                              : <ArrowUp size={12} />
+                          )}
+                          {cell.label}
+                        </span>
                         <span className="text-3xs font-normal normal-case">
                           {AGG_FN_LABELS[cell.aggFn].toLowerCase()}
                         </span>
-                      </span>
+                      </button>
                     ) : cell.label}
                   </th>
                 ))}

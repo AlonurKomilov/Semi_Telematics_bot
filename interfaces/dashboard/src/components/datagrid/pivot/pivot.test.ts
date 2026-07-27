@@ -347,3 +347,69 @@ describe('pivot — multi-level ROWS (Company > Customer)', () => {
     expect(r.bodyRows.map((b) => b.label)).toEqual(['CFT', 'PTG']);
   });
 });
+
+describe('pivot — sorting by a measure', () => {
+  const COLS: AnyColumn[] = [
+    { key: 'company', label: 'Company', pivotable: true },
+    { key: 'customer', label: 'Customer', pivotable: true },
+    { key: 'rate', label: 'Rate', aggregable: true },
+  ];
+  const DATA = [
+    { company: 'PTG', customer: 'Acme', rate: 100 },
+    { company: 'PTG', customer: 'Zed', rate: 900 },
+    { company: 'CFT', customer: 'Bolt', rate: 500 },
+  ];
+  const base: PivotModel = {
+    rows: ['company'], columns: [], values: [{ key: 'rate', aggFn: 'sum' }],
+  };
+  const leaf = '||rate';
+
+  it('orders alphabetically when no sort is set', () => {
+    expect(pivot(DATA, base, COLS).bodyRows.map((b) => b.label))
+      .toEqual(['CFT', 'PTG']);
+  });
+
+  it('orders by the measure, descending', () => {
+    const r = pivot(DATA, { ...base, sort: { leaf, dir: 'desc' } }, COLS);
+    // PTG 1000 > CFT 500
+    expect(r.bodyRows.map((b) => b.label)).toEqual(['PTG', 'CFT']);
+  });
+
+  it('orders by the measure, ascending', () => {
+    const r = pivot(DATA, { ...base, sort: { leaf, dir: 'asc' } }, COLS);
+    expect(r.bodyRows.map((b) => b.label)).toEqual(['CFT', 'PTG']);
+  });
+
+  it('sorts siblings WITHIN a parent, never tearing the tree apart', () => {
+    const r = pivot(DATA, {
+      rows: ['company', 'customer'], columns: [],
+      values: [{ key: 'rate', aggFn: 'sum' }],
+      sort: { leaf, dir: 'desc' },
+    }, COLS);
+    // PTG (1000) before CFT (500); inside PTG, Zed (900) before Acme (100).
+    expect(r.bodyRows.map((b) => `${b.depth}:${b.label}`)).toEqual([
+      '0:PTG', '1:Zed', '1:Acme', '0:CFT', '1:Bolt',
+    ]);
+  });
+
+  it('sinks rows with no value in that column to the bottom either way', () => {
+    const data = [
+      { company: 'PTG', region: 'N', rate: 10 },
+      { company: 'CFT', region: 'S', rate: 20 },
+    ];
+    const cols = [...COLS, { key: 'region', label: 'Region', pivotable: true }];
+    const m = (dir: 'asc' | 'desc'): PivotModel => ({
+      rows: ['company'], columns: ['region'],
+      values: [{ key: 'rate', aggFn: 'sum' }],
+      sort: { leaf: `N||rate`, dir },
+    });
+    // CFT has nothing in N — absent is not "smaller than every number".
+    expect(pivot(data, m('asc'), cols).bodyRows.map((b) => b.label)).toEqual(['PTG', 'CFT']);
+    expect(pivot(data, m('desc'), cols).bodyRows.map((b) => b.label)).toEqual(['PTG', 'CFT']);
+  });
+
+  it('falls back to label order when the sorted leaf no longer exists', () => {
+    const r = pivot(DATA, { ...base, sort: { leaf: 'gone||rate', dir: 'desc' } }, COLS);
+    expect(r.bodyRows.map((b) => b.label)).toEqual(['CFT', 'PTG']);
+  });
+});

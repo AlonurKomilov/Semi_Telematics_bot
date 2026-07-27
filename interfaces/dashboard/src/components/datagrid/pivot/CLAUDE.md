@@ -66,6 +66,20 @@ prefs are untouched and return when pivot is switched off.
 PivotView is fed the **same post-filter/search rows the footer
 aggregation reduces**, so the two can never disagree.
 
+## Sorting
+
+Click a measure header to order rows BY that measure: desc (biggest
+first — the question people actually ask) → asc → back to label order.
+The choice lives in the model, so it persists with the rest of the
+report.
+
+Two rules the tests pin: sorting happens WITHIN each parent, never
+across the flat list (that would tear children out of their group); and
+a row with NO value in the sorted column sinks to the bottom in BOTH
+directions — absent is not "smaller than every number". A sort naming a
+leaf that no longer exists falls back to label order rather than
+discarding the report.
+
 ## Export
 
 The toolbar's **Export to CSV** is mode-aware — one button, because an
@@ -111,7 +125,6 @@ nobody has to rediscover a gap):
 | Missing | Note |
 |---|---|
 | drag-and-drop reorder | checkbox pickers cover 1–2 levels |
-| pivot-side sorting (sort by a measure) | |
 | cell drill-down (click a cell → its rows) | |
 | saved-tab capture of the pivot model | `SavedTab.pivot?` name is reserved |
 | unassigned-field list with `+` | we list every field in each section instead |

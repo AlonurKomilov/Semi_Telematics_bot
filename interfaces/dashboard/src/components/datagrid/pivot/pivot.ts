@@ -35,6 +35,11 @@ export interface PivotModel {
   rows: string[];
   columns: string[];
   values: PivotValueField[];
+  /** Order rows by a MEASURE instead of alphabetically — "biggest
+   *  customer first".  ``leaf`` is a leaf column id; a stale one (the
+   *  bucket vanished after a filter change) silently falls back to the
+   *  label order rather than throwing the report away. */
+  sort?: { leaf: string; dir: 'asc' | 'desc' } | null;
 }
 
 /** One header cell — ``span`` is a colSpan over the leaf columns below. */
@@ -286,7 +291,16 @@ export function pivot(
       .map((id) => id.slice(0, id.lastIndexOf(PATH_SEP)))
       .filter((p) => p !== ''),
   );
-  const bodyRows: PivotBodyRow[] = rowPathIds.map((rb) => {
+  const cellsFor = (rb: string) => leafIds.map((leaf, i) => {
+    const v = valueFields.find((f) => f.key === leafValueKeys[i])!;
+    return reduce(
+      v.aggFn,
+      collected.get(`${rb} ${leaf}`),
+      cellCounts.get(`${rb} ${colOf(leaf)}`) ?? 0,
+    );
+  });
+
+  const makeRow = (rb: string): PivotBodyRow => {
     const parts = rb.split(PATH_SEP);
     const depth = parts.length - 1;
     return {
@@ -296,16 +310,46 @@ export function pivot(
       hasChildren: hasChild.has(rb),
       label: labelOf(parts[depth], rowDims[depth]),
       count: rowCounts.get(rb) ?? 0,
-      cells: leafIds.map((leaf, i) => {
-        const v = valueFields.find((f) => f.key === leafValueKeys[i])!;
-        return reduce(
-          v.aggFn,
-          collected.get(`${rb} ${leaf}`),
-          cellCounts.get(`${rb} ${colOf(leaf)}`) ?? 0,
-        );
-      }),
+      cells: cellsFor(rb),
     };
-  });
+  };
+
+  // Sorting by a measure has to happen WITHIN each parent — sorting the
+  // flat list globally would tear children away from their group.  So
+  // group by parent, order each sibling set, then walk depth-first.
+  const sortLeafIdx = model.sort ? leafIds.indexOf(model.sort.leaf) : -1;
+  // Root sentinel, NOT '': a blank bucket produces the path id '', which
+  // would otherwise compute itself as its own parent and recurse forever.
+  const ROOT = '\u0001';
+  const childrenOf = new Map<string, string[]>();
+  for (const id of rowPathIds) {
+    const cut = id.lastIndexOf(PATH_SEP);
+    const parent = cut < 0 ? ROOT : id.slice(0, cut);
+    const arr = childrenOf.get(parent);
+    if (arr) arr.push(id); else childrenOf.set(parent, [id]);
+  }
+  const orderSiblings = (ids: string[]): string[] => {
+    if (sortLeafIdx < 0) return [...ids].sort();       // label order
+    const dir = model.sort!.dir === 'asc' ? 1 : -1;
+    return [...ids].sort((a, b) => {
+      const av = cellsFor(a)[sortLeafIdx];
+      const bv = cellsFor(b)[sortLeafIdx];
+      // Rows with nothing in that column sink to the bottom either way —
+      // "no value" is not smaller than every number, it's absent.
+      if (av === null && bv === null) return a.localeCompare(b);
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      return av === bv ? a.localeCompare(b) : (av - bv) * dir;
+    });
+  };
+  const bodyRows: PivotBodyRow[] = [];
+  const walk = (parent: string) => {
+    for (const id of orderSiblings(childrenOf.get(parent) ?? [])) {
+      bodyRows.push(makeRow(id));
+      walk(id);
+    }
+  };
+  walk(ROOT);
 
   const grandTotal = leafIds.map((leaf, i) => {
     const v = valueFields.find((f) => f.key === leafValueKeys[i])!;

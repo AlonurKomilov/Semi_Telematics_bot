@@ -1826,9 +1826,19 @@ export default function DataGrid({
         const btnCls = action.tone === 'danger'
           ? 'text-destructive hover:bg-destructive/10 hover:text-destructive'
           : 'text-muted-foreground hover:text-foreground';
-        const inner = Icon
-          ? <Icon />
-          : <span className="text-xs px-1 font-medium">{action.label}</span>;
+        // Icon AND label, not icon alone.  The bar only appears once rows
+        // are selected, so its buttons are the reason the operator
+        // selected them — and three anonymous glyphs made the primary
+        // action ("Acknowledge", on a safety queue) discoverable only by
+        // hovering, which a touch user cannot do at all.  The grid's own
+        // grammar rule says the most important action should be the most
+        // prominent; a wordless glyph is the opposite.
+        const inner = (
+          <span className="inline-flex items-center gap-1.5 px-1">
+            {Icon && <Icon />}
+            <span className="text-xs font-medium">{action.label}</span>
+          </span>
+        );
         if (action.options) {
           return (
             <MenuPrimitive.Root key={action.label}>
@@ -1839,7 +1849,7 @@ export default function DataGrid({
                       {...props}
                       type="button"
                       variant="ghost"
-                      size={Icon ? 'icon' : 'xs'}
+                      size="xs"
                       className={btnCls}
                       aria-label={action.label}
                     >
@@ -1872,7 +1882,7 @@ export default function DataGrid({
             <Button
               type="button"
               variant="ghost"
-              size={Icon ? 'icon' : 'xs'}
+              size="xs"
               className={btnCls}
               onClick={() => runBulkAction(action)}
               aria-label={action.label}
@@ -3160,6 +3170,7 @@ export default function DataGrid({
               model={pivotModel}
               columns={pivotColumns}
               padding={padding}
+              onModelChange={setPivotModel}
             />
           </div>
           {pivotPanelOpen && (

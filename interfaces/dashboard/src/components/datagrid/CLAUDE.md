@@ -26,9 +26,12 @@ list of records the operator would want to sort or filter, it's DataGrid.
 
 DataGrid owns row selection (the checkbox column — header select-all with
 indeterminate, per-row, group select-all) and the **bulk-action bar** — a
-TOP strip between the toolbar and the table (icon-only buttons with `<Tip>`
-tooltips, `tone: 'danger'` paints the icon red), shown when 1+ rows are
-selected. Turn it on with `bulkSelection` and pass `bulkActions={[{ label,
+TOP strip between the toolbar and the table (icon + LABEL buttons with
+`<Tip>` tooltips, `tone: 'danger'` paints the icon red), shown when 1+ rows
+are selected. Labels are shown, not hidden behind hover: the bar exists
+because rows are selected, so its buttons are the reason the operator
+selected them — wordless glyphs made the primary action reachable only by
+hovering, which a touch user can't do. Turn it on with `bulkSelection` and pass `bulkActions={[{ label,
 icon?, tone?, confirm?, options?, onRun(selectedRows, value?) }]}` — each
 `onRun` receives the selected ORIGINAL rows (never tanstack ids) and
 DataGrid clears the selection when it resolves. `options` makes the button a
