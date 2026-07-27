@@ -10,6 +10,7 @@
  * its label.
  */
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Check, ClipboardList, Plus } from 'lucide-react';
@@ -40,13 +41,21 @@ import {
 // a different noun per feature), so the grid keeps only the lifecycle
 // segments.  Truck/trailer narrowing lives on the "Applies to" column
 // filter, not as tabs.
+//
+// Archived can't simply be dropped even though it's usually empty: an
+// account CAN archive a shared task it doesn't do (its own call, and a
+// fan-out won't undo it), so without the tab those rows would vanish
+// with no way back.  It's shown only when it actually holds something
+// — see `segments` at the call site.
 const SEGMENTS: DataGridSegment[] = [
   { key: 'all', label: 'All' },
   { key: 'archived', label: 'Archived', match: (r) => r.status === 'archived' },
 ];
+const ACTIVE_ONLY: DataGridSegment[] = [];
 
 export default function ServiceTasks() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { has } = useViewPermissions();
   const canManage = has('can_service_tasks');
 
@@ -307,9 +316,10 @@ export default function ServiceTasks() {
         <DataGrid
           data={rows}
           columns={columns}
-          segments={SEGMENTS}
+          segments={rows.some((r) => r.status === 'archived') ? SEGMENTS : ACTIVE_ONLY}
           savedTabs
           rowActions={rowActions}
+          onRowClick={(row) => navigate(`/service-tasks/${(row as unknown as ServiceTask).id}`)}
           searchKey={['name', 'description']}
           searchPlaceholder="Search service tasks…"
           tableId={tab === 'mine' ? 'service-tasks-mine' : 'service-tasks-standard'}
