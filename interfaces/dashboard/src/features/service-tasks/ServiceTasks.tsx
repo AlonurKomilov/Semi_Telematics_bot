@@ -35,16 +35,12 @@ import {
   type ServiceTask,
 } from './api';
 
+// My tasks / Standard are PAGE tabs (the Vendors "My vendors |
+// Directory" presentation — owner call), so the grid keeps only the
+// lifecycle segments.  Truck/trailer narrowing lives on the
+// "Applies to" column filter, not as tabs.
 const SEGMENTS: DataGridSegment[] = [
   { key: 'all', label: 'All' },
-  // The Vendors mental model (My vendors / Directory), adapted: the
-  // shared standards ARE materialized into every account, so the
-  // "public" view is a tab over the same grid rather than a separate
-  // browse surface.
-  { key: 'mine', label: 'My tasks', match: (r) => !r.canonical_key },
-  { key: 'standard', label: 'Standard (shared)', match: (r) => !!r.canonical_key },
-  { key: 'trucks', label: 'Trucks', match: (r) => r.vehicle_type === 'truck' },
-  { key: 'trailers', label: 'Trailers', match: (r) => r.vehicle_type === 'trailer' },
   { key: 'archived', label: 'Archived', match: (r) => r.status === 'archived' },
 ];
 
@@ -53,6 +49,8 @@ export default function ServiceTasks() {
   const { has } = useViewPermissions();
   const canManage = has('can_service_tasks');
 
+  // Page-level surface tabs, like Vendors/Parts.
+  const [tab, setTab] = useState<'mine' | 'standard'>('mine');
   const [addOpen, setAddOpen] = useState(false);
   const [name, setName] = useState('');
   const [hours, setHours] = useState('');
@@ -84,8 +82,9 @@ export default function ServiceTasks() {
     systems.find((sy) => sy.key === k)?.label ?? '';
 
   const rows = useMemo(
-    () => (data?.service_tasks ?? []) as unknown as Record<string, unknown>[],
-    [data],
+    () => ((data?.service_tasks ?? []) as unknown as Record<string, unknown>[])
+      .filter((r) => (tab === 'mine' ? !r.canonical_key : !!r.canonical_key)),
+    [data, tab],
   );
 
   const refresh = () => {
@@ -114,6 +113,9 @@ export default function ServiceTasks() {
         system_key: addSystem,
       });
       setAddOpen(false);
+      // A task you add is always your own — land on the tab that holds
+      // it, or adding from Standard looks like nothing happened.
+      setTab('mine');
       setName('');
       setHours('');
       setAddDescription('');
@@ -259,14 +261,46 @@ export default function ServiceTasks() {
         ) : undefined}
       />
 
+      <div role="tablist" aria-label="Service task sections" className="flex gap-1 mb-4 border-b border-border">
+        {([
+          { key: 'mine' as const, label: 'My tasks' },
+          { key: 'standard' as const, label: 'Standard' },
+        ]).map(({ key, label }) => {
+          const sel = tab === key;
+          return (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={sel}
+              onClick={() => setTab(key)}
+              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition ${
+                sel
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
       {error && <ErrorState message={(error as Error).message} />}
       {isLoading && <TableSkeleton />}
       {!isLoading && !error && rows.length === 0 && (
-        <EmptyState
-          icon={ClipboardList}
-          title="No service tasks yet"
-          description="Standard tasks are added automatically — if this list is empty, try reloading."
-        />
+        tab === 'mine' ? (
+          <EmptyState
+            icon={ClipboardList}
+            title="No tasks of your own yet"
+            description="The Standard tab covers the common jobs — add your own here for work specific to your fleet."
+          />
+        ) : (
+          <EmptyState
+            icon={ClipboardList}
+            title="No standard tasks"
+            description="Standard tasks are added automatically — if this list is empty, try reloading."
+          />
+        )
       )}
       {!isLoading && !error && rows.length > 0 && (
         <DataGrid
@@ -277,7 +311,7 @@ export default function ServiceTasks() {
           rowActions={rowActions}
           searchKey={['name', 'description']}
           searchPlaceholder="Search service tasks…"
-          tableId="service-tasks"
+          tableId={tab === 'mine' ? 'service-tasks-mine' : 'service-tasks-standard'}
         />
       )}
 
