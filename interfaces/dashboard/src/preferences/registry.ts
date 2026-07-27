@@ -378,6 +378,13 @@ export const TABLE_PARTS = {
   rowGroup:    def<string | null>({ default: null, scope: 'synced', note: 'Column rows are grouped by.' }),
   aggregation: def<Record<string, AggFn>>({ default: {}, scope: 'synced', note: 'Footer totals per column.' }),
   pageSize:    def<number>({ default: 25, scope: 'synced', note: 'Rows per page.' }),
+  // The pivot model.  ``enabled`` lives INSIDE the object so toggling
+  // pivot off keeps the configuration — turning it back on restores what
+  // you had rather than an empty panel.  The model's arrays are what let
+  // multi-level pivoting arrive later WITHOUT changing this frozen key.
+  pivot:       def<{ enabled: boolean; model: { rows: string[]; columns: string[]; values: { key: string; aggFn: AggFn }[] } } | null>({
+    default: null, scope: 'synced', note: 'How this table is pivoted.',
+  }),
   // The saved-tab pair.  NOTE the stored suffixes are '.views' and
   // '.defaultView' — the ORIGINAL names, kept through the view→tab
   // rename.  Renaming them orphans every saved tab.

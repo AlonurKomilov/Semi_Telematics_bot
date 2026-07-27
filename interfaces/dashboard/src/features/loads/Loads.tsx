@@ -21,6 +21,8 @@ import { useRoleView } from '../../context/RoleViewContext';
 import { useAuth } from '../../context/AuthContext';
 import { statusClasses } from '../../lib/status';
 import type { AnyColumn } from '../../types';
+import { monthInTimeZone, formatMonth } from '../../utils/datetime';
+import { useTimezone } from '../../hooks/useTimezone';
 import LoadManageDialog from './LoadManageDialog';
 import LayoverDialog from './LayoverDialog';
 import type { PersonOption } from './LayoverDialog';
@@ -57,14 +59,14 @@ function SourceCell({ value }: { value: unknown }) {
   );
 }
 
-const COLUMNS: AnyColumn[] = [
+const makeColumns = (tz: string): AnyColumn[] => [
   { key: 'seq', label: 'ID', sortable: true, render: (v) => (v ? <span className="font-mono text-xs text-muted-foreground">{`#${v}`}</span> : <span className="text-muted-foreground">—</span>) },
   { key: 'load_number', label: 'Load #', sortable: true, render: (v) => (v ? <span className="font-medium">{String(v)}</span> : <span className="text-muted-foreground">—</span>) },
-  { key: 'customer', label: 'Customer', sortable: true, filterable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
-  { key: 'driver_name', label: 'Driver', sortable: true, filterable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
+  { key: 'customer', label: 'Customer', sortable: true, filterable: true, pivotable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
+  { key: 'driver_name', label: 'Driver', sortable: true, filterable: true, pivotable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   { key: 'vehicle_unit', label: 'Truck', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   { key: 'trailer_unit', label: 'Trailer', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
-  { key: 'company_code', label: 'Company', sortable: true, filterable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
+  { key: 'company_code', label: 'Company', sortable: true, filterable: true, pivotable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   { key: 'pickup_location', label: 'Pickup', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   { key: 'delivery_location', label: 'Delivery', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   {
@@ -74,6 +76,14 @@ const COLUMNS: AnyColumn[] = [
     // and formats the min/max as a day in the account timezone.
     aggregable: true,
     aggType: 'date',
+    // As a pivot DIMENSION this buckets to a calendar month — the
+    // "rate by customer x month" report.  The account timezone is
+    // load-bearing: a load delivered 23:00 on the 31st in Denver is the
+    // 1st in UTC, which would file its revenue in the wrong month.
+    pivotable: true,
+    pivotValue: (row) => monthInTimeZone(
+      String((row as { delivery_date?: string }).delivery_date ?? ''), tz),
+    pivotLabel: formatMonth,
     render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>),
   },
   {
@@ -133,6 +143,10 @@ const TABS: { key: string; label: string }[] = [
 
 export default function Loads() {
   const { t } = useTranslation();
+  const tz = useTimezone();
+  // Rebuilt when the account timezone resolves — the month buckets the
+  // pivot groups by depend on it.
+  const columns = useMemo(() => makeColumns(tz), [tz]);
   const { viewHas } = useRoleView();
   const qc = useQueryClient();
   const [tab, setTab] = useState('');
@@ -257,7 +271,8 @@ export default function Loads() {
           // Also what makes the ``filterable`` columns below actually
           // reachable — the filter popover opens from the 3-dot menu.
           tableId="loads"
-          columns={COLUMNS}
+          columns={columns}
+          pivot
           data={loads as unknown as Record<string, unknown>[]}
           searchKey="customer"
           searchPlaceholder={t('loads_page.search', 'Search customer…')}

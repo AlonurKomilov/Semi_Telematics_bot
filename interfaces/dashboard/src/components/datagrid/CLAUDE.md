@@ -218,3 +218,17 @@ menu; return `[]` for no menu. It's built on the shared context-menu
 primitive — full menu rules, the `MenuAction` shape, and the
 `features/<x>/contextMenu.tsx` builder convention live in
 [components/ui/CLAUDE.md](../ui/CLAUDE.md).
+
+## Pivot = the `pivot` prop (cross-tab reporting)
+
+Opt a `tableId` grid in with `pivot` and a toolbar toggle swaps the record
+list for a matrix (rows × columns × aggregated values) plus a Fields
+panel. Mark dimensions `pivotable: true`; measures are the existing
+`aggregable: true` columns. A dimension can bucket via `pivotValue`
+(that's how a date becomes a MONTH — in the ACCOUNT timezone).
+
+Pivot is a REPORT, not a record list: it renders through its own
+read-only view rather than the interactive grid, so column machinery
+(manage-columns, pagination) hides while scope controls (tabs, filter
+chips, search) stay live and narrow its input. CLIENT-COMPLETE data only.
+Rules + the deferred list: [pivot/CLAUDE.md](pivot/CLAUDE.md).

@@ -41,6 +41,34 @@ export function todayInTimeZone(tz?: string): string {
   }
 }
 
+/**
+ * The calendar MONTH a timestamp falls in, as ``YYYY-MM``, in the given
+ * timezone.  Used for month buckets (pivot columns, monthly rollups).
+ *
+ * The timezone is load-bearing, not decoration: a load delivered
+ * 2026-01-31 23:00 in Denver is 2026-02-01 06:00 UTC, so a UTC bucket
+ * files January revenue under February.  Sorts chronologically as a
+ * plain string, which is why the format is ``YYYY-MM``.
+ */
+export function monthInTimeZone(value: string | number | Date, tz?: string): string {
+  try {
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return '';
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz }).format(d).slice(0, 7);
+  } catch {
+    return '';
+  }
+}
+
+/** ``YYYY-MM`` -> "Jan 2026" for display. */
+export function formatMonth(bucket: string): string {
+  const [y, m] = bucket.split('-');
+  const idx = Number(m) - 1;
+  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return names[idx] ? `${names[idx]} ${y}` : bucket;
+}
+
 /** Format a timestamp as "Sep 14, 2026, 03:42 PM" in the given tz. */
 export function formatDate(
   value: string | number | Date | null | undefined,

@@ -3484,11 +3484,12 @@ export default function DataGrid({
         </div>
       )}
       </div>
+      )}
       {/* Pagination footer — skipped when ``enablePagination={false}``
           (short lists where paginating 5-20 rows adds noise).  The
           border-t lives on the div itself so it disappears with the
           section, leaving the table body flush with the card bottom. */}
-      {enablePagination && (
+      {enablePagination && !pivotOn && (
       <div className="flex flex-wrap items-center justify-between p-3 gap-3 bg-muted border-t border-border">
         {/* Filter-status hint on the left — only when active, so the
             footer stays quiet on the default view.  Pagination

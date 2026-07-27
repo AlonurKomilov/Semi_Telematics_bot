@@ -608,6 +608,21 @@ export interface Column<T = Record<string, unknown>> {
    *  function used.  Defaults to a locale number string (2 decimals for
    *  ``avg``) or, for a date column, a date in the account timezone. */
   aggFormat?: (value: number, fn: AggFn) => React.ReactNode;
+
+  // ── Pivot ────────────────────────────────────────────────────────
+  /** Offer this column in the pivot panel's Rows / Columns pickers (a
+   *  dimension to break the data down BY).  Measures come from
+   *  ``aggregable`` columns instead — a column can be either or both. */
+  pivotable?: boolean;
+  /** Bucket a row falls into for this dimension.  This is how a
+   *  timestamp column becomes a MONTH: return ``YYYY-MM`` computed in the
+   *  ACCOUNT timezone (utils/datetime.ts) — a UTC bucket drops late-month
+   *  loads into the wrong month.  Falls back to ``filterValue`` then the
+   *  raw cell when omitted. */
+  pivotValue?: (row: T) => string;
+  /** Pretty-print a bucket for the header ('2026-01' -> 'Jan 2026').
+   *  Receives the RAW bucket string from ``pivotValue``. */
+  pivotLabel?: (bucket: string) => string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

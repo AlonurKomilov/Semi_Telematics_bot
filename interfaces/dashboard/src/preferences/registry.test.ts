@@ -235,6 +235,7 @@ const FROZEN_TABLE_KEYS: Readonly<Record<string, string>> = {
   // The original suffixes, kept through the view→tab rename.
   views:       'table.my-grid.views',
   defaultView: 'table.my-grid.defaultView',
+  pivot:       'table.my-grid.pivot',
 };
 
 describe('preferences registry — key families', () => {
