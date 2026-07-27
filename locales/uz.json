@@ -412,7 +412,8 @@
     "owner_via_invite": "⛔ Menejer rolini taklif orqali berib bo'lmaydi. /setrole buyrug'idan foydalaning.",
     "cant_invite_higher": "⛔ O'z rolingizdan yuqori rolga ega foydalanuvchini taklif qila olmaysiz.",
     "permission_required_title": "🔒  <b>RUXSAT KERAK</b>",
-    "permission_samsara": "Samsara API kalitingizga ushbu imkoniyatni yoqish so'raladi."
+    "permission_samsara": "Samsara API kalitingizga ushbu imkoniyatni yoqish so'raladi.",
+    "no_parking_access": "⛔ Parking bo'limiga kirish rolingizning Parking ruxsatiga bog'liq — akkaunt administratoriga murojaat qiling."
   },
   "user_mgmt": {
     "user_label": "👤 <b>Foydalanuvchi {name}</b>",

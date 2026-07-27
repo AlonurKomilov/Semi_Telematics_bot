@@ -412,7 +412,8 @@
     "owner_via_invite": "⛔ Doorka mulkiilaha lagu ma bixin karo casuumad. Isticmaal /setrole.",
     "cant_invite_higher": "⛔ Ma casuumi kartid qof leh door ka sarreeya kaaga.",
     "permission_required_title": "🔒  <b>OGOLAANSHO AYAA LOO BAAHAN YAHAY</b>",
-    "permission_samsara": "Weydii maamulahaaga Samsara inuu daaro oggolaanshaha laga rabo calaamadda API."
+    "permission_samsara": "Weydii maamulahaaga Samsara inuu daaro oggolaanshaha laga rabo calaamadda API.",
+    "no_parking_access": "⛔ Gelitaanka Parking waxaa go'aamiya ogolaanshaha Parking ee doorkaaga — la xiriir maamulaha akoonkaaga."
   },
   "user_mgmt": {
     "user_label": "👤 <b>Isticmaale {name}</b>",

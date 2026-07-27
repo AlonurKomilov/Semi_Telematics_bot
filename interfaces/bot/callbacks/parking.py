@@ -48,7 +48,7 @@ async def _handle_parking_events(update, context, user, show_all: bool = False):
     await query.answer()
 
     if not can(user.role, "can_parking_all") and not can(user.role, "can_parking_vehicle"):
-        await query.answer(t("access.no_access"), show_alert=True)
+        await query.answer(t("access.no_parking_access"), show_alert=True)
         return
 
     tenant = await get_tenant_db(user.account_id)
@@ -95,7 +95,7 @@ async def _handle_parking_history(update, context, user, days: int = 7):
     await query.answer()
 
     if not can(user.role, "can_parking_all") and not can(user.role, "can_parking_vehicle"):
-        await query.answer(t("access.no_access"), show_alert=True)
+        await query.answer(t("access.no_parking_access"), show_alert=True)
         return
 
     tenant = await get_tenant_db(user.account_id)
@@ -137,7 +137,7 @@ async def _handle_parking_detail(update, context, user, event_id: int):
     await query.answer()
 
     if not can(user.role, "can_parking_all") and not can(user.role, "can_parking_vehicle"):
-        await query.answer(t("access.no_access"), show_alert=True)
+        await query.answer(t("access.no_parking_access"), show_alert=True)
         return
 
     tenant = await get_tenant_db(user.account_id)

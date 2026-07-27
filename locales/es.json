@@ -412,7 +412,8 @@
     "owner_via_invite": "⛔ El rol de Propietario no se puede asignar por invitación. Use /setrole en su lugar.",
     "cant_invite_higher": "⛔ No puede invitar a alguien con un rol superior al suyo.",
     "permission_required_title": "🔒  <b>PERMISO REQUERIDO</b>",
-    "permission_samsara": "Solicite a su administrador de Samsara que habilite el permiso requerido en el token de API."
+    "permission_samsara": "Solicite a su administrador de Samsara que habilite el permiso requerido en el token de API.",
+    "no_parking_access": "⛔ El acceso a Parking lo define el permiso de Parking de tu rol — consulta al administrador de tu cuenta."
   },
   "user_mgmt": {
     "user_label": "👤 <b>Usuario {name}</b>",

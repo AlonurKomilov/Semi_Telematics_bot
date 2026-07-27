@@ -79,18 +79,27 @@ const ACK_CONFIRM_THRESHOLD = 10;
 // A grid derives select options from its loaded rows, which is right only
 // when it holds everything — here it holds a capped page, so choosing one
 // value would unload the rest and the menu would offer only that value
-// back.  Labels are Title case to match the badges in the cells.
+// back.
+//
+// Labels share the badge vocabulary: where a type maps 1:1 to a badge
+// noun the option uses the same noun (Engine Fault, Low Fuel…);
+// "Events" and "Parking" stay as families because one option covers
+// several kinds (Crash/Harsh Braking…, Unsafe/Unverified) — the same
+// family word the Feature column shows.  Values are the STORED
+// alert_type strings (fault is singular in alert_history).
+// Maintenance / Documents / Scorecard write Board rows since the
+// delivery-profiles work, so they filter like any other type.
 const TYPE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'fault', label: 'Fault' },
-  { value: 'health', label: 'Health' },
-  { value: 'fuel', label: 'Fuel' },
+  { value: 'fault', label: 'Engine Fault' },
+  { value: 'health', label: 'Engine Health' },
+  { value: 'fuel', label: 'Low Fuel' },
   { value: 'events', label: 'Events' },
+  { value: 'camera', label: 'Camera Issue' },
   { value: 'parking', label: 'Parking' },
-  // No "Maintenance Due": those alerts route through the lite forum path
-  // and are never written to alert_history, so the filter would always
-  // return an empty board.  Offering a control that can only disappoint
-  // is worse than not offering it.  (Same reason VehicleHealthSummary has
-  // no maintenance card.)
+  { value: 'geofence', label: 'Geofence' },
+  { value: 'maintenance', label: 'Maintenance' },
+  { value: 'documents', label: 'Documents' },
+  { value: 'scorecard', label: 'Scorecard' },
 ];
 
 const SEVERITY_OPTIONS: { value: string; label: string }[] = [

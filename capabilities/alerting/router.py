@@ -220,7 +220,7 @@ def _attach_company(alerts: list[dict], veh_map: dict) -> list[dict]:
 
 @router.get("/pending")
 async def pending_alerts(
-    alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
+    alert_type: str | None = Query(None, description="Filter by stored alert_type (comma-separated for multi-select)"),
     vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
     # One search box over vehicle name OR location.  ``vehicle`` stays for
     # older clients; ``q`` is what the board's grid search sends, and it
@@ -370,7 +370,7 @@ async def alerts_active_among(
 
 @router.get("/pending/by-vehicle")
 async def pending_alerts_by_vehicle(
-    alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
+    alert_type: str | None = Query(None, description="Filter by stored alert_type (comma-separated for multi-select)"),
     vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
     severity: str | None = Query(None, description="Filter: critical, warning, info"),
     ack_state: str | None = Query(None, description="active | acknowledged | all"),
@@ -703,7 +703,7 @@ async def pending_alerts_by_type(
 @router.get("/history")
 async def alert_history(
     days: int = Query(7, ge=1, le=90),
-    alert_type: str | None = Query(None, description="Filter: fault, health, fuel, events"),
+    alert_type: str | None = Query(None, description="Filter by stored alert_type (comma-separated for multi-select)"),
     vehicle: str | None = Query(None, description="Filter by vehicle name (substring)"),
     status: str | None = Query(None, description="Filter: acknowledged, expired, active"),
     severity: str | None = Query(None, description="Filter: critical, warning, info"),

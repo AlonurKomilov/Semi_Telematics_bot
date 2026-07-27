@@ -412,7 +412,8 @@
     "owner_via_invite": "⛔ የባለቤትነት ሚና በመጋበዣ ሊሰጥ አይችልም። በምትኩ /setrole ይጠቀሙ።",
     "cant_invite_higher": "⛔ ከእርስዎ የበለጠ ሚና ያለውን ሰው መጋበዝ አይችሉም።",
     "permission_required_title": "🔒  <b>ፈቃድ ያስፈልጋል</b>",
-    "permission_samsara": "Samsara አድሚንዎን በኤፒአይ ቶከን ላይ አስፈላጊውን ፈቃድ እንዲያበራ ይጠይቁ።"
+    "permission_samsara": "Samsara አድሚንዎን በኤፒአይ ቶከን ላይ አስፈላጊውን ፈቃድ እንዲያበራ ይጠይቁ።",
+    "no_parking_access": "⛔ የParking መዳረሻ በሚናዎ የParking ፈቃድ ይወሰናል — የመለያ አስተዳዳሪዎን ያነጋግሩ።"
   },
   "user_mgmt": {
     "user_label": "👤 <b>ተጠቃሚ {name}</b>",

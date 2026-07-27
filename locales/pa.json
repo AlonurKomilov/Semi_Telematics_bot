@@ -412,7 +412,8 @@
     "owner_via_invite": "⛔ ਮਾਲਕ ਦੀ ਭੂਮਿਕਾ ਸੱਦੇ (invite) ਰਾਹੀਂ ਨਹੀਂ ਦਿੱਤੀ ਜਾ ਸਕਦੀ। /setrole ਵਤੋਂ ਕਰੋ।",
     "cant_invite_higher": "⛔ ਤੁਸੀਂ ਆਪਣੇ ਤੋਂ ਉੱਚੀ ਭੂਮਿਕਾ ਵਾਲੇ ਵਿਅਕਤੀ ਨੂੰ ਸੱਦਾ ਨਹੀਂ ਦੇ ਸਕਦੇ।",
     "permission_required_title": "🔒  <b>ਇਜਾਜ਼ਤ ਦੀ ਲੋੜ ਹੈ</b>",
-    "permission_samsara": "ਆਪਣੇ Samsara ਐਡਮਿਨ ਨੂੰ API ਟੋਕਨ 'ਤੇ ਲੋੜੀਂਦੀ ਇਜਾਜ਼ਤ ਚਾਲੂ ਕਰਨ ਲਈ ਕਹੋ।"
+    "permission_samsara": "ਆਪਣੇ Samsara ਐਡਮਿਨ ਨੂੰ API ਟੋਕਨ 'ਤੇ ਲੋੜੀਂਦੀ ਇਜਾਜ਼ਤ ਚਾਲੂ ਕਰਨ ਲਈ ਕਹੋ।",
+    "no_parking_access": "⛔ Parking ਤੱਕ ਪਹੁੰਚ ਤੁਹਾਡੇ ਰੋਲ ਦੀ Parking ਇਜਾਜ਼ਤ ਨਾਲ ਤੈਅ ਹੁੰਦੀ ਹੈ — ਆਪਣੇ ਖਾਤਾ ਪ੍ਰਬੰਧਕ ਨਾਲ ਸੰਪਰਕ ਕਰੋ।"
   },
   "user_mgmt": {
     "user_label": "👤 <b>ਉਪਭੋਗਤਾ {name}</b>",
