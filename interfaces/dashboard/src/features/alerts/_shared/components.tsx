@@ -29,6 +29,25 @@ const TYPE_TEXT: Record<string, string> = {
   system: 'System', samsara_sync: 'Sync', reescalate: 'Re-escalation',
 };
 
+// Alert type → owning FEATURE family (mirrors FEATURE_GROUPS in the
+// delivery config — the product taxonomy).  Answers "which feature does
+// this alert belong to?": Fuel is a child of Vehicle, Events of Safety…
+// English product vocabulary, same rule as TYPE_TEXT.
+const TYPE_FAMILY: Record<string, string> = {
+  fault: 'Vehicle', faults: 'Vehicle', health: 'Vehicle', fuel: 'Vehicle',
+  events: 'Safety', event: 'Safety', safety_events: 'Safety',
+  camera: 'Safety', parking: 'Safety',
+  geofence: 'Geofences',
+  scorecard: 'Scorecards',
+  maintenance: 'Maintenance',
+  documents: 'Drivers', doc_expiry: 'Drivers',
+  system: 'System', samsara_sync: 'System', reescalate: 'System',
+};
+
+export function familyText(type: string): string {
+  return TYPE_FAMILY[type] ?? 'Other';
+}
+
 function typeText(type: string): string {
   return TYPE_TEXT[type]
     ?? type.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());

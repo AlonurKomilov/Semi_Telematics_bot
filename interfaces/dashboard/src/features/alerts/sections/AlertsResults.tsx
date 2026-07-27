@@ -51,7 +51,7 @@ import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
 import { useAlertsQuery } from '../_shared/useAlertsQuery';
 import { useAckAlerts } from '../useRecentAlerts';
-import {
+import { familyText,
   AckMarker,
   SeverityDot,
   TypeBadge,
@@ -98,6 +98,13 @@ export default function AlertsResults() {
 
   const fetchError = queryError instanceof Error ? queryError.message : '';
   const totalCount = data?.count ?? alerts.length;
+
+  // Rows carry the derived feature family so the Feature column's
+  // sort / row-grouping read a real field like any other column.
+  const rows = useMemo(
+    () => alerts.map((a) => ({ ...a, feature: familyText(a.alert_type ?? '') })),
+    [alerts],
+  );
 
   // Selection ↔ DataGrid bridge.  DataGrid keys rows by ``id`` string
   // (getRowId), so the context set is projected to strings in, and
@@ -179,6 +186,20 @@ export default function AlertsResults() {
       // Vehicle: sortable, but filtered from the server search above (see
       // the Severity note).
       { key: 'vehicle_name', label: 'Vehicle', sortable: true },
+      {
+        // Owning FEATURE family — answers "Fuel belongs to Vehicle,
+        // Events to Safety" so the Type column stops reading like a
+        // list of standalone features.  The value is stamped onto each
+        // row (see ``rows`` below), so sorting and ⋮ "Group rows by
+        // this" work through the plain column path.  Deliberately NOT
+        // client-filterable — this grid filters server-side only (see
+        // the savedTabs note on <DataGrid>); to narrow by family,
+        // select its types in the Type chips.
+        key: 'feature', label: 'Feature', sortable: true,
+        render: (v) => (
+          <span className="text-muted-foreground">{v as string}</span>
+        ),
+      },
       {
         key: 'alert_type', label: 'Type', sortable: true,
         // Filtered from the server Type chips above (see the Severity note).
@@ -378,7 +399,7 @@ export default function AlertsResults() {
         // INTO the grid (column filters writing the server query) — see the
         // note in AlertsFilterChips.
         columns={columns}
-        data={alerts as unknown as Record<string, unknown>[]}
+        data={rows as unknown as Record<string, unknown>[]}
         // The WHOLE row opens the details drawer.  Previously only the
         // small grey id was clickable, so clicking the vehicle, the
         // description or the time — the parts an operator actually reads
