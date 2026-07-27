@@ -79,6 +79,24 @@ async def create_entry(
     return entry
 
 
+@router.get("/candidates")
+async def candidates(
+    min_accounts: int = 2,
+    _user: dict = Depends(require_system_owner),
+    db=Depends(get_tenant_db),
+):
+    """Custom task names used by 2+ accounts — the promote signal.
+
+    Promoting is just ``POST /system/service-task-library`` with the
+    (cleaned-up) name: the fan-out then ADOPTS every account's matching
+    custom in place — same row, history intact, identity upgraded —
+    and seeds the task into accounts that never had it.
+    """
+    return {"candidates": await db.service_task_candidates(
+        min_accounts=max(1, min(min_accounts, 50)),
+    )}
+
+
 @router.put("/{entry_id}")
 async def update_entry(
     entry_id: int,

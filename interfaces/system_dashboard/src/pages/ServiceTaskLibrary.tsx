@@ -14,6 +14,12 @@ import { apiJSON } from '../api/client';
 //     being seeded into NEW ones; existing accounts may have years of
 //     history under it, and hiding it is their decision.
 
+interface Candidate {
+  name_key: string;
+  sample_name: string;
+  account_count: number;
+}
+
 interface LibraryEntry {
   id: number;
   canonical_key: string;
@@ -41,6 +47,7 @@ const btnCls =
 
 export default function ServiceTaskLibraryPage() {
   const [entries, setEntries] = useState<LibraryEntry[]>([]);
+  const [cands, setCands] = useState<Candidate[]>([]);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState('');
@@ -54,10 +61,12 @@ export default function ServiceTaskLibraryPage() {
 
   const load = useCallback(async () => {
     try {
-      const r = await apiJSON<{ entries: LibraryEntry[] }>(
-        '/system/service-task-library',
-      );
+      const [r, c] = await Promise.all([
+        apiJSON<{ entries: LibraryEntry[] }>('/system/service-task-library'),
+        apiJSON<{ candidates: Candidate[] }>('/system/service-task-library/candidates'),
+      ]);
       setEntries(r.entries);
+      setCands(c.candidates);
       setErr('');
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Load failed');
@@ -138,6 +147,37 @@ export default function ServiceTaskLibraryPage() {
 
       {err && <div className="mb-4 text-sm text-rose-400 border border-rose-500/30 bg-rose-500/10 rounded px-3 py-2">{err}</div>}
       {loading && <p className="text-slate-500 text-sm">Loading…</p>}
+
+      {/* ── Candidates: names 2+ accounts invented on their own ── */}
+      {cands.length > 0 && (
+        <div className="mb-6 border border-amber-500/30 rounded-lg overflow-hidden">
+          <div className="bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-300">
+            Candidates — custom tasks used by 2+ accounts ({cands.length})
+          </div>
+          <div className="p-3 space-y-2">
+            {cands.map((c) => (
+              <div key={c.name_key} className="flex items-center gap-3 text-sm">
+                <span className="text-slate-200">{c.sample_name}</span>
+                <span className="text-xs text-slate-500">
+                  {c.account_count} accounts
+                </span>
+                <button
+                  className={`${btnCls} ml-auto border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10`}
+                  onClick={() => setNewForm((f) => ({ ...f, name: c.sample_name }))}
+                >
+                  Fill add form
+                </button>
+              </div>
+            ))}
+            <p className="text-xs text-slate-500">
+              Promoting = adding it below (tidy the name first if needed).
+              Every account's matching custom task is then adopted in
+              place — same row, history intact — and it seeds into
+              accounts that never had it.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Add ── */}
       <div className="mb-6 border border-slate-800 rounded-lg p-3">

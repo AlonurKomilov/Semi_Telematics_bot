@@ -173,3 +173,61 @@ async def test_bad_updates_rejected(lib):
         entry["id"], vehicle_type="spaceship") is False
     assert await lib.update_service_task_library_entry(entry["id"]) is False
     assert await lib.update_service_task_library_entry(999_999, name="X") is False
+
+
+# ── My task ↔ Public: adopt-on-promote + the candidates signal ──────
+
+@pytest.mark.asyncio
+async def test_promote_adopts_matching_customs_in_place(lib):
+    """The owner's 'my task merges with the public one' path: when the
+    operator promotes a name 2+ accounts invented, each account's
+    matching custom is UPGRADED IN PLACE — same row id, so every
+    maintenance/work-order reference keeps pointing at it — rather
+    than being skipped and left as a duplicate."""
+    a = (await lib.create_account("Adopt A")).id
+    b = (await lib.create_account("Adopt B")).id
+    mine_a = await lib.create_service_task(a, "Kingpin Service")
+    mine_b = await lib.create_service_task(b, "kingpin  SERVICE")   # spacing/case
+    # A carries history on its custom row.
+    mt = await lib.add_maintenance_task(a, "", "234", "Kingpin Service", "Grease")
+
+    entry = await lib.create_service_task_library_entry("Kingpin Service")
+    assert entry is not None
+
+    # Same rows, upgraded identity — not new rows.
+    up_a = await lib.get_service_task(mine_a["id"], a)
+    up_b = await lib.get_service_task(mine_b["id"], b)
+    assert up_a["canonical_key"] == entry["canonical_key"] == "kingpin_service"
+    assert up_b["canonical_key"] == "kingpin_service"
+    # No duplicate task appeared in either account.
+    for acct in (a, b):
+        rows = [t for t in await lib.list_service_tasks(acct, include_archived=True)
+                if t["name_key"] == "kingpin service"]
+        assert len(rows) == 1
+    # History still points at the same task.
+    task = await lib.get_maintenance_task(mt, a)
+    assert task["service_task_id"] == mine_a["id"]
+    # And now it's name-locked like any standard.
+    assert await lib.update_service_task(
+        mine_a["id"], a, name="Renamed") is False
+
+
+@pytest.mark.asyncio
+async def test_candidates_signal(lib):
+    a = (await lib.create_account("Cand A")).id
+    b = (await lib.create_account("Cand B")).id
+    c = (await lib.create_account("Cand C")).id
+    await lib.create_service_task(a, "Reefer Door Seal")
+    await lib.create_service_task(b, "reefer door  seal")
+    await lib.create_service_task(c, "Only Mine Task")
+
+    cands = await lib.service_task_candidates(min_accounts=2)
+    keys = {r["name_key"]: r for r in cands}
+    assert "reefer door seal" in keys
+    assert keys["reefer door seal"]["account_count"] == 2
+    assert "only mine task" not in keys          # single account
+
+    # Promoting removes it from the queue (covered by the library now).
+    assert await lib.create_service_task_library_entry("Reefer Door Seal")
+    after = {r["name_key"] for r in await lib.service_task_candidates(min_accounts=2)}
+    assert "reefer door seal" not in after

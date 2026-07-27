@@ -177,6 +177,31 @@ class ServiceTaskLibraryMixin:
             await self.fan_out_service_task_library_entry(fresh)
         return True
 
+    async def service_task_candidates(
+        self, *, min_accounts: int = 2, limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Custom task names used by ≥ N accounts that match no library
+        entry — the operator's promote-to-standard signal, same shape
+        as the parts-directory candidates queue.  OPERATOR-ONLY data
+        (names + counts cross accounts); the account-facing page never
+        sees usage numbers."""
+        cur = await self._db.execute(
+            "SELECT st.name_key, MIN(st.name) AS sample_name, "
+            "       COUNT(DISTINCT st.account_id) AS account_count "
+            "FROM service_tasks st "
+            "WHERE st.canonical_key = '' "
+            "GROUP BY st.name_key "
+            "HAVING COUNT(DISTINCT st.account_id) >= ? "
+            f"ORDER BY account_count DESC, st.name_key LIMIT {int(limit)}",
+            (min_accounts,),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+        # Names already covered by the library (by normalized name)
+        # aren't candidates — they'd adopt on the next fan-out anyway.
+        lib = await self.list_service_task_library()
+        covered = {service_task_name_key(e["name"]) for e in lib}
+        return [r for r in rows if r["name_key"] not in covered]
+
     async def fan_out_service_task_library_entry(
         self, entry: dict[str, Any],
     ) -> int:
@@ -191,6 +216,19 @@ class ServiceTaskLibraryMixin:
         key = entry["canonical_key"]
         name = entry["name"]
         now = self._now()
+
+        # ADOPT before insert: an account that already created this
+        # task as its own custom (same normalized name) gets that row
+        # PROMOTED in place — canonical_key stamped onto it — instead
+        # of being skipped by the conflict clause.  Their history stays
+        # on the same row id, so every maintenance/work-order reference
+        # keeps pointing at it; only the identity upgrades.  This is
+        # the "my task merges with the public one" path.
+        await self._db.execute(
+            "UPDATE service_tasks SET canonical_key = ? "
+            "WHERE name_key = ? AND canonical_key = ''",
+            (key, service_task_name_key(name)),
+        )
 
         await self._db.execute(
             "UPDATE service_tasks SET name = ?, name_key = ?, description = ?, "

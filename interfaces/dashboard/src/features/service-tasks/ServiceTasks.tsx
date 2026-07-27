@@ -37,8 +37,12 @@ import {
 
 const SEGMENTS: DataGridSegment[] = [
   { key: 'all', label: 'All' },
-  { key: 'standard', label: 'Standard', match: (r) => !!r.canonical_key },
-  { key: 'mine', label: 'Your tasks', match: (r) => !r.canonical_key },
+  // The Vendors mental model (My vendors / Directory), adapted: the
+  // shared standards ARE materialized into every account, so the
+  // "public" view is a tab over the same grid rather than a separate
+  // browse surface.
+  { key: 'mine', label: 'My tasks', match: (r) => !r.canonical_key },
+  { key: 'standard', label: 'Standard (shared)', match: (r) => !!r.canonical_key },
   { key: 'trucks', label: 'Trucks', match: (r) => r.vehicle_type === 'truck' },
   { key: 'trailers', label: 'Trailers', match: (r) => r.vehicle_type === 'trailer' },
   { key: 'archived', label: 'Archived', match: (r) => r.status === 'archived' },
@@ -269,6 +273,7 @@ export default function ServiceTasks() {
           data={rows}
           columns={columns}
           segments={SEGMENTS}
+          savedTabs
           rowActions={rowActions}
           searchKey={['name', 'description']}
           searchPlaceholder="Search service tasks…"
