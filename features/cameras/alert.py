@@ -62,6 +62,11 @@ async def check_camera_alerts(app: Application):
 
     try:
         subscribers = await get_platform_db().get_all_typed_subscribers("camera")
+        # Effective per-account permission gate (§9d) — same rule as the
+        # typed-subscriber fetch; the cross-account list is fine, the
+        # filter memoizes per (account, role, tier).
+        from capabilities.alerting.relevance import filter_users_by_alert_access
+        subscribers = await filter_users_by_alert_access(subscribers, "camera")
         if not subscribers:
             return
 

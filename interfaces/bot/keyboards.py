@@ -144,8 +144,8 @@ def submenu_tools_kb(role: Role) -> InlineKeyboardMarkup:
     perms = get_permissions(role)
     rows = []
 
-    # Parking — driver-scoped event view (uses geofence permission)
-    if perms.can_geofence_all or perms.can_geofence_vehicle:
+    # Parking — driver-scoped event view (Parking's own permission)
+    if perms.can_parking_all or perms.can_parking_vehicle:
         rows.append([InlineKeyboardButton("🅿️ Parking", callback_data="cmd_parking_events")])
 
     rows.append([InlineKeyboardButton(t("menu.back"), callback_data="cmd_menu")])
@@ -649,7 +649,7 @@ def geofence_list_kb(geofences: list[dict]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
-def alert_settings_kb(user) -> InlineKeyboardMarkup:
+def alert_settings_kb(user, relevant: set | None = None) -> InlineKeyboardMarkup:
     """Per-type alert toggle keyboard, role-filtered.
 
     Shows a checkmark (✅) or cross (❌) for each alert category.
@@ -669,6 +669,9 @@ def alert_settings_kb(user) -> InlineKeyboardMarkup:
     """
     from capabilities.alerting.relevance import alert_types_for_role
 
+    # ``relevant`` is the caller's EFFECTIVE per-account type list
+    # (§9d) — the async handler resolves it; the static role list is
+    # only the fallback for legacy call sites.
     def _icon(on: bool) -> str:
         return "✅" if on else "❌"
 
@@ -686,7 +689,8 @@ def alert_settings_kb(user) -> InlineKeyboardMarkup:
         ("parking",  "alert_parking",  "alert_toggle_parking",  t("alert_settings.parking")),
     ]
 
-    relevant = set(alert_types_for_role(user.role))
+    if relevant is None:
+        relevant = set(alert_types_for_role(user.role))
     rows: list[list[InlineKeyboardButton]] = []
     for alert_type, attr, callback, label in _ROWS:
         if alert_type not in relevant:

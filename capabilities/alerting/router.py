@@ -997,8 +997,12 @@ async def get_my_alerts(
     db_user = await get_current_db_user(user, platform_db)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
-    from capabilities.alerting.relevance import alert_types_for_role
-    relevant = alert_types_for_role(db_user.role)
+    from capabilities.alerting.relevance import alert_types_for_user
+    relevant = await alert_types_for_user(
+        db_user.role, db_user.account_id,
+        is_manager=bool(getattr(db_user, "is_manager", False)),
+        is_primary_owner=bool(getattr(db_user, "is_primary_owner", False)),
+    )
     toggles: dict[str, bool] = {}
     for atype in relevant:
         attr = f"alert_{atype}"
@@ -1030,9 +1034,13 @@ async def update_my_alerts(
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    from capabilities.alerting.relevance import alert_types_for_role
+    from capabilities.alerting.relevance import alert_types_for_user
     relevant_attrs = {
-        f"alert_{atype}" for atype in alert_types_for_role(db_user.role)
+        f"alert_{atype}" for atype in await alert_types_for_user(
+            db_user.role, db_user.account_id,
+            is_manager=bool(getattr(db_user, "is_manager", False)),
+            is_primary_owner=bool(getattr(db_user, "is_primary_owner", False)),
+        )
     }
     # ``alerts_on`` (master switch) and ``alert_resolve_receipts``
     # apply regardless of role — every role can opt in/out of these.

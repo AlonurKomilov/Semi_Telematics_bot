@@ -687,14 +687,13 @@ class UsersMixin:
         Two-tier gate:
           1. Personal toggle: ``users.alert_{type} = 1`` AND
              ``alerts_on = 1`` AND ``is_active = 1``.
-          2. Role-relevance: the user's role must have permission to
-             receive this alert type at all (see
-             ``capabilities/alerting/relevance.py``).  Without the
-             role gate the bot UI would lie — a Safety user with a
-             stale ``alert_fuel = 1`` from before role-filtering would
-             keep receiving fuel alerts even though the toggle is
-             hidden from them.  This implements "option B" from the
-             alert-config design discussion.
+          2. Permission gate: the user's EFFECTIVE per-account
+             permissions must allow this alert type (matrix overrides,
+             manager tier, owner rows — same SSOT as the Board's
+             visibility filter; §9d closed 2026-07-27).  Without it a
+             stale ``alert_fuel = 1`` toggle — or an owner-revoked
+             feature — would keep delivering alerts the user may not
+             see.
 
         Reader flip (phase 2b-2): when ``NOTIFICATIONS_MATRIX_READER`` is
         on, delegate to the matrix-backed twin (proven byte-equivalent by
@@ -723,11 +722,13 @@ class UsersMixin:
         rows = await cur.fetchall()
         users = [self._row_to_user(r) for r in rows]
 
-        # Role-relevance filter — see docstring.  Local import keeps
-        # the heavyweight ``capabilities`` package out of this storage
-        # module's import graph on cold start.
-        from capabilities.alerting.relevance import role_can_receive_alert
-        return [u for u in users if role_can_receive_alert(u.role, alert_type)]
+        # EFFECTIVE permission filter (§9d closed 2026-07-27) — the
+        # per-account matrix, manager tier, and owner rows all decide
+        # delivery, exactly like the Board's visibility filter.  Local
+        # import keeps the heavyweight ``capabilities`` package out of
+        # this storage module's import graph on cold start.
+        from capabilities.alerting.relevance import filter_users_by_alert_access
+        return await filter_users_by_alert_access(users, alert_type)
 
     async def get_typed_alert_subscribers_via_matrix(
         self, account_id: int, alert_type: str,
@@ -735,8 +736,8 @@ class UsersMixin:
         """Matrix-backed twin of :meth:`get_typed_alert_subscribers`
         (notifications phase 2b).  Reads ``notification_pref`` +
         ``notification_channel`` (telegram_dm) instead of the legacy
-        ``alert_*`` columns, then applies the SAME role-relevance filter
-        so behavior matches.  NOT yet wired into the live pipeline — the
+        ``alert_*`` columns, then applies the SAME effective-permission
+        filter so behavior matches.  NOT yet wired into the live pipeline — the
         shadow-compare test proves it returns the same users before the
         reader flip (2b-2)."""
         # The matrix keys categories namespaced by source.
@@ -754,8 +755,8 @@ class UsersMixin:
             (account_id, *ids),
         )
         users = [self._row_to_user(r) for r in await cur.fetchall()]
-        from capabilities.alerting.relevance import role_can_receive_alert
-        return [u for u in users if role_can_receive_alert(u.role, alert_type)]
+        from capabilities.alerting.relevance import filter_users_by_alert_access
+        return await filter_users_by_alert_access(users, alert_type)
 
     async def get_all_typed_subscribers(self, alert_type: str) -> list[User]:
         """All users subscribed to a specific alert type (across all accounts)."""

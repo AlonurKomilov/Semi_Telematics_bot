@@ -51,7 +51,13 @@ async def cmd_alerts(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "\n"
         f"  {t('alert_settings.tap_toggle')}"
     )
-    kb = alert_settings_kb(user)
+    from capabilities.alerting.relevance import alert_types_for_user
+    _relevant = set(await alert_types_for_user(
+        user.role, user.account_id,
+        is_manager=bool(getattr(user, "is_manager", False)),
+        is_primary_owner=bool(getattr(user, "is_primary_owner", False)),
+    ))
+    kb = alert_settings_kb(user, relevant=_relevant)
     await _show(update, context, [text], keyboard=kb)
 
 

@@ -644,14 +644,36 @@ async def post_alert_to_topic(
             # predicate build as send_alert's seam: a user restricted
             # from this alert's company never receives a personal copy.
             # Empty ``co`` fail-opens, parity with every legacy path.
-            _rf = None
+            _co_pred = None
             if co:
                 from capabilities.alerting.company_scope import (
                     load_company_scope, user_sees_company)
                 _scope = await load_company_scope(account_id)
                 if any(_scope.values()):
-                    _rf = (lambda uid, role, _co=co, _s=_scope:
-                           user_sees_company(uid, role, _co, _s))
+                    _co_pred = (lambda uid, role, _co=co, _s=_scope:
+                                user_sees_company(uid, role, _co, _s))
+            # Effective-permission gate (§9d closed): the dispatch
+            # subscriber list is prefs-based, so resolve — once, before
+            # the sync predicate — which members' per-account matrix
+            # actually allows this type, and gate by users.id.  On
+            # resolution failure the gate drops out (fail-open, logged):
+            # a perms hiccup must not silence the fan-out.
+            _allowed_ids = None
+            try:
+                from capabilities.alerting.relevance import (
+                    filter_users_by_alert_access)
+                _members = await get_platform_db().list_account_users(account_id)
+                _allowed = await filter_users_by_alert_access(
+                    _members, alert_type)
+                _allowed_ids = {u.id for u in _allowed}
+            except Exception as _fe:
+                logger.debug("effective-perm gate unavailable (%s): %s",
+                             alert_type, _fe)
+            _rf = None
+            if _co_pred is not None or _allowed_ids is not None:
+                _rf = (lambda uid, role, _p=_co_pred, _a=_allowed_ids:
+                       (_a is None or uid in _a)
+                       and (_p is None or _p(uid, role)))
             await _notif_dispatch(
                 get_platform_db(), account_id,
                 _NotifContent(

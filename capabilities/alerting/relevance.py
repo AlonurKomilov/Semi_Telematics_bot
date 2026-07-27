@@ -113,10 +113,11 @@ def role_can_receive_alert(role: Union[Role, str], alert_type: str) -> bool:
     Equivalent to ``alert_type in alert_types_for_role(role)`` but
     avoids the list allocation when the caller only needs a yes/no.
 
-    STATIC role defaults by design-for-now (per-account matrix overrides
-    / module masking not consulted) — see
-    docs/architecture/notifications.md §9d; don't copy this pattern into
-    an authorization context.
+    STATIC role defaults — the FALLBACK the effective gate below drops
+    to when per-account resolution fails; delivery paths must call
+    ``filter_users_by_alert_access`` / ``alert_types_for_user`` instead
+    (§9d closed 2026-07-27).  Don't copy this pattern into an
+    authorization context.
     """
     if alert_type not in ALERT_TYPE_REQUIRED_PERM:
         return False
@@ -129,6 +130,90 @@ def role_can_receive_alert(role: Union[Role, str], alert_type: str) -> bool:
     if perms is None:
         return False
     return _role_has_perm(perms, ALERT_TYPE_REQUIRED_PERM[alert_type])
+
+
+# ─── Effective (per-account) delivery gates — §9d closed ─────────
+#
+# The Board's visibility filter always used the user's EFFECTIVE
+# FeatureSet (matrix overrides + manager tier + owner rows); the
+# delivery gates used static role seeds, so a matrix-customized account
+# could see one thing and receive another.  Owner decision 2026-07-27:
+# permissions are the single truth for RECEIVING too — an owner
+# revoking a feature stops its personal DMs, a grant starts them.
+#
+# Fail-open BY TIER, not per call: if the stored-perms resolution
+# breaks (perms storage down mid-fan-out), that tier falls back to the
+# static seed gate above with a warning — a perms hiccup must never
+# silence alert delivery entirely.
+
+async def _effective_fs(cache: dict, account_id: int, role,
+                        is_manager: bool, is_primary_owner: bool):
+    """Resolve one (account, role, tier) to a FeatureSet, memoized in
+    ``cache``; None marks a failed resolution (caller falls back)."""
+    key = (account_id, str(role), bool(is_manager), bool(is_primary_owner))
+    if key in cache:
+        return cache[key]
+    try:
+        from capabilities.permissions.roles import get_user_permissions
+        fs = await get_user_permissions(
+            role if isinstance(role, Role) else Role(str(role)),
+            account_id,
+            is_manager=bool(is_manager),
+            is_primary_owner=bool(is_primary_owner),
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(
+            "effective-perms resolve failed (account=%s role=%s): %s — "
+            "falling back to static role defaults for this tier",
+            account_id, role, e)
+        fs = None
+    cache[key] = fs
+    return fs
+
+
+async def filter_users_by_alert_access(users: list, alert_type: str) -> list:
+    """Keep only users whose EFFECTIVE per-account permissions allow
+    ``alert_type`` — the delivery-side twin of the Board's
+    ``perms_allow_alert_type`` filter, same permission SSOT.
+
+    Accepts User rows from any account mix (the camera digest passes a
+    cross-account list); resolution is memoized per (account, role,
+    tier) so a fan-out resolves each distinct tier once, not per user.
+    """
+    cache: dict = {}
+    out = []
+    for u in users:
+        fs = await _effective_fs(
+            cache, u.account_id, u.role,
+            getattr(u, "is_manager", False),
+            getattr(u, "is_primary_owner", False),
+        )
+        if fs is None:
+            if role_can_receive_alert(u.role, alert_type):
+                out.append(u)
+        elif perms_allow_alert_type(fs, alert_type):
+            out.append(u)
+    return out
+
+
+async def alert_types_for_user(
+    role, account_id: int, *,
+    is_manager: bool = False, is_primary_owner: bool = False,
+) -> list[str]:
+    """Effective-permission twin of ``alert_types_for_role`` for toggle
+    UIs (bot /alerts keyboard, dashboard My Notifications): the visible
+    toggles match what the delivery gate would actually deliver for
+    THIS user in THIS account.  Order follows ALERT_TYPE_REQUIRED_PERM,
+    same as the static variant.  Falls back to the static list when
+    resolution fails."""
+    fs = await _effective_fs({}, account_id, role, is_manager, is_primary_owner)
+    if fs is None:
+        return alert_types_for_role(role)
+    return [
+        atype for atype, req in ALERT_TYPE_REQUIRED_PERM.items()
+        if _role_has_perm(fs, req)
+    ]
 
 
 # Category / Board visibility for profile-upgraded types (profiles.py).
