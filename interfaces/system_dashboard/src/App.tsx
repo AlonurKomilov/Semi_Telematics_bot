@@ -1,6 +1,6 @@
 import { Routes, Route, NavLink, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { Building2, Receipt, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store, Cog, TrendingUp, Gauge, ClipboardList } from 'lucide-react';
+import { Building2, Receipt, ScrollText, LogOut, Activity, Users, AlertTriangle, MessageSquareWarning, DatabaseBackup, CalendarClock, ShieldCheck, Store, Cog, Boxes, TrendingUp, Gauge, ClipboardList } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import Login from './pages/Login';
 import Accounts from './pages/Accounts';
@@ -113,13 +113,25 @@ const NAV_GROUPS: { title: string | null; items: NavItem[] }[] = [
       { to: '/errors', label: 'Errors', icon: AlertTriangle },
       { to: '/ai-feedback', label: 'AI feedback', icon: MessageSquareWarning },
       { to: '/retention', label: 'Retention', icon: DatabaseBackup },
-      { to: '/vendor-directory', label: 'Vendor directory', icon: Store },
-      { to: '/parts-directory', label: 'Parts catalog', icon: Cog },
-      { to: '/service-tasks', label: 'Service tasks', icon: ClipboardList },
-      { to: '/service-assemblies', label: 'Assemblies', icon: Cog },
-      { to: '/market-intel', label: 'Market intel', icon: TrendingUp },
       { to: '/scans',     label: 'File scans', icon: ShieldCheck },
       { to: '/scheduler', label: 'Scheduler', icon: CalendarClock },
+    ],
+  },
+  {
+    // The other half of every "My X / Shared" split on the customer
+    // dashboard.  These pages ARE the shared side — an operator has no
+    // fleet of their own, so nothing here is "mine" and the specific
+    // noun (directory / catalog / library) is the right name: it says
+    // WHICH shared pool you're editing.  Grouped because editing them
+    // reaches every tenant at once, which is a different job from the
+    // monitoring pages above.
+    title: 'Shared data',
+    items: [
+      { to: '/vendor-directory', label: 'Vendor directory', icon: Store },
+      { to: '/parts-directory', label: 'Parts catalog', icon: Cog },
+      { to: '/service-tasks', label: 'Service task library', icon: ClipboardList },
+      { to: '/service-assemblies', label: 'Service assemblies', icon: Boxes },
+      { to: '/market-intel', label: 'Market intelligence', icon: TrendingUp },
     ],
   },
 ];
