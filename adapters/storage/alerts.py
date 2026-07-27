@@ -796,6 +796,48 @@ class AlertsMixin(_MixinBase):
             return int(row[0])
 
     @staticmethod
+    def _order_by(sort_by: str | None, sort_dir: str) -> str:
+        """ORDER BY for the board, chosen from an ALLOW-LIST.
+
+        The column name arrives from a query string, so it is never
+        interpolated — it is a KEY into the map below, and anything
+        unrecognised falls back to the default ordering rather than
+        reaching SQL.  ``sort_dir`` is likewise reduced to one of two
+        literals.
+
+        The default is severity-then-recency, which is triage order: a
+        fresh critical outranks an old warning.  It stays the default
+        precisely because it is the order an operator wants before they
+        have expressed any preference.
+        """
+        columns = {
+            "id": "h.id",
+            # Rank, not the string — alphabetically 'critical' sorts
+            # between 'info' and 'warning', which would bury the rows
+            # that matter in the middle.
+            "severity": "_sev_rank",
+            "vehicle_name": "LOWER(h.vehicle_name)",
+            "alert_type": "h.alert_type",
+            "last_seen": "h.last_seen",
+            "first_seen": "h.first_seen",
+            "acknowledged_at": "h.acknowledged_at",
+            "occurrence_count": "h.occurrence_count",
+        }
+        target = columns.get(sort_by or "")
+        if target is None:
+            # The id tie-break matters MOST here: this is the default view,
+            # and a batch job that stamps last_seen for many rows in one
+            # transaction leaves large groups tied on (severity, last_seen).
+            # Without it those rows reshuffle between queries and paging
+            # shows some twice and others never.
+            return "ORDER BY _sev_rank ASC, h.last_seen DESC, h.id DESC "
+        direction = "ASC" if str(sort_dir).lower() == "asc" else "DESC"
+        # Tie-break on id so paging is STABLE: without it, rows sharing a
+        # sort value can shuffle between pages and an operator paging
+        # through sees one row twice and another never.
+        return f"ORDER BY {target} {direction}, h.id DESC "
+
+    @staticmethod
     def _alert_filter_clause(
         *,
         alert_type: str | None = None,
@@ -922,6 +964,8 @@ class AlertsMixin(_MixinBase):
         text_search: str | None = None,
         ack_state: str = "active",
         days: int | None = None,
+        sort_by: str | None = None,
+        sort_dir: str = "desc",
         limit: int | None = None,
         offset: int = 0,
     ) -> list[dict]:
@@ -966,7 +1010,7 @@ class AlertsMixin(_MixinBase):
         )
         sql += frag + " "
         params += fp
-        sql += "ORDER BY _sev_rank ASC, h.last_seen DESC "
+        sql += self._order_by(sort_by, sort_dir)
         if limit is not None:
             sql += "LIMIT ? OFFSET ? "
             params.extend([int(limit), int(offset)])

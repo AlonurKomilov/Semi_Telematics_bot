@@ -9,12 +9,16 @@
  *   3. empty    — query returned zero rows
  *   4. table    — the shared DataGrid (single source of truth)
  *
- * Both view modes are the SAME DataGrid over the same flat alert
- * rows: "by vehicle" is row-grouping on vehicle_name (pre-set via
- * ``defaultRowGroup``), "list" is the ungrouped flat table.  The
- * query loads the whole filter window (up to the server's 2000-row
- * cap) so client-side filter / sort / group / paginate are honest;
- * a truncation notice + the server pager cover the overflow case.
+ * Every narrowing runs on the SERVER — filters, search, Status and now
+ * sort and pagination.  The grid fetches ONE page (25 by default) and
+ * renders it; it never holds the queue.  That's what lets a 3,984-row
+ * board sort correctly and page with real page numbers instead of
+ * stepping through 2,000-row batches.
+ *
+ * What is still LOCAL is row-grouping and pivot, which need the whole
+ * set to mean anything — ``totalRows`` tells the grid it holds a page so
+ * it disables those with a reason rather than grouping 25 rows and
+ * presenting it as the answer.
  *
  * Selection is DataGrid's `bulkSelection` (checkbox column + top
  * bulk-action bar), passed as a CONTROLLED selection so it still lives
@@ -111,6 +115,7 @@ export default function AlertsResults() {
     ackState, setAckState, narrowed, resetToDefaults, days, setDays,
     typeFilter, setTypeFilter, severityFilter, setSeverityFilter,
     vehicleSearch, setVehicleSearch,
+    page, setPage, pageSize, setPageSize, sort, dir, setSort,
   } = useAlertsFilters();
   const { counts: segmentCounts } = useAlertSegmentCounts();
 
@@ -130,7 +135,7 @@ export default function AlertsResults() {
   );
 
   // The search box types into a DRAFT and lands in the URL on a pause.
-  // Every keystroke otherwise fires two server round-trips (the 2,000-row
+  // Every keystroke otherwise fires two server round-trips (the row
   // list and the tab counts, which share this filter), and an unsettled
   // URL also spams the history.  The draft follows the URL when it
   // changes from elsewhere — "clear all filters", a shared link.
@@ -152,7 +157,7 @@ export default function AlertsResults() {
   // sound cue, AlertsBulkError, and the filter-chip clear all read it),
   // so it's passed to DataGrid as a CONTROLLED selection.
   const {
-    selected, setSelected, openDrillIn, setAcking, setBulkError,
+    selected, setSelected, clearSelection, openDrillIn, setAcking, setBulkError,
   } = useAlertsSelection();
   const { data, isLoading, error: queryError, refetch } = useAlertsQuery();
   const ackAlerts = useAckAlerts();
@@ -452,21 +457,6 @@ export default function AlertsResults() {
 
   return (
     <div>
-      {/* Truncation notice — the window exceeded the single-fetch cap,
-          so client-side filters/groups only see the loaded slice.  The
-          server pager (AlertsPagination below the table) steps through
-          the overflow. */}
-      {totalCount > alerts.length && (
-        /* Filtering, search and Status all run on the SERVER now, so they
-           see every alert.  What remains page-scoped is SORTING and
-           grouping, which reorder the rows in hand — say only that, and
-           say what to do about it. */
-        <p className="mb-2 text-xs text-muted-foreground">
-          Sorting and grouping apply to the {alerts.length.toLocaleString()} rows
-          loaded here — narrow with the column filters or search to bring the
-          rest into view.
-        </p>
-      )}
       <DataGrid
         // One table, one set of per-user prefs.  Grouping is the
         // operator's choice via any column's ⋮ "Group rows by this" (it
@@ -497,10 +487,38 @@ export default function AlertsResults() {
         // controls and reports intent; it must not also narrow the rows,
         // or it would filter the loaded page and call that the answer.
         manualFiltering
-        // The board holds a server-capped page of a bigger queue.  Telling
-        // the grid the real total is what stops it sorting / grouping /
-        // pivoting / exporting a fragment while presenting it as the whole.
+        // The grid holds ONE page of a much bigger queue.  Sorting and
+        // paging are the server's now, so they stay correct — but grouping
+        // and pivot are still local and would work on 25 rows, which is
+        // what totalRows keeps them honest about.
         totalRows={totalCount}
+        // Order is decided in SQL, so the grid must not re-sort the page
+        // it was handed (that would order 25 rows and read as ordering
+        // 3,984).  It reports the click; the query carries it.
+        manualSorting
+        sorting={sort ? [{ id: sort, desc: dir === 'desc' }] : []}
+        onSortingChange={(next) => {
+          const first = next[0];
+          setSort(first?.id ?? '', first?.desc === false ? 'asc' : 'desc');
+        }}
+        // Real pages against the real total — no more "Batch 1 of 2".
+        manualPagination
+        pageIndex={page - 1}
+        pageSize={pageSize}
+        pageCount={Math.max(1, Math.ceil(totalCount / pageSize))}
+        onPaginationChange={({ pageIndex, pageSize: size }) => {
+          // Selection is PAGE-SCOPED, because only this page's rows are
+          // loaded.  Carrying ids across pages looked like it worked —
+          // the bulk bar counted 5 — but Acknowledge resolves ids against
+          // the rows in hand, so the 3 from the previous page silently
+          // dropped, 2 were acknowledged, and the selection was then
+          // cleared as if all 5 had been.  Three live safety alerts,
+          // reported as handled.  Clearing here makes the count mean what
+          // it says.
+          clearSelection();
+          if (size !== pageSize) setPageSize(size);
+          setPage(pageIndex + 1);
+        }}
         columnFilters={gridFilters}
         onColumnFiltersChange={onGridFiltersChange}
         // Status: a lifecycle dimension, and one the server owns — an

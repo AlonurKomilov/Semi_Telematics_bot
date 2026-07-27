@@ -39,6 +39,9 @@ const FILTER_PARAM_KEYS = [
   'vehicleSearch',
   'days',
   'page',
+  'pageSize',
+  'sort',
+  'dir',
 ] as const;
 
 type FilterParamKey = (typeof FILTER_PARAM_KEYS)[number];
@@ -55,12 +58,23 @@ export interface AlertsFiltersAPI {
   vehicleSearch: string;
   days: number;
   page: number;
+  /** Rows per SERVER page.  The board fetches one page at a time now, so
+   *  this bounds the request rather than slicing something already
+   *  fetched — which is why it lives in the URL beside the filters. */
+  pageSize: number;
+  /** Column key the SERVER orders by (allow-listed there), and the
+   *  direction.  Empty ``sort`` means triage order: severity, then
+   *  recency. */
+  sort: string;
+  dir: 'asc' | 'desc';
   setTypeFilter: (v: string) => void;
   setSeverityFilter: (v: string) => void;
   setAckState: (v: AlertAckState) => void;
   setVehicleSearch: (v: string) => void;
   setDays: (v: number) => void;
   setPage: (v: number) => void;
+  setPageSize: (v: number) => void;
+  setSort: (key: string, dir: 'asc' | 'desc') => void;
   /** True when the view is NARROWED beyond this persona's defaults —
    *  i.e. the user actively picked a type / severity / vehicle.  Callers
    *  use it to tell "nothing matches your filters" apart from a genuine
@@ -80,6 +94,9 @@ function readDefaults(params: URLSearchParams, defaults: FilterDefaults): {
   vehicleSearch: string;
   days: number;
   page: number;
+  pageSize: number;
+  sort: string;
+  dir: 'asc' | 'desc';
 } {
   const typeFilter = params.get('typeFilter') || defaults.typeFilter;
   const severityFilter = params.get('severityFilter') || defaults.severityFilter;
@@ -89,7 +106,16 @@ function readDefaults(params: URLSearchParams, defaults: FilterDefaults): {
   const days = Number.isFinite(daysRaw) && daysRaw > 0 ? daysRaw : defaults.days;
   const pageRaw = parseInt(params.get('page') ?? '', 10);
   const page = Number.isFinite(pageRaw) && pageRaw >= 1 ? pageRaw : 1;
-  return { typeFilter, severityFilter, ackState, vehicleSearch, days, page };
+  const sizeRaw = parseInt(params.get('pageSize') ?? '', 10);
+  const pageSize = Number.isFinite(sizeRaw) && sizeRaw >= 1
+    ? Math.min(sizeRaw, 2000)      // the server's own ceiling
+    : 25;
+  const sort = params.get('sort') ?? '';
+  const dir = params.get('dir') === 'asc' ? 'asc' as const : 'desc' as const;
+  return {
+    typeFilter, severityFilter, ackState, vehicleSearch, days, page,
+    pageSize, sort, dir,
+  };
 }
 
 /**
@@ -191,6 +217,18 @@ export function useAlertsFilters(): AlertsFiltersAPI {
     setVehicleSearch: (v) => setParam('vehicleSearch', v),
     setDays: (v) => setParam('days', v),
     setPage: (v) => setParam('page', v, { resetPage: false }),
+    setPageSize: (v) => setParam('pageSize', v),
+    setSort: (key, direction) => {
+      setParams((prev) => {
+        const next = new URLSearchParams(prev);
+        if (key) { next.set('sort', key); next.set('dir', direction); }
+        else { next.delete('sort'); next.delete('dir'); }
+        // A new order invalidates the page number: page 7 of the old
+        // order is a different set of rows in the new one.
+        next.set('page', '1');
+        return next;
+      });
+    },
     resetToDefaults: () => {
       // Clearing FILTERS, not the page: an open drawer's ``?alertId``
       // survives, because "clear all filters" never meant "close what

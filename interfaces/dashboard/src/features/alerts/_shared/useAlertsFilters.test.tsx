@@ -184,6 +184,72 @@ describe('useAlertsFilters — params this hook does not own', () => {
 });
 
 
+describe('useAlertsFilters — server paging state', () => {
+  it('defaults to a 25-row page and triage order', () => {
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts'),
+    });
+    expect(result.current.pageSize).toBe(25);
+    expect(result.current.sort).toBe('');      // '' = severity, then recency
+    expect(result.current.dir).toBe('desc');
+  });
+
+  it('reads sort and page size from the URL, so a link restores the view', () => {
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?sort=vehicle_name&dir=asc&pageSize=100&page=3'),
+    });
+    expect(result.current.sort).toBe('vehicle_name');
+    expect(result.current.dir).toBe('asc');
+    expect(result.current.pageSize).toBe(100);
+    expect(result.current.page).toBe(3);
+  });
+
+  it('caps page size at the server ceiling', () => {
+    // The API rejects page_size > 2000; asking for more would 422 the
+    // board rather than showing more rows.
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?pageSize=99999'),
+    });
+    expect(result.current.pageSize).toBe(2000);
+  });
+
+  it('changing the SORT returns to page 1', () => {
+    // Page 7 of the old order is a different set of rows in the new one.
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?page=7'),
+    });
+    act(() => result.current.setSort('vehicle_name', 'asc'));
+    expect(result.current.page).toBe(1);
+    expect(result.current.sort).toBe('vehicle_name');
+  });
+
+  it('changing the PAGE SIZE returns to page 1', () => {
+    // Page 7 of 25-row pages is past the end at 100 per page.
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?page=7'),
+    });
+    act(() => result.current.setPageSize(100));
+    expect(result.current.page).toBe(1);
+    expect(result.current.pageSize).toBe(100);
+  });
+
+  it('clearing the sort returns to triage order rather than an empty order', () => {
+    setPersona('fleet');
+    const { result } = renderHook(() => useAlertsFilters(), {
+      wrapper: makeWrapper('/alerts?sort=vehicle_name&dir=asc'),
+    });
+    act(() => result.current.setSort('', 'desc'));
+    expect(result.current.sort).toBe('');
+    expect(lastSearch).not.toContain('sort=');
+  });
+});
+
+
 describe('useAlertsFilters — narrowed (gates the "all caught up" claim)', () => {
   it('is FALSE on a persona default view, even when the default is not "all"', () => {
     // Safety lands on typeFilter='safety_events' by default — that is NOT

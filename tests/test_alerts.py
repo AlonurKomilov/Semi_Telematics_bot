@@ -703,14 +703,23 @@ class TestAckAttribution:
             account.id, ack_state="all") == 2
 
     @pytest.mark.asyncio
-    async def test_days_window_filters_on_first_seen(self, seeded_db):
-        """An alert whose first_seen predates the window is excluded."""
-        db, account, _, _, _, _ = seeded_db
-        await db.upsert_alert_history(
+    async def test_days_window_filters_RESOLVED_history_on_first_seen(self, seeded_db):
+        """The window bounds resolved history — and only that.
+
+        It used to bound the whole 'all' view, which dropped old OPEN
+        alerts that the 'active' view kept.  Side by side the board then
+        showed a total smaller than one of its own parts.  So: an old
+        RESOLVED alert is excluded (below), an old OPEN one is not (the
+        test after this).
+        """
+        db, account, _, owner, _, _ = seeded_db
+        row = await db.upsert_alert_history(
             account_id=account.id, alert_type="health",
             vehicle_id="V_OLD", vehicle_name="Truck Old",
             last_detail="x", severity="warning",
         )
+        await db.acknowledge_alert_history(
+            row["id"], owner.telegram_id, account_id=account.id)
         # Backdate first_seen 60 days into the past.
         from datetime import datetime, timedelta, timezone
         old = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
@@ -726,8 +735,33 @@ class TestAckAttribution:
         in_90 = await db.get_active_alert_history_for_account_paged(
             account.id, ack_state="all", days=90,
         )
-        assert {r["vehicle_id"] for r in in_30} == set()
-        assert {r["vehicle_id"] for r in in_90} == {"V_OLD"}
+        assert "V_OLD" not in {r["vehicle_id"] for r in in_30}
+        assert "V_OLD" in {r["vehicle_id"] for r in in_90}
+
+    @pytest.mark.asyncio
+    async def test_days_window_never_hides_an_open_alert(self, seeded_db):
+        """An unacknowledged alert is open regardless of age, in EVERY
+        view that contains it — so 'all' keeps it even outside the
+        window, and stays the union of the other two tabs."""
+        db, account, _, _, _, _ = seeded_db
+        await db.upsert_alert_history(
+            account_id=account.id, alert_type="health",
+            vehicle_id="V_CHRONIC", vehicle_name="Truck Chronic",
+            last_detail="x", severity="warning",
+        )
+        from datetime import datetime, timedelta, timezone
+        old = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
+        await db._db.execute(
+            "UPDATE alert_history SET first_seen = ? WHERE vehicle_id = ?",
+            (old, "V_CHRONIC"),
+        )
+        await db._db.commit()
+
+        for state in ("active", "all"):
+            rows = await db.get_active_alert_history_for_account_paged(
+                account.id, ack_state=state, days=30,
+            )
+            assert "V_CHRONIC" in {r["vehicle_id"] for r in rows}, state
 
     @pytest.mark.asyncio
     async def test_per_vehicle_embeds_ack_name(self, seeded_db):

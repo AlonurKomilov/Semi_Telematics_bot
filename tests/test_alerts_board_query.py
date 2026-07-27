@@ -314,3 +314,79 @@ class TestSegmentCountsUnderRestrictedScope:
             seeded["app"], token, "/api/alerts/pending/segment-counts"))["counts"]
         listed = await _pending(seeded["app"], token, "ack_state=active")
         assert counts["active"] == listed["count"]
+
+
+class TestServerSideSort:
+    """Sorting moved to SQL so it can order the whole queue rather than
+    the page in hand.  The column arrives from a query string, so the
+    only safe shape is a KEY into an allow-list — never a name spliced
+    into the statement."""
+
+    async def test_default_is_triage_order(self, seeded):
+        """No sort chosen → severity first, then recency.  That's the
+        order an operator wants before expressing a preference."""
+        data = await _pending(seeded["app"], seeded["token"])
+        sevs = [a["severity"] for a in data["alerts"]]
+        rank = {"critical": 0, "warning": 1, "info": 2}
+        assert sevs == sorted(sevs, key=lambda x: rank[x])
+
+    async def test_sorts_by_vehicle_both_ways(self, seeded):
+        asc = await _pending(seeded["app"], seeded["token"],
+                             "sort=vehicle_name&dir=asc")
+        desc = await _pending(seeded["app"], seeded["token"],
+                              "sort=vehicle_name&dir=desc")
+        names = [a["vehicle_name"] for a in asc["alerts"]]
+        assert names == sorted(names)
+        assert [a["vehicle_name"] for a in desc["alerts"]] == sorted(names, reverse=True)
+
+    async def test_severity_sorts_by_RANK_not_alphabetically(self, seeded):
+        """Alphabetically 'critical' falls between 'info' and 'warning',
+        which would bury the rows that matter in the middle."""
+        data = await _pending(seeded["app"], seeded["token"],
+                              "sort=severity&dir=asc")
+        assert data["alerts"][0]["severity"] == "critical"
+
+    async def test_unknown_column_falls_back_instead_of_erroring(self, seeded):
+        """A stale bookmark should show the board, not a 422 — and must
+        not reach SQL."""
+        data = await _pending(seeded["app"], seeded["token"], "sort=nonsense")
+        assert data["count"] == 5
+
+    async def test_injection_attempt_is_inert(self, seeded):
+        """The value is a key, not a fragment.  If it were interpolated
+        this would change the statement; as a key it simply misses."""
+        evil = "h.id; DROP TABLE alert_history--"
+        data = await _pending(seeded["app"], seeded["token"],
+                              f"sort={evil}")
+        assert data["count"] == 5
+        # ...and the table is still there.
+        again = await _pending(seeded["app"], seeded["token"])
+        assert again["count"] == 5
+
+    async def test_paging_is_stable_across_a_tie(self, seeded):
+        """Rows sharing a sort value must not shuffle between pages, or
+        an operator paging through sees one row twice and another never.
+        Every seeded row has a distinct type, so sort by a column they
+        SHARE and check the pages partition the set."""
+        p1 = await _get(seeded["app"], seeded["token"],
+                        "/api/alerts/pending?sort=acknowledged_at&page_size=2&page=1")
+        p2 = await _get(seeded["app"], seeded["token"],
+                        "/api/alerts/pending?sort=acknowledged_at&page_size=2&page=2")
+        p3 = await _get(seeded["app"], seeded["token"],
+                        "/api/alerts/pending?sort=acknowledged_at&page_size=2&page=3")
+        ids = [a["id"] for a in p1["alerts"] + p2["alerts"] + p3["alerts"]]
+        assert len(ids) == len(set(ids)) == 5     # no repeats, none lost
+
+
+class TestRealPages:
+    async def test_page_size_bounds_the_response(self, seeded):
+        data = await _get(seeded["app"], seeded["token"],
+                          "/api/alerts/pending?page_size=2&page=1")
+        assert len(data["alerts"]) == 2
+        assert data["count"] == 5           # the TOTAL, not the page
+        assert data["total_pages"] == 3
+
+    async def test_last_page_is_partial_not_empty(self, seeded):
+        data = await _get(seeded["app"], seeded["token"],
+                          "/api/alerts/pending?page_size=2&page=3")
+        assert len(data["alerts"]) == 1

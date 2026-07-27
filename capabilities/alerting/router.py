@@ -206,6 +206,12 @@ async def pending_alerts(
     # can't fall off the open queue just because it started long ago; see
     # _alert_filter_clause for the reasoning.
     days: int | None = Query(None, ge=1, le=90),
+    # Sort is a KEY into a server-side allow-list, never a column name
+    # spliced into SQL.  Unknown values fall back to triage order
+    # (severity, then recency) rather than erroring — a stale bookmark
+    # should show the board, not a 422.
+    sort: str | None = Query(None, description="Column key to sort by"),
+    dir: str = Query("desc", description="asc | desc"),
     page: int = Query(1, ge=1, description="Page number"),
     # Cap raised 500 → 2000: the dashboard's DataTable loads the whole
     # filter window in one request so client-side filter / sort /
@@ -255,6 +261,7 @@ async def pending_alerts(
             user["account_id"],
             alert_type=alert_type, vehicle_substring=vehicle,
             severity=severity, text_search=q, ack_state=state, days=days,
+            sort_by=sort, sort_dir=dir,
         )
         alerts = [_shape_history_for_pending_api(r) for r in rows]
         if is_driver_scope:
@@ -278,6 +285,7 @@ async def pending_alerts(
         user["account_id"],
         alert_type=alert_type, vehicle_substring=vehicle,
         severity=severity, text_search=q, ack_state=state, days=days,
+        sort_by=sort, sort_dir=dir,
         limit=page_size, offset=offset,
     )
     alerts = _attach_company(

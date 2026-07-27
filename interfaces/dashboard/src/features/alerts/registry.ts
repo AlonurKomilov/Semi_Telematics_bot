@@ -32,10 +32,6 @@ export const ALERTS_SECTIONS: SectionRegistry<AlertsSectionProps> = {
     Component: lazy(() => import('./sections/AlertsResults')),
     label: 'Alerts queue (grouping is the operator\'s choice)',
   },
-  pagination: {
-    Component: lazy(() => import('./sections/AlertsPagination')),
-    label: 'Pagination footer',
-  },
   live_ack_panel: {
     Component: lazy(() => import('./sections/LiveAckPanel')),
     label: 'Dispatcher live-ops panel (sound, delta, last ack)',

@@ -20,13 +20,14 @@ import { apiJSON } from '../../../api/client';
 import type { AlertsResponse, VehiclesAlertsResponse } from '../../../types';
 import { useAlertsFilters } from './useAlertsFilters';
 
-// Full-window fetch: the results section is a DataGrid that filters /
-// sorts / groups / paginates CLIENT-side, so it needs the whole filter
-// window loaded — page-scoped slices would make those operations lie
-// (a "Severity: critical" filter that silently misses criticals on
-// page 2).  2000 matches the server cap; beyond it AlertsResults shows
-// a truncation notice and the server pager steps through overflow.
-const PAGE_SIZE = 2000;
+// No fixed page size any more: the board asks for ONE page and the page
+// size is the operator's choice, carried in the URL.
+//
+// The old constant was 2,000 — the server's cap — because filtering and
+// sorting ran in the browser and would otherwise narrow a fragment while
+// answering for the whole queue.  Both moved to the server, so the grid
+// only ever needs the rows on screen.  A 3,984-row queue is 160 pages of
+// 25, not "Batch 1 of 2".
 
 export interface UseAlertsQueryResult {
   data: AlertsResponse | VehiclesAlertsResponse | undefined;
@@ -45,13 +46,11 @@ export function useAlertsQuery(): UseAlertsQueryResult {
     ackState,
     vehicleSearch,
     page,
+    pageSize,
+    sort,
+    dir,
     days,
   } = useAlertsFilters();
-
-  // ONE endpoint, one cache entry.  Grouping rows by vehicle (or by any
-  // other column) is DataGrid's job via its column menu — there is no
-  // separate "per vehicle" fetch or view mode.
-  const pageSize = PAGE_SIZE;
 
   const queryKey = [
     'alerts',
@@ -60,6 +59,9 @@ export function useAlertsQuery(): UseAlertsQueryResult {
     vehicleSearch,
     ackState,
     page,
+    pageSize,
+    sort,
+    dir,
     days,
   ] as const;
 
@@ -76,6 +78,7 @@ export function useAlertsQuery(): UseAlertsQueryResult {
       if (vehicleSearch) params.set('q', vehicleSearch);
       params.set('ack_state', ackState);
       params.set('days', String(days));
+      if (sort) { params.set('sort', sort); params.set('dir', dir); }
       params.set('page_size', String(pageSize));
       params.set('page', String(page));
       const qs = params.toString();

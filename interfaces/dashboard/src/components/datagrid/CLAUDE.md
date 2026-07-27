@@ -189,6 +189,13 @@ omitting them leaves today's behaviour exactly as it was:
   also deliberately does not use tanstack's own `manualFiltering` option:
   that short-circuits the entire filtered row model, and GLOBAL SEARCH
   lives in there too, so the search box would silently stop working.)
+- `sorting` + `onSortingChange` + `manualSorting` — controlled sort. With
+  `manualSorting` the rows arrived ordered, so the grid reports the click
+  and renders what it's handed. This is what lets a 25-row page be
+  correctly sorted across 11,200 rows.
+- `pageIndex` + `pageSize` + `onPaginationChange` + `pageCount` +
+  `manualPagination` — the page fetches ONE page. Pass `totalRows` too, or
+  the footer counts the rows in hand and reads "1–25 of 25" forever.
 - `segmentKey` + `onSegmentChange` — controlled lifecycle tab. Give the
   segments no `match` fn when the server does the slicing. For a SAVED
   tab, `onSegmentChange`'s second argument carries that tab's captured
@@ -217,7 +224,7 @@ grid stops answering for the whole from a part:
 
 | Operation | Silently wrong on a slice | With `totalRows` |
 |---|---|---|
-| Sort | orders the loaded rows, reads as sorted | disabled, "narrow the view first" |
+| Sort | orders the loaded rows, reads as sorted | disabled — *unless* `manualSorting`, where the order came from upstream and a slice is the right slice |
 | Group rows by | groups a fragment | disabled (ungroup always allowed) |
 | Export → all | writes a `-all` file of the loaded rows | "All loaded rows", both counts, `-loaded` suffix |
 | Pivot | summarises a fragment as a total | disabled with the reason |

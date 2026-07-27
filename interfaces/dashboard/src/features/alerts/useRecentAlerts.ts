@@ -2,7 +2,7 @@
  * Recent-alerts feed for the topbar bell dropdown — a lightweight glance,
  * NOT the full board.
  *
- * Deliberately separate from useAlertsQuery (which pulls the whole 2000-row
+ * Deliberately separate from useAlertsQuery (which pulls ONE page of the
  * filter window for the DataGrid): the dropdown only ever shows a handful
  * of the newest un-acknowledged alerts, so it fetches a small page and is
  * ENABLED only while the popover is open — the closed bell adds zero
