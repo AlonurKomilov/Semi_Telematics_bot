@@ -18,20 +18,27 @@ import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
 import { Settings2, Eye, EyeOff, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react';
 import { Tip } from '../../components/tooltip';
 import { usePagePreference } from '../../preferences';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
+import { useShellConfig } from '../../hooks/useShellConfig';
+import { useRoleView } from '../../context/RoleViewContext';
+import { useRoleLayoutMutations } from './useRolePageLayouts';
 import type { SectionRegistry } from './types';
 import {
-  canMove, gearItems, moveSection, toggleSection,
+  canMove, gearItems, moveSection, resolvePageLayout, toggleSection,
 } from './pageLayoutConfig';
 
 interface PageSectionsGearProps<P extends object> {
   feature: string;
   registry: SectionRegistry<P>;
-  /** The layout the user's arrangement is measured against. */
+  /** The layout the user's arrangement is measured against — the team
+   *  default when one exists, otherwise the shipped persona layout. */
   base: string[];
+  /** True when ``base`` IS a stored team default (enables "clear"). */
+  hasRoleDefault?: boolean;
 }
 
 export function PageSectionsGear<P extends object>({
-  feature, registry, base,
+  feature, registry, base, hasRoleDefault = false,
 }: PageSectionsGearProps<P>) {
   const [open, setOpen] = useState(false);
   const { value: pref, setValue, resetValue } = usePagePreference(feature, 'layout');
@@ -138,9 +145,80 @@ export function PageSectionsGear<P extends object>({
             <p className="px-3 pt-1 text-2xs text-muted-foreground border-t border-border">
               Only your view changes — teammates keep theirs.
             </p>
+            <ManagerBlock
+              feature={feature}
+              registry={registry}
+              base={base}
+              hasRoleDefault={hasRoleDefault}
+            />
           </PopoverPrimitive.Popup>
         </PopoverPrimitive.Positioner>
       </PopoverPrimitive.Portal>
     </PopoverPrimitive.Root>
+  );
+}
+
+
+/**
+ * The manager tier's door, inside the same gear.
+ *
+ * Renders only for someone who may actually save (owner/admin, or a
+ * manager on THEIR OWN role's view — the server re-checks regardless).
+ * "Set as team default" captures the manager's CURRENT resolved view —
+ * what they see is what the team gets — and per Option A it remains a
+ * default: teammates' own arrangements still apply on top.
+ */
+function ManagerBlock<P extends object>({
+  feature, registry, base, hasRoleDefault,
+}: {
+  feature: string;
+  registry: SectionRegistry<P>;
+  base: string[];
+  hasRoleDefault: boolean;
+}) {
+  const { has, hasAny } = useViewPermissions();
+  const { persona } = useShellConfig();
+  const { viewLabel } = useRoleView();
+  const { value: pref } = usePagePreference(feature, 'layout');
+  const { save, clear, busy } = useRoleLayoutMutations(persona, feature);
+
+  // Drivers have no dashboard team defaults, and the grant is the UI
+  // gate only — the API enforces own-role for managers on its own.
+  const mayManage = persona !== 'driver'
+    && (has('can_manage_account') || hasAny('can_manage_role_pages'));
+  if (!mayManage) return null;
+
+  const current = resolvePageLayout(base, registry, pref);
+
+  return (
+    <div className="px-3 pt-2 mt-1 border-t border-border">
+      <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+        Team default · {viewLabel}
+      </p>
+      <p className="text-2xs text-muted-foreground mt-0.5">
+        Sets the starting layout for everyone on this role. They can
+        still adjust their own view.
+      </p>
+      <div className="flex items-center gap-2 mt-1.5 pb-1">
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => save(current)}
+          className="text-2xs font-medium text-primary hover:underline disabled:opacity-50"
+        >
+          Use my current arrangement
+        </button>
+        {hasRoleDefault && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => clear()}
+            className="text-2xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            Clear team default
+          </button>
+        )}
+      </div>
+    </div>
   );
 }

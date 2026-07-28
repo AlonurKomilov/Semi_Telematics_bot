@@ -25,7 +25,8 @@ import {
 import { useShellConfig } from '../../hooks/useShellConfig';
 import { usePagePreference } from '../../preferences';
 import type { LayoutMap, SectionRegistry } from './types';
-import { resolvePageLayout } from './pageLayoutConfig';
+import { resolvePageLayout, sanitizeRoleLayout } from './pageLayoutConfig';
+import { useRolePageLayouts } from './useRolePageLayouts';
 import { PageSectionsGear } from './PageSectionsGear';
 
 interface PageLayoutHostProps<P extends object> {
@@ -59,21 +60,36 @@ export function PageLayoutHost<P extends object>({
     layouts.admin ??
     (Object.keys(registry) as string[]);
 
-  // Tier 3 (personal).  Tier 2 — a role manager's team default — plugs in
-  // here by replacing ``baseLayout`` before the personal pref applies;
-  // the resolver is already shaped for it, so that arrival changes this
-  // line, not the model.  The hook is called unconditionally (rules of
-  // hooks); a page that didn't opt in just never reads the result.
+  // The three tiers meet here.  Hooks run unconditionally (rules of
+  // hooks); a page that didn't opt in never reads their results.
+  //
+  // Tier 2: a role manager's team default replaces the SHIPPED layout as
+  // the base — validated against the registry first, and ignored
+  // WHOLESALE when invalid (a stored default missing a required section
+  // would strand the whole team at once, so it doesn't get half-applied).
+  // Tier 3: the user's own arrangement applies on top.  Per Option A a
+  // known section the user surfaced survives even if the team default
+  // lacks it — a manager's setup is a default, not a lock.
+  const { layouts: roleLayouts } = useRolePageLayouts();
   const { value: pref } = usePagePreference(customizable ?? '__none__', 'layout');
+  const roleDefault = customizable
+    ? sanitizeRoleLayout(roleLayouts?.[persona]?.[customizable], registry)
+    : null;
+  const base = roleDefault ?? baseLayout;
   const layout = customizable
-    ? resolvePageLayout(baseLayout, registry, pref)
+    ? resolvePageLayout(base, registry, pref)
     : baseLayout;
 
   return (
     <>
       {customizable && (
         <div className="flex justify-end -mb-1">
-          <PageSectionsGear feature={customizable} registry={registry} base={baseLayout} />
+          <PageSectionsGear
+            feature={customizable}
+            registry={registry}
+            base={base}
+            hasRoleDefault={roleDefault !== null}
+          />
         </div>
       )}
       {layout.map((sectionId) => {

@@ -14,7 +14,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  canMove, gearItems, moveSection, resolvePageLayout, toggleSection,
+  canMove, gearItems, moveSection, resolvePageLayout, sanitizeRoleLayout,
+  toggleSection,
 } from './pageLayoutConfig';
 import { pageKey, defFor, asPageLayoutPref } from '../../preferences/registry';
 import type { SectionRegistry } from './types';
@@ -165,6 +166,47 @@ describe('required sections are position anchors', () => {
     expect(canMove(items, idx('cards'), 1)).toBe(true);    // strip below
     expect(canMove(items, idx('strip'), 1)).toBe(false);   // queue below
     expect(canMove(items, idx('header'), 1)).toBe(false);  // required itself
+  });
+});
+
+
+describe('sanitizeRoleLayout (tier two enters the resolver)', () => {
+  it('a valid team default passes, unknown ids filtered', () => {
+    expect(sanitizeRoleLayout(
+      ['header', 'ghost', 'strip', 'cards', 'queue', 'drawer'], REG,
+    )).toEqual(['header', 'strip', 'cards', 'queue', 'drawer']);
+  });
+
+  it('a default missing a REQUIRED section is rejected WHOLESALE', () => {
+    // Tier two is stricter than tier three because its blast radius is a
+    // whole team: half-applying a stale default that predates a section
+    // becoming required would strand everyone on that role at once.
+    expect(sanitizeRoleLayout(['header', 'cards', 'queue'], REG)).toBeNull();
+  });
+
+  it('garbage shapes are rejected, not half-read', () => {
+    for (const bad of [null, 'x', 42, {}, ['ok', 7], []]) {
+      expect(sanitizeRoleLayout(bad, REG)).toBeNull();
+    }
+  });
+
+  it('OPTION A end-to-end: a personal add survives a manager removal', () => {
+    // The manager's team default omits 'strip'; this user had surfaced
+    // it personally.  A default is not a lock — the user's arrangement
+    // wins until the (later) lock flag exists.
+    const teamDefault = sanitizeRoleLayout(
+      ['header', 'cards', 'queue', 'drawer'], REG)!;
+    const out = resolvePageLayout(teamDefault, REG, {
+      order: ['header', 'strip', 'cards', 'queue', 'drawer'],
+      hidden: [],
+    });
+    expect(out).toContain('strip');
+  });
+
+  it('...and a user with NO personal pref gets exactly the team default', () => {
+    const teamDefault = sanitizeRoleLayout(
+      ['header', 'cards', 'queue', 'drawer'], REG)!;
+    expect(resolvePageLayout(teamDefault, REG, null)).toEqual(teamDefault);
   });
 });
 

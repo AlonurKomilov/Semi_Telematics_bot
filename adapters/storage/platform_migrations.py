@@ -200,6 +200,7 @@ async def run_all(conn) -> None:
     await migrate_notification_matrix(conn)
     await migrate_notification_digest_queue(conn)
     await migrate_notification_inbox(conn)
+    await migrate_page_layouts(conn)
     await migrate_notification_deliveries(conn)
     await migrate_push_subscriptions(conn)
     # Capacity monitoring (operator console): platform metric history +
@@ -629,6 +630,27 @@ async def migrate_notification_digest_queue(conn) -> None:
             await conn.rollback()
         except Exception:
             pass
+
+
+async def migrate_page_layouts(conn) -> None:
+    """Create ``page_layouts`` — role-default page section arrangements
+    (tier two of the page-config model).  Mirrors platform_schema.py;
+    additive, nothing reads it until a manager saves a team default."""
+    try:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS page_layouts (
+                account_id INTEGER NOT NULL,
+                role       TEXT    NOT NULL,
+                feature    TEXT    NOT NULL,
+                sections   TEXT    NOT NULL,
+                updated_by INTEGER NOT NULL,
+                updated_at TEXT    NOT NULL,
+                PRIMARY KEY (account_id, role, feature)
+            )
+        """)
+        await conn.commit()
+    except Exception:
+        pass
 
 
 async def migrate_notification_inbox(conn) -> None:

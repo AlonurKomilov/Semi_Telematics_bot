@@ -457,6 +457,23 @@ async def create_tables(conn) -> None:
             ON notification_digest_queue(cadence, account_id, recipient_type,
                                          recipient_id, channel, id);
 
+        -- Role-default page layouts: a role MANAGER's team-wide section
+        -- arrangement for one feature page.  Tier two of the page-config
+        -- model — the frontend resolver uses it as the BASE that each
+        -- user's personal preference (page.<feature>.layout) applies on
+        -- top of.  A default, not a lock (Option A).  Shape-validated at
+        -- the API; the frontend enforces required sections against its
+        -- own registry and ignores an invalid row wholesale.
+        CREATE TABLE IF NOT EXISTS page_layouts (
+            account_id INTEGER NOT NULL,
+            role       TEXT    NOT NULL,
+            feature    TEXT    NOT NULL,
+            sections   TEXT    NOT NULL,
+            updated_by INTEGER NOT NULL,
+            updated_at TEXT    NOT NULL,
+            PRIMARY KEY (account_id, role, feature)
+        );
+
         -- In-app inbox: the persisted per-user notification record behind
         -- the bell dropdown.  Populated by the intrinsic 'in_app' channel
         -- (its send() INSERTs here instead of transmitting), so audience /

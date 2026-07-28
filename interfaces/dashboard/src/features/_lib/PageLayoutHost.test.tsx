@@ -31,6 +31,16 @@ vi.mock('../../hooks/useShellConfig', () => ({
   useShellConfig: () => mockUseShellConfig(),
 }));
 
+// These tests pin tier-1 resolution (shipped per-persona layouts), so
+// tier 2 is mocked as "no team defaults stored" — the real hook needs a
+// QueryClientProvider and would fire a network fetch.
+vi.mock('./useRolePageLayouts', () => ({
+  useRolePageLayouts: () => ({ layouts: undefined }),
+  useRoleLayoutMutations: () => ({
+    save: () => {}, clear: () => {}, busy: false,
+  }),
+}));
+
 // Tiny eager sections — no real lazy chunks needed for these tests.
 // lazy() wraps a function returning { default: Component }, which
 // matches the SectionDef.Component type.

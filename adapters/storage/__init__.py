@@ -61,6 +61,7 @@ from .market_intel import MarketIntelMixin
 from .vehicle_inventory import VehicleInventoryMixin
 from .fuel import FuelMixin
 from .alerts import AlertsMixin
+from .page_layouts import PageLayoutsMixin
 from .settings import SettingsMixin
 from .parking import ParkingMixin
 from .camera import CameraMixin
@@ -135,6 +136,7 @@ class Database(
     VehicleInventoryMixin,
     FuelMixin,
     AlertsMixin,
+    PageLayoutsMixin,
     SettingsMixin,
     ParkingMixin,
     CameraMixin,

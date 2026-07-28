@@ -34,6 +34,7 @@ from interfaces.api.routes import webhooks as webhooks_routes
 from capabilities.alerting import router as alerts
 from capabilities.notifications import router as notifications_routes
 from capabilities.preferences import router as preferences_routes
+from interfaces.api import page_layouts as page_layouts_routes
 from capabilities.reporting import router as reports_routes
 from capabilities.ai import router as ai_routes
 from features.scorecards import router as scorecards_routes
@@ -435,6 +436,7 @@ def create_api() -> FastAPI:
         # Mounted right after the user router it was split out of, so the
         # /user/preferences/ui/* paths stay byte-identical.
         app.include_router(preferences_routes.router, prefix=prefix)
+        app.include_router(page_layouts_routes.router, prefix=prefix)
         app.include_router(overview_routes.router, prefix=prefix)
         app.include_router(vehicles_routes.router, prefix=prefix)
         app.include_router(vehicle_inventory_routes.router, prefix=prefix)

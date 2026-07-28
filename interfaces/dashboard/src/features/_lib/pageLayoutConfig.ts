@@ -147,3 +147,33 @@ export function canMove(items: GearItem[], idx: number, direction: -1 | 1): bool
   if (to < 0 || to >= items.length) return false;
   return !items[idx].required && !items[to].required;
 }
+
+
+/**
+ * Validate a ROLE DEFAULT fetched from the server before it may replace
+ * the shipped persona layout as the resolver's base.
+ *
+ * The backend validates shape only — it doesn't know this registry — so
+ * this is where required sections are enforced.  An invalid stored
+ * default is ignored WHOLESALE (return null → shipped layout applies):
+ * a team default missing the queue or the drawer isn't a layout to
+ * partially honour, it's a stale row from before a section became
+ * required, and half-applying it would strand the whole team at once —
+ * the blast radius that makes tier two stricter than tier three.
+ */
+export function sanitizeRoleLayout<P extends object>(
+  layout: unknown,
+  registry: SectionRegistry<P>,
+): string[] | null {
+  if (!Array.isArray(layout) || !layout.every((x) => typeof x === 'string')) {
+    return null;
+  }
+  const known = layout.filter((id) =>
+    Object.prototype.hasOwnProperty.call(registry, id));
+  if (known.length === 0) return null;
+  const present = new Set(known);
+  for (const [id, def] of Object.entries(registry)) {
+    if ((def as { required?: boolean }).required && !present.has(id)) return null;
+  }
+  return known;
+}
