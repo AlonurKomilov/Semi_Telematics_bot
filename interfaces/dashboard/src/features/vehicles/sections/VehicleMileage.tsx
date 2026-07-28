@@ -28,7 +28,7 @@ interface VehicleMileageResponse {
   start_odo?: number;
   end_odo?: number;
   days_covered?: number;
-  flag?: '' | 'partial' | 'reset';
+  flag?: '' | 'partial' | 'reset' | 'catchup';
   days?: DayMiles[];
 }
 

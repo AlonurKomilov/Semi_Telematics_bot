@@ -42,7 +42,7 @@ interface MileageRow {
   start_read_on: string;
   end_read_on: string;
   days_covered: number;
-  flag: '' | 'partial' | 'reset';
+  flag: '' | 'partial' | 'reset' | 'catchup';
 }
 
 interface MileageResponse {
