@@ -40,6 +40,14 @@ export interface PivotModel {
    *  bucket vanished after a filter change) silently falls back to the
    *  label order rather than throwing the report away. */
   sort?: { leaf: string; dir: 'asc' | 'desc' } | null;
+  /** Assigned fields that are currently switched OFF.  The checkbox in
+   *  the panel toggles membership here; it does NOT unassign — a field
+   *  you untick stays where you put it (with its aggregation, its
+   *  position in the nesting order) and simply stops contributing, so
+   *  you can compare "with and without" without rebuilding the report.
+   *  OPTIONAL and additive on purpose: a model saved before this existed
+   *  has no such list, which reads correctly as "nothing is off". */
+  disabled?: string[];
 }
 
 /** One header cell — ``span`` is a colSpan over the leaf columns below. */
@@ -156,10 +164,13 @@ export function pivot(
   // N column dimensions -> N header levels above the value row
   // (Region > Quarter > Sales).  Rows stay single-level in this phase;
   // nesting THOSE needs an expand/collapse tree, not just more headers.
+  const off = new Set(model.disabled ?? []);
   const colCols = model.columns
+    .filter((k) => !off.has(k))
     .map((k) => cols.get(k))
     .filter((c): c is AnyColumn => !!c);
-  const valueFields = model.values.filter((v) => cols.has(v.key));
+  const valueFields = model.values.filter((v) => cols.has(v.key) && !off.has(v.key));
+  const activeRows = model.rows.filter((k) => !off.has(k));
 
   const blank: PivotResult = {
     headerLevels: [], leafIds: [], leafValueKeys: [],
@@ -167,7 +178,7 @@ export function pivot(
     grandRowTotal: [], totalLabels: [], empty: true,
   };
   // A pivot needs something to break down BY and something to measure.
-  if (model.rows.length === 0 || valueFields.length === 0) return blank;
+  if (activeRows.length === 0 || valueFields.length === 0) return blank;
 
   // ── Buckets ────────────────────────────────────────────────────────
   // Sorted so the output is deterministic (and so 'YYYY-MM' month
@@ -175,7 +186,7 @@ export function pivot(
   // Row dimensions nest: [Company, Customer] gives a Company group with
   // Customer rows beneath it.  Every LEVEL gets its own aggregate row,
   // so a collapsed parent still shows real totals rather than a blank.
-  const rowDims = model.rows
+  const rowDims = activeRows
     .map((k) => cols.get(k))
     .filter((c): c is AnyColumn => !!c);
 
@@ -415,7 +426,12 @@ export function pivot(
 /** Is this model renderable?  The panel uses it to decide between the
  *  matrix and the "pick a field" hint. */
 export function isPivotReady(model: PivotModel): boolean {
-  return model.rows.length > 0 && model.values.length > 0;
+  // Counts only what is switched ON — unticking every measure leaves a
+  // report with nothing to show, and the empty state has to say so
+  // rather than the matrix rendering a header with no numbers under it.
+  const off = new Set(model.disabled ?? []);
+  return model.rows.some((k) => !off.has(k))
+    && model.values.some((v) => !off.has(v.key));
 }
 
 /** Drop fields that no longer exist on the grid (a column was removed or
@@ -435,6 +451,7 @@ export function prunePivotModel(model: PivotModel, columns: AnyColumn[]): PivotM
     // back to label order) — that is a rendering decision, not a reason
     // to discard the user's choice here.
     sort: model.sort ?? null,
+    disabled: (model.disabled ?? []).filter((k) => keys.has(k)),
   };
 }
 
@@ -512,8 +529,16 @@ export function pivotCellRows(
   colPath: string[],
 ): Record<string, unknown>[] {
   const cols = new Map(columns.map((c) => [c.key, c]));
-  const rowDims = model.rows.map((k) => cols.get(k)).filter((c): c is AnyColumn => !!c);
-  const colDims = model.columns.map((k) => cols.get(k)).filter((c): c is AnyColumn => !!c);
+  // Must mirror pivot()'s own filtering EXACTLY — a drill-down that
+  // matched on a switched-off dimension would return rows the number on
+  // screen never counted.
+  const off = new Set(model.disabled ?? []);
+  const dimsOf = (keys: string[]) => keys
+    .filter((k) => !off.has(k))
+    .map((k) => cols.get(k))
+    .filter((c): c is AnyColumn => !!c);
+  const rowDims = dimsOf(model.rows);
+  const colDims = dimsOf(model.columns);
   return rows.filter((r) => {
     for (let i = 0; i < rowPath.length && i < rowDims.length; i += 1) {
       if (bucketOf(r, rowDims[i]) !== rowPath[i]) return false;

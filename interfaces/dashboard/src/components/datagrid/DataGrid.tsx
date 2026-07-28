@@ -720,8 +720,9 @@ export default function DataGrid({
       ? {
           rows: stored.rows ?? [], columns: stored.columns ?? [],
           values: stored.values ?? [], sort: stored.sort ?? null,
+          disabled: stored.disabled ?? [],
         }
-      : { rows: [], columns: [], values: [], sort: null };
+      : { rows: [], columns: [], values: [], sort: null, disabled: [] };
     // A saved model can name columns this grid no longer has.
     return prunePivotModel(base, pivotColumns);
   }, [pivotPref, pivotColumns]);

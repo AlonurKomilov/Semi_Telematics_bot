@@ -260,6 +260,28 @@ typing a query could hide fields you had already assigned, leaving the
 count badges reading 2/1/1 over three empty lists with no way to remove
 anything.
 
+### The checkbox switches a field OFF — it does not unassign it
+
+Unticking keeps the field exactly where you put it: same section, same
+place in the nesting order, same aggregation for a measure. It just
+stops contributing, so "show me this report without Driver" is one
+click and one click back.
+
+It used to REMOVE. Two consequences, both reported from the live UI:
+unticking a Columns field made it jump back to the pool (losing its
+position), and unticking your only measure blanked the whole report to
+the "choose a value" empty state — from which the configuration you'd
+built was no longer visible.
+
+Stored as `PivotModel.disabled: string[]`, deliberately **additive**: a
+model saved before this existed has no such list, which reads correctly
+as "nothing is off". Removing is the ⋮ menu or a drag back to the pool.
+
+⚠️ `pivot()` filters rows, columns AND values through `disabled`, and
+**`pivotCellRows` must filter identically** — a drill-down that matched
+on a switched-off dimension would hand back rows the number on screen
+never counted. A test pins that.
+
 ### Dragging
 
 Drag runs between EVERY list — pool ↔ Rows ↔ Columns ↔ Values — and

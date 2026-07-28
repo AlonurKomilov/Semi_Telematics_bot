@@ -174,6 +174,22 @@ export default function PivotPanel({
 
   const remove = (key: string) => onChange(withoutKey(model, key));
 
+  const isOff = (key: string) => (model.disabled ?? []).includes(key);
+  /** The checkbox SWITCHES A FIELD OFF; it does not unassign it.  It used
+   *  to remove, which meant unticking a field made it jump back to the
+   *  pool — losing its position in the nesting order and, for a measure,
+   *  its aggregation — and unticking your only measure blanked the whole
+   *  report.  Off is a temporary "show me without this", which is what
+   *  the tick shape promises.  Removing is the ⋮ menu, or a drag to the
+   *  pool. */
+  const setActive = (key: string, on: boolean) => {
+    const cur = model.disabled ?? [];
+    onChange({
+      ...model,
+      disabled: on ? cur.filter((k) => k !== key) : [...cur, key],
+    });
+  };
+
   const moveTo = (axis: Axis, key: string, to: number) => {
     const cur = keysOn(axis);
     const from = cur.indexOf(key);
@@ -510,9 +526,10 @@ export default function PivotPanel({
                           id={itemId(axis, key)}
                           label={byKey.get(key)?.label ?? key}
                           assigned
+                          checked={!isOff(key)}
                           showLineBefore={isTarget && drop.index === i}
                           showLineAfter={isTarget && drop.index >= keys.length && i === keys.length - 1}
-                          onRemove={() => remove(key)}
+                          onToggle={(on) => setActive(key, on)}
                           menu={fieldMenu(axis, key)}
                           trailing={axis === 'values' ? aggChip(key) : undefined}
                         />
@@ -569,13 +586,16 @@ function DropZone({ zone, active, className, children }: {
 
 /** One field row — in the pool or assigned to an axis. */
 function FieldRow({
-  id, label, assigned, menu, onRemove, trailing, showLineBefore, showLineAfter,
+  id, label, assigned, checked, menu, onToggle, trailing,
+  showLineBefore, showLineAfter,
 }: {
   id: string;
   label: string;
   assigned?: boolean;
+  /** Is this field CONTRIBUTING?  Unticked fields stay assigned. */
+  checked?: boolean;
   menu?: MenuAction[];
-  onRemove?: () => void;
+  onToggle?: (on: boolean) => void;
   trailing?: React.ReactNode;
   /** The 2px insertion rule — the "line showing where the drag is
    *  going".  A ring alone tells you the section; only this tells you
@@ -609,13 +629,20 @@ function FieldRow({
         {assigned && (
           <input
             type="checkbox"
-            checked
-            onChange={onRemove}
-            aria-label={`Remove ${label}`}
+            checked={!!checked}
+            onChange={(e) => onToggle?.(e.target.checked)}
+            aria-label={`Include ${label} in the report`}
             className="shrink-0 cursor-pointer"
           />
         )}
-        <span className="flex-1 min-w-0 truncate text-foreground">{label}</span>
+        {/* An off field stays legible — it is still assigned, and you
+            need to read it to decide whether to switch it back on. */}
+        <span className={cn(
+          'flex-1 min-w-0 truncate',
+          checked === false ? 'text-muted-foreground line-through' : 'text-foreground',
+        )}>
+          {label}
+        </span>
         {trailing}
         {menu && (
           <ActionMenu items={menu}>

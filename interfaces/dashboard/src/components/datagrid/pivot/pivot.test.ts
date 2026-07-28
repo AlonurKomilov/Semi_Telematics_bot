@@ -161,6 +161,9 @@ describe('pivot — guards', () => {
       // pivot sorting in the product.  Null here because this model
       // never had one.
       sort: null,
+      // Same contract for the on/off list: rebuilding the model field
+      // by field is exactly how ``sort`` got lost.
+      disabled: [],
     });
   });
 
@@ -507,5 +510,71 @@ describe('the model survives a round-trip through the grid', () => {
       sort: { leaf: 'gone||nope', dir: 'asc' },
     };
     expect(prunePivotModel(model, COLUMNS).sort).toEqual({ leaf: 'gone||nope', dir: 'asc' });
+  });
+});
+
+describe('switching a field OFF without unassigning it', () => {
+  // The panel's checkbox used to REMOVE. So unticking a field made it
+  // jump back to the unassigned pool — losing its place in the nesting
+  // order and, for a measure, its aggregation — and unticking your only
+  // measure blanked the report entirely. Off is now a temporary "show
+  // me without this", which is what a tick shape actually promises.
+  const ROWS = [
+    { customer: 'Acme', delivered_at: '2026-01-05', rate: 100 },
+    { customer: 'Acme', delivered_at: '2026-02-05', rate: 300 },
+    { customer: 'Bolt', delivered_at: '2026-01-09', rate: 50 },
+  ];
+
+  it('a switched-off COLUMN dimension collapses the header, keeping the rows', () => {
+    const on = pivot(ROWS, model({ columns: ['delivered_at'] }), COLUMNS);
+    expect(on.leafIds.length).toBe(2);          // two months
+
+    const off = pivot(
+      ROWS,
+      { ...model({ columns: ['delivered_at'] }), disabled: ['delivered_at'] },
+      COLUMNS,
+    );
+    // One leaf (just the measure), and the report still renders.
+    expect(off.empty).toBe(false);
+    expect(off.leafIds.length).toBe(1);
+    expect(off.bodyRows.find((r) => r.label === 'Acme')!.cells).toEqual([400]);
+  });
+
+  it('a switched-off MEASURE leaves the others rendering', () => {
+    const two: PivotModel = {
+      rows: ['customer'], columns: [],
+      values: [{ key: 'rate', aggFn: 'sum' }, { key: 'rate', aggFn: 'max' }],
+      disabled: [],
+    };
+    expect(pivot(ROWS, two, COLUMNS).leafIds.length).toBe(2);
+    // Disabling by KEY switches both entries for that column off — the
+    // checkbox is per FIELD, which is what the panel renders.
+    expect(pivot(ROWS, { ...two, disabled: ['rate'] }, COLUMNS).empty).toBe(true);
+  });
+
+  it('is not ready when every measure is switched off', () => {
+    const m = model({ columns: [] });
+    expect(isPivotReady(m)).toBe(true);
+    expect(isPivotReady({ ...m, disabled: ['rate'] })).toBe(false);
+    expect(isPivotReady({ ...m, disabled: ['customer'] })).toBe(false);
+  });
+
+  it('survives the prune, and drops only keys the grid lost', () => {
+    const pruned = prunePivotModel(
+      { ...model({ columns: [] }), disabled: ['customer', 'ghost'] },
+      COLUMNS,
+    );
+    expect(pruned.disabled).toEqual(['customer']);
+  });
+
+  it('drill-down ignores a switched-off dimension, like the cells do', () => {
+    // If the drill matched on a dimension the matrix stopped grouping
+    // by, it would hand back rows the number on screen never counted.
+    const m: PivotModel = {
+      ...model({ columns: ['delivered_at'] }), disabled: ['delivered_at'],
+    };
+    const drilled = pivotCellRows(ROWS, m, COLUMNS, ['Acme'], []);
+    expect(drilled).toHaveLength(2);
+    expect(drilled.reduce((a, r) => a + Number(r.rate), 0)).toBe(400);
   });
 });
