@@ -243,6 +243,50 @@ nothing changes.
 Search stays local by design (it's scoped to the loaded page) — say so
 above the table rather than implying it searched everything.
 
+## Tall grids own a viewport — the `fillHeight` prop
+
+By default a grid grows to fit its rows, so "rows per page: 250" makes
+the card 250 rows TALL and the PAGE does the scrolling. That pushes four
+things out of reach at once, and they get worse the more rows you show:
+
+| | Default (page scrolls) | `fillHeight` (body scrolls) |
+|---|---|---|
+| Column headers | scroll away — unlabelled columns by row 40 | sticky at the top of the body |
+| Horizontal scrollbar | rides the bottom of the table, thousands of px down | pinned to the card's bottom edge |
+| Bulk-action bar | a TOP strip, above the rows it acts on | always visible |
+| Pagination / rows-per-page | past the last row | always visible |
+
+`fillHeight` gives the grid its own viewport: toolbar and footer pin to
+the card's edges, the body scrolls between them. **No measurement and no
+magic height** — the shell is already `h-screen overflow-hidden` with ONE
+scroll region ([`shells/`](../../shells/)), so this is pure flexbox.
+
+**The page must cooperate**: its root needs `h-full flex flex-col min-h-0`
+so there's a definite height to divide up, and the grid must be a direct
+flex child of it. On a page not laid out that way the grid keeps its
+natural height — nothing breaks, the prop just does nothing. Worked
+example: [`features/loads/Loads.tsx`](../../features/loads/Loads.tsx).
+
+Two gotchas the implementation encodes, both easy to reintroduce:
+
+- **`min-h-0` at every level.** A flex item defaults to `min-height:
+  auto` — "never smaller than my content" — which on a 250-row table
+  means "never smaller than 250 rows", and the whole mechanism silently
+  does nothing. The one exception is the body wrapper, which carries a
+  `min-h-[16rem]` FLOOR instead: on a phone, or under a tall page
+  header, the body stops shrinking and the page's scroll region takes
+  over rather than leaving a slit.
+- **Pivot mode needs its own scroller.** The card now clips
+  (`overflow-hidden`) at a definite height and `PivotView` caps nothing
+  vertically, so a tall matrix would be cut off with no way to reach the
+  rest. The pivot branch gets `overflow-y-auto`; horizontal scrolling
+  stays inside `PivotView` (its sticky row-label column depends on it).
+
+`stickyHeader="65vh"` is the older hand-tuned form — a fixed max-height,
+still right when a grid must be SHORTER than the space available to it
+(Scorecards). Both routes set the same internal `bodyScrolls` flag, so
+the sticky header and its z-index behave identically.
+
 ## Right-click row actions = the `rowActions` prop
 
 `rowActions={(row) => MenuAction[]}` wraps each data row in a right-click
