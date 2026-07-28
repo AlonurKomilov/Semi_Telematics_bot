@@ -327,7 +327,7 @@ async def create_tables(conn) -> None:
         --
         -- ``canonical_key`` is the cross-account identity: every
         -- account's seeded "Engine Oil & Filter" row carries the SAME
-        -- key, so fleet-wide benchmarking is a GROUP BY.  '' ⇒ an
+        -- key, so cross-account benchmarking is a GROUP BY.  '' ⇒ an
         -- account's own custom task: freely renamed and deletable.
         -- Non-empty ⇒ a standard task: archive-only, with its name and
         -- system_key owned by the operator.

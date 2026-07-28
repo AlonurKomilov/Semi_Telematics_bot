@@ -8,7 +8,7 @@
  * without confusion).
  *
  * Permission-gated by ``can_vehicle_all`` — matches the backend's
- * route guard.  No-ops cleanly for personas without fleet-wide
+ * route guard.  No-ops cleanly for personas without account-wide
  * vehicle access.
  *
  * Uses the same ``leaflet.heat`` plugin SafetyEventOverlay uses;

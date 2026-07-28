@@ -32,7 +32,7 @@ def compute_vehicle_cpm(fuel_summary_row: dict) -> dict:
 
 
 def compute_fleet_cpm(fuel_summary: list[dict]) -> tuple[list[dict], dict]:
-    """Compute CPM for every vehicle and fleet-wide averages.
+    """Compute CPM for every vehicle and account-wide averages.
 
     Returns (vehicle_results, fleet_summary) where fleet_summary has:
         aggregate_cost, aggregate_miles, aggregate_gallons, aggregate_cpm, aggregate_mpg.

@@ -167,7 +167,7 @@ const ALL_COLUMNS: AnyColumn[] = [
     filterable: true,
     filterMode: 'range',
     filterRange: { min: 0, step: 1 },
-    // Total active faults fleet-wide (or per group).
+    // Total active faults account-wide (or per group).
     aggregable: true, aggFns: ['sum', 'avg', 'max'],
     render: (v) => (v as number) > 0 ? <span className="text-warn font-medium">{v as number}</span> : '0',
   },

@@ -66,7 +66,7 @@ class TestRolePermissions:
         perms = get_permissions(Role.OWNER)
         # The derived service surfaces (Alerts inbox, AI assistant) are not
         # plain "all True" flags — the inbox scope is mutually exclusive, so
-        # the owner gets the fleet-wide inbox (can_alerts_all) and NOT the
+        # the owner gets the account-wide inbox (can_alerts_all) and NOT the
         # redundant own-vehicle flag.  Assert those explicitly; blanket-check
         # every other field stays True for the owner.
         for field_name in FeatureSet.__dataclass_fields__:
@@ -75,7 +75,7 @@ class TestRolePermissions:
             assert getattr(perms, field_name) is True, (
                 f"Owner should have {field_name}=True"
             )
-        assert perms.can_alerts_all is True        # fleet-wide Alerts inbox
+        assert perms.can_alerts_all is True        # account-wide Alerts inbox
         assert perms.can_alerts_vehicle is False   # mutually exclusive with _all
         assert perms.can_ai_chat is True           # always-on AI service
 
@@ -247,7 +247,7 @@ class TestPrivilegeEscalation:
         for field_name in FeatureSet.__dataclass_fields__:
             if field_name.endswith("_all"):
                 assert not getattr(perms, field_name), (
-                    f"Driver should not have fleet-wide {field_name}"
+                    f"Driver should not have account-wide {field_name}"
                 )
 
 

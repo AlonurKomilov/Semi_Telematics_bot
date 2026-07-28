@@ -19,7 +19,7 @@ Write paths:
   * ``POST /integrations/{provider}/companies/{code}/actions/test``
     runs the lean probe and stores the result.
   * The account-level ``POST /actions/test-connection`` also writes
-    each company's individual result so a fleet-wide test surfaces
+    each company's individual result so an account-wide test surfaces
     the broken company immediately.
 """
 

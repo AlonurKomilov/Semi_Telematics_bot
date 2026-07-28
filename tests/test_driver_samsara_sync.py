@@ -230,7 +230,7 @@ class TestSamsaraDriversRoute:
                 assert body["error"] == "samsara_unavailable"
 
     async def test_driver_role_forbidden(self, app_ctx):
-        """Drivers don't get fleet-wide visibility."""
+        """Drivers don't get account-wide visibility."""
         ctx = app_ctx
         async with AsyncClient(
             transport=ASGITransport(app=ctx["app"]), base_url="http://t",

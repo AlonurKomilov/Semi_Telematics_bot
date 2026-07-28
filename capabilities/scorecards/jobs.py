@@ -73,9 +73,9 @@ async def take_daily_scorecard_snapshots(_app=None) -> None:
     from capabilities.localization.tz import is_local_hour as _is_local_hour
     _TARGET_HOUR = 2  # local 02:00 — pre-shift, after yesterday's data settled
     for acc in accounts:
-        # Hourly tick + per-account gate replaces the old fleet-wide
-        # 02:30 UTC cron, so an Eastern fleet snapshots at 02:00 ET
-        # (07:00 UTC) and a Pacific fleet at 02:00 PT (10:00 UTC).
+        # Hourly tick + per-account gate replaces the old platform-wide
+        # 02:30 UTC cron, so an Eastern account snapshots at 02:00 ET
+        # (07:00 UTC) and a Pacific account at 02:00 PT (10:00 UTC).
         if not await _is_local_hour(acc.id, _TARGET_HOUR):
             continue
         tenant = await get_tenant_db(acc.id)

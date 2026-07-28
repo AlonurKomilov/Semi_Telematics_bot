@@ -7,7 +7,7 @@
  *
  *   Open alerts (safety-scoped via X-View-As) · Trucks · Moving
  *
- * The fleet status chips give the safety manager fleet-wide context
+ * The fleet status chips give the safety manager account-wide context
  * without crossing into Fleet's workspace.  Faults / unsafe-parking
  * chips were removed when strict binding shipped — those belong on
  * FleetHero and DispatchHero respectively.  A future

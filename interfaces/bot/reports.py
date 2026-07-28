@@ -3,7 +3,7 @@
 The bot used to expose ``/faults``, ``/fuel``, ``/efficiency``,
 ``/health``, ``/weather``, and ``/risk_report`` as PDF/CSV
 generators that shipped the file back as a Telegram document.
-Reading a fleet-wide PDF on a phone is awkward; a CSV in a chat
+Reading an account-wide PDF on a phone is awkward; a CSV in a chat
 is uselessly unsorted/unfilterable.  ``dash.4truck.us/reports``
 covers the same data with sortable tables and proper export, so
 all six command surfaces are now deep-link stubs.
@@ -73,7 +73,7 @@ async def cmd_faults(
         update,
         title="🛠 Faults Report moved",
         body=(
-            "Browse fleet-wide fault codes with per-truck drill-down "
+            "Browse account-wide fault codes with per-truck drill-down "
             "and CSV/PDF export on the dashboard."
         ),
         path="/reports?tab=faults",

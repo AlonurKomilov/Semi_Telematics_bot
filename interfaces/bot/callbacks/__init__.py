@@ -257,7 +257,7 @@ async def _maint_done(u, c):
 #
 # The entire camera surface (paginated picker ``camco_<company>`` /
 # ``cam_page_<co>_<page>``, per-truck ``cam_vehicle_<truck>`` button,
-# fleet-wide and per-truck AI checks, history browser) moved to the
+# account-wide and per-truck AI checks, history browser) moved to the
 # dashboard.  Cached buttons fall through to the unknown-action
 # handler.  Camera *alerts* still ping via the scheduler.
 

@@ -153,7 +153,7 @@ class VehicleInventoryMixin(_MixinBase):
 
     async def list_account_inventory(self, account_id: int) -> list[dict]:
         """Every active item across the fleet, joined with its truck's
-        unit number + company — the fleet-wide Inventory page's read.
+        unit number + company — the account-wide Inventory page's read.
         One query; company scoping is applied by the caller (router)
         against the user's allowed codes."""
         rows = await self.read_all(

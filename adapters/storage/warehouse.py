@@ -1430,7 +1430,7 @@ class WarehouseMixin(_MixinBase):
         they need finer resolution.
 
         Requires either ``vehicle_id`` (Samsara ID) or ``vehicle_name``
-        — fleet-wide history queries are intentionally not supported
+        — account-wide history queries are intentionally not supported
         because the row count explodes quadratically with fleet size.
         ``vehicle_name`` is resolved via the ``vehicle_state`` table
         which carries the canonical name→id mapping.

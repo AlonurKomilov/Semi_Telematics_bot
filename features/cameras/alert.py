@@ -31,7 +31,7 @@ def _issues_for_subscriber(sub, all_issues: list[dict]) -> list[dict]:
     for trucks in CFT / OSY / PTG.
 
     Non-driver roles (owner, admin, fleet manager, safety) keep the
-    fleet-wide view they had before; account / company scoping for
+    account-wide view they had before; account / company scoping for
     those roles is a separate concern handled by their permissions.
     """
     if sub.role == Role.DRIVER and sub.truck_num:
@@ -151,7 +151,7 @@ async def _check_cameras_account(
         [InlineKeyboardButton("◀️ Main Menu", callback_data="cmd_menu")],
     ])
 
-    # Forum routing → Cameras topic.  Post a fleet-wide summary
+    # Forum routing → Cameras topic.  Post an account-wide summary
     # (unfiltered) once when the account has a routing row; driver
     # DMs below stay filtered to each driver's assigned truck so
     # privacy isolation is preserved.  Admins who are members of the
@@ -192,7 +192,7 @@ async def _check_cameras_account(
         topic_lines = [
             f"<b>{badge(digest_sev)}</b> — Camera Issues",
             "",
-            "📷 fleet-wide · " + "  ·  ".join(roll_parts) if roll_parts else "📷 fleet-wide",
+            "📷 All vehicles · " + "  ·  ".join(roll_parts) if roll_parts else "📷 All vehicles",
             "",
         ]
         for r in new_issues[:10]:

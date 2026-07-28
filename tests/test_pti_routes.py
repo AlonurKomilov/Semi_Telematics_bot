@@ -6,7 +6,7 @@ tests use (parking, maintenance, driver_routes).  Covers:
   * Driver isolation: drivers can only see/touch own inspections
   * Fleet review flow: list + detail + review with status guards
   * Template editor: gated on can_manage_account
-  * Permission denials: drivers can't list fleet-wide, can't review,
+  * Permission denials: drivers can't list account-wide, can't review,
     can't edit template
 """
 

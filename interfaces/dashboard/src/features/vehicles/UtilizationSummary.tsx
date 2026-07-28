@@ -1,7 +1,7 @@
 /**
  * 30-day fleet utilization summary card.
  *
- * Lives on the Vehicles page above the table.  Shows fleet-wide
+ * Lives on the Vehicles page above the table.  Shows account-wide
  * drive vs idle totals plus the top utilized / underutilized trucks
  * so operators can find candidates for assignment or retirement at a
  * glance.  Hidden when the warehouse history is still cold (returns

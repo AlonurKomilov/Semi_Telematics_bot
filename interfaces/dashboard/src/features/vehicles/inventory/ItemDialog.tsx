@@ -58,7 +58,7 @@ function useFleetList(enabled: boolean) {
 
 export function AddItemDialog({ vehicleName, company, categories, onClose }: {
   /** Fixed vehicle context (the vehicle-detail card).  Omit on the
-   *  fleet-wide page — the dialog then shows the Vehicle picker. */
+   *  account-wide page — the dialog then shows the Vehicle picker. */
   vehicleName?: string;
   company?: string;
   categories: string[];

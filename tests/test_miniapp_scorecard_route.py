@@ -316,7 +316,7 @@ class TestScorecardMeRoute:
 
 
 class TestScorecardMeAdminRankVisibility:
-    """Admin-role callers (``can_scorecard_all``) must still see fleet-wide
+    """Admin-role callers (``can_scorecard_all``) must still see account-wide
     aggregates on ``/scorecards/me``.  This is the counterpart to the
     driver-only hardening assertions above: regression-test that the
     privacy fix didn't accidentally null out ranks for legitimate

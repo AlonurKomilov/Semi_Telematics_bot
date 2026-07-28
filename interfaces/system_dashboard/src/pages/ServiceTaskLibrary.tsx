@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { apiJSON } from '../api/client';
 
 // Standard service tasks — the vocabulary every account is seeded
-// from.  This used to be a Python tuple: adding one fleet-wide needed
+// from.  This used to be a Python tuple: adding one platform-wide needed
 // a code change, a migration and a deploy.
 //
 // Two behaviours to keep in mind while editing here:

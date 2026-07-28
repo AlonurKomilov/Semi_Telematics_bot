@@ -60,7 +60,7 @@ export function tabsForPersona(persona: Persona): DriverDetailTab[] {
   return TABS_FOR_PERSONA[persona] ?? ALL_TABS;
 }
 
-/** The fleet-wide expiring-documents banner only matters to personas
+/** The account-wide expiring-documents banner only matters to personas
  *  that action documents (i.e. whose tab set includes Documents). */
 export function showsExpiringBanner(persona: Persona): boolean {
   return tabsForPersona(persona).includes('documents');

@@ -4,7 +4,7 @@ The list of tools the model is *shown* (not just what it may execute) reflects
 the per-account Permissions matrix, module masking, and the user's Vehicle
 Access scope.  This is efficiency/UX — the runtime gate remains the security
 boundary — so a revoked feature's tools simply stop being advertised, and a
-scoped user isn't shown fleet-wide tools the gate would block anyway.
+scoped user isn't shown account-wide tools the gate would block anyway.
 """
 
 from __future__ import annotations

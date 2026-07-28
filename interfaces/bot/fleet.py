@@ -10,7 +10,7 @@ paths.  Actual implementations live in:
   bot.alerts   — alert settings, toggle, disable, history, pending.
   bot.vehicles — truck lookup, truck detail, truck report, critical.
   bot.cameras  — single-truck AI dashcam check + dashboard redirects
-                 for the fleet-wide / history / export flows.
+                 for the account-wide / history / export flows.
 
 The PDF/CSV report commands (``cmd_*_pdf``, ``cmd_*_csv``) and the
 camera browser commands (``cmd_cam_tool``, ``cmd_cam_company_pick``,

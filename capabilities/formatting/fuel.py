@@ -1,7 +1,7 @@
 """Fuel report and low-fuel alert formatters.
 
 The single-alert formatter uses the unified Option A grammar — see
-``capabilities/formatting/severity.py``.  The fleet-wide low-fuel
+``capabilities/formatting/severity.py``.  The account-wide low-fuel
 report (``format_low_fuel``) is a roll-up, not an alert, so it keeps
 its existing layout.
 """

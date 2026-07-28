@@ -19,7 +19,7 @@ What this enables
 Boundedness
 -----------
 * Bounded by the existing per-account semaphore in
-  ``_for_each_active_account`` (default 5) so a fleet-wide rollout
+  ``_for_each_active_account`` (default 5) so a platform-wide rollout
   doesn't burst Samsara.
 * Per-account health checks have a 12-second timeout (the
   ``test_connection`` cap) so one slow provider can't block the

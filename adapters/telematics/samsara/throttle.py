@@ -17,7 +17,7 @@ Two independent concerns live here:
     quota), but Samsara's API-key system can still exhibit
     cross-account effects under our own infrastructure (gunicorn
     worker saturation, asyncpg pool contention) — the global lock
-    prevents those at the cost of slightly slower fleet-wide
+    prevents those at the cost of slightly slower account-wide
     onboarding.
 
 Why a token bucket rather than a simple delay
@@ -41,7 +41,7 @@ upstream answer takes longer than expected.
 Tunability
 ----------
 Three env vars drive the defaults; ops can re-tune without code
-changes when scaling fleet-wide rollouts:
+changes when scaling account-wide rollouts:
 
   * ``SAMSARA_BACKFILL_RPS``               — sustained rate per second
   * ``SAMSARA_BACKFILL_BURST``             — bucket max capacity

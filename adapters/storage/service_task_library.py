@@ -1,7 +1,7 @@
 """The operator-curated standard service-task library (platform).
 
 The standard task list used to be a Python tuple, so adding one
-fleet-wide meant a code change plus a migration.  This makes it data
+platform-wide meant a code change plus a migration.  This makes it data
 the system owner edits on system.4truck.us — the same control they
 already have over the parts and vendor directories.
 

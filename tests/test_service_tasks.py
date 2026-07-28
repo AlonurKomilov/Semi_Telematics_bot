@@ -46,7 +46,7 @@ async def test_new_account_is_seeded_and_seeding_is_idempotent(db, acct):
 @pytest.mark.asyncio
 async def test_canonical_key_is_stable_across_accounts(db, acct):
     """The whole reason we skipped a platform directory: the same key
-    in every account makes fleet-wide comparison a GROUP BY."""
+    in every account makes cross-account comparison a GROUP BY."""
     other = (await db.create_account("Second Co")).id
     a_keys = {t["canonical_key"] for t in await db.list_service_tasks(acct)}
     b_keys = {t["canonical_key"] for t in await db.list_service_tasks(other)}

@@ -117,7 +117,7 @@ class TestDriverList:
             assert ctx["drv_b"].id not in ids
 
     async def test_driver_cannot_list_account_drivers(self, app_and_db):
-        """Drivers don't get fleet-wide visibility — list endpoint is
+        """Drivers don't get account-wide visibility — list endpoint is
         admin-only.  Returns 403 (forbidden) not 404 because the
         permission gate fires before any data lookup."""
         ctx = app_and_db

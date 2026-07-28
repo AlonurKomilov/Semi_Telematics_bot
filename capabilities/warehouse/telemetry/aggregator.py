@@ -364,7 +364,7 @@ async def aggregate_metrics_daily(account_id: int) -> int:
     "yesterday UTC" and delegates.  Runs at 00:05 UTC daily.
 
     Daily storage is the right tier for year-over-year comparisons,
-    fleet-wide executive scorecards, and long-horizon trend lines:
+    account-wide executive scorecards, and long-horizon trend lines:
     querying 730 rows beats querying 17,520 hourly rows on the same
     horizon.
     """

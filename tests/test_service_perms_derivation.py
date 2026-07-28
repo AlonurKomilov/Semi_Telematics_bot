@@ -27,7 +27,7 @@ from capabilities.permissions.roles import (
 
 # Exact derived (can_alerts_all, can_alerts_vehicle) for each role.  Every role
 # HAS the inbox; only the scope differs, and it tracks vehicle scope:
-# account-wide vehicle visibility → fleet-wide inbox, otherwise own-vehicle.
+# account-wide vehicle visibility → account-wide inbox, otherwise own-vehicle.
 EXPECTED_INBOX = {
     Role.OWNER:      (True,  False),
     Role.ADMIN:      (True,  False),
@@ -62,7 +62,7 @@ class TestPerRoleDerivation:
             )
 
     def test_scopes_are_mutually_exclusive(self):
-        """A role is never granted BOTH the fleet-wide and own-vehicle inbox —
+        """A role is never granted BOTH the account-wide and own-vehicle inbox —
         require_permission_any matches _all first, so the vehicle flag would be
         dead weight."""
         for role in Role:

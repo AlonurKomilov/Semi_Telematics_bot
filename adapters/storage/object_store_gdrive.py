@@ -37,7 +37,7 @@ operator role — fleet, driver, safety, dispatch, maintenance::
                         ├─ invoice.pdf
                         └─ shop-photo-1.jpg
 
-Folder IDs are CACHED in-memory per backend instance — a fleet-wide
+Folder IDs are CACHED in-memory per backend instance — an account-wide
 upload pass otherwise re-runs the ``find_or_create`` chain dozens of
 times.  The cache survives until ``invalidate_object_store_for_account``
 is called or the process restarts.

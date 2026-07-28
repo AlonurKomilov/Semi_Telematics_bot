@@ -74,7 +74,7 @@ def register_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(CommandHandler("efficiency", cmd_efficiency))
     # /cam was retired — the whole camera surface (single-truck
-    # ad-hoc check, fleet-wide analysis, history browser) moved to
+    # ad-hoc check, account-wide analysis, history browser) moved to
     # the dashboard.  Typing /cam now falls through to the bot's
     # generic unknown-command path; the dashboard Cameras page is at
     # dash.4truck.us/cameras.  Camera *alerts* still ping via the

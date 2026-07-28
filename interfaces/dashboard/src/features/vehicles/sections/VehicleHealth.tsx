@@ -1,7 +1,7 @@
 /**
  * Vehicle Health card — battery / oil / coolant / DEF / engine load /
  * RPM / seatbelt / cabin weather + health alerts pulled from the
- * fleet-wide weather feed.
+ * account-wide weather feed.
  *
  * Layouts list this for Fleet primary and Safety as incident context.
  * Permission gate (``can_health``) is independent — a user without
@@ -54,7 +54,7 @@ export default function VehicleHealth({ vehicleName, company }: VehicleSectionPr
     staleTime: 60_000,
   });
 
-  // Cabin weather lives in the fleet-wide /vehicles/weather feed.  No
+  // Cabin weather lives in the account-wide /vehicles/weather feed.  No
   // per-vehicle endpoint, so we filter the response by name.  Same
   // permission gate as health (it surfaces alongside).
   const { data: weather } = useQuery<CabinWeather | null>({

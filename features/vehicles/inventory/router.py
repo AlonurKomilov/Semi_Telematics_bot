@@ -170,7 +170,7 @@ async def inventory_all(
     tenant=Depends(get_tenant_db),
 ):
     """Every active item across the fleet (joined with truck unit +
-    company) — the fleet-wide Inventory page.  Company-restricted users
+    company) — the account-wide Inventory page.  Company-restricted users
     see only their companies' trucks."""
     rows = await tenant.list_account_inventory(int(user["account_id"]))
     allowed = await get_user_company_codes(user)

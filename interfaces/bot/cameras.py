@@ -4,7 +4,7 @@ The bot used to expose:
 
 * A paginated "pick a company → pick a truck → run camera check"
   wizard.
-* A fleet-wide "check every camera" report.
+* An account-wide "check every camera" report.
 * A paginated history browser.
 * A ``/cam <truck>`` ad-hoc one-shot lookup.
 * Per-truck camera buttons on the vehicle-detail view.
@@ -54,7 +54,7 @@ from features.cameras.service import (  # noqa: F401
 
 
 _REDIRECT_BODY = (
-    "Camera analysis (single-truck and fleet-wide), AI dashcam "
+    "Camera analysis (single-truck and account-wide), AI dashcam "
     "checks, and camera-check history all live on the dashboard "
     "now.  Use the link below to open the Cameras page."
 )

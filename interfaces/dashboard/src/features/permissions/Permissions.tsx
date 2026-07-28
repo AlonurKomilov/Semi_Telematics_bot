@@ -845,7 +845,7 @@ export default function Permissions() {
                 <Bell size={16} className="text-muted-foreground mt-0.5 shrink-0" />
                 <div>
                   <div className="text-sm font-medium text-foreground">Alerts</div>
-                  <div className="text-2xs text-muted-foreground">Every role has the inbox. It shows the alerts for whichever features the role can see — disable a feature (Faults, Health, Fuel, Safety Events, Geofences, Maintenance) and just those alerts drop out. Scope follows the role&apos;s vehicle access — fleet-wide or own-vehicle.</div>
+                  <div className="text-2xs text-muted-foreground">Every role has the inbox. It shows the alerts for whichever features the role can see — disable a feature (Faults, Health, Fuel, Safety Events, Geofences, Maintenance) and just those alerts drop out. Scope follows the role&apos;s vehicle access — account-wide or own-vehicle.</div>
                 </div>
               </li>
               <li className="flex items-start gap-2.5">

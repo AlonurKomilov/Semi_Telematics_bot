@@ -4235,7 +4235,7 @@ async def migrate_settings_component_flags(conn) -> None:
 
 @_register("106_rename_fleet_aggregate_snapshots")
 async def migrate_rename_fleet_snapshots(conn) -> None:
-    """Rename the two fleet-wide aggregate snapshot tables to
+    """Rename the two account-wide aggregate snapshot tables to
     ``aggregate_*`` for naming consistency with the rest of the
     fleet→vehicle/aggregate rename.
 
@@ -7201,7 +7201,7 @@ async def migrate_service_tasks_vehicle_type(conn) -> None:
     without hiding anything permanently: '' means "any vehicle" and
     stays the default, so nothing that exists today changes behaviour.
 
-    (Fleetio has no equivalent — its Service Tasks apply fleet-wide.
+    (Fleetio has no equivalent — its Service Tasks apply account-wide.
     This is deliberately ours.)
 
     NOTE on FKs: the reference columns stay plain INTEGERs. A

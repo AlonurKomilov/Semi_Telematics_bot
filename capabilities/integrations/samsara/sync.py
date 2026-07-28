@@ -257,7 +257,7 @@ async def ingest_vehicle_state(account_id: int) -> int:
     # threw (warned above) AND the quieter case where it returns an empty
     # list with no exception.  Without this, every snapshot from here on
     # carries a NULL odometer and the back-dated work-order reading
-    # silently freezes at the last good day, fleet-wide, for days.
+    # silently freezes at the last good day, account-wide, for days.
     if n > 0 and not odometer_by_vehicle_id:
         logger.warning(
             "odometer ingestion stalled acct=%d: %d vehicles persisted, "

@@ -6,7 +6,7 @@ calls live here so the renderer is unit-testable with synthetic
 fixtures.
 
 Page layout:
-  1. Cover page — company name, coverage window, fleet-wide summary
+  1. Cover page — company name, coverage window, account-wide summary
   2. Per-vehicle section (page break between vehicles):
        * Vehicle header (name, odometer, company)
        * DOT inspections summary (always first if any)

@@ -115,7 +115,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // truck, so these live in core (always available) rather than a module.
   { id: 'live_map', labelKey: 'nav.live_map', path: '/live-map', icon: MapIcon, modules: ['core'], tier: 'shared', permission: P_LOCATION, navGroup: 'operations' },
   { id: 'vehicles', labelKey: 'nav.vehicles', path: '/vehicles', icon: Truck, modules: ['core'], tier: 'shared', permission: P_VEHICLE, navGroup: 'operations' },
-  // Inventory — the Vehicle feature's fleet-wide component page (what
+  // Inventory — the Vehicle feature's account-wide component page (what
   // lives in every truck; search by serial, filter missing/damaged).
   // Sits directly under Vehicles in the sidebar — a destination, unlike
   // the per-truck card (which is a detail-page section).

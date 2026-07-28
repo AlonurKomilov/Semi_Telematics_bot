@@ -15,7 +15,7 @@ but doesn't administer the task list.
 
 Standard tasks (``canonical_key`` set) are archive-only and
 name-locked: their key is the cross-account identity that makes
-fleet-wide comparison possible, so a rename in one account would
+cross-account comparison possible, so a rename in one account would
 silently fork the vocabulary again.
 """
 # router.py is interface-layer code co-located with its feature

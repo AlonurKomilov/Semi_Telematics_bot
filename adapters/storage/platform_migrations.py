@@ -4150,7 +4150,7 @@ async def migrate_service_task_library(conn) -> None:
     """The operator-curated standard service-task library.
 
     Until now the standard list lived only as a Python tuple, so adding
-    one fleet-wide meant a code change plus a migration.  This makes it
+    one platform-wide meant a code change plus a migration.  This makes it
     data the system owner edits on system.4truck.us — the same control
     they already have over the parts and vendor directories.
 

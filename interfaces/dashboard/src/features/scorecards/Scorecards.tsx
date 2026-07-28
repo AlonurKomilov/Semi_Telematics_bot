@@ -968,7 +968,7 @@ export default function Scorecards() {
         <DetailDrawer
           card={detail}
           // Rank against the currently displayed cohort so a
-          // pillar-filtered view doesn't surface a fleet-wide rank
+          // pillar-filtered view doesn't surface an account-wide rank
           // that confuses what the user is looking at.
           rank={displayCards.findIndex((c) => c.driver_id === detail.driver_id) + 1}
           total={displayCards.length}

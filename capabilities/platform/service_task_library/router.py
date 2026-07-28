@@ -1,7 +1,7 @@
 """Operator-curated standard service tasks (system.4truck.us).
 
 The standard task list used to be a Python tuple — adding one
-fleet-wide meant a code change, a migration and a deploy.  This is the
+platform-wide meant a code change, a migration and a deploy.  This is the
 same control the operator already has over the parts and vendor
 directories, applied to the vocabulary Maintenance and Work Orders
 share.

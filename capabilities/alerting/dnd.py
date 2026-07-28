@@ -172,7 +172,7 @@ def _filter_handoff_for_driver(
     ``send_alert`` subscriber loop) so a driver receiving a shift-handoff PDF
     or summary never sees rows for trucks they aren't assigned to.  Returns
     an empty list when ``vehicle_nums`` is empty (defensive: a driver with no
-    assignment should not see fleet-wide data either).
+    assignment should not see account-wide data either).
     """
     if not vehicle_nums:
         return []
