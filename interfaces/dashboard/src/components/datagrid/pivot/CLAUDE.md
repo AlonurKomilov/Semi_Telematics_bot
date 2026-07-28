@@ -233,7 +233,6 @@ nobody has to rediscover a gap):
 
 | Missing | Note |
 |---|---|
-| dragging BETWEEN sections / from the pool | within-section drag works; crossing axes is the ⋮ menu and the pool's `+` |
 | controlled props (`pivotModel`/`pivotActive`/`pivotPanelOpen`) | ours is uncontrolled + persisted; add when a page must own the state |
 | sticky column-GROUP labels | we sticky the row-label column instead |
 
@@ -261,11 +260,31 @@ typing a query could hide fields you had already assigned, leaving the
 count badges reading 2/1/1 over three empty lists with no way to remove
 anything.
 
-Drag reorders WITHIN a section (`@dnd-kit`, the same dependency the grid
-uses for column reorder). Crossing axes is the ⋮ menu's job:
-cross-container dnd-kit needs collision handling and a drag overlay for
-a gesture the menu already expresses unambiguously, on lists that are
-typically one to three items.
+### Dragging
+
+Drag runs between EVERY list — pool ↔ Rows ↔ Columns ↔ Values — and
+within one, on `@dnd-kit` (the same dependency the grid uses for column
+reorder). Dragging a field back to the pool is how you unassign it by
+gesture. The ⋮ menu and the pool's `+` do the same jobs by click, since
+a drag is a poor fit for keyboard and touch.
+
+Three rules the implementation holds to:
+
+- **Nothing commits until drop.** Hover computes where the field *would*
+  land and renders that; the model is untouched. A drag abandoned
+  halfway leaves the report exactly as it was — mutating on `dragOver`
+  (the common dnd-kit recipe) would write a persisted preference on
+  every pointer move.
+- **Two cues, because they answer different questions.** The dragged
+  field rides the cursor in a `DragOverlay` (without it the row vanishes
+  from one list and reappears in another, which reads as a glitch); the
+  target list takes a **ring**, and an **insertion rule** marks the
+  exact index. The ring alone tells you the section — but order IS
+  nesting here, so position needs its own mark.
+- **A drop target only lights up if it can accept the field.** Legality
+  comes from the same `pivotable` / `aggregable` opt-ins as everything
+  else, so a customer name can never be dragged into Values. The pool
+  always accepts — it means "unassign".
 
 Deliberate DIFFERENCES from MUI (not gaps): `pivotable` is opt-**in**
 here (our grids carry 15+ columns, so opt-out would make the picker
