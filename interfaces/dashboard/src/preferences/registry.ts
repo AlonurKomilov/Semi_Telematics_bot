@@ -245,6 +245,22 @@ export const DEFS = {
     },
     note: 'Assistant panel width in px.',
   }),
+  // How the pivot panel and the report behind it split the width.
+  // device, matching assistant.panelWidth above: this is a judgement
+  // about THIS screen's real estate, not about the person — a laptop and
+  // a wall display want different splits.
+  'pivot.panelWidth': def<number>({
+    default: 320,          // w-80, the width it shipped at
+    scope: 'device',
+    sanitize: (v) => {
+      const n = typeof v === 'number' ? v : Number(v);
+      if (!Number.isFinite(n)) return undefined;
+      // Same clamp the drag handle enforces — a hand-edited or
+      // cross-version value can't strand the panel off-screen.
+      return Math.min(640, Math.max(240, Math.round(n)));
+    },
+    note: 'Pivot fields panel width in px.',
+  }),
   'assistant.expanded': def<boolean>({
     default: false,
     scope: 'device',

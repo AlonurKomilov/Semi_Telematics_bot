@@ -707,6 +707,10 @@ export default function DataGrid({
     [pivotEnabled, columns, timeZone],
   );
   const [pivotPanelOpen, setPivotPanelOpen] = useState(false);
+  // Device-scoped, NOT per-table: how you like the panel/report split is
+  // a habit about this screen, not a property of one grid.
+  const { value: pivotPanelWidth, setValue: setPivotPanelWidth } =
+    usePreference('pivot.panelWidth');
   const pivotModel = useMemo<PivotModel>(() => {
     const stored = pivotPref?.model;
     const base: PivotModel = stored
@@ -3228,25 +3232,31 @@ export default function DataGrid({
                   </Button>
                 </Tip>
               )}
-              {/* Column machinery is SUPERSEDED in pivot mode (the columns
-                  are synthesized from the model), so it's hidden rather
-                  than greyed — a disabled control the operator can never
-                  satisfy is worse than one that isn't there.  The stored
-                  layout prefs are untouched and return on exit. */}
-              {!pivotOn && (
-              <Tip label="Show / hide columns">
+              {/* Column machinery is SUPERSEDED in pivot mode — the
+                  columns are synthesized from the model — but the button
+                  STAYS, disabled with the reason.  It used to vanish,
+                  which re-flowed the whole toolbar the instant you
+                  pivoted: every icon to its right jumped left, so the
+                  control under your cursor was no longer the one you
+                  were aiming at.  A toolbar that changes shape on a
+                  mode switch costs more than a greyed button explains.
+                  The stored layout prefs are untouched and return on
+                  exit. */}
+              <Tip label={pivotOn
+                ? 'Columns come from the pivot fields while pivoting — turn Pivot off to manage them'
+                : 'Show / hide columns'}>
               <Button
                 ref={manageAnchorRef}
                 type="button"
                 variant="outline"
                 size="icon"
                 onClick={() => setManageOpen((o) => !o)}
+                disabled={pivotOn}
                 aria-label="Manage columns"
               >
                 <Columns3 />
               </Button>
               </Tip>
-              )}
               {/* Export scope picker — "this page" vs "everything
                   that matches the current filters" (all pages). */}
               <MenuPrimitive.Root>
@@ -3986,6 +3996,9 @@ export default function DataGrid({
           onClose={() => setPivotPanelOpen(false)}
           enabled={pivotOn}
           onEnabledChange={setPivotEnabled}
+          width={pivotPanelWidth}
+          onWidthChange={setPivotPanelWidth}
+          fill={!!fillHeight}
         />
       )}
       </div>

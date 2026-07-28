@@ -26,6 +26,7 @@ import type { PivotModel, PivotValueField } from './pivot';
  */
 export default function PivotPanel({
   columns, model, onChange, onClose, enabled, onEnabledChange,
+  width, onWidthChange, fill,
 }: {
   columns: AnyColumn[];
   model: PivotModel;
@@ -36,6 +37,16 @@ export default function PivotPanel({
    *  and only then flip it on (the MUI model). */
   enabled: boolean;
   onEnabledChange: (next: boolean) => void;
+  /** Panel width in px, owned + persisted by the grid.  The panel takes
+   *  space FROM the table, so how that space is split is a judgement
+   *  only the reader can make: a deep field list wants a wide panel, a
+   *  wide matrix wants a narrow one. */
+  width: number;
+  onWidthChange: (next: number) => void;
+  /** Stretch to the grid's height instead of capping at 32rem — under
+   *  ``fillHeight`` a fixed cap leaves the panel floating short of a
+   *  much taller card. */
+  fill?: boolean;
 }) {
   const [query, setQuery] = useState('');
 
@@ -86,7 +97,43 @@ export default function PivotPanel({
     model.values.find((v) => v.key === key);
 
   return (
-    <aside className="w-80 shrink-0 border-l border-border bg-card flex flex-col max-h-[32rem]">
+    <aside
+      className={cn(
+        'shrink-0 border-l border-border bg-card flex flex-col relative',
+        fill ? 'min-h-0' : 'max-h-[32rem]',
+      )}
+      style={{ width }}
+    >
+      {/* Drag the left edge to trade panel width against table width —
+          MUI's panel resizes, and here the tension is real: the fields
+          list wants to be wide, the matrix behind it wants the room
+          back.  A 4px hit strip sitting ON the border (-left-0.5) so the
+          cursor changes exactly where the eye expects the seam. */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize pivot panel"
+        className="absolute inset-y-0 -left-0.5 w-1 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 z-10"
+        onPointerDown={(e) => {
+          e.preventDefault();
+          const startX = e.clientX;
+          const startWidth = width;
+          const move = (mv: PointerEvent) => {
+            // Dragging LEFT widens the panel, so the delta is inverted.
+            // Clamped: below ~15rem the field labels wrap to nothing
+            // useful, and past 40rem the panel is eating the report it
+            // exists to configure.
+            const next = Math.round(startWidth + (startX - mv.clientX));
+            onWidthChange(Math.max(240, Math.min(640, next)));
+          };
+          const up = () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', up);
+          };
+          window.addEventListener('pointermove', move);
+          window.addEventListener('pointerup', up);
+        }}
+      />
       <div className="flex items-center justify-between gap-2 p-3 border-b border-border">
         {/* The switch, not the toolbar button, is what pivots the grid.
             Opening this panel is "let me set a report up"; flipping the
@@ -94,7 +141,11 @@ export default function PivotPanel({
             can no longer replace the row list before you've said what
             you wanted summarised. */}
         <h3 className="text-sm font-semibold inline-flex items-center gap-2">
+          {/* ``sm`` — the default md (h-6 w-11) towered over the 14px
+              title beside it.  This sits on a panel header, not a
+              settings row. */}
           <Switch
+            size="sm"
             checked={enabled}
             onCheckedChange={onEnabledChange}
             aria-label="Pivot the grid"

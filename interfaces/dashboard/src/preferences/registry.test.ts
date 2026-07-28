@@ -35,6 +35,7 @@ const FROZEN_KEYS: readonly string[] = [
   'invites.lastChannel',
   'dispatch.soundOn',
   'assistant.panelWidth',
+  'pivot.panelWidth',
   'assistant.expanded',
   'roleView.previewAsManager',
   'roleView.activeView',

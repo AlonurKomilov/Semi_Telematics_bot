@@ -27,6 +27,25 @@ first measure) so the report isn't born empty — but now it appears
 right beside the pickers that shaped it, reading as a suggestion to
 refine rather than a decision made for you.
 
+**The toolbar does not change shape when you pivot.** Manage-columns is
+superseded while pivoting (columns come from the model), but it stays
+put, disabled with the reason. Hiding it re-flowed every icon to its
+right the instant you toggled, so the control under the cursor stopped
+being the one you were aiming at — which costs more than a greyed
+button explains. This supersedes the earlier "hidden rather than
+greyed" note for the pivot case; the rule still holds for controls that
+appear and disappear with the DATA, not with a mode the user just
+chose.
+
+**The panel is drag-resizable** from its left edge (240–640px), stored
+in `pivot.panelWidth` — device-scoped like `assistant.panelWidth`,
+because how you split panel-vs-report is a judgement about the screen
+in front of you, not about you. The panel takes its width FROM the
+table, and that tension is genuine: a deep field list wants width, the
+matrix behind it wants it back. Under `fillHeight` the panel stretches
+to the grid's height instead of capping at 32rem, so it can't float
+short of a much taller card.
+
 ```
 pivot.ts        the pure transform (+ pivot.test.ts) — no React
 PivotView.tsx   the read-only matrix renderer
