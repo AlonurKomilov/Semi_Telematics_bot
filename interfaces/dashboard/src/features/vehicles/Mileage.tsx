@@ -53,11 +53,13 @@ interface MileageResponse {
   no_data: string[];
 }
 
-/** ISO day N-1 days before `end` (range is inclusive, so 30 days
- *  ending today starts 29 days back). */
+/** Range start for the picker's convention: DateRangePresets computes
+ *  ``days = end − start`` (its calendar label shows ``end − days``), so
+ *  the query start must be exactly ``end − days`` — anything else makes
+ *  the grid disagree with the label the user just picked. */
 function startFor(end: string, days: number): string {
   const d = new Date(`${end}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - (days - 1));
+  d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
 }
 
@@ -114,15 +116,20 @@ export default function Mileage() {
       ),
     },
     {
-      key: 'end_odo', label: 'Odometer', sortable: true,
-      render: (_v: unknown, row: Record<string, unknown>) => {
-        const r = row as unknown as MileageRow;
-        return (
-          <span className="text-muted-foreground text-xs">
-            {Math.round(r.start_odo).toLocaleString()} → {Math.round(r.end_odo).toLocaleString()}
-          </span>
-        );
-      },
+      key: 'start_odo', label: 'Start odometer', sortable: true,
+      render: (v: unknown) => (
+        <span className="text-muted-foreground text-xs">
+          {Math.round(Number(v ?? 0)).toLocaleString()}
+        </span>
+      ),
+    },
+    {
+      key: 'end_odo', label: 'End odometer', sortable: true,
+      render: (v: unknown) => (
+        <span className="text-muted-foreground text-xs">
+          {Math.round(Number(v ?? 0)).toLocaleString()}
+        </span>
+      ),
     },
     { key: 'days_covered', label: 'Days', sortable: true },
     {
@@ -144,6 +151,11 @@ export default function Mileage() {
   return (
     <div>
       <div className="mb-4 flex items-center justify-between gap-2 flex-wrap">
+        <span className="text-sm text-muted-foreground">
+          {data && rows.length > 0
+            ? `${data.total_miles.toLocaleString()} mi across ${rows.length} vehicle${rows.length === 1 ? '' : 's'}`
+            : ''}
+        </span>
         <DateRangePresets
           value={days}
           onChange={(d) => { setDays(d); setEndDay(null); }}
@@ -151,13 +163,7 @@ export default function Mileage() {
           end={endDay}
           maxDays={RETENTION_DAYS}
           isFetching={isFetching}
-          align="start"
         />
-        {data && rows.length > 0 && (
-          <span className="text-sm text-muted-foreground">
-            {data.total_miles.toLocaleString()} mi across {rows.length} vehicle{rows.length === 1 ? '' : 's'}
-          </span>
-        )}
       </div>
 
       {error && rows.length === 0 ? (

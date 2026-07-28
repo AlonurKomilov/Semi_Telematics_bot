@@ -32,9 +32,10 @@ interface VehicleMileageResponse {
   days?: DayMiles[];
 }
 
+// Same convention as the picker's ``daysBetween``: start = end − days.
 function startFor(end: string, days: number): string {
   const d = new Date(`${end}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - (days - 1));
+  d.setUTCDate(d.getUTCDate() - days);
   return d.toISOString().slice(0, 10);
 }
 
