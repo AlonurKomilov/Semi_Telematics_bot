@@ -200,7 +200,7 @@ const baseColumns: AnyColumn[] = [
       return rank[(r.priority || 'medium').toLowerCase()] ?? 99;
     },
     render: (v) => <PriorityBadge value={v} /> },
-  { key: 'task_type', label: 'Type', sortable: true, filterable: true,
+  { key: 'task_type', label: 'Service task', sortable: true, filterable: true,
     filterValue: (row) => String((row as MaintenanceTask).task_type ?? ''),
     // De-slug fallback only — the component overrides this with the
     // SSOT lookup (module scope can't reach the service-tasks query).
@@ -1458,7 +1458,7 @@ export default function Tasks() {
             </label>
           )}
           <label className="block">
-            <span className="block text-xs text-muted-foreground mb-1">Type</span>
+            <span className="block text-xs text-muted-foreground mb-1">Service task</span>
             <ServiceTaskPicker value={fType} onChange={setFType} />
           </label>
           <label className="block">
@@ -1718,7 +1718,7 @@ export default function Tasks() {
                   )}
                   <span className="text-muted-foreground font-normal">
                     {' · '}
-                    <span className="capitalize">{selected.task_type.replace(/_/g, ' ')}</span>
+                    <span>{customTypeLabelByValue[selected.task_type] ?? selected.task_type.replace(/_/g, ' ')}</span>
                   </span>
                 </h2>
               </div>
@@ -1845,7 +1845,7 @@ export default function Tasks() {
                   form does so custom types created here also surface
                   on the create form (and vice versa). */}
               <label className="block">
-                <span className="block text-xs text-muted-foreground mb-1">Type</span>
+                <span className="block text-xs text-muted-foreground mb-1">Service task</span>
                 <ServiceTaskPicker value={eType} onChange={setEType} />
               </label>
               <label className="block">

@@ -158,8 +158,21 @@ export default function ServiceTaskPicker({
     );
   }
 
+  // Base UI resolves the CLOSED trigger's label from ``items`` — the
+  // popup's SelectItems only exist once opened, so without this map
+  // the trigger shows the raw stored value ('oil') instead of the
+  // task's name until the first click.
+  const items = [
+    ...(allowEmpty ? [{ value: '', label: emptyLabel }] : []),
+    ...(orphan ? [{ value: orphan, label: orphan }] : []),
+    ...[...standard, ...custom].map(([t]) => ({
+      value: taskValue(t), label: t.name,
+    })),
+    ...(canCreate ? [{ value: ADD_NEW_SENTINEL, label: '+ Add service task…' }] : []),
+  ];
+
   return (
-    <Select value={value} onValueChange={onSelect}>
+    <Select value={value} onValueChange={onSelect} items={items}>
       <SelectTrigger className={className ?? 'w-full'} aria-label="Service task">
         <SelectValue placeholder={isLoading ? 'Loading…' : 'Select a task'} />
       </SelectTrigger>

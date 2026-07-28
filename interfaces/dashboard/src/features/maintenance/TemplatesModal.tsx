@@ -229,7 +229,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
               />
             </label>
             <label className="block">
-              <span className="block text-xs text-muted-foreground mb-1">Type</span>
+              <span className="block text-xs text-muted-foreground mb-1">Service task</span>
               {/* The same picker the add/edit forms use — a template
                   that offers a different task list than the form it
                   fills is how vocabularies fork. */}
