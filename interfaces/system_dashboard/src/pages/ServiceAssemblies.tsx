@@ -47,9 +47,15 @@ export default function ServiceAssembliesPage() {
     try {
       const [a, sy] = await Promise.all([
         apiJSON<{ assemblies: Assembly[] }>('/system/service-assemblies'),
-        // The system vocabulary is served by the tenant API; operators
-        // hold system-owner tokens which pass its permission gate.
-        apiJSON<{ systems: TaskSystem[] }>('/service-tasks/systems'),
+        // System-owner-gated, like every other call this console makes.
+        // This previously fetched the tenant `/service-tasks/systems`,
+        // which is gated on TENANT permissions (can_service_tasks etc.)
+        // — it only worked when the operator's Telegram id also
+        // belonged to a customer account holding those perms.  Any
+        // operator without that coincidence got a 403 and a page of
+        // raw keys.  The operator console must never lean on
+        // tenant-permission endpoints.
+        apiJSON<{ systems: TaskSystem[] }>('/system/service-task-library/systems'),
       ]);
       setRows(a.assemblies);
       setSystems(sy.systems);
