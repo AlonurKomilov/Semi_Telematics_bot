@@ -2563,6 +2563,20 @@ export default function DataGrid({
   // scrollbar (drag) and a wheel handler (trackpad).
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // Scroll position is only meaningful relative to the list you were
+  // reading — so when the list changes IDENTITY (page, sort, filter,
+  // search, tab), go back to the top.  Staying put means clicking
+  // "next page" lands you in the middle of the new page, and a sticky
+  // header means nothing on screen changes shape to tell you that
+  // happened.  Harmless when the page scrolls instead of the body (the
+  // container is then at scrollTop 0 anyway) — no fillHeight gate, so
+  // the behaviour can't diverge between the two modes.
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (el && el.scrollTop !== 0) el.scrollTop = 0;
+  }, [pageIndex, sorting, columnFilters, globalFilter, segmentPref]);
+
   const [scrollMetrics, setScrollMetrics] = useState({
     scrollLeft: 0, clientWidth: 0, scrollWidth: 0,
   });
@@ -3316,11 +3330,10 @@ export default function DataGrid({
       /* ``min-h-[16rem]`` rather than ``min-h-0`` is the floor: the body
          grows to fill, but a cramped viewport (phone, or a page with a
          tall header above the grid) stops it collapsing to a slit — the
-         page's own scroll region takes over instead.  The custom
-         horizontal scrollbar is absolutely positioned against THIS box,
-         so under fillHeight it rides the bottom of the visible area
-         instead of the bottom of the whole table. */
-      <div className={cn('relative', fillHeight && 'flex flex-1 min-h-[16rem]')}>
+         page's own scroll region takes over instead.  A COLUMN, because
+         under fillHeight the horizontal scrollbar stops being an overlay
+         and becomes the row below the body (see below). */
+      <div className={cn('relative', fillHeight && 'flex flex-1 flex-col min-h-[16rem]')}>
       <div
         ref={scrollContainerRef}
         // ``overflow-x: hidden`` + ``overflow-y: auto``: the native
@@ -3339,12 +3352,23 @@ export default function DataGrid({
         // bottom ~12px of this container — reserve that band with
         // padding so the thumb never sits on top of the last row
         // (most visible in compact density where rows are short).
+        // Under fillHeight the bar moves into normal flow BELOW this
+        // box instead, so there is nothing to reserve.
         className={cn(
           'overflow-y-auto overflow-x-hidden',
-          needsHScroll && 'pb-3',
-          fillHeight && 'flex-1 min-w-0',
+          needsHScroll && !fillHeight && 'pb-3',
+          fillHeight && 'flex-1 min-h-0',
         )}
         style={stickyHeader ? { maxHeight: stickyHeader } : undefined}
+        // Moving the scrolling from the document into this div would
+        // otherwise take it away from keyboard users entirely: a plain
+        // ``overflow`` div is not focusable, so PageDown / arrows never
+        // reach it and rows past the first screen become unreachable
+        // without a mouse (WCAG 2.1.1).  Focusable + named makes it a
+        // real region a screen reader can announce and enter.
+        tabIndex={0}
+        role="region"
+        aria-label="Table rows"
       >
         {/* Raw <table> rather than the ui/table.tsx ``<Table>`` primitive
             because that primitive wraps the table in its own
@@ -3537,7 +3561,19 @@ export default function DataGrid({
           <TableBody>
             {rowCount === 0 ? (
               <TableRow>
-                <TableCell colSpan={table.getVisibleLeafColumns().length} className="py-8 text-center text-muted-foreground">
+                {/* ``py-8`` reads as centred when the card hugs its
+                    rows, but under fillHeight the card is viewport-tall
+                    and the message strands itself at the top of a large
+                    blank area.  Grow the cell to the body's height so
+                    the text sits in the middle of the space it's
+                    actually explaining. */}
+                <TableCell
+                  colSpan={table.getVisibleLeafColumns().length}
+                  className={cn(
+                    'text-center text-muted-foreground',
+                    fillHeight ? 'h-64 align-middle' : 'py-8',
+                  )}
+                >
                   No data
                 </TableCell>
               </TableRow>
@@ -3762,16 +3798,22 @@ export default function DataGrid({
           {/* Aggregation footer — one total row, rendered only when a
               model is active.  Cells reuse ``pinnedStyle`` so they stay
               column-aligned under pinned + select columns during
-              horizontal scroll.  Kept in normal vertical flow (not
-              sticky-bottom) so it behaves the same whether the page
-              scrolls or the body scrolls inside a stickyHeader
-              container — a solid ``bg-muted`` on every cell keeps pinned
-              footer cells opaque over scrolled content.  Gate on a
-              VISIBLE aggregated column (not the raw key count) so hiding
-              the last aggregated column doesn't leave an empty totals
-              bar with its divider and nothing in it. */}
+              horizontal scroll; a solid ``bg-muted`` on every cell keeps
+              them opaque over scrolled content.  Gate on a VISIBLE
+              aggregated column (not the raw key count) so hiding the
+              last aggregated column doesn't leave an empty totals bar
+              with its divider and nothing in it.
+
+              ANCHORED when the body scrolls, by the same trick as the
+              header (sticky on the section element, not per-cell — so
+              the pinned cells' own z-indexes stay relative to it and
+              nothing needs re-layering).  Otherwise a column header
+              advertising "sum" points at a number 250 rows below it:
+              the label is a promise the reader can't collect.  When the
+              PAGE scrolls there's nothing to stick to, so it stays in
+              normal flow exactly as before. */}
           {table.getVisibleLeafColumns().some(c => c.id in footerAgg) && (
-            <tfoot>
+            <tfoot className={bodyScrolls ? 'sticky bottom-0 z-10' : undefined}>
               <tr className="border-t-2 border-border">
                 {table.getVisibleLeafColumns().map((col) => (
                   <td
@@ -3793,16 +3835,27 @@ export default function DataGrid({
           )}
         </table>
       </div>
-      {/* Custom horizontal scrollbar — anchored to the bottom of the
-          table container, spanning ONLY the centre (non-pinned)
-          region.  Mirrors AG Grid's "scrollbar over the scrollable
-          area" pattern: pinned columns visually don't have a
+      {/* Custom horizontal scrollbar — spanning ONLY the centre
+          (non-pinned) region.  Mirrors AG Grid's "scrollbar over the
+          scrollable area" pattern: pinned columns visually don't have a
           scrollbar because they don't scroll.  Only renders when
-          content overflows; hidden otherwise. */}
+          content overflows; hidden otherwise.
+
+          Two positionings, because "the bottom" means different things
+          in the two modes.  Growing to fit its rows, the container's
+          bottom IS the table's end, so an absolute overlay only ever
+          covers the final row.  Under fillHeight the container's bottom
+          is the bottom of the VIEWPORT — an overlay there would ride
+          permanently over whichever row happens to be at the edge, and
+          the ``pb-3`` reservation can't help because that padding only
+          pays out once you've scrolled to the very end.  So it becomes
+          the flex row below the body instead, and covers nothing. */}
       {needsHScroll && trackWidth > 0 && (
         <div
-          className="absolute bottom-1 h-2"
-          style={{ left: pinnedLeftWidth, right: pinnedRightWidth }}
+          className={cn('h-2', fillHeight ? 'shrink-0 mt-1 mb-1' : 'absolute bottom-1')}
+          style={fillHeight
+            ? { marginLeft: pinnedLeftWidth, marginRight: pinnedRightWidth }
+            : { left: pinnedLeftWidth, right: pinnedRightWidth }}
         >
           <div
             className="relative h-full bg-muted/40 rounded-full cursor-pointer"

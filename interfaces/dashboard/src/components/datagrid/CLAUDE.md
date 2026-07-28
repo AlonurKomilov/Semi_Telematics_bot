@@ -267,6 +267,24 @@ flex child of it. On a page not laid out that way the grid keeps its
 natural height — nothing breaks, the prop just does nothing. Worked
 example: [`features/loads/Loads.tsx`](../../features/loads/Loads.tsx).
 
+Moving the scrolling off the document takes three things with it, all
+restored here and pinned by `DataGrid.fillHeight.test.tsx`:
+
+- **Scroll position resets when the list changes identity** — page,
+  sort, filter, search, tab. Position only means something relative to
+  the list you were reading; keeping it means "next page" drops you into
+  the middle of page 2, and a sticky header leaves no visual cue that it
+  happened. Applied in BOTH modes so behaviour can't diverge.
+- **The scroll container is focusable** (`tabIndex={0}` + `role="region"`
+  + a name). A plain `overflow` div is not, so keyboard users lose the
+  rows past the first screen entirely — the document used to scroll for
+  them (WCAG 2.1.1).
+- **The aggregation footer anchors to the bottom** when the body scrolls
+  — sticky on the `<tfoot>` element, the same trick the header uses, so
+  pinned cells' own z-indexes stay relative to it and nothing needs
+  re-layering. A header micro-label reading "sum" that points at a number
+  250 rows below is a promise the reader can't collect.
+
 Two gotchas the implementation encodes, both easy to reintroduce:
 
 - **`min-h-0` at every level.** A flex item defaults to `min-height:

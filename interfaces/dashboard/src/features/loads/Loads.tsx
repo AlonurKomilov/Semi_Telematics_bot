@@ -228,7 +228,12 @@ export default function Loads() {
               }`}
             >
               {label}
-              {count != null && count > 0 && (
+              {/* ``0`` is an ANSWER — "no loads are upcoming" — and
+                  hiding the badge for it made that tab look identical
+                  to "All", which carries no badge because it is never
+                  counted.  Same pixels, two different meanings.  Keyed
+                  tabs always show their number; only "All" stays bare. */}
+              {count != null && (
                 <span className={`ml-1.5 text-xs ${active ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
                   {count}
                 </span>
