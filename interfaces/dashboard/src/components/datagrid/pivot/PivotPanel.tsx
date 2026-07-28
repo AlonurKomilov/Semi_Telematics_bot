@@ -4,6 +4,7 @@ import { Search, X } from 'lucide-react';
 import { cn } from '../../../lib/utils';
 import { Input } from '../../ui/input';
 import { Button } from '../../ui/button';
+import { Switch } from '../../ui/switch';
 import { ActionMenu } from '../../ui/context-menu';
 import { InfoTip } from '../../tooltip';
 import { AGG_FN_LABELS } from '../../../types';
@@ -24,12 +25,17 @@ import type { PivotModel, PivotValueField } from './pivot';
  * same opt-ins the grid's filters and footer totals already use.
  */
 export default function PivotPanel({
-  columns, model, onChange, onClose,
+  columns, model, onChange, onClose, enabled, onEnabledChange,
 }: {
   columns: AnyColumn[];
   model: PivotModel;
   onChange: (next: PivotModel) => void;
   onClose: () => void;
+  /** Is the grid currently PIVOTED?  Configuring and switching on are
+   *  two different acts — you can open this panel, set the report up,
+   *  and only then flip it on (the MUI model). */
+  enabled: boolean;
+  onEnabledChange: (next: boolean) => void;
 }) {
   const [query, setQuery] = useState('');
 
@@ -82,7 +88,17 @@ export default function PivotPanel({
   return (
     <aside className="w-80 shrink-0 border-l border-border bg-card flex flex-col max-h-[32rem]">
       <div className="flex items-center justify-between gap-2 p-3 border-b border-border">
-        <h3 className="text-sm font-semibold inline-flex items-center gap-1.5">
+        {/* The switch, not the toolbar button, is what pivots the grid.
+            Opening this panel is "let me set a report up"; flipping the
+            switch is "show it to me" — so a click on the toolbar icon
+            can no longer replace the row list before you've said what
+            you wanted summarised. */}
+        <h3 className="text-sm font-semibold inline-flex items-center gap-2">
+          <Switch
+            checked={enabled}
+            onCheckedChange={onEnabledChange}
+            aria-label="Pivot the grid"
+          />
           Pivot
           <InfoTip
             size={12}

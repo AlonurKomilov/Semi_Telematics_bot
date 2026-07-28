@@ -73,6 +73,15 @@ const COLUMNS: AnyColumn[] = [
 
 const bodyText = () => document.querySelector('tbody')?.textContent ?? '';
 
+// By ACCESSIBLE NAME, not visible text: the toggle's presentation is the
+// grid's business (it just went icon-only mid-session) — what the test
+// owns is that a control named "Pivot" exists and gates correctly.
+const findPivotToggle = () =>
+  Array.from(document.querySelectorAll('button')).find(
+    (b) => b.getAttribute('aria-label') === 'Pivot'
+      || b.textContent?.includes('Pivot'),
+  );
+
 afterEach(cleanup);
 
 describe('DataGrid — uncontrolled (every existing grid)', () => {
@@ -336,7 +345,7 @@ describe('DataGrid — a grid that holds only a SLICE stops pretending', () => {
   it('disables Pivot with a reason instead of summarising a fragment', () => {
     render(<DataGrid {...partial} pivot />);
     const btn = Array.from(document.querySelectorAll('button'))
-      .find((b) => b.textContent?.includes('Pivot'));
+      .find((b) => b.getAttribute('aria-label') === 'Pivot');
     expect(btn).toBeTruthy();
     expect((btn as HTMLButtonElement).disabled).toBe(true);
   });
@@ -344,7 +353,7 @@ describe('DataGrid — a grid that holds only a SLICE stops pretending', () => {
   it('leaves Pivot usable when the grid holds everything', () => {
     render(<DataGrid columns={COLUMNS} data={ROWS} tableId="whole" pivot />);
     const btn = Array.from(document.querySelectorAll('button'))
-      .find((b) => b.textContent?.includes('Pivot'));
+      .find((b) => b.getAttribute('aria-label') === 'Pivot');
     expect((btn as HTMLButtonElement).disabled).toBe(false);
   });
 
@@ -355,7 +364,7 @@ describe('DataGrid — a grid that holds only a SLICE stops pretending', () => {
         tableId="exact" pivot />,
     );
     const btn = Array.from(document.querySelectorAll('button'))
-      .find((b) => b.textContent?.includes('Pivot'));
+      .find((b) => b.getAttribute('aria-label') === 'Pivot');
     expect((btn as HTMLButtonElement).disabled).toBe(false);
   });
 });

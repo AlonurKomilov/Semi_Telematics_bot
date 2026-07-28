@@ -25,7 +25,7 @@ import {
 import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Rows3, Rows2, Rows4,
   Search, X, Columns3, Download, Copy, Filter as FilterIcon, ArrowUpDown,
-  CornerUpRight, ListTree, Plus, Pencil, Trash2, Star, TableProperties,
+  CornerUpRight, ListTree, Plus, Pencil, Trash2, Star, Table2,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
@@ -725,13 +725,14 @@ export default function DataGrid({
   const setPivotModel = useCallback((model: PivotModel) => {
     setPivotPref({ enabled: true, model });
   }, [setPivotPref]);
-  const togglePivot = useCallback(() => {
-    const next = !pivotOn;
-    // A STARTER model on first enable: the first click should produce a
-    // report, not an empty state the operator must then configure three
-    // times.  First pivotable dimension x first aggregable measure is the
-    // obvious summary (Loads -> Customer x Rate); the panel still opens
-    // so it reads as a suggestion to refine, not a decision made for them.
+  const setPivotEnabled = useCallback((next: boolean) => {
+    // A STARTER model on first enable: flipping the switch should
+    // produce a report, not an empty state the operator must then
+    // configure three times.  First pivotable dimension x first
+    // aggregable measure is the obvious summary (Loads -> Customer x
+    // Rate), and it lands next to the pickers that shaped it, so it
+    // reads as a suggestion to refine rather than a decision made for
+    // them.
     let model = pivotModel;
     if (next && model.rows.length === 0 && model.values.length === 0) {
       const firstDim = pivotColumns.find((c) => c.pivotable);
@@ -745,10 +746,7 @@ export default function DataGrid({
       }
     }
     setPivotPref({ enabled: next, model });
-    // Open the panel on the way IN so the suggestion is visible and
-    // immediately editable.
-    setPivotPanelOpen(next);
-  }, [pivotOn, pivotModel, pivotColumns, setPivotPref]);
+  }, [pivotModel, pivotColumns, setPivotPref]);
 
   const [ownSorting, setOwnSorting] = useState<SortingState>([]);
   const sortingControlled = controlledSorting !== undefined;
@@ -2577,8 +2575,41 @@ export default function DataGrid({
     if (el && el.scrollTop !== 0) el.scrollTop = 0;
   }, [pageIndex, sorting, columnFilters, globalFilter, segmentPref]);
 
+  // Does the BODY scroll (rather than the page)?  True either way the
+  // grid gets its own viewport — a hand-set ``stickyHeader`` height or
+  // ``fillHeight`` taking the remaining space.  Everything downstream
+  // (sticky thead, its opaque background, the raised z-index that keeps
+  // pinned header cells above scrolled body cells, whose scrollbar is
+  // drawn) depends on the SCROLLING, not on which prop asked for it.
+  const bodyScrolls = !!stickyHeader || !!fillHeight;
+
+  // The sticky header lives INSIDE the scroll container, so a native
+  // vertical scrollbar runs the container's full height — up alongside
+  // the column labels and their ⋮ menus, which reads as the rows
+  // scrolling "into" the header.  We hide the native bar when the body
+  // scrolls and draw our own starting BELOW the header (the same
+  // treatment the horizontal bar already gets), which is where MUI's
+  // sits: its headers are a separate element outside the scroller.
+  // Measured rather than assumed — header height changes with density,
+  // wrapped labels and the aggregation micro-label.
+  const theadRef = useRef<HTMLTableSectionElement | null>(null);
+  const [headerHeight, setHeaderHeight] = useState(0);
+  useEffect(() => {
+    const el = theadRef.current;
+    if (!el) return;
+    const measure = () => setHeaderHeight(h => {
+      const next = el.offsetHeight;
+      return h === next ? h : next;
+    });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [bodyScrolls, density]);
+
   const [scrollMetrics, setScrollMetrics] = useState({
     scrollLeft: 0, clientWidth: 0, scrollWidth: 0,
+    scrollTop: 0, clientHeight: 0, scrollHeight: 0,
   });
   useEffect(() => {
     const el = scrollContainerRef.current;
@@ -2588,6 +2619,9 @@ export default function DataGrid({
         scrollLeft: el.scrollLeft,
         clientWidth: el.clientWidth,
         scrollWidth: el.scrollWidth,
+        scrollTop: el.scrollTop,
+        clientHeight: el.clientHeight,
+        scrollHeight: el.scrollHeight,
       });
     };
     update();
@@ -2651,13 +2685,6 @@ export default function DataGrid({
   // the visible-to-total ratio, with a floor so it stays grabbable.
   const needsHScroll = scrollMetrics.scrollWidth > scrollMetrics.clientWidth + 1;
 
-  // Does the BODY scroll (rather than the page)?  True either way the
-  // grid gets its own viewport — a hand-set ``stickyHeader`` height or
-  // ``fillHeight`` taking the remaining space.  Everything downstream
-  // (sticky thead, its opaque background, the raised z-index that keeps
-  // pinned header cells above scrolled body cells) depends on the
-  // SCROLLING, not on which prop asked for it.
-  const bodyScrolls = !!stickyHeader || !!fillHeight;
   const trackWidth = Math.max(0, scrollMetrics.clientWidth - pinnedLeftWidth - pinnedRightWidth);
   const maxScrollLeft = Math.max(0, scrollMetrics.scrollWidth - scrollMetrics.clientWidth);
   const visibleRatio = scrollMetrics.scrollWidth > 0
@@ -2692,6 +2719,59 @@ export default function DataGrid({
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
   };
+  // ── Vertical scrollbar (only when the BODY scrolls) ──────────────
+  // Same geometry as the horizontal one, one axis over.  The track
+  // starts below the sticky header so it never runs alongside the
+  // column labels or their ⋮ menus.  Only the PAINTING is ours —
+  // ``overflow-y`` stays ``auto``, so wheel, touch, keyboard and
+  // scroll-into-view all keep working natively.
+  const needsVScroll = bodyScrolls
+    && scrollMetrics.scrollHeight > scrollMetrics.clientHeight + 1;
+  const vTrackHeight = Math.max(0, scrollMetrics.clientHeight - headerHeight);
+  const maxScrollTop = Math.max(0, scrollMetrics.scrollHeight - scrollMetrics.clientHeight);
+  const vVisibleRatio = scrollMetrics.scrollHeight > 0
+    ? scrollMetrics.clientHeight / scrollMetrics.scrollHeight
+    : 1;
+  const vThumbHeight = Math.max(24, Math.round(vTrackHeight * vVisibleRatio));
+  const vThumbMax = Math.max(0, vTrackHeight - vThumbHeight);
+  const vScrollRatio = maxScrollTop > 0 ? scrollMetrics.scrollTop / maxScrollTop : 0;
+  const vThumbTop = Math.round(vThumbMax * vScrollRatio);
+
+  const onVThumbPointerDown = (e: React.PointerEvent) => {
+    if (vThumbMax <= 0) return;
+    e.preventDefault();
+    const startY = e.clientY;
+    const startScroll = scrollMetrics.scrollTop;
+    const move = (mv: PointerEvent) => {
+      const dy = mv.clientY - startY;
+      const next = Math.max(0, Math.min(
+        maxScrollTop,
+        startScroll + (dy / vThumbMax) * maxScrollTop,
+      ));
+      const el = scrollContainerRef.current;
+      if (el) el.scrollTop = next;
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  const onVTrackClick = (e: React.MouseEvent) => {
+    if (e.target !== e.currentTarget || vThumbMax <= 0) return;
+    const trackRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const clickRel = e.clientY - trackRect.top;
+    const goDown = clickRel > vThumbTop + vThumbHeight / 2;
+    const page = vTrackHeight;
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    el.scrollTop = Math.max(0, Math.min(
+      maxScrollTop,
+      scrollMetrics.scrollTop + (goDown ? page : -page),
+    ));
+  };
+
   // Click on the empty track jumps the centre by one page in that
   // direction.  Standard scrollbar behaviour.
   const onTrackClick = (e: React.MouseEvent) => {
@@ -3117,11 +3197,19 @@ export default function DataGrid({
                   persistent number here read as an unresolved "notification"
                   to clear.  Filter/Sort keep their badges (those ARE active
                   view constraints); "columns hidden" is just layout. */}
+              {/* ONE control, matching MUI: the toolbar icon opens the
+                  panel, and the switch inside it pivots the grid.  It
+                  used to pivot on the spot, which replaced the row list
+                  before the operator had said what they wanted
+                  summarised — and it needed a second "Fields" button to
+                  reach the pickers afterwards.  The button still paints
+                  ACTIVE while pivoted, so a closed panel never hides
+                  the fact that you're looking at a report. */}
               {pivotEnabled && (
                 <Tip label={
                   holdsPartialData
                     ? `A pivot would summarise the ${sourceData.length.toLocaleString()} rows loaded, not all ${totalRows!.toLocaleString()}. Narrow the view, or raise Rows per page.`
-                    : (pivotOn ? 'Back to the row list' : 'Summarise as a pivot table')
+                    : (pivotOn ? 'Pivot fields — currently pivoted' : 'Summarise as a pivot table')
                 }>
                   {/* Disabled-with-reason rather than hidden: a control
                       that vanishes teaches nothing, and the operator
@@ -3129,27 +3217,14 @@ export default function DataGrid({
                   <Button
                     type="button"
                     variant={pivotOn ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={togglePivot}
-                    aria-pressed={pivotOn}
-                    disabled={holdsPartialData}
-                    className="h-8"
-                  >
-                    <TableProperties size={14} /> Pivot
-                  </Button>
-                </Tip>
-              )}
-              {pivotEnabled && pivotOn && (
-                <Tip label="Choose rows, columns and values">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
+                    size="icon"
                     onClick={() => setPivotPanelOpen((o) => !o)}
                     aria-pressed={pivotPanelOpen}
-                    className="h-8"
+                    aria-label="Pivot"
+                    disabled={holdsPartialData}
+                    className="size-8"
                   >
-                    Fields
+                    <Table2 size={16} />
                   </Button>
                 </Tip>
               )}
@@ -3295,6 +3370,13 @@ export default function DataGrid({
       </div>
       )}
 
+      {/* The panel is a SIBLING of whichever body is showing, not a
+          child of the pivot branch — it has to be reachable while the
+          grid is still a row list, because that is where you switch
+          pivoting ON.  The two bodies then swap inside the left column
+          without the panel unmounting. */}
+      <div className={cn('flex items-stretch', fillHeight && 'flex-1 min-h-0')}>
+      <div className={cn('flex-1 min-w-0', fillHeight && 'flex flex-col min-h-0')}>
       {pivotOn ? (
         // PIVOT MODE — a report, not a record list.  Fed the SAME
         // post-segment/filter/search rows the footer aggregation reduces,
@@ -3305,8 +3387,7 @@ export default function DataGrid({
         // report is silently cut off with no way to reach the rest.
         // Horizontal scrolling stays PivotView's (its sticky row-label
         // column depends on being inside that scroller).
-        <div className={cn('flex items-stretch', fillHeight && 'flex-1 min-h-0')}>
-          <div className={cn('flex-1 min-w-0', fillHeight && 'overflow-y-auto')}>
+        <div className={cn(fillHeight && 'flex-1 min-h-0 overflow-y-auto')}>
             <PivotView
               rows={table.getFilteredRowModel().rows
                 .filter((r) => !r.getIsGrouped())
@@ -3316,15 +3397,6 @@ export default function DataGrid({
               padding={padding}
               onModelChange={setPivotModel}
             />
-          </div>
-          {pivotPanelOpen && (
-            <PivotPanel
-              columns={pivotColumns}
-              model={pivotModel}
-              onChange={setPivotModel}
-              onClose={() => setPivotPanelOpen(false)}
-            />
-          )}
         </div>
       ) : (
       /* ``min-h-[16rem]`` rather than ``min-h-0`` is the floor: the body
@@ -3333,7 +3405,7 @@ export default function DataGrid({
          page's own scroll region takes over instead.  A COLUMN, because
          under fillHeight the horizontal scrollbar stops being an overlay
          and becomes the row below the body (see below). */
-      <div className={cn('relative', fillHeight && 'flex flex-1 flex-col min-h-[16rem]')}>
+      <div className={cn('relative group/grid', fillHeight && 'flex flex-1 flex-col min-h-[16rem]')}>
       <div
         ref={scrollContainerRef}
         // ``overflow-x: hidden`` + ``overflow-y: auto``: the native
@@ -3358,6 +3430,11 @@ export default function DataGrid({
           'overflow-y-auto overflow-x-hidden',
           needsHScroll && !fillHeight && 'pb-3',
           fillHeight && 'flex-1 min-h-0',
+          // Hide the NATIVE vertical bar when we draw our own — it
+          // would otherwise run the container's full height, up beside
+          // the sticky column labels.  Scrolling itself is untouched
+          // (overflow-y stays auto); only the painting moves.
+          bodyScrolls && '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         )}
         style={stickyHeader ? { maxHeight: stickyHeader } : undefined}
         // Moving the scrolling from the document into this div would
@@ -3396,6 +3473,7 @@ export default function DataGrid({
           } : undefined}
         >
           <TableHeader
+            ref={theadRef}
             className={bodyScrolls ? 'sticky top-0 z-10 bg-card' : undefined}
           >
             {/* Group bracket row — one spanning cell per contiguous
@@ -3872,8 +3950,45 @@ export default function DataGrid({
           </div>
         </div>
       )}
+      {/* Vertical scrollbar — starts BELOW the sticky header, so it
+          never runs beside the column labels and their ⋮ menus the way
+          the native bar did.  Same rest/hover treatment as the rest of
+          the app's slim scrollbars (index.css): invisible until the
+          pointer is over the grid. */}
+      {needsVScroll && vTrackHeight > 0 && (
+        <div
+          className="absolute right-0.5 w-2 group-hover/grid:opacity-100 opacity-0 transition-opacity"
+          style={{ top: headerHeight, height: vTrackHeight }}
+        >
+          <div
+            className="relative h-full w-full bg-muted/40 rounded-full cursor-pointer"
+            onClick={onVTrackClick}
+          >
+            <div
+              className="absolute left-0 right-0 bg-muted-foreground/50 hover:bg-muted-foreground/70 rounded-full cursor-grab active:cursor-grabbing"
+              style={{
+                height: vThumbHeight,
+                transform: `translateY(${vThumbTop}px)`,
+              }}
+              onPointerDown={onVThumbPointerDown}
+            />
+          </div>
+        </div>
+      )}
       </div>
       )}
+      </div>
+      {pivotEnabled && pivotPanelOpen && (
+        <PivotPanel
+          columns={pivotColumns}
+          model={pivotModel}
+          onChange={setPivotModel}
+          onClose={() => setPivotPanelOpen(false)}
+          enabled={pivotOn}
+          onEnabledChange={setPivotEnabled}
+        />
+      )}
+      </div>
       {/* Pagination footer — skipped when ``enablePagination={false}``
           (short lists where paginating 5-20 rows adds noise).  The
           border-t lives on the div itself so it disappears with the

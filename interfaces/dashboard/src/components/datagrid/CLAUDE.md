@@ -285,6 +285,17 @@ restored here and pinned by `DataGrid.fillHeight.test.tsx`:
   re-layering. A header micro-label reading "sum" that points at a number
   250 rows below is a promise the reader can't collect.
 
+**The vertical scrollbar is ours, not the browser's.** The sticky header
+lives inside the scroll container, so a native bar would run the
+container's full height — up alongside the column labels and their ⋮
+menus, which reads as the rows scrolling *into* the header. When the
+body scrolls we hide the native bar and draw one starting below the
+measured header height, the same treatment the horizontal bar already
+had. Only the PAINTING is ours: `overflow-y` stays `auto`, so wheel,
+touch, keyboard and scroll-into-view are untouched. (MUI gets this for
+free because its headers are a separate element outside the scroller;
+ours share one `<table>` so the columns can't drift out of alignment.)
+
 Two gotchas the implementation encodes, both easy to reintroduce:
 
 - **`min-h-0` at every level.** A flex item defaults to `min-height:

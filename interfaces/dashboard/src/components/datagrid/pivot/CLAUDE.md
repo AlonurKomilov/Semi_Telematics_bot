@@ -1,8 +1,31 @@
 # components/datagrid/pivot — cross-tab reporting
 
 Opt a grid in with the **`pivot`** prop (needs `tableId`). A toolbar
-**Pivot** toggle swaps the record list for a matrix: rows × columns ×
-aggregated values, with a **Fields** panel to configure it.
+**Pivot** icon opens the fields panel; a **switch inside that panel**
+swaps the record list for a matrix: rows × columns × aggregated values.
+
+## Opening and switching on are two different acts
+
+This follows MUI. The toolbar icon (lucide `Table2` — a grid with an
+emphasized header row AND first column, i.e. the shape of a cross-tab)
+only opens the panel; the switch at the panel's top pivots the grid.
+
+It used to pivot on the *first click*, which replaced the row list
+before the operator had said what they wanted summarised, and then
+needed a second "Fields" button to reach the pickers. One control now
+does both jobs in the right order. Two things keep that honest:
+
+- the toolbar button paints **active** while pivoted, so a closed panel
+  never hides the fact that you're looking at a report rather than a
+  list;
+- the panel is a **sibling of whichever body is showing**, not a child
+  of the pivot branch — it has to render while the grid is still a row
+  list, because that is where you switch pivoting on.
+
+Flipping the switch on still seeds a STARTER model (first dimension ×
+first measure) so the report isn't born empty — but now it appears
+right beside the pickers that shaped it, reading as a suggestion to
+refine rather than a decision made for you.
 
 ```
 pivot.ts        the pure transform (+ pivot.test.ts) — no React

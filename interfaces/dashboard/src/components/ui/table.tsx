@@ -19,15 +19,22 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   )
 }
 
-function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
-  return (
-    <thead
-      data-slot="table-header"
-      className={cn("[&_tr]:border-b", className)}
-      {...props}
-    />
-  )
-}
+// forwardRef so a caller can MEASURE the header — DataGrid positions
+// its custom vertical scrollbar to start below it, and that offset has
+// to come from the real rendered height (density, wrapped labels and
+// the aggregation micro-label all change it).
+const TableHeader = React.forwardRef<
+  HTMLTableSectionElement,
+  React.ComponentProps<"thead">
+>(({ className, ...props }, ref) => (
+  <thead
+    ref={ref}
+    data-slot="table-header"
+    className={cn("[&_tr]:border-b", className)}
+    {...props}
+  />
+))
+TableHeader.displayName = "TableHeader"
 
 function TableBody({ className, ...props }: React.ComponentProps<"tbody">) {
   return (
