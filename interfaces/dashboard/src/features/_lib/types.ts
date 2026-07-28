@@ -42,6 +42,13 @@ export type Persona =
 export interface SectionDef<P = Record<string, never>> {
   Component: LazyExoticComponent<ComponentType<P>>;
   label?: string;
+  /** This section IS the page (the queue itself) or carries invisible
+   *  machinery the page breaks without (the drill-in drawer that makes
+   *  deep links work).  No configuration tier — not the user's own gear,
+   *  not a manager's role default — may remove a required section.  Same
+   *  floor idea as DataGrid's can't-hide-to-zero-columns: a page you can
+   *  configure into uselessness strands whoever did it. */
+  required?: boolean;
 }
 
 /**

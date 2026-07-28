@@ -32,6 +32,9 @@ export default function Alerts() {
         registry={ALERTS_SECTIONS}
         layouts={ALERTS_LAYOUTS}
         sectionProps={{}}
+        // Users arrange their own copy of this page (gear, top right).
+        // 'alerts' is the FROZEN preference key segment.
+        customizable="alerts"
       />
     </AlertsSelectionProvider>
   );

@@ -23,7 +23,10 @@ import {
   type ReactNode,
 } from 'react';
 import { useShellConfig } from '../../hooks/useShellConfig';
+import { usePagePreference } from '../../preferences';
 import type { LayoutMap, SectionRegistry } from './types';
+import { resolvePageLayout } from './pageLayoutConfig';
+import { PageSectionsGear } from './PageSectionsGear';
 
 interface PageLayoutHostProps<P extends object> {
   /** Section registry: id → lazy component. */
@@ -34,6 +37,12 @@ interface PageLayoutHostProps<P extends object> {
   sectionProps: P;
   /** Placeholder rendered inside each section's Suspense while its chunk loads. */
   sectionFallback?: ReactNode;
+  /** Opt this page into user-configurable sections: a gear (top right)
+   *  lets each user hide/show/reorder the non-``required`` sections of
+   *  their base layout, stored per user under ``page.<feature>.layout``.
+   *  The value is the FROZEN preference key segment — renaming it later
+   *  orphans every stored arrangement.  Omit for the fixed behaviour. */
+  customizable?: string;
 }
 
 export function PageLayoutHost<P extends object>({
@@ -41,16 +50,32 @@ export function PageLayoutHost<P extends object>({
   layouts,
   sectionProps,
   sectionFallback,
+  customizable,
 }: PageLayoutHostProps<P>) {
   const { persona } = useShellConfig();
-  const layout =
+  const baseLayout =
     layouts[persona] ??
     layouts.owner ??
     layouts.admin ??
     (Object.keys(registry) as string[]);
 
+  // Tier 3 (personal).  Tier 2 — a role manager's team default — plugs in
+  // here by replacing ``baseLayout`` before the personal pref applies;
+  // the resolver is already shaped for it, so that arrival changes this
+  // line, not the model.  The hook is called unconditionally (rules of
+  // hooks); a page that didn't opt in just never reads the result.
+  const { value: pref } = usePagePreference(customizable ?? '__none__', 'layout');
+  const layout = customizable
+    ? resolvePageLayout(baseLayout, registry, pref)
+    : baseLayout;
+
   return (
     <>
+      {customizable && (
+        <div className="flex justify-end -mb-1">
+          <PageSectionsGear feature={customizable} registry={registry} base={baseLayout} />
+        </div>
+      )}
       {layout.map((sectionId) => {
         const def = registry[sectionId];
         if (!def) {

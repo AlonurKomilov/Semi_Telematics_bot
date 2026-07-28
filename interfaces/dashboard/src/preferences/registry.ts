@@ -392,6 +392,54 @@ export const TABLE_PARTS = {
   defaultView: def<string>({ default: '', scope: 'synced', note: 'Tab that opens by default.' }),
 } satisfies Record<string, PrefDef<unknown>>;
 
+// Page-section layout, per feature page — `page.alerts.layout`, ….
+// A user's personal arrangement of a Pattern-B page's sections (the
+// gear on the page writes it).  ``order`` is every section id the user
+// has arranged; ``hidden`` is the subset they switched off.  Two lists
+// rather than one so a section SHIPPED AFTER the user customised can be
+// told apart from one they hid: absent from ``order`` = new (gets
+// appended), present in ``hidden`` = a choice (stays hidden).
+// Null = never customised → the persona/role default applies.
+export interface PageLayoutPref {
+  order: string[];
+  hidden: string[];
+}
+
+/** Shape guard shared by the store's sanitize and the layout resolver.
+ *  The synced store is an opaque key-value bag with no server-side shape
+ *  check, so ANYTHING JSON-parseable can arrive under this key — an
+ *  older client, a future shape, a corrupted row.  This value is read
+ *  synchronously in page render, ABOVE every section error boundary:
+ *  malformed data must degrade to "not customised", never throw, or one
+ *  bad row takes the whole route down. */
+export function asPageLayoutPref(v: unknown): PageLayoutPref | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const o = v as Partial<PageLayoutPref>;
+  const strings = (a: unknown): a is string[] =>
+    Array.isArray(a) && a.every((x) => typeof x === 'string');
+  if (!strings(o.order) || !strings(o.hidden)) return null;
+  return { order: o.order, hidden: o.hidden };
+}
+
+export const PAGE_PARTS = {
+  layout: def<PageLayoutPref | null>({
+    default: null, scope: 'synced',
+    note: 'Which sections this page shows, and their order.',
+    sanitize: asPageLayoutPref,
+  }),
+} satisfies Record<string, PrefDef<unknown>>;
+
+export type PagePart = keyof typeof PAGE_PARTS;
+export type PagePartValue<P extends PagePart> =
+  (typeof PAGE_PARTS)[P] extends PrefDef<infer T> ? T : never;
+
+/** The one place a per-page key string is built.  FROZEN once shipped —
+ *  renaming orphans every stored arrangement. */
+export const pageKey = <P extends PagePart>(feature: string, part: P) =>
+  `page.${feature}.${part}` as `page.${string}.${P}`;
+
+const PAGE_KEY_RE = /^page\.(.+)\.([A-Za-z]+)$/;
+
 export type TablePart = keyof typeof TABLE_PARTS;
 export type TablePartValue<P extends TablePart> =
   (typeof TABLE_PARTS)[P] extends PrefDef<infer T> ? T : never;
@@ -417,6 +465,10 @@ export function defFor(key: string): PrefDef<unknown> | null {
   const m = TABLE_KEY_RE.exec(key);
   if (m && Object.prototype.hasOwnProperty.call(TABLE_PARTS, m[2])) {
     return TABLE_PARTS[m[2] as TablePart] as PrefDef<unknown>;
+  }
+  const pm = PAGE_KEY_RE.exec(key);
+  if (pm && Object.prototype.hasOwnProperty.call(PAGE_PARTS, pm[2])) {
+    return PAGE_PARTS[pm[2] as PagePart] as PrefDef<unknown>;
   }
   return null;
 }

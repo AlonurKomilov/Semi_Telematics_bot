@@ -10,7 +10,8 @@
  * ``capabilities/preferences/CLAUDE.md``.  Full guide: ./CLAUDE.md
  */
 
-export { usePreference, useTablePreference, useSyncLoaded } from './usePreference';
+export { usePreference, useTablePreference, usePagePreference, useSyncLoaded } from './usePreference';
+export { pageKey, type PageLayoutPref } from './registry';
 export {
   DEFS,
   isPrefKey,

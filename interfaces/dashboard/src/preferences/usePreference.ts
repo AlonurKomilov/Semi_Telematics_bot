@@ -6,6 +6,7 @@ import {
 } from './store';
 import {
   tableKey, TABLE_PARTS, type TablePart, type TablePartValue,
+  pageKey, PAGE_PARTS, type PagePart, type PagePartValue,
 } from './registry';
 
 /**
@@ -87,6 +88,42 @@ export function useTablePreference<P extends TablePart>(
   );
 
   return { value, setValue };
+}
+
+/**
+ * One page-layout preference for one feature page — the family
+ * counterpart of ``useTablePreference`` (same store, same sync), keyed
+ * by ``pageKey`` so the string is built in exactly one place.
+ */
+export function usePagePreference<P extends PagePart>(
+  feature: string,
+  part: P,
+): {
+  value: PagePartValue<P>;
+  setValue: (next: PagePartValue<P> | ((prev: PagePartValue<P>) => PagePartValue<P>)) => void;
+  resetValue: () => void;
+} {
+  const key = pageKey(feature, part);
+  const value = useSyncExternalStore(
+    useCallback((fn: () => void) => subscribe(key, fn), [key]),
+    useCallback(() => get(key) as PagePartValue<P>, [key]),
+    useCallback(() => get(key) as PagePartValue<P>, [key]),
+  ) ?? (PAGE_PARTS[part].default as PagePartValue<P>);
+  const setValue = useCallback(
+    (next: PagePartValue<P> | ((prev: PagePartValue<P>) => PagePartValue<P>)) => {
+      // Functional updaters resolve against a FRESH read, not the value
+      // captured at render.  Two rapid gear clicks (hide, then move)
+      // land before React re-renders; computing both from the same
+      // stale snapshot silently reverts the first — the user's action
+      // just disappears.  Same contract as useTablePreference.
+      set(key, typeof next === 'function'
+        ? (next as (p: unknown) => unknown)(get(key))
+        : next);
+    },
+    [key],
+  );
+  const resetValue = useCallback(() => reset(key), [key]);
+  return { value, setValue, resetValue };
 }
 
 /**
