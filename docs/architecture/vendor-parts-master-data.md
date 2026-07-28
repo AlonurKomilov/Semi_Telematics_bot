@@ -99,6 +99,27 @@ data to another.
    it does: identity fields are operator-owned, the fan-out/link fills
    empty fields only and never overwrites what a tenant typed, and
    operator approval adopts an account's matching row in place.
+8. **The taxonomy is VMRS-shaped, and its L3 slot is reserved (owner
+   decision 2026-07-28).** `adapters/storage/service_taxonomy.py` is the
+   single home of the classification language, mapping onto VMRS level
+   for level: `system_key` = CK31 System (`013`), `assembly_key` = CK32
+   Assembly (`013-001`), and — **future, not built** — `component_key`
+   = CK33 Component (`013-001-023`). The L3 name is `component_key`,
+   NOT `part_key`: "part" is this schema's *entity* word (`part_id`,
+   `parts_catalog`, `part_directory` — *which product*), "component" is
+   the *type* word (*what kind of thing*), and VMRS itself names the
+   level Component. Build triggers for L3: a VMRS licence (the licensed
+   CK33 list then *becomes* the vocabulary, seeded into the taxonomy)
+   or assemblies grown too fat to drill usefully — note our 112
+   assemblies are deliberately finer than CK32 (`water_pump`,
+   `thermostat`, `pads_shoes` are CK33-grade concepts), so most of the
+   L3 granularity is already occupied. Adding it later is purely
+   additive: new column on `parts_catalog`, vocabulary + suggest-matcher
+   + bulk-apply chips, the same recipe `assembly_key` proved. Crucially,
+   `part_directory` is NOT the CK33-analogue and never becomes one —
+   classification ("what kind") is the taxonomy's job; the directory
+   answers identity ("which one"). Same part row answers both, through
+   different columns.
 
 ---
 
