@@ -82,6 +82,23 @@ data to another.
 6. **Global layers are platform-owned.** Directory tables live with the other
    system-owner domains; curation happens on system.4truck.us, never on the
    customer dashboard.
+7. **Two shapes of global layer — don't converge them.** A *directory*
+   (`vendor_directory`, `part_directory`) is an open-ended registry of
+   real-world entities; tenant rows are born from the tenant's own activity
+   and are **matched UP** to it by a nullable id (`global_vendor_id`,
+   `global_part_id`). A *library* (`service_task_library`,
+   `service_assembly_library`) is a closed curated vocabulary the platform
+   **seeds DOWN** into every account, and the tenant row carries the
+   library's `canonical_key` — a key, not a row id, so seeding is not
+   order-dependent or environment-specific, survives a library row being
+   recreated, and stays legible in historical line tags and the
+   benchmarking `GROUP BY`. The naming difference (directory vs library,
+   id vs key) is deliberate and signals which mechanism you're in.
+   Reviewed and re-confirmed 2026-07-28 when the id/key asymmetry was
+   questioned; the answer is that only the *behaviour* should match, and
+   it does: identity fields are operator-owned, the fan-out/link fills
+   empty fields only and never overwrites what a tenant typed, and
+   operator approval adopts an account's matching row in place.
 
 ---
 

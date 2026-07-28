@@ -327,11 +327,24 @@ async def create_tables(conn) -> None:
         --
         -- ``canonical_key`` is the cross-account identity: every
         -- account's seeded "Engine Oil & Filter" row carries the SAME
-        -- key, so fleet-wide benchmarking is a GROUP BY rather than a
-        -- platform-side directory (which this closed ~20-item
-        -- vocabulary doesn't earn).  NULL ⇒ an account's own custom
-        -- task: freely renamed and deletable.  NOT NULL ⇒ a standard
-        -- task: archive-only, name locked.
+        -- key, so fleet-wide benchmarking is a GROUP BY.  '' ⇒ an
+        -- account's own custom task: freely renamed and deletable.
+        -- Non-empty ⇒ a standard task: archive-only, with its name and
+        -- system_key owned by the operator.
+        --
+        -- There IS a platform table behind it (``service_task_library``)
+        -- — but note this stays a KEY, not a row id, and deliberately
+        -- does NOT follow the ``vendors.global_vendor_id`` /
+        -- ``parts_catalog.global_part_id`` shape.  Those point at
+        -- tenant-originated rows matched UP to a directory of
+        -- real-world entities.  This is the reverse: a closed vocabulary
+        -- the platform seeds DOWN into every account.  A DB-assigned id
+        -- would make seeding order-dependent and environment-specific,
+        -- break if a library row were deleted and recreated, and cost
+        -- the readability that makes historical work-order line tags
+        -- and the benchmarking GROUP BY legible.  The two models agree
+        -- on BEHAVIOUR (fill-empty-only fan-out, operator-owned
+        -- identity, adopt-on-promote) and differ on shape on purpose.
         --
         -- ``parent_id`` gives ONE level of main-task/subtask nesting;
         -- the "a subtask may not itself have subtasks" rule can't be
