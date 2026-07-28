@@ -14,6 +14,17 @@ from typing import Any, Optional
 
 logger = logging.getLogger("bot.storage")
 
+from adapters.storage.service_taxonomy import system_rollup_case
+
+#: THE DELEGATION RULE as SQL, rendered ONCE from
+#: ``DELEGATING_SYSTEMS``.  It used to be written out by hand at the
+#: three sites below (the SELECT, the GROUP BY, and the per-assembly
+#: WHERE); adding a fifth delegating system would have updated the
+#: frozenset and left all three literals silently stale — misfiling
+#: spend with no error anywhere.  ``st`` / ``al`` are the service-task
+#: and assembly-library aliases every one of those queries uses.
+_SYSTEM_ROLLUP = system_rollup_case("st.system_key", "al.system_key")
+
 # Work-order lifecycle (Fleetio-standard): open → in_progress →
 # completed.  No cancelled/void state by owner decision — a mistaken WO
 # is deleted, not soft-voided.  Money lives in the separate
@@ -1141,11 +1152,7 @@ class WorkOrdersMixin:
         # PM counts as "PM spend" forever and the component systems
         # stay empty for PM-heavy fleets.
         q = (
-            "SELECT CASE WHEN COALESCE(st.system_key, '') "
-            "                 IN ('pm', 'inspection', 'other', '') "
-            "                 AND al.system_key IS NOT NULL "
-            "            THEN al.system_key "
-            "            ELSE COALESCE(st.system_key, '') END AS system_key, "
+            f"SELECT {_SYSTEM_ROLLUP} AS system_key, "
             "       COUNT(DISTINCT w.id) AS work_order_count, "
             "       SUM(p.total_cost) AS total_spent "
             "FROM work_order_parts p "
@@ -1163,11 +1170,7 @@ class WorkOrdersMixin:
             q += " AND w.service_date >= ?"
             params.append(since)
         q += (
-            " GROUP BY CASE WHEN COALESCE(st.system_key, '') "
-            "                    IN ('pm', 'inspection', 'other', '') "
-            "                    AND al.system_key IS NOT NULL "
-            "               THEN al.system_key "
-            "               ELSE COALESCE(st.system_key, '') END"
+            f" GROUP BY {_SYSTEM_ROLLUP}"
         )
         cur = await self._db.execute(q, params)
         for r in (dict(x) for x in await cur.fetchall()):
@@ -1228,11 +1231,7 @@ class WorkOrdersMixin:
             "     ON al.key = pc.assembly_key AND pc.assembly_key <> '' "
             "WHERE w.account_id = ? AND w.service_date IS NOT NULL "
             "  AND w.status != 'void' AND w.payment_status != 'void' "
-            "  AND (CASE WHEN COALESCE(st.system_key, '') "
-            "                 IN ('pm', 'inspection', 'other', '') "
-            "                 AND al.system_key IS NOT NULL "
-            "            THEN al.system_key "
-            "            ELSE COALESCE(st.system_key, '') END) = ?"
+            f"  AND ({_SYSTEM_ROLLUP}) = ?"
         )
         params: list = [account_id, system_key]
         if since:

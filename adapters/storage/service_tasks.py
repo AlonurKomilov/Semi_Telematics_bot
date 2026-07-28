@@ -14,7 +14,7 @@ the parts/vendors directory earns its keep on DISCOVERY of an
 open-ended vocabulary, which this closed ~20-item list doesn't need.
 Cross-account comparability instead rides ``canonical_key``: every
 account's "Engine Oil & Filter Replacement" carries the same key, so
-fleet-wide benchmarking is a GROUP BY and the door to a real platform
+cross-account benchmarking is a GROUP BY and the door to a real platform
 library stays open (the keys already align).
 
   canonical_key != ''  ⇒ standard task: archive-only, name locked
@@ -24,6 +24,7 @@ library stays open (the keys already align).
 from __future__ import annotations
 
 import logging
+import re as _re
 from typing import Any, Optional
 
 logger = logging.getLogger("bot.storage")
@@ -42,133 +43,17 @@ def service_task_name_key(name: str) -> str:
 
 # ── Systems: the reporting axis above a task ────────────────────────
 #
-# "Brakes cost us $12k this quarter" is the question a fleet actually
-# asks, and a flat list of ~40 task names can't answer it.  A system is
-# the coarse bucket every task belongs to.
-#
-# This is OUR taxonomy, not VMRS.  VMRS is the industry standard for
-# the same idea, but its code set is licensed from TMC/ATA per-seat on
-# revenue (verified 2026-07-27) and its value — OEM warranty claims,
-# cross-industry benchmarking — needs interoperability we can't use
-# yet.  The INTERNAL value (spend per system, failure patterns, a
-# picker that stays usable) needs no licence at all, which is what this
-# delivers.  A ``vmrs_code`` column can sit beside ``system_key`` later
-# without disturbing any of it.
-#
-# Deliberately a CONSTANT, not an operator-curated table: this is the
-# reporting axis, so consistency matters more than flexibility, and a
-# stray extra system would fragment exactly the report it exists to
-# produce.  It is served over the API (``GET /service-tasks/systems``)
-# so the frontend never keeps a second copy — that second copy is
-# precisely how the old task vocabulary drifted.
-SERVICE_TASK_SYSTEMS: tuple[dict[str, str], ...] = (
-    {"key": "pm",           "label": "Preventive Maintenance"},
-    {"key": "inspection",   "label": "Inspection & Compliance"},
-    {"key": "engine",       "label": "Engine"},
-    {"key": "cooling",      "label": "Cooling System"},
-    {"key": "fuel",         "label": "Fuel System"},
-    {"key": "exhaust",      "label": "Exhaust & Aftertreatment"},
-    {"key": "drivetrain",   "label": "Drivetrain & Transmission"},
-    {"key": "brakes",       "label": "Brakes"},
-    {"key": "air_system",   "label": "Air System"},
-    {"key": "suspension",   "label": "Suspension"},
-    {"key": "steering",     "label": "Steering & Alignment"},
-    {"key": "tires_wheels", "label": "Tires & Wheels"},
-    {"key": "electrical",   "label": "Electrical"},
-    {"key": "lighting",     "label": "Lighting"},
-    {"key": "hvac",         "label": "HVAC"},
-    {"key": "body_cab",     "label": "Body & Cab"},
-    {"key": "trailer",      "label": "Trailer"},
-    {"key": "other",        "label": "Other"},
+# The reporting axis moved to ``service_taxonomy`` — it is classified
+# against by parts and by the spend reports too, so living in the
+# service-task module made every other consumer import a shared axis
+# from one consumer's file.  Re-exported at the old names so the ~15
+# import sites (migrations, platform routers, feature routers, tests)
+# keep working; ``VEHICLE_SYSTEMS`` is the primary name, and
+# ``SERVICE_TASK_SYSTEMS`` is a deprecated alias for the SAME object.
+from adapters.storage.service_taxonomy import (   # noqa: F401
+    SERVICE_TASK_SYSTEMS, SYSTEM_KEYS, SYSTEM_LABELS, VEHICLE_SYSTEMS,
+    normalize_system_key, suggest_system_for,
 )
-
-SYSTEM_KEYS = frozenset(s["key"] for s in SERVICE_TASK_SYSTEMS)
-SYSTEM_LABELS = {s["key"]: s["label"] for s in SERVICE_TASK_SYSTEMS}
-
-
-def normalize_system_key(value: str) -> str:
-    """A recognised system key, else '' (uncategorized).  Never raises —
-    an unknown value must not block a task write."""
-    v = (value or "").strip().lower()
-    return v if v in SYSTEM_KEYS else ""
-
-
-# ── Suggesting a system from a task's name ─────────────────────────
-#
-# The fill path for tasks a human typed: suggest-confirm, never silent
-# (the owner's standing rule).  Same discipline as the work-order link
-# matcher: word-boundary matching and SPECIFIC words only — one hit is
-# enough to suggest, so a generic word here would mislabel half the
-# list.  A task the map doesn't recognise simply gets no suggestion.
-_SYSTEM_KEYWORDS: dict[str, tuple[str, ...]] = {
-    "pm":           ("pm service", "preventive", "lube", "grease",
-                     "lubrication"),
-    "inspection":   ("inspection", "inspect", "dot", "fmcsa", "annual"),
-    "engine":       ("engine", "oil change", "oil filter", "air filter",
-                     "turbo", "turbocharger", "injector", "cylinder",
-                     "valve cover", "crankcase", "egr"),
-    "cooling":      ("coolant", "radiator", "water pump", "thermostat",
-                     "antifreeze", "fan clutch", "overheat"),
-    "fuel":         ("fuel filter", "fuel pump", "fuel line", "fuel tank",
-                     "water separator", "diesel"),
-    "exhaust":      ("dpf", "def", "regen", "aftertreatment", "scr",
-                     "urea", "adblue", "exhaust", "muffler", "doc",
-                     "nox sensor"),
-    "drivetrain":   ("transmission", "clutch", "driveline", "driveshaft",
-                     "differential", "gearbox", "u joint", "pto"),
-    "brakes":       ("brake", "brakes", "rotor", "caliper", "drum",
-                     "pad", "pads", "shoe", "shoes", "slack adjuster",
-                     "abs"),
-    "air_system":   ("air line", "air lines", "air dryer", "air leak",
-                     "glad hand", "gladhand", "air compressor",
-                     "air tank", "air bag", "airbag"),
-    "suspension":   ("suspension", "spring", "shock", "bushing",
-                     "torque rod", "leaf spring"),
-    "steering":     ("steering", "alignment", "align", "tie rod",
-                     "drag link", "kingpin", "king pin", "toe", "camber"),
-    "tires_wheels": ("tire", "tires", "tyre", "wheel", "rim", "hub",
-                     "bearing", "wheel seal", "rotation", "balance",
-                     "retread", "flat"),
-    "electrical":   ("electrical", "wiring", "harness", "battery",
-                     "batteries", "alternator", "starter", "fuse",
-                     "solenoid", "sensor"),
-    "lighting":     ("light", "lights", "headlight", "taillight",
-                     "marker", "bulb", "led"),
-    "hvac":         ("hvac", "a/c", "ac ", "air conditioning", "heater",
-                     "blower", "condenser", "evaporator", "apu",
-                     "bunk heater"),
-    "body_cab":     ("door", "mirror", "windshield", "glass", "cab",
-                     "hood", "fender", "bumper", "seat", "paint",
-                     "body"),
-    "trailer":      ("trailer", "landing gear", "fifth wheel", "reefer",
-                     "liftgate", "lift gate", "mud flap", "tarp",
-                     "roll door", "swing door"),
-}
-
-import re as _re
-
-
-def suggest_system_for(name: str) -> str:
-    """Best-guess system for a task NAME, or '' when nothing specific
-    matches.  A suggestion, never an assignment — the caller shows it
-    and a human confirms.  Word-boundary matching so 'def' can't hit
-    'defrost' (the same guard the link matcher uses); first match in
-    declaration order wins, and the more specific multiword phrases
-    are listed before the words they contain."""
-    hay = " ".join((name or "").lower().split())
-    if not hay:
-        return ""
-    # Longest matched keyword wins, not declaration order — "Kingpin
-    # grease" must go to Steering (kingpin) even though PM's "grease"
-    # also hits.  Specificity is length, near enough.
-    best_system, best_len = "", 0
-    for system, words in _SYSTEM_KEYWORDS.items():
-        for w in words:
-            if len(w) > best_len and _re.search(
-                    rf"\b{_re.escape(w)}\b", hay):
-                best_system, best_len = system, len(w)
-    return best_system
-
 
 # Filler that carries no meaning when comparing a task name against a
 # system label — "Brakes Repair" IS the Brakes system plus noise.
