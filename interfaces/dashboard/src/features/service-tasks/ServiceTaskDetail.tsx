@@ -17,10 +17,12 @@ import {
 import TaskPartsDialog from './TaskPartsDialog';
 import MergeTaskDialog from './MergeTaskDialog';
 import EditTaskDialog from './EditTaskDialog';
-import { EmptyState, ErrorState, TableSkeleton } from '../../components/shell';
+import DataGrid from '../../components/datagrid';
+import { EmptyState, ErrorState, PageHeader, TableSkeleton } from '../../components/shell';
 import { Button } from '../../components/ui/button';
 import { toneClasses } from '../../lib/status';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
+import type { AnyColumn } from '../../types';
 import {
   SERVICE_TASKS_KEY, SYSTEMS_KEY, deleteServiceTask, fetchServiceTasks,
   fetchTaskParts, fetchTaskSystems, updateServiceTask, type ServiceTask,
@@ -38,6 +40,18 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 const dash = <span className="text-muted-foreground">—</span>;
+
+const partColumns: AnyColumn[] = [
+  { key: 'part_name', label: 'Part', sortable: true },
+  {
+    key: 'part_number', label: 'Part #', sortable: true,
+    render: (v) => (v ? <span className="text-sm">{String(v)}</span> : dash),
+  },
+  {
+    key: 'quantity', label: 'Default qty', sortable: true,
+    render: (v) => <span className="tabular-nums">×{Number(v) || 1}</span>,
+  },
+];
 
 export default function ServiceTaskDetail() {
   const { id } = useParams();
@@ -105,19 +119,18 @@ export default function ServiceTaskDetail() {
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={() => navigate('/service-tasks')}
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3"
-      >
-        <ArrowLeft size={14} aria-hidden /> Service Tasks
-      </button>
-
-      {/* ── Identity ─────────────────────────────────────────────── */}
-      <div className="flex items-start justify-between gap-4 mb-5">
-        <div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-2xl font-bold text-foreground">{task.name}</h1>
+      {/* Same shell as VendorProfile / PartDetail: PageHeader carries
+          the entity name, the explanation sits behind the title's ⓘ,
+          badges ride in `meta`, and back-nav lives in `actions` — a
+          third hand-rolled detail header is how siblings drift. */}
+      <PageHeader
+        icon={ClipboardList}
+        title={task.name}
+        description={shared
+          ? 'A shared task — every account has it under the same key, which is what lets "what does a brake job cost" compare honestly between fleets. Its name and system are set centrally to keep that true; the labor estimate, description and applies-to are yours to tune and are never overwritten.'
+          : 'Your own task. Rename, retune or delete it freely — delete only while nothing references it, so history never loses its label.'}
+        meta={(
+          <div className="flex items-center gap-2">
             <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses(shared ? 'info' : 'neutral')}`}>
               {shared ? 'Shared' : 'Mine'}
             </span>
@@ -125,23 +138,25 @@ export default function ServiceTaskDetail() {
               {task.status === 'archived' ? 'Archived' : 'Active'}
             </span>
           </div>
-          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
-            {shared
-              ? 'A shared task — every account has it under the same key, which is what lets "what does a brake job cost" compare honestly between fleets. Its name and system are set centrally to keep that true; the labor estimate, description and applies-to are yours to tune and are never overwritten.'
-              : 'Your own task. Rename, retune or delete it freely — delete only while nothing references it, so history never loses its label.'}
-          </p>
-        </div>
-        {canManage && (
-          <div className="flex items-center gap-2 shrink-0">
-            <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
-              <Pencil size={14} /> Edit
+        )}
+        actions={(
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => navigate('/service-tasks')}>
+              <ArrowLeft size={14} /> All service tasks
             </Button>
-            <Button size="sm" variant="outline" onClick={() => setPartsOpen(true)}>
-              <Package size={14} /> Usual parts
-            </Button>
+            {canManage && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
+                  <Pencil size={14} /> Edit
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setPartsOpen(true)}>
+                  <Package size={14} /> Usual parts
+                </Button>
+              </>
+            )}
           </div>
         )}
-      </div>
+      />
 
       {/* ── Facts ────────────────────────────────────────────────── */}
       <div className="rounded-lg border border-border bg-card p-4 mb-4">
@@ -197,16 +212,13 @@ export default function ServiceTaskDetail() {
         {links.length === 0 ? (
           <p className="text-sm text-muted-foreground">No parts linked yet.</p>
         ) : (
-          <ul className="divide-y divide-border">
-            {links.map((p) => (
-              <li key={p.part_id} className="flex items-center justify-between py-2 text-sm">
-                <span className="text-foreground">{p.part_name}</span>
-                <span className="tabular-nums text-muted-foreground">
-                  ×{p.quantity}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <DataGrid
+            tableId="service-task-usual-parts"
+            columns={partColumns}
+            data={links as unknown as Record<string, unknown>[]}
+            enableToolbar={false}
+            enablePagination={false}
+          />
         )}
       </div>
 
