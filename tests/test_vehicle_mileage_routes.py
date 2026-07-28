@@ -212,3 +212,31 @@ class TestVehicleTrips:
                        mileage_app["token_owner"])
         assert r.status_code == 503
         assert "mileage totals still work" in r.json()["detail"]
+
+    @pytest.mark.asyncio
+    async def test_in_progress_trip_duration_is_sane(
+        self, mileage_app, monkeypatch,
+    ):
+        # Samsara marks an unfinished trip with endMs = int64 max;
+        # trusting it printed a 2.5-trillion-hour duration.
+        import infra.services as _svc
+        stub = self._stub_client(trips=[
+            {"startMs": 1_753_500_000_000, "endMs": 9_223_372_036_854_775_807,
+             "startLocation": "I-84, Ontario OR",
+             "distanceMeters": 16_093},
+        ])
+
+        async def fake_get_client(account_id, **kw):
+            return stub
+        monkeypatch.setattr(_svc, "get_client", fake_get_client)
+        r = await _get(mileage_app["app"],
+                       f"/api/vehicles/107/trips?{RANGE}",
+                       mileage_app["token_owner"])
+        assert r.status_code == 200
+        body = r.json()
+        t = body["trips"][0]
+        assert t["in_progress"] is True
+        assert t["end_ms"] == 0
+        # start → now, not start → int64 max; and never negative.
+        assert 0 <= t["duration_min"] < 60 * 24 * 400
+        assert body["driving_min"] < 60 * 24 * 400

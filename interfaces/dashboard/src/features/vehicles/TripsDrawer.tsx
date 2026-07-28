@@ -27,6 +27,7 @@ import { useTimezone } from '../../hooks/useTimezone';
 interface TripRow {
   start_ms: number;
   end_ms: number;
+  in_progress?: boolean;
   duration_min: number;
   start_location: string;
   end_location: string;
@@ -93,21 +94,32 @@ export default function TripsDrawer({
     },
     {
       key: 'duration_min', label: 'Duration', sortable: true,
+      render: (v: unknown, row: Record<string, unknown>) => {
+        const r = row as unknown as TripRow;
+        return (
+          <span className="text-xs text-muted-foreground">
+            {hhmm(Number(v ?? 0))}
+            {r.in_progress && (
+              <span className="ml-1 text-ok font-medium">· driving now</span>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'start_location', label: 'From', sortable: true,
       render: (v: unknown) => (
-        <span className="text-xs text-muted-foreground">{hhmm(Number(v ?? 0))}</span>
+        <span className="text-xs">{String(v ?? '') || '—'}</span>
       ),
     },
     {
-      key: 'start_location', label: 'From → To', sortable: false,
-      render: (_v: unknown, row: Record<string, unknown>) => {
+      key: 'end_location', label: 'To', sortable: true,
+      render: (v: unknown, row: Record<string, unknown>) => {
         const r = row as unknown as TripRow;
-        return (
-          <span className="text-xs">
-            {r.start_location || '—'}
-            <span className="text-muted-foreground"> → </span>
-            {r.end_location || '—'}
-          </span>
-        );
+        if (r.in_progress) {
+          return <span className="text-xs text-muted-foreground">en route</span>;
+        }
+        return <span className="text-xs">{String(v ?? '') || '—'}</span>;
       },
     },
     {

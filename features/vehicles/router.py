@@ -674,18 +674,29 @@ async def vehicle_period_trips(
             return f"{coords['latitude']:.4f}, {coords['longitude']:.4f}"
         return ""
 
+    # Samsara marks a trip STILL IN PROGRESS with endMs = int64 max —
+    # trusting it printed a 2.5-trillion-hour duration.  Anything ending
+    # visibly in the future is in progress: duration runs start → now,
+    # and the row says so instead of faking an end time.
+    import time as _time
+    _now_ms = int(_time.time() * 1000)
+    _future_cutoff = _now_ms + 60 * 60 * 1000
+
     trips = []
     total_m = 0.0
     driving_min = 0.0
     for t in sorted(raw, key=lambda t: t.get("startMs") or 0, reverse=True):
         s_ms, e_ms = int(t.get("startMs") or 0), int(t.get("endMs") or 0)
+        in_progress = e_ms <= 0 or e_ms > _future_cutoff
+        eff_end = _now_ms if in_progress else e_ms
         miles = float(t.get("distanceMeters") or 0) / 1609.344
-        dur = max(0.0, (e_ms - s_ms) / 60_000)
+        dur = max(0.0, (eff_end - s_ms) / 60_000)
         total_m += miles
         driving_min += dur
         trips.append({
             "start_ms": s_ms,
-            "end_ms": e_ms,
+            "end_ms": 0 if in_progress else e_ms,
+            "in_progress": in_progress,
             "duration_min": round(dur, 1),
             "start_location": _loc(t, "start"),
             "end_location": _loc(t, "end"),
