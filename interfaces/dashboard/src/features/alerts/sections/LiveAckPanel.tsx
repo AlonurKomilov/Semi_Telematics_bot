@@ -107,6 +107,11 @@ export default function LiveAckPanel() {
   });
 
   const pending = useMemo(() => totalPending(data), [data]);
+  // The baseline "how many were there last time I looked".  Seeded only
+  // from a LOADED response: ``totalPending(undefined)`` is 0, so a
+  // loading render used to set the baseline to zero and the first real
+  // response then read as the entire queue arriving at once — "+3,988 new
+  // since you last looked" on a first visit, and a chime to match.
   const prevPendingRef = useRef<number | null>(null);
   const delta = prevPendingRef.current === null
     ? 0
@@ -116,11 +121,16 @@ export default function LiveAckPanel() {
   // sound is on AND the page actually had a prior value (so a fresh
   // mount doesn't open with a bell).
   useEffect(() => {
+    // A loading render carries no information — 0 there means "not
+    // fetched yet", not "the queue was empty".  Taking it as the
+    // baseline is what made a first visit announce the whole queue as
+    // new, so the count only starts tracking once a response lands.
+    if (isLoading) return;
     if (prevPendingRef.current !== null && pending > prevPendingRef.current && soundOn) {
       playChime();
     }
     prevPendingRef.current = pending;
-  }, [pending, soundOn]);
+  }, [pending, soundOn, isLoading]);
 
   // Stamp last-ack each time the selection clears AFTER an ack-in-flight
   // (the bulk-ack flow in AlertsHeader sets acking=true → false + clears
