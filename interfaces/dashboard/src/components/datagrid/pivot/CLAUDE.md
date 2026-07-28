@@ -233,11 +233,39 @@ nobody has to rediscover a gap):
 
 | Missing | Note |
 |---|---|
-| drag-and-drop reorder | checkbox pickers cover 1–2 levels |
-| unassigned-field list with `+` | we list every field in each section instead |
-| collapsible panel sections, per-field ⋮ | no per-field actions yet to hold |
+| dragging BETWEEN sections / from the pool | within-section drag works; crossing axes is the ⋮ menu and the pool's `+` |
 | controlled props (`pivotModel`/`pivotActive`/`pivotPanelOpen`) | ours is uncontrolled + persisted; add when a page must own the state |
 | sticky column-GROUP labels | we sticky the row-label column instead |
+
+## The panel is structured like MUI's
+
+An **unassigned pool** at the top holds every field that isn't placed,
+each with a `+`; below it three **collapsible sections** hold only what
+you actually assigned, in nesting order. Each assigned field carries a
+drag handle, a checkbox, its aggregation chip (Values) and a **⋮ menu**:
+Move up / down / to top / to bottom · send to Rows / Columns / Values
+(checked where it currently sits) · Remove.
+
+The first design listed EVERY field inside EVERY section with a
+checkbox. Three problems that compound as a grid gains columns:
+
+- the same field appeared three times, once greyed with an "in Rows"
+  tag, so one badge-shaped token meant *count* on a header and *nesting
+  order* on a row;
+- the list was 3n rows long to express n decisions;
+- nesting order was **displayed and not editable** — the only way to
+  reorder was to untick everything and re-tick in the order you wanted.
+
+Search now filters the **pool only**. Filtering the sections too meant
+typing a query could hide fields you had already assigned, leaving the
+count badges reading 2/1/1 over three empty lists with no way to remove
+anything.
+
+Drag reorders WITHIN a section (`@dnd-kit`, the same dependency the grid
+uses for column reorder). Crossing axes is the ⋮ menu's job:
+cross-container dnd-kit needs collision handling and a drag overlay for
+a gesture the menu already expresses unambiguously, on lists that are
+typically one to three items.
 
 Deliberate DIFFERENCES from MUI (not gaps): `pivotable` is opt-**in**
 here (our grids carry 15+ columns, so opt-out would make the picker

@@ -1,11 +1,23 @@
 import { useMemo, useState } from 'react';
-import { Search, X, Check } from 'lucide-react';
+import {
+  Search, X, Check, Plus, GripVertical, MoreVertical,
+  ChevronDown, ChevronUp, Trash2, ArrowUp, ArrowDown,
+  ChevronsUp, ChevronsDown,
+} from 'lucide-react';
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 import { cn } from '../../../lib/utils';
 import { Input } from '../../ui/input';
 import { Button } from '../../ui/button';
 import { Switch } from '../../ui/switch';
-import { ActionMenu } from '../../ui/context-menu';
+import { ActionMenu, type MenuAction } from '../../ui/context-menu';
 import { InfoTip } from '../../tooltip';
 import { AGG_FN_LABELS } from '../../../types';
 import type { AnyColumn, AggFn } from '../../../types';
@@ -15,15 +27,37 @@ import type { PivotModel, PivotValueField } from './pivot';
 /**
  * The pivot configuration panel — Rows / Columns / Values.
  *
- * Phase 1 is CHECKBOX pickers, not drag-and-drop: with one row field and
- * one column field there is nothing to reorder, so DnD would be machinery
- * without a job.  The model already stores arrays, so multi-level (and
- * then reordering) can arrive without changing the persisted shape.
+ * Structured like MUI's: an UNASSIGNED POOL at the top holding every
+ * field that isn't placed yet, then three collapsible sections holding
+ * only what you've actually assigned, in the order they nest.
+ *
+ * The earlier design listed EVERY field inside EVERY section with a
+ * checkbox, which had three problems that compound as a grid gains
+ * columns: the same field appeared three times (once greyed with an "in
+ * Rows" tag), the list was 3n rows long to express n decisions, and the
+ * nesting order was displayed as a number with no way to change it —
+ * you had to untick everything and re-tick in the order you wanted.
  *
  * Fields come from the column config: ``pivotable`` columns are offered
  * as dimensions (Rows / Columns), ``aggregable`` ones as Values — the
- * same opt-ins the grid's filters and footer totals already use.
+ * same opt-ins the grid's filters and footer totals already use.  A
+ * field's legal destinations follow from that, so the menus never offer
+ * a move that would be rejected.
  */
+
+type Axis = 'rows' | 'columns' | 'values';
+
+const AXIS_LABEL: Record<Axis, string> = {
+  rows: 'Rows', columns: 'Columns', values: 'Values',
+};
+const AXIS_HINT: Record<Axis, string> = {
+  rows: 'One line per value. Pick several to nest them.',
+  // "Columns" already means TABLE columns in this app (the Manage-columns
+  // popover), so the spreadsheet sense needs spelling out.
+  columns: 'Spread across the top. Pick several to nest them.',
+  values: 'The numbers to total.',
+};
+
 export default function PivotPanel({
   columns, model, onChange, onClose, enabled, onEnabledChange,
   width, onWidthChange, fill,
@@ -49,52 +83,162 @@ export default function PivotPanel({
   fill?: boolean;
 }) {
   const [query, setQuery] = useState('');
+  // Session state: which sections are rolled up.  A reading posture, not
+  // a preference — restoring yesterday's folded panel would hide fields
+  // the user has since forgotten they assigned.
+  const [folded, setFolded] = useState<Set<Axis>>(() => new Set());
+  const toggleFold = (axis: Axis) => setFolded((prev) => {
+    const next = new Set(prev);
+    if (next.has(axis)) next.delete(axis); else next.add(axis);
+    return next;
+  });
 
-  const dimensions = useMemo(
-    () => columns.filter((c) => c.pivotable),
-    [columns],
+  const byKey = useMemo(() => new Map(columns.map((c) => [c.key, c])), [columns]);
+  const dimensions = useMemo(() => columns.filter((c) => c.pivotable), [columns]);
+  const measures = useMemo(() => columns.filter((c) => c.aggregable), [columns]);
+
+  /** Where a field may legally go.  A column can be BOTH a dimension and
+   *  a measure (rare but legal), so this is a list, not a single value. */
+  const axesFor = (key: string): Axis[] => {
+    const col = byKey.get(key);
+    if (!col) return [];
+    const out: Axis[] = [];
+    if (col.pivotable) out.push('rows', 'columns');
+    if (col.aggregable) out.push('values');
+    return out;
+  };
+  const axisOf = (key: string): Axis | null => {
+    if (model.rows.includes(key)) return 'rows';
+    if (model.columns.includes(key)) return 'columns';
+    if (model.values.some((v) => v.key === key)) return 'values';
+    return null;
+  };
+  const keysOn = (axis: Axis): string[] => (
+    axis === 'values' ? model.values.map((v) => v.key) : model[axis]
   );
-  const measures = useMemo(
-    () => columns.filter((c) => c.aggregable),
-    [columns],
-  );
-  const match = (c: AnyColumn) =>
+
+  // Every assignable field, deduped — a column that is both a dimension
+  // and a measure must appear ONCE in the pool, not twice.
+  const allFields = useMemo(() => {
+    const seen = new Set<string>();
+    return [...dimensions, ...measures].filter((c) => {
+      if (seen.has(c.key)) return false;
+      seen.add(c.key);
+      return true;
+    });
+  }, [dimensions, measures]);
+
+  const matches = (c: AnyColumn) =>
     !query.trim() || c.label.toLowerCase().includes(query.trim().toLowerCase());
 
-  // Rows and Columns are mutually exclusive: the same field on both axes
-  // would pivot a dimension against itself (one populated diagonal).
-  //
-  // BOTH axes accept several fields, nesting in pick order: columns
-  // become header levels, rows become an expand/collapse tree.
-  const setDimension = (axis: 'rows' | 'columns', key: string, on: boolean) => {
-    const other = axis === 'rows' ? 'columns' : 'rows';
-    const cur = model[axis];
-    const nextAxis = on ? [...cur, key] : cur.filter((k) => k !== key);
-    onChange({
-      ...model,
-      [axis]: nextAxis,
-      [other]: model[other].filter((k) => k !== key),
-    });
-  };
+  // The pool holds what ISN'T placed.  Search filters the pool only —
+  // assigned fields stay visible in their sections whatever you type,
+  // so a search can never hide (and strand) your own selections.
+  const unassigned = allFields.filter((c) => axisOf(c.key) === null && matches(c));
 
-  const toggleValue = (col: AnyColumn, on: boolean) => {
-    if (!on) {
-      onChange({ ...model, values: model.values.filter((v) => v.key !== col.key) });
+  // ── Model edits ────────────────────────────────────────────────────
+
+  const withoutKey = (m: PivotModel, key: string): PivotModel => ({
+    ...m,
+    rows: m.rows.filter((k) => k !== key),
+    columns: m.columns.filter((k) => k !== key),
+    values: m.values.filter((v) => v.key !== key),
+  });
+
+  const assign = (key: string, axis: Axis) => {
+    const base = withoutKey(model, key);
+    if (axis === 'values') {
+      const col = byKey.get(key);
+      const fn = offeredAggFns(col)[0] ?? 'sum';
+      onChange({ ...base, values: [...base.values, { key, aggFn: fn }] });
       return;
     }
-    const fn = offeredAggFns(col)[0] ?? 'sum';
-    onChange({ ...model, values: [...model.values, { key: col.key, aggFn: fn }] });
+    onChange({ ...base, [axis]: [...base[axis], key] });
   };
 
-  const setAggFn = (key: string, aggFn: AggFn) => {
-    onChange({
-      ...model,
-      values: model.values.map((v) => (v.key === key ? { ...v, aggFn } : v)),
-    });
+  const remove = (key: string) => onChange(withoutKey(model, key));
+
+  /** Reorder within an axis.  ``to`` may be an absolute index. */
+  const moveTo = (axis: Axis, key: string, to: number) => {
+    const cur = keysOn(axis);
+    const from = cur.indexOf(key);
+    if (from < 0) return;
+    const bounded = Math.max(0, Math.min(cur.length - 1, to));
+    if (bounded === from) return;
+    if (axis === 'values') {
+      onChange({ ...model, values: arrayMove(model.values, from, bounded) });
+    } else {
+      onChange({ ...model, [axis]: arrayMove(model[axis], from, bounded) });
+    }
   };
+
+  const setAggFn = (key: string, aggFn: AggFn) => onChange({
+    ...model,
+    values: model.values.map((v) => (v.key === key ? { ...v, aggFn } : v)),
+  });
 
   const valueOf = (key: string): PivotValueField | undefined =>
     model.values.find((v) => v.key === key);
+
+  // ── Drag ───────────────────────────────────────────────────────────
+  // Reorder WITHIN a section.  Moving between sections is the ⋮ menu's
+  // job (and the pool's + button): cross-container dnd-kit needs
+  // collision handling and a drag overlay for a gesture the menu already
+  // expresses unambiguously, on a panel where the lists are 1-3 items.
+  const sensors = useSensors(useSensor(PointerSensor, {
+    // A few pixels of slop so a click on the checkbox or the ⋮ isn't
+    // swallowed as a micro-drag.
+    activationConstraint: { distance: 4 },
+  }));
+  const onDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const [axisA, keyA] = String(active.id).split(':') as [Axis, string];
+    const [axisB, keyB] = String(over.id).split(':') as [Axis, string];
+    if (axisA !== axisB) return;
+    moveTo(axisA, keyA, keysOn(axisA).indexOf(keyB));
+  };
+
+  /** The per-field ⋮ menu — reorder, send to another axis, remove. */
+  const fieldMenu = (axis: Axis, key: string): MenuAction[] => {
+    const list = keysOn(axis);
+    const at = list.indexOf(key);
+    const last = list.length - 1;
+    const targets = axesFor(key);
+    return [
+      {
+        key: 'up', label: 'Move up', icon: <ArrowUp size={14} />,
+        disabled: at <= 0, onSelect: () => moveTo(axis, key, at - 1),
+      },
+      {
+        key: 'down', label: 'Move down', icon: <ArrowDown size={14} />,
+        disabled: at >= last, onSelect: () => moveTo(axis, key, at + 1),
+      },
+      {
+        key: 'top', label: 'Move to top', icon: <ChevronsUp size={14} />,
+        disabled: at <= 0, separatorBefore: true,
+        onSelect: () => moveTo(axis, key, 0),
+      },
+      {
+        key: 'bottom', label: 'Move to bottom', icon: <ChevronsDown size={14} />,
+        disabled: at >= last, onSelect: () => moveTo(axis, key, last),
+      },
+      // Where else this field can go.  A check marks where it IS, so the
+      // menu doubles as "which axis am I on?" without closing it.
+      ...targets.map((t, i) => ({
+        key: `to-${t}`,
+        label: AXIS_LABEL[t],
+        icon: t === axis ? <Check size={14} /> : undefined,
+        separatorBefore: i === 0,
+        disabled: t === axis,
+        onSelect: () => assign(key, t),
+      })),
+      {
+        key: 'remove', label: 'Remove', icon: <Trash2 size={14} />,
+        danger: true, separatorBefore: true, onSelect: () => remove(key),
+      },
+    ];
+  };
 
   return (
     <aside
@@ -134,16 +278,12 @@ export default function PivotPanel({
           window.addEventListener('pointerup', up);
         }}
       />
+
       <div className="flex items-center justify-between gap-2 p-3 border-b border-border">
         {/* The switch, not the toolbar button, is what pivots the grid.
             Opening this panel is "let me set a report up"; flipping the
-            switch is "show it to me" — so a click on the toolbar icon
-            can no longer replace the row list before you've said what
-            you wanted summarised. */}
+            switch is "show it to me". */}
         <h3 className="text-sm font-semibold inline-flex items-center gap-2">
-          {/* ``sm`` — the default md (h-6 w-11) towered over the 14px
-              title beside it.  This sits on a panel header, not a
-              settings row. */}
           <Switch
             size="sm"
             checked={enabled}
@@ -171,167 +311,193 @@ export default function PivotPanel({
             className="h-8 pl-7 text-xs"
             aria-label="Search fields"
           />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              aria-label="Clear search"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <X size={12} />
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="overflow-y-auto flex-1">
-        <Section
-          title="Rows"
-          hint="One line per value. Pick several to nest them."
-          count={model.rows.length}
-        >
-          {dimensions.filter(match).map((c) => {
-            const at = model.rows.indexOf(c.key);
-            return (
-              <FieldRow
-                key={c.key}
-                label={c.label}
-                checked={at >= 0}
-                disabledReason={model.columns.includes(c.key) ? 'in Columns' : undefined}
-                onToggle={(on) => setDimension('rows', c.key, on)}
-                trailing={at >= 0 && model.rows.length > 1 && (
-                  <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
-                    {at + 1}
-                  </span>
-                )}
-              />
-            );
-          })}
-          {dimensions.filter(match).length === 0 && <Hint>No matching fields.</Hint>}
-        </Section>
-
-        <Section
-          title="Columns"
-          hint="Spread across the top. Pick several to nest them."
-          count={model.columns.length}
-        >
-          {dimensions.filter(match).map((c) => {
-            const at = model.columns.indexOf(c.key);
-            return (
-              <FieldRow
-                key={c.key}
-                label={c.label}
-                checked={at >= 0}
-                disabledReason={model.rows.includes(c.key) ? 'in Rows' : undefined}
-                onToggle={(on) => setDimension('columns', c.key, on)}
-                // Nesting order is the pick order and it changes the
-                // header shape, so it has to be visible.
-                trailing={at >= 0 && model.columns.length > 1 && (
-                  <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">
-                    {at + 1}
-                  </span>
-                )}
-              />
-            );
-          })}
-          {dimensions.filter(match).length === 0 && <Hint>No matching fields.</Hint>}
-        </Section>
-
-        <Section title="Values" hint="The numbers to total." count={model.values.length} required>
-          {measures.filter(match).map((c) => {
-            const picked = valueOf(c.key);
-            return (
-              <FieldRow
-                key={c.key}
-                label={c.label}
-                checked={!!picked}
-                onToggle={(on) => toggleValue(c, on)}
-                trailing={picked && (
-                  // The agg chip mirrors the column ⋮ → Aggregate menu, so
-                  // the vocabulary is identical in both places.
-                  // A check on the ACTIVE function: the menu listed
-                  // Sum · Average · Max identically whichever one was
-                  // running, so the only way to know what you had picked
-                  // was to close the menu and read the chip behind it.
-                  <ActionMenu
-                    items={offeredAggFns(c).map((fn) => ({
-                      key: fn,
-                      label: AGG_FN_LABELS[fn],
-                      icon: fn === picked.aggFn ? <Check size={14} /> : undefined,
-                      onSelect: () => setAggFn(c.key, fn),
-                    }))}
-                  >
-                    <button
-                      type="button"
-                      className="px-1.5 py-0.5 rounded-full border border-border text-2xs text-muted-foreground hover:border-ring hover:text-foreground transition"
-                    >
-                      {AGG_FN_LABELS[picked.aggFn].toLowerCase()}
-                    </button>
-                  </ActionMenu>
-                )}
-              />
-            );
-          })}
-          {measures.filter(match).length === 0 && <Hint>No matching fields.</Hint>}
-        </Section>
+      {/* Unassigned pool — everything not placed yet.  Takes the slack so
+          the sections stay anchored to the bottom of the panel, which is
+          where MUI keeps them and what stops the three headers walking up
+          and down as fields are assigned. */}
+      <div className="flex-1 min-h-0 overflow-y-auto border-b border-border">
+        {unassigned.map((c) => (
+          <div
+            key={c.key}
+            className="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-muted/50 transition-colors group/field"
+          >
+            <span className="flex-1 min-w-0 truncate text-foreground">{c.label}</span>
+            <ActionMenu
+              items={axesFor(c.key).map((axis) => ({
+                key: axis,
+                label: `Add to ${AXIS_LABEL[axis]}`,
+                onSelect: () => assign(c.key, axis),
+              }))}
+            >
+              <button
+                type="button"
+                aria-label={`Add ${c.label}`}
+                className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <Plus size={14} />
+              </button>
+            </ActionMenu>
+          </div>
+        ))}
+        {unassigned.length === 0 && (
+          <p className="px-3 py-2 text-2xs text-muted-foreground italic">
+            {query.trim()
+              ? 'No unassigned field matches.'
+              : 'Every field is assigned.'}
+          </p>
+        )}
       </div>
+
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+        {(['rows', 'columns', 'values'] as Axis[]).map((axis) => {
+          const keys = keysOn(axis);
+          const open = !folded.has(axis);
+          return (
+            <div key={axis} className="border-b border-border last:border-b-0">
+              <button
+                type="button"
+                onClick={() => toggleFold(axis)}
+                aria-expanded={open}
+                className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+              >
+                <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                  {AXIS_LABEL[axis]}
+                  {/* Values is the one axis a report cannot render without
+                      — Rows is equally required, and saying so only on
+                      one of them read as "Rows is optional". */}
+                  {axis !== 'columns' && (
+                    <span className="ml-1.5 normal-case tracking-normal font-normal text-2xs">
+                      required
+                    </span>
+                  )}
+                </span>
+                <span className="inline-flex items-center gap-1.5 shrink-0">
+                  <span className="text-2xs tabular-nums text-muted-foreground">{keys.length}</span>
+                  {open ? <ChevronUp size={14} className="text-muted-foreground" />
+                    : <ChevronDown size={14} className="text-muted-foreground" />}
+                </span>
+              </button>
+              {open && (
+                <>
+                  {keys.length === 0 && (
+                    <p className="px-3 pb-2 text-2xs text-muted-foreground italic">
+                      {AXIS_HINT[axis]}
+                    </p>
+                  )}
+                  <SortableContext
+                    items={keys.map((k) => `${axis}:${k}`)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="pb-1">
+                      {keys.map((key) => (
+                        <AssignedField
+                          key={key}
+                          id={`${axis}:${key}`}
+                          label={byKey.get(key)?.label ?? key}
+                          menu={fieldMenu(axis, key)}
+                          onRemove={() => remove(key)}
+                          trailing={axis === 'values' && (() => {
+                            const picked = valueOf(key);
+                            if (!picked) return null;
+                            return (
+                              <ActionMenu
+                                items={offeredAggFns(byKey.get(key)).map((fn) => ({
+                                  key: fn,
+                                  label: AGG_FN_LABELS[fn],
+                                  // A check on the ACTIVE function — the menu
+                                  // listed them identically whichever was
+                                  // running, so the only way to know what you
+                                  // had picked was to close it again.
+                                  icon: fn === picked.aggFn ? <Check size={14} /> : undefined,
+                                  onSelect: () => setAggFn(key, fn),
+                                }))}
+                              >
+                                <button
+                                  type="button"
+                                  className="px-1.5 py-0.5 rounded-full border border-border text-2xs text-muted-foreground hover:border-ring hover:text-foreground transition"
+                                >
+                                  {AGG_FN_LABELS[picked.aggFn].toLowerCase()}
+                                </button>
+                              </ActionMenu>
+                            );
+                          })()}
+                        />
+                      ))}
+                    </div>
+                  </SortableContext>
+                </>
+              )}
+            </div>
+          );
+        })}
+      </DndContext>
     </aside>
   );
 }
 
-function Section({ title, hint, count, required, children }: {
-  title: string;
-  /** Plain-language gloss.  "Columns" already means TABLE columns in this
-   *  app (the Manage-columns popover), so the spreadsheet sense needs
-   *  spelling out or an operator reads the wrong thing. */
-  hint: string;
-  count: number;
-  required?: boolean;
-  children: React.ReactNode;
+/** One assigned field: drag handle · checkbox · label · [agg chip] · ⋮ */
+function AssignedField({ id, label, menu, onRemove, trailing }: {
+  id: string;
+  label: string;
+  menu: MenuAction[];
+  onRemove: () => void;
+  trailing?: React.ReactNode;
 }) {
+  const {
+    attributes, listeners, setNodeRef, transform, transition, isDragging,
+  } = useSortable({ id });
   return (
-    <div className="border-b border-border last:border-b-0">
-      <div className="flex items-baseline justify-between gap-2 px-3 pt-2">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          {title}
-          {required && (
-            <span className="ml-1.5 normal-case tracking-normal font-normal text-2xs">
-              required
-            </span>
-          )}
-        </span>
-        <span className="text-2xs tabular-nums text-muted-foreground">{count}</span>
-      </div>
-      <p className="px-3 pb-1.5 text-2xs text-muted-foreground">{hint}</p>
-      <div className="pb-1">{children}</div>
+    <div
+      ref={setNodeRef}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      className={cn(
+        'flex items-center gap-2 px-3 py-1.5 text-xs transition-colors hover:bg-muted/50',
+        isDragging && 'opacity-60 bg-muted',
+      )}
+    >
+      {/* The handle is its own hit target, NOT the whole row — the row
+          carries a checkbox and a menu, and a drag that starts on either
+          of those would eat the click. */}
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        aria-label={`Reorder ${label}`}
+        className="shrink-0 -ml-1 cursor-grab active:cursor-grabbing text-muted-foreground/60 hover:text-foreground transition-colors touch-none"
+      >
+        <GripVertical size={14} />
+      </button>
+      <input
+        type="checkbox"
+        checked
+        onChange={onRemove}
+        aria-label={`Remove ${label}`}
+        className="shrink-0 cursor-pointer"
+      />
+      <span className="flex-1 min-w-0 truncate text-foreground">{label}</span>
+      {trailing}
+      <ActionMenu items={menu}>
+        <button
+          type="button"
+          aria-label={`${label} options`}
+          className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+        >
+          <MoreVertical size={14} />
+        </button>
+      </ActionMenu>
     </div>
   );
 }
-
-function FieldRow({ label, checked, onToggle, trailing, disabledReason }: {
-  label: string;
-  checked: boolean;
-  onToggle: (on: boolean) => void;
-  trailing?: React.ReactNode;
-  /** Why this field can't be picked HERE (it's on the other axis).
-   *  Shown inline so the exclusivity is visible BEFORE the click —
-   *  silently clearing the other section's checkbox reads as a bug. */
-  disabledReason?: string;
-}) {
-  const disabled = !!disabledReason;
-  return (
-    <label className={cn(
-      'flex items-center gap-2 px-3 py-1.5 text-xs transition-colors',
-      disabled
-        ? 'cursor-not-allowed opacity-50'
-        : 'cursor-pointer hover:bg-muted/50',
-    )}>
-      <input
-        type="checkbox"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onToggle(e.target.checked)}
-        className="shrink-0"
-      />
-      <span className="flex-1 min-w-0 truncate text-foreground">{label}</span>
-      {disabledReason && (
-        <span className="shrink-0 text-2xs text-muted-foreground italic">{disabledReason}</span>
-      )}
-      {trailing}
-    </label>
-  );
-}
-
-const Hint = ({ children }: { children: React.ReactNode }) => (
-  <p className="px-3 py-1.5 text-2xs text-muted-foreground italic">{children}</p>
-);
