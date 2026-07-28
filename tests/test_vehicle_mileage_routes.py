@@ -134,3 +134,81 @@ class TestVehicleMileage:
                        f"/api/vehicles/213/mileage?{RANGE}",
                        mileage_app["token_driver"])
         assert r.status_code == 404
+
+
+class TestVehicleTrips:
+    """Trips drill-in — live-Samsara route with a stubbed client."""
+
+    @staticmethod
+    def _stub_client(trips=None, raise_unavailable=False):
+        from adapters.telematics.samsara.circuit_breaker import (
+            SamsaraUnavailable,
+        )
+
+        class _SC:
+            async def get_vehicle_trips(self, vehicle_id, start_ms, end_ms):
+                if raise_unavailable:
+                    raise SamsaraUnavailable("breaker open")
+                return trips or []
+
+        class _MC:
+            clients = {"MF": _SC()}
+        return _MC()
+
+    @pytest.mark.asyncio
+    async def test_trips_summary_and_rows(self, mileage_app, monkeypatch):
+        import infra.services as _svc
+        stub = self._stub_client(trips=[
+            {"startMs": 1_753_500_000_000, "endMs": 1_753_503_600_000,
+             "startLocation": "Yard, Columbus OH",
+             "endLocation": "Pilot #221, Dayton OH",
+             "distanceMeters": 80_467, "driverId": 42},
+            {"startMs": 1_753_510_000_000, "endMs": 1_753_512_000_000,
+             "startLocation": "Pilot #221, Dayton OH",
+             "endLocation": "Receiver, Cincinnati OH",
+             "distanceMeters": 40_233},
+        ])
+
+        async def fake_get_client(account_id, **kw):
+            return stub
+        monkeypatch.setattr(_svc, "get_client", fake_get_client)
+
+        r = await _get(mileage_app["app"],
+                       f"/api/vehicles/107/trips?{RANGE}",
+                       mileage_app["token_owner"])
+        assert r.status_code == 200
+        body = r.json()
+        assert body["trip_count"] == 2
+        assert body["total_trip_miles"] == 75.0     # 50 + 25 miles
+        # newest first
+        assert body["trips"][0]["start_location"] == "Pilot #221, Dayton OH"
+        assert body["trips"][1]["miles"] == 50.0
+        assert body["trips"][1]["duration_min"] == 60.0
+
+    @pytest.mark.asyncio
+    async def test_driver_cannot_fetch_other_trucks_trips(
+        self, mileage_app, monkeypatch,
+    ):
+        import infra.services as _svc
+
+        async def fake_get_client(account_id, **kw):  # pragma: no cover
+            raise AssertionError("visibility wall must reject first")
+        monkeypatch.setattr(_svc, "get_client", fake_get_client)
+        r = await _get(mileage_app["app"],
+                       f"/api/vehicles/213/trips?{RANGE}",
+                       mileage_app["token_driver"])
+        assert r.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_samsara_down_is_honest_503(self, mileage_app, monkeypatch):
+        import infra.services as _svc
+        stub = self._stub_client(raise_unavailable=True)
+
+        async def fake_get_client(account_id, **kw):
+            return stub
+        monkeypatch.setattr(_svc, "get_client", fake_get_client)
+        r = await _get(mileage_app["app"],
+                       f"/api/vehicles/107/trips?{RANGE}",
+                       mileage_app["token_owner"])
+        assert r.status_code == 503
+        assert "mileage totals still work" in r.json()["detail"]

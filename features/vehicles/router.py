@@ -589,6 +589,120 @@ async def vehicle_period_mileage(
     return {"start": start, "end": end, "no_data": False, **out}
 
 
+@router.get("/{vehicle_name}/trips")
+async def vehicle_period_trips(
+    vehicle_name: str,
+    start: str = Query(..., description="YYYY-MM-DD, inclusive"),
+    end: str = Query(..., description="YYYY-MM-DD, inclusive"),
+    user: dict = Depends(require_permission_any(
+        "can_vehicle_all", "can_vehicle_vehicle")),
+):
+    """Trip segments (start→stop) for one vehicle in the range — the
+    drill-in behind a Mileage row.
+
+    Unlike the mileage numbers (our stored odometer history), trips
+    need a LIVE Samsara call — on-demand for one vehicle, one range,
+    riding the client's circuit breaker.  Day boundaries follow the
+    ACCOUNT timezone so "Jul 26" here means the same day the Mileage
+    row labeled.  Same visibility wall as the mileage detail: a truck
+    outside the caller's visible set is a 404, not a fetch.
+    """
+    _validate_mileage_range(start, end)
+    allowed = await get_user_company_codes(user)
+    visible = await _wh_reader.get_current_vehicles(user["account_id"])
+    visible = filter_by_allowed_companies(visible, allowed)
+    visible = await filter_by_assigned_trucks(visible, user)
+    meta = next(
+        (v for v in visible
+         if (v.get("name") or "").lower() == vehicle_name.lower()),
+        None,
+    )
+    if meta is None:
+        raise HTTPException(404, "Vehicle not found")
+    samsara_id = str(meta.get("id") or "")
+    company = meta.get("_org") or meta.get("company_code") or ""
+    if not samsara_id:
+        return {"start": start, "end": end, "vehicle_name": vehicle_name,
+                "no_data": True, "reason": "not_linked", "trips": []}
+
+    # Range → epoch-ms bounds in the ACCOUNT's timezone, so the day
+    # labels match the Mileage tab's day math.
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    from infra.services import get_platform_db as _get_pdb
+    account = await _get_pdb().get_account(user["account_id"])
+    try:
+        tz = ZoneInfo((account.timezone if account else "") or "America/New_York")
+    except Exception:
+        tz = ZoneInfo("America/New_York")
+    start_dt = datetime.fromisoformat(start).replace(tzinfo=tz)
+    end_dt = (datetime.fromisoformat(end) + timedelta(days=1)).replace(tzinfo=tz)
+
+    from infra.services import get_client
+    from adapters.telematics.samsara.circuit_breaker import SamsaraUnavailable
+    mc = await get_client(user["account_id"])
+    sc = (mc.clients.get(company) if company else None) \
+        or next(iter(mc.clients.values()), None)
+    if sc is None:
+        raise HTTPException(503, "Telematics is not connected for this account")
+    try:
+        raw = await sc.get_vehicle_trips(
+            samsara_id,
+            int(start_dt.timestamp() * 1000),
+            int(end_dt.timestamp() * 1000),
+        )
+    except SamsaraUnavailable:
+        raise HTTPException(
+            503,
+            "Samsara is unreachable right now — mileage totals still "
+            "work (stored history); trips need the live API.",
+        )
+    except Exception as e:
+        logger.warning("trips fetch failed for %s/%s: %s",
+                       user["account_id"], vehicle_name, e)
+        raise HTTPException(502, "Trip history fetch failed")
+
+    def _loc(t: dict, key: str) -> str:
+        v = t.get(f"{key}Location")
+        if isinstance(v, str) and v:
+            return v
+        addr = t.get(f"{key}Address")
+        if isinstance(addr, dict) and addr.get("name"):
+            return str(addr["name"])
+        coords = t.get(f"{key}Coordinates")
+        if isinstance(coords, dict) and coords.get("latitude") is not None:
+            return f"{coords['latitude']:.4f}, {coords['longitude']:.4f}"
+        return ""
+
+    trips = []
+    total_m = 0.0
+    driving_min = 0.0
+    for t in sorted(raw, key=lambda t: t.get("startMs") or 0, reverse=True):
+        s_ms, e_ms = int(t.get("startMs") or 0), int(t.get("endMs") or 0)
+        miles = float(t.get("distanceMeters") or 0) / 1609.344
+        dur = max(0.0, (e_ms - s_ms) / 60_000)
+        total_m += miles
+        driving_min += dur
+        trips.append({
+            "start_ms": s_ms,
+            "end_ms": e_ms,
+            "duration_min": round(dur, 1),
+            "start_location": _loc(t, "start"),
+            "end_location": _loc(t, "end"),
+            "miles": round(miles, 1),
+            "driver_id": t.get("driverId"),
+        })
+    return {
+        "start": start, "end": end,
+        "vehicle_name": meta.get("name") or vehicle_name,
+        "no_data": False,
+        "trips": trips,
+        "trip_count": len(trips),
+        "total_trip_miles": round(total_m, 1),
+        "driving_min": round(driving_min, 1),
+    }
+
+
 # ── Source precedence (when Samsara + Datatruck disagree) ──────────
 #
 # Owner-level policy: which integration wins each vehicle spec field.  Placed

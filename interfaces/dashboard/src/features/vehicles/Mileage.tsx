@@ -30,6 +30,7 @@ import { Tip } from '../../components/tooltip';
 import { toneClasses } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { todayInTimeZone } from '../../utils/datetime';
+import TripsDrawer from './TripsDrawer';
 
 interface MileageRow {
   vehicle_id: string;
@@ -77,6 +78,8 @@ const RETENTION_DAYS = 730;
 export default function Mileage() {
   const tz = useTimezone();
   const [days, setDays] = useState(30);
+  // Row click → trips drill-in for THAT vehicle over the SAME range.
+  const [drawer, setDrawer] = useState<{ name: string; miles: number } | null>(null);
   // null = range ends today (the presets path); a custom calendar pick
   // sets an explicit end and the backend honors it.
   const [endDay, setEndDay] = useState<string | null>(null);
@@ -171,6 +174,20 @@ export default function Mileage() {
           columns={columns}
           data={rows as unknown as Record<string, unknown>[]}
           searchKey={['vehicle_name', 'company']}
+          onRowClick={(row) => {
+            const r = row as unknown as MileageRow;
+            setDrawer({ name: r.vehicle_name, miles: r.miles });
+          }}
+        />
+      )}
+
+      {drawer && (
+        <TripsDrawer
+          vehicleName={drawer.name}
+          rowMiles={drawer.miles}
+          start={start}
+          end={end}
+          onClose={() => setDrawer(null)}
         />
       )}
 

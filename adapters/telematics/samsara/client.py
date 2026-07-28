@@ -446,6 +446,30 @@ class SamsaraClient:
         data = await self._get("/fleet/vehicles/stats", params={"types": "faultCodes"})
         return data.get("data", [])
 
+    # ── Trips (legacy v1 — no modern equivalent) ─────────────────
+
+    async def get_vehicle_trips(
+        self, vehicle_id: str, start_ms: int, end_ms: int,
+    ) -> list[dict]:
+        """Trip segments (one start→stop each) for ONE vehicle in the
+        window.  Samsara's own Trip History report rides this legacy
+        endpoint; the modern API offers no trips equivalent, only raw
+        stats history.  Vehicle ids are the unified ids the modern
+        endpoints use.
+
+        Returns the raw trip dicts — ``startMs``/``endMs`` (epoch ms),
+        ``startLocation``/``endLocation`` (address strings),
+        ``distanceMeters``, ``driverId``.  On-demand per drill-in
+        click, so no pagination or account-wide fan-out; rides the
+        same circuit breaker + 429 retry as every other GET.
+        """
+        data = await self._get("/v1/fleet/trips", params={
+            "vehicleId": vehicle_id,
+            "startMs": int(start_ms),
+            "endMs": int(end_ms),
+        })
+        return list(data.get("trips") or [])
+
     # ── GPS / Locations ──────────────────────────────────────────
 
     async def get_locations(self) -> list[dict]:
