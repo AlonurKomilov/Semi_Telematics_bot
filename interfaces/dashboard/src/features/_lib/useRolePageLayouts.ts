@@ -34,6 +34,10 @@ export function useRoleLayoutMutations(role: string, feature: string): {
   save: (sections: string[]) => void;
   clear: () => void;
   busy: boolean;
+  /** Which action last succeeded — the block's only visible confirmation
+   *  beyond the clear-button appearing/vanishing, which is too quiet to
+   *  carry "your whole team's page just changed" on its own. */
+  lastAction: 'saved' | 'cleared' | null;
 } {
   const qc = useQueryClient();
   const save = useMutation({
@@ -50,9 +54,16 @@ export function useRoleLayoutMutations(role: string, feature: string): {
     ),
     onSettled: () => qc.invalidateQueries({ queryKey: KEY }),
   });
+  // submittedAt orders the two independent mutations: after a save THEN
+  // a clear, both are isSuccess — only the more recent one is "last".
+  const lastAction =
+    save.isSuccess && save.submittedAt >= clear.submittedAt ? 'saved' as const
+    : clear.isSuccess && clear.submittedAt > save.submittedAt ? 'cleared' as const
+    : null;
   return {
     save: (sections) => save.mutate(sections),
     clear: () => clear.mutate(),
     busy: save.isPending || clear.isPending,
+    lastAction,
   };
 }

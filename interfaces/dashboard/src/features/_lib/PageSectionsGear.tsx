@@ -17,6 +17,7 @@ import { useState } from 'react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
 import { Settings2, Eye, EyeOff, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react';
 import { Tip } from '../../components/tooltip';
+import { toneText } from '../../lib/status';
 import { usePagePreference } from '../../preferences';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { useShellConfig } from '../../hooks/useShellConfig';
@@ -143,7 +144,7 @@ export function PageSectionsGear<P extends object>({
               ))}
             </ul>
             <p className="px-3 pt-1 text-2xs text-muted-foreground border-t border-border">
-              Only your view changes — teammates keep theirs.
+              The list above changes only your view — teammates keep theirs.
             </p>
             <ManagerBlock
               feature={feature}
@@ -180,7 +181,7 @@ function ManagerBlock<P extends object>({
   const { persona } = useShellConfig();
   const { viewLabel } = useRoleView();
   const { value: pref } = usePagePreference(feature, 'layout');
-  const { save, clear, busy } = useRoleLayoutMutations(persona, feature);
+  const { save, clear, busy, lastAction } = useRoleLayoutMutations(persona, feature);
 
   // Drivers have no dashboard team defaults, and the grant is the UI
   // gate only — the API enforces own-role for managers on its own.
@@ -219,6 +220,19 @@ function ManagerBlock<P extends object>({
           </button>
         )}
       </div>
+      {/* The clear-button appearing is too quiet to confirm "your whole
+          team's page just changed" — say it.  Resets when the popover
+          closes (the popup unmounts). */}
+      {lastAction === 'saved' && (
+        <p className={`text-2xs pb-1 ${toneText('ok')}`} role="status">
+          Saved — the {viewLabel} team now starts from this layout.
+        </p>
+      )}
+      {lastAction === 'cleared' && (
+        <p className="text-2xs pb-1 text-muted-foreground" role="status">
+          Team default cleared — back to the standard layout.
+        </p>
+      )}
     </div>
   );
 }
