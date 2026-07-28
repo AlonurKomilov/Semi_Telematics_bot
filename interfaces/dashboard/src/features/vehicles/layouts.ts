@@ -22,14 +22,14 @@ export const VEHICLE_LAYOUTS: LayoutMap = {
   // Superset — preserves the original page order so Owner / Admin
   // see byte-identical output to pre-Pattern-B.  Used as the runtime
   // fallback for any persona that doesn't have an entry below.
-  owner: ['header', 'info', 'inventory', 'location', 'health', 'faults', 'inspections', 'timeline', 'usage'],
-  admin: ['header', 'info', 'inventory', 'location', 'health', 'faults', 'inspections', 'timeline', 'usage'],
+  owner: ['header', 'info', 'inventory', 'location', 'health', 'faults', 'inspections', 'timeline', 'usage', 'mileage'],
+  admin: ['header', 'info', 'inventory', 'location', 'health', 'faults', 'inspections', 'timeline', 'usage', 'mileage'],
 
   // Fleet — vehicle health + maintenance signals lead.  Faults bubbles
   // above Location because a fleet manager opening a truck is usually
   // chasing a fault code; coordinates can wait.  Usage trends sit at
   // the bottom for utilization review.
-  fleet: ['header', 'info', 'inventory', 'health', 'faults', 'inspections', 'location', 'timeline', 'usage'],
+  fleet: ['header', 'info', 'inventory', 'health', 'faults', 'inspections', 'location', 'timeline', 'usage', 'mileage'],
 
   // Dispatcher — "where is this truck right now and what's it doing
   // over the next few hours."  Health / Faults / Inspections are
@@ -41,7 +41,7 @@ export const VEHICLE_LAYOUTS: LayoutMap = {
   // truck during the incident) matter most; Faults are omitted
   // because Safety doesn't action mechanical issues directly.  Usage
   // trends added for harsh-event totals over the recent window.
-  safety: ['header', 'info', 'location', 'inventory', 'inspections', 'timeline', 'usage'],
+  safety: ['header', 'info', 'location', 'inventory', 'inspections', 'timeline', 'usage', 'mileage'],
 
   // Driver — uses the Mini App in practice; this is a fallback for the
   // unlikely web-dashboard visit by a driver role.  Minimal: identity

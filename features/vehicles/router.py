@@ -480,6 +480,115 @@ async def fleet_utilization_summary(
     return {"days": days, "vehicles": enriched}
 
 
+# ── Period mileage (odometer-delta engine, warehouse) ──────────────
+#
+# "How many miles did each vehicle drive between these dates?" — the
+# Samsara Trip-History-style question, answered from OUR stored
+# end-of-day odometer history (730 days), zero live API calls.  Literal
+# route: placed before ``/{vehicle_name}`` so the path isn't swallowed.
+
+# The daily table keeps 730 days — ranges past it can only return
+# silent zeros, so they're rejected honestly instead.
+MILEAGE_RETENTION_DAYS = 730
+
+
+def _validate_mileage_range(start: str, end: str) -> None:
+    from datetime import date, timedelta
+    try:
+        s, e = date.fromisoformat(start), date.fromisoformat(end)
+    except ValueError:
+        raise HTTPException(422, "start/end must be YYYY-MM-DD")
+    if s > e:
+        raise HTTPException(422, "start must be on or before end")
+    if s < date.today() - timedelta(days=MILEAGE_RETENTION_DAYS):
+        raise HTTPException(
+            422,
+            f"odometer history is kept {MILEAGE_RETENTION_DAYS} days — "
+            "choose a more recent start date",
+        )
+
+
+@router.get("/mileage")
+async def account_period_mileage(
+    start: str = Query(..., description="YYYY-MM-DD, inclusive"),
+    end: str = Query(..., description="YYYY-MM-DD, inclusive"),
+    user: dict = Depends(require_permission_any(
+        "can_vehicle_all", "can_vehicle_vehicle")),
+):
+    """Miles driven per vehicle in the range, account-wide.
+
+    Same visibility rules as the rest of the vehicles API: company
+    allow-list narrows operators, assigned-trucks narrows own-vehicle
+    callers.  Vehicles WITHOUT usable odometer history are returned
+    separately by name (``no_data``) so the UI can say "no odometer
+    data" instead of silently omitting them (omitted ≠ zero).
+    """
+    _validate_mileage_range(start, end)
+    tenant_db = await _get_tenant_db(user["account_id"])
+    rows = await tenant_db.get_period_mileage(user["account_id"], start, end)
+
+    # Visibility cross-reference — mirrors /utilization-summary.
+    allowed = await get_user_company_codes(user)
+    visible = await _wh_reader.get_current_vehicles(user["account_id"])
+    visible = filter_by_allowed_companies(visible, allowed)
+    visible = await filter_by_assigned_trucks(visible, user)
+    meta_by_vid = {str(v.get("id") or ""): v for v in visible if v.get("id")}
+
+    covered: set[str] = set()
+    vehicles: list[dict] = []
+    for r in rows:
+        meta = meta_by_vid.get(r["vehicle_id"])
+        if not meta:
+            continue
+        covered.add(r["vehicle_id"])
+        vehicles.append({
+            **r,
+            "vehicle_name": meta.get("name") or r["vehicle_name"],
+            "company": meta.get("_org") or meta.get("company_code") or "",
+        })
+    no_data = sorted(
+        (v.get("name") or "") for vid, v in meta_by_vid.items()
+        if vid not in covered
+    )
+    return {
+        "start": start, "end": end,
+        "vehicles": vehicles,
+        "total_miles": round(sum(v["miles"] for v in vehicles), 1),
+        "no_data": [n for n in no_data if n],
+    }
+
+
+@router.get("/{vehicle_name}/mileage")
+async def vehicle_period_mileage(
+    vehicle_name: str,
+    start: str = Query(..., description="YYYY-MM-DD, inclusive"),
+    end: str = Query(..., description="YYYY-MM-DD, inclusive"),
+    user: dict = Depends(require_permission_any(
+        "can_vehicle_all", "can_vehicle_vehicle")),
+):
+    """One vehicle's period mileage + per-day breakdown (detail page).
+
+    Own-vehicle callers can only ask about their assigned truck —
+    enforced against the same visible-vehicles set as the list route,
+    so this can't become a side door around Team-Management scoping.
+    """
+    _validate_mileage_range(start, end)
+    allowed = await get_user_company_codes(user)
+    visible = await _wh_reader.get_current_vehicles(user["account_id"])
+    visible = filter_by_allowed_companies(visible, allowed)
+    visible = await filter_by_assigned_trucks(visible, user)
+    if not any((v.get("name") or "").lower() == vehicle_name.lower()
+               for v in visible):
+        raise HTTPException(404, "Vehicle not found")
+    tenant_db = await _get_tenant_db(user["account_id"])
+    out = await tenant_db.get_vehicle_period_mileage(
+        user["account_id"], vehicle_name, start, end)
+    if out is None:
+        return {"start": start, "end": end, "vehicle_name": vehicle_name,
+                "no_data": True}
+    return {"start": start, "end": end, "no_data": False, **out}
+
+
 # ── Source precedence (when Samsara + Datatruck disagree) ──────────
 #
 # Owner-level policy: which integration wins each vehicle spec field.  Placed

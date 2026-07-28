@@ -1215,6 +1215,176 @@ class WarehouseMixin(_MixinBase):
             "as_of": d.get("day_utc"),
         }
 
+    async def get_period_mileage(
+        self, account_id: int, start: str, end: str,
+    ) -> list[dict]:
+        """Miles driven per vehicle in [start, end] (inclusive dates).
+
+        The authoritative number is an ODOMETER DELTA — Samsara's own
+        mileage guide computes distance this way — not a sum of daily
+        buckets (summed buckets silently under-count when a day's sync
+        was missed):
+
+            miles = odometer_eod(last day ≤ end)
+                  − odometer_eod(last day < start)
+
+        The baseline reach-back is unbounded on purpose: a truck idle
+        for weeks before the range still has the correct odometer at
+        its last reading — no driving means no drift.
+
+        Per-vehicle degraded shapes, flagged, never silent:
+          * ``partial`` — no reading before the range (vehicle joined
+            telematics mid-range): counted from its FIRST in-range
+            reading; real miles are ≥ the number shown.
+          * ``reset`` — negative delta (odometer reset / device swap):
+            clamped to the sum of the daily ``miles`` buckets.
+          * no end reading at all → the vehicle has no usable odometer
+            history for the range and is NOT returned; the caller
+            reports those from the registry as "no odometer data"
+            (omitted ≠ zero).
+
+        Returns one dict per vehicle with a reading at/-before ``end``:
+        ``{vehicle_id, vehicle_name, miles, start_odo, end_odo,
+        start_read_on, end_read_on, days_covered, flag}`` — miles
+        rounded to 1 decimal, ``flag`` in {'', 'partial', 'reset'}.
+        """
+        start = (start or "").strip()[:10]
+        end = (end or "").strip()[:10]
+        if len(start) != 10 or len(end) != 10 or start > end:
+            return []
+
+        async def _last_reading_per_vehicle(upper: str, strict: bool):
+            op = "<" if strict else "<="
+            cur = await self._db.execute(
+                f"SELECT t.vehicle_id, t.vehicle_name, t.odometer_eod, "
+                f"       t.bucket_start "
+                f"FROM vehicle_telemetry t "
+                f"JOIN (SELECT vehicle_id, MAX(bucket_start) AS mb "
+                f"      FROM vehicle_telemetry "
+                f"      WHERE account_id = ? AND granularity = 'daily' "
+                f"      AND bucket_start {op} ? AND odometer_eod IS NOT NULL "
+                f"      GROUP BY vehicle_id) m "
+                f"  ON m.vehicle_id = t.vehicle_id "
+                f" AND m.mb = t.bucket_start "
+                f"WHERE t.account_id = ? AND t.granularity = 'daily' "
+                f"AND t.odometer_eod IS NOT NULL",
+                (account_id, upper, account_id),
+            )
+            return {str(d["vehicle_id"]): d
+                    for r in await cur.fetchall() for d in (dict(r),)}
+
+        ends = await _last_reading_per_vehicle(end, strict=False)
+        if not ends:
+            return []
+        baselines = await _last_reading_per_vehicle(start, strict=True)
+
+        # First IN-RANGE reading — the 'partial' fallback baseline —
+        # and the in-range daily aggregates in one pass.
+        cur = await self._db.execute(
+            "SELECT vehicle_id, MIN(bucket_start) AS first_day, "
+            "       SUM(miles) AS sum_miles, COUNT(*) AS days_covered "
+            "FROM vehicle_telemetry "
+            "WHERE account_id = ? AND granularity = 'daily' "
+            "AND bucket_start >= ? AND bucket_start <= ? "
+            "AND odometer_eod IS NOT NULL "
+            "GROUP BY vehicle_id",
+            (account_id, start, end),
+        )
+        in_range = {str(d["vehicle_id"]): d
+                    for r in await cur.fetchall() for d in (dict(r),)}
+        # Odometer at each vehicle's first in-range day (only fetched
+        # when actually needed for the partial fallback).
+        firsts: dict[str, float] = {}
+        for vid, agg in in_range.items():
+            if vid in baselines:
+                continue
+            fc = await self._db.execute(
+                "SELECT odometer_eod FROM vehicle_telemetry "
+                "WHERE account_id = ? AND vehicle_id = ? "
+                "AND granularity = 'daily' AND bucket_start = ?",
+                (account_id, vid, agg["first_day"]),
+            )
+            frow = await fc.fetchone()
+            if frow:
+                firsts[vid] = dict(frow)["odometer_eod"]
+
+        out: list[dict] = []
+        for vid, e in ends.items():
+            end_odo = float(e["odometer_eod"])
+            agg = in_range.get(vid, {})
+            b = baselines.get(vid)
+            flag = ""
+            if b is not None:
+                start_odo = float(b["odometer_eod"])
+                start_read_on = b["bucket_start"]
+            elif vid in firsts:
+                start_odo = float(firsts[vid])
+                start_read_on = agg.get("first_day")
+                flag = "partial"
+            else:
+                # A reading before/at end but nothing before the range
+                # and nothing inside it → no in-range driving evidence.
+                continue
+            miles = end_odo - start_odo
+            if miles < 0:
+                miles = float(agg.get("sum_miles") or 0.0)
+                flag = "reset"
+            out.append({
+                "vehicle_id": vid,
+                "vehicle_name": e.get("vehicle_name") or vid,
+                "miles": round(miles, 1),
+                "start_odo": round(start_odo, 1),
+                "end_odo": round(end_odo, 1),
+                "start_read_on": start_read_on,
+                "end_read_on": e["bucket_start"],
+                "days_covered": int(agg.get("days_covered") or 0),
+                "flag": flag,
+            })
+        out.sort(key=lambda r: -r["miles"])
+        return out
+
+    async def get_vehicle_period_mileage(
+        self, account_id: int, vehicle_name: str, start: str, end: str,
+    ) -> Optional[dict]:
+        """Single-vehicle period mileage + the per-day breakdown.
+
+        Same odometer-delta rule as :meth:`get_period_mileage`;
+        ``vehicle_name`` resolves to the telematics id via
+        ``vehicle_state`` (the same door ``get_reading_as_of`` uses).
+        Returns ``None`` when the vehicle isn't telematics-linked or has
+        no usable reading for the range; otherwise the summary dict plus
+        ``days``: ``[{day, miles}]`` for the range (bars in the UI).
+        """
+        name = (vehicle_name or "").strip()
+        if not name:
+            return None
+        rc = await self._db.execute(
+            "SELECT vehicle_id FROM vehicle_state "
+            "WHERE account_id = ? AND lower(vehicle_name) = lower(?) LIMIT 1",
+            (account_id, name),
+        )
+        vrow = await rc.fetchone()
+        if not vrow:
+            return None
+        vid = str(dict(vrow)["vehicle_id"])
+        rows = await self.get_period_mileage(account_id, start, end)
+        summary = next((r for r in rows if r["vehicle_id"] == vid), None)
+        if summary is None:
+            return None
+        cur = await self._db.execute(
+            "SELECT bucket_start AS day, miles FROM vehicle_telemetry "
+            "WHERE account_id = ? AND vehicle_id = ? "
+            "AND granularity = 'daily' "
+            "AND bucket_start >= ? AND bucket_start <= ? "
+            "ORDER BY bucket_start",
+            (account_id, vid, (start or "")[:10], (end or "")[:10]),
+        )
+        summary["days"] = [
+            {"day": d["day"], "miles": round(float(d["miles"] or 0.0), 1)}
+            for r in await cur.fetchall() for d in (dict(r),)
+        ]
+        return summary
+
     async def get_snapshot_coverage(
         self, account_id: int, vehicle_name: str,
     ) -> dict:

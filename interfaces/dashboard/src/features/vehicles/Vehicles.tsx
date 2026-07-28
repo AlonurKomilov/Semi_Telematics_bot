@@ -26,6 +26,7 @@ import { useRoleView } from '../../context/RoleViewContext';
 import type { Vehicle, VehiclesResponse } from '../../types';
 import type { AnyColumn } from '../../types';
 import UtilizationSummary from './UtilizationSummary';
+import Mileage from './Mileage';
 import VehicleManageDialog from './VehicleManageDialog';
 
 const TYPE_LABEL: Record<string, string> = {
@@ -232,6 +233,11 @@ const PERSONA_EXTRA_COLUMNS: Record<string, ReadonlyArray<string>> = {
 };
 
 export default function Vehicles() {
+  // Page tabs (same pattern as Vendors/Parts/Service Tasks): the
+  // registry list and the period-mileage report are different VIEWS of
+  // the feature, not filters on one grid — so they're page tabs, not
+  // DataGrid tabs.
+  const [pageTab, setPageTab] = useState<'vehicles' | 'mileage'>('vehicles');
   const { t } = useTranslation();
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const navigate = useNavigate();
@@ -402,6 +408,32 @@ export default function Vehicles() {
         }
       />
 
+      <div role="tablist" aria-label="Vehicle views" className="flex gap-1 mb-4 border-b border-border">
+        {([
+          { key: 'vehicles' as const, label: 'Vehicles' },
+          { key: 'mileage' as const, label: 'Mileage' },
+        ]).map(({ key, label }) => {
+          const sel = pageTab === key;
+          return (
+            <button
+              key={key}
+              role="tab"
+              aria-selected={sel}
+              onClick={() => setPageTab(key)}
+              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition ${
+                sel
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {pageTab === 'mileage' ? <Mileage /> : (<>
+
       {UTILIZATION_PERSONAS.has(persona) && <UtilizationSummary />}
 
       <div className="mb-4 flex items-center gap-2">
@@ -480,6 +512,8 @@ export default function Vehicles() {
           })}
         />
       )}
+
+      </>)}
 
       {dialog && (
         <VehicleManageDialog
