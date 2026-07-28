@@ -5,6 +5,7 @@ import {
 
 import { cn } from '../../../lib/utils';
 import { EmptyState } from '../../shell';
+import { Button } from '../../ui/button';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../ui/dialog';
@@ -34,7 +35,7 @@ import {
  * footer-aggregation treatment (``bg-muted font-semibold text-primary``).
  */
 export default function PivotView({
-  rows, model, columns, padding, onModelChange,
+  rows, model, columns, padding, onModelChange, onOpenPanel,
 }: {
   /** MUST be the same post-segment/filter/search rows the grid's own
    *  footer aggregation reduces, so the two can never disagree. */
@@ -46,6 +47,10 @@ export default function PivotView({
   /** Sorting writes back to the model, so the choice persists like the
    *  rest of the report's configuration. */
   onModelChange?: (next: PivotModel) => void;
+  /** Opens the fields panel from the empty state.  An empty state that
+   *  only DESCRIBES where the control is leaves the reader stranded when
+   *  the panel happens to be closed — which is exactly when they see it. */
+  onOpenPanel?: () => void;
 }) {
   const result = useMemo(
     () => pivot(rows, model, columns),
@@ -92,13 +97,21 @@ export default function PivotView({
             : needsValues ? 'Choose a value to measure'
               : 'Choose a field to group by'
         }
+        // "Fields" was the old toolbar button's name.  That button is
+        // gone — the panel is titled Pivot — so the copy was pointing at
+        // a control that no longer exists anywhere on screen.  Name what
+        // the reader can actually see, and ship the button rather than
+        // only describing where to find it.
         description={
           needsRows && needsValues
-            ? 'Open Fields, pick what each line should represent (Rows) and the numbers to total (Values).'
+            ? 'In the Pivot panel, pick what each line should represent (Rows) and the numbers to total (Values).'
             : needsValues
-              ? 'Open Fields → Values and pick the numbers to total, e.g. Rate.'
-              : 'Open Fields → Rows and pick what each line should represent, e.g. Customer.'
+              ? 'In the Pivot panel, open Values and pick the numbers to total, e.g. Rate.'
+              : 'In the Pivot panel, open Rows and pick what each line should represent, e.g. Customer.'
         }
+        action={onOpenPanel ? (
+          <Button type="button" onClick={onOpenPanel}>Open pivot fields</Button>
+        ) : undefined}
       />
     );
   }
@@ -122,6 +135,11 @@ export default function PivotView({
   // their subject.  Plain sticky; deliberately not the grid's pin maths.
   const stickyCol = 'sticky left-0 z-10 bg-card';
   const stickyHead = 'sticky left-0 z-20 bg-muted';
+  // The Total column pins to the RIGHT edge for the same reason the row
+  // label pins left: with 60 driver columns the figure you actually came
+  // for would otherwise sit past the end of a long horizontal scroll.
+  const stickyTotalCell = 'sticky right-0 z-10 bg-card';
+  const stickyTotalHead = 'sticky right-0 z-20 bg-muted';
 
   const sourceRows = rows.length;
 
@@ -208,6 +226,43 @@ export default function PivotView({
                     ) : cell.label}
                   </th>
                 ))}
+                {/* Total column group — pinned right, mirroring the Total
+                    row.  Without it a 2-D pivot can show every driver's
+                    contribution but never the company's own figure, which
+                    is usually the number the reader came for. */}
+                {result.totalLabels.length > 0 && (
+                  isLeafLevel
+                    ? result.totalLabels.map((label, i) => (
+                      <th
+                        key={`tot-${i}-${label}`}
+                        className={cn(
+                          padding, stickyTotalHead,
+                          'text-right text-xs font-medium uppercase tracking-wide',
+                          'border-b border-l border-border text-foreground',
+                        )}
+                      >
+                        <span className="inline-flex flex-col items-end leading-tight">
+                          <span>{label}</span>
+                          <span className="text-3xs font-normal normal-case">
+                            {AGG_FN_LABELS[model.values[i].aggFn].toLowerCase()}
+                          </span>
+                        </span>
+                      </th>
+                    ))
+                    : levelIdx === 0 && (
+                      <th
+                        rowSpan={result.headerLevels.length - 1}
+                        colSpan={result.totalLabels.length}
+                        className={cn(
+                          padding, stickyTotalHead,
+                          'text-left align-bottom text-xs font-medium uppercase tracking-wide',
+                          'border-b border-l border-border text-foreground',
+                        )}
+                      >
+                        Total
+                      </th>
+                    )
+                )}
               </tr>
             );
           })}
@@ -286,11 +341,23 @@ export default function PivotView({
                   )}
                 </td>
               ))}
+              {row.totals.map((value, i) => (
+                <td
+                  key={`tot-${i}`}
+                  className={cn(
+                    padding, stickyTotalCell,
+                    'text-right tabular-nums whitespace-nowrap font-semibold border-l border-border',
+                    rowIdx % 2 === 1 && 'bg-muted/30',
+                  )}
+                >
+                  {renderCell(value, model.values[i].key, model.values[i].aggFn)}
+                </td>
+              ))}
             </tr>
           ))}
           {result.bodyRows.length === 0 && (
             <tr>
-              <td colSpan={leafCount + 1} className={cn(padding, 'text-center text-muted-foreground')}>
+              <td colSpan={leafCount + 1 + result.totalLabels.length} className={cn(padding, 'text-center text-muted-foreground')}>
                 Nothing matches the current filters.
               </td>
             </tr>
@@ -302,7 +369,12 @@ export default function PivotView({
             <tr>
               <th
                 scope="row"
-                className={cn(padding, stickyCol, 'text-left bg-muted font-semibold text-primary')}
+                // Blue is the INTERACTION colour here — value cells turn
+                // primary on hover because they drill down.  The total row
+                // wore the same blue while being entirely unclickable, so
+                // the one colour meant two things.  Weight + a top rule
+                // carry the emphasis instead.
+                className={cn(padding, stickyCol, 'text-left bg-muted font-semibold text-foreground')}
               >
                 Total
               </th>
@@ -311,10 +383,22 @@ export default function PivotView({
                   key={result.leafIds[i]}
                   className={cn(
                     padding,
-                    'bg-muted font-semibold text-primary tabular-nums text-right whitespace-nowrap',
+                    'bg-muted font-semibold text-foreground tabular-nums text-right whitespace-nowrap',
                   )}
                 >
                   {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
+                </td>
+              ))}
+              {/* Bottom-right corner: the whole report in one figure. */}
+              {result.grandRowTotal.map((value, i) => (
+                <td
+                  key={`gtot-${i}`}
+                  className={cn(
+                    padding, stickyTotalHead,
+                    'font-semibold text-foreground tabular-nums text-right whitespace-nowrap border-l border-border',
+                  )}
+                >
+                  {renderCell(value, model.values[i].key, model.values[i].aggFn)}
                 </td>
               ))}
             </tr>

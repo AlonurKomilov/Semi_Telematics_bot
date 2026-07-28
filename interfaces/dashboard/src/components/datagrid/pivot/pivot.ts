@@ -69,6 +69,12 @@ export interface PivotBodyRow {
    *  to aggregate (an empty intersection), rendered as a dash — NOT 0,
    *  which would read as a real measured zero. */
   cells: (number | null)[];
+  /** One entry per VALUE FIELD — this row's figure across every column
+   *  bucket.  Re-aggregated from the row's own source rows, never summed
+   *  from ``cells``: adding up per-column averages would be arithmetic
+   *  nonsense, and ``count`` would multiply. Empty when the model has no
+   *  column dimension (the leaf columns are already the totals). */
+  totals: (number | null)[];
 }
 
 export interface PivotResult {
@@ -84,12 +90,24 @@ export interface PivotResult {
   bodyRows: PivotBodyRow[];
   /** Same shape as a body row's cells — the bottom accent row. */
   grandTotal: (number | null)[];
+  /** One per value field — the bottom-right corner, where the Total row
+   *  meets the Total column.  Empty alongside ``PivotBodyRow.totals``. */
+  grandRowTotal: (number | null)[];
+  /** Labels for the Total column group, one per value field.  Empty when
+   *  there is no column dimension to total ACROSS. */
+  totalLabels: string[];
   /** True when the model can't produce a table yet (no value field, or no
    *  row field).  Callers show the "choose fields" empty state. */
   empty: boolean;
 }
 
-const EMPTY_LABEL = '—';
+/** The label for a bucket whose value is BLANK — rows with no driver, no
+ *  customer.  Deliberately NOT the em-dash the view paints in empty
+ *  cells: that made a real category (the no-driver column) look
+ *  identical to "this intersection has nothing in it", so a column
+ *  header and a missing number were the same glyph.  A category always
+ *  gets words. */
+const EMPTY_LABEL = '(none)';
 /** Joins a column PATH ("North" + "Q1").  U+0000 can't occur in a bucket
  *  value, so a path id is unambiguous however the data is shaped. */
 const PATH_SEP = '\u0000';
@@ -145,7 +163,8 @@ export function pivot(
 
   const blank: PivotResult = {
     headerLevels: [], leafIds: [], leafValueKeys: [],
-    rowFieldLabel: '', bodyRows: [], grandTotal: [], empty: true,
+    rowFieldLabel: '', bodyRows: [], grandTotal: [],
+    grandRowTotal: [], totalLabels: [], empty: true,
   };
   // A pivot needs something to break down BY and something to measure.
   if (model.rows.length === 0 || valueFields.length === 0) return blank;
@@ -245,6 +264,11 @@ export function pivot(
 
   const collected = new Map<string, number[]>();   // `${rb} ${leaf}`
   const totals = new Map<string, number[]>();      // leaf
+  // Per row bucket, ACROSS every column bucket — the Total column.  Kept
+  // as a separate collection (not derived from ``collected``) so it
+  // reduces through the same engine the cells do.
+  const rowTotals = new Map<string, number[]>();   // `${rb}||${valueKey}`
+  const allValues = new Map<string, number[]>();   // valueKey — the corner
   const rowCounts = new Map<string, number>();     // rb — the "(4)" badge
   const cellCounts = new Map<string, number>();    // `${rb} ${cb}`
   const colCounts = new Map<string, number>();     // cb
@@ -267,12 +291,14 @@ export function pivot(
         const n = measureOf(r, cols.get(v.key)!);
         if (!Number.isFinite(n)) continue;
         push(collected, `${rb} ${cb}${'||'}${v.key}`, n);
+        push(rowTotals, `${rb}||${v.key}`, n);
       }
     }
     for (const v of valueFields) {
       const n = measureOf(r, cols.get(v.key)!);
       if (!Number.isFinite(n)) continue;
       push(totals, `${cb}||${v.key}`, n);
+      push(allValues, v.key, n);
     }
   }
 
@@ -300,6 +326,18 @@ export function pivot(
     );
   });
 
+  // Only meaningful with a column dimension: without one, the leaf
+  // columns already ARE the per-row totals and a Total column would
+  // just repeat them.
+  const wantsTotalCol = colCols.length > 0;
+  const totalsFor = (rb: string): (number | null)[] => (
+    wantsTotalCol
+      ? valueFields.map((v) => reduce(
+          v.aggFn, rowTotals.get(`${rb}||${v.key}`), rowCounts.get(rb) ?? 0,
+        ))
+      : []
+  );
+
   const makeRow = (rb: string): PivotBodyRow => {
     const parts = rb.split(PATH_SEP);
     const depth = parts.length - 1;
@@ -311,6 +349,7 @@ export function pivot(
       label: labelOf(parts[depth], rowDims[depth]),
       count: rowCounts.get(rb) ?? 0,
       cells: cellsFor(rb),
+      totals: totalsFor(rb),
     };
   };
 
@@ -363,6 +402,12 @@ export function pivot(
     rowFieldLabel: rowDims.map((c) => c.label).join(' / '),
     bodyRows,
     grandTotal,
+    grandRowTotal: wantsTotalCol
+      ? valueFields.map((v) => reduce(v.aggFn, allValues.get(v.key), totalRowCount))
+      : [],
+    totalLabels: wantsTotalCol
+      ? valueFields.map((v) => cols.get(v.key)?.label ?? v.key)
+      : [],
     empty: false,
   };
 }
@@ -382,6 +427,14 @@ export function prunePivotModel(model: PivotModel, columns: AnyColumn[]): PivotM
     rows: model.rows.filter((k) => keys.has(k)),
     columns: model.columns.filter((k) => keys.has(k)),
     values: model.values.filter((v) => keys.has(v.key)),
+    // ``sort`` MUST survive the prune.  Rebuilding the model field-by-
+    // field silently dropped it, which killed the whole feature: every
+    // header click wrote a sort that the next render threw away, so the
+    // rows never reordered and the caret never appeared.  A sort naming
+    // a leaf that no longer exists is handled downstream (pivot() falls
+    // back to label order) — that is a rendering decision, not a reason
+    // to discard the user's choice here.
+    sort: model.sort ?? null,
   };
 }
 

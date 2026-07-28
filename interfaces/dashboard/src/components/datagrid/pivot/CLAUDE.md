@@ -141,12 +141,37 @@ first — the question people actually ask) → asc → back to label order.
 The choice lives in the model, so it persists with the rest of the
 report.
 
+⚠️ **`sort` must survive every model rebuild.** It shipped BROKEN for
+exactly this reason: `prunePivotModel` and DataGrid's model memo both
+reconstructed the model field-by-field and neither copied `sort`, so
+every header click wrote a sort the next render threw away — no
+reorder, no caret, a dead control with a live tooltip. The stored
+preference type didn't even have the field. Every test passed
+throughout, because they all call `pivot()` directly and never touch
+the persistence path. **Any new PivotModel field must be added to
+`prunePivotModel`, DataGrid's `pivotModel` memo, and the registry's
+stored type together** — `pivot.test.ts` has round-trip tests that go
+red if `sort` stops surviving.
+
 Two rules the tests pin: sorting happens WITHIN each parent, never
 across the flat list (that would tear children out of their group); and
 a row with NO value in the sorted column sinks to the bottom in BOTH
 directions — absent is not "smaller than every number". A sort naming a
 leaf that no longer exists falls back to label order rather than
 discarding the report.
+
+## The Total column
+
+With a column dimension the matrix gains a **Total column**, pinned
+right, mirroring the Total row — a 2-D pivot could otherwise show every
+driver's contribution to a company but never the company's own figure,
+which is usually the number the reader came for.
+
+Its values are **re-aggregated from the source rows**, never summed
+across the cells: adding per-column averages is arithmetic nonsense and
+`count` would multiply. Same rule as the Total row. Without a column
+dimension there is no Total column — the leaf columns already are the
+per-row totals.
 
 ## Drill-down
 

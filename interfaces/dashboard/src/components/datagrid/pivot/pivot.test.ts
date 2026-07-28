@@ -32,7 +32,7 @@ const ROWS: Record<string, unknown>[] = [
 const model = (over: Partial<PivotModel> = {}): PivotModel => ({
   rows: ['customer'],
   columns: ['delivered_at'],
-  values: [{ key: 'rate', aggFn: 'sum' }],
+  values: [{ key: 'rate', aggFn: 'sum' as const }],
   ...over,
 });
 
@@ -59,7 +59,7 @@ describe('pivot — shape', () => {
 
   it('spans each column bucket across its value fields', () => {
     const r = pivot(ROWS, model({
-      values: [{ key: 'rate', aggFn: 'sum' }, { key: 'miles', aggFn: 'avg' }],
+      values: [{ key: 'rate', aggFn: 'sum' as const }, { key: 'miles', aggFn: 'avg' }],
     }), COLUMNS);
     expect(r.headerLevels[0].map((h) => h.span)).toEqual([2, 2]);
     expect(r.leafIds).toHaveLength(4);
@@ -152,17 +152,25 @@ describe('pivot — guards', () => {
 
   it('prunes a stale saved model against live columns', () => {
     const pruned = prunePivotModel(
-      { rows: ['customer', 'gone'], columns: ['nope'], values: [{ key: 'rate', aggFn: 'sum' }, { key: 'x', aggFn: 'avg' }] },
+      { rows: ['customer', 'gone'], columns: ['nope'], values: [{ key: 'rate', aggFn: 'sum' as const }, { key: 'x', aggFn: 'avg' }] },
       COLUMNS,
     );
     expect(pruned).toEqual({
-      rows: ['customer'], columns: [], values: [{ key: 'rate', aggFn: 'sum' }],
+      rows: ['customer'], columns: [], values: [{ key: 'rate', aggFn: 'sum' as const }],
+      // ``sort`` is now carried through — dropping it silently killed
+      // pivot sorting in the product.  Null here because this model
+      // never had one.
+      sort: null,
     });
   });
 
-  it('labels a blank bucket rather than rendering an empty header', () => {
+  it('gives a blank bucket WORDS, not the empty-cell dash', () => {
+    // It used to be '—', the exact glyph the view paints in an empty
+    // intersection — so a real category (the no-driver column) and "no
+    // number here" were indistinguishable.  A category always gets a
+    // label a person can read.
     const r = pivot([{ customer: '', rate: 5 }], model({ columns: [] }), COLUMNS);
-    expect(r.bodyRows[0].label).toBe('—');
+    expect(r.bodyRows[0].label).toBe('(none)');
   });
 
   it('falls back through pivotValue → filterValue → raw cell', () => {
@@ -262,7 +270,7 @@ describe('pivot — CSV export matches what is on screen', () => {
   it('keeps two measures on one bucket distinguishable by their agg fn', () => {
     const grid = pivotToCsvRows(pivot(ROWS, model({
       columns: [],
-      values: [{ key: 'rate', aggFn: 'sum' }, { key: 'rate', aggFn: 'avg' }],
+      values: [{ key: 'rate', aggFn: 'sum' as const }, { key: 'rate', aggFn: 'avg' }],
     }), COLUMNS));
     // Without the fn suffix these would be two identical "Rate" columns.
     expect(grid[0]).toEqual(['Customer', 'Rows', 'Rate (sum)', 'Rate (avg)']);
@@ -296,7 +304,7 @@ describe('pivot — multi-level ROWS (Company > Customer)', () => {
   const nested: PivotModel = {
     rows: ['company', 'customer'],
     columns: [],
-    values: [{ key: 'rate', aggFn: 'sum' }],
+    values: [{ key: 'rate', aggFn: 'sum' as const }],
   };
 
   it('emits a row per LEVEL, parents before their children', () => {
@@ -363,7 +371,7 @@ describe('pivot — sorting by a measure', () => {
     { company: 'CFT', customer: 'Bolt', rate: 500 },
   ];
   const base: PivotModel = {
-    rows: ['company'], columns: [], values: [{ key: 'rate', aggFn: 'sum' }],
+    rows: ['company'], columns: [], values: [{ key: 'rate', aggFn: 'sum' as const }],
   };
   const leaf = '||rate';
 
@@ -386,7 +394,7 @@ describe('pivot — sorting by a measure', () => {
   it('sorts siblings WITHIN a parent, never tearing the tree apart', () => {
     const r = pivot(DATA, {
       rows: ['company', 'customer'], columns: [],
-      values: [{ key: 'rate', aggFn: 'sum' }],
+      values: [{ key: 'rate', aggFn: 'sum' as const }],
       sort: { leaf, dir: 'desc' },
     }, COLS);
     // PTG (1000) before CFT (500); inside PTG, Zed (900) before Acme (100).
@@ -403,7 +411,7 @@ describe('pivot — sorting by a measure', () => {
     const cols = [...COLS, { key: 'region', label: 'Region', pivotable: true }];
     const m = (dir: 'asc' | 'desc'): PivotModel => ({
       rows: ['company'], columns: ['region'],
-      values: [{ key: 'rate', aggFn: 'sum' }],
+      values: [{ key: 'rate', aggFn: 'sum' as const }],
       sort: { leaf: `N||rate`, dir },
     });
     // CFT has nothing in N — absent is not "smaller than every number".
@@ -432,7 +440,7 @@ describe('pivot — drill-down', () => {
   ];
   const m: PivotModel = {
     rows: ['company', 'customer'], columns: ['region'],
-    values: [{ key: 'rate', aggFn: 'sum' }],
+    values: [{ key: 'rate', aggFn: 'sum' as const }],
   };
 
   it('returns exactly the rows behind one cell', () => {
@@ -471,5 +479,33 @@ describe('pivot — drill-down', () => {
     const drilled = pivotCellRows(DATA, m, COLS, ptg.path, ['N']);
     const sum = drilled.reduce((n, x) => n + Number(x.rate), 0);
     expect(sum).toBe(ptg.cells[nIdx]);
+  });
+});
+
+describe('the model survives a round-trip through the grid', () => {
+  // The bug this pins: DataGrid rebuilt the stored model field-by-field
+  // and prunePivotModel rebuilt it again, and NEITHER carried ``sort``.
+  // So every header click wrote a sort that the next render discarded —
+  // the rows never reordered, the caret never appeared, and the feature
+  // was dead in the product while every test here passed, because they
+  // all call pivot() directly and never go through the persistence path.
+  it('prunePivotModel keeps the sort', () => {
+    const model: PivotModel = {
+      rows: ['customer'], columns: [], values: [{ key: 'rate', aggFn: 'sum' as const }],
+      sort: { leaf: '||rate', dir: 'desc' },
+    };
+    const pruned = prunePivotModel(model, COLUMNS);
+    expect(pruned.sort).toEqual({ leaf: '||rate', dir: 'desc' });
+  });
+
+  it('keeps a sort whose leaf is gone rather than discarding the report', () => {
+    // pivot() falls back to label order for an unknown leaf — that is a
+    // RENDERING decision.  Throwing the choice away at the storage layer
+    // would lose it permanently the moment a column was briefly hidden.
+    const model: PivotModel = {
+      rows: ['customer'], columns: [], values: [{ key: 'rate', aggFn: 'sum' as const }],
+      sort: { leaf: 'gone||nope', dir: 'asc' },
+    };
+    expect(prunePivotModel(model, COLUMNS).sort).toEqual({ leaf: 'gone||nope', dir: 'asc' });
   });
 });

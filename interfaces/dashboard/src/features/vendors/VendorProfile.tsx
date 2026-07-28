@@ -23,7 +23,7 @@ import { Button } from '../../components/ui/button';
 import { InfoTip, Tip } from '../../components/tooltip';
 import { DIRECTORY_DISCLOSURE } from './directoryCopy';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
-import { TASK_TYPE_OPTIONS } from '../maintenance/badges';
+import { useTaskLabels } from '../service-tasks/useTaskLabels';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { toneClasses, type Tone } from '../../lib/status';
@@ -110,11 +110,12 @@ export default function VendorProfile() {
     await apiJSON('/vendors/market-sharing', { method: 'PUT', body: { enabled: true } });
     qc.invalidateQueries({ queryKey: ['vendor-market'] });
   }, 'Market data sharing enabled');
+  // Task labels come from the account's service_tasks list (SSOT),
+  // not a hardcoded copy — the old TASK_TYPE_OPTIONS had drifted.
+  const { labelOf: taskLabelOf } = useTaskLabels();
   const marketLabel = (r: MarketRollupRow): string => {
     if (r.dim_type === 'part') return r.dim_label || r.dim_key;
-    const opt = TASK_TYPE_OPTIONS.find(o => o.value === r.dim_key);
-    return opt?.label ?? r.dim_key.replace(/^custom_/, '').replace(/[_-]+/g, ' ')
-      .replace(/\b\w/g, (c: string) => c.toUpperCase());
+    return taskLabelOf(r.dim_key);
   };
 
   // Roster for the merge target picker.

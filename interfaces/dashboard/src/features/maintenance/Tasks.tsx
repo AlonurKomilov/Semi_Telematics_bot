@@ -24,7 +24,7 @@ import {
 import type { MaintenanceTask, AnyColumn } from '../../types';
 import {
   PriorityBadge, EngineHoursProgress, TaskTypeCell, DueDateChip, MileageProgress,
-  PRIORITY_OPTIONS, TYPE_LABELS,
+  PRIORITY_OPTIONS,
   type Priority,
 } from './badges';
 import ServiceTaskPicker from '../service-tasks/ServiceTaskPicker';
@@ -37,6 +37,7 @@ import { TemplatesModal } from './TemplatesModal';
 import type { MaintenanceTemplate } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, formatDay } from '../../utils/datetime';
+import { useTaskLabels } from '../service-tasks/useTaskLabels';
 
 // Status dropdown options. Labels are computed via STATUS_LABELS so
 // the on-screen text is properly capitalised ("In Progress", not
@@ -201,13 +202,10 @@ const baseColumns: AnyColumn[] = [
     render: (v) => <PriorityBadge value={v} /> },
   { key: 'task_type', label: 'Type', sortable: true, filterable: true,
     filterValue: (row) => String((row as MaintenanceTask).task_type ?? ''),
-    // Map internal codes (oil, dpf_regen, …) to operator-readable
-    // labels from the same TYPE_LABELS table the cell renderer uses.
-    // Falls back to the raw code humanised (custom_power_steering →
-    // Custom Power Steering) for codes not in the table.
+    // De-slug fallback only — the component overrides this with the
+    // SSOT lookup (module scope can't reach the service-tasks query).
     filterLabel: (row) => {
       const code = String((row as MaintenanceTask).task_type ?? '');
-      if (TYPE_LABELS[code]) return TYPE_LABELS[code];
       return code
         ? code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
         : '(none)';
@@ -507,22 +505,11 @@ export default function Tasks() {
     [templates],
   );
 
-  // Account's custom task types — drives the "Type" column's display
-  // label for rows that use a custom type, plus the ServiceTaskPicker
-  // dropdown in the add / edit forms.  Lookup map is built once per
-  // fetch so the table render closures don't reduce on every row.
-  const { data: customTypesData } = useQuery({
-    queryKey: ['maintenance-custom-types'],
-    queryFn: () => apiJSON<{ types: { value: string; label: string }[] }>(
-      '/maintenance/task-types',
-    ),
-    staleTime: 60_000,
-  });
-  const customTypeLabelByValue = useMemo(() => {
-    const map: Record<string, string> = {};
-    for (const t of customTypesData?.types ?? []) map[t.value] = t.label;
-    return map;
-  }, [customTypesData]);
+  // Task display labels come from the account's service_tasks list —
+  // the SSOT — replacing the deprecated /maintenance/task-types shim
+  // (which served customs only; standards leaned on a hardcoded map
+  // that had drifted).  Archived included: history keeps its label.
+  const { byValue: customTypeLabelByValue } = useTaskLabels();
 
   // Apply a template's defaults into the open add-form fields.  Only
   // touches the fields the template actually sets, so the user can
@@ -795,10 +782,17 @@ export default function Tasks() {
         };
       }
       if (col.key === 'task_type') {
-        // Override the static render so custom types resolve to the
-        // operator-supplied label instead of the kebab-cased value.
+        // Override the static render AND filter label so every value —
+        // standard or custom — resolves through the account's own task
+        // list instead of the kebab-cased value.
         return {
           ...col,
+          filterLabel: (row: Record<string, unknown>) => {
+            const code = String((row as MaintenanceTask).task_type ?? '');
+            if (!code) return '(none)';
+            return customTypeLabelByValue[code]
+              ?? code.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+          },
           render: (v: unknown) => {
             const type = String(v || 'inspection');
             return (

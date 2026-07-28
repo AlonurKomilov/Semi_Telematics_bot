@@ -70,6 +70,9 @@ export function ServiceHistoryModal({
   onClose: () => void;
 }) {
   const tz = useTimezone();
+  // SSOT task labels (see useTaskLabels) — the cell no longer carries
+  // a built-in map, so the caller supplies the display name.
+  const { byValue: taskLabels } = useTaskLabels();
   const { data, isLoading, error } = useQuery({
     queryKey: ['maintenance-history', vehicleName],
     queryFn: () => apiJSON<ServiceHistoryResponse>(
@@ -225,7 +228,7 @@ export function ServiceHistoryModal({
                       key={type}
                       className="inline-flex items-center gap-1.5 bg-muted px-2.5 py-1 rounded text-xs"
                     >
-                      <TaskTypeCell type={type} />
+                      <TaskTypeCell type={type} customLabel={taskLabels[type]} />
                       <span className="text-muted-foreground tabular-nums">{count}</span>
                     </span>
                   ))}
@@ -277,7 +280,7 @@ export function ServiceHistoryModal({
                   >
                     <div className="flex-1">
                       <div className="flex items-center gap-2 text-sm">
-                        <TaskTypeCell type={task.task_type} />
+                        <TaskTypeCell type={task.task_type} customLabel={taskLabels[task.task_type]} />
                         <StatusBadge status={task.status} />
                       </div>
                       {task.description && (

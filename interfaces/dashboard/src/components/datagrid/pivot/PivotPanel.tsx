@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Search, X } from 'lucide-react';
+import { Search, X, Check } from 'lucide-react';
 
 import { cn } from '../../../lib/utils';
 import { Input } from '../../ui/input';
@@ -239,10 +239,15 @@ export default function PivotPanel({
                 trailing={picked && (
                   // The agg chip mirrors the column ⋮ → Aggregate menu, so
                   // the vocabulary is identical in both places.
+                  // A check on the ACTIVE function: the menu listed
+                  // Sum · Average · Max identically whichever one was
+                  // running, so the only way to know what you had picked
+                  // was to close the menu and read the chip behind it.
                   <ActionMenu
                     items={offeredAggFns(c).map((fn) => ({
                       key: fn,
                       label: AGG_FN_LABELS[fn],
+                      icon: fn === picked.aggFn ? <Check size={14} /> : undefined,
                       onSelect: () => setAggFn(c.key, fn),
                     }))}
                   >

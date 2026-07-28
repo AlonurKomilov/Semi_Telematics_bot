@@ -114,19 +114,6 @@ export function EngineHoursProgress({ row }: { row: MaintenanceTask }) {
 // (the user's screenshot showed several broken).  The table cell
 // renders proper lucide-react icons via ``TaskTypeCell`` — that's
 // where the visual icon belongs, not in the picker dropdown.
-export const TASK_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: 'inspection',     label: 'General Inspection' },
-  { value: 'oil',            label: 'Oil Change' },
-  { value: 'tires',          label: 'Tire Service' },
-  { value: 'brakes',         label: 'Brake Inspection' },
-  { value: 'transmission',   label: 'Transmission' },
-  { value: 'electrical',     label: 'Electrical' },
-  { value: 'dot_inspection', label: 'DOT Inspection' },
-  { value: 'dpf_regen',      label: 'DPF Regen' },
-  { value: 'def_refill',     label: 'DEF Refill' },
-  { value: 'custom',         label: 'Custom' },
-];
-
 const TYPE_ICON_COMPONENTS: Record<string, ElementType> = {
   oil:            Droplet,
   tires:          Circle,
@@ -151,38 +138,27 @@ const TYPE_ICON_COLORS: Record<string, string> = {
   def_refill:     'text-emerald-600 dark:text-emerald-400',
   custom:         'text-muted-foreground',
 };
-export const TYPE_LABELS: Record<string, string> = {
-  oil:            'Oil Change',
-  tires:          'Tire Service',
-  brakes:         'Brake Inspection',
-  inspection:     'Inspection',
-  transmission:   'Transmission',
-  electrical:     'Electrical',
-  dot_inspection: 'DOT Inspection',
-  dpf_regen:      'DPF Regen',
-  def_refill:     'DEF Refill',
-  custom:         'Custom',
-};
-
 export function TaskTypeCell({
   type,
   customLabel,
 }: {
   type: string;
-  // Per-account custom types come from ``GET /maintenance/task-types``.
-  // The list parent fetches once and passes the resolved label here so
-  // the cell doesn't have to query React-Query on every row render.
+  // The resolved display name from the account's service_tasks list
+  // (``useTaskLabels`` in the service-tasks feature) — the SSOT.  The
+  // parent passes it so the cell doesn't query React-Query per row.
+  // The hardcoded TYPE_LABELS map that used to answer first is gone:
+  // it had drifted ("Brake Inspection" for a task really named
+  // "Brake Service") — a second copy of a vocabulary always does.
   customLabel?: string;
 }) {
   const Icon = TYPE_ICON_COMPONENTS[type] ?? Wrench;
   const colour = TYPE_ICON_COLORS[type] ?? 'text-muted-foreground';
   // Fallback chain:
-  //   1. Built-in label map (Oil Change, Tire Service, …).
-  //   2. Per-account custom-type label passed in by the caller.
-  //   3. ``custom_<slug>`` → strip prefix + de-kebab so cells stay
-  //      readable even when the custom-types fetch hasn't returned yet.
-  //   4. Raw value with underscores → spaces.
-  let label = TYPE_LABELS[type] ?? customLabel;
+  //   1. The SSOT label passed in by the caller.
+  //   2. ``custom_<slug>`` → strip prefix + de-kebab so cells stay
+  //      readable before the service-tasks fetch returns.
+  //   3. Raw value with underscores → spaces.
+  let label = customLabel;
   if (!label) {
     const isCustom = (type || '').startsWith('custom_');
     label = isCustom

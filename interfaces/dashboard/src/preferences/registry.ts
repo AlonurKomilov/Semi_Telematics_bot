@@ -47,6 +47,10 @@ import type {
 } from '@tanstack/react-table';
 import type { AggFn } from '../types';
 import type { SavedTab } from '../components/datagrid/tabs/savedTabs';
+// The real model type, NOT a hand-copy.  The copy that used to live
+// inline here silently lacked ``sort``, so the stored value could not
+// physically hold one — which is why every pivot sort click vanished.
+import type { PivotModel } from '../components/datagrid/pivot/pivot';
 
 export type PrefScope = 'device' | 'synced';
 
@@ -398,7 +402,7 @@ export const TABLE_PARTS = {
   // pivot off keeps the configuration — turning it back on restores what
   // you had rather than an empty panel.  The model's arrays are what let
   // multi-level pivoting arrive later WITHOUT changing this frozen key.
-  pivot:       def<{ enabled: boolean; model: { rows: string[]; columns: string[]; values: { key: string; aggFn: AggFn }[] } } | null>({
+  pivot:       def<{ enabled: boolean; model: PivotModel } | null>({
     default: null, scope: 'synced', note: 'How this table is pivoted.',
   }),
   // The saved-tab pair.  NOTE the stored suffixes are '.views' and

@@ -88,7 +88,9 @@ const makeColumns = (): AnyColumn[] => [
     // filter drops from sum/avg/min/max (so it never counts as a $0 trip
     // in the Average); ``count`` still counts every filtered row.
     aggregable: true,
-    aggFns: ['sum', 'avg', 'max', 'count'],
+    // Min alongside Max — offering one without the other reads as an
+    // oversight, and "cheapest load" is as real a question as "priciest".
+    aggFns: ['sum', 'avg', 'min', 'max', 'count'],
     aggValue: (row) => Number((row as { total_rate?: number | null }).total_rate),
     // Money for the numeric totals; a plain count for ``count`` (else
     // a row count would render as a dollar amount).
@@ -276,6 +278,9 @@ export default function Loads() {
           columns={columns}
           pivot
           fillHeight
+          // Personal saved tabs — they capture the pivot config too, so a
+          // built report can be kept rather than rebuilt each visit.
+          savedTabs
           data={loads as unknown as Record<string, unknown>[]}
           searchKey="customer"
           searchPlaceholder={t('loads_page.search', 'Search customer…')}

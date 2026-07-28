@@ -13,11 +13,11 @@ import {
   EmptyState, ErrorState, CardSkeleton, DateRangePresets,
 } from '../../components/shell';
 import type { WorkOrderCostRow, AnyColumn } from '../../types';
-import { TASK_TYPE_OPTIONS } from '../maintenance/badges';
 import type { ReportsLayoutOutletContext } from './ReportsLayout';
 import { chartColor } from '../../lib/status';
 import DataGrid from '../../components/datagrid';
 import { Tip } from '../../components/tooltip';
+import { useTaskLabels } from '../service-tasks/useTaskLabels';
 
 // Backend response envelopes for each /reports/* endpoint.
 interface SystemRow {
@@ -210,16 +210,12 @@ export default function Reports() {
 
   // Service-task donut — sorted descending so the legend is
   // meaningful.  Rows carry task-type SLUGS ('brakes',
-  // 'custom_oil_change', 'untagged'); label them with the shared
-  // maintenance vocabulary, falling back to de-slugged text.
+  // 'custom_oil_change', 'untagged'); the display name comes from the
+  // account's service_tasks list via useTaskLabels — the SSOT — never
+  // from a hardcoded copy (the old one had already drifted).
+  const { labelOf } = useTaskLabels();
+
   const typeChart = useMemo(() => {
-    const labelOf = (slug: string): string => {
-      if (slug === 'untagged') return 'Untagged';
-      const opt = TASK_TYPE_OPTIONS.find(o => o.value === slug);
-      if (opt) return opt.label;
-      return slug.replace(/^custom_/, '').replace(/[_-]+/g, ' ')
-        .replace(/\b\w/g, c => c.toUpperCase());
-    };
     return (perType.data?.rows ?? [])
       .slice()
       // Combined parts+labor drives the ordering; the donut slice
@@ -227,7 +223,7 @@ export default function Reports() {
       .sort((a, b) =>
         (b.total_spent + (b.labor_spent ?? 0)) - (a.total_spent + (a.labor_spent ?? 0)))
       .map(r => ({ ...r, label: labelOf(String(r.service_task ?? '')) }));
-  }, [perType.data]);
+  }, [perType.data, labelOf]);
 
   // System bars — combined parts+labor, biggest first.
   const systemChart = useMemo(

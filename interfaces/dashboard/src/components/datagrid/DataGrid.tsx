@@ -713,9 +713,15 @@ export default function DataGrid({
     usePreference('pivot.panelWidth');
   const pivotModel = useMemo<PivotModel>(() => {
     const stored = pivotPref?.model;
+    // ``sort`` is carried through deliberately — see prunePivotModel.
+    // Listing fields by hand here is what dropped it before, so any new
+    // PivotModel field must be added to BOTH places.
     const base: PivotModel = stored
-      ? { rows: stored.rows ?? [], columns: stored.columns ?? [], values: stored.values ?? [] }
-      : { rows: [], columns: [], values: [] };
+      ? {
+          rows: stored.rows ?? [], columns: stored.columns ?? [],
+          values: stored.values ?? [], sort: stored.sort ?? null,
+        }
+      : { rows: [], columns: [], values: [], sort: null };
     // A saved model can name columns this grid no longer has.
     return prunePivotModel(base, pivotColumns);
   }, [pivotPref, pivotColumns]);
@@ -726,8 +732,18 @@ export default function DataGrid({
   // rows to count.  So it stays off entirely while the data is partial;
   // the preference survives, and it returns once the view is narrowed.
   const pivotOn = pivotEnabled && !!pivotPref?.enabled && !holdsPartialData;
+  // Read inside setPivotModel, whose identity must stay stable (it is
+  // handed to PivotView/PivotPanel on every render).
+  const pivotPrefRef = useRef(pivotPref);
+  pivotPrefRef.current = pivotPref;
+  // Configuring does NOT activate.  This used to force ``enabled: true``,
+  // so ticking any field flipped the master switch with no announcement —
+  // which was defensible when a click on the toolbar button was the only
+  // way in, and is plainly wrong now that a switch sits at the top of the
+  // panel saying it owns that decision.  Setting a field while pivot is
+  // off now just builds the report you'll turn on when you're ready.
   const setPivotModel = useCallback((model: PivotModel) => {
-    setPivotPref({ enabled: true, model });
+    setPivotPref({ enabled: !!pivotPrefRef.current?.enabled, model });
   }, [setPivotPref]);
   const setPivotEnabled = useCallback((next: boolean) => {
     // A STARTER model on first enable: flipping the switch should
@@ -2344,15 +2360,23 @@ export default function DataGrid({
           </span>
         );
       })}
+      {/* The row-list sort does NOT order a pivot — the report sorts by a
+          measure, from its own header.  The chip used to keep claiming
+          "Sorted by Customer ↑" over a matrix that ignored it entirely.
+          It stays visible (the sort is real, and comes back the moment
+          you leave pivot) but reads as inactive and says why. */}
       {sorting.map((s) => {
         const col = columns.find(c => c.key === s.id);
         return (
-          <span key={`s-${s.id}`} className={chipCls}>
+          <span key={`s-${s.id}`} className={cn(chipCls, pivotOn && 'opacity-60')}>
             <ArrowUpDown size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
-            <Tip label={`Sorted by ${col?.label || s.id} · ${s.desc ? 'descending' : 'ascending'}`}>
+            <Tip label={pivotOn
+              ? `Not applied while pivoting — a pivot orders by a measure, from its own column header. Returns when you turn Pivot off.`
+              : `Sorted by ${col?.label || s.id} · ${s.desc ? 'descending' : 'ascending'}`}>
               <span className="truncate max-w-72">
                 Sorted by <span className="font-medium">{col?.label || s.id}</span>
                 {s.desc ? ' ↓' : ' ↑'}
+                {pivotOn && <span className="ml-1 text-muted-foreground">· not applied</span>}
               </span>
             </Tip>
             <button type="button"
@@ -3406,6 +3430,7 @@ export default function DataGrid({
               columns={pivotColumns}
               padding={padding}
               onModelChange={setPivotModel}
+              onOpenPanel={() => setPivotPanelOpen(true)}
             />
         </div>
       ) : (
