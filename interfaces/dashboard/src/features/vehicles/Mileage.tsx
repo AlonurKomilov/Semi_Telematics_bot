@@ -62,6 +62,10 @@ function startFor(end: string, days: number): string {
 }
 
 const FLAG_NOTE: Record<string, { label: string; tip: string }> = {
+  catchup: {
+    label: 'Catch-up days',
+    tip: 'The odometer feed went silent for some days and then reported the backlog in one reading — the range total is real, but if the range starts inside such a gap it can include some earlier driving.',
+  },
   partial: {
     label: 'Partial',
     tip: 'Odometer history starts inside this range — real miles are at least the number shown.',
@@ -147,6 +151,7 @@ export default function Mileage() {
           end={endDay}
           maxDays={RETENTION_DAYS}
           isFetching={isFetching}
+          align="start"
         />
         {data && rows.length > 0 && (
           <span className="text-sm text-muted-foreground">

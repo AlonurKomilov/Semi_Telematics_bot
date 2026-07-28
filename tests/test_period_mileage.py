@@ -148,3 +148,26 @@ class TestVehiclePeriodMileage:
     async def test_unlinked_vehicle_returns_none(self, tenant):
         assert await tenant.get_vehicle_period_mileage(
             1, "no-such-truck", "2026-07-01", "2026-07-02") is None
+
+
+class TestCatchupFlag:
+    @pytest.mark.asyncio
+    async def test_backlog_day_flags_catchup(self, tenant):
+        # Feed silent Jul 2-3, then Jul 4 absorbs the backlog (+3,300
+        # in one bucket — physically impossible in a day).  Total stays
+        # the honest odometer delta; the flag says the shape is lumpy.
+        await _day(tenant, "v1", "132", "2026-07-01", 700_000, 0)
+        await _day(tenant, "v1", "132", "2026-07-04", 703_300, 3300)
+        await _day(tenant, "v1", "132", "2026-07-05", 703_800, 500)
+        rows = await tenant.get_period_mileage(1, "2026-07-02", "2026-07-05")
+        r = rows[0]
+        assert r["miles"] == 3800.0
+        assert r["flag"] == "catchup"
+
+    @pytest.mark.asyncio
+    async def test_normal_heavy_day_stays_unflagged(self, tenant):
+        # 1,200 mi in a day is heavy team driving, not a backlog.
+        await _day(tenant, "v1", "132", "2026-07-01", 700_000, 0)
+        await _day(tenant, "v1", "132", "2026-07-02", 701_200, 1200)
+        rows = await tenant.get_period_mileage(1, "2026-07-02", "2026-07-02")
+        assert rows[0]["flag"] == ""

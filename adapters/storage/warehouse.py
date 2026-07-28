@@ -1215,6 +1215,10 @@ class WarehouseMixin(_MixinBase):
             "as_of": d.get("day_utc"),
         }
 
+    # A team (two drivers, 24h) tops out around 1,400 mi/day; anything
+    # above this in ONE daily bucket is a reporting backlog, not driving.
+    _CATCHUP_DAY_MILES = 1_500.0
+
     async def get_period_mileage(
         self, account_id: int, start: str, end: str,
     ) -> list[dict]:
@@ -1238,6 +1242,14 @@ class WarehouseMixin(_MixinBase):
             reading; real miles are ≥ the number shown.
           * ``reset`` — negative delta (odometer reset / device swap):
             clamped to the sum of the daily ``miles`` buckets.
+          * ``catchup`` — some in-range day shows more miles than a
+            truck can physically drive (> ``_CATCHUP_DAY_MILES``):
+            the odometer feed went silent and then reported the
+            backlog in one reading (production shows correlated
+            multi-truck jump days).  The range TOTAL is still the
+            real odometer growth, but a boundary inside such a gap
+            can attribute some earlier driving into the range — the
+            flag keeps that honest.
           * no end reading at all → the vehicle has no usable odometer
             history for the range and is NOT returned; the caller
             reports those from the registry as "no odometer data"
@@ -1282,7 +1294,8 @@ class WarehouseMixin(_MixinBase):
         # and the in-range daily aggregates in one pass.
         cur = await self._db.execute(
             "SELECT vehicle_id, MIN(bucket_start) AS first_day, "
-            "       SUM(miles) AS sum_miles, COUNT(*) AS days_covered "
+            "       SUM(miles) AS sum_miles, COUNT(*) AS days_covered, "
+            "       MAX(miles) AS max_day_miles "
             "FROM vehicle_telemetry "
             "WHERE account_id = ? AND granularity = 'daily' "
             "AND bucket_start >= ? AND bucket_start <= ? "
@@ -1329,6 +1342,9 @@ class WarehouseMixin(_MixinBase):
             if miles < 0:
                 miles = float(agg.get("sum_miles") or 0.0)
                 flag = "reset"
+            elif not flag and \
+                    float(agg.get("max_day_miles") or 0.0) > self._CATCHUP_DAY_MILES:
+                flag = "catchup"
             out.append({
                 "vehicle_id": vid,
                 "vehicle_name": e.get("vehicle_name") or vid,

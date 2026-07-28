@@ -45,6 +45,11 @@ export interface DateRangePresetsProps {
   maxDays?: number;
   /** Lock the control (e.g. while a report is generating). */
   disabled?: boolean;
+  /** Which trigger edge the panel hangs from.  Default 'end'
+   *  (right-aligned — correct for pickers at a toolbar's right edge).
+   *  Pass 'start' when the trigger is the LEFTMOST control on the
+   *  page, otherwise the panel overflows into the sidebar. */
+  align?: 'start' | 'end';
   /** Current custom END day (``YYYY-MM-DD``), null/undefined = today.
    *  Only meaningful together with ``onApplyRange``. */
   end?: string | null;
@@ -203,6 +208,7 @@ export default function DateRangePresets({
   variant = 'dropdown',
   maxDays = 90,
   disabled = false,
+  align = 'end',
   end = null,
   onApplyRange,
   isFetching = false,
@@ -373,7 +379,7 @@ export default function DateRangePresets({
       )}
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl flex overflow-hidden">
+        <div className={`absolute ${align === 'start' ? 'left-0' : 'right-0'} top-full mt-1 z-50 bg-card border border-border rounded-lg shadow-xl flex overflow-hidden`}>
           {/* ── presets rail ── */}
           <ul className="w-36 shrink-0 border-r border-border py-1.5 max-h-96 overflow-y-auto" role="listbox">
             {options.map((opt) => {
