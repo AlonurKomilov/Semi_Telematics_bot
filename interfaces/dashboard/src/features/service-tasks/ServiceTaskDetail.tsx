@@ -20,6 +20,10 @@ import EditTaskDialog from './EditTaskDialog';
 import DataGrid from '../../components/datagrid';
 import { EmptyState, ErrorState, PageHeader, TableSkeleton } from '../../components/shell';
 import { Button } from '../../components/ui/button';
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle,
+} from '../../components/ui/dialog';
 import { toneClasses } from '../../lib/status';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import type { AnyColumn } from '../../types';
@@ -64,6 +68,7 @@ export default function ServiceTaskDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [mergeWinner, setMergeWinner] = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Same query key as the grid, so opening a row is a cache hit and
   // any edit here refreshes both surfaces at once.
@@ -210,7 +215,10 @@ export default function ServiceTaskDetail() {
           decides what actually went on the truck.
         </p>
         {links.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No parts linked yet.</p>
+          <p className="text-sm text-muted-foreground">
+            No parts linked yet — link the parts this job usually needs so
+            new work orders start pre-filled.
+          </p>
         ) : (
           <DataGrid
             tableId="service-task-usual-parts"
@@ -250,10 +258,7 @@ export default function ServiceTaskDetail() {
                   size="sm"
                   variant="outline"
                   className="text-destructive"
-                  onClick={() => act('Task deleted', async () => {
-                    await deleteServiceTask(task.id);
-                    navigate('/service-tasks');
-                  })}
+                  onClick={() => setConfirmDelete(true)}
                 >
                   Delete
                 </Button>
@@ -262,6 +267,35 @@ export default function ServiceTaskDetail() {
           </div>
         </div>
       )}
+
+      <Dialog open={confirmDelete} onOpenChange={(o) => { if (!o) setConfirmDelete(false); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete “{task.name}”?</DialogTitle>
+            <DialogDescription>
+              The task definition is removed permanently. Nothing references
+              it, so no history is touched — but there is no undo.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm" variant="destructive"
+              onClick={() => {
+                setConfirmDelete(false);
+                void act('Task deleted', async () => {
+                  await deleteServiceTask(task.id);
+                  navigate('/service-tasks');
+                });
+              }}
+            >
+              Delete task
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <TaskPartsDialog
         task={partsOpen ? task : null}

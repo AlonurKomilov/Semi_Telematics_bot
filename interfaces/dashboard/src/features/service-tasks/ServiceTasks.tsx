@@ -76,6 +76,9 @@ export default function ServiceTasks() {
   const [editFor, setEditFor] = useState<ServiceTask | null>(null);
   // Pre-selected merge target when the user came from a name clash.
   const [mergeWinner, setMergeWinner] = useState<number | null>(null);
+  // Row → the delete confirm.  Danger styling is not consent: a menu
+  // misclick must not erase a task definition with no way back.
+  const [deleteFor, setDeleteFor] = useState<ServiceTask | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: [...SERVICE_TASKS_KEY, 'all'],
@@ -150,14 +153,6 @@ export default function ServiceTasks() {
 
   const columns: AnyColumn[] = [
     { key: 'name', label: 'Task', sortable: true, filterable: true },
-    {
-      key: 'canonical_key', label: 'Source', sortable: true, filterable: true,
-      render: (v) => (
-        <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-xs font-medium ${toneClasses(v ? 'info' : 'neutral')}`}>
-          {v ? 'Shared' : 'Mine'}
-        </span>
-      ),
-    },
     {
       key: 'expected_labor_hours', label: 'Est. labor', sortable: true,
       aggregable: true, aggFns: ['avg', 'max'],
@@ -252,7 +247,7 @@ export default function ServiceTasks() {
           });
           actions.push({
             key: 'delete', label: 'Delete', danger: true,
-            onSelect: () => act('Task deleted', () => deleteServiceTask(t.id)),
+            onSelect: () => setDeleteFor(t),
           });
         }
         return actions;
@@ -351,6 +346,33 @@ export default function ServiceTasks() {
         canManage={canManage}
         onClose={() => setPartsFor(null)}
       />
+
+      <Dialog open={!!deleteFor} onOpenChange={(o) => { if (!o) setDeleteFor(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete “{deleteFor?.name}”?</DialogTitle>
+            <DialogDescription>
+              The task definition is removed permanently. Nothing references
+              it, so no history is touched — but there is no undo.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setDeleteFor(null)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm" variant="destructive"
+              onClick={() => {
+                const t = deleteFor;
+                setDeleteFor(null);
+                if (t) void act('Task deleted', () => deleteServiceTask(t.id));
+              }}
+            >
+              Delete task
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={addOpen} onOpenChange={(o) => { if (!o) setAddOpen(false); }}>
         <DialogContent className="sm:max-w-md">
