@@ -788,7 +788,7 @@ export default function Tasks() {
         return {
           ...col,
           filterLabel: (row: Record<string, unknown>) => {
-            const code = String((row as MaintenanceTask).task_type ?? '');
+            const code = String((row as unknown as MaintenanceTask).task_type ?? '');
             if (!code) return '(none)';
             return customTypeLabelByValue[code]
               ?? code.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());

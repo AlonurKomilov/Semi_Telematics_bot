@@ -6,6 +6,7 @@ import { apiJSON } from '../../api/client';
 import StatusBadge from '../../components/StatusBadge';
 import type { MaintenanceTask } from '../../types';
 import { TaskTypeCell } from './badges';
+import { useTaskLabels } from '../service-tasks/useTaskLabels';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, formatDay } from '../../utils/datetime';
 
