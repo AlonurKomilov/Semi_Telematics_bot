@@ -7358,6 +7358,31 @@ async def migrate_service_task_backfill_sweep(conn) -> None:
     logger.info("Migration 165: swept %d stragglers onto service_task_id", swept)
 
 
+@_register("169_service_task_backfill_final_sweep")
+async def migrate_service_task_backfill_final_sweep(conn) -> None:
+    """Final catch-up before the legacy string columns can go.
+
+    From this release the writers no longer store the legacy tag when
+    the ``service_tasks`` reference resolves — the reference is the
+    record, and the string is written only on resolver FAILURE so a
+    tag is never lost.  That makes this the last general sweep: it
+    repairs any string-only rows left by workers that ran the old code
+    right up to this deploy.
+
+    Runs 165's sweep verbatim — a registered migration is frozen
+    history, so the callee cannot drift, and the semantics wanted are
+    exactly the same: resolve by canonical key, then exact name, else
+    a brand-new ARCHIVED custom task.  Idempotent.
+
+    NEXT RELEASE (deliberately not this one — a rolling deploy still
+    has old workers writing the string columns until they restart):
+    rename ``maintenance_tasks.task_type`` /
+    ``work_order_parts.service_task`` / ``work_order_labor.service_task``
+    to ``*_legacy``; drop them the release after.
+    """
+    await migrate_service_task_backfill_sweep(conn)
+
+
 @_register("166_service_task_system")
 async def migrate_service_task_system(conn) -> None:
     """Group service tasks into SYSTEMS — the reporting axis a fleet

@@ -560,31 +560,13 @@ class ServiceTasksMixin:
                 "(only one level of nesting is allowed)."
             )
 
-        winner_value = winner["canonical_key"] or winner["name"]
-
         async with self.transaction():
-            # Legacy string columns first, while the loser's id still
-            # identifies its rows — during the dual-write window a stale
-            # reader must not see the old name pointing at a dead task.
-            await self._db.execute(
-                "UPDATE maintenance_tasks SET task_type = ? "
-                "WHERE account_id = ? AND service_task_id = ?",
-                (winner_value, account_id, loser_id),
-            )
-            await self._db.execute(
-                "UPDATE work_order_labor SET service_task = ? "
-                "WHERE account_id = ? AND service_task_id = ?",
-                (winner_value, account_id, loser_id),
-            )
-            # work_order_parts has no account_id — scope via parent WOs.
-            await self._db.execute(
-                "UPDATE work_order_parts SET service_task = ? "
-                "WHERE service_task_id = ? AND work_order_id IN "
-                "  (SELECT id FROM work_orders WHERE account_id = ?)",
-                (winner_value, loser_id, account_id),
-            )
-
-            # Then the references themselves.
+            # The references ARE the record: every reader derives its
+            # label through ``service_task_id``, so repointing the ids
+            # repoints the history.  (The dual-write era also rewrote
+            # the legacy string columns here, so a stale reader
+            # couldn't see the old name pointing at a dead task; that
+            # bridge left with the dual-write.)
             await self._db.execute(
                 "UPDATE maintenance_tasks SET service_task_id = ? "
                 "WHERE account_id = ? AND service_task_id = ?",

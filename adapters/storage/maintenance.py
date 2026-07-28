@@ -164,12 +164,14 @@ class MaintenanceMixin(_MixinBase):
         last_engine_hours: Optional[float] = None,
     ) -> int:
         now = self._now()
-        # Dual-write: the legacy ``task_type`` slug AND the service_tasks
-        # reference.  Resolving HERE (the one choke point every writer —
-        # dashboard, bot, AI tool, fault auto-create — passes through)
-        # means no caller can forget.  The resolver is fail-open: an
-        # unrecognised slug becomes an archived custom task rather than
-        # rejecting the write.
+        # The service_tasks reference is the record.  Resolving HERE
+        # (the one choke point every writer — dashboard, bot, AI tool,
+        # fault auto-create — passes through) means no caller can
+        # forget.  The resolver is fail-open: an unrecognised slug
+        # becomes an archived custom task rather than rejecting the
+        # write.  The legacy ``task_type`` column is stored only when
+        # resolution FAILED — the tag must never be lost, and the
+        # backfill sweep repairs such rows — otherwise it gets ''.
         service_task_id = None
         if task_type:
             try:
@@ -181,6 +183,7 @@ class MaintenanceMixin(_MixinBase):
                     "service_task resolve failed for %r (account %s)",
                     task_type, account_id, exc_info=True,
                 )
+        legacy_task_type = "" if service_task_id else task_type
 
         cur = await self._db.execute(
             """INSERT INTO maintenance_tasks
@@ -193,7 +196,7 @@ class MaintenanceMixin(_MixinBase):
                 last_odometer, last_engine_hours)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (account_id, company_code, vehicle_id, vehicle_name,
-             task_type, service_task_id, description,
+             legacy_task_type, service_task_id, description,
              due_date, due_miles, due_engine_hours,
              priority, created_by, now, now,
              recur_interval_days, recur_interval_miles, recur_interval_engine_hours,

@@ -659,10 +659,12 @@ class WorkOrdersMixin:
         part_id: Optional[int] = None,
         notes: str = "",
     ) -> int:
-        # Dual-write the service_tasks reference beside the legacy tag
-        # (see adapters/storage/service_tasks.py).  Parts don't carry
+        # The service_tasks reference is the record (see
+        # adapters/storage/service_tasks.py).  Parts don't carry
         # account_id, so it comes from the parent work order — and only
-        # when there's actually a tag to resolve.
+        # when there's actually a tag to resolve.  The legacy
+        # ``service_task`` column is stored only when resolution FAILED
+        # (the tag must never be lost; the sweep repairs such rows).
         service_task_id = None
         if service_task:
             try:
@@ -678,6 +680,7 @@ class WorkOrdersMixin:
             except Exception:
                 logger.warning("service_task resolve failed for part tag %r",
                                service_task, exc_info=True)
+        legacy_tag = "" if service_task_id else service_task
 
         cur = await self._db.execute(
             """INSERT INTO work_order_parts
@@ -686,7 +689,7 @@ class WorkOrdersMixin:
                 service_task_id, part_id, notes)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (work_order_id, part_name, part_number, quantity,
-             unit_cost, total_cost, warranty_months, service_task,
+             unit_cost, total_cost, warranty_months, legacy_tag,
              service_task_id, part_id, notes),
         )
         await self._db.commit()
@@ -808,7 +811,8 @@ class WorkOrdersMixin:
         when not supplied explicitly (flat-rate invoices send it)."""
         if not total_cost and hours and rate:
             total_cost = round(hours * rate, 2)
-        # Dual-write the service_tasks reference beside the legacy tag.
+        # The service_tasks reference is the record; the legacy tag is
+        # stored only when resolution FAILED (never lose the tag).
         service_task_id = None
         if service_task:
             try:
@@ -818,12 +822,13 @@ class WorkOrdersMixin:
             except Exception:
                 logger.warning("service_task resolve failed for labor tag %r",
                                service_task, exc_info=True)
+        legacy_tag = "" if service_task_id else service_task
         cur = await self._db.execute(
             """INSERT INTO work_order_labor
                (account_id, work_order_id, service_task, service_task_id,
                 description, hours, rate, total_cost, created_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (account_id, work_order_id, service_task, service_task_id,
+            (account_id, work_order_id, legacy_tag, service_task_id,
              description, hours, rate, total_cost, self._now()),
         )
         await self._db.commit()

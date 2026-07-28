@@ -279,11 +279,20 @@ async def test_migration_backfills_from_actual_data(db):
     wo = await db.add_work_order(a, "", "234", "Shop")
     pid = await db.add_work_order_part(wo, part_name="Pad", service_task="brakes")
     lid = await db.add_work_order_labor(wo, a, description="Job", service_task="brakes")
+    # (The writers no longer store the tag once the reference
+    # resolves, so a pre-migration row must be simulated fully: string
+    # present, reference absent.)
     await db._db.execute(
-        "UPDATE maintenance_tasks SET service_task_id = NULL WHERE account_id = ?", (a,))
-    await db._db.execute("UPDATE work_order_parts SET service_task_id = NULL")
+        "UPDATE maintenance_tasks SET service_task_id = NULL, task_type = 'oil' "
+        "WHERE id = ?", (t_oil,))
     await db._db.execute(
-        "UPDATE work_order_labor SET service_task_id = NULL WHERE account_id = ?", (a,))
+        "UPDATE maintenance_tasks SET service_task_id = NULL, "
+        "task_type = 'flux capacitor' WHERE id = ?", (t_odd,))
+    await db._db.execute(
+        "UPDATE work_order_parts SET service_task_id = NULL, service_task = 'brakes'")
+    await db._db.execute(
+        "UPDATE work_order_labor SET service_task_id = NULL, service_task = 'brakes' "
+        "WHERE account_id = ?", (a,))
     await db._db.commit()
 
     await migrate_service_tasks_ssot(db._db)
@@ -314,16 +323,18 @@ async def test_sweep_catches_deploy_window_stragglers(db):
     pid = await db.add_work_order_part(wo, part_name="Pad", service_task="brakes")
     lid = await db.add_work_order_labor(wo, a, description="Bleed",
                                         service_task="brakes")
-    # Simulate the old code path: tag written, reference not.
+    # Simulate the old code path: tag written, reference not.  (The
+    # current writers store '' once resolved, so the tag is set here.)
     await db._db.execute(
-        "UPDATE maintenance_tasks SET service_task_id = NULL WHERE account_id = ?",
-        (a,))
+        "UPDATE maintenance_tasks SET service_task_id = NULL, task_type = "
+        "  CASE id WHEN ? THEN 'brakes' ELSE 'gremlin removal' END "
+        "WHERE account_id = ?", (mt, a))
     await db._db.execute(
-        "UPDATE work_order_labor SET service_task_id = NULL WHERE account_id = ?",
-        (a,))
+        "UPDATE work_order_labor SET service_task_id = NULL, "
+        "service_task = 'brakes' WHERE account_id = ?", (a,))
     await db._db.execute(
-        "UPDATE work_order_parts SET service_task_id = NULL "
-        "WHERE work_order_id = ?", (wo,))
+        "UPDATE work_order_parts SET service_task_id = NULL, "
+        "service_task = 'brakes' WHERE work_order_id = ?", (wo,))
     await db._db.commit()
 
     await migrate_service_task_backfill_sweep(db._db)
