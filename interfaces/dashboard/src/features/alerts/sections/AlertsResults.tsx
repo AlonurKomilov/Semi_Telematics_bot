@@ -362,18 +362,16 @@ export default function AlertsResults() {
         // the DataGrid props below); to narrow by family, pick its types
         // in the Type column filter.
         key: 'feature', label: 'Feature', sortable: true,
-        render: (v, row) => {
-          const family = String(v ?? '');
-          // Parking's family IS "Parking", so the row printed the same
-          // word twice under two headings in two treatments — which reads
-          // as a mistake, not as information.  The cell earns its space
-          // only when the family adds something the Type chip didn't.
-          const typeLabel = typeText((row as unknown as Alert).alert_type ?? '');
-          if (!family || family === typeLabel) {
-            return <span className="text-muted-foreground">—</span>;
-          }
-          return <span className="text-muted-foreground">{family}</span>;
-        },
+        // ALWAYS shows the family (owner decision 2026-07-27).  A
+        // same-word-suppression variant was tried — it compared against
+        // the static type label, which the kind-aware badges made stale,
+        // and a parking-heavy page collapsed the whole column to dashes,
+        // reading as broken data.  Slight repetition on single-type
+        // families is honest; the cell always matches what sorting and
+        // "Group rows by this" use.
+        render: (v) => (
+          <span className="text-muted-foreground">{String(v ?? '')}</span>
+        ),
       },
       {
         key: 'alert_type', label: 'Type', sortable: true,

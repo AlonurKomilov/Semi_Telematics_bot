@@ -7,6 +7,7 @@
  * feature.
  */
 import { CheckCircle2 } from 'lucide-react';
+import { Avatar, AvatarFallback } from '../../../components/ui/avatar';
 import { statusTone, toneText } from '../../../lib/status';
 import { formatDate } from '../../../utils/datetime';
 import type { Alert } from '../../../types';
@@ -126,8 +127,11 @@ export function SeverityDot({ severity }: { severity?: string }) {
 
 /**
  * Resolution marker for a non-active alert.  A human ack carries a
- * name (acknowledged_by > 0, resolved server-side to a display name);
- * a self-cleared alert has no actor and reads "Auto-resolved".  Active
+ * name (acknowledged_by > 0, resolved server-side to a display name)
+ * and renders as an initials AVATAR + name — attribution at a glance,
+ * and the human/machine contrast does the work: people get a face,
+ * a self-cleared alert stays muted "Auto-resolved" text (owner
+ * decision 2026-07-27).  The ack time lives in the tooltip.  Active
  * alerts render nothing here.
  */
 export function AckMarker({ alert, tz }: { alert: Alert; tz?: string }) {
@@ -138,11 +142,23 @@ export function AckMarker({ alert, tz }: { alert: Alert; tz?: string }) {
     : '';
   if (human) {
     const who = alert.acknowledged_by_name || 'user';
+    // Same initials recipe as the shell's AvatarMenu, so the same
+    // person renders the same chip everywhere.
+    const initials = who
+      .split(' ')
+      .map((w) => w[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
     return (
       <Tip label={when ? `Acknowledged ${when}` : ''}>
-        <span className="inline-flex items-center gap-1 text-xs font-medium text-ok">
-          <CheckCircle2 size={14} aria-hidden />
-          Acknowledged by {who}
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-foreground">
+          <Avatar size="sm" className="shrink-0">
+            <AvatarFallback className="bg-ok/20 text-ok text-2xs font-semibold">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          {who}
         </span>
       </Tip>
     );
