@@ -181,7 +181,30 @@ interface DataGridProps {
    *  measures with ``aggregable`` on the column config. */
   pivot?: boolean;
   searchKey?: string | string[];
+  /** Fixed max-height for the table body (any CSS length, e.g. ``"65vh"``).
+   *  Prefer ``fillHeight`` — this is the hand-tuned version, kept for a
+   *  grid that must be shorter than the space available to it. */
   stickyHeader?: string;
+  /** The grid owns a VIEWPORT instead of growing to fit its rows: the
+   *  body scrolls inside the card with a sticky header, while the
+   *  toolbar, the horizontal scrollbar and the pagination footer stay
+   *  put at the card's edges.
+   *
+   *  Without it, "rows per page: 250" makes the card 250 rows TALL and
+   *  hands the scrolling to the page — which pushes four controls out
+   *  of reach at once: the column headers scroll away (leaving unlabelled
+   *  columns), the custom horizontal scrollbar rides the bottom of the
+   *  table thousands of pixels down, the bulk-action bar sits above the
+   *  rows it acts on, and pagination lands past the last row.
+   *
+   *  No measurement and no magic height — the app shell is already
+   *  ``h-screen overflow-hidden`` with ONE scroll region, so this is
+   *  pure flexbox. **The parent must be a flex column with a definite
+   *  height**: give the page root ``h-full flex flex-col min-h-0`` and
+   *  this grid becomes the child that takes the remainder. Used on a
+   *  page that isn't laid out that way, the grid keeps its natural
+   *  height and nothing breaks. */
+  fillHeight?: boolean;
   searchPlaceholder?: string;
   headerToolbar?: React.ReactNode;
   /** When set, the table participates in the "Manage columns" + drag-
@@ -328,6 +351,14 @@ interface DataGridProps {
    *  the pager can count pages it has never seen. */
   pageCount?: number;
   manualPagination?: boolean;
+  /** Export EVERY row behind the grid, not the ones it holds.
+   *
+   *  Without it, "All rows" writes what the grid has — which on a
+   *  server-paginated grid is one page, in a file the operator will read
+   *  as the whole result.  A page that can fetch the full set from its
+   *  own source provides this and owns the download; the menu then says
+   *  how many rows that really is. */
+  onExportAllRows?: () => void | Promise<void>;
   /** The TRUE number of rows behind this grid, when the page hands it
    *  only a slice (a server-capped page of a larger result set).
    *
@@ -633,7 +664,7 @@ type GroupRun = {
 const noShiftStrategy: SortingStrategy = () => null;
 
 export default function DataGrid({
-  columns, data: sourceData, onRowClick, rowActions, searchKey, stickyHeader, searchPlaceholder,
+  columns, data: sourceData, onRowClick, rowActions, searchKey, stickyHeader, fillHeight, searchPlaceholder,
   pivot: pivotEnabled = false,
   headerToolbar, tableId, firstColumnLeading, rowGroupHeader, defaultRowGroup,
   defaultAggregation,
@@ -643,7 +674,7 @@ export default function DataGrid({
   isRowSelectable, selectedIds: controlledSelectedIds, onSelectedIdsChange,
   columnFilters: controlledColumnFilters, onColumnFiltersChange,
   globalFilter: controlledGlobalFilter, onGlobalFilterChange,
-  totalRows,
+  totalRows, onExportAllRows,
   sorting: controlledSorting, onSortingChange, manualSorting = false,
   pageIndex: controlledPageIndex, pageSize: controlledPageSize,
   onPaginationChange, pageCount: controlledPageCount, manualPagination = false,
@@ -2605,6 +2636,14 @@ export default function DataGrid({
   // track spans the centre region; thumb width is proportional to
   // the visible-to-total ratio, with a floor so it stays grabbable.
   const needsHScroll = scrollMetrics.scrollWidth > scrollMetrics.clientWidth + 1;
+
+  // Does the BODY scroll (rather than the page)?  True either way the
+  // grid gets its own viewport — a hand-set ``stickyHeader`` height or
+  // ``fillHeight`` taking the remaining space.  Everything downstream
+  // (sticky thead, its opaque background, the raised z-index that keeps
+  // pinned header cells above scrolled body cells) depends on the
+  // SCROLLING, not on which prop asked for it.
+  const bodyScrolls = !!stickyHeader || !!fillHeight;
   const trackWidth = Math.max(0, scrollMetrics.clientWidth - pinnedLeftWidth - pinnedRightWidth);
   const maxScrollLeft = Math.max(0, scrollMetrics.scrollWidth - scrollMetrics.clientWidth);
   const visibleRatio = scrollMetrics.scrollWidth > 0
@@ -2880,7 +2919,14 @@ export default function DataGrid({
   }, [columns, columnOrder]);
 
   return (
-    <div>
+    // ``fillHeight``: this grid is a flex child that takes whatever
+    // vertical space the page has left, and passes that constraint down
+    // to the scroll container.  ``min-h-0`` at every level is what
+    // actually lets it SHRINK — a flex item defaults to
+    // ``min-height: auto`` (never smaller than its content), which on a
+    // 250-row table means "never smaller than 250 rows" and the whole
+    // mechanism silently does nothing.
+    <div className={fillHeight ? 'flex flex-1 flex-col min-h-0' : undefined}>
       {/* Segment tab strip — OUTSIDE the card, floating directly on
           the page background (no fill of its own), like physical
           folder tabs poking up from the card below.  ``-mb-px`` +
@@ -2902,9 +2948,17 @@ export default function DataGrid({
           className="relative z-10 -mb-px flex items-end gap-1 px-6"
         >
           {effectiveSegments.map((seg, i) => {
-            const active = seg.key === activeSegment?.key;
+            // A CONTROLLED key that names nothing — a saved tab deleted
+            // while its id sat in the URL, or a link pasted from someone
+            // whose tabs differ — highlights NOTHING rather than falling
+            // back to the first tab.  The rows are still right (the page's
+            // own filters drive them), so the only question is what the
+            // strip claims: "one of these" would be a specific wrong
+            // answer, where no highlight correctly says "not one of these".
+            const highlightKey = segmentControlled ? segmentPref : activeSegment?.key;
+            const active = seg.key === highlightKey;
             const prev = i > 0 ? effectiveSegments[i - 1] : undefined;
-            const prevActive = prev?.key === activeSegment?.key;
+            const prevActive = prev?.key === highlightKey;
             // ``isTab`` = the ONE discriminator between the two tab kinds:
             // a personal SAVED TAB (TAB_PREFIX key) vs a built-in segment
             // (Active/Archive, no prefix).  Only saved tabs get the accent
@@ -2986,7 +3040,12 @@ export default function DataGrid({
           lived outside the card so only the table body had a card
           edge around it.  ``overflow-hidden`` clips the table rows
           against the card's rounded corners. */}
-      <div className="rounded-lg border border-border bg-card overflow-hidden">
+      <div className={cn(
+        'rounded-lg border border-border bg-card overflow-hidden',
+        // The card becomes the column that pins toolbar + footer to its
+        // edges and gives the table body everything between them.
+        fillHeight && 'flex flex-1 flex-col min-h-0',
+      )}>
       {/* Toolbar shares the ``bg-muted`` surface used by the table
           header row + pinned cells, so all the "chrome" surfaces
           (toolbar / header / pinned cells / footer) read as one
@@ -3129,6 +3188,9 @@ export default function DataGrid({
                         if (pivotOn) {
                           return (
                             <MenuPrimitive.Item
+                              // NOT onExportAllRows: that fetches raw rows
+                              // from the page's source, and this item
+                              // exports the PIVOT — a different artefact.
                               onClick={() => handleExportCsv('all')}
                               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent"
                             >
@@ -3161,17 +3223,25 @@ export default function DataGrid({
                                 exporting 18% of the data into a file named
                                 "-all" is not. */}
                             <MenuPrimitive.Item
-                              onClick={() => handleExportCsv('all')}
+                              onClick={() => (onExportAllRows
+                                ? void onExportAllRows()
+                                : handleExportCsv('all'))}
                               className="w-full flex items-center gap-2 px-3 py-1.5 text-xs cursor-pointer outline-none data-[highlighted]:bg-accent"
                             >
                               <Download size={14} className="text-muted-foreground" />
                               <span className="flex-1 text-foreground text-left">
-                                {holdsPartialData ? 'All loaded rows' : 'All rows'}
+                                {onExportAllRows || !holdsPartialData
+                                  ? 'All rows'
+                                  : 'All loaded rows'}
                               </span>
                               <span className="text-2xs text-muted-foreground tabular-nums">
-                                {holdsPartialData
-                                  ? `${allCount.toLocaleString()} of ${totalRows!.toLocaleString()}`
-                                  : `${allCount.toLocaleString()} rows`}
+                                {onExportAllRows
+                                  // The page fetches the whole set, so the
+                                  // honest number is the real total.
+                                  ? `${(totalRows ?? allCount).toLocaleString()} rows`
+                                  : holdsPartialData
+                                    ? `${allCount.toLocaleString()} of ${totalRows!.toLocaleString()}`
+                                    : `${allCount.toLocaleString()} rows`}
                               </span>
                             </MenuPrimitive.Item>
                           </>
@@ -3215,8 +3285,14 @@ export default function DataGrid({
         // PIVOT MODE — a report, not a record list.  Fed the SAME
         // post-segment/filter/search rows the footer aggregation reduces,
         // so the pivot's numbers can never disagree with the grid's.
-        <div className="flex items-stretch">
-          <div className="flex-1 min-w-0">
+        // Under fillHeight the card has a DEFINITE height and clips
+        // (``overflow-hidden``), and PivotView caps nothing vertically —
+        // so the matrix needs its own vertical scroller here or a tall
+        // report is silently cut off with no way to reach the rest.
+        // Horizontal scrolling stays PivotView's (its sticky row-label
+        // column depends on being inside that scroller).
+        <div className={cn('flex items-stretch', fillHeight && 'flex-1 min-h-0')}>
+          <div className={cn('flex-1 min-w-0', fillHeight && 'overflow-y-auto')}>
             <PivotView
               rows={table.getFilteredRowModel().rows
                 .filter((r) => !r.getIsGrouped())
@@ -3237,7 +3313,14 @@ export default function DataGrid({
           )}
         </div>
       ) : (
-      <div className="relative">
+      /* ``min-h-[16rem]`` rather than ``min-h-0`` is the floor: the body
+         grows to fill, but a cramped viewport (phone, or a page with a
+         tall header above the grid) stops it collapsing to a slit — the
+         page's own scroll region takes over instead.  The custom
+         horizontal scrollbar is absolutely positioned against THIS box,
+         so under fillHeight it rides the bottom of the visible area
+         instead of the bottom of the whole table. */
+      <div className={cn('relative', fillHeight && 'flex flex-1 min-h-[16rem]')}>
       <div
         ref={scrollContainerRef}
         // ``overflow-x: hidden`` + ``overflow-y: auto``: the native
@@ -3259,6 +3342,7 @@ export default function DataGrid({
         className={cn(
           'overflow-y-auto overflow-x-hidden',
           needsHScroll && 'pb-3',
+          fillHeight && 'flex-1 min-w-0',
         )}
         style={stickyHeader ? { maxHeight: stickyHeader } : undefined}
       >
@@ -3288,7 +3372,7 @@ export default function DataGrid({
           } : undefined}
         >
           <TableHeader
-            className={stickyHeader ? 'sticky top-0 z-10 bg-card' : undefined}
+            className={bodyScrolls ? 'sticky top-0 z-10 bg-card' : undefined}
           >
             {/* Group bracket row — one spanning cell per contiguous
                 run of same-``group`` columns ("Location" over Street /
@@ -3392,7 +3476,7 @@ export default function DataGrid({
                         gateReason={gateReason}
                         key={header.id}
                         header={header}
-                        stickyHeader={!!stickyHeader}
+                        stickyHeader={bodyScrolls}
                         colConfig={columns.find(c => c.key === header.column.id)}
                         uniques={uniquesByCol[header.column.id] ?? { options: [], counts: {} }}
                         rangeBounds={rangesByCol[header.column.id]}

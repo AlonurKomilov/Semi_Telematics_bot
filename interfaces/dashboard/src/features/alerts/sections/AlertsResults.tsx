@@ -54,7 +54,9 @@ import { useTimezone } from '../../../hooks/useTimezone';
 import { toneClasses } from '../../../lib/status';
 import { useAlertsFilters } from '../_shared/useAlertsFilters';
 import { useAlertsSelection } from '../_shared/AlertsSelectionContext';
-import { useAlertsQuery } from '../_shared/useAlertsQuery';
+import { useAlertsQuery, buildAlertsFilterParams } from '../_shared/useAlertsQuery';
+import { apiFetch } from '../../../api/client';
+import { toast } from 'sonner';
 import { useAckAlerts } from '../useRecentAlerts';
 import { addStagedAcks, removeStagedAcks, useStagedAckIds } from '../stagedAcks';
 import { stagedAction } from '../../../components/banners/stagedAction';
@@ -162,6 +164,40 @@ export default function AlertsResults() {
     const id = setTimeout(() => setVehicleSearch(searchDraft), 300);
     return () => clearTimeout(id);
   }, [searchDraft, vehicleSearch, setVehicleSearch]);
+
+  // Export EVERY matching row, from the server.  The grid holds 25, so
+  // its own export could only write those — under a filename an operator
+  // would reasonably read as the whole result.  Same filter params as the
+  // list (one shared builder) so the file always matches the board.
+  const exportAllRows = useCallback(async () => {
+    const params = buildAlertsFilterParams({
+      typeFilter, severityFilter, vehicleSearch, ackState, days, sort, dir,
+    });
+    try {
+      // apiFetch, not a plain link: the session rides an Authorization
+      // header, so an <a href> download would arrive unauthenticated.
+      const res = await apiFetch(`/alerts/pending/export?${params.toString()}`);
+      const blob = await res.blob();
+      const disposition = res.headers.get('content-disposition') ?? '';
+      const named = /filename="([^"]+)"/.exec(disposition)?.[1] ?? 'alerts.csv';
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = named;
+      link.click();
+      URL.revokeObjectURL(url);
+      // The server names a capped file "-first-N".  Say so here too — a
+      // filename is easy to miss, and a partial export that looks whole
+      // is the failure this endpoint exists to prevent.
+      if (named.includes('-first-')) {
+        toast.warning(
+          'Export capped — the file holds the first rows only. Narrow the view to export everything.',
+        );
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Export failed');
+    }
+  }, [typeFilter, severityFilter, vehicleSearch, ackState, days, sort, dir]);
 
   const onGridFiltersChange = useCallback((next: ColumnFiltersState) => {
     const { typeFilter: type, severityFilter: sev } = fromGridFilters(next);
@@ -573,6 +609,7 @@ export default function AlertsResults() {
         // and pivot are still local and would work on 25 rows, which is
         // what totalRows keeps them honest about.
         totalRows={totalCount}
+        onExportAllRows={exportAllRows}
         // Order is decided in SQL, so the grid must not re-sort the page
         // it was handed (that would order 25 rows and read as ordering
         // 3,984).  It reports the click; the query carries it.

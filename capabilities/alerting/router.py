@@ -6,13 +6,22 @@
 import asyncio
 import re
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from interfaces.api.deps import require_permission, require_permission_any, get_tenant_db, get_user_vehicle_nums, paginate, active_view, get_user_company_codes, filter_by_company_map
 from capabilities.alerting.service import filter_alerts_by_access
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
+
+# Ceiling on a CSV export.  Generous enough that a real filtered view is
+# never clipped, low enough that one click can't try to serialise an
+# account's entire history into memory.  Hitting it renames the file
+# rather than silently handing over a partial one.
+EXPORT_ROW_CAP = 50_000
 
 # Strip FMI sub-codes from a fault alert_key so historical variants of
 # the *same* SPN (e.g. "524133-31:..." and "524133-9:...") collapse onto
@@ -558,6 +567,94 @@ async def pending_alerts_count(
     return {"count": total}
 
 
+@router.get("/pending/export")
+async def export_pending_alerts(
+    alert_type: str | None = Query(None),
+    vehicle: str | None = Query(None),
+    q: str | None = Query(None, description="Search vehicle name or location"),
+    severity: str | None = Query(None),
+    ack_state: str | None = Query(None),
+    days: int | None = Query(None, ge=1, le=90),
+    sort: str | None = Query(None),
+    dir: str = Query("desc"),
+    user: dict = Depends(require_permission_any("can_alerts_all", "can_alerts_vehicle")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """CSV of EVERY alert matching the current filters — not the page.
+
+    The board pages 25 rows at a time, so its client-side export could
+    only ever write what was on screen.  Naming that file "all rows"
+    would be the same lie the rest of this board spent a rewrite
+    removing, so the honest export has to come from the server, where
+    the whole result set lives.
+
+    Same filters and same scoping as /pending, so the file matches the
+    board the operator was looking at — a driver exports only their own
+    truck, a company-restricted user only their companies.
+
+    Bounded at EXPORT_ROW_CAP rows.  When the cap bites, the FILENAME
+    says so: a truncated file that looks complete is worse than no file,
+    and the one artifact that always travels with the data is its name.
+    """
+    import csv
+    import io
+
+    state = _norm_ack_state(ack_state)
+    is_driver_scope = user.get("_matched_perm") == "can_alerts_vehicle"
+    company_codes = await get_user_company_codes(user)
+
+    rows = await tenant_db.get_active_alert_history_for_account_paged(
+        user["account_id"],
+        alert_type=alert_type, vehicle_substring=vehicle,
+        severity=severity, text_search=q, ack_state=state, days=days,
+        sort_by=sort, sort_dir=dir,
+        limit=EXPORT_ROW_CAP + 1,          # +1 only to DETECT truncation
+    )
+    alerts = [_shape_history_for_pending_api(r) for r in rows]
+    if is_driver_scope:
+        alerts = _filter_types_by_permission(user, alerts)
+        alerts = await _filter_own(user, alerts)
+    if company_codes:
+        veh_map = await _vehicle_company_map(user["account_id"], tenant_db)
+        alerts = filter_by_company_map(
+            alerts, company_codes, veh_map, key="vehicle_id")
+
+    truncated = len(alerts) > EXPORT_ROW_CAP
+    alerts = alerts[:EXPORT_ROW_CAP]
+
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "alert_id", "severity", "type", "kind", "vehicle", "vehicle_id", "location",
+        "occurrences", "first_seen", "last_seen", "status",
+        "acknowledged_by", "acknowledged_at", "detail",
+    ])
+    for a in alerts:
+        writer.writerow([
+            a.get("id"), a.get("severity"), a.get("alert_type"),
+            # The board's Type column shows the KIND when there is one
+            # ("Unsafe Parking", not "Parking"); a file that dropped it
+            # wouldn't match the view it was exported from.
+            a.get("kind"),
+            a.get("vehicle_name"), a.get("vehicle_id"), a.get("location"),
+            a.get("occurrence_count"), a.get("first_seen"), a.get("last_seen"),
+            a.get("status"), a.get("acknowledged_by_name"),
+            a.get("acknowledged_at"), a.get("last_detail"),
+        ])
+    buf.seek(0)
+
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    suffix = f"-first-{EXPORT_ROW_CAP}" if truncated else ""
+    return StreamingResponse(
+        buf,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition":
+                f'attachment; filename="alerts-{stamp}{suffix}.csv"',
+        },
+    )
+
+
 @router.get("/pending/segment-counts")
 async def pending_alerts_segment_counts(
     alert_type: str | None = Query(None),
@@ -1079,9 +1176,13 @@ async def update_my_alerts(
     fresh = await platform_db.get_user_by_id(db_user.id) if hasattr(
         platform_db, "get_user_by_id"
     ) else db_user
-    relevant = alert_types_for_role(fresh.role if fresh else db_user.role)
-    toggles: dict[str, bool] = {}
     target = fresh or db_user
+    relevant = await alert_types_for_user(
+        target.role, target.account_id,
+        is_manager=bool(getattr(target, "is_manager", False)),
+        is_primary_owner=bool(getattr(target, "is_primary_owner", False)),
+    )
+    toggles: dict[str, bool] = {}
     for atype in relevant:
         attr = f"alert_{atype}"
         toggles[attr] = bool(getattr(target, attr, True))

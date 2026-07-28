@@ -39,6 +39,38 @@ export interface UseAlertsQueryResult {
   pageSize: number;
 }
 
+/**
+ * The board's filters as query params — ONE builder, because the list and
+ * the CSV export must ask the same question.  Built separately they drift,
+ * and a file that quietly disagrees with the board it was exported from is
+ * the same defect as a count that disagrees with its list.
+ *
+ * Paging params are deliberately NOT here: the list wants one page, the
+ * export wants every row.
+ */
+export function buildAlertsFilterParams(f: {
+  typeFilter: string;
+  severityFilter: string;
+  vehicleSearch: string;
+  ackState: string;
+  days: number;
+  sort: string;
+  dir: string;
+}): URLSearchParams {
+  const params = new URLSearchParams();
+  if (f.typeFilter !== 'all') params.set('alert_type', f.typeFilter);
+  if (f.severityFilter !== 'all') params.set('severity', f.severityFilter);
+  // ``q`` searches vehicle name OR location server-side.  The old
+  // ``vehicle`` param matched names only, and location was searchable
+  // solely within the rows already loaded — which quietly meant "some
+  // of your alerts".  One box, one meaning, whole queue.
+  if (f.vehicleSearch) params.set('q', f.vehicleSearch);
+  params.set('ack_state', f.ackState);
+  params.set('days', String(f.days));
+  if (f.sort) { params.set('sort', f.sort); params.set('dir', f.dir); }
+  return params;
+}
+
 export function useAlertsQuery(): UseAlertsQueryResult {
   const {
     typeFilter,
@@ -68,22 +100,13 @@ export function useAlertsQuery(): UseAlertsQueryResult {
   const q = useQuery<AlertsResponse | VehiclesAlertsResponse>({
     queryKey,
     queryFn: () => {
-      const params = new URLSearchParams();
-      if (typeFilter !== 'all') params.set('alert_type', typeFilter);
-      if (severityFilter !== 'all') params.set('severity', severityFilter);
-      // ``q`` searches vehicle name OR location server-side.  The old
-      // ``vehicle`` param matched names only, and location was searchable
-      // solely within the rows already loaded — which quietly meant "some
-      // of your alerts".  One box, one meaning, whole queue.
-      if (vehicleSearch) params.set('q', vehicleSearch);
-      params.set('ack_state', ackState);
-      params.set('days', String(days));
-      if (sort) { params.set('sort', sort); params.set('dir', dir); }
+      const params = buildAlertsFilterParams({
+        typeFilter, severityFilter, vehicleSearch, ackState, days, sort, dir,
+      });
       params.set('page_size', String(pageSize));
       params.set('page', String(page));
-      const qs = params.toString();
       return apiJSON<AlertsResponse | VehiclesAlertsResponse>(
-        `/alerts/pending${qs ? `?${qs}` : ''}`,
+        `/alerts/pending?${params.toString()}`,
       );
     },
     placeholderData: (prev) => prev,

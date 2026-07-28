@@ -390,3 +390,63 @@ class TestRealPages:
         data = await _get(seeded["app"], seeded["token"],
                           "/api/alerts/pending?page_size=2&page=3")
         assert len(data["alerts"]) == 1
+
+
+class TestServerSideExport:
+    """The board pages 25 rows at a time, so a client-side "export all"
+    could only ever write what was on screen.  This endpoint exists so the
+    file matches the QUERY, not the page — and carries the same scoping,
+    because an export that widened a driver's view would leak."""
+
+    async def _csv(self, app, token, query=""):
+        async with AsyncClient(
+            transport=ASGITransport(app=app), base_url="http://t"
+        ) as c:
+            r = await c.get(f"/api/alerts/pending/export?{query}",
+                            headers={"Authorization": f"Bearer {token}"})
+            assert r.status_code == 200, r.text
+            return r
+
+    async def test_exports_every_matching_row_not_one_page(self, seeded):
+        r = await self._csv(seeded["app"], seeded["token"])
+        lines = [l for l in r.text.strip().splitlines() if l]
+        assert len(lines) == 6            # header + all 5 seeded rows
+        assert lines[0].startswith("alert_id,severity,type,kind,vehicle")
+
+    async def test_honours_the_board_filters(self, seeded):
+        r = await self._csv(seeded["app"], seeded["token"], "alert_type=fault")
+        lines = [l for l in r.text.strip().splitlines() if l]
+        assert len(lines) == 3            # header + the 2 faults
+        assert "T-300" not in r.text      # the health alert is excluded
+
+    async def test_honours_the_search(self, seeded):
+        r = await self._csv(seeded["app"], seeded["token"], "q=Battle")
+        assert "T-100" in r.text and "T-300" in r.text
+        assert "T-400" not in r.text
+
+    async def test_is_a_csv_attachment(self, seeded):
+        r = await self._csv(seeded["app"], seeded["token"])
+        assert r.headers["content-type"].startswith("text/csv")
+        assert "attachment" in r.headers["content-disposition"]
+        assert ".csv" in r.headers["content-disposition"]
+
+    async def test_driver_exports_only_their_own_truck(self, seeded, pg_db):
+        """An export that widened scope would be a data leak, not a bug."""
+        acct = seeded["acct"]
+        driver = await pg_db.create_user(9301, acct.id, role=Role.DRIVER)
+        await pg_db.assign_vehicle(
+            user_id=driver.id, account_id=acct.id, truck_num="T-100",
+            assigned_by=0, is_primary=True,
+        )
+        token = create_jwt(driver.telegram_id, acct.id, "driver")
+        r = await self._csv(seeded["app"], token)
+        assert "T-100" in r.text
+        for other in ("T-200", "T-300", "T-400", "T-500"):
+            assert other not in r.text
+
+    async def test_requires_auth(self, seeded):
+        async with AsyncClient(
+            transport=ASGITransport(app=seeded["app"]), base_url="http://t"
+        ) as c:
+            r = await c.get("/api/alerts/pending/export")
+            assert r.status_code in (401, 403, 422)
