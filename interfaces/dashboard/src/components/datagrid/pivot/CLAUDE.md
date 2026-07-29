@@ -314,6 +314,16 @@ load-bearing — don't regress them:
   own grey.
 - **Pool rows reserve the checkbox column** (`w-3.5` spacer) so labels
   sit on one x in every region.
+- **Target sizes (S5, verified by circle math — don't eyeball):**
+  row micro-controls (grip / + / ⋮) carry invisible `p-1` → 22px hit
+  boxes that conform via WCAG 2.5.8's spacing exception, some on
+  **1.5–2.5px margins** (zone grip ↔ checkbox) — widening ANY of them
+  further breaks a neighbour's exception; recompute before touching.
+  The search-clear ✕ is a true 24×24 (`p-1` + 16px icon) because it
+  nests inside the input, where no exception is available. The resize
+  handle is 8px (`-left-1 w-2`) and honestly BELOW the floor — an edge
+  separator has nowhere to grow: reaching further inward puts it on
+  top of the pool grips at z-10 (verified regression, reverted).
 - **The zone header is a BAND, not the first row** (second audit run,
   after the owner compared against MUI's two-band grammar): `bg-muted/70`
   fill + a `border-b` hairline while open, one treatment on all three

@@ -1,6 +1,6 @@
 ---
 name: ux-layout-composition-audit
-description: Layout-composition audit — the sibling of ux-psychology-audit, aimed at its blind spot. It audits whether an ARRANGEMENT communicates structure before a single word is read — four passes: S1 regions & enclosure (can the eye count the zones?), S2 spacing hierarchy (does between-group air exceed within-group?), S3 weight & affordance (does visual form declare each region's role — source vs destination, interactive vs static — and is every drag/drop target visible BEFORE the interaction?), S4 stability (does the layout hold still as content changes?). On explicit request ("region audit", "deep layout audit") switch to Part R — a region-tree census that walks every container including hidden-state geometry (empty zones, drag states) found in code conditionals. Includes the sanctioned reference-comparison method (auditing against a mature implementation like MUI without cargo-culting it). Use when a surface "looks mixed", components "are not separated", users can't tell where one section ends, for any multi-zone panel (pivot/report builders, form builders, layer panels, dashboards, drag-and-drop surfaces), after building or restructuring a page/panel layout, or when comparing an in-house component against a reference. Report is delivered IN CHAT (no files by default).
+description: Layout-composition audit — the sibling of ux-psychology-audit, aimed at its blind spot. It audits whether an ARRANGEMENT communicates structure before a single word is read — five passes: S1 regions & enclosure (can the eye count the zones?), S2 spacing hierarchy (does between-group air exceed within-group?), S3 weight & affordance (does visual form declare each region's role — source vs destination, interactive vs static — and is every drag/drop target visible BEFORE the interaction?), S4 stability (does the layout hold still as content changes?), S5 proportion & placement (does SIZE track logical importance — visual hierarchy, Fitts, WCAG 2.5.8 target minimums — and do recurring controls hold one position across sibling surfaces?). On explicit request ("region audit", "deep layout audit") switch to Part R — a region-tree census that walks every container including hidden-state geometry (empty zones, drag states) found in code conditionals. Includes the sanctioned reference-comparison method (auditing against a mature implementation like MUI without cargo-culting it). Use when a surface "looks mixed", components "are not separated", users can't tell where one section ends, for any multi-zone panel (pivot/report builders, form builders, layer panels, dashboards, drag-and-drop surfaces), after building or restructuring a page/panel layout, or when comparing an in-house component against a reference. Report is delivered IN CHAT (no files by default).
 ---
 
 # UX Audit — layout composition
@@ -20,7 +20,16 @@ surface.
 > |---|---|
 > | "this gap/radius/size isn't on the scale" · "this control isn't the shared primitive" (e.g. a native checkbox amid styled ones) | the design-system pass ([design.md](../../../interfaces/dashboard/design.md) + [CLAUDE.md](../../../interfaces/dashboard/CLAUDE.md)) |
 > | "this word means two things" · "one object, two faces" · "a region has no heading" · "offered then refused" · "flow starts at 0%" | `ux-psychology-audit` (C1/C2/C3/P) |
-> | "these two zones read as one" · "between-gap equals within-gap" · "the empty zone has no drop area" · "source and destination look alike" · "the layout walks under the cursor" · "the page rebuilds on a mode switch" (the geometric fact; the comprehension cost stays with C3) | **this skill** |
+> | "these two zones read as one" · "between-gap equals within-gap" · "the empty zone has no drop area" · "source and destination look alike" · "the layout walks under the cursor" · "the page rebuilds on a mode switch" (the geometric fact; the comprehension cost stays with C3) · "too small to hit" · "bigger than its importance" · "this control moved between sibling pages" | **this skill** |
+>
+> The dividing rule for sizes mirrors the spacing one: the design
+> pass owns whether a height/width is a legal ladder step (`h-8`,
+> `max-w-lg`); this skill owns whether the RESULTING hit area is big
+> enough, whether the size matches the element's importance, and
+> whether same-class components agree on a step. Tie-breaker: an
+> off-ladder size anywhere → design pass, even when it is also too
+> small; a ladder-legal size that still fails the 24px floor, inverts
+> importance, or splits same-class siblings across steps → here.
 >
 > The dividing rule for spacing: the design pass owns whether a
 > SINGLE value is legal on the scale (is `gap-2` sanctioned); this
@@ -80,7 +89,7 @@ separates it from its neighbours, and what it renders when **empty**.
 This inventory is the audit's table of contents; a region missing from
 it is a region the audit silently skipped.
 
-## Step 2 — the four passes
+## Step 2 — the five passes
 
 Statuses per pass per surface (same family as the sibling's, so
 rollups merge):
@@ -90,7 +99,7 @@ rollups merge):
 | `CLEAR` | No composition problem — say what carries it |
 | `CONFUSION` | A concrete problem — propose the exact structural fix |
 | `N/A` | Pass genuinely doesn't apply — one-line reason |
-| `DARK-PATTERN-RISK` | Composition used manipulatively — flag it + the honest alternative (S3's gate) |
+| `DARK-PATTERN-RISK` | Composition used manipulatively — flag it + the honest alternative (S3's gate, extended by S5) |
 | `NEEDS-CONTEXT` | Can't judge without X — name X |
 
 ### S1. Regions & enclosure (Gestalt: common region)
@@ -213,6 +222,61 @@ configuration is a rapid sequence, so a walking layout compounds.
   `min-h` on regions whose content toggles; overlay-based previews
   instead of in-flow mutations.
 
+### S5. Proportion & placement (visual hierarchy · Fitts · WCAG 2.5.8)
+
+Size is a CLAIM of importance and position is a PROMISE of recurrence.
+An element bigger than its logical rank lies about the hierarchy; a
+control that migrates between sibling surfaces resets muscle memory
+every visit.
+
+- **Size tracks logic:** for any pair where one element is logically
+  subordinate to the other (an icon to its label, a caption to its
+  value, decoration to signal), is the subordinate rendered
+  equal-or-smaller ON A LIKE METRIC — text vs text by font-size step,
+  icon vs icon by icon step, container vs container by bounding box?
+  Mixed icon-and-text pairs are judged against the design system's own
+  icon-pairing table (e.g. 16px icon with `text-sm` is a sanctioned
+  pairing and CLEAR; only a pairing above its row — a 24px icon in a
+  dense table cell — inverts). Name both elements and their rendered
+  sizes; every inversion is a finding. Prominence order AMONG a
+  surface's ACTIONS — which button out-weighs which — stays S3's
+  frequency-and-consequence check; this check owns
+  element-to-satellite pairs, so one inversion never lands in both.
+- **Same class, one size:** do same-class components — on this surface
+  and its siblings — share one size step (all zone headers, all KPI
+  cards, dialogs of similar content volume)? A deviation must trace to
+  a role difference (S3's territory); "it just came out bigger" fails.
+  (Repeated ROW height/rhythm stays S2's check — this one takes
+  non-row components: headers, cards, controls, overlays.)
+- **Targets are hittable:** compute every pointer target's hit box
+  from its padding + content classes; the floor is **24×24 CSS px**
+  (WCAG 2.5.8 AA). State the exceptions honestly and completely: an
+  undersized target still conforms when (a) SPACING — a 24px-diameter
+  circle centered on its bounding box intersects no neighbouring
+  target and no circle of another undersized target; (b) INLINE — a
+  link inside a sentence or line of text; (c) EQUIVALENT — a ≥24px
+  control on the same view does the same thing; (d) user-agent
+  default styling; (e) essential presentation. Never claim an AA
+  failure for an exempt target — but an exempt target can still be a
+  Fitts finding: a micro-target in the top tier of S3's frequency
+  ranking takes free, invisible padding whenever it can grow toward
+  24px without intersecting a neighbour or reflowing the layout.
+  Edge and drag handles rarely qualify for any exception — measure
+  them first, they are the usual worst offenders.
+- **Container fits content:** a container fails OVERSIZED when the
+  next-smaller sanctioned step would hold the same content with no new
+  wrap, truncation, or scroll (a wide-editor dialog holding one
+  confirm sentence); it fails UNDERSIZED when content truncates,
+  clips, or overflow-scrolls at its current step while a larger
+  sanctioned step exists. Quote both steps.
+- **Expected places:** recurring controls (close/dismiss, the primary
+  action, the destructive action) hold ONE position across sibling
+  surfaces; two similar dialogs whose primary buttons sit in different
+  corners is a finding even when each is fine alone.
+- **Honesty (the S3 gate extends here):** size used to steer —
+  inflating the option that profits, shrinking the decline — is
+  `DARK-PATTERN-RISK`.
+
 ## Deep mode — Part R: region-tree audit (on explicit request)
 
 Trigger phrases: "region audit", "deep layout audit", "audit every
@@ -232,13 +296,14 @@ every *container*.
    the S1 region-anatomy check judged explicitly on its card — this
    line exists because the first run RECORDED "headerComposition" for
    a header that failed the anatomy check nobody had yet written.
-2. **One card per region**, S1–S4 verdicts each, terse:
+2. **One card per region**, S1–S5 verdicts each, terse:
    ```
    ### <tree path, e.g. Panel → Values zone>
    - S1 Enclosure — OK | ISSUE: <finding + fix> `Impact · Effort`
    - S2 Spacing — …
    - S3 Weight/affordance — …
    - S4 Stability — …
+   - S5 Proportion/placement — …
    ```
 3. **Synthesis by the main session:** cross-region consistency matrix
    (which zones share enclosure grammar, which diverge and whether the
@@ -291,9 +356,9 @@ mouse+keyboard reference for a touch sheet).
 - Surfaces audited: <n> | Not yet audited: <list or "none">
 
 ## Part S summary
-| Surface | S1 Regions | S2 Spacing | S3 Weight/affordance | S4 Stability |
-|---|---|---|---|---|
-| <name> | STATUS | STATUS | STATUS | STATUS |
+| Surface | S1 Regions | S2 Spacing | S3 Weight/affordance | S4 Stability | S5 Proportion/placement |
+|---|---|---|---|---|---|
+| <name> | STATUS | STATUS | STATUS | STATUS | STATUS |
 
 ## Findings
 ### <Surface name>

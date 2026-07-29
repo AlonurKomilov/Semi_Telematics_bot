@@ -438,11 +438,14 @@ export default function PivotPanel({
         aria-orientation="vertical"
         aria-label="Resize pivot panel"
         // S5 (proportion & placement): the grab strip was w-1 — a 4px
-        // target, and at the panel edge no WCAG spacing exception
-        // applies (the row grips' 24px circles intersect it).  The HIT
-        // area is now 10px; the paint still only appears on hover, so
-        // nothing thickens visually at rest.
-        className="absolute inset-y-0 -left-1 w-2.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-10"
+        // target.  Now 8px (-4..+4): verification showed a wider
+        // inward reach sits ON TOP of the pool grips at z-10 (cursor
+        // flicker, 2px of every grip stolen), so the strip stops 4px
+        // short of the grip box at x=8.  Honestly documented as BELOW
+        // the 24px floor with no WCAG exception available (the grip
+        // circles reach x=7) — an edge separator has nowhere to grow;
+        // paint appears on hover only, so nothing thickens at rest.
+        className="absolute inset-y-0 -left-1 w-2 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-10"
         onPointerDown={(e) => {
           e.preventDefault();
           const startX = e.clientX;
@@ -495,9 +498,9 @@ export default function PivotPanel({
               type="button"
               onClick={() => setQuery('')}
               aria-label="Clear search"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="absolute right-1 top-1/2 -translate-y-1/2 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
-              <X size={12} />
+              <X size={16} />
             </button>
           )}
         </div>
@@ -759,7 +762,7 @@ function FieldRow({
           {...attributes}
           {...listeners}
           aria-label={`Reorder ${label}`}
-          className="shrink-0 p-1 -ml-2 rounded cursor-grab active:cursor-grabbing text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors touch-none"
+          className="shrink-0 p-1 -ml-1 rounded cursor-grab active:cursor-grabbing text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors touch-none"
         >
           <GripVertical size={14} />
         </button>
