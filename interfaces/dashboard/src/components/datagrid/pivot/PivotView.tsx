@@ -153,27 +153,22 @@ export default function PivotView({
   const stickyTotalCell = 'sticky right-0 z-20 bg-card';
   const stickyTotalHead = 'sticky right-0 z-30 bg-muted';
 
-  const sourceRows = rows.length;
-
   return (
     <div className={cn(fill && 'flex h-full flex-col min-h-0')}>
-      {/* What this report covers, and why two familiar controls are gone.
-          A control that vanishes on a mode switch owes the user a line —
-          hiding beats greying, but SILENT removal reads as breakage.
-
-          PINNED, not scrolled with the matrix: it explains what you are
-          looking at, so it has to be readable at the point you might
-          actually wonder — which is deep in the rows, not at the top. */}
-      <p className={cn(
-        'px-3 py-2 text-2xs text-muted-foreground border-b border-border',
-        fill && 'shrink-0',
-      )}>
-        Summarising all {sourceRows.toLocaleString()} row{sourceRows === 1 ? '' : 's'} that
-        match your current tab, filters and search — column layout and paging
-        don't apply here.
-      </p>
+      {/* No caption band.  It used to explain the scope and why paging
+          had gone, but the scope now reads off the tab strip ("All rows
+          500") and the footer ("Total rows: 4") — the two places people
+          already look — so the sentence was a third telling of the same
+          fact, costing a row of height on every report. */}
       <div className={cn('overflow-x-auto', fill && 'flex-1 min-h-0 overflow-y-auto')}>
-      <table className="w-full text-sm border-collapse">
+      {/* ``min-w-full``, NOT ``w-full``.  Pinned to the container width
+          the table had no choice but to compress: 60 driver columns
+          squeezed to a few characters each, headers wrapped to three
+          lines, and there was nothing to scroll because nothing
+          overflowed.  Allowed to take its natural width it overflows,
+          and the wrapper's ``overflow-x-auto`` finally has a job — which
+          matters most exactly when the fields panel narrows the grid. */}
+      <table className="min-w-full text-sm border-collapse">
         <thead>
           {result.headerLevels.map((level, levelIdx) => {
             const isLeafLevel = levelIdx === result.headerLevels.length - 1;
@@ -199,7 +194,7 @@ export default function PivotView({
                     colSpan={cell.span}
                     className={cn(
                       padding,
-                      'text-right text-xs font-medium text-muted-foreground uppercase tracking-wide',
+                      'text-right text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap',
                       'border-b border-border',
                       // A vertical rule at each column-group boundary so
                       // "North | South" reads as two blocks, not one run.

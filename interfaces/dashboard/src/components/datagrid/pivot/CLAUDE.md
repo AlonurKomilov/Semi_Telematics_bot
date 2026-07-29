@@ -119,6 +119,21 @@ date column at all and `score` is a per-driver average — test 2+3),
 - A saved model naming columns the grid no longer has is pruned
   (`prunePivotModel`) — the same staleness rule saved tabs apply.
 
+## The matrix takes its natural width
+
+The table is **`min-w-full`, never `w-full`**. Pinned to the container
+width it has no choice but to compress — 60 driver columns squeezed to a
+few characters each, headers wrapped to three lines, and nothing to
+scroll because nothing overflowed. Allowed its natural width it
+overflows and the wrapper's `overflow-x-auto` finally has a job, which
+matters most exactly when the fields panel narrows the grid. Header
+cells are `whitespace-nowrap` for the same reason: a wrapped header is a
+column that gave up its width instead of claiming it.
+
+This is also what makes the two sticky edges earn their keep — the
+row-label column and the Total column only mean anything once there IS
+horizontal scroll.
+
 ## The card keeps one skeleton across both modes
 
 Pagination is genuinely meaningless on a pivot, so the footer bar goes —
@@ -126,10 +141,10 @@ but the band it occupied must not just become dead space. Under
 `fillHeight` PivotView pins its two edges and scrolls only the matrix
 between them:
 
-- the **caption** ("Summarising all N rows that match your current tab,
-  filters and search") stays at the top. It explains what you're looking
-  at and why paging vanished, so it has to be readable at the moment you
-  might actually wonder — which is deep in the rows, not at the top.
+- there is **no caption band**. It used to state the scope and explain
+  why paging had gone, but the tab strip already says "All rows 500" and
+  the footer says "Total rows: 4" — so it was a third telling of the
+  same fact, costing a row of height on every report.
 - the **panel is a PEER COLUMN of the whole grid** — toolbar, body and
   footer all sit to its left — not a box inside the body region. Nested
   in the body it began below the toolbar and stopped above the footer,
