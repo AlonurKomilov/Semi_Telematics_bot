@@ -25,6 +25,7 @@ import { toneClasses } from '../../../lib/status';
 import { AGG_FN_LABELS } from '../../../types';
 import type { AnyColumn, AggFn } from '../../../types';
 import { offeredAggFns } from '../aggregation';
+import { insertionIndex } from './pivot';
 import type { PivotModel, PivotValueField } from './pivot';
 
 /**
@@ -296,12 +297,16 @@ export default function PivotPanel({
     setDragKey(null);
     setDrop(null);
     if (!target || !accepts(key, target.zone)) return;
-    if (target.zone === from && from !== 'pool') {
-      moveTo(from as Axis, key, target.index);
-      return;
-    }
-    if (target.zone === from) return;      // pool → pool is a no-op
-    place(key, target.zone, target.index);
+    if (target.zone === from && from === 'pool') return;   // pool → pool
+    // ONE path for every drop, and it matches what the line drew.
+    // ``place`` removes then inserts, so the index has to be the
+    // insert-before position corrected for that removal — see
+    // ``insertionIndex``.  Routing same-list moves through arrayMove
+    // instead was the bug: its ``to`` is a FINAL index, not an
+    // insert-before one, so dragging a field downward landed it one
+    // slot past the line.
+    const at = target.zone === from ? keysIn(target.zone).indexOf(key) : -1;
+    place(key, target.zone, insertionIndex(at, target.index));
   };
 
   const onDragCancel = () => { setDragKey(null); setDrop(null); };
@@ -577,11 +582,18 @@ export default function PivotPanel({
               active={isTarget}
               className="rounded-md border border-border bg-muted/30 overflow-hidden"
             >
+              {/* The header is a BAND, not the first row: its own fill
+                  (and a hairline under it while open) puts the control
+                  that governs the zone on a different plane than the
+                  rows it governs — the S1 region-anatomy rule. */}
               <button
                 type="button"
                 onClick={() => toggleFold(axis)}
                 aria-expanded={open}
-                className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
+                className={cn(
+                  'w-full flex items-center justify-between gap-2 px-3 py-2 bg-muted/70 hover:bg-muted transition-colors',
+                  open && 'border-b border-border',
+                )}
               >
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   {AXIS_LABEL[axis]}
@@ -611,7 +623,7 @@ export default function PivotPanel({
                 <>
                   {keys.length === 0 && (
                     <div className={cn(
-                      'mx-2 mb-2 min-h-9 flex items-center rounded border border-dashed px-2.5',
+                      'mx-2 my-2 min-h-9 flex items-center rounded border border-dashed px-2.5',
                       isTarget ? 'border-primary bg-primary/5' : 'border-border',
                     )}>
                       <p className={cn(

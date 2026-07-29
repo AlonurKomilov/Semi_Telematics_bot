@@ -116,6 +116,18 @@ CLEAR.
   grammar for "this is a zone", not a card here and a bare run there?
   (Divergence between OPPOSITE-role regions is S3's mandate, never an
   S1 finding.)
+- **Region anatomy (inside the border):** when a region has internal
+  parts — a header bar (label, count, fold control), a content list, a
+  footer — does each part render as a distinct band (fill step, bottom
+  border, or weight), so you can point at where the header ends and
+  the content begins WITHOUT reading? A header sharing the exact
+  surface, padding and rhythm of the rows it governs reads as the
+  first row, not as the bar that owns them (figure–ground; the
+  accordion-summary convention: a control that governs a group sits on
+  a different plane than the group's members). All region headers on
+  the surface share ONE band treatment. A static caption over an
+  unenclosed list is a label, not a header bar — the check applies to
+  regions whose header IS a control or whose body is enclosed.
 - Typical fixes: give each zone a bounded container (border or tinted
   fill + padding + radius from the system's tokens); a full-bleed
   divider *plus* breathing room where boxes would be too heavy; an
@@ -215,6 +227,11 @@ every *container*.
    conditional that mounts, hides, or resizes a CONTAINER must map to
    a census row; a container not in the census goes under
    **"Not audited"** at the end.
+   A recorded census column is not an audited one: every region whose
+   census row shows internal parts (a header entry plus a list) gets
+   the S1 region-anatomy check judged explicitly on its card — this
+   line exists because the first run RECORDED "headerComposition" for
+   a header that failed the anatomy check nobody had yet written.
 2. **One card per region**, S1–S4 verdicts each, terse:
    ```
    ### <tree path, e.g. Panel → Values zone>

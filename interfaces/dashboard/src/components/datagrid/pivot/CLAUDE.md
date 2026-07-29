@@ -281,6 +281,12 @@ load-bearing — don't regress them:
   own grey.
 - **Pool rows reserve the checkbox column** (`w-3.5` spacer) so labels
   sit on one x in every region.
+- **The zone header is a BAND, not the first row** (second audit run,
+  after the owner compared against MUI's two-band grammar): `bg-muted/70`
+  fill + a `border-b` hairline while open, one treatment on all three
+  zones — the control that governs a group sits on a different plane
+  than the group's members (S1 region-anatomy check, added to the
+  skill from this exact finding).
 
 ### Only ROWS are required
 
