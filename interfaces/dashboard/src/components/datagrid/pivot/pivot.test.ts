@@ -578,3 +578,27 @@ describe('switching a field OFF without unassigning it', () => {
     expect(drilled.reduce((a, r) => a + Number(r.rate), 0)).toBe(400);
   });
 });
+
+describe('the off-state never outlives the assignment', () => {
+  it('sweeps a disabled entry for a field that is no longer assigned', () => {
+    // Switch a field off, then remove it, then re-add it: without this
+    // sweep the stale entry survives and the field comes back ALREADY
+    // unticked, with nothing on screen explaining why.
+    const removed: PivotModel = {
+      rows: ['customer'], columns: [],
+      values: [{ key: 'rate', aggFn: 'sum' }],
+      // 'delivered_at' was switched off and then unassigned.
+      disabled: ['delivered_at'],
+    };
+    expect(prunePivotModel(removed, COLUMNS).disabled).toEqual([]);
+  });
+
+  it('keeps the off-state of a field that IS still assigned', () => {
+    const kept: PivotModel = {
+      rows: ['customer'], columns: ['delivered_at'],
+      values: [{ key: 'rate', aggFn: 'sum' }],
+      disabled: ['delivered_at'],
+    };
+    expect(prunePivotModel(kept, COLUMNS).disabled).toEqual(['delivered_at']);
+  });
+});

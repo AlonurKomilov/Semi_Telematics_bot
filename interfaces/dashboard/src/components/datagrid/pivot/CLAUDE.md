@@ -282,6 +282,13 @@ as "nothing is off". Removing is the ⋮ menu or a drag back to the pool.
 on a switched-off dimension would hand back rows the number on screen
 never counted. A test pins that.
 
+⚠️ **`disabled` ⊆ assigned.** `prunePivotModel` sweeps entries for
+fields that are no longer on any axis, so the invariant holds however
+the model was written. Enforcing it there rather than at each unassign
+site is deliberate: switching a field off and then removing it used to
+leave a ghost entry, so re-adding it later brought it back already
+unticked with nothing on screen explaining why.
+
 ### Dragging
 
 Drag runs between EVERY list — pool ↔ Rows ↔ Columns ↔ Values — and

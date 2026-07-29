@@ -439,10 +439,20 @@ export function isPivotReady(model: PivotModel): boolean {
  *  tabs apply to their filters. */
 export function prunePivotModel(model: PivotModel, columns: AnyColumn[]): PivotModel {
   const keys = new Set(columns.map((c) => c.key));
+  const rows = model.rows.filter((k) => keys.has(k));
+  const cols = model.columns.filter((k) => keys.has(k));
+  const values = model.values.filter((v) => keys.has(v.key));
+  // ``disabled`` only ever describes fields that are ASSIGNED.  Sweeping
+  // it here — rather than at each call site that can unassign — makes
+  // the invariant hold however the model was written.  Without it, a
+  // field switched off and then removed left a ghost entry behind, so
+  // re-adding it later brought it back already unticked with nothing on
+  // screen explaining why.
+  const assigned = new Set([...rows, ...cols, ...values.map((v) => v.key)]);
   return {
-    rows: model.rows.filter((k) => keys.has(k)),
-    columns: model.columns.filter((k) => keys.has(k)),
-    values: model.values.filter((v) => keys.has(v.key)),
+    rows,
+    columns: cols,
+    values,
     // ``sort`` MUST survive the prune.  Rebuilding the model field-by-
     // field silently dropped it, which killed the whole feature: every
     // header click wrote a sort that the next render threw away, so the
@@ -451,7 +461,7 @@ export function prunePivotModel(model: PivotModel, columns: AnyColumn[]): PivotM
     // back to label order) — that is a rendering decision, not a reason
     // to discard the user's choice here.
     sort: model.sort ?? null,
-    disabled: (model.disabled ?? []).filter((k) => keys.has(k)),
+    disabled: (model.disabled ?? []).filter((k) => assigned.has(k)),
   };
 }
 

@@ -108,6 +108,7 @@ const PERM_GROUPS: PermGroup[] = [
       { key: 'can_invite',             label: 'Send Invites', indented: true },
       { key: 'can_manage_companies',   label: 'Manage Companies', indented: true },
       { key: 'can_manage_work_hours',  label: 'Working Hours', indented: true },
+      { key: 'can_manage_role_config', label: 'Feature Config', indented: true, description: 'Save team-default page layouts for their OWN role (the page gear’s "Team default" block). General settings holders can set any role’s.' },
     ],
   },
   {

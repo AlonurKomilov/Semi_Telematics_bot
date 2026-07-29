@@ -20,6 +20,7 @@ import { Tip } from '../../components/tooltip';
 import { toneText } from '../../lib/status';
 import { usePagePreference } from '../../preferences';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
+import { usePermissions } from '../../hooks/usePermissions';
 import { useShellConfig } from '../../hooks/useShellConfig';
 import { useRoleView } from '../../context/RoleViewContext';
 import { useRoleLayoutMutations } from './useRolePageLayouts';
@@ -161,11 +162,16 @@ export function PageSectionsGear<P extends object>({
 
 
 /**
- * The manager tier's door, inside the same gear.
+ * The team-default door, inside the same gear.
  *
- * Renders only for someone who may actually save (owner/admin, or a
- * manager on THEIR OWN role's view — the server re-checks regardless).
- * "Set as team default" captures the manager's CURRENT resolved view —
+ * WHO sees it is the Permissions matrix's call, checked twice:
+ *   - the ACTIVE VIEW's permission set must carry the grant, so a
+ *     "view as Fleet" preview stays faithful — the block appears for
+ *     exactly the people who'd see it on that view for real;
+ *   - the CALLER must also be authorized (``can_manage_account``, or
+ *     the grant on their own role's view) so the button is never a
+ *     dead click — the server authorizes the caller, not the view.
+ * "Use my current arrangement" captures the CURRENT resolved view —
  * what they see is what the team gets — and per Option A it remains a
  * default: teammates' own arrangements still apply on top.
  */
@@ -177,17 +183,18 @@ function ManagerBlock<P extends object>({
   base: string[];
   hasRoleDefault: boolean;
 }) {
-  const { has, hasAny } = useViewPermissions();
+  const { has: viewHas } = useViewPermissions();
+  const { has: iHave, role: myRole } = usePermissions();
   const { persona } = useShellConfig();
   const { viewLabel } = useRoleView();
   const { value: pref } = usePagePreference(feature, 'layout');
   const { save, clear, busy, lastAction } = useRoleLayoutMutations(persona, feature);
 
-  // Drivers have no dashboard team defaults, and the grant is the UI
-  // gate only — the API enforces own-role for managers on its own.
-  const mayManage = persona !== 'driver'
-    && (has('can_manage_account') || hasAny('can_manage_role_pages'));
-  if (!mayManage) return null;
+  // Drivers have no dashboard team defaults (the Mini App is their surface).
+  const viewShows = viewHas('can_manage_account') || viewHas('can_manage_role_config');
+  const callerMay = iHave('can_manage_account')
+    || (iHave('can_manage_role_config') && myRole === persona);
+  if (persona === 'driver' || !viewShows || !callerMay) return null;
 
   const current = resolvePageLayout(base, registry, pref);
 
