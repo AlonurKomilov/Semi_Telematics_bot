@@ -398,8 +398,6 @@ def _backoff_hours_for_attempt(attempt_index: int, schedule: tuple[int, ...]) ->
     return schedule[attempt_index]
 
 
-@register_alert_source("critical_reescalate", trigger="interval", hours=1)
-
 async def _spine_remind(tenant, account_id: int, history_id: int, *,
                         vname: str, atype: str, age_str: str,
                         attempt_n: int) -> bool:
@@ -436,6 +434,7 @@ async def _spine_remind(tenant, account_id: int, history_id: int, *,
     return any(r.ok for r in results)
 
 
+@register_alert_source("critical_reescalate", trigger="interval", hours=1)
 async def re_escalate_critical_alerts(app=None):
     """Hourly job: bump unacknowledged CRITICAL/WARNING alerts.
 
