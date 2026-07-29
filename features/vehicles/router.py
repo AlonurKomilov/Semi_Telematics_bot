@@ -508,6 +508,39 @@ def _validate_mileage_range(start: str, end: str) -> None:
         )
 
 
+def _merge_unit_rows(rows: list[dict]) -> list[dict]:
+    """Collapse mileage rows to ONE per unit, keyed by (name, COMPANY).
+
+    A truck whose gateway was swapped can keep the retired telematics id
+    in ``vehicle_state`` (production: PTG's "6729" carries two ids), and
+    each id produced its own row.  Miles sum across those devices — that
+    IS the unit's driving — while the odometer span stays the device
+    that drove most of them, because two devices' odometers aren't on
+    one scale; the ``device_change`` flag says so.
+
+    Company is part of the key on purpose: unit numbers repeat ACROSS
+    companies (production: "103" exists in both G1 and OSY), and those
+    are different trucks.  Merging on the bare name would fuse two real
+    vehicles into one wrong row.
+    """
+    groups: dict[tuple[str, str], list[dict]] = {}
+    for r in rows:
+        groups.setdefault(
+            (r["vehicle_name"], r.get("company") or ""), []).append(r)
+    out: list[dict] = []
+    for group in groups.values():
+        group.sort(key=lambda g: g["miles"], reverse=True)
+        primary = dict(group[0])
+        if len(group) > 1:
+            primary["miles"] = round(sum(g["miles"] for g in group), 1)
+            primary["days_covered"] = max(g["days_covered"] for g in group)
+            if sum(1 for g in group if g["miles"] > 0) > 1:
+                primary["flag"] = "device_change"
+        out.append(primary)
+    out.sort(key=lambda v: v["miles"], reverse=True)
+    return out
+
+
 @router.get("/mileage")
 async def account_period_mileage(
     start: str = Query(..., description="YYYY-MM-DD, inclusive"),
@@ -535,26 +568,40 @@ async def account_period_mileage(
     meta_by_vid = {str(v.get("id") or ""): v for v in visible if v.get("id")}
 
     covered: set[str] = set()
-    vehicles: list[dict] = []
+    seen: list[dict] = []
     for r in rows:
         meta = meta_by_vid.get(r["vehicle_id"])
         if not meta:
             continue
         covered.add(r["vehicle_id"])
-        vehicles.append({
+        seen.append({
             **r,
             "vehicle_name": meta.get("name") or r["vehicle_name"],
             "company": meta.get("_org") or meta.get("company_code") or "",
         })
+
+    vehicles = _merge_unit_rows(seen)
+    named = {(v["vehicle_name"], v.get("company") or "") for v in vehicles}
+
     no_data = sorted(
         (v.get("name") or "") for vid, v in meta_by_vid.items()
         if vid not in covered
     )
+    _named_only = {n for n, _co in named}
+    no_data = [n for n in no_data if n and n not in _named_only]
+    # How current the stored odometer history actually is.  When the
+    # ingest stalls (or simply hasn't rolled up today yet) the newest
+    # reading trails the requested end, and the totals are short by
+    # exactly that much — the UI says so instead of letting the number
+    # quietly disagree with Samsara.
+    data_through = max((v.get("end_read_on") or "" for v in vehicles),
+                       default="")
     return {
         "start": start, "end": end,
         "vehicles": vehicles,
         "total_miles": round(sum(v["miles"] for v in vehicles), 1),
-        "no_data": [n for n in no_data if n],
+        "no_data": no_data,
+        "data_through": data_through,
     }
 
 

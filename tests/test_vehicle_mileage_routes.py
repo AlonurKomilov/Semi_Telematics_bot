@@ -64,7 +64,7 @@ async def mileage_app(pg_db):
     from interfaces.api.app import create_api
     app = create_api()
     yield {
-        "app": app, "acct": acct,
+        "app": app, "acct": acct, "db": db,
         "token_owner": create_jwt(owner.telegram_id, acct.id, "owner"),
         "token_driver": create_jwt(driver.telegram_id, acct.id, "driver"),
     }
@@ -240,3 +240,70 @@ class TestVehicleTrips:
         # start → now, not start → int64 max; and never negative.
         assert 0 <= t["duration_min"] < 60 * 24 * 400
         assert body["driving_min"] < 60 * 24 * 400
+
+
+class TestUnitMerge:
+    """One row per unit — but ONLY within a company.
+
+    Same unit number in two companies = two different trucks (production:
+    "103" in G1 and OSY).  Same number twice in ONE company = a gateway
+    swap (production: PTG's "6729").  vehicle_state's unique constraint
+    blocks creating the second case through the API, so the grouping is
+    exercised directly on the pure helper.
+    """
+
+    @staticmethod
+    def _row(name, company, miles, **kw):
+        return {"vehicle_id": kw.get("vid", f"{name}-{company}-{miles}"),
+                "vehicle_name": name, "company": company, "miles": miles,
+                "start_odo": kw.get("start_odo", 0),
+                "end_odo": kw.get("end_odo", miles),
+                "start_read_on": "2026-07-01", "end_read_on": "2026-07-03",
+                "days_covered": kw.get("days", 2), "flag": kw.get("flag", "")}
+
+    def test_same_name_different_companies_stay_separate(self):
+        from features.vehicles.router import _merge_unit_rows
+        out = _merge_unit_rows([
+            self._row("103", "G1", 500.0),
+            self._row("103", "OSY", 300.0),
+        ])
+        assert len(out) == 2
+        assert {r["company"] for r in out} == {"G1", "OSY"}
+        assert all(r["flag"] == "" for r in out)
+
+    def test_gateway_swap_in_one_company_merges(self):
+        from features.vehicles.router import _merge_unit_rows
+        out = _merge_unit_rows([
+            self._row("6729", "PTG", 600.0, vid="old", days=2),
+            self._row("6729", "PTG", 400.0, vid="new", days=3),
+        ])
+        assert len(out) == 1
+        assert out[0]["miles"] == 1000.0        # the unit's real driving
+        assert out[0]["days_covered"] == 3
+        assert out[0]["flag"] == "device_change"
+        assert out[0]["vehicle_id"] == "old"    # the device that drove most
+
+    def test_retired_device_with_no_miles_is_absorbed_silently(self):
+        from features.vehicles.router import _merge_unit_rows
+        out = _merge_unit_rows([
+            self._row("6729", "PTG", 900.0, vid="live"),
+            self._row("6729", "PTG", 0.0, vid="dead"),
+        ])
+        assert len(out) == 1 and out[0]["miles"] == 900.0
+        # only ONE device drove — no need to warn about the odometer span
+        assert out[0]["flag"] == ""
+
+    def test_sorted_by_miles_desc(self):
+        from features.vehicles.router import _merge_unit_rows
+        out = _merge_unit_rows([
+            self._row("a", "X", 10.0), self._row("b", "X", 90.0),
+        ])
+        assert [r["vehicle_name"] for r in out] == ["b", "a"]
+
+
+class TestDataFreshness:
+    @pytest.mark.asyncio
+    async def test_data_through_reports_newest_stored_day(self, mileage_app):
+        r = await _get(mileage_app["app"], f"/api/vehicles/mileage?{RANGE}",
+                       mileage_app["token_owner"])
+        assert r.json()["data_through"] == "2026-07-03"
