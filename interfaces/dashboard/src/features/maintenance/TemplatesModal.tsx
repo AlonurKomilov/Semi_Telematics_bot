@@ -6,6 +6,7 @@ import { apiJSON } from '../../api/client';
 import type { MaintenanceTemplate } from '../../types';
 import { PRIORITY_OPTIONS } from './badges';
 import ServiceTaskPicker from '../service-tasks/ServiceTaskPicker';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 
 // Priority options carry lowercase wire values; title-case the display
@@ -28,6 +29,8 @@ interface Props {
 // re-usable seed for new tasks.  Edit-in-place is omitted; the
 // expected workflow is "delete + recreate" since templates are tiny.
 export function TemplatesModal({ onClose, onChange }: Props) {
+  const { has: hasPerm } = useViewPermissions();
+  const canCreateTasks = hasPerm('can_service_tasks');
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['maintenance-templates'],
@@ -233,7 +236,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
               {/* The same picker the add/edit forms use — a template
                   that offers a different task list than the form it
                   fills is how vocabularies fork. */}
-              <ServiceTaskPicker value={nType} onChange={setNType} />
+              <ServiceTaskPicker value={nType} onChange={setNType} canCreate={canCreateTasks} />
             </label>
             <label className="block">
               <span className="block text-xs text-muted-foreground mb-1">Priority</span>

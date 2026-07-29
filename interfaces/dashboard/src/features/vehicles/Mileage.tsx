@@ -42,7 +42,7 @@ interface MileageRow {
   start_read_on: string;
   end_read_on: string;
   days_covered: number;
-  flag: '' | 'partial' | 'reset' | 'catchup';
+  flag: '' | 'partial' | 'reset' | 'catchup' | 'device_change';
 }
 
 interface MileageResponse {
@@ -51,6 +51,9 @@ interface MileageResponse {
   vehicles: MileageRow[];
   total_miles: number;
   no_data: string[];
+  /** Newest stored odometer day across the result — when it trails the
+   *  requested end, the totals are short by exactly that much. */
+  data_through?: string;
 }
 
 /** Range start for the picker's convention: DateRangePresets computes
@@ -64,6 +67,10 @@ function startFor(end: string, days: number): string {
 }
 
 const FLAG_NOTE: Record<string, { label: string; tip: string }> = {
+  device_change: {
+    label: 'Device change',
+    tip: 'This unit reported from more than one telematics device in the range. Miles are summed across them; the odometer columns show the device that drove most of them, so the span alone will not equal the total.',
+  },
   catchup: {
     label: 'Catch-up days',
     tip: 'The odometer feed went silent for some days and then reported the backlog in one reading — the range total is real, but if the range starts inside such a gap it can include some earlier driving.',
@@ -165,6 +172,15 @@ export default function Mileage() {
           isFetching={isFetching}
         />
       </div>
+
+      {data?.data_through && data.data_through < end && rows.length > 0 && (
+        <p className="mb-3 text-xs text-muted-foreground">
+          Odometer history currently reaches <strong>{data.data_through}</strong> —
+          driving after that isn’t in these totals yet (the nightly roll-up
+          fills it in). Trip drill-ins read Samsara live, so they can show
+          later days.
+        </p>
+      )}
 
       {error && rows.length === 0 ? (
         <ErrorState

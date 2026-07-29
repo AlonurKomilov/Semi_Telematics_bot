@@ -5,11 +5,12 @@ page's sections; every teammate's page then starts from it (each user's
 personal preference still applies on top — Option A, a default not a
 lock).
 
-WHO may write follows the Group-delivery precedent exactly: the
-``can_manage_role_pages`` grant gates the UI, and the API re-checks
-is_manager + role regardless — owner/admin may set any role's default,
-a manager only their own role's.  The flag alone never widens which
-role may be edited.
+WHO may write is decided by the Permissions matrix, so the owner sets
+the scale: ``can_manage_account`` may set ANY role's default;
+``can_manage_role_config`` (seeded on at manager tier, delegatable to
+any tier via the matrix) may set the caller's OWN role's only.  The
+own-role wall is code, not configuration — no grant combination lets a
+fleet user rearrange the safety team's page.
 
 WHAT is valid is shape-only here.  The backend does not know the
 frontend's section registry, so required-section enforcement lives in
@@ -21,6 +22,7 @@ can't be used as a scratchpad.
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from capabilities.permissions.roles import Role, get_user_permissions
 from interfaces.api.deps import get_current_user, get_tenant_db
 
 router = APIRouter(prefix="/page-layouts", tags=["page-layouts"])
@@ -40,17 +42,30 @@ _VALID_ROLES = frozenset({
 })
 
 
-def _may_manage_role_pages(user: dict, role: str) -> bool:
-    """Owner/admin: any role.  A role manager: their OWN role only.
+async def _may_manage_role_config(user: dict, role: str) -> bool:
+    """The matrix decides WHO; code decides HOW FAR.
 
-    Mirrors ``_may_manage_persona_bot`` — the grant is a UI affordance;
-    THIS check is the enforcement, so a mis-seeded flag can never let a
-    fleet manager rearrange the safety team's page.
+    Resolves the caller's EFFECTIVE permission set (their own tier row,
+    per-account overrides included), so whatever the owner ticked in the
+    Permissions matrix is the authority:
+      * ``can_manage_account``      → any role's default,
+      * ``can_manage_role_config``  → the caller's OWN role's only.
+    The own-role wall stays hard-coded — delegating the grant to a fleet
+    employee can never extend to the safety team's page.
     """
     own = user.get("role", "")
-    if own in ("owner", "admin"):
+    try:
+        perms = await get_user_permissions(
+            Role(own),
+            user["account_id"],
+            is_manager=bool(user.get("is_manager")),
+            is_primary_owner=bool(user.get("is_primary_owner")),
+        )
+    except ValueError:
+        return False        # a role string Role() doesn't know
+    if perms.can_manage_account:
         return True
-    return bool(user.get("is_manager")) and own == role
+    return bool(perms.can_manage_role_config) and own == role
 
 
 class PageLayoutBody(BaseModel):
@@ -89,10 +104,10 @@ async def set_page_layout(
         raise HTTPException(status_code=422, detail="Unknown role")
     if feature not in _ALLOWED_FEATURES:
         raise HTTPException(status_code=422, detail="Unknown feature page")
-    if not _may_manage_role_pages(user, role):
+    if not await _may_manage_role_config(user, role):
         raise HTTPException(
             status_code=403,
-            detail="Only this role's manager (or an owner/admin) can set its team default",
+            detail="Setting this role's team default needs the feature-config permission",
         )
     sections = [s.strip() for s in body.sections if s.strip()]
     if not sections or len(set(sections)) != len(sections):
@@ -119,10 +134,10 @@ async def clear_page_layout(
         raise HTTPException(status_code=422, detail="Unknown role")
     if feature not in _ALLOWED_FEATURES:
         raise HTTPException(status_code=422, detail="Unknown feature page")
-    if not _may_manage_role_pages(user, role):
+    if not await _may_manage_role_config(user, role):
         raise HTTPException(
             status_code=403,
-            detail="Only this role's manager (or an owner/admin) can clear its team default",
+            detail="Clearing this role's team default needs the feature-config permission",
         )
     removed = await tenant_db.delete_page_layout(user["account_id"], role, feature)
     if removed is None:

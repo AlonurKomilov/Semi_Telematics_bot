@@ -1,10 +1,10 @@
 """Role-default page layouts (tier two of the page-config model).
 
 What must hold:
-  * WHO — owner/admin set any role's default; a MANAGER only their own
-    role's; a plain employee nobody's.  The grant is UI affordance; the
-    API's is_manager+role re-check is the enforcement, so a mis-seeded
-    flag can never let a fleet manager rearrange the safety team's page.
+  * WHO — the Permissions matrix decides: ``can_manage_account`` may set
+    any role's default; ``can_manage_role_config`` (manager-tier seed,
+    owner-delegatable to any tier) the caller's OWN role's only.  The
+    own-role wall is code — no grant combination crosses roles.
   * WHAT — shape-only validation here (the backend has no section
     registry); garbage shapes are refused so the table can't become a
     scratchpad.
@@ -96,6 +96,62 @@ class TestWhoMayWrite:
             r = await c.put("/api/page-layouts/fleet/alerts",
                             json={"sections": SECTIONS},
                             headers=_h(seeded["emp"]))
+            assert r.status_code == 403
+
+    async def test_owner_can_delegate_the_grant_to_a_plain_employee(self, seeded):
+        """The matrix is the authority: ticking Feature Config on the
+        fleet EMPLOYEE row lets a plain fleet user set the fleet
+        default — and still nobody else's (the own-role wall is code)."""
+        from capabilities.permissions.roles import invalidate_permissions_cache
+        db, acct = seeded["db"], seeded["acct"]
+        await db.set_role_permissions(
+            acct.id, "fleet", {"can_manage_role_config": True}, 9401)
+        invalidate_permissions_cache(acct.id)
+        async with await _client(seeded["app"]) as c:
+            r = await c.put("/api/page-layouts/fleet/alerts",
+                            json={"sections": SECTIONS},
+                            headers=_h(seeded["emp"]))
+            assert r.status_code == 200
+            r = await c.put("/api/page-layouts/safety/alerts",
+                            json={"sections": SECTIONS},
+                            headers=_h(seeded["emp"]))
+            assert r.status_code == 403
+
+    async def test_standard_admin_needs_the_matrix_grant(self, seeded):
+        """Intentional tightening (documented in page-config.md): a
+        Standard Admin starts with neither flag — the owner delegates
+        via the matrix.  Ticking Feature Config on the admin row gives
+        OWN-role reach; any-role needs Full Admin's can_manage_account."""
+        from capabilities.permissions.roles import invalidate_permissions_cache
+        db, acct = seeded["db"], seeded["acct"]
+        std_admin = await db.create_user(9404, acct.id, role=Role.ADMIN)
+        tok = create_jwt(std_admin.telegram_id, acct.id, "admin")
+        async with await _client(seeded["app"]) as c:
+            r = await c.put("/api/page-layouts/admin/alerts",
+                            json={"sections": SECTIONS}, headers=_h(tok))
+            assert r.status_code == 403
+            await db.set_role_permissions(
+                acct.id, "admin", {"can_manage_role_config": True}, 9401)
+            invalidate_permissions_cache(acct.id)
+            r = await c.put("/api/page-layouts/admin/alerts",
+                            json={"sections": SECTIONS}, headers=_h(tok))
+            assert r.status_code == 200
+            r = await c.put("/api/page-layouts/fleet/alerts",
+                            json={"sections": SECTIONS}, headers=_h(tok))
+            assert r.status_code == 403
+
+    async def test_owner_can_revoke_the_grant_from_a_manager_row(self, seeded):
+        """Narrowing works too: unticking Feature Config on the senior
+        (``fleet__manager``) row takes the block away from managers."""
+        from capabilities.permissions.roles import invalidate_permissions_cache
+        db, acct = seeded["db"], seeded["acct"]
+        await db.set_role_permissions(
+            acct.id, "fleet__manager", {"can_manage_role_config": False}, 9401)
+        invalidate_permissions_cache(acct.id)
+        async with await _client(seeded["app"]) as c:
+            r = await c.put("/api/page-layouts/fleet/alerts",
+                            json={"sections": SECTIONS},
+                            headers=_h(seeded["mgr"]))
             assert r.status_code == 403
 
     async def test_delete_gated_the_same_way(self, seeded):

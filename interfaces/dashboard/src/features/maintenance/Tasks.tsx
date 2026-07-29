@@ -38,6 +38,7 @@ import type { MaintenanceTemplate } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, formatDay } from '../../utils/datetime';
 import { useTaskLabels } from '../service-tasks/useTaskLabels';
+import { useViewPermissions } from '../../hooks/useViewPermissions';
 
 // Status dropdown options. Labels are computed via STATUS_LABELS so
 // the on-screen text is properly capitalised ("In Progress", not
@@ -510,6 +511,11 @@ export default function Tasks() {
   // (which served customs only; standards leaned on a hardcoded map
   // that had drifted).  Archived included: history keeps its label.
   const { byValue: customTypeLabelByValue } = useTaskLabels();
+  // Inline task creation is gated by can_service_tasks — the picker's
+  // backend gate.  Offering the "+ Add" option to a role the server
+  // will 403 teaches the permission by failure.
+  const { has: hasPerm } = useViewPermissions();
+  const canCreateTasks = hasPerm('can_service_tasks');
 
   // Apply a template's defaults into the open add-form fields.  Only
   // touches the fields the template actually sets, so the user can
@@ -1459,7 +1465,7 @@ export default function Tasks() {
           )}
           <label className="block">
             <span className="block text-xs text-muted-foreground mb-1">Service task</span>
-            <ServiceTaskPicker value={fType} onChange={setFType} />
+            <ServiceTaskPicker value={fType} onChange={setFType} canCreate={canCreateTasks} />
           </label>
           <label className="block">
             <span className="block text-xs text-muted-foreground mb-1">Description</span>
@@ -1846,7 +1852,7 @@ export default function Tasks() {
                   on the create form (and vice versa). */}
               <label className="block">
                 <span className="block text-xs text-muted-foreground mb-1">Service task</span>
-                <ServiceTaskPicker value={eType} onChange={setEType} />
+                <ServiceTaskPicker value={eType} onChange={setEType} canCreate={canCreateTasks} />
               </label>
               <label className="block">
                 <span className="block text-xs text-muted-foreground mb-1">Priority</span>

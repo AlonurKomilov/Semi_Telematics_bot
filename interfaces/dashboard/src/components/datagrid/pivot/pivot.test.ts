@@ -138,16 +138,30 @@ describe('pivot — numbers', () => {
 });
 
 describe('pivot — guards', () => {
-  it('is empty without a row field or without a measure', () => {
+  it('needs a ROW field, and only a row field', () => {
+    // Measures are optional: with none you still get the groups and
+    // their counts, which is a real answer AND keeps the report on
+    // screen while a measure is toggled off to compare.
     expect(pivot(ROWS, model({ rows: [] }), COLUMNS).empty).toBe(true);
-    expect(pivot(ROWS, model({ values: [] }), COLUMNS).empty).toBe(true);
     expect(isPivotReady(model({ rows: [] }))).toBe(false);
-    expect(isPivotReady(model())).toBe(true);
+
+    const noMeasure = pivot(ROWS, model({ values: [] }), COLUMNS);
+    expect(noMeasure.empty).toBe(false);
+    expect(noMeasure.bodyRows.map((r) => r.label)).toEqual(['Acme', 'Bolt']);
+    // Counts survive; every cell is blank rather than 0.
+    expect(noMeasure.bodyRows[0].count).toBeGreaterThan(0);
+    expect(noMeasure.bodyRows[0].cells.every((c) => c === null)).toBe(true);
+    expect(isPivotReady(model({ values: [] }))).toBe(true);
   });
 
   it('ignores fields that no longer exist on the grid', () => {
+    // A measure naming a dead column is dropped, which leaves the model
+    // measure-less — still a renderable report, not an error.
     const r = pivot(ROWS, model({ values: [{ key: 'gone', aggFn: 'sum' }] }), COLUMNS);
-    expect(r.empty).toBe(true);
+    expect(r.empty).toBe(false);
+    expect(r.bodyRows[0].cells.every((c) => c === null)).toBe(true);
+    // A dead ROW field is different — that IS the one requirement.
+    expect(pivot(ROWS, model({ rows: ['gone'] }), COLUMNS).empty).toBe(true);
   });
 
   it('prunes a stale saved model against live columns', () => {
@@ -288,7 +302,9 @@ describe('pivot — CSV export matches what is on screen', () => {
   });
 
   it('exports nothing when the pivot is not configured', () => {
-    expect(pivotToCsvRows(pivot(ROWS, model({ values: [] }), COLUMNS))).toEqual([]);
+    // Unconfigured now means "no row field" — a measure-less report is
+    // a real one (groups + counts) and exports as such.
+    expect(pivotToCsvRows(pivot(ROWS, model({ rows: [] }), COLUMNS))).toEqual([]);
   });
 });
 
@@ -548,14 +564,18 @@ describe('switching a field OFF without unassigning it', () => {
     };
     expect(pivot(ROWS, two, COLUMNS).leafIds.length).toBe(2);
     // Disabling by KEY switches both entries for that column off — the
-    // checkbox is per FIELD, which is what the panel renders.
-    expect(pivot(ROWS, { ...two, disabled: ['rate'] }, COLUMNS).empty).toBe(true);
+    // checkbox is per FIELD, which is what the panel renders.  The
+    // report survives with no measures at all: groups and counts stay,
+    // so the configuration is still on screen to switch back on.
+    const none = pivot(ROWS, { ...two, disabled: ['rate'] }, COLUMNS);
+    expect(none.empty).toBe(false);
+    expect(none.bodyRows.map((r) => r.label)).toEqual(['Acme', 'Bolt']);
   });
 
-  it('is not ready when every measure is switched off', () => {
+  it('stays ready with every measure off, but not with every ROW off', () => {
     const m = model({ columns: [] });
     expect(isPivotReady(m)).toBe(true);
-    expect(isPivotReady({ ...m, disabled: ['rate'] })).toBe(false);
+    expect(isPivotReady({ ...m, disabled: ['rate'] })).toBe(true);
     expect(isPivotReady({ ...m, disabled: ['customer'] })).toBe(false);
   });
 

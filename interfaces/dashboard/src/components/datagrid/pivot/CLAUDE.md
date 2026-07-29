@@ -260,6 +260,29 @@ typing a query could hide fields you had already assigned, leaving the
 count badges reading 2/1/1 over three empty lists with no way to remove
 anything.
 
+### Only ROWS are required
+
+A report renders as soon as it has one row dimension. Measures and
+column dimensions are REFINEMENTS: switch every measure off and you
+still get the groups and their counts (`Disney Studios (20)`), which is
+a real answer to "how do these 500 rows split by customer?".
+
+This matters most while you are experimenting. Requiring a measure meant
+unticking your last one replaced the whole report with an empty state —
+taking the configuration you had just built off screen at exactly the
+moment you were toggling something to compare with and without. MUI
+behaves the same way, for the same reason.
+
+With no measure there is still ONE leaf column per column bucket, so the
+column-group headers keep something to span and the matrix keeps its
+shape; every cell is `null`, painted as a dash. With neither columns nor
+measures the header collapses to a single empty level so the corner cell
+(the row field's name) still has a row to live in.
+
+The guard is on the RESOLVED dimensions, not the raw keys — a saved
+model naming a column the grid no longer has would otherwise render a
+table with no row identity at all.
+
 ### The checkbox switches a field OFF — it does not unassign it
 
 Unticking keeps the field exactly where you put it: same section, same

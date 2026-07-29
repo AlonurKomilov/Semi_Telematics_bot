@@ -602,7 +602,10 @@ export default function WorkOrderForm() {
   // Creating a NEW custom task type goes through the maintenance
   // endpoint gated by can_maintenance_all — hide the inline creator
   // from anyone who'd 403 on it.
-  const canManageTaskTypes = has('can_maintenance_all');
+  // Matches the backend gate on POST /service-tasks — it was
+  // can_maintenance_all before, which both offered the option to roles
+  // the server refuses AND hid it from roles the server allows.
+  const canManageTaskTypes = has('can_service_tasks');
 
   const entriesFor = (task: string) =>
     parts.map((pt, idx) => ({ pt, idx })).filter(e => (e.pt.service_task || '') === task);

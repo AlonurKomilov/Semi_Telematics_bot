@@ -201,6 +201,7 @@ async def run_all(conn) -> None:
     await migrate_notification_digest_queue(conn)
     await migrate_notification_inbox(conn)
     await migrate_page_layouts(conn)
+    await migrate_role_config_perm_rename(conn)
     await migrate_notification_deliveries(conn)
     await migrate_push_subscriptions(conn)
     # Capacity monitoring (operator console): platform metric history +
@@ -651,6 +652,55 @@ async def migrate_page_layouts(conn) -> None:
         await conn.commit()
     except Exception:
         pass
+
+
+async def migrate_role_config_perm_rename(conn) -> None:
+    """Rename ``can_manage_role_pages`` → ``can_manage_role_config`` inside
+    stored ``role_permissions`` JSON.
+
+    The key lived for one day (2026-07-28→29) before the rename; the
+    matrix UI never displayed it, so any stored value is the tier seed,
+    not an owner's choice.  Rows are rewritten (not just left to be
+    ignored) so a stale key can't shadow a real one if the resolver's
+    unknown-key tolerance ever tightens.  Idempotent: rows without the
+    old key are untouched."""
+    try:
+        import json as _json
+        cur = await conn.execute(
+            "SELECT id, permissions FROM role_permissions"
+            " WHERE permissions LIKE '%can_manage_role_pages%'"
+        )
+        rows = await cur.fetchall()
+        for row in rows:
+            row_id, raw = row[0], row[1]
+            try:
+                perms = _json.loads(raw or "{}")
+            except (ValueError, TypeError):
+                continue
+            if "can_manage_role_pages" not in perms:
+                continue
+            # Plain overwrite: the new key had no other writer during the
+            # old key's one-day life, so the old value is the truth.
+            perms["can_manage_role_config"] = perms.pop("can_manage_role_pages")
+            await conn.execute(
+                "UPDATE role_permissions SET permissions = ? WHERE id = ?",
+                (_json.dumps(perms), row_id),
+            )
+        await conn.commit()
+        if rows:
+            logger.info(
+                "Migration: renamed role-config permission key in %d rows",
+                len(rows),
+            )
+    except Exception:
+        # Failing is SAFE (the resolver drops unknown keys and the field
+        # falls back to its seed default) but a permissions-touching
+        # migration must never fail silently.
+        logger.warning(
+            "Migration: role-config permission key rename failed; stale "
+            "rows keep the old key (harmless — resolver ignores it)",
+            exc_info=True,
+        )
 
 
 async def migrate_notification_inbox(conn) -> None:

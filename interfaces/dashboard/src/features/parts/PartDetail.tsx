@@ -233,7 +233,7 @@ export default function PartDetail() {
     { key: 'vehicle_name', label: 'Vehicle', sortable: true, pivotable: true },
     { key: 'vendor_name', label: 'Vendor', sortable: true, pivotable: true },
     {
-      key: 'service_task', label: 'Task', sortable: false, pivotable: true,
+      key: 'service_task', label: 'Service task', sortable: false, pivotable: true,
       render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>),
     },
     {

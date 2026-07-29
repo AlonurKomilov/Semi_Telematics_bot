@@ -104,8 +104,9 @@ export interface PivotResult {
   /** Labels for the Total column group, one per value field.  Empty when
    *  there is no column dimension to total ACROSS. */
   totalLabels: string[];
-  /** True when the model can't produce a table yet (no value field, or no
-   *  row field).  Callers show the "choose fields" empty state. */
+  /** True when the model can't produce a table yet — i.e. no ROW field.
+   *  Measures and column dimensions are optional; without them the
+   *  report still lists the groups and their counts. */
   empty: boolean;
 }
 
@@ -177,8 +178,18 @@ export function pivot(
     rowFieldLabel: '', bodyRows: [], grandTotal: [],
     grandRowTotal: [], totalLabels: [], empty: true,
   };
-  // A pivot needs something to break down BY and something to measure.
-  if (activeRows.length === 0 || valueFields.length === 0) return blank;
+  // Only a ROW field is mandatory.  Measures and column dimensions are
+  // refinements: switch every measure off and you still get the groups
+  // and their counts, which is a real answer ("how do these 500 loads
+  // split by customer?") and — more importantly — keeps the report you
+  // built ON SCREEN while you toggle a measure to compare with and
+  // without.  Blanking to an empty state took the configuration away
+  // at exactly the moment the user was experimenting with it.
+  if (activeRows.length === 0) return blank;
+  // With no measure there is still ONE leaf per column bucket, so the
+  // column-group headers keep something to span and the matrix keeps
+  // its shape (MUI does the same).  ``leavesPerBucket`` is that width.
+  const leavesPerBucket = Math.max(1, valueFields.length);
 
   // ── Buckets ────────────────────────────────────────────────────────
   // Sorted so the output is deterministic (and so 'YYYY-MM' month
@@ -189,6 +200,10 @@ export function pivot(
   const rowDims = activeRows
     .map((k) => cols.get(k))
     .filter((c): c is AnyColumn => !!c);
+  // Guard on the RESOLVED dimensions, not the raw keys: a saved model
+  // naming a column the grid no longer has would otherwise pass the
+  // check above and render a table with no row identity at all.
+  if (rowDims.length === 0) return blank;
 
   const rowPathIds: string[] = [];        // every prefix, DFS order
   const seenRowPath = new Set<string>();
@@ -222,6 +237,13 @@ export function pivot(
   const leafIds: string[] = [];
   const leafValueKeys: string[] = [];
   for (const cb of effectiveColBuckets) {
+    if (valueFields.length === 0) {
+      // Empty value key — ``cellsFor`` reads that as "nothing to
+      // measure" and emits null, which the view paints as a dash.
+      leafIds.push(`${cb}||`);
+      leafValueKeys.push('');
+      continue;
+    }
     for (const v of valueFields) {
       leafIds.push(`${cb}||${v.key}`);
       leafValueKeys.push(v.key);
@@ -254,13 +276,19 @@ export function pivot(
       ) j += 1;
       level.push({
         label: labelOf(effectiveColPaths[i][depth], dimCol),
-        span: (j - i) * valueFields.length,
+        span: (j - i) * leavesPerBucket,
       });
       i = j;
     }
     return level;
   });
-  const headerLevels: PivotHeaderCell[][] = [...dimensionLevels, valueLevel];
+  // A value level naming nothing would be an empty header row.  And
+  // with neither columns nor measures there are no levels at all — emit
+  // one empty level so the corner cell (the row field's name) still has
+  // a row to live in.
+  const headerLevels: PivotHeaderCell[][] = valueFields.length
+    ? [...dimensionLevels, valueLevel]
+    : (dimensionLevels.length ? dimensionLevels : [[]]);
 
   // ── Cells ──────────────────────────────────────────────────────────
   // Collect the contributing numbers per (rowBucket, leaf), then reduce
@@ -329,7 +357,8 @@ export function pivot(
       .filter((p) => p !== ''),
   );
   const cellsFor = (rb: string) => leafIds.map((leaf, i) => {
-    const v = valueFields.find((f) => f.key === leafValueKeys[i])!;
+    const v = valueFields.find((f) => f.key === leafValueKeys[i]);
+    if (!v) return null;                    // no measure selected
     return reduce(
       v.aggFn,
       collected.get(`${rb} ${leaf}`),
@@ -402,7 +431,8 @@ export function pivot(
   walk(ROOT);
 
   const grandTotal = leafIds.map((leaf, i) => {
-    const v = valueFields.find((f) => f.key === leafValueKeys[i])!;
+    const v = valueFields.find((f) => f.key === leafValueKeys[i]);
+    if (!v) return null;
     return reduce(v.aggFn, totals.get(leaf), colCounts.get(colOf(leaf)) ?? totalRowCount);
   });
 
@@ -430,8 +460,7 @@ export function isPivotReady(model: PivotModel): boolean {
   // report with nothing to show, and the empty state has to say so
   // rather than the matrix rendering a header with no numbers under it.
   const off = new Set(model.disabled ?? []);
-  return model.rows.some((k) => !off.has(k))
-    && model.values.some((v) => !off.has(v.key));
+  return model.rows.some((k) => !off.has(k));
 }
 
 /** Drop fields that no longer exist on the grid (a column was removed or

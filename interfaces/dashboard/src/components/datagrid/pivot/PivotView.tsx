@@ -85,30 +85,19 @@ export default function PivotView({
   }), [result.bodyRows, collapsed]);
 
   if (result.empty) {
-    // Name the MISSING piece rather than restating both requirements —
-    // an operator who already picked Rows shouldn't be told to pick Rows.
-    const needsRows = model.rows.length === 0;
-    const needsValues = model.values.length === 0;
+    // Only ROWS are required now: without a measure the report still
+    // shows the groups and their counts, so the one thing that can't be
+    // missing is what each line represents.
     return (
       <EmptyState
         icon={TableProperties}
-        title={
-          needsRows && needsValues ? 'Choose what to summarise'
-            : needsValues ? 'Choose a value to measure'
-              : 'Choose a field to group by'
-        }
+        title="Choose a field to group by"
         // "Fields" was the old toolbar button's name.  That button is
         // gone — the panel is titled Pivot — so the copy was pointing at
         // a control that no longer exists anywhere on screen.  Name what
         // the reader can actually see, and ship the button rather than
         // only describing where to find it.
-        description={
-          needsRows && needsValues
-            ? 'In the Pivot panel, pick what each line should represent (Rows) and the numbers to total (Values).'
-            : needsValues
-              ? 'In the Pivot panel, open Values and pick the numbers to total, e.g. Rate.'
-              : 'In the Pivot panel, open Rows and pick what each line should represent, e.g. Customer.'
-        }
+        description="In the Pivot panel, open Rows and pick what each line should represent, e.g. Customer. Add numbers to total under Values."
         action={onOpenPanel ? (
           <Button type="button" onClick={onOpenPanel}>Open pivot fields</Button>
         ) : undefined}
