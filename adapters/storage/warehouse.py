@@ -1215,6 +1215,16 @@ class WarehouseMixin(_MixinBase):
             "as_of": d.get("day_utc"),
         }
 
+    @staticmethod
+    def _days_between(a: str, b: str) -> int:
+        """Whole days from ISO day ``a`` to ISO day ``b`` (0 when equal,
+        negative when ``b`` precedes ``a``)."""
+        from datetime import date as _d
+        try:
+            return (_d.fromisoformat(str(b)[:10]) - _d.fromisoformat(str(a)[:10])).days
+        except ValueError:
+            return 0
+
     # A team (two drivers, 24h) tops out around 1,400 mi/day; anything
     # above this in ONE daily bucket is a reporting backlog, not driving.
     _CATCHUP_DAY_MILES = 1_500.0
@@ -1244,6 +1254,10 @@ class WarehouseMixin(_MixinBase):
         00:05 UTC for the day before.
 
         Per-vehicle degraded shapes, flagged, never silent:
+          * ``estimated`` -- a boundary fell inside a data gap, so the
+            odometer at that boundary was INTERPOLATED between the
+            readings bracketing it.  Reaching back to a stale reading
+            instead would import driving from outside the window.
           * ``partial`` — no reading before the range (vehicle joined
             telematics mid-range): counted from its FIRST in-range
             reading; real miles are ≥ the number shown.
@@ -1364,39 +1378,88 @@ class WarehouseMixin(_MixinBase):
         )
         in_range = {str(d["vehicle_id"]): d
                     for r in await cur.fetchall() for d in (dict(r),)}
-        # Odometer at each vehicle's first in-range day (only fetched
-        # when actually needed for the partial fallback).
-        firsts: dict[str, float] = {}
-        for vid, agg in in_range.items():
-            if vid in baselines:
-                continue
-            fc = await self._db.execute(
-                "SELECT odometer_eod FROM vehicle_telemetry "
-                "WHERE account_id = ? AND vehicle_id = ? "
-                "AND granularity = 'daily' AND bucket_start = ?",
-                (account_id, vid, agg["first_day"]),
+        # The reading on the OTHER side of each boundary, so a boundary
+        # that falls inside a data gap can be interpolated instead of
+        # reached-back across (see the boundary block below).
+        async def _first_reading_per_vehicle(lower: str, inclusive: bool):
+            op = ">=" if inclusive else ">"
+            cur2 = await self._db.execute(
+                f"SELECT t.vehicle_id, t.odometer_eod, t.bucket_start "
+                f"FROM vehicle_telemetry t "
+                f"JOIN (SELECT vehicle_id, MIN(bucket_start) AS mb "
+                f"      FROM vehicle_telemetry "
+                f"      WHERE account_id = ? AND granularity = 'daily' "
+                f"      AND bucket_start {op} ? AND odometer_eod IS NOT NULL "
+                f"      GROUP BY vehicle_id) m "
+                f"  ON m.vehicle_id = t.vehicle_id AND m.mb = t.bucket_start "
+                f"WHERE t.account_id = ? AND t.granularity = 'daily' "
+                f"AND t.odometer_eod IS NOT NULL",
+                (account_id, lower, account_id),
             )
-            frow = await fc.fetchone()
-            if frow:
-                firsts[vid] = dict(frow)["odometer_eod"]
+            return {str(d["vehicle_id"]): {"odo": float(d["odometer_eod"]),
+                                           "read_on": d["bucket_start"]}
+                    for r in await cur2.fetchall() for d in (dict(r),)}
+
+        after_start = await _first_reading_per_vehicle(start, inclusive=True)
+        after_end = await _first_reading_per_vehicle(end, inclusive=False)
+        firsts = {vid: v["odo"] for vid, v in after_start.items()}
 
         out: list[dict] = []
         for vid, e in ends.items():
             end_odo = e["odo"]
             agg = in_range.get(vid, {})
             b = baselines.get(vid)
+            nxt = after_start.get(vid)
             flag = ""
-            if b is not None:
+            # -- START boundary -------------------------------------
+            # Reaching back to "the last reading whenever it was" is only
+            # safe when that reading sits ON the boundary.  With days of
+            # gap it imports driving from BEFORE the window: production
+            # truck 245 measured from a reading 7 days early and reported
+            # 9,932 mi where Samsara's own odometer said 5,997.  So a
+            # stale boundary is INTERPOLATED between the readings that
+            # bracket it, and the row says it is estimated.
+            if b is not None and self._days_between(b["read_on"], start) <= 1:
                 start_odo = b["odo"]
                 start_read_on = b["read_on"]
-            elif vid in firsts:
-                start_odo = float(firsts[vid])
-                start_read_on = agg.get("first_day")
+            elif (b is not None and nxt is not None
+                    and nxt["odo"] >= b["odo"]
+                    and self._days_between(b["read_on"], nxt["read_on"]) > 0):
+                # A day's reading is the odometer at the END of that day,
+                # so the window opens at the end of the day BEFORE start.
+                span = self._days_between(b["read_on"], nxt["read_on"])
+                pos = max(0, self._days_between(b["read_on"], start) - 1)
+                start_odo = b["odo"] + (nxt["odo"] - b["odo"]) * (pos / span)
+                start_read_on = start
+                flag = "estimated"
+            elif nxt is not None:
+                start_odo = nxt["odo"]
+                start_read_on = nxt["read_on"]
                 flag = "partial"
+            elif b is not None:
+                start_odo = b["odo"]
+                start_read_on = b["read_on"]
             else:
                 # A reading before/at end but nothing before the range
                 # and nothing inside it → no in-range driving evidence.
                 continue
+
+            # -- END boundary ---------------------------------------
+            # Symmetric: a last reading days before the window end loses
+            # the tail.  Interpolate toward the next reading after the
+            # window when one exists.
+            end_read_on = e["read_on"]
+            nxt_e = after_end.get(vid)
+            if (self._days_between(end_read_on, end) > 0
+                    and nxt_e is not None
+                    and nxt_e["odo"] >= end_odo
+                    and self._days_between(end_read_on, nxt_e["read_on"]) > 0):
+                span_e = self._days_between(end_read_on, nxt_e["read_on"])
+                pos_e = min(self._days_between(end_read_on, end), span_e)
+                end_odo = end_odo + (nxt_e["odo"] - end_odo) * (pos_e / span_e)
+                end_read_on = end
+                if flag in ("", "catchup"):
+                    flag = "estimated"
             miles = end_odo - start_odo
             if miles < 0:
                 miles = float(agg.get("sum_miles") or 0.0)
@@ -1411,7 +1474,7 @@ class WarehouseMixin(_MixinBase):
                 "start_odo": round(start_odo, 1),
                 "end_odo": round(end_odo, 1),
                 "start_read_on": start_read_on,
-                "end_read_on": e["read_on"],
+                "end_read_on": end_read_on,
                 "days_covered": int(agg.get("days_covered") or 0),
                 "flag": flag,
             })

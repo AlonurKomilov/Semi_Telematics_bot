@@ -54,16 +54,56 @@ class TestPeriodMileage:
         assert r["days_covered"] == 2
 
     @pytest.mark.asyncio
-    async def test_baseline_reaches_back_over_gap(self, tenant):
-        # Truck silent Jul 2-9; the Jul-1 reading is still the correct
-        # baseline for a Jul-10..12 range (no readings = no driving drift).
+    async def test_idle_gap_keeps_the_old_baseline(self, tenant):
+        # Silent AND stationary: the odometer either side of the gap is
+        # identical, so reaching back costs nothing and the window gets
+        # exactly its own driving.
         await _day(tenant, "v1", "132", "2026-07-01", 5_000)
-        await _day(tenant, "v1", "132", "2026-07-10", 5_400, 400)
-        await _day(tenant, "v1", "132", "2026-07-12", 5_500, 100)
+        await _day(tenant, "v1", "132", "2026-07-10", 5_000, 0)
+        await _day(tenant, "v1", "132", "2026-07-12", 5_500, 500)
         rows = await tenant.get_period_mileage(1, "2026-07-10", "2026-07-12")
         assert rows[0]["miles"] == 500.0
+
+    @pytest.mark.asyncio
+    async def test_driving_across_a_straddling_gap_is_apportioned(self, tenant):
+        # The bug this replaced: the truck drove 900 mi somewhere between
+        # Jul 1 and Jul 10, the window opens Jul 10, and reaching back to
+        # the Jul-1 reading charged ALL of it to the window.  Production
+        # truck 245 read 9,932 mi that way where Samsara's own odometer
+        # said 5,997.  The boundary is interpolated instead and flagged.
+        await _day(tenant, "v1", "132", "2026-07-01", 5_000)
+        await _day(tenant, "v1", "132", "2026-07-10", 5_900, 900)
+        await _day(tenant, "v1", "132", "2026-07-12", 6_000, 100)
+        rows = await tenant.get_period_mileage(1, "2026-07-10", "2026-07-12")
+        r = rows[0]
+        assert r["flag"] == "estimated"
+        assert r["start_read_on"] == "2026-07-10"
+        # 8 of the 9 gap days sit before the window: 5000 + 900*8/9 = 5800
+        assert r["start_odo"] == 5_800.0
+        assert r["miles"] == 200.0
+
+    @pytest.mark.asyncio
+    async def test_fresh_boundary_is_never_interpolated(self, tenant):
+        # A reading on the day before the window needs no estimating.
+        await _day(tenant, "v1", "132", "2026-07-09", 5_000)
+        await _day(tenant, "v1", "132", "2026-07-10", 5_300, 300)
+        await _day(tenant, "v1", "132", "2026-07-11", 5_500, 200)
+        rows = await tenant.get_period_mileage(1, "2026-07-10", "2026-07-11")
+        assert rows[0]["miles"] == 500.0
         assert rows[0]["flag"] == ""
-        assert rows[0]["start_read_on"] == "2026-07-01"
+
+    @pytest.mark.asyncio
+    async def test_end_boundary_gap_recovers_the_tail(self, tenant):
+        # Last in-range reading is a day early; the next reading after the
+        # window carries the missing tail, so half of it belongs inside.
+        await _day(tenant, "v1", "132", "2026-07-09", 1_000)
+        await _day(tenant, "v1", "132", "2026-07-10", 1_200, 200)
+        await _day(tenant, "v1", "132", "2026-07-12", 1_600, 400)
+        rows = await tenant.get_period_mileage(1, "2026-07-10", "2026-07-11")
+        r = rows[0]
+        assert r["flag"] == "estimated"
+        assert r["end_odo"] == 1_400.0      # 1200 + 400 * 1/2
+        assert r["miles"] == 400.0
 
     @pytest.mark.asyncio
     async def test_mid_range_join_flags_partial(self, tenant):

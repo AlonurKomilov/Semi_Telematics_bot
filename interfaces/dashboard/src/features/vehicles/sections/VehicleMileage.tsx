@@ -28,7 +28,7 @@ interface VehicleMileageResponse {
   start_odo?: number;
   end_odo?: number;
   days_covered?: number;
-  flag?: '' | 'partial' | 'reset' | 'catchup';
+  flag?: '' | 'partial' | 'reset' | 'catchup' | 'estimated';
   days?: DayMiles[];
 }
 
@@ -40,6 +40,7 @@ function startFor(end: string, days: number): string {
 }
 
 const FLAG_TIP: Record<string, string> = {
+  estimated: 'A boundary fell in a data gap — its odometer is interpolated from the readings around it.',
   catchup: 'Some days absorbed a reporting backlog — the total is real, the per-day bars are lumpy.',
   partial: 'Odometer history starts inside this range — real miles are at least this.',
   reset: 'The odometer dropped mid-range (device swap) — miles summed from daily readings.',
@@ -102,7 +103,7 @@ export default function VehicleMileage({ vehicleName }: VehicleSectionProps) {
             {data.flag && FLAG_TIP[data.flag] && (
               <Tip label={FLAG_TIP[data.flag]}>
                 <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${toneClasses('warn')}`}>
-                  {data.flag === 'reset' ? 'Odometer reset' : data.flag === 'catchup' ? 'Catch-up days' : 'Partial'}
+                  {data.flag === 'reset' ? 'Odometer reset' : data.flag === 'catchup' ? 'Catch-up days' : data.flag === 'estimated' ? 'Estimated' : 'Partial'}
                 </span>
               </Tip>
             )}

@@ -42,7 +42,7 @@ interface MileageRow {
   start_read_on: string;
   end_read_on: string;
   days_covered: number;
-  flag: '' | 'partial' | 'reset' | 'catchup' | 'device_change';
+  flag: '' | 'partial' | 'reset' | 'catchup' | 'device_change' | 'estimated';
 }
 
 interface MileageResponse {
@@ -70,6 +70,10 @@ const FLAG_NOTE: Record<string, { label: string; tip: string }> = {
   device_change: {
     label: 'Device change',
     tip: 'This unit reported from more than one telematics device in the range. Miles are summed across them; the odometer columns show the device that drove most of them, so the span alone will not equal the total.',
+  },
+  estimated: {
+    label: 'Estimated',
+    tip: 'A range boundary fell inside a data gap, so the odometer at that boundary is interpolated between the readings around it — without this, driving from before the window would be counted inside it.',
   },
   catchup: {
     label: 'Catch-up days',
