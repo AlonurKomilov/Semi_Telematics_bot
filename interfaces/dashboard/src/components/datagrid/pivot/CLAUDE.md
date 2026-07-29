@@ -119,6 +119,24 @@ date column at all and `score` is a per-driver average — test 2+3),
 - A saved model naming columns the grid no longer has is pruned
   (`prunePivotModel`) — the same staleness rule saved tabs apply.
 
+## The card keeps one skeleton across both modes
+
+Pagination is genuinely meaningless on a pivot, so the footer bar goes —
+but the band it occupied must not just become dead space. Under
+`fillHeight` PivotView pins its two edges and scrolls only the matrix
+between them:
+
+- the **caption** ("Summarising all N rows that match your current tab,
+  filters and search") stays at the top. It explains what you're looking
+  at and why paging vanished, so it has to be readable at the moment you
+  might actually wonder — which is deep in the rows, not at the top.
+- the **row count** takes the footer slot the pagination bar leaves,
+  so the card's shape doesn't change on the way into pivot mode.
+
+Both used to sit INSIDE the vertical scroller with the table, so at most
+scroll positions you could see neither, and the card ended in an empty
+strip.
+
 ## What stays live, what goes
 
 The rule: **scope stays, column machinery goes.**

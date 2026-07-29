@@ -35,7 +35,7 @@ import {
  * footer-aggregation treatment (``bg-muted font-semibold text-primary``).
  */
 export default function PivotView({
-  rows, model, columns, padding, onModelChange, onOpenPanel,
+  rows, model, columns, padding, onModelChange, onOpenPanel, fill,
 }: {
   /** MUST be the same post-segment/filter/search rows the grid's own
    *  footer aggregation reduces, so the two can never disagree. */
@@ -51,6 +51,9 @@ export default function PivotView({
    *  only DESCRIBES where the control is leaves the reader stranded when
    *  the panel happens to be closed — which is exactly when they see it. */
   onOpenPanel?: () => void;
+  /** Own the grid's height: pin the caption and the row count to the
+   *  card's edges and scroll only the matrix between them. */
+  fill?: boolean;
 }) {
   const result = useMemo(
     () => pivot(rows, model, columns),
@@ -138,16 +141,23 @@ export default function PivotView({
   const sourceRows = rows.length;
 
   return (
-    <div>
+    <div className={cn(fill && 'flex h-full flex-col min-h-0')}>
       {/* What this report covers, and why two familiar controls are gone.
           A control that vanishes on a mode switch owes the user a line —
-          hiding beats greying, but SILENT removal reads as breakage. */}
-      <p className="px-3 py-2 text-2xs text-muted-foreground border-b border-border">
+          hiding beats greying, but SILENT removal reads as breakage.
+
+          PINNED, not scrolled with the matrix: it explains what you are
+          looking at, so it has to be readable at the point you might
+          actually wonder — which is deep in the rows, not at the top. */}
+      <p className={cn(
+        'px-3 py-2 text-2xs text-muted-foreground border-b border-border',
+        fill && 'shrink-0',
+      )}>
         Summarising all {sourceRows.toLocaleString()} row{sourceRows === 1 ? '' : 's'} that
         match your current tab, filters and search — column layout and paging
         don't apply here.
       </p>
-      <div className="overflow-x-auto">
+      <div className={cn('overflow-x-auto', fill && 'flex-1 min-h-0 overflow-y-auto')}>
       <table className="w-full text-sm border-collapse">
         <thead>
           {result.headerLevels.map((level, levelIdx) => {
@@ -475,8 +485,16 @@ export default function PivotView({
         );
       })()}
 
+      {/* Sits where the pagination bar sits in list mode, so the card
+          keeps ONE skeleton across the two modes rather than losing a
+          band on the way in.  Pinned for the same reason as the caption:
+          a count you can only see by scrolling to the end isn't a
+          count, it's a discovery. */}
       {visibleRows.length > 0 && (
-        <p className="px-3 py-2 text-2xs text-muted-foreground text-right border-t border-border">
+        <p className={cn(
+          'px-3 py-2 text-2xs text-muted-foreground text-right border-t border-border',
+          fill && 'shrink-0',
+        )}>
           {visibleRows.length.toLocaleString()} row{visibleRows.length === 1 ? '' : 's'}
         </p>
       )}

@@ -3429,8 +3429,9 @@ export default function DataGrid({
         // report is silently cut off with no way to reach the rest.
         // Horizontal scrolling stays PivotView's (its sticky row-label
         // column depends on being inside that scroller).
-        <div className={cn(fillHeight && 'flex-1 min-h-0 overflow-y-auto')}>
+        <div className={cn(fillHeight && 'flex-1 min-h-0')}>
             <PivotView
+              fill={!!fillHeight}
               rows={table.getFilteredRowModel().rows
                 .filter((r) => !r.getIsGrouped())
                 .map((r) => r.original as Record<string, unknown>)}
