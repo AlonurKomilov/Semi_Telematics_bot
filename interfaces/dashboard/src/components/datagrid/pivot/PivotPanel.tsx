@@ -1,16 +1,17 @@
 import { useMemo, useState } from 'react';
 import {
   Search, X, Check, Plus, GripVertical, MoreVertical,
-  ChevronDown, ChevronUp, Trash2, ArrowUp, ArrowDown,
+  ChevronDown, ChevronUp, ArrowUp, ArrowDown,
   ChevronsUp, ChevronsDown,
 } from 'lucide-react';
 import {
-  DndContext, DragOverlay, closestCorners, PointerSensor, useSensor, useSensors,
-  useDroppable,
+  DndContext, DragOverlay, pointerWithin, PointerSensor, KeyboardSensor,
+  useSensor, useSensors, useDroppable,
   type DragEndEvent, type DragStartEvent, type DragOverEvent,
 } from '@dnd-kit/core';
 import {
   SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
+  sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 
 import { cn } from '../../../lib/utils';
@@ -213,11 +214,18 @@ export default function PivotPanel({
 
   // ── Drag ───────────────────────────────────────────────────────────
 
-  const sensors = useSensors(useSensor(PointerSensor, {
-    // A few pixels of slop so a click on the checkbox, the chip or the ⋮
-    // isn't swallowed as a micro-drag.
-    activationConstraint: { distance: 4 },
-  }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      // A few pixels of slop so a click on the checkbox, the chip or the ⋮
+      // isn't swallowed as a micro-drag.
+      activationConstraint: { distance: 4 },
+    }),
+    // dnd-kit ships ``aria-describedby`` on every handle promising that
+    // space bar picks the item up.  Without this sensor that promise was
+    // a lie: the instruction was read out and nothing happened, which is
+    // worse than no instruction (WCAG 2.1.1).
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   /** Which zone does a droppable id belong to — an item or a container. */
   const zoneOfDroppable = (id: string): Zone | null => {
@@ -275,6 +283,47 @@ export default function PivotPanel({
 
   const onDragCancel = () => { setDragKey(null); setDrop(null); };
 
+  // Screen-reader announcements.  dnd-kit's defaults read out the raw
+  // ids we invented for it — "Draggable item rows:customer was dropped
+  // over droppable area rows:company_code" — which describes our data
+  // model, not the user's task.  These say what moved, where it went,
+  // and where it sits in the nesting order, because on this panel
+  // POSITION is meaning.
+  const nameOf = (id: string | number) => {
+    const raw = String(id);
+    return byKey.get(raw.slice(raw.indexOf(':') + 1))?.label ?? raw;
+  };
+  const zoneNameOf = (id: string | number) => {
+    const zone = zoneOfDroppable(String(id));
+    if (!zone) return null;
+    return zone === 'pool' ? 'Available fields' : AXIS_LABEL[zone];
+  };
+  const placeIn = (id: string | number) => {
+    const zone = zoneOfDroppable(String(id));
+    if (!zone) return null;
+    const list = keysIn(zone);
+    const raw = String(id);
+    const at = raw.startsWith('zone:') ? list.length : list.indexOf(raw.slice(raw.indexOf(':') + 1));
+    const name = zoneNameOf(id);
+    return list.length > 1 && at >= 0
+      ? `${name}, position ${at + 1} of ${list.length}`
+      : name;
+  };
+  const announcements = {
+    onDragStart: ({ active }: { active: { id: string | number } }) =>
+      `Picked up ${nameOf(active.id)}. Use the arrow keys to move it between Available fields, Rows, Columns and Values, then press space to drop.`,
+    onDragOver: ({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) =>
+      (over
+        ? `${nameOf(active.id)} is over ${placeIn(over.id)}.`
+        : `${nameOf(active.id)} is not over a drop target.`),
+    onDragEnd: ({ active, over }: { active: { id: string | number }; over: { id: string | number } | null }) =>
+      (over
+        ? `${nameOf(active.id)} moved to ${placeIn(over.id)}.`
+        : `${nameOf(active.id)} was not moved.`),
+    onDragCancel: ({ active }: { active: { id: string | number } }) =>
+      `Move cancelled. ${nameOf(active.id)} stayed where it was.`,
+  };
+
   /** The per-field ⋮ menu — reorder, send to another axis, remove. */
   const fieldMenu = (axis: Axis, key: string): MenuAction[] => {
     const list = keysOn(axis);
@@ -300,17 +349,24 @@ export default function PivotPanel({
       },
       // Where else this field can go.  A check marks where it IS, so the
       // menu doubles as "which axis am I on?" without closing it.
+      // Verb-first and explicit.  Bare "Rows" / "Columns" sat among
+      // "Move up" / "Move down" as two unlabelled nouns — the same list
+      // mixing commands with destinations, with nothing saying which.
       ...axesFor(key).map((t, i) => ({
         key: `to-${t}`,
-        label: AXIS_LABEL[t],
+        label: t === axis ? `In ${AXIS_LABEL[t]}` : `Move to ${AXIS_LABEL[t]}`,
         icon: t === axis ? <Check size={14} /> : undefined,
         separatorBefore: i === 0,
         disabled: t === axis,
         onSelect: () => place(key, t),
       })),
       {
-        key: 'remove', label: 'Remove', icon: <Trash2 size={14} />,
-        danger: true, separatorBefore: true, onSelect: () => remove(key),
+        // NOT ``danger``.  This returns the field to the available list —
+        // fully reversible, nothing is destroyed.  Red-and-trash for a
+        // reversible act spends the warning vocabulary we need for the
+        // acts that really are irreversible.
+        key: 'remove', label: 'Remove from report', icon: <X size={14} />,
+        separatorBefore: true, onSelect: () => remove(key),
       },
     ];
   };
@@ -416,14 +472,19 @@ export default function PivotPanel({
 
       <DndContext
         sensors={sensors}
-        // corners, not centre: the lists are short rows, and centre
-        // detection makes the boundary between two adjacent sections
-        // feel arbitrary at this row height.
-        collisionDetection={closestCorners}
+        // POINTER, not rectangle overlap.  Rect-based detection lights up
+        // whichever zone the dragged item's box happens to intersect,
+        // which is not where the user is aiming: with the cursor over the
+        // grid, a zone hundreds of pixels away would highlight and take
+        // the drop.  ``pointerWithin`` means the target is the thing
+        // under the cursor — and nothing highlights when the cursor is
+        // outside every zone, which is the honest answer there.
+        collisionDetection={pointerWithin}
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDragEnd={onDragEnd}
         onDragCancel={onDragCancel}
+        accessibility={{ announcements }}
       >
         {/* Unassigned pool — takes the slack so the sections stay
             anchored to the bottom, which is what stops the three headers
@@ -547,7 +608,12 @@ export default function PivotPanel({
             which reads as a glitch rather than a move. */}
         <DragOverlay dropAnimation={null}>
           {dragKey && (
-            <div className="flex w-full items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-primary bg-card shadow-lg cursor-grabbing">
+            // Compact and nudged down-right of the pointer: a full-width
+            // pill sat exactly on the zone heading it was hovering, so
+            // the one label you need to read ("COLUMNS") was the one
+            // thing hidden. Elevation + a slight lift make the pick-up
+            // state unmistakable.
+            <div className="flex w-fit max-w-full translate-x-3 translate-y-3 scale-[1.02] items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-primary bg-card shadow-xl cursor-grabbing">
               <GripVertical size={14} className="shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate text-foreground">
                 {byKey.get(dragKey)?.label ?? dragKey}

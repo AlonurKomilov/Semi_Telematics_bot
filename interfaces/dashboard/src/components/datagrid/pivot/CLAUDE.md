@@ -344,6 +344,21 @@ Three rules the implementation holds to:
   Hovering a field over its own slot draws no line at all — that drop
   is a no-op, and a line promising a move that won't happen is worse
   than no line.
+- **Collision detection is `pointerWithin`, never rectangle overlap.**
+  Rect-based detection lights up whichever zone the dragged item's BOX
+  intersects, which is not where the user is aiming — with the cursor
+  over the grid, a zone hundreds of pixels away would highlight and take
+  the drop. It also means nothing highlights when the cursor is outside
+  every zone, which is the honest answer there.
+- **The overlay is a compact chip offset down-right of the pointer.** A
+  full-width pill sat exactly on the zone heading it was hovering, so
+  the one label you need to read was the one thing hidden.
+- **Keyboard drag actually works.** dnd-kit puts `aria-describedby` on
+  every handle promising space-bar pickup; shipping that without a
+  `KeyboardSensor` announces a capability that doesn't exist (WCAG
+  2.1.1). Announcements are written in task language too — the defaults
+  read out our internal ids ("dropped over droppable area
+  rows:company_code"), which describes the data model, not the move.
 - **A drop target only lights up if it can accept the field.** Legality
   comes from the same `pivotable` / `aggregable` opt-ins as everything
   else, so a customer name can never be dragged into Values. The pool

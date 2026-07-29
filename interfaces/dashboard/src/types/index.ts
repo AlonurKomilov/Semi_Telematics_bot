@@ -567,6 +567,13 @@ export interface Column<T = Record<string, unknown>> {
    *  should exist as filter surfaces without cluttering the default
    *  view.  Reset-to-defaults returns to hidden. */
   defaultHidden?: boolean;
+  /** Floor for this column's width, in px.  The grid's global floor is
+   *  60px — enough for an ellipsized label plus the ⋮ menu, but not for
+   *  content with a KNOWN minimum shape: a date needs ~96px or it
+   *  renders "2026-0…", and a header clipped to "DE…" names nothing.
+   *  Set it where the content type has a real floor; leave it off and
+   *  the column stays freely resizable from 60px. */
+  minWidth?: number;
   /** Visual group label.  CONSECUTIVE visible columns sharing the
    *  same ``group`` string get one spanning label cell in an extra
    *  header row above the normal column headers (e.g. Street / City /

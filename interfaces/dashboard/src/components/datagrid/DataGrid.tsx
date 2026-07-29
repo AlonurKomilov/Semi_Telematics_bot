@@ -949,7 +949,12 @@ export default function DataGrid({
     if (!savedTabsEnabled) return builtIn;
     // No built-in segments → an implicit "All" tab leads so the operator
     // can always leave a tab and see the full set again.
-    const base = builtIn.length ? builtIn : [{ key: ALL_KEY, label: 'All' }];
+    // "All rows", not "All": pages commonly carry their OWN status tab
+    // labelled "All" (Loads does), and two tabs one row apart reading
+    // the same word label different things — one scopes the QUERY, this
+    // one scopes the saved-tab strip, and with a status filter active
+    // this one covers a filtered set.
+    const base = builtIn.length ? builtIn : [{ key: ALL_KEY, label: 'All rows' }];
     return [...base, ...tabSegments];
   }, [segments, savedTabsEnabled, tabSegments]);
 
@@ -1495,6 +1500,8 @@ export default function DataGrid({
         const def: ColumnDef<Record<string, unknown>> = {
           id: col.key,
           accessorKey: col.key,
+          // Per-column floor, above the 60px global one.
+          ...(col.minWidth ? { minSize: col.minWidth, size: col.minWidth } : {}),
           // ``headerRender`` wins over the plain string label when
           // the column wants a rich header (e.g. the bulk-select
           // column's master "select all" checkbox).  tanstack's
@@ -3887,7 +3894,13 @@ export default function DataGrid({
                   // differently than divs).
                   style: isSelected ? { boxShadow: 'inset 3px 0 0 0 var(--primary)' } : undefined,
                   className: cn(
-                    onRowClick ? 'cursor-pointer' : '',
+                    // A clickable row needs a hover the eye actually
+                    // catches.  The base ``hover:bg-muted/50`` is only a
+                    // 20% step up from the ``bg-muted/30`` zebra, so on
+                    // alternate rows the primary navigation of the page
+                    // had almost no affordance.  ``cn`` is tailwind-merge,
+                    // so this later utility deterministically wins.
+                    onRowClick ? 'cursor-pointer hover:bg-muted' : '',
                     isZebra && !isSelected && 'bg-muted/30',
                     // Primary-tinted background on selected rows wins over
                     // zebra so the multi-row selection stays visible.

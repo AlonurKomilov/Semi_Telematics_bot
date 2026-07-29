@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Clock, Package, Plus } from 'lucide-react';
 import DataGrid from '../../components/datagrid';
 import { loadRowMenu } from './contextMenu';
@@ -58,17 +58,20 @@ function SourceCell({ value }: { value: unknown }) {
 }
 
 const makeColumns = (): AnyColumn[] => [
-  { key: 'seq', label: 'ID', sortable: true, render: (v) => (v ? <span className="font-mono text-xs text-muted-foreground">{`#${v}`}</span> : <span className="text-muted-foreground">—</span>) },
-  { key: 'load_number', label: 'Load #', sortable: true, render: (v) => (v ? <span className="font-medium">{String(v)}</span> : <span className="text-muted-foreground">—</span>) },
+  { key: 'seq', label: 'ID', sortable: true, minWidth: 72, render: (v) => (v ? <span className="font-mono text-xs text-muted-foreground">{`#${v}`}</span> : <span className="text-muted-foreground">—</span>) },
+  { key: 'load_number', label: 'Load #', sortable: true, minWidth: 110, render: (v) => (v ? <span className="font-medium">{String(v)}</span> : <span className="text-muted-foreground">—</span>) },
   { key: 'customer', label: 'Customer', sortable: true, filterable: true, pivotable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   { key: 'driver_name', label: 'Driver', sortable: true, filterable: true, pivotable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
-  { key: 'vehicle_unit', label: 'Truck', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
-  { key: 'trailer_unit', label: 'Trailer', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
-  { key: 'company_code', label: 'Company', sortable: true, filterable: true, pivotable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
+  { key: 'vehicle_unit', label: 'Truck', sortable: true, minWidth: 88, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
+  { key: 'trailer_unit', label: 'Trailer', sortable: true, minWidth: 88, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
+  { key: 'company_code', label: 'Company', sortable: true, filterable: true, pivotable: true, minWidth: 104, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   { key: 'pickup_location', label: 'Pickup', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   { key: 'delivery_location', label: 'Delivery', sortable: true, render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>) },
   {
     key: 'delivery_date', label: 'DEL date', sortable: true,
+    // A date column narrower than this renders "2026-0…", which is
+    // not a date.
+    minWidth: 116,
     // Date aggregation: earliest / latest delivery across the filtered
     // (or grouped) loads.  aggType 'date' hides sum/avg from the menu
     // and formats the min/max as a day in the account timezone.
@@ -81,7 +84,7 @@ const makeColumns = (): AnyColumn[] => [
     render: (v) => (v ? String(v) : <span className="text-muted-foreground">—</span>),
   },
   {
-    key: 'total_rate', label: 'Rate', sortable: true,
+    key: 'total_rate', label: 'Rate', sortable: true, minWidth: 104,
     // Aggregable: operators total / average the rate across the filtered
     // loads via the ⋮ menu → footer total.  No ``|| 0`` on aggValue — a
     // load with no rate yet yields NaN, which DataGrid's Number.isFinite
@@ -125,7 +128,7 @@ const makeColumns = (): AnyColumn[] => [
       );
     },
   },
-  { key: 'status', label: 'Status', sortable: true, render: (v) => <Pill value={v} /> },
+  { key: 'status', label: 'Status', sortable: true, minWidth: 104, render: (v) => <Pill value={v} /> },
   { key: 'source', label: 'Source', sortable: true, render: (v) => <SourceCell value={v} /> },
 ];
 
@@ -161,6 +164,18 @@ export default function Loads() {
   const { data, isLoading, error } = useQuery<LoadsResponse>({
     queryKey: ['loads', tab],
     queryFn: () => listLoads(tab || undefined),
+    // The status tab is part of the KEY, so switching it used to mean
+    // "no cached data" -> isLoading -> the DataGrid UNMOUNTED and was
+    // replaced by a skeleton.  That threw away every piece of state the
+    // grid owns: the open pivot panel, collapsed pivot groups, the
+    // selection.  It also blanked the tab counters to 0 for a second,
+    // which states something false about every other tab.
+    //
+    // Keeping the previous page's data holds the whole surface still:
+    // the grid stays mounted with the rows you were reading, the counts
+    // keep their last value, and only the rows swap when the new page
+    // lands.  isLoading now means what it says — the FIRST load.
+    placeholderData: keepPreviousData,
   });
 
   const loads = useMemo(() => data?.loads ?? [], [data]);
