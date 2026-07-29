@@ -260,6 +260,28 @@ typing a query could hide fields you had already assigned, leaving the
 count badges reading 2/1/1 over three empty lists with no way to remove
 anything.
 
+### Panel composition (layout-audit rules, 2026-07-29)
+
+The first `ux-layout-composition-audit` ran here and its fixes are
+load-bearing — don't regress them:
+
+- **Zones are boxed, the pool is bare.** Rows/Columns/Values each get
+  `rounded-md border bg-muted/30` inside a `p-2 space-y-2` stack, so
+  between-zone air exceeds within-zone rhythm and the eye can count
+  the regions (Gestalt common region). The pool deliberately has NO
+  box — enclosure is what says "take from here, drop into there" —
+  but it does have a heading ("Available fields" + count, the same
+  words the screen-reader announcements use).
+- **An empty zone keeps a drop well**: a dashed, `min-h-9` bordered
+  well holding the axis hint — a target must exist and have area
+  BEFORE the drag starts; it turns primary when it's the pending
+  destination.
+- **`required` is a state chip**, warn-toned while the zone is empty,
+  quiet-bordered once satisfied — never plain text in the heading's
+  own grey.
+- **Pool rows reserve the checkbox column** (`w-3.5` spacer) so labels
+  sit on one x in every region.
+
 ### Only ROWS are required
 
 A report renders as soon as it has one row dimension. Measures and

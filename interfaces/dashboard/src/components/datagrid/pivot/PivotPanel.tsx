@@ -20,6 +20,7 @@ import { Button } from '../../ui/button';
 import { Switch } from '../../ui/switch';
 import { ActionMenu, type MenuAction } from '../../ui/context-menu';
 import { InfoTip } from '../../tooltip';
+import { toneClasses } from '../../../lib/status';
 import { AGG_FN_LABELS } from '../../../types';
 import type { AnyColumn, AggFn } from '../../../types';
 import { offeredAggFns } from '../aggregation';
@@ -489,7 +490,19 @@ export default function PivotPanel({
         {/* Unassigned pool — takes the slack so the sections stay
             anchored to the bottom, which is what stops the three headers
             walking up and down as fields are assigned.  It is also a drop
-            target: dragging a field back here unassigns it. */}
+            target: dragging a field back here unassigns it.
+
+            COMPOSITION (layout audit): the pool is deliberately BARE
+            while the three zones below are boxed — enclosure is what
+            says "take from here, drop into there"; the heading names
+            the region (same words the screen-reader announcements
+            already use). */}
+        <div className="flex items-center justify-between px-3 pt-2 pb-1">
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+            Available fields
+          </span>
+          <span className="text-2xs tabular-nums text-muted-foreground">{poolKeys.length}</span>
+        </div>
         <DropZone
           zone="pool"
           active={drop?.zone === 'pool' && dragKey !== null && zoneOf(dragKey) !== 'pool'}
@@ -532,6 +545,12 @@ export default function PivotPanel({
           )}
         </DropZone>
 
+        {/* Each zone is an ENCLOSED region — border + tint + radius —
+            with more air between zones (space-y-2) than inside them
+            (rows' own py-1.5).  A hairline under a caps label can't
+            separate three adjacent stacks of near-identical rows; the
+            eye needs the box (Gestalt common region). */}
+        <div className="shrink-0 p-2 space-y-2">
         {AXES.map((axis) => {
           const keys = keysOn(axis);
           const open = !folded.has(axis);
@@ -541,7 +560,7 @@ export default function PivotPanel({
               key={axis}
               zone={axis}
               active={isTarget}
-              className="border-b border-border last:border-b-0"
+              className="rounded-md border border-border bg-muted/30 overflow-hidden"
             >
               <button
                 type="button"
@@ -553,9 +572,16 @@ export default function PivotPanel({
                   {AXIS_LABEL[axis]}
                   {/* Rows and Values are BOTH required — a report can't
                       render without either.  Marking only one implied
-                      the other was optional. */}
+                      the other was optional.  A chip, not grey text the
+                      same colour as the heading: warn-toned while the
+                      constraint is unmet, quiet once satisfied. */}
                   {axis !== 'columns' && (
-                    <span className="ml-1.5 normal-case tracking-normal font-normal text-2xs">
+                    <span className={cn(
+                      'ml-1.5 px-1 py-px rounded border normal-case tracking-normal font-medium text-3xs',
+                      keys.length === 0
+                        ? toneClasses('warn')
+                        : 'border-border text-muted-foreground',
+                    )}>
                       required
                     </span>
                   )}
@@ -569,12 +595,17 @@ export default function PivotPanel({
               {open && (
                 <>
                   {keys.length === 0 && (
-                    <p className={cn(
-                      'px-3 pb-2 text-2xs italic',
-                      isTarget ? 'text-primary' : 'text-muted-foreground',
+                    <div className={cn(
+                      'mx-2 mb-2 min-h-9 flex items-center rounded border border-dashed px-2.5',
+                      isTarget ? 'border-primary bg-primary/5' : 'border-border',
                     )}>
-                      {isTarget ? `Drop to add to ${AXIS_LABEL[axis]}` : AXIS_HINT[axis]}
-                    </p>
+                      <p className={cn(
+                        'text-2xs italic',
+                        isTarget ? 'text-primary' : 'text-muted-foreground',
+                      )}>
+                        {isTarget ? `Drop to add to ${AXIS_LABEL[axis]}` : AXIS_HINT[axis]}
+                      </p>
+                    </div>
                   )}
                   <SortableContext
                     items={keys.map((k) => itemId(axis, k))}
@@ -602,6 +633,7 @@ export default function PivotPanel({
             </DropZone>
           );
         })}
+        </div>
 
         {/* The dragged field rides the cursor.  Without it the row simply
             vanishes from its list and reappears somewhere else on drop,
@@ -699,7 +731,7 @@ function FieldRow({
         >
           <GripVertical size={14} />
         </button>
-        {assigned && (
+        {assigned ? (
           <input
             type="checkbox"
             checked={!!checked}
@@ -707,6 +739,11 @@ function FieldRow({
             aria-label={`Include ${label} in the report`}
             className="shrink-0 cursor-pointer"
           />
+        ) : (
+          // Reserved checkbox column: pool rows have no tick, but the
+          // slot holds its width so labels sit on ONE x in every
+          // region — otherwise the shift reads as misalignment.
+          <span className="shrink-0 w-3.5" aria-hidden />
         )}
         {/* An off field stays legible — it is still assigned, and you
             need to read it to decide whether to switch it back on. */}
