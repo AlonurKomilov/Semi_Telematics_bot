@@ -201,7 +201,7 @@ async def run_all(conn) -> None:
     await migrate_notification_digest_queue(conn)
     await migrate_notification_inbox(conn)
     await migrate_page_layouts(conn)
-    await migrate_role_config_perm_rename(conn)
+    await migrate_config_perm_keys(conn)
     await migrate_notification_deliveries(conn)
     await migrate_push_subscriptions(conn)
     # Capacity monitoring (operator console): platform metric history +
@@ -654,51 +654,79 @@ async def migrate_page_layouts(conn) -> None:
         pass
 
 
-async def migrate_role_config_perm_rename(conn) -> None:
-    """Rename ``can_manage_role_pages`` → ``can_manage_role_config`` inside
+async def migrate_config_perm_keys(conn) -> None:
+    """Migrate legacy permission keys into the config FAMILY keys inside
     stored ``role_permissions`` JSON.
 
-    The key lived for one day (2026-07-28→29) before the rename; the
-    matrix UI never displayed it, so any stored value is the tier seed,
-    not an owner's choice.  Rows are rewritten (not just left to be
-    ignored) so a stale key can't shadow a real one if the resolver's
-    unknown-key tolerance ever tightens.  Idempotent: rows without the
-    old key are untouched."""
+      * ``can_manage_role_pages``  → ``can_manage_config_role``  (renamed
+        twice within its first two days; neither spelling was ever
+        displayed by the matrix UI, so stored values are tier seeds)
+      * ``can_manage_role_config`` → ``can_manage_config_role``  (same)
+      * ``can_manage_scorecard_rules`` → ``can_manage_config_all``  (the
+        per-feature flag folds into the account-scope config permission;
+        an owner's stored grant/revoke CARRIES OVER — OR-merged so a
+        grant from either side survives)
+
+    Rows are rewritten (not just left to be ignored) so a stale key can't
+    shadow a real one if the resolver's unknown-key tolerance ever
+    tightens.  Idempotent: rows without any legacy key are untouched."""
+    renames = [
+        ("can_manage_role_pages", "can_manage_config_role"),
+        ("can_manage_role_config", "can_manage_config_role"),
+        ("can_manage_scorecard_rules", "can_manage_config_all"),
+    ]
     try:
         import json as _json
         cur = await conn.execute(
             "SELECT id, permissions FROM role_permissions"
             " WHERE permissions LIKE '%can_manage_role_pages%'"
+            "    OR permissions LIKE '%can_manage_role_config%'"
+            "    OR permissions LIKE '%can_manage_scorecard_rules%'"
         )
         rows = await cur.fetchall()
+        changed = 0
         for row in rows:
             row_id, raw = row[0], row[1]
             try:
                 perms = _json.loads(raw or "{}")
             except (ValueError, TypeError):
+                # This table gates authorization — a stuck legacy row must
+                # be discoverable, not silent.
+                logger.warning(
+                    "Migration: role_permissions row %s has unparseable "
+                    "JSON, skipped", row_id,
+                )
                 continue
-            if "can_manage_role_pages" not in perms:
+            touched = False
+            for old_key, new_key in renames:
+                if old_key not in perms:
+                    continue
+                # OR-merge: a True from either spelling survives.  (In
+                # practice only one side ever exists per row — the new
+                # keys had no writers while the old ones were live.)
+                perms[new_key] = bool(perms.pop(old_key)) or bool(
+                    perms.get(new_key, False))
+                touched = True
+            if not touched:
                 continue
-            # Plain overwrite: the new key had no other writer during the
-            # old key's one-day life, so the old value is the truth.
-            perms["can_manage_role_config"] = perms.pop("can_manage_role_pages")
+            changed += 1
             await conn.execute(
                 "UPDATE role_permissions SET permissions = ? WHERE id = ?",
                 (_json.dumps(perms), row_id),
             )
         await conn.commit()
-        if rows:
+        if changed:
             logger.info(
-                "Migration: renamed role-config permission key in %d rows",
-                len(rows),
+                "Migration: migrated config-family permission keys in %d rows",
+                changed,
             )
     except Exception:
-        # Failing is SAFE (the resolver drops unknown keys and the field
+        # Failing is SAFE (the resolver drops unknown keys and each field
         # falls back to its seed default) but a permissions-touching
         # migration must never fail silently.
         logger.warning(
-            "Migration: role-config permission key rename failed; stale "
-            "rows keep the old key (harmless — resolver ignores it)",
+            "Migration: config-family permission key migration failed; "
+            "stale rows keep legacy keys (harmless — resolver ignores them)",
             exc_info=True,
         )
 

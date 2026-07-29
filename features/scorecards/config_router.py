@@ -51,7 +51,7 @@ class PillarCapsUpdate(BaseModel):
 
 @admin_router.get("/scorecard-rules")
 async def list_score_rules(
-    user: dict = Depends(require_permission("can_manage_scorecard_rules")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
 ):
     """Default rules merged with this account's overrides.
@@ -94,7 +94,7 @@ async def list_score_rules(
 async def update_score_rule(
     rule_id: str,
     body: ScoreRuleUpdate,
-    user: dict = Depends(require_permission("can_manage_scorecard_rules")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
 ):
     """Override a default rule's points / cap / enabled / curve anchors."""
@@ -117,7 +117,7 @@ async def update_score_rule(
 @admin_router.delete("/scorecard-rules/{rule_id}")
 async def reset_score_rule(
     rule_id: str,
-    user: dict = Depends(require_permission("can_manage_scorecard_rules")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
 ):
     """Drop the per-account override → rule reverts to built-in default."""
@@ -127,7 +127,7 @@ async def reset_score_rule(
 
 @admin_router.get("/scorecard-pillar-caps")
 async def get_pillar_caps(
-    user: dict = Depends(require_permission("can_manage_scorecard_rules")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
 ):
     """Pillar cap weights for this account (defaults 50/25/25 when no override)."""
@@ -150,7 +150,7 @@ async def get_pillar_caps(
 @admin_router.put("/scorecard-pillar-caps")
 async def set_pillar_caps(
     body: PillarCapsUpdate,
-    user: dict = Depends(require_permission("can_manage_scorecard_rules")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
 ):
     """Set per-tenant pillar cap weights. Must sum to exactly 100."""
@@ -170,7 +170,7 @@ async def set_pillar_caps(
 
 @admin_router.delete("/scorecard-pillar-caps")
 async def reset_pillar_caps(
-    user: dict = Depends(require_permission("can_manage_scorecard_rules")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
 ):
     """Remove pillar cap override — reverts to built-in defaults (50/25/25)."""
@@ -190,7 +190,7 @@ legacy_router = APIRouter(tags=["safety"], include_in_schema=False)
 
 @legacy_router.get("/safety/scorecards/rules")
 async def _legacy_list_score_rules(
-    user: dict = Depends(require_permission("can_manage_scorecard_rules")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
 ):
     return await list_score_rules(user=user, tenant=tenant)
@@ -200,7 +200,7 @@ async def _legacy_list_score_rules(
 async def _legacy_update_score_rule(
     rule_id: str,
     body: ScoreRuleUpdate,
-    user: dict = Depends(require_permission("can_manage_scorecard_rules")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
 ):
     return await update_score_rule(rule_id=rule_id, body=body, user=user, tenant=tenant)
@@ -209,7 +209,7 @@ async def _legacy_update_score_rule(
 @legacy_router.delete("/safety/scorecards/rules/{rule_id}")
 async def _legacy_reset_score_rule(
     rule_id: str,
-    user: dict = Depends(require_permission("can_manage_scorecard_rules")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
 ):
     return await reset_score_rule(rule_id=rule_id, user=user, tenant=tenant)
@@ -217,7 +217,7 @@ async def _legacy_reset_score_rule(
 
 @legacy_router.get("/safety/scorecards/pillar-caps")
 async def _legacy_get_pillar_caps(
-    user: dict = Depends(require_permission("can_manage_scorecard_rules")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
 ):
     return await get_pillar_caps(user=user, tenant=tenant)
@@ -226,7 +226,7 @@ async def _legacy_get_pillar_caps(
 @legacy_router.put("/safety/scorecards/pillar-caps")
 async def _legacy_set_pillar_caps(
     body: PillarCapsUpdate,
-    user: dict = Depends(require_permission("can_manage_scorecard_rules")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
 ):
     return await set_pillar_caps(body=body, user=user, tenant=tenant)
@@ -234,7 +234,7 @@ async def _legacy_set_pillar_caps(
 
 @legacy_router.delete("/safety/scorecards/pillar-caps")
 async def _legacy_reset_pillar_caps(
-    user: dict = Depends(require_permission("can_manage_scorecard_rules")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
 ):
     return await reset_pillar_caps(user=user, tenant=tenant)

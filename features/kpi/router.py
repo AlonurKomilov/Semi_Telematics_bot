@@ -13,15 +13,20 @@ from pydantic import BaseModel, Field
 
 from features.kpi import service
 from infra.platform import get_tenant_db as _get_tenant_db
-from interfaces.api.deps import get_user_company_codes, require_permission
+from interfaces.api.deps import (
+    get_user_company_codes, require_permission, require_permission_any,
+)
 
 router = APIRouter(prefix="/kpi", tags=["kpi"])
 
 _view_kpi = require_permission("can_kpi")
-# Editing what counts as good/bad is account configuration, not analytics —
-# view access (can_kpi is delegatable to any role) must not be enough to
-# move the grading goalposts.
-_manage_thresholds = require_permission("can_manage_account")
+# Editing what counts as good/bad is account-scope feature config, not
+# analytics — view access (can_kpi is delegatable to any role) must not
+# be enough to move the grading goalposts.  can_manage_account keeps its
+# historical reach (owner/Full-Admin); can_manage_config_all is the
+# config family's delegatable flag (docs/architecture/config.md).
+_manage_thresholds = require_permission_any(
+    "can_manage_account", "can_manage_config_all")
 
 
 @router.get("/dispatchers")

@@ -153,9 +153,9 @@ class FeatureSet:
     can_cost_reports: bool = False      # /cost-reports executive rollups (split off can_maintenance_all)
     can_scorecard_all: bool = False     # scorecards for all subjects (driver or vehicle)
     can_scorecard_vehicle: bool = False     # scorecards for the assigned vehicle(s) only
-    can_manage_scorecard_rules: bool = False  # edit the scoring rules + pillar caps (Scorecards' admin component — was bundled in can_manage_account)
     can_manage_role_bot: bool = False   # Settings → Telegram Bot reachability for role MANAGERS (their own row: group, Sub bot, topics).  Granted ONLY via the manager tier — never a base-role seed; the API re-checks is_manager+role per persona regardless.
-    can_manage_role_config: bool = False  # Feature config for their OWN role (team-default page layouts today; future per-feature config rides the same flag).  Seeded on at manager tier, delegatable to ANY tier via the matrix.  The own-role wall is code: only can_manage_account crosses roles.  NOTE: deliberately looser than can_manage_role_bot, which stays hard-locked to the manager tier.
+    can_manage_config_role: bool = False  # Config family, ROLE scope: feature config for their OWN role (team-default page layouts today).  Seeded on at manager tier, delegatable to ANY tier via the matrix.  The own-role wall is code: only can_manage_account crosses roles.  NOTE: deliberately looser than can_manage_role_bot, which stays hard-locked to the manager tier.  SSOT: docs/architecture/config.md.
+    can_manage_config_all: bool = False  # Config family, ACCOUNT scope: a feature's SHARED settings — scorecard rules + pillar caps, KPI thresholds, every future one.  One truth per account (data-meaning config never varies by role).  Absorbed can_manage_scorecard_rules 2026-07-29 (stored grants carried over by migration).  SSOT: docs/architecture/config.md.
     can_location_map: bool = False      # live location map (all trucks)
     can_location_vehicle: bool = False      # live location map (assigned vehicle)
     can_fuel_cost: bool = False         # fuel cost tracker
@@ -252,7 +252,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_kpi=True,
         can_manage_permissions=True, can_manage_integrations=True,
         can_manage_storage=True, can_manage_work_hours=True,
-        can_manage_scorecard_rules=True,   # Scorecards' admin component (owners delegate via the matrix)
+        can_manage_config_all=True,   # account-scope feature settings (owners delegate via the matrix)
         can_geofence_all=True, can_geofence_vehicle=True,
         can_parking_all=True, can_parking_vehicle=True,
         can_maintenance_all=True, can_maintenance_vehicle=True,
@@ -530,7 +530,7 @@ TIER_GRANTS: dict[Role, RoleTier] = {
     Role.RECRUITER: RoleTier(
         senior_label="Manager", base_label="Employee",
         grants=frozenset({"can_invite", "can_manage_carrier_directory",
-                          "can_manage_role_bot", "can_manage_role_config"}),
+                          "can_manage_role_bot", "can_manage_config_role"}),
     ),
     Role.ADMIN: RoleTier(
         senior_label="Full admin", base_label="Standard admin",
@@ -552,21 +552,23 @@ TIER_GRANTS: dict[Role, RoleTier] = {
         senior_label="Manager", base_label="Employee",
         grants=frozenset({
             "can_invite", "can_manage_work_hours", "can_risk_report_all",
-            "can_manage_role_bot", "can_manage_role_config",
+            "can_manage_role_bot", "can_manage_config_role",
         }),
     ),
     Role.SAFETY: RoleTier(
         senior_label="Manager", base_label="Employee",
-        # The safety lead owns the scoring config (rules + pillar caps).
-        grants=frozenset({"can_manage_scorecard_rules", "can_invite",
-                          "can_manage_role_bot", "can_manage_role_config"}),
+        # The safety lead owns the scoring config (rules + pillar caps) —
+        # carried into the account-scope config flag when
+        # can_manage_scorecard_rules folded into it (2026-07-29).
+        grants=frozenset({"can_manage_config_all", "can_invite",
+                          "can_manage_role_bot", "can_manage_config_role"}),
     ),
     Role.DISPATCHER: RoleTier(
         senior_label="Manager", base_label="Employee",
         # The dispatch lead builds shift schedules + curates map layers.
         grants=frozenset({
             "can_manage_work_hours", "can_manage_poi_layers", "can_invite",
-            "can_manage_role_bot", "can_manage_role_config",
+            "can_manage_role_bot", "can_manage_config_role",
         }),
     ),
     Role.HR: RoleTier(
@@ -576,7 +578,7 @@ TIER_GRANTS: dict[Role, RoleTier] = {
         grants=frozenset({
             "can_manage_work_hours", "can_manage_applications",
             "can_convert_to_driver", "can_manage_role_bot",
-            "can_manage_role_config",
+            "can_manage_config_role",
         }),
     ),
     Role.ACCOUNTING: RoleTier(
@@ -585,7 +587,7 @@ TIER_GRANTS: dict[Role, RoleTier] = {
         # records behind the cost numbers (parts analytics included).
         grants=frozenset({"can_work_orders_all", "can_maintenance_all",
                           "can_parts", "can_service_tasks",
-                          "can_manage_role_bot", "can_manage_role_config"}),
+                          "can_manage_role_bot", "can_manage_config_role"}),
     ),
 }
 
@@ -1195,9 +1197,9 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_inspections_vehicle": "inspections (assigned vehicle)",
     "can_scorecard_all": "scorecards (all)",
     "can_scorecard_vehicle": "scorecards (assigned vehicle)",
-    "can_manage_scorecard_rules": "scorecard rules + pillar caps (scoring config)",
     "can_manage_role_bot": "their role's Telegram bot row (group, Sub bot, topics)",
-    "can_manage_role_config": "their role's feature config (team-default page layouts)",
+    "can_manage_config_role": "their role's feature config (team-default page layouts)",
+    "can_manage_config_all": "account-wide feature settings (scorecard rules, KPI thresholds)",
     "can_location_map": "live location map (all)",
     "can_location_vehicle": "live location (assigned vehicle)",
     "can_fuel_cost": "fuel cost tracking",

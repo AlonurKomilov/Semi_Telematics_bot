@@ -7,7 +7,7 @@ lock).
 
 WHO may write is decided by the Permissions matrix, so the owner sets
 the scale: ``can_manage_account`` may set ANY role's default;
-``can_manage_role_config`` (seeded on at manager tier, delegatable to
+``can_manage_config_role`` (seeded on at manager tier, delegatable to
 any tier via the matrix) may set the caller's OWN role's only.  The
 own-role wall is code, not configuration — no grant combination lets a
 fleet user rearrange the safety team's page.
@@ -42,14 +42,14 @@ _VALID_ROLES = frozenset({
 })
 
 
-async def _may_manage_role_config(user: dict, role: str) -> bool:
+async def _may_manage_config_role(user: dict, role: str) -> bool:
     """The matrix decides WHO; code decides HOW FAR.
 
     Resolves the caller's EFFECTIVE permission set (their own tier row,
     per-account overrides included), so whatever the owner ticked in the
     Permissions matrix is the authority:
       * ``can_manage_account``      → any role's default,
-      * ``can_manage_role_config``  → the caller's OWN role's only.
+      * ``can_manage_config_role``  → the caller's OWN role's only.
     The own-role wall stays hard-coded — delegating the grant to a fleet
     employee can never extend to the safety team's page.
     """
@@ -65,7 +65,7 @@ async def _may_manage_role_config(user: dict, role: str) -> bool:
         return False        # a role string Role() doesn't know
     if perms.can_manage_account:
         return True
-    return bool(perms.can_manage_role_config) and own == role
+    return bool(perms.can_manage_config_role) and own == role
 
 
 class PageLayoutBody(BaseModel):
@@ -104,7 +104,7 @@ async def set_page_layout(
         raise HTTPException(status_code=422, detail="Unknown role")
     if feature not in _ALLOWED_FEATURES:
         raise HTTPException(status_code=422, detail="Unknown feature page")
-    if not await _may_manage_role_config(user, role):
+    if not await _may_manage_config_role(user, role):
         raise HTTPException(
             status_code=403,
             detail="Setting this role's team default needs the feature-config permission",
@@ -134,7 +134,7 @@ async def clear_page_layout(
         raise HTTPException(status_code=422, detail="Unknown role")
     if feature not in _ALLOWED_FEATURES:
         raise HTTPException(status_code=422, detail="Unknown feature page")
-    if not await _may_manage_role_config(user, role):
+    if not await _may_manage_config_role(user, role):
         raise HTTPException(
             status_code=403,
             detail="Clearing this role's team default needs the feature-config permission",

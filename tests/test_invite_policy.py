@@ -25,12 +25,13 @@ class TestManagerTier:
         assert not hasattr(Role, "RECRUITER_MANAGER")
         assert Role.from_str("recruiter_manager") is Role.RECRUITER
 
-    def test_manager_grant_is_recruiter_plus_exactly_three_flags(self):
+    def test_manager_grant_is_recruiter_plus_exactly_four_flags(self):
         """A recruiter MANAGER = the recruiter baseline PLUS exactly
         can_invite + can_manage_carrier_directory + can_manage_role_bot
-        (role-bot roster management is a manager right — 8c0edbb).  The
-        read flag can_carrier_directory is on BOTH, so it is NOT a
-        difference."""
+        (role-bot roster management is a manager right — 8c0edbb) +
+        can_manage_config_role (team-default page config, the config
+        family's role scope).  The read flag can_carrier_directory is on
+        BOTH, so it is NOT a difference."""
         base = get_permissions(Role.RECRUITER)
         mgr = apply_manager_grants(base, Role.RECRUITER, True)
         b, m = asdict(base), asdict(mgr)
@@ -39,6 +40,7 @@ class TestManagerTier:
             "can_invite": (False, True),
             "can_manage_carrier_directory": (False, True),
             "can_manage_role_bot": (False, True),
+            "can_manage_config_role": (False, True),
         }, diff
         assert base.can_carrier_directory is True and mgr.can_carrier_directory is True
 
@@ -57,7 +59,8 @@ class TestManagerTier:
         for r in (Role.DRIVER, Role.OWNER):
             assert role_supports_manager(r) is False, r
         assert MANAGER_GRANTS[Role.RECRUITER] == frozenset(
-            {"can_invite", "can_manage_carrier_directory", "can_manage_role_bot"}
+            {"can_invite", "can_manage_carrier_directory",
+             "can_manage_role_bot", "can_manage_config_role"}
         )
 
     def test_department_tier_seed_grants(self):
@@ -65,18 +68,24 @@ class TestManagerTier:
         per-account afterward — these are only the defaults)."""
         assert TIER_GRANTS[Role.FLEET].grants == frozenset(
             {"can_invite", "can_manage_work_hours", "can_risk_report_all",
-             "can_manage_role_bot"})
+             "can_manage_role_bot", "can_manage_config_role"})
+        # Safety's scoring-config ownership rode can_manage_scorecard_rules
+        # until that flag folded into the account-scope config permission
+        # (docs/architecture/config.md).
         assert TIER_GRANTS[Role.SAFETY].grants == frozenset(
-            {"can_manage_scorecard_rules", "can_invite", "can_manage_role_bot"})
+            {"can_manage_config_all", "can_invite", "can_manage_role_bot",
+             "can_manage_config_role"})
         assert TIER_GRANTS[Role.DISPATCHER].grants == frozenset(
             {"can_manage_work_hours", "can_manage_poi_layers", "can_invite",
-             "can_manage_role_bot"})
+             "can_manage_role_bot", "can_manage_config_role"})
         assert TIER_GRANTS[Role.HR].grants == frozenset(
             {"can_manage_work_hours", "can_manage_applications",
-             "can_convert_to_driver", "can_manage_role_bot"})
+             "can_convert_to_driver", "can_manage_role_bot",
+             "can_manage_config_role"})
         assert TIER_GRANTS[Role.ACCOUNTING].grants == frozenset(
             {"can_work_orders_all", "can_maintenance_all",
-             "can_parts", "can_service_tasks", "can_manage_role_bot"})
+             "can_parts", "can_service_tasks", "can_manage_role_bot",
+             "can_manage_config_role"})
         # Every seed grant must be flags the BASE role lacks (a real delta).
         from dataclasses import asdict
         for role, tier in TIER_GRANTS.items():

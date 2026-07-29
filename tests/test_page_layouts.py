@@ -2,7 +2,7 @@
 
 What must hold:
   * WHO — the Permissions matrix decides: ``can_manage_account`` may set
-    any role's default; ``can_manage_role_config`` (manager-tier seed,
+    any role's default; ``can_manage_config_role`` (manager-tier seed,
     owner-delegatable to any tier) the caller's OWN role's only.  The
     own-role wall is code — no grant combination crosses roles.
   * WHAT — shape-only validation here (the backend has no section
@@ -105,7 +105,7 @@ class TestWhoMayWrite:
         from capabilities.permissions.roles import invalidate_permissions_cache
         db, acct = seeded["db"], seeded["acct"]
         await db.set_role_permissions(
-            acct.id, "fleet", {"can_manage_role_config": True}, 9401)
+            acct.id, "fleet", {"can_manage_config_role": True}, 9401)
         invalidate_permissions_cache(acct.id)
         async with await _client(seeded["app"]) as c:
             r = await c.put("/api/page-layouts/fleet/alerts",
@@ -118,7 +118,7 @@ class TestWhoMayWrite:
             assert r.status_code == 403
 
     async def test_standard_admin_needs_the_matrix_grant(self, seeded):
-        """Intentional tightening (documented in page-config.md): a
+        """Intentional tightening (documented in config.md): a
         Standard Admin starts with neither flag — the owner delegates
         via the matrix.  Ticking Feature Config on the admin row gives
         OWN-role reach; any-role needs Full Admin's can_manage_account."""
@@ -131,7 +131,7 @@ class TestWhoMayWrite:
                             json={"sections": SECTIONS}, headers=_h(tok))
             assert r.status_code == 403
             await db.set_role_permissions(
-                acct.id, "admin", {"can_manage_role_config": True}, 9401)
+                acct.id, "admin", {"can_manage_config_role": True}, 9401)
             invalidate_permissions_cache(acct.id)
             r = await c.put("/api/page-layouts/admin/alerts",
                             json={"sections": SECTIONS}, headers=_h(tok))
@@ -146,7 +146,7 @@ class TestWhoMayWrite:
         from capabilities.permissions.roles import invalidate_permissions_cache
         db, acct = seeded["db"], seeded["acct"]
         await db.set_role_permissions(
-            acct.id, "fleet__manager", {"can_manage_role_config": False}, 9401)
+            acct.id, "fleet__manager", {"can_manage_config_role": False}, 9401)
         invalidate_permissions_cache(acct.id)
         async with await _client(seeded["app"]) as c:
             r = await c.put("/api/page-layouts/fleet/alerts",

@@ -10,7 +10,7 @@ This is a feature table, deliberately NOT a permission and NOT a user
 preference: it is structured data (a list with order) that affects every
 member of a role, which is exactly what the preferences service's own
 rule excludes from per-user storage.  WHO may write it is a permission
-(``can_manage_role_config`` + the API's own is_manager/role re-check);
+(``can_manage_config_role`` + the API's own is_manager/role re-check);
 WHAT was written lives here.
 
 ``sections`` is stored as a JSON array of section ids.  The backend does
