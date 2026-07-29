@@ -27,6 +27,34 @@ ExecStart=/usr/bin/python3 -m gunicorn -c /home/abcdev/projects/Semi_Telematics_
 KillSignal=SIGTERM
 TimeoutStopSec=45
 
+# Zero-downtime code deploys.  SIGHUP makes the gunicorn arbiter boot a
+# fresh set of workers and gracefully retire the old ones WITHOUT ever
+# closing the listening socket — no connection is dropped.  Because
+# `preload_app = False` (see gunicorn.conf.py) each worker imports the
+# app after fork, so a reload genuinely picks up new Python code; it is
+# not merely a config re-read.  This is the same mechanism `max_requests`
+# already exercises continuously under load.
+#
+# Two things SIGHUP does NOT do, both handled by
+# scripts/rolling_restart.sh rather than here:
+#
+#  1. It does not re-read EnvironmentFile (.env) or gunicorn.conf.py's
+#     own bind/workers.  The script detects a changed .env and falls
+#     back to a full restart.
+#
+#  2. It is NOT a safe no-op when the new code fails to import.
+#     Arbiter.reload() spawns the new workers and then immediately calls
+#     manage_workers(), which SIGTERMs the oldest — i.e. the healthy,
+#     currently-serving — workers before any new one has finished
+#     importing.  If a new worker then dies with WORKER_BOOT_ERROR /
+#     APP_LOAD_ERROR, reap_workers() raises HaltServer, and halt() ->
+#     stop() closes the listening socket outright.  Restart=always then
+#     retries into the same failure every RestartSec.  So a reload of
+#     broken code is a crash loop with the port shut, not a graceful
+#     rollback.  The script therefore proves the code imports in a
+#     throwaway process BEFORE sending SIGHUP.
+ExecReload=/bin/kill -s HUP $MAINPID
+
 Restart=always
 RestartSec=5
 StandardOutput=append:/home/abcdev/projects/Semi_Telematics_bot/api.log

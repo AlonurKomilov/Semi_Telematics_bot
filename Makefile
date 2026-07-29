@@ -14,13 +14,16 @@ APP_SERVICES_STOP  = $(SERVICE_QUEUE) $(SERVICE) $(SERVICE_API)
 PID_FILE = .bot.pid
 LOG_FILE = bot.log
 
-.PHONY: start stop restart restart-api restart-bot restart-queue status logs install clean \
+.PHONY: start stop restart restart-clean restart-dry \
+       restart-api restart-bot restart-queue status logs install \
+       clean clean-frontend clean-all \
        start-queue stop-queue \
        test test-cov test-fast test-watch \
        docker-build docker-up docker-down docker-logs docker-restart \
-       nginx-install nginx-test nginx-status ports \
-       redis-start redis-stop redis-cli \
+       nginx-install nginx-test nginx-status nginx-sync-if-needed ports \
+       redis-start redis-stop redis-create redis-cli \
        build dashboard-build dashboard-build-if-needed miniapp-build miniapp-build-if-needed \
+       system-dashboard-build system-dashboard-build-if-needed \
        deps-install-if-needed
 
 # ── systemd-aware targets (preferred) ────────────────
@@ -57,39 +60,29 @@ start: deps-install-if-needed dashboard-build-if-needed miniapp-build-if-needed 
 	@# ── 0. Clear stale Python bytecode so live source is always used ──
 	@find . -path ./.git -prune -o -name '*.pyc' -delete 2>/dev/null; true
 	@# ── 1. Redis ──
-	@if docker ps --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
+	@# Redis holds state, not code.  Start it if it happens to be down,
+	@# but NEVER recreate it: a fresh container attaches a fresh empty
+	@# volume, and the app would come up on a blank Redis without
+	@# complaining.  Failing loudly is the correct behaviour here.
+	@if docker ps --format '{{.Names}}' | grep -qx $(REDIS_CONTAINER); then \
 		echo "   ✅ Redis already running on port 8002"; \
-	elif docker ps -a --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
+	elif docker ps -a --format '{{.Names}}' | grep -qx $(REDIS_CONTAINER); then \
 		if docker start $(REDIS_CONTAINER) >/dev/null 2>&1; then \
-			echo "   ✅ Redis started on port 8002 (existing container)"; \
+			echo "   ✅ Redis started on port 8002 (existing container, volume intact)"; \
 		else \
-			echo "   🔄 Port 8002 race — waiting 3s for Docker to release..."; \
-			sleep 3; \
-			if docker start $(REDIS_CONTAINER) >/dev/null 2>&1; then \
-				echo "   ✅ Redis started on port 8002 (existing container — retry ok)"; \
-			else \
-				echo "   🔄 Recreating Redis container (port still held)..."; \
-				docker rm $(REDIS_CONTAINER) >/dev/null 2>&1 || true; \
-				sleep 1; \
-				docker run -d \
-					--name $(REDIS_CONTAINER) \
-					--restart unless-stopped \
-					-p 127.0.0.1:8002:8002 \
-					-v 4truck-redis:/data \
-					redis:7-alpine \
-					redis-server --port 8002 >/dev/null; \
-				echo "   ✅ Redis started on port 8002 (container recreated)"; \
-			fi; \
+			echo "   ❌ Redis container '$(REDIS_CONTAINER)' failed to start."; \
+			echo "      Something else may be holding port 8002:"; \
+			ss -tlnp 2>/dev/null | grep ':8002 ' || true; \
+			echo "      NOT recreating it — a new container attaches an EMPTY volume"; \
+			echo "      and would drop the JWT denylist and every queued job."; \
+			exit 1; \
 		fi; \
 	else \
-		docker run -d \
-			--name $(REDIS_CONTAINER) \
-			--restart unless-stopped \
-			-p 127.0.0.1:8002:8002 \
-			-v 4truck-redis:/data \
-			redis:7-alpine \
-			redis-server --port 8002 >/dev/null; \
-		echo "   ✅ Redis started on port 8002 (new container)"; \
+		echo "   ❌ Redis container '$(REDIS_CONTAINER)' does not exist."; \
+		echo "      Refusing to create one automatically (new container = new,"; \
+		echo "      empty volume).  On a genuinely fresh machine run:"; \
+		echo "        make redis-create"; \
+		exit 1; \
 	fi
 	@# ── 2. App services ──
 	@# Production split: API (gunicorn workers), bot+scheduler, and the
@@ -98,14 +91,18 @@ start: deps-install-if-needed dashboard-build-if-needed miniapp-build-if-needed 
 	@# moment they boot.  Each unit is optional — only the installed
 	@# ones are touched, so single-process dev setups (where the legacy
 	@# `4truck-bot` unit runs everything) still work.
-	@started_any=0; \
+	@started_any=0; t_all=$$(date +%s); \
 	for svc in $(APP_SERVICES_START); do \
 		if systemctl is-enabled $$svc >/dev/null 2>&1; then \
+			t0=$$(date +%s); \
 			sudo systemctl start $$svc; \
-			echo "   ✅ $$svc started (systemd)"; \
+			echo "   ✅ $$svc started (systemd)  [$$(( $$(date +%s) - t0 ))s]"; \
 			started_any=1; \
 		fi; \
 	done; \
+	if [ $$started_any -eq 1 ]; then \
+		echo "   ⏱  app services launched in $$(( $$(date +%s) - t_all ))s"; \
+	fi; \
 	if [ $$started_any -eq 0 ]; then \
 		if ss -tlnp 2>/dev/null | grep -q ':8000 '; then \
 			echo "   🧹 Port 8000 in use — clearing (race after stop)..."; \
@@ -136,8 +133,15 @@ start: deps-install-if-needed dashboard-build-if-needed miniapp-build-if-needed 
 		sleep 1; \
 	done
 	@# ── 4. Nginx — 4truck.us config only ──────────────────────────────────────
-	@# Only updates nginx when sudo credentials are already cached (no password prompt).
-	@# Run `sudo -v` first, or `make nginx-install` separately, to apply config changes.
+	@$(MAKE) --no-print-directory nginx-sync-if-needed
+
+## Sync the 4truck.us nginx config when it differs from the checked-in
+## copy.  Safe to run while the app is serving — nginx reloads without
+## dropping connections, and other sites on this box are untouched.
+## Only acts when sudo credentials are already cached (no password
+## prompt).  Run `sudo -v` first, or `make nginx-install` separately, to
+## apply config changes.
+nginx-sync-if-needed:
 	@if sudo -n true 2>/dev/null; then \
 		sudo rm -f /etc/nginx/sites-enabled/semi-telematics-bot /etc/nginx/sites-available/semi-telematics-bot 2>/dev/null; true; \
 		if [ ! -f /etc/nginx/sites-available/$(NGINX_CONF) ] || \
@@ -167,14 +171,18 @@ stop:
 	@# in-flight jobs cleanly; bot next so the scheduler tearsdown
 	@# without a half-running cron; API last so the request layer
 	@# stays available until the bot+queue are quiet.
-	@stopped_any=0; \
+	@stopped_any=0; t_all=$$(date +%s); \
 	for svc in $(APP_SERVICES_STOP); do \
 		if systemctl is-enabled $$svc >/dev/null 2>&1; then \
+			t0=$$(date +%s); \
 			sudo systemctl stop $$svc; \
-			echo "   🛑 $$svc stopped (systemd)"; \
+			echo "   🛑 $$svc stopped (systemd)  [$$(( $$(date +%s) - t0 ))s drain]"; \
 			stopped_any=1; \
 		fi; \
 	done; \
+	if [ $$stopped_any -eq 1 ]; then \
+		echo "   ⏱  app services down in $$(( $$(date +%s) - t_all ))s"; \
+	fi; \
 	if [ $$stopped_any -eq 0 ]; then \
 		if [ -f $(PID_FILE) ] && kill -0 $$(cat $(PID_FILE)) 2>/dev/null; then \
 			kill $$(cat $(PID_FILE)) && rm -f $(PID_FILE); \
@@ -183,31 +191,38 @@ stop:
 			echo "   ⚠️  No app services found running"; \
 			rm -f $(PID_FILE); \
 		fi; \
-	fi
-	@# ── Nuclear port clear: release port 8000 regardless of which process holds it ──────────────────
-	@# fuser -k sends SIGKILL directly to whatever owns the port — no PID file or name matching needed.
-	@# This works for user-owned processes without sudo. If port is still held after (root process),
-	@# the message below will instruct the operator.
-	@if ss -tlnp 2>/dev/null | grep -q ':8000 '; then \
-		echo "   🧹 Clearing port 8000..."; \
-		fuser -k 8000/tcp 2>/dev/null; \
-		sleep 1; \
+		: ; \
+		: "── Port clear — nohup fallback path ONLY ──"; \
+		: "fuser -k sends SIGKILL. That is acceptable for a stray nohup"; \
+		: "process with no drain logic, but NOT on the systemd path:"; \
+		: "there, systemctl stop has already drained gunicorn, and this"; \
+		: "would only ever land on a worker still finishing a slow"; \
+		: "request (the API timeout is 90s — cold scorecards do take that"; \
+		: "long).  So it stays inside the fallback branch."; \
 		if ss -tlnp 2>/dev/null | grep -q ':8000 '; then \
-			echo "   ⚠️  Port 8000 still held (root process?) — run: sudo fuser -k 8000/tcp"; \
-		else \
-			echo "   ✅ Port 8000 cleared"; \
+			echo "   🧹 Clearing port 8000..."; \
+			fuser -k 8000/tcp 2>/dev/null; \
+			sleep 1; \
+			if ss -tlnp 2>/dev/null | grep -q ':8000 '; then \
+				echo "   ⚠️  Port 8000 still held (root process?) — run: sudo fuser -k 8000/tcp"; \
+			else \
+				echo "   ✅ Port 8000 cleared"; \
+			fi; \
 		fi; \
 	fi
 	@# Kill any orphan run.py belonging to THIS project directory (catches edge cases)
 	@pgrep -f "$(CURDIR)/run\.py" 2>/dev/null | xargs -r kill 2>/dev/null; true
-	@# ── 2. Redis ──
-	@if docker ps --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
-		docker stop $(REDIS_CONTAINER) >/dev/null; \
-		echo "   🛑 Redis stopped"; \
+	@# ── 2. Redis — left running, on purpose ──────────────────────────
+	@# Redis holds state, not code: the JWT denylist, the ARQ queue, the
+	@# APScheduler lock, staged acks.  Stopping it to deploy a code
+	@# change gains nothing and risks that state.  Same treatment as
+	@# nginx below.  To take it down deliberately: make redis-stop
+	@if docker ps --format '{{.Names}}' | grep -qx $(REDIS_CONTAINER); then \
+		echo "   ℹ️  Redis: still running (state — not stopped by design)"; \
 	else \
-		echo "   ⚠️  Redis not running"; \
+		echo "   ⚠️  Redis: not running — 'make start' will start it"; \
 	fi
-	@echo "   ✅ All services stopped"
+	@echo "   ✅ App services stopped"
 	@# ── Nginx stays running ─────────────────────────────────────────────────
 	@# nginx is NOT stopped here — it is a shared service that also serves
 	@# 2bot, analyticbot, and any other site on this machine.
@@ -218,10 +233,56 @@ stop:
 		echo "   ⚠️  Nginx: not running"; \
 	fi
 
-## Restart all services
-restart:
-	@$(MAKE) stop
-	@$(MAKE) start
+## Rolling restart — the everyday deploy.
+##
+## Everything expensive happens FIRST, while the old services are still
+## serving traffic: dependency install, the three frontend builds, the
+## nginx diff.  Then the new code is proven importable in a throwaway
+## process, and only then are the units rolled one at a time with a
+## health gate between each (scripts/rolling_restart.sh).
+##
+## That import pre-flight is not belt-and-braces, it is load-bearing:
+## gunicorn's SIGHUP reload retires the healthy workers before the new
+## ones finish importing, so code that fails to import takes the port
+## down rather than degrading gracefully.  See the long comment on
+## ExecReload in 4truck-api.service.
+##
+## Measured against `make stop && make clean && make start`:
+##   API downtime   11s  →  0s   (SIGHUP reload, no dropped connections)
+##   bot downtime   56s  → ~15s
+##   frontend rebuild no longer happens while the site is down (that was
+##   worth another 30-90s of 502 whenever a dashboard file changed)
+##
+## Trade-offs, both deliberate:
+##   * For a few seconds the queue+bot run new code while the API still
+##     runs old.  Additive schema changes are fine; for a destructive
+##     migration, a dependency upgrade, or "something is weird", use the
+##     cold path: make stop && make clean && make start
+##   * nginx serves interfaces/*/dist straight off disk, so a rebuilt
+##     frontend goes live before the API reloads.  A deploy that adds a
+##     new endpoint can 404 for anyone loading the page in that window.
+##     Rolling the API last is still the safer choice: a frontend skew
+##     costs one failed request and a refresh, a backend that will not
+##     boot costs everyone.
+restart: deps-install-if-needed dashboard-build-if-needed miniapp-build-if-needed system-dashboard-build-if-needed
+	@$(MAKE) --no-print-directory nginx-sync-if-needed
+	@bash scripts/rolling_restart.sh
+
+## Rolling restart preceded by a bytecode clean.  Use after a pull that
+## moved or deleted Python files.
+##
+## `clean` runs BEFORE anything is stopped, and that is safe: Python
+## holds imported modules in memory, so deleting .pyc under a live
+## process changes nothing for it, and anything imported later simply
+## recompiles from the .py.  It adds no version-skew risk that editing
+## the source did not already create.
+restart-clean:
+	@$(MAKE) --no-print-directory clean
+	@$(MAKE) --no-print-directory restart
+
+## Show what a rolling restart would do, without changing anything.
+restart-dry:
+	@bash scripts/rolling_restart.sh --dry-run
 
 ## Show status of all services
 status:
@@ -246,8 +307,8 @@ status:
 		fi; \
 	fi
 	@# ── Redis ──
-	@if docker ps --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
-		echo "   ✅ Redis: running on port 8002"; \
+	@if docker ps --format '{{.Names}}' | grep -qx $(REDIS_CONTAINER); then \
+		echo "   ✅ Redis: running on port 8002 ($(REDIS_CONTAINER))"; \
 	else \
 		echo "   ❌ Redis: stopped"; \
 	fi
@@ -279,19 +340,32 @@ logs:
 
 ## Remove Python caches, test caches, PID files and other generated junk
 ## Does NOT touch the database (data/) or source code.
+##
+## Frontend build caches are deliberately NOT cleared here — see
+## clean-frontend.  They used to be, which meant every `make clean`
+## threw away Vite's dependency pre-bundling even on runs where no
+## frontend rebuild happened, making the NEXT real build pay a cold
+## start for nothing.
 clean:
 	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null; true
 	@find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null; true
 	@find . \( -name "*.pyc" -o -name "*.pyo" \) -delete 2>/dev/null; true
 	@rm -f .bot.pid .api.pid .pid
 	@rm -f "=0.5.7"
-	@# Clear miniapp Vite cache
+	@echo "✅  Python cache cleared (DB, source and frontend caches untouched)"
+
+## Clear the three Vite dependency caches.  Use when a frontend build
+## misbehaves in a way that smells like a stale cache; the next build
+## will be slower because Vite re-optimises deps from scratch.
+clean-frontend:
 	@rm -rf interfaces/miniapp/node_modules/.vite 2>/dev/null; true
-	@# Clear dashboard Vite cache
 	@rm -rf interfaces/dashboard/node_modules/.vite 2>/dev/null; true
-	@# Clear system console Vite cache
 	@rm -rf interfaces/system_dashboard/node_modules/.vite 2>/dev/null; true
-	@echo "✅  Cache cleared (DB and source untouched)"
+	@echo "✅  Frontend build caches cleared (next build will be slower)"
+
+## Everything clean + clean-frontend do.  This is what `make clean` used
+## to be, kept under an explicit name.
+clean-all: clean clean-frontend
 
 ## Build all frontend assets (dashboard + miniapp + system console)
 build: dashboard-build miniapp-build system-dashboard-build
@@ -481,23 +555,57 @@ ports:
 
 # ── Redis standalone (when not using docker-compose) ─
 
-REDIS_CONTAINER = 4truck-redis
+# The Redis this project actually runs on.  The name predates the
+# 4truck rename and is NOT cosmetic: this container owns the
+# ``semi-telematics-redis`` volume holding the JWT denylist, the ARQ
+# job queue, the APScheduler global lock, staged acks and the capacity
+# counters.
+#
+# Do NOT "modernise" this to 4truck-redis.  That name maps to a
+# different, EMPTY volume — starting it would silently bring the app up
+# on a blank Redis (revoked sessions valid again, queued jobs gone).
+# For years this Makefile pointed at 4truck-redis and every start
+# printed a green checkmark while the docker run failed on the port
+# bind; the mismatch is what kept the damage theoretical.
+REDIS_CONTAINER = semi-telematics-redis
+REDIS_VOLUME    = semi-telematics-redis
 
-## Start Redis on port 8002 (Docker container, standalone)
+## Start the existing Redis container (never creates one — see redis-create)
 redis-start:
-	@if docker ps --format '{{.Names}}' | grep -q $(REDIS_CONTAINER); then \
+	@if docker ps --format '{{.Names}}' | grep -qx $(REDIS_CONTAINER); then \
 		echo "✅ Redis already running on port 8002"; \
+	elif docker ps -a --format '{{.Names}}' | grep -qx $(REDIS_CONTAINER); then \
+		docker start $(REDIS_CONTAINER) >/dev/null && \
+		echo "✅ Redis started on port 8002 (volume $(REDIS_VOLUME) intact)"; \
 	else \
-		docker start $(REDIS_CONTAINER) 2>/dev/null || \
-		docker run -d \
-			--name $(REDIS_CONTAINER) \
-			--restart unless-stopped \
-			-p 127.0.0.1:8002:8002 \
-			-v 4truck-redis:/data \
-			redis:7-alpine \
-			redis-server --port 8002; \
-		echo "✅ Redis started on port 8002"; \
+		echo "❌ Container '$(REDIS_CONTAINER)' does not exist — run: make redis-create"; \
+		exit 1; \
 	fi
+
+## Create the Redis container from scratch.  FRESH MACHINES ONLY.
+##
+## Deliberately not automatic and deliberately not part of `make start`:
+## on a box that already has data, creating a container means attaching
+## a new empty volume, which silently resets the JWT denylist, the ARQ
+## queue and the APScheduler lock.  Refuses to run if the container is
+## already there.
+redis-create:
+	@if docker ps -a --format '{{.Names}}' | grep -qx $(REDIS_CONTAINER); then \
+		echo "❌ Container '$(REDIS_CONTAINER)' already exists — not touching it."; \
+		echo "   To start it:  make redis-start"; \
+		exit 1; \
+	fi
+	@if docker volume ls --format '{{.Name}}' | grep -qx $(REDIS_VOLUME); then \
+		echo "ℹ️  Reusing existing volume '$(REDIS_VOLUME)' (data preserved)."; \
+	fi
+	@docker run -d \
+		--name $(REDIS_CONTAINER) \
+		--restart unless-stopped \
+		-p 127.0.0.1:8002:8002 \
+		-v $(REDIS_VOLUME):/data \
+		redis:7-alpine \
+		redis-server --port 8002 >/dev/null
+	@echo "✅ Redis container created and started on port 8002"
 
 ## Stop Redis container
 redis-stop:

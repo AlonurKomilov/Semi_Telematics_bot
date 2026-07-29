@@ -17,6 +17,7 @@ env/
 *.log
 .bot.pid
 .deps-installed
+.env-applied
 .pid
 .pytest_cache/
 .mypy_cache/
