@@ -18,7 +18,6 @@ import {
 } from '../../components/shell';
 import { Button } from '../../components/ui/button';
 import { useRoleView } from '../../context/RoleViewContext';
-import { useAuth } from '../../context/AuthContext';
 import { statusClasses } from '../../lib/status';
 import type { AnyColumn } from '../../types';
 import LoadManageDialog from './LoadManageDialog';
@@ -151,15 +150,10 @@ export default function Loads() {
   const [layoverOpen, setLayoverOpen] = useState(false);
 
   // Gate on the ACTIVE VIEW's permission so role-preview stays honest.
+  // Any Manage holder edits ANY load (the own-scope wall came down
+  // 2026-07-29) — the load's history trail answers "who changed what".
   const canManage = viewHas('can_manage_loads');
-  // Own-scope dispatchers manage only THEIR loads; managers manage any.
-  // Mirrors the backend rule so the UI doesn't offer an edit the server
-  // would 404 — the server remains the authority.
-  const manageAll = viewHas('can_loads_manage_all');
-  const { user: authUser } = useAuth();
-  const myId = authUser?.id;
-  const canEditLoad = (row: LoadRow): boolean =>
-    canManage && (manageAll || (row.dispatcher_user_id != null && row.dispatcher_user_id === myId));
+  const canEditLoad = (_row: LoadRow): boolean => canManage;
 
   const { data, isLoading, error } = useQuery<LoadsResponse>({
     queryKey: ['loads', tab],
@@ -302,9 +296,7 @@ export default function Loads() {
           onRowClick={
             canManage
               ? (row) => {
-                  const r = row as unknown as LoadRow;
-                  if (!canEditLoad(r)) return;   // not yours — server would 404
-                  setEditing(r);
+                  setEditing(row as unknown as LoadRow);
                   setDialogOpen(true);
                 }
               : undefined

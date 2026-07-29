@@ -7482,3 +7482,58 @@ async def migrate_parts_assembly_key(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 168: parts_catalog.assembly_key ready")
+
+
+@_register("170_load_events")
+async def migrate_load_events(conn) -> None:
+    """The per-load accountability trail (the Inventory-events pattern).
+
+    Ships WITH the removal of the dispatcher own-scope write wall: from
+    this release any ``can_manage_loads`` holder edits any load, and the
+    trail — actor + field-level old→new diffs on every human write — is
+    what replaces the wall (owner decision 2026-07-29).  Datatruck sync
+    writes are deliberately NOT evented: they bypass the router and are
+    already field-provenance-stamped; this table records PEOPLE.
+    """
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS load_events (
+            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id         INTEGER NOT NULL,
+            load_id            INTEGER NOT NULL,
+            event_type         TEXT    NOT NULL,
+            changes            TEXT    NOT NULL DEFAULT '{}',
+            actor_user_id      INTEGER,
+            dispatcher_user_id INTEGER,
+            note               TEXT    NOT NULL DEFAULT '',
+            created_at         TEXT    NOT NULL DEFAULT ''
+        )
+        """
+    )
+    # Index here, never in schema.py (the known boot-crash gotcha).
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_load_events_load "
+        "ON load_events(account_id, load_id)"
+    )
+    await conn.commit()
+    logger.info("Migration 170: load_events trail ready")
+
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 170: ENABLE_RLS not set; RLS skipped")
+        return
+    try:
+        await conn.execute("ALTER TABLE load_events ENABLE ROW LEVEL SECURITY")
+        await conn.execute("ALTER TABLE load_events FORCE ROW LEVEL SECURITY")
+        await conn.execute("DROP POLICY IF EXISTS tenant_isolation ON load_events")
+        await conn.execute(
+            """
+            CREATE POLICY tenant_isolation ON load_events
+            USING       (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+            """
+        )
+        await conn.commit()
+        logger.info("Migration 170: RLS enabled on load_events")
+    except Exception as e:
+        logger.warning("Migration 170: RLS setup failed: %s", e)

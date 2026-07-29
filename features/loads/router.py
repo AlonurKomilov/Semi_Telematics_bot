@@ -19,6 +19,7 @@ from features.loads.service import load_to_dict
 from infra.platform import get_tenant_db as _get_tenant_db
 from interfaces.api.deps import (
     get_user_company_codes, require_permission, require_permission_any,
+    resolve_user_id,
 )
 
 router = APIRouter(prefix="/loads", tags=["loads"])
@@ -44,25 +45,15 @@ async def _scope_driver_id(user: dict) -> int | None:
     perms = await _user_perms(user)
     if getattr(perms, "can_loads_all", False):
         return None
-    return int(user["id"])
+    return await resolve_user_id(user)
 
 
-async def _is_manage_all(user: dict) -> bool:
-    return bool(getattr(await _user_perms(user), "can_loads_manage_all", False))
-
-
-async def _can_write_load(user: dict, load) -> bool:
-    """A ``can_manage_loads`` holder may write a load either because they
-    manage ALL loads (owner/admin/dispatch-manager) or because they OWN it
-    (dispatcher_user_id == self).  An unassigned load (no dispatcher) is
-    manager-only — a base dispatcher claims a load by being assigned to it,
-    never by editing an orphan."""
-    if await _is_manage_all(user):
-        return True
-    return (
-        load.dispatcher_user_id is not None
-        and load.dispatcher_user_id == int(user["id"])
-    )
+# Any ``can_manage_loads`` holder manages ANY load (owner decision
+# 2026-07-29): the dispatcher own-scope write wall came down in the same
+# release the per-load accountability trail went up.  Colleagues cover
+# each other's loads freely; the trail — actor + field-level old→new on
+# every human write (load_events) — is what answers "who changed what".
+# The retired can_loads_manage_all flag was removed with the wall.
 
 
 class LoadCreate(BaseModel):
@@ -150,16 +141,17 @@ async def create_load(
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
     fields = body.model_dump()
-    perms = await _user_perms(user)
-    if not getattr(perms, "can_loads_manage_all", False):
-        # Own-scope creator: the new load is stamped to THEM, so they can
-        # keep managing it and can't hand it off to another dispatcher.
-        uid = int(user["id"])
+    if not fields.get("dispatcher_user_id"):
+        # Default attribution, not a wall: an unassigned new load lands on
+        # its creator (KPI + the trail's dispatcher snapshot stay honest),
+        # but any explicit assignment in the body is honored as-is.
+        uid = await resolve_user_id(user)
         fields["dispatcher_user_id"] = uid
         me = await tenant.get_user(uid)
         fields["dispatcher_name"] = (me.display_name if me else "") or ""
     try:
-        load_id = await tenant.add_load(account_id, **fields)
+        load_id = await tenant.add_load(
+            account_id, actor_user_id=await resolve_user_id(user), **fields)
     except ValueError as e:
         raise HTTPException(400, str(e))
     l = await tenant.get_load(account_id, load_id)
@@ -179,16 +171,10 @@ async def update_load(
     existing = await tenant.get_load(account_id, load_id)
     if existing is None:
         raise HTTPException(404, "load not found")
-    if not await _can_write_load(user, existing):
-        # Another dispatcher's (or an unassigned) load — 404, don't leak.
-        raise HTTPException(404, "load not found")
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
-    # An own-scope dispatcher can't reassign a load away from themselves.
-    if not await _is_manage_all(user):
-        fields.pop("dispatcher_user_id", None)
-        fields.pop("dispatcher_name", None)
     try:
-        changed = await tenant.update_load(account_id, load_id, **fields)
+        changed = await tenant.update_load(
+            account_id, load_id, actor_user_id=await resolve_user_id(user), **fields)
     except ValueError as e:
         raise HTTPException(400, str(e))
     if not changed:
@@ -213,9 +199,8 @@ async def delete_load(
     existing = await tenant.get_load(account_id, load_id)
     if existing is None:
         raise HTTPException(404, "load not found")
-    if not await _can_write_load(user, existing):
-        raise HTTPException(404, "load not found")   # not yours — don't leak
-    if not await tenant.deactivate_load(account_id, load_id):
+    if not await tenant.deactivate_load(
+            account_id, load_id, actor_user_id=await resolve_user_id(user)):
         raise HTTPException(404, "load not found")
     return {"deleted": True, "id": load_id}
 
@@ -239,6 +224,41 @@ async def get_load(
     if allowed and l.company_code and l.company_code not in allowed:
         raise HTTPException(404, "load not found")   # company-scope: don't leak
     return load_to_dict(l)
+
+
+@router.get("/{load_id}/history")
+async def get_load_history(
+    load_id: int,
+    user: dict = Depends(_view_loads),
+):
+    """The load's accountability trail — same visibility rules as the
+    load itself.  Display names are resolved server-side (the Inventory
+    pattern); ids stay in the payload for exactness."""
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    l = await tenant.get_load(account_id, load_id)
+    if l is None:
+        raise HTTPException(404, "load not found")
+    scope = await _scope_driver_id(user)
+    if scope is not None and l.driver_user_id != scope:
+        raise HTTPException(404, "load not found")   # own-scope: don't leak
+    allowed = await get_user_company_codes(user)
+    if allowed and l.company_code and l.company_code not in allowed:
+        raise HTTPException(404, "load not found")   # company-scope: don't leak
+    events = await tenant.list_load_events(account_id, load_id)
+    names: dict[int, str] = {}
+    ids = {e["actor_user_id"] for e in events} | {e["dispatcher_user_id"] for e in events}
+    for uid in ids:
+        if uid is None:
+            continue
+        u = await tenant.get_user(int(uid))
+        names[int(uid)] = ((u.display_name if u else "") or "").strip() or f"#{uid}"
+    for e in events:
+        e["actor_name"] = names.get(e["actor_user_id"], "") if e["actor_user_id"] else ""
+        e["dispatcher_name"] = names.get(e["dispatcher_user_id"], "") if e["dispatcher_user_id"] else ""
+    return {"events": events}
 
 
 # ── Line items (extra pay & costs: TONU / layover / tolls / …) ────────
@@ -290,7 +310,6 @@ async def create_line_item(
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
     dispatcher_user_id = body.dispatcher_user_id
-    manage_all = await _is_manage_all(user)
     if body.load_id is not None:
         l = await tenant.get_load(account_id, body.load_id)
         if l is None:
@@ -298,14 +317,10 @@ async def create_line_item(
         allowed = await get_user_company_codes(user)
         if allowed and l.company_code and l.company_code not in allowed:
             raise HTTPException(404, "load not found")   # company-scope
-        # Own-scope: only the load's own dispatcher may add costs to it.
-        if not manage_all and not await _can_write_load(user, l):
-            raise HTTPException(404, "load not found")
-    else:
-        # Off-load layover — a base dispatcher can only charge it to
-        # THEMSELVES as the responsible dispatcher, never to a peer.
-        if not manage_all:
-            dispatcher_user_id = int(user["id"])
+    elif dispatcher_user_id is None:
+        # Off-load layover with nobody named: default the responsible
+        # dispatcher to the creator (attribution, not a wall).
+        dispatcher_user_id = await resolve_user_id(user)
     try:
         item_id = await tenant.add_load_line_item(
             account_id,
@@ -318,6 +333,7 @@ async def create_line_item(
             item_date=body.item_date,
             notes=body.notes,
             created_by=int(user["sub"]),
+            actor_user_id=await resolve_user_id(user),
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -336,18 +352,13 @@ async def delete_line_item(
     item = await tenant.get_load_line_item(account_id, item_id)
     if item is None:
         raise HTTPException(404, "item not found")
-    manage_all = await _is_manage_all(user)
     if item.load_id is not None:
         l = await tenant.get_load(account_id, item.load_id)
         if l is not None:
             allowed = await get_user_company_codes(user)
             if allowed and l.company_code and l.company_code not in allowed:
                 raise HTTPException(404, "item not found")   # company-scope
-            if not manage_all and not await _can_write_load(user, l):
-                raise HTTPException(404, "item not found")   # own-scope
-    elif not manage_all and item.dispatcher_user_id != int(user["id"]):
-        # Off-load layover owned by another dispatcher.
-        raise HTTPException(404, "item not found")
-    if not await tenant.delete_load_line_item(account_id, item_id):
+    if not await tenant.delete_load_line_item(
+            account_id, item_id, actor_user_id=await resolve_user_id(user)):
         raise HTTPException(404, "item not found")
     return {"deleted": True, "id": item_id}

@@ -116,6 +116,27 @@ export async function listLineItems(loadId: number): Promise<LineItem[]> {
   return r.items;
 }
 
+// ── The accountability trail (load_events) ─────────────────────────
+// Every human write to a load leaves one of these; the dialog's History
+// block renders them.  `changes` maps field → [old, new].
+export interface LoadEvent {
+  id: number;
+  load_id: number;
+  event_type: 'created' | 'edited' | 'deleted' | 'line_item_added' | 'line_item_removed' | string;
+  changes: Record<string, [unknown, unknown]>;
+  actor_user_id: number | null;
+  actor_name: string;
+  dispatcher_user_id: number | null;
+  dispatcher_name: string;
+  note: string;
+  created_at: string;
+}
+
+export async function listLoadHistory(loadId: number): Promise<LoadEvent[]> {
+  const r = await apiJSON<{ events: LoadEvent[] }>(`/loads/${loadId}/history`);
+  return r.events;
+}
+
 export async function createLineItem(draft: LineItemDraft): Promise<{ id: number }> {
   return apiJSON<{ id: number }>('/loads/line-items', {
     method: 'POST', body: { ...draft },

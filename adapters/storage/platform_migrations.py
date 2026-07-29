@@ -202,6 +202,7 @@ async def run_all(conn) -> None:
     await migrate_notification_inbox(conn)
     await migrate_page_layouts(conn)
     await migrate_config_perm_keys(conn)
+    await migrate_drop_loads_manage_all(conn)
     await migrate_notification_deliveries(conn)
     await migrate_push_subscriptions(conn)
     # Capacity monitoring (operator console): platform metric history +
@@ -727,6 +728,55 @@ async def migrate_config_perm_keys(conn) -> None:
         logger.warning(
             "Migration: config-family permission key migration failed; "
             "stale rows keep legacy keys (harmless — resolver ignores them)",
+            exc_info=True,
+        )
+
+
+async def migrate_drop_loads_manage_all(conn) -> None:
+    """Remove the retired ``can_loads_manage_all`` from stored
+    ``role_permissions`` JSON.
+
+    The dispatcher own-scope write wall came down 2026-07-29 (replaced
+    by the per-load accountability trail); the flag no longer exists in
+    ``FeatureSet``, so stored copies are dead weight the resolver would
+    silently drop anyway — removed for hygiene, logged for visibility.
+    Idempotent."""
+    try:
+        import json as _json
+        cur = await conn.execute(
+            "SELECT id, permissions FROM role_permissions"
+            " WHERE permissions LIKE '%can_loads_manage_all%'"
+        )
+        rows = await cur.fetchall()
+        changed = 0
+        for row in rows:
+            row_id, raw = row[0], row[1]
+            try:
+                perms = _json.loads(raw or "{}")
+            except (ValueError, TypeError):
+                logger.warning(
+                    "Migration: role_permissions row %s has unparseable "
+                    "JSON, skipped", row_id,
+                )
+                continue
+            if "can_loads_manage_all" not in perms:
+                continue
+            perms.pop("can_loads_manage_all")
+            changed += 1
+            await conn.execute(
+                "UPDATE role_permissions SET permissions = ? WHERE id = ?",
+                (_json.dumps(perms), row_id),
+            )
+        await conn.commit()
+        if changed:
+            logger.info(
+                "Migration: dropped retired can_loads_manage_all from %d rows",
+                changed,
+            )
+    except Exception:
+        logger.warning(
+            "Migration: can_loads_manage_all cleanup failed; stale rows "
+            "keep the dead key (harmless — resolver ignores it)",
             exc_info=True,
         )
 

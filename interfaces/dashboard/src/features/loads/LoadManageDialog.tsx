@@ -19,12 +19,41 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
   DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
+import { Tip } from '../../components/tooltip';
+import { formatDate, formatAgoShort } from '../../utils/datetime';
+import { useTimezone } from '../../hooks/useTimezone';
 import {
   LINE_ITEM_KINDS, LINE_ITEM_BUCKET, LOAD_STATUSES,
   createLineItem, createLoad, deleteLineItem, deleteLoad,
-  listLineItems, updateLoad,
+  listLineItems, listLoadHistory, updateLoad,
 } from './api';
-import type { LineItem, LoadDraft, LoadRow } from './api';
+import type { LineItem, LoadDraft, LoadEvent, LoadRow } from './api';
+
+// The trail's event labels + which diff keys are worth a human's eyes.
+// *_user_id keys are suppressed when their *_name twin changed too —
+// "dispatcher: Maria → Cody" says it; "dispatcher_user_id: 7 → 12" is noise.
+const EVENT_LABEL: Record<string, string> = {
+  created: 'Created',
+  edited: 'Edited',
+  deleted: 'Deleted',
+  line_item_added: 'Extra item added',
+  line_item_removed: 'Extra item removed',
+};
+const FIELD_LABEL: Record<string, string> = {
+  load_number: 'Load #', status: 'status', payment_status: 'payment',
+  customer: 'customer', company_code: 'company',
+  pickup_location: 'pickup', pickup_date: 'pickup date',
+  delivery_location: 'delivery', delivery_date: 'delivery date',
+  driver_name: 'driver', dispatcher_name: 'dispatcher',
+  vehicle_unit: 'truck', trailer_unit: 'trailer',
+  total_rate: 'rate', loaded_miles: 'loaded mi', empty_miles: 'empty mi',
+  driver_pay: 'driver pay', other_costs: 'other costs', notes: 'notes',
+  kind: 'kind', amount: 'amount',
+};
+const fmtVal = (v: unknown): string => (v == null || v === '' ? '—' : String(v));
+const visibleChanges = (changes: LoadEvent['changes']): [string, [unknown, unknown]][] =>
+  Object.entries(changes).filter(([k]) =>
+    !(k.endsWith('_user_id') && `${k.slice(0, -8)}_name` in changes));
 
 const inputCls =
   'w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm ' +
@@ -115,6 +144,11 @@ export default function LoadManageDialog({
   const [itemBusy, setItemBusy] = useState(false);
 
   const isEdit = load != null;
+  // The accountability trail — read-only; fetched fresh on open so an
+  // edit made from ANOTHER tab still shows before this user saves over it.
+  const [events, setEvents] = useState<LoadEvent[]>([]);
+  const [showAllEvents, setShowAllEvents] = useState(false);
+  const tz = useTimezone();
 
   useEffect(() => {
     if (!open) return;
@@ -124,10 +158,15 @@ export default function LoadManageDialog({
     setItemKind('tonu');
     setItemAmount('');
     setItemNote('');
+    setEvents([]);
+    setShowAllEvents(false);
     if (load) {
       listLineItems(load.id)
         .then(setItems)
         .catch(() => { /* section shows empty; add still works */ });
+      listLoadHistory(load.id)
+        .then(setEvents)
+        .catch(() => { /* trail shows empty; the write path is unaffected */ });
     }
   }, [open, load]);
 
@@ -389,6 +428,64 @@ export default function LoadManageDialog({
               load expenses — both reduce this load's gross. Layover (no load)
               is entered from the Loads page.
             </p>
+          </div>
+        )}
+
+        {/* The accountability trail — every human change, who and what,
+            old → new.  This is what replaced the own-dispatcher edit
+            wall: anyone with Manage can edit, and this block answers
+            "who touched my load".  Mirrors Inventory's History block. */}
+        {isEdit && (
+          <div className="border-t border-border pt-3">
+            <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              History
+              {events.length > 0 && (
+                <span className="ml-1.5 normal-case tracking-normal text-muted-foreground/70">({events.length})</span>
+              )}
+            </div>
+            <ul className="space-y-2 max-h-48 overflow-y-auto pr-1">
+              {events.length === 0 && (
+                <li className="text-xs text-muted-foreground/60 italic">No changes recorded yet.</li>
+              )}
+              {(showAllEvents ? events : events.slice(0, 5)).map((e) => (
+                <li key={e.id} className="text-xs text-muted-foreground">
+                  <div className="flex items-baseline gap-1.5 flex-wrap">
+                    <span className="text-foreground font-medium">
+                      {EVENT_LABEL[e.event_type] ?? e.event_type}
+                    </span>
+                    <Tip label={formatDate(e.created_at, { timeZone: tz })}>
+                      <span className="text-muted-foreground/70">
+                        {formatAgoShort(e.created_at, { timeZone: tz })}
+                      </span>
+                    </Tip>
+                  </div>
+                  {visibleChanges(e.changes).length > 0 && (
+                    <div className="text-2xs text-muted-foreground/80">
+                      {visibleChanges(e.changes).map(([k, [from, to]]) => (
+                        <span key={k} className="mr-2 whitespace-nowrap">
+                          {FIELD_LABEL[k] ?? k}: {fmtVal(from)} → <span className="text-foreground">{fmtVal(to)}</span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="text-2xs text-muted-foreground/80">
+                    {e.actor_name && <>by {e.actor_name}</>}
+                    {e.dispatcher_name && (
+                      <> · dispatcher at the time: <span className="text-foreground">{e.dispatcher_name}</span></>
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {events.length > 5 && (
+              <button
+                type="button"
+                onClick={() => setShowAllEvents((s) => !s)}
+                className="mt-2 text-2xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showAllEvents ? 'Show less' : `Show ${events.length - 5} more`}
+              </button>
+            )}
           </div>
         )}
 

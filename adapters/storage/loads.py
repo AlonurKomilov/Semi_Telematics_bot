@@ -326,7 +326,76 @@ class LoadsMixin(_MixinBase):
 
     # ── Create ────────────────────────────────────────────────────
 
-    async def add_load(self, account_id: int, **f: Any) -> int:
+    # ── The accountability trail ──────────────────────────────────
+    # Every HUMAN write below appends a load_events row inside the same
+    # method, before its commit — unskippable by construction (the
+    # Inventory-events pattern).  This trail is what replaced the
+    # dispatcher own-scope write wall (owner decision 2026-07-29): any
+    # can_manage_loads holder edits any load, and the trail answers
+    # "who changed what" with field-level old→new diffs.  Datatruck
+    # sync (project_external_loads) is deliberately NOT evented — it
+    # bypasses these methods and stamps field_provenance instead;
+    # load_events records PEOPLE.  Two further KNOWN exceptions, kept
+    # un-evented on purpose for now: assign_load_person_by_name (Team
+    # Management's bulk name-linking backfill — association, not an
+    # edit) and write_load_field_pinned (the Datatruck conflict
+    # resolver — its outcome is already recorded as provenance).  If
+    # either grows into a routine editing surface, event it then.
+
+    async def _append_load_event(
+        self,
+        account_id: int,
+        load_id: int,
+        event_type: str,
+        *,
+        actor_user_id: int | None = None,
+        dispatcher_user_id: int | None = None,
+        changes: dict[str, Any] | None = None,
+        note: str = "",
+    ) -> None:
+        """INSERT one trail row.  No commit — the caller's write commits
+        both statements together."""
+        await self._db.execute(
+            """INSERT INTO load_events
+               (account_id, load_id, event_type, changes, actor_user_id,
+                dispatcher_user_id, note, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (account_id, load_id, event_type,
+             json.dumps(changes or {}), actor_user_id, dispatcher_user_id,
+             (note or "")[:500], self._now()),
+        )
+
+    async def list_load_events(
+        self, account_id: int, load_id: int, limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """The load's trail, newest first.  Ids only — the API layer
+        resolves display names."""
+        cur = await self._db.execute(
+            """SELECT id, load_id, event_type, changes, actor_user_id,
+                      dispatcher_user_id, note, created_at
+               FROM load_events
+               WHERE account_id = ? AND load_id = ?
+               ORDER BY id DESC LIMIT ?""",
+            (account_id, load_id, limit),
+        )
+        rows = await cur.fetchall()
+        out: list[dict[str, Any]] = []
+        for r in rows:
+            try:
+                changes = json.loads(r[3] or "{}")
+            except (ValueError, TypeError):
+                changes = {}
+            out.append({
+                "id": r[0], "load_id": r[1], "event_type": r[2],
+                "changes": changes, "actor_user_id": r[4],
+                "dispatcher_user_id": r[5], "note": r[6],
+                "created_at": r[7],
+            })
+        return out
+
+    async def add_load(
+        self, account_id: int, actor_user_id: int | None = None, **f: Any,
+    ) -> int:
         """Insert a manual load.  ``status`` must be a known lifecycle value;
         everything else is optional.  Returns the new id."""
         status = str(f.get("status") or "upcoming")
@@ -336,13 +405,16 @@ class LoadsMixin(_MixinBase):
         if pay not in PAYMENT_STATUSES:
             raise ValueError(f"payment_status must be one of {PAYMENT_STATUSES}")
         now = self._now()
-        cur = await self._db.execute(
-            "SELECT COALESCE(MAX(seq), 0) + 1 FROM loads WHERE account_id = ?",
-            (account_id,),
-        )
-        next_seq = int((await cur.fetchone())[0])
-        cur = await self._db.execute(
-            """INSERT INTO loads
+        # One transaction: seq + row + trail commit together (the pool
+        # proxy auto-commits bare statements; commit() there is a no-op).
+        async with self.transaction():
+            cur = await self._db.execute(
+                "SELECT COALESCE(MAX(seq), 0) + 1 FROM loads WHERE account_id = ?",
+                (account_id,),
+            )
+            next_seq = int((await cur.fetchone())[0])
+            cur = await self._db.execute(
+                """INSERT INTO loads
                (seq, account_id, load_number, status, payment_status, customer,
                 company_code, pickup_location, pickup_date, delivery_location,
                 delivery_date, driver_user_id, driver_name, dispatcher_user_id,
@@ -375,9 +447,14 @@ class LoadsMixin(_MixinBase):
                 now, now,
             ),
         )
-        row = await cur.fetchone()
-        await self._db.commit()
-        return int(row[0])
+            row = await cur.fetchone()
+            new_id = int(row[0])
+            await self._append_load_event(
+                account_id, new_id, "created",
+                actor_user_id=actor_user_id,
+                dispatcher_user_id=f.get("dispatcher_user_id"),
+            )
+            return new_id
 
     # ── Read ──────────────────────────────────────────────────────
 
@@ -470,11 +547,18 @@ class LoadsMixin(_MixinBase):
     # ── Update / delete ───────────────────────────────────────────
 
     async def update_load(
-        self, account_id: int, load_id: int, **fields: Any,
+        self, account_id: int, load_id: int,
+        actor_user_id: int | None = None, **fields: Any,
     ) -> bool:
-        """Partial update — only allow-listed keys are written."""
+        """Partial update — only allow-listed keys are written.  Fields
+        that actually CHANGE are recorded in the trail as old→new pairs
+        (same transaction), so a disputed edit is settleable — "changed
+        dispatcher from Maria to himself, rate 2100→1800", not just
+        "edited by X"."""
+        old = await self.get_load(account_id, load_id)
         sets: list[str] = []
         params: list[Any] = []
+        diff: dict[str, Any] = {}
         for key in _LOAD_FIELDS:
             if key in fields and fields[key] is not None:
                 if key == "status" and fields[key] not in LOAD_STATUSES:
@@ -485,6 +569,9 @@ class LoadsMixin(_MixinBase):
                     )
                 sets.append(f"{key} = ?")
                 params.append(fields[key])
+                old_val = getattr(old, key, None) if old else None
+                if old_val != fields[key]:
+                    diff[key] = [old_val, fields[key]]
         if not sets:
             return False
         # Operator edits PIN the reconcilable fields they touch (stamp
@@ -508,13 +595,22 @@ class LoadsMixin(_MixinBase):
                 logger.debug("load provenance pin skipped: %s", e)
         sets.append("updated_at = ?")
         params.extend([self._now(), load_id, account_id])
-        cur = await self._db.execute(
-            f"UPDATE loads SET {', '.join(sets)} "
-            "WHERE id = ? AND account_id = ?",
-            tuple(params),
-        )
-        await self._db.commit()
-        return cur.rowcount > 0
+        # One transaction: row + trail commit together (pool proxy
+        # auto-commits bare statements; commit() there is a no-op).
+        async with self.transaction():
+            cur = await self._db.execute(
+                f"UPDATE loads SET {', '.join(sets)} "
+                "WHERE id = ? AND account_id = ?",
+                tuple(params),
+            )
+            if cur.rowcount > 0 and diff:
+                await self._append_load_event(
+                    account_id, load_id, "edited",
+                    actor_user_id=actor_user_id,
+                    dispatcher_user_id=old.dispatcher_user_id if old else None,
+                    changes=diff,
+                )
+            return cur.rowcount > 0
 
     async def write_load_field_pinned(
         self, account_id: int, load_id: int, field: str, value: Any,
@@ -881,16 +977,27 @@ class LoadsMixin(_MixinBase):
         await recon.sync_batch(self, account_id, "load", conflict_ops)
         return written
 
-    async def deactivate_load(self, account_id: int, load_id: int) -> bool:
+    async def deactivate_load(
+        self, account_id: int, load_id: int,
+        actor_user_id: int | None = None,
+    ) -> bool:
         """Soft delete — history (KPI, reports) keeps counting delivered
-        work; the row just leaves the operational tabs."""
-        cur = await self._db.execute(
-            "UPDATE loads SET is_active = 0, updated_at = ? "
-            "WHERE id = ? AND account_id = ?",
-            (self._now(), load_id, account_id),
-        )
-        await self._db.commit()
-        return cur.rowcount > 0
+        work; the row just leaves the operational tabs.  The trail row
+        survives with it (the trail IS the point)."""
+        old = await self.get_load(account_id, load_id)
+        async with self.transaction():
+            cur = await self._db.execute(
+                "UPDATE loads SET is_active = 0, updated_at = ? "
+                "WHERE id = ? AND account_id = ?",
+                (self._now(), load_id, account_id),
+            )
+            if cur.rowcount > 0:
+                await self._append_load_event(
+                    account_id, load_id, "deleted",
+                    actor_user_id=actor_user_id,
+                    dispatcher_user_id=old.dispatcher_user_id if old else None,
+                )
+            return cur.rowcount > 0
 
     # ── Retention ─────────────────────────────────────────────────
 
@@ -924,6 +1031,7 @@ class LoadsMixin(_MixinBase):
         item_date: str = "",
         notes: str = "",
         created_by: int = 0,
+        actor_user_id: int | None = None,
     ) -> int:
         """One extra pay/cost row.  Attaches to a load, or — for the
         no-load case (layover) — to a driver + date.  When attached to a
@@ -969,6 +1077,17 @@ class LoadsMixin(_MixinBase):
                  kind, bucket, round(amount, 2), (item_date or "").strip(),
                  (notes or "").strip(), created_by, now),
             )
+            if load_id is not None:
+                # Money attached to a load is part of the load's story.
+                # NOTE actor_user_id is the PLATFORM user id — created_by
+                # is historically the TELEGRAM id, a different domain.
+                await self._append_load_event(
+                    account_id, load_id, "line_item_added",
+                    actor_user_id=actor_user_id,
+                    dispatcher_user_id=dispatcher_user_id,
+                    changes={"kind": [None, kind],
+                             "amount": [None, round(amount, 2)]},
+                )
             return cur.lastrowid
 
     async def list_load_line_items(
@@ -1019,13 +1138,26 @@ class LoadsMixin(_MixinBase):
 
     async def delete_load_line_item(
         self, account_id: int, item_id: int,
+        actor_user_id: int | None = None,
     ) -> bool:
-        cur = await self._db.execute(
-            "DELETE FROM load_line_items WHERE id = ? AND account_id = ?",
-            (item_id, account_id),
-        )
-        await self._db.commit()
-        return (getattr(cur, "rowcount", 0) or 0) > 0
+        # Fetch first so the trail can say WHAT money left the load —
+        # a hard delete with no diff would be the one untraceable edit.
+        item = await self.get_load_line_item(account_id, item_id)
+        async with self.transaction():
+            cur = await self._db.execute(
+                "DELETE FROM load_line_items WHERE id = ? AND account_id = ?",
+                (item_id, account_id),
+            )
+            removed = (getattr(cur, "rowcount", 0) or 0) > 0
+            if removed and item is not None and item.load_id is not None:
+                await self._append_load_event(
+                    account_id, int(item.load_id), "line_item_removed",
+                    actor_user_id=actor_user_id,
+                    dispatcher_user_id=item.dispatcher_user_id,
+                    changes={"kind": [item.kind, None],
+                             "amount": [item.amount, None]},
+                )
+            return removed
 
     async def list_driver_settlement_items(
         self, account_id: int, *, since: str, until: str,
