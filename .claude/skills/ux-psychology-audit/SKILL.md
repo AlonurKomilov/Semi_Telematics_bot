@@ -22,6 +22,14 @@ format is standardized so reports from parallel sessions stay comparable.
 > Part C's "grammar" findings are about MEANING collisions (a status label
 > shaped like a button), not token values — if a finding is fixable by
 > changing a token, it belongs in the design pass, not here.
+> **Spatial composition is the third sibling:** whether an ARRANGEMENT
+> communicates structure — regions enclosed, between-group air exceeding
+> within-group, source vs destination legible without reading, drop targets
+> visible before a drag, layouts that hold still — belongs to
+> `ux-layout-composition-audit`, not here. Route those findings there.
+> (One deliberate difference: that skill's S3 overrides Part T's T5 for
+> regions — sibling REGIONS playing OPPOSITE interaction roles must look
+> different, even though sibling ELEMENTS share one grammar.)
 
 ## Scope modes (read first — pick exactly one)
 

@@ -66,5 +66,12 @@ design problem, escalate that one question to `fable-advisor`.
     psychology principles + clarity passes) on the surfaces you built/changed.
     Deliver the report IN CHAT per the skill's Step 6 — do not write report
     files unless the user explicitly asks to save.
+  3. **Layout-composition pass** — when the work built or RESTRUCTURED a
+    layout (a new page, panel, multi-zone or drag-and-drop surface — not
+    copy-only or single-control changes), also invoke the
+    `ux-layout-composition-audit` skill (S1 regions/enclosure, S2 spacing
+    hierarchy, S3 weight/affordance, S4 stability). Same chat-only report
+    rule. The three audits route findings to each other by the boundary
+    tables in the two skills — never double-report one finding.
 
-  Skip both only for pure backend changes with no user-facing surface.
+  Skip all only for pure backend changes with no user-facing surface.
