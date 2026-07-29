@@ -32,7 +32,7 @@ export default function SafetyHero() {
   const vehicles = data.vehicles ?? data.fleet ?? {};
   const trucks = vehicles.trucks ?? vehicles;
   return (
-    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto scrollbar-thin">
+    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden scrollbar-thin">
       {pending_alerts !== undefined && (
         <HeroChip
           label="Open alerts"

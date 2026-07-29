@@ -40,7 +40,7 @@ export default function FleetHero() {
   const trucks = vehicles.trucks;
   const trailers = vehicles.trailers;
   return (
-    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto scrollbar-thin">
+    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden scrollbar-thin">
       {trucks ? (
         <>
           <HeroChip label="Trucks" value={trucks.total} tone="info" />

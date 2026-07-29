@@ -5,9 +5,10 @@ import {
   ChevronsUp, ChevronsDown,
 } from 'lucide-react';
 import {
-  DndContext, DragOverlay, pointerWithin, PointerSensor, KeyboardSensor,
-  useSensor, useSensors, useDroppable,
+  DndContext, DragOverlay, pointerWithin, closestCorners, PointerSensor,
+  KeyboardSensor, useSensor, useSensors, useDroppable,
   type DragEndEvent, type DragStartEvent, type DragOverEvent,
+  type CollisionDetection,
 } from '@dnd-kit/core';
 import {
   SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
@@ -227,6 +228,27 @@ export default function PivotPanel({
     // worse than no instruction (WCAG 2.1.1).
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  /**
+   * Pointer precision when there IS a pointer; rectangles when there
+   * isn't.
+   *
+   * ``pointerWithin`` alone was right for the mouse — rect overlap lit
+   * up whichever zone the dragged BOX intersected, which is not where
+   * the user is aiming.  But a KEYBOARD drag has no pointer coordinate
+   * at all, so pointerWithin returned nothing on every arrow press: the
+   * item picked up, announced itself, and then could never find a
+   * target.  Pick-up that can't move is worse than no keyboard drag.
+   *
+   * So: try the pointer, and fall back to geometry when there is none.
+   * dnd-kit's documented composition — and the fallback is exactly the
+   * right answer for keyboard, where "nearest by rectangle" IS the
+   * user's intent.
+   */
+  const collisionDetection: CollisionDetection = (args) => {
+    const byPointer = pointerWithin(args);
+    return byPointer.length > 0 ? byPointer : closestCorners(args);
+  };
 
   /** Which zone does a droppable id belong to — an item or a container. */
   const zoneOfDroppable = (id: string): Zone | null => {
@@ -473,14 +495,7 @@ export default function PivotPanel({
 
       <DndContext
         sensors={sensors}
-        // POINTER, not rectangle overlap.  Rect-based detection lights up
-        // whichever zone the dragged item's box happens to intersect,
-        // which is not where the user is aiming: with the cursor over the
-        // grid, a zone hundreds of pixels away would highlight and take
-        // the drop.  ``pointerWithin`` means the target is the thing
-        // under the cursor — and nothing highlights when the cursor is
-        // outside every zone, which is the honest answer there.
-        collisionDetection={pointerWithin}
+        collisionDetection={collisionDetection}
         onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDragEnd={onDragEnd}

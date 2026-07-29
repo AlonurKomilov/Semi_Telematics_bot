@@ -34,7 +34,7 @@ export default function DispatchHero() {
   // (falls back to the flat counts on a pre-split API response).
   const trucks = vehicles.trucks ?? vehicles;
   return (
-    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto scrollbar-thin">
+    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden scrollbar-thin">
       <HeroChip label="On the road" value={trucks.moving} tone="positive" title="Trucks currently moving" />
       <HeroChip label="Idle" value={trucks.idle} tone="warning" title="Engine on but stationary" />
       <HeroChip label="Stopped" value={trucks.stopped} tone="neutral" />

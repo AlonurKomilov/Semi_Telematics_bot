@@ -127,8 +127,13 @@ export default function PivotView({
   // The Total column pins to the RIGHT edge for the same reason the row
   // label pins left: with 60 driver columns the figure you actually came
   // for would otherwise sit past the end of a long horizontal scroll.
-  const stickyTotalCell = 'sticky right-0 z-10 bg-card';
-  const stickyTotalHead = 'sticky right-0 z-20 bg-muted';
+  // Above the row-label column's z-index on purpose.  Both edges are
+  // pinned, so on a narrow viewport they can meet — and when they do the
+  // pinned SUMMARY should cleanly occlude the label rather than the two
+  // interleaving and slicing a figure mid-glyph ("$190,384.0").  Still a
+  // collision; this makes it a legible one.
+  const stickyTotalCell = 'sticky right-0 z-20 bg-card';
+  const stickyTotalHead = 'sticky right-0 z-30 bg-muted';
 
   const sourceRows = rows.length;
 
@@ -194,7 +199,13 @@ export default function PivotView({
                           onModelChange({ ...model, sort: next });
                         }}
                         className={cn(
-                          'inline-flex flex-col items-end leading-tight w-full',
+                          // ``uppercase`` again, explicitly: preflight sets
+                          // ``button { text-transform: none }``, which
+                          // silently cancelled the <th>'s uppercase for
+                          // exactly the headers that are sortable — so a
+                          // measure read "Rate sum" here and "RATE sum"
+                          // under Total, side by side.
+                          'inline-flex flex-col items-end leading-tight w-full uppercase',
                           onModelChange && 'hover:text-foreground transition-colors cursor-pointer',
                           model.sort?.leaf === result.leafIds[i] && 'text-foreground',
                         )}
@@ -208,7 +219,7 @@ export default function PivotView({
                           )}
                           {cell.label}
                         </span>
-                        <span className="text-3xs font-normal normal-case">
+                        <span className="text-3xs font-normal lowercase">
                           {AGG_FN_LABELS[cell.aggFn].toLowerCase()}
                         </span>
                       </button>
@@ -227,7 +238,7 @@ export default function PivotView({
                         className={cn(
                           padding, stickyTotalHead,
                           'text-right text-xs font-medium uppercase tracking-wide',
-                          'border-b border-l border-border text-foreground',
+                          'border-b border-l border-border text-muted-foreground',
                         )}
                       >
                         <span className="inline-flex flex-col items-end leading-tight">
@@ -245,7 +256,7 @@ export default function PivotView({
                         className={cn(
                           padding, stickyTotalHead,
                           'text-left align-bottom text-xs font-medium uppercase tracking-wide',
-                          'border-b border-l border-border text-foreground',
+                          'border-b border-l border-border text-muted-foreground',
                         )}
                       >
                         Total
@@ -262,7 +273,7 @@ export default function PivotView({
             <tr
               key={row.key}
               className={cn(
-                'border-b border-border',
+                'border-b border-border group/prow transition-colors hover:bg-muted',
                 rowIdx % 2 === 1 && 'bg-muted/30',
               )}
             >
@@ -271,7 +282,8 @@ export default function PivotView({
                 className={cn(
                   padding,
                   stickyCol,
-                  'text-left font-medium whitespace-nowrap',
+                  'text-left font-medium whitespace-nowrap transition-colors',
+                  'group-hover/prow:bg-muted',
                   rowIdx % 2 === 1 && 'bg-muted/30',
                 )}
               >
@@ -336,6 +348,7 @@ export default function PivotView({
                   className={cn(
                     padding, stickyTotalCell,
                     'text-right tabular-nums whitespace-nowrap font-semibold border-l border-border',
+                    'transition-colors group-hover/prow:bg-muted',
                     rowIdx % 2 === 1 && 'bg-muted/30',
                   )}
                 >
@@ -418,8 +431,15 @@ export default function PivotView({
                   {measure ? ` behind this ${measure.label.toLowerCase()}` : ''}.
                 </DialogDescription>
               </DialogHeader>
-              <div className="max-h-[60vh] overflow-auto">
-                <table className="w-full text-xs border-collapse">
+              {/* The scroll was always there; the AFFORDANCE wasn't.
+                  With no visible scrollbar and no fade, a name clipped
+                  to "BENOIT T…" reads as broken rather than scrollable.
+                  A right-edge fade marks the cut, and ``min-w-max``
+                  stops the w-full table from squeezing cells to the
+                  point where every column truncates at once. */}
+              <div className="relative">
+                <div className="max-h-[60vh] overflow-auto">
+                <table className="min-w-max w-full text-xs border-collapse">
                   <thead className="sticky top-0 bg-muted">
                     <tr>
                       {showCols.map((c) => (
@@ -441,6 +461,14 @@ export default function PivotView({
                     ))}
                   </tbody>
                 </table>
+                </div>
+                {/* Marks the cut so a truncated name reads as "there is
+                    more to the right", not as broken rendering.
+                    pointer-events-none so it never blocks the scroll. */}
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent"
+                />
               </div>
             </DialogContent>
           </Dialog>

@@ -31,7 +31,7 @@ export default function TeamHero() {
   const roleCounts: Record<string, number> = {};
   for (const u of users) roleCounts[u.role] = (roleCounts[u.role] ?? 0) + 1;
   return (
-    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto scrollbar-thin">
+    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden scrollbar-thin">
       <HeroChip label="Active" value={active} tone="positive" />
       {pending > 0 && (
         <HeroChip

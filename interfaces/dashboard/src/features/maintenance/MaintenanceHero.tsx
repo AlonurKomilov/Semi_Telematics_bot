@@ -29,7 +29,7 @@ export default function MaintenanceHero() {
     );
   }
   return (
-    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto scrollbar-thin">
+    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden scrollbar-thin">
       <HeroChip label="Overdue" value={buckets.overdue.length} tone="critical" title="Past due on any axis — date, mileage, or engine hours" />
       <HeroChip label="Due soon" value={buckets.dueSoon.length} tone="warning" title="Within 7 days / 5,000 mi / 100 engine hours of a threshold" />
       <HeroChip label="Pending" value={buckets.pending.length} tone="info" />

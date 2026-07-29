@@ -26,7 +26,7 @@ export default function ApplicationsHero() {
   }
   const counts = countAppsByStatus(data.items);
   return (
-    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto scrollbar-thin">
+    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden scrollbar-thin">
       <HeroChip label="Submitted" value={counts.submitted ?? 0} tone="info" title="New applications awaiting first review" />
       <HeroChip label="Screening" value={counts.screening ?? 0} tone="neutral" />
       <HeroChip label="Interview" value={counts.interview ?? 0} tone="warning" title="Scheduled or in interview stage" />
