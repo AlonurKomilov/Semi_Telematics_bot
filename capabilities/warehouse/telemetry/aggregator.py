@@ -381,7 +381,61 @@ async def aggregate_metrics_daily(account_id: int) -> int:
         "aggregate_metrics_daily acct=%d day=%s rows=%d",
         account_id, day_label, n,
     )
-    return n
+
+    # Self-heal: fill any day the tier is missing inside the lookback.
+    # Bounded by _DAILY_HEAL_DAYS because a day can only be rebuilt
+    # while its HOURLY rows still exist; older gaps need the Samsara
+    # history backfill, which is an operator action, not a cron.
+    healed = 0
+    expected = [day_start - timedelta(days=i)
+                for i in range(1, _DAILY_HEAL_DAYS + 1)]
+    for missing in await _missing_buckets(tenant, account_id, "daily", expected):
+        rows = await _aggregate_day_window(tenant, account_id, missing)
+        healed += rows
+        logger.info(
+            "aggregate_metrics_daily HEALED acct=%d day=%s rows=%d",
+            account_id, missing.strftime("%Y-%m-%d"), rows,
+        )
+    return n + healed
+
+
+# How far back each self-healing pass looks for holes.  Daily is capped
+# by the HOURLY tier's own retention (a day can only be rebuilt while its
+# hourly rows survive); weekly reads the 730-day daily tier, so it can
+# afford a longer memory.
+_DAILY_HEAL_DAYS = 7
+_WEEKLY_HEAL_WEEKS = 4
+
+
+async def _missing_buckets(
+    tenant,
+    account_id: int,
+    granularity: str,
+    expected: list[datetime],
+) -> list[datetime]:
+    """Of ``expected`` bucket starts, the ones the tier has no row for.
+
+    Both live wrappers only ever process the JUST-CLOSED period, so a
+    single missed run (a restart landing on the fire time, a service
+    outage spanning midnight) left a permanent hole — a whole week for
+    the weekly tier.  Production hit exactly that: the daily tier lost
+    2026-07-27/28 to an ingest outage and the weekly tier lost the week
+    of 2026-07-20 to one skipped Monday, and neither ever came back on
+    its own.  Feeding this list back through the same window function
+    makes each run self-healing over a bounded lookback.
+    """
+    if not expected:
+        return []
+    labels = [d.strftime("%Y-%m-%d") for d in expected]
+    placeholders = ", ".join("?" for _ in labels)
+    cur = await tenant._db.execute(
+        f"SELECT DISTINCT bucket_start FROM vehicle_telemetry "
+        f"WHERE account_id = ? AND granularity = ? "
+        f"AND bucket_start IN ({placeholders})",
+        (account_id, granularity, *labels),
+    )
+    present = {str(dict(r)["bucket_start"])[:10] for r in await cur.fetchall()}
+    return [d for d, lbl in zip(expected, labels) if lbl not in present]
 
 
 async def _aggregate_week_window(
@@ -475,7 +529,22 @@ async def aggregate_metrics_weekly(account_id: int) -> int:
         "aggregate_metrics_weekly acct=%d week=%s rows=%d",
         account_id, last_week_monday.strftime("%Y-%m-%d"), n,
     )
-    return n
+
+    # Self-heal: one skipped Monday used to cost a whole week forever
+    # (production lost the week of 2026-07-20 exactly this way).  The
+    # daily tier this reads from is kept 730 days, so re-rolling a few
+    # older weeks is cheap and idempotent.
+    healed = 0
+    expected = [last_week_monday - timedelta(days=7 * i)
+                for i in range(1, _WEEKLY_HEAL_WEEKS + 1)]
+    for missing in await _missing_buckets(tenant, account_id, "weekly", expected):
+        rows = await _aggregate_week_window(tenant, account_id, missing)
+        healed += rows
+        logger.info(
+            "aggregate_metrics_weekly HEALED acct=%d week=%s rows=%d",
+            account_id, missing.strftime("%Y-%m-%d"), rows,
+        )
+    return n + healed
 
 
 async def backfill_aggregations(

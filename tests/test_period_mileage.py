@@ -171,3 +171,59 @@ class TestCatchupFlag:
         await _day(tenant, "v1", "132", "2026-07-02", 701_200, 1200)
         rows = await tenant.get_period_mileage(1, "2026-07-02", "2026-07-02")
         assert rows[0]["flag"] == ""
+
+
+class TestTieredFreshness:
+    """The daily tier only lands at 00:05 UTC for YESTERDAY, so reading
+    it alone made today invisible.  Both boundaries now prefer the
+    5-minute snapshot when it is a LATER DAY, mirroring the tiering
+    ``get_reading_as_of`` already used."""
+
+    @staticmethod
+    async def _snap(db, vid, captured_at, odo, account_id=1):
+        await db.upsert_vehicle_state_snapshots(account_id, [
+            {"vehicle_id": vid, "captured_at": captured_at,
+             "odometer_mi": odo, "engine_hours": 10,
+             "engine_state": "moving", "speed_mph": 55},
+        ])
+
+    @pytest.mark.asyncio
+    async def test_snapshot_extends_past_the_daily_tier(self, tenant):
+        # Daily stops at Jul 2; live snapshots continue into Jul 3.
+        await _day(tenant, "v1", "132", "2026-07-01", 1_000, 0)
+        await _day(tenant, "v1", "132", "2026-07-02", 1_200, 200)
+        await self._snap(tenant, "v1", "2026-07-03T14:00:00+00:00", 1_500)
+        rows = await tenant.get_period_mileage(1, "2026-07-02", "2026-07-03")
+        assert len(rows) == 1
+        r = rows[0]
+        assert r["miles"] == 500.0            # 1500 (snapshot) - 1000 (Jul 1)
+        assert r["end_read_on"] == "2026-07-03"
+
+    @pytest.mark.asyncio
+    async def test_daily_eod_wins_within_the_same_day(self, tenant):
+        # A same-day snapshot is mid-day; the daily EOD is max-of-day and
+        # therefore the later reading — it must not be overridden.
+        await _day(tenant, "v1", "132", "2026-07-01", 1_000, 0)
+        await _day(tenant, "v1", "132", "2026-07-03", 1_600, 600)
+        await self._snap(tenant, "v1", "2026-07-03T12:00:00+00:00", 1_500)
+        rows = await tenant.get_period_mileage(1, "2026-07-02", "2026-07-03")
+        assert rows[0]["miles"] == 600.0      # 1600, not the 1500 snapshot
+
+    @pytest.mark.asyncio
+    async def test_snapshot_after_the_range_is_ignored(self, tenant):
+        # Freshness must not leak driving from AFTER the window.
+        await _day(tenant, "v1", "132", "2026-07-01", 1_000, 0)
+        await _day(tenant, "v1", "132", "2026-07-02", 1_200, 200)
+        await self._snap(tenant, "v1", "2026-07-05T09:00:00+00:00", 9_999)
+        rows = await tenant.get_period_mileage(1, "2026-07-02", "2026-07-03")
+        assert rows[0]["miles"] == 200.0
+        assert rows[0]["end_read_on"] == "2026-07-02"
+
+    @pytest.mark.asyncio
+    async def test_snapshot_only_vehicle_still_reports(self, tenant):
+        # A vehicle whose daily rows haven't been rolled up yet at all.
+        await self._snap(tenant, "v9", "2026-07-02T08:00:00+00:00", 500)
+        await self._snap(tenant, "v9", "2026-07-03T20:00:00+00:00", 640)
+        rows = await tenant.get_period_mileage(1, "2026-07-03", "2026-07-03")
+        assert len(rows) == 1
+        assert rows[0]["miles"] == 140.0

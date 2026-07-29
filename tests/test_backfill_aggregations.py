@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import pytest_asyncio
 
 
 # ── Catalog default ─────────────────────────────────────────────
@@ -355,3 +356,71 @@ async def test_m5_backfill_aggregations_failure_does_not_flip_state(monkeypatch)
     assert result.state == "completed"
     # But the error must be captured for ops visibility.
     assert any("aggregations" in e for e in result.errors)
+
+
+@pytest_asyncio.fixture
+async def tenant(pg_db):
+    """Real per-test Postgres — the self-healing tests exercise SQL."""
+    yield pg_db
+
+# ── self-healing roll-ups (2026-07-29) ────────────────────────────────
+#
+# Both live wrappers only ever processed the just-closed period, so ONE
+# missed run left a permanent hole: production lost daily 07-27/28 to an
+# ingest outage and the whole week of 07-20 to a single skipped Monday.
+
+@pytest.mark.asyncio
+async def test_daily_run_heals_a_missing_earlier_day(tenant, monkeypatch):
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    from capabilities.warehouse.telemetry import aggregator as agg
+
+    await tenant.upsert_vehicle_state(1, [
+        {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
+    ])
+    # Snapshots for two days: the day BEFORE yesterday (the hole) and
+    # yesterday (the normal run).
+    now = _dt(2026, 7, 29, 6, 0, tzinfo=_tz.utc)
+    for day, odo in ((_dt(2026, 7, 27, 12, tzinfo=_tz.utc), 1_000),
+                     (_dt(2026, 7, 28, 12, tzinfo=_tz.utc), 1_400)):
+        await tenant.upsert_vehicle_state_snapshots(1, [
+            {"vehicle_id": "v1", "captured_at": day.isoformat(),
+             "odometer_mi": odo, "engine_hours": 10,
+             "engine_state": "moving", "speed_mph": 55},
+        ])
+        await agg._aggregate_hour_window(tenant, 1, day)
+
+    class _FrozenDT(_dt):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+    monkeypatch.setattr(agg, "datetime", _FrozenDT)
+
+    async def _tdb(_acct):
+        return tenant
+    monkeypatch.setattr(agg, "get_tenant_db", _tdb)
+
+    await agg.aggregate_metrics_daily(1)
+
+    cur = await tenant._db.execute(
+        "SELECT bucket_start FROM vehicle_telemetry WHERE account_id = ? "
+        "AND granularity = 'daily' ORDER BY bucket_start", (1,))
+    days = [str(dict(r)["bucket_start"])[:10] for r in await cur.fetchall()]
+    # 07-28 is the normal "yesterday"; 07-27 is the healed hole.
+    assert "2026-07-28" in days
+    assert "2026-07-27" in days, "a missed day must be healed, not lost forever"
+
+
+@pytest.mark.asyncio
+async def test_missing_buckets_reports_only_absent_days(tenant):
+    from datetime import datetime as _dt, timezone as _tz
+    from capabilities.warehouse.telemetry.aggregator import _missing_buckets
+
+    await tenant._db.execute(
+        "INSERT INTO vehicle_telemetry (account_id, vehicle_id, vehicle_name, "
+        "granularity, bucket_start, miles) VALUES (?, ?, '', 'daily', ?, 0)",
+        (1, "v1", "2026-07-27"),
+    )
+    await tenant._db.commit()
+    expected = [_dt(2026, 7, 27, tzinfo=_tz.utc), _dt(2026, 7, 28, tzinfo=_tz.utc)]
+    missing = await _missing_buckets(tenant, 1, "daily", expected)
+    assert [d.strftime("%Y-%m-%d") for d in missing] == ["2026-07-28"]

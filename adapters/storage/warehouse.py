@@ -1236,6 +1236,13 @@ class WarehouseMixin(_MixinBase):
         for weeks before the range still has the correct odometer at
         its last reading — no driving means no drift.
 
+        TIERED like ``get_reading_as_of``: both boundaries prefer the
+        5-minute ``vehicle_state_snapshot`` (kept 7 days) when it is a
+        later day than the daily bucket, else the daily end-of-day
+        reading (kept 730 days).  Without the snapshot tier the newest
+        answer was always "yesterday" - the daily roll-up only lands at
+        00:05 UTC for the day before.
+
         Per-vehicle degraded shapes, flagged, never silent:
           * ``partial`` — no reading before the range (vehicle joined
             telematics mid-range): counted from its FIRST in-range
@@ -1285,10 +1292,62 @@ class WarehouseMixin(_MixinBase):
             return {str(d["vehicle_id"]): d
                     for r in await cur.fetchall() for d in (dict(r),)}
 
-        ends = await _last_reading_per_vehicle(end, strict=False)
+        # -- Tiered read, precise-first (mirrors get_reading_as_of) --
+        #
+        # The daily tier only gains a day at 00:05 UTC for YESTERDAY, so
+        # reading it alone made "today" invisible: the board reported
+        # "history reaches <yesterday>" while the 5-minute snapshot tier
+        # held readings from minutes ago.  Both boundaries now take the
+        # snapshot when it is genuinely FRESHER (a later calendar day)
+        # and fall back to the daily end-of-day for anything older than
+        # the 7-day snapshot window.
+        from datetime import date as _date2, timedelta as _td2
+
+        async def _last_snapshot_per_vehicle(before_iso: str):
+            cur = await self._db.execute(
+                "SELECT s.vehicle_id, s.odometer_mi, s.captured_at "
+                "FROM vehicle_state_snapshot s "
+                "JOIN (SELECT vehicle_id, MAX(captured_at) AS mc "
+                "      FROM vehicle_state_snapshot "
+                "      WHERE account_id = ? AND captured_at < ? "
+                "      AND odometer_mi IS NOT NULL "
+                "      GROUP BY vehicle_id) m "
+                "  ON m.vehicle_id = s.vehicle_id AND m.mc = s.captured_at "
+                "WHERE s.account_id = ? AND s.odometer_mi IS NOT NULL",
+                (account_id, before_iso, account_id),
+            )
+            return {str(d["vehicle_id"]): d
+                    for r in await cur.fetchall() for d in (dict(r),)}
+
+        def _merge(daily: dict, snaps: dict) -> dict:
+            # Normalise both tiers to {odo, read_on, vehicle_name}.  The
+            # snapshot wins only when its DAY is later than the daily
+            # bucket: within one day the daily EOD is the max-of-day and
+            # is therefore already the better (later) reading.
+            out: dict[str, dict] = {}
+            for vid, d in daily.items():
+                out[vid] = {"odo": float(d["odometer_eod"]),
+                            "read_on": d["bucket_start"],
+                            "vehicle_name": d.get("vehicle_name") or ""}
+            for vid, sn in snaps.items():
+                day = str(sn["captured_at"])[:10]
+                prev = out.get(vid)
+                if prev is None or day > prev["read_on"]:
+                    out[vid] = {"odo": float(sn["odometer_mi"]),
+                                "read_on": day,
+                                "vehicle_name": (prev or {}).get("vehicle_name", "")}
+            return out
+
+        try:
+            _end_excl = (_date2.fromisoformat(end) + _td2(days=1)).isoformat()
+        except ValueError:
+            return []
+        ends = _merge(await _last_reading_per_vehicle(end, strict=False),
+                      await _last_snapshot_per_vehicle(_end_excl))
         if not ends:
             return []
-        baselines = await _last_reading_per_vehicle(start, strict=True)
+        baselines = _merge(await _last_reading_per_vehicle(start, strict=True),
+                           await _last_snapshot_per_vehicle(start))
 
         # First IN-RANGE reading — the 'partial' fallback baseline —
         # and the in-range daily aggregates in one pass.
@@ -1323,13 +1382,13 @@ class WarehouseMixin(_MixinBase):
 
         out: list[dict] = []
         for vid, e in ends.items():
-            end_odo = float(e["odometer_eod"])
+            end_odo = e["odo"]
             agg = in_range.get(vid, {})
             b = baselines.get(vid)
             flag = ""
             if b is not None:
-                start_odo = float(b["odometer_eod"])
-                start_read_on = b["bucket_start"]
+                start_odo = b["odo"]
+                start_read_on = b["read_on"]
             elif vid in firsts:
                 start_odo = float(firsts[vid])
                 start_read_on = agg.get("first_day")
@@ -1352,7 +1411,7 @@ class WarehouseMixin(_MixinBase):
                 "start_odo": round(start_odo, 1),
                 "end_odo": round(end_odo, 1),
                 "start_read_on": start_read_on,
-                "end_read_on": e["bucket_start"],
+                "end_read_on": e["read_on"],
                 "days_covered": int(agg.get("days_covered") or 0),
                 "flag": flag,
             })
