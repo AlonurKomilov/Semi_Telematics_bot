@@ -387,6 +387,15 @@ Three rules the implementation holds to:
   2.1.1). Announcements are written in task language too — the defaults
   read out our internal ids ("dropped over droppable area
   rows:company_code"), which describes the data model, not the move.
+- **The drop lands where the LINE drew it.** The line means "insert
+  before the item at this index of the list as displayed" — and that
+  list still contains the field being dragged. Placing it removes it
+  first, which shifts every later position up one, so a DOWNWARD move
+  within one list must decrement (`insertionIndex`, pure + tested).
+  Routing same-list drops through `arrayMove` instead was a real bug:
+  its `to` is a FINAL index, not an insert-before one, so a field
+  dragged down landed one slot past the line. Every drop now takes ONE
+  path, so the promise and the result can't drift apart.
 - **A drop target only lights up if it can accept the field.** Legality
   comes from the same `pivotable` / `aggregable` opt-ins as everything
   else, so a customer name can never be dragged into Values. The pool

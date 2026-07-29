@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import {
   pivot, isPivotReady, prunePivotModel, bucketOf, pivotToCsvRows,
-  pivotCellRows, splitLeafId,
+  pivotCellRows, splitLeafId, insertionIndex,
 } from './pivot';
 import type { PivotModel } from './pivot';
 import type { AnyColumn } from '../../../types';
@@ -620,5 +620,48 @@ describe('the off-state never outlives the assignment', () => {
       disabled: ['delivered_at'],
     };
     expect(prunePivotModel(kept, COLUMNS).disabled).toEqual(['delivered_at']);
+  });
+});
+
+describe('the drop lands where the insertion line drew it', () => {
+  // Reported from the live panel: rows were [Customer, DEL date,
+  // Company]; the line was placed between DEL date and Company; Customer
+  // landed AFTER Company. Cause — the line means "insert before the item
+  // at this index of the list AS DISPLAYED", but the list still contains
+  // the dragged item, and removing it shifts everything after it up one.
+  // Only ever wrong dragging DOWNWARD, which is why it survived review.
+  const place = (list: string[], key: string, insertBefore: number) => {
+    const from = list.indexOf(key);
+    const rest = list.filter((k) => k !== key);
+    rest.splice(insertionIndex(from, insertBefore), 0, key);
+    return rest;
+  };
+
+  it('drops a field between the two it was dragged between', () => {
+    const rows = ['Customer', 'DEL date', 'Company'];
+    // The line sat at Company's top edge → insert before index 2.
+    expect(place(rows, 'Customer', 2)).toEqual(['DEL date', 'Customer', 'Company']);
+  });
+
+  it('still appends when the line is past the last item', () => {
+    const rows = ['Customer', 'DEL date', 'Company'];
+    expect(place(rows, 'Customer', 3)).toEqual(['DEL date', 'Company', 'Customer']);
+  });
+
+  it('moves upward without an off-by-one', () => {
+    const rows = ['Customer', 'DEL date', 'Company'];
+    expect(place(rows, 'Company', 1)).toEqual(['Customer', 'Company', 'DEL date']);
+    expect(place(rows, 'Company', 0)).toEqual(['Company', 'Customer', 'DEL date']);
+  });
+
+  it('treats "before the item just after me" as a no-op', () => {
+    const rows = ['Customer', 'DEL date', 'Company'];
+    expect(place(rows, 'Customer', 1)).toEqual(rows);
+  });
+
+  it('does not shift an index coming from another list', () => {
+    // fromIndex -1 = the field isn't in this list, so nothing moves up.
+    expect(insertionIndex(-1, 0)).toBe(0);
+    expect(insertionIndex(-1, 2)).toBe(2);
   });
 });

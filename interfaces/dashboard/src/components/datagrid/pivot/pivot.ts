@@ -453,6 +453,25 @@ export function pivot(
   };
 }
 
+/**
+ * Translate an INSERT-BEFORE position into the index to insert at once
+ * the item has been removed from the same list.
+ *
+ * The drag insertion line means "put it before the item currently at
+ * ``insertBefore``" — an index into the list AS DISPLAYED, which still
+ * contains the item being dragged.  Placing it means removing it first,
+ * and that shifts every later position up by one.  So a DOWNWARD move
+ * inside one list lands one slot too late unless it is decremented:
+ * dragging Customer from [Customer, Date, Company] to before Company
+ * (index 2) must insert at 1, or it ends up last and the line has lied.
+ *
+ * ``fromIndex`` is -1 when the item comes from a different list, where
+ * nothing shifts and the position is already correct.
+ */
+export function insertionIndex(fromIndex: number, insertBefore: number): number {
+  return fromIndex >= 0 && fromIndex < insertBefore ? insertBefore - 1 : insertBefore;
+}
+
 /** Is this model renderable?  The panel uses it to decide between the
  *  matrix and the "pick a field" hint. */
 export function isPivotReady(model: PivotModel): boolean {

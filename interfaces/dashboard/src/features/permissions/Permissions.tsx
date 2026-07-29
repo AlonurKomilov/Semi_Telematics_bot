@@ -193,12 +193,13 @@ export const PERM_GROUPS: PermGroup[] = [
     title: 'Dispatch',
     flags: [
       { allKey: 'can_route_all', vehicleKey: 'can_route_vehicle', kind: 'feature', label: 'Routes', scoped: true },
-      // Loads does scope as two separate rows (all/own) instead of one
-      // scoped pair — a Phase-3 normalization candidate awaiting an owner
-      // decision (one tick = both, the Risk Summary precedent).
-      { key: 'can_loads_all', kind: 'feature', label: 'Loads (all)', description: 'See every load in the account' },
-      { key: 'can_loads_own', kind: 'feature', label: 'Loads (own)', indented: true, description: 'See loads assigned to the user (driver scope)' },
-      { key: 'can_manage_loads', kind: 'action', label: 'Manage — own loads', indented: true, description: 'Add / edit / remove loads — own loads only unless "Manage — all loads" is also granted' },
+      // One scoped row like every other feature (owner decision 2026-07-29;
+      // the Risk Summary precedent): one tick grants view all + own.
+      // NOTE the two DIFFERENT "own"s below: the view pair's own-scope =
+      // assigned as DRIVER (the Driver panel's "Own Loads" toggle); the
+      // Manage rows' own = assigned as DISPATCHER (dispatcher_user_id).
+      { allKey: 'can_loads_all', vehicleKey: 'can_loads_own', kind: 'feature', label: 'Loads', scoped: true, description: 'See loads — every load in the account (drivers: their own, via the Driver panel)' },
+      { key: 'can_manage_loads', kind: 'action', label: 'Manage — own loads', indented: true, description: 'Add / edit / remove loads where they are the assigned DISPATCHER — staff scope, unrelated to a driver’s "own"' },
       { key: 'can_loads_manage_all', kind: 'action', label: 'Manage — all loads', indented: true, description: 'Edit / delete ANY dispatcher’s loads (the dispatch-manager grant); without it, a dispatcher manages only their own' },
     ],
   },
