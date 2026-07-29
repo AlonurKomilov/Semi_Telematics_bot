@@ -287,7 +287,7 @@ export default function AppRouter() {
         <Route path="alerts/group-delivery" element={L(<GroupDelivery />)} />
         <Route path="storage"  element={L(<P perm="can_manage_storage"><Storage /></P>)} />
         <Route path="permissions" element={L(<P perm="can_manage_permissions"><Permissions /></P>)} />
-        <Route path="scorecard-rules" element={L(<P perm="can_manage_scorecard_rules"><ScorecardRules /></P>)} />
+        <Route path="scorecard-rules" element={L(<P perm="can_manage_config_all"><ScorecardRules /></P>)} />
         <Route path="billing" element={L(<P perm="can_manage_billing"><Billing /></P>)} />
 
         {/* Legacy /admin/* redirects — kept so existing bookmarks and

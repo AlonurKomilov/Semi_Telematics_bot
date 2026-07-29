@@ -13,7 +13,8 @@ export interface Permissions {
   can_route_vehicle: boolean;
   can_scorecard_all: boolean;
   can_scorecard_vehicle: boolean;
-  can_manage_scorecard_rules: boolean;
+  can_manage_config_role: boolean;
+  can_manage_config_all: boolean;
   can_events_all: boolean;
   can_events_vehicle: boolean;
   can_faults: boolean;

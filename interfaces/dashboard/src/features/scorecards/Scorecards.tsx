@@ -613,7 +613,7 @@ export default function Scorecards() {
   // tab: config is a deliberate action, distinct from the live scoreboard.
   const navigate = useNavigate();
   const { has } = useViewPermissions();
-  const canRules = has('can_manage_scorecard_rules');
+  const canRules = has('can_manage_config_all');
   // Default 30 days — matches Events, RiskSummary and Reports so the
   // dashboard's "default window" is consistent across the SAFETY group.
   const [days, setDays]       = useState(30);

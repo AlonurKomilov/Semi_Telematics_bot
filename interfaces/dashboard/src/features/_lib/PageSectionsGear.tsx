@@ -191,9 +191,9 @@ function ManagerBlock<P extends object>({
   const { save, clear, busy, lastAction } = useRoleLayoutMutations(persona, feature);
 
   // Drivers have no dashboard team defaults (the Mini App is their surface).
-  const viewShows = viewHas('can_manage_account') || viewHas('can_manage_role_config');
+  const viewShows = viewHas('can_manage_account') || viewHas('can_manage_config_role');
   const callerMay = iHave('can_manage_account')
-    || (iHave('can_manage_role_config') && myRole === persona);
+    || (iHave('can_manage_config_role') && myRole === persona);
   if (persona === 'driver' || !viewShows || !callerMay) return null;
 
   const current = resolvePageLayout(base, registry, pref);

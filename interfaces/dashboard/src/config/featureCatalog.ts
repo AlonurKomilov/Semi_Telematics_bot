@@ -194,7 +194,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // keeps the route + deep links alive without a second sidebar entry).
   // Tier + modules MIRROR the parent scorecards (Shared, safety/hr) so
   // it appears/masks in lockstep with the feature it configures.
-  { id: 'scorecard_rules',  labelKey: 'nav.scorecard_rules',  path: '/scorecard-rules', icon: Trophy,        modules: ['safety', 'hr'], tier: 'shared', permission: ['can_manage_scorecard_rules'], navGroup: 'monitoring', navHidden: true },
+  { id: 'scorecard_rules',  labelKey: 'nav.scorecard_rules',  path: '/scorecard-rules', icon: Trophy,        modules: ['safety', 'hr'], tier: 'shared', permission: ['can_manage_config_all'], navGroup: 'monitoring', navHidden: true },
   { id: 'audit_log',        labelKey: 'nav.audit_log',        path: '/audit',           icon: ClipboardList, modules: ['account'], tier: 'system', permission: ['can_manage_users'], navGroup: 'settings' },
 ];
 

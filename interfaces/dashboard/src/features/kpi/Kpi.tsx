@@ -79,9 +79,12 @@ export default function Kpi() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const { viewHas } = useRoleView();
-  // Threshold editing is account configuration (can_manage_account) —
-  // KPI view access alone must not move the grading goalposts.
-  const canEditThresholds = viewHas('can_manage_account');
+  // Threshold editing is account-scope feature config — KPI view access
+  // alone must not move the grading goalposts.  Mirrors the server gate:
+  // can_manage_account (owner/Full-Admin) or the config family's
+  // delegatable can_manage_config_all.
+  const canEditThresholds =
+    viewHas('can_manage_account') || viewHas('can_manage_config_all');
   const [days, setDays] = useState(30);
   const [section, setSection] = useState('dispatchers');
   const [thresholdsOpen, setThresholdsOpen] = useState(false);

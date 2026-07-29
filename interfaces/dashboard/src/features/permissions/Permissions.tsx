@@ -108,7 +108,8 @@ const PERM_GROUPS: PermGroup[] = [
       { key: 'can_invite',             label: 'Send Invites', indented: true },
       { key: 'can_manage_companies',   label: 'Manage Companies', indented: true },
       { key: 'can_manage_work_hours',  label: 'Working Hours', indented: true },
-      { key: 'can_manage_role_config', label: 'Feature Config', indented: true, description: 'Save team-default page layouts for their OWN role (the page gear’s "Team default" block). General settings holders can set any role’s.' },
+      { key: 'can_manage_config_role', label: 'Config — own role', indented: true, description: 'Save team-default page layouts for their OWN role (the page gear’s "Team default" block). General settings holders can set any role’s.' },
+      { key: 'can_manage_config_all', label: 'Config — account-wide', indented: true, description: 'A feature’s SHARED settings, one truth for everyone: scorecard rules + pillar caps, KPI grade thresholds, and every future feature setting.' },
     ],
   },
   {
@@ -133,7 +134,8 @@ const PERM_GROUPS: PermGroup[] = [
       // driver self-service flag — it lives in the "Driver — self-service"
       // panel, not this staff matrix.  Same for the other view-own flags.
       { allKey: 'can_scorecard_all', vehicleKey: 'can_scorecard_vehicle', label: 'Scorecards', scoped: true },
-      { key: 'can_manage_scorecard_rules', label: 'Scorecard Rules', indented: true, description: 'Edit the scoring rules + pillar caps — this feature’s admin component (was bundled in account Settings)' },
+      // Scorecard Rules editing has no row of its own anymore — it folded
+      // into "Config — account-wide" (Settings group) with KPI thresholds.
     ],
   },
   {

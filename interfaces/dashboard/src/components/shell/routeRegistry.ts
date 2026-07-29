@@ -81,7 +81,7 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Sub-companies in your account', keywords: ['org','tenants'] },
   { label: 'Permissions',      path: '/permissions',     icon: Shield,        group: 'Admin', permission: ['can_manage_permissions'],
     description: 'What each role is allowed to do', keywords: ['rbac','roles','permissions'] },
-  { label: 'Scorecard Rules',  path: '/scorecard-rules', icon: Trophy,        group: 'Safety', permission: ['can_manage_scorecard_rules'],
+  { label: 'Scorecard Rules',  path: '/scorecard-rules', icon: Trophy,        group: 'Safety', permission: ['can_manage_config_all'],
     description: 'Rules that build the scorecard', keywords: ['scoring','penalties','config'] },
   { label: 'Billing & Plan',   path: '/billing',         icon: CreditCard,    group: 'Admin', permission: ['can_manage_billing'],
     description: 'Billing, plan and invoices', keywords: ['plan','subscription','invoice','billing'] },

@@ -12,7 +12,6 @@ import {
 import {
   SortableContext, useSortable, verticalListSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 
 import { cn } from '../../../lib/utils';
 import { Input } from '../../ui/input';
@@ -253,6 +252,7 @@ export default function PivotPanel({
       return;
     }
     const overKey = overId.slice(overId.indexOf(':') + 1);
+    if (overKey === key) { setDrop(null); return; }
     const idx = keysIn(zone).indexOf(overKey);
     setDrop({ zone, index: idx < 0 ? keysIn(zone).length : idx });
   };
@@ -547,9 +547,9 @@ export default function PivotPanel({
             which reads as a glitch rather than a move. */}
         <DragOverlay dropAnimation={null}>
           {dragKey && (
-            <div className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-primary bg-card shadow-lg">
-              <GripVertical size={14} className="text-muted-foreground" />
-              <span className="truncate text-foreground">
+            <div className="flex w-full items-center gap-2 px-3 py-1.5 text-xs rounded-md border border-primary bg-card shadow-lg cursor-grabbing">
+              <GripVertical size={14} className="shrink-0 text-muted-foreground" />
+              <span className="min-w-0 flex-1 truncate text-foreground">
                 {byKey.get(dragKey)?.label ?? dragKey}
               </span>
             </div>
@@ -603,13 +603,20 @@ function FieldRow({
   showLineBefore?: boolean;
   showLineAfter?: boolean;
 }) {
-  const {
-    attributes, listeners, setNodeRef, transform, transition, isDragging,
-  } = useSortable({ id });
+  // ``transform``/``transition`` are deliberately NOT applied.  The
+  // sortable strategy shuffles rows to open a gap, which is a second
+  // indicator competing with our insertion line — and the two disagree
+  // exactly where it matters most.  The strategy computes its gap from
+  // dnd-kit's own index within THIS list, and since we never mutate the
+  // model on hover (so an abandoned drag costs nothing), a list the
+  // field is being dragged INTO doesn't know it is coming: the gap
+  // opens in the wrong place, or not at all, while the line says
+  // something else.  One indicator, correct in every case: rows hold
+  // still, the line moves.  MUI's panel behaves the same way.
+  const { attributes, listeners, setNodeRef, isDragging } = useSortable({ id });
   return (
     <div
       ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn('relative', isDragging && 'opacity-40')}
     >
       {showLineBefore && <Rule edge="top" />}

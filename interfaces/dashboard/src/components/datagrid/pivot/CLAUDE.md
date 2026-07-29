@@ -333,6 +333,17 @@ Three rules the implementation holds to:
   target list takes a **ring**, and an **insertion rule** marks the
   exact index. The ring alone tells you the section — but order IS
   nesting here, so position needs its own mark.
+- **Rows do NOT shuffle.** `useSortable`'s `transform`/`transition` are
+  deliberately not applied. The sortable strategy opens a gap computed
+  from dnd-kit's own index within ONE list — and because we never mutate
+  on hover, a list the field is being dragged INTO doesn't know it is
+  coming, so that gap lands in the wrong place (or never opens) while
+  the insertion line says something else. Two indicators that disagree
+  exactly where it matters most. One indicator, correct everywhere:
+  rows hold still, the line moves. MUI's panel behaves the same way.
+  Hovering a field over its own slot draws no line at all — that drop
+  is a no-op, and a line promising a move that won't happen is worse
+  than no line.
 - **A drop target only lights up if it can accept the field.** Legality
   comes from the same `pivotable` / `aggregable` opt-ins as everything
   else, so a customer name can never be dragged into Values. The pool
