@@ -130,8 +130,14 @@ between them:
   filters and search") stays at the top. It explains what you're looking
   at and why paging vanished, so it has to be readable at the moment you
   might actually wonder — which is deep in the rows, not at the top.
-- the **row count** takes the footer slot the pagination bar leaves,
-  so the card's shape doesn't change on the way into pivot mode.
+- the **row count** is rendered by `DataGrid`, in the pagination bar's
+  own slot and with its exact shell (`p-3 bg-muted border-t`, `text-xs`,
+  filter hint left / figure right). PivotView reports the number up
+  (`onRowCount`) rather than drawing its own band: drawn locally it sat
+  inside the matrix COLUMN — stopping at the fields panel instead of
+  spanning the card — at a smaller size with no background, so the
+  card's bottom edge visibly changed shape on a mode switch. One shell,
+  two contents.
 
 Both used to sit INSIDE the vertical scroller with the table, so at most
 scroll positions you could see neither, and the card ended in an empty

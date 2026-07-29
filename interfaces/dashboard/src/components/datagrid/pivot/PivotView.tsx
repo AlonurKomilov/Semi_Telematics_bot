@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   TableProperties, ChevronRight, ChevronDown, ArrowUp, ArrowDown,
 } from 'lucide-react';
@@ -35,7 +35,7 @@ import {
  * footer-aggregation treatment (``bg-muted font-semibold text-primary``).
  */
 export default function PivotView({
-  rows, model, columns, padding, onModelChange, onOpenPanel, fill,
+  rows, model, columns, padding, onModelChange, onOpenPanel, fill, onRowCount,
 }: {
   /** MUST be the same post-segment/filter/search rows the grid's own
    *  footer aggregation reduces, so the two can never disagree. */
@@ -51,9 +51,16 @@ export default function PivotView({
    *  only DESCRIBES where the control is leaves the reader stranded when
    *  the panel happens to be closed — which is exactly when they see it. */
   onOpenPanel?: () => void;
-  /** Own the grid's height: pin the caption and the row count to the
-   *  card's edges and scroll only the matrix between them. */
+  /** Own the grid's height: pin the caption to the top and scroll only
+   *  the matrix beneath it. */
   fill?: boolean;
+  /** How many report rows are visible (collapse applied).  Reported UP
+   *  rather than drawn here, because the count belongs in the card's
+   *  footer band — the same slot, shell and type as the pagination bar
+   *  it replaces.  Drawn locally it sat inside the matrix column at a
+   *  smaller size with no background, so switching modes visibly
+   *  changed the shape of the card's bottom edge. */
+  onRowCount?: (n: number) => void;
 }) {
   const result = useMemo(
     () => pivot(rows, model, columns),
@@ -86,6 +93,8 @@ export default function PivotView({
     }
     return true;
   }), [result.bodyRows, collapsed]);
+
+  useEffect(() => { onRowCount?.(visibleRows.length); }, [visibleRows.length, onRowCount]);
 
   if (result.empty) {
     // Only ROWS are required now: without a measure the report still
@@ -485,19 +494,7 @@ export default function PivotView({
         );
       })()}
 
-      {/* Sits where the pagination bar sits in list mode, so the card
-          keeps ONE skeleton across the two modes rather than losing a
-          band on the way in.  Pinned for the same reason as the caption:
-          a count you can only see by scrolling to the end isn't a
-          count, it's a discovery. */}
-      {visibleRows.length > 0 && (
-        <p className={cn(
-          'px-3 py-2 text-2xs text-muted-foreground text-right border-t border-border',
-          fill && 'shrink-0',
-        )}>
-          {visibleRows.length.toLocaleString()} row{visibleRows.length === 1 ? '' : 's'}
-        </p>
-      )}
+
     </div>
   );
 }

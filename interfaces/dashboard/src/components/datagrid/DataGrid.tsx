@@ -707,6 +707,9 @@ export default function DataGrid({
     [pivotEnabled, columns, timeZone],
   );
   const [pivotPanelOpen, setPivotPanelOpen] = useState(false);
+  // Reported up by PivotView so the count can live in the card's own
+  // footer band rather than inside the matrix column.
+  const [pivotRowCount, setPivotRowCount] = useState(0);
   // Device-scoped, NOT per-table: how you like the panel/report split is
   // a habit about this screen, not a property of one grid.
   const { value: pivotPanelWidth, setValue: setPivotPanelWidth } =
@@ -3432,6 +3435,7 @@ export default function DataGrid({
         <div className={cn(fillHeight && 'flex-1 min-h-0')}>
             <PivotView
               fill={!!fillHeight}
+              onRowCount={setPivotRowCount}
               rows={table.getFilteredRowModel().rows
                 .filter((r) => !r.getIsGrouped())
                 .map((r) => r.original as Record<string, unknown>)}
@@ -4046,6 +4050,25 @@ export default function DataGrid({
           (short lists where paginating 5-20 rows adds noise).  The
           border-t lives on the div itself so it disappears with the
           section, leaving the table body flush with the card bottom. */}
+      {/* PIVOT's footer — the SAME shell as the pagination bar below, in
+          the same slot, so the card's bottom edge doesn't change shape
+          when you switch modes.  Paging is meaningless on a cross-tab,
+          so the right-hand cluster is the report's row count instead;
+          the left-hand filter hint is as true here as it is there. */}
+      {pivotOn && (
+      <div className="flex flex-wrap items-center justify-between p-3 gap-3 bg-muted border-t border-border">
+        <p className="text-xs text-muted-foreground">
+          {columnFilters.length > 0 || globalFilter
+            ? `${columnFilters.length} filter${columnFilters.length === 1 ? '' : 's'} active`
+            : ' '}
+        </p>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          <span className="tabular-nums">
+            {pivotRowCount.toLocaleString()} row{pivotRowCount === 1 ? '' : 's'}
+          </span>
+        </div>
+      </div>
+      )}
       {enablePagination && !pivotOn && (
       <div className="flex flex-wrap items-center justify-between p-3 gap-3 bg-muted border-t border-border">
         {/* Filter-status hint on the left — only when active, so the
