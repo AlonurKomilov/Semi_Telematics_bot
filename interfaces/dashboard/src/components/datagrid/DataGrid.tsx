@@ -3179,6 +3179,14 @@ export default function DataGrid({
         // edges and gives the table body everything between them.
         fillHeight && 'flex flex-1 flex-col min-h-0',
       )}>
+      {/* The fields panel is a PEER COLUMN of the whole grid — toolbar,
+          body and footer all sit to its left — rather than a box inside
+          the body region.  Nested in the body it started below the
+          toolbar and stopped above the footer, so it read as something
+          the grid contained; MUI stands it alongside, which is what it
+          actually is: a second surface, not part of the table. */}
+      <div className={cn('flex items-stretch', fillHeight && 'flex-1 min-h-0')}>
+      <div className={cn('flex-1 min-w-0 flex flex-col', fillHeight && 'min-h-0')}>
       {/* Toolbar shares the ``bg-muted`` surface used by the table
           header row + pinned cells, so all the "chrome" surfaces
           (toolbar / header / pinned cells / footer) read as one
@@ -3420,8 +3428,7 @@ export default function DataGrid({
           grid is still a row list, because that is where you switch
           pivoting ON.  The two bodies then swap inside the left column
           without the panel unmounting. */}
-      <div className={cn('flex items-stretch', fillHeight && 'flex-1 min-h-0')}>
-      <div className={cn('flex-1 min-w-0', fillHeight && 'flex flex-col min-h-0')}>
+      <div className={cn('flex flex-col', fillHeight && 'flex-1 min-h-0')}>
       {pivotOn ? (
         // PIVOT MODE — a report, not a record list.  Fed the SAME
         // post-segment/filter/search rows the footer aggregation reduces,
@@ -4032,20 +4039,6 @@ export default function DataGrid({
       </div>
       )}
       </div>
-      {pivotEnabled && pivotPanelOpen && (
-        <PivotPanel
-          columns={pivotColumns}
-          model={pivotModel}
-          onChange={setPivotModel}
-          onClose={() => setPivotPanelOpen(false)}
-          enabled={pivotOn}
-          onEnabledChange={setPivotEnabled}
-          width={pivotPanelWidth}
-          onWidthChange={setPivotPanelWidth}
-          fill={!!fillHeight}
-        />
-      )}
-      </div>
       {/* Pagination footer — skipped when ``enablePagination={false}``
           (short lists where paginating 5-20 rows adds noise).  The
           border-t lives on the div itself so it disappears with the
@@ -4064,7 +4057,7 @@ export default function DataGrid({
         </p>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <span className="tabular-nums">
-            {pivotRowCount.toLocaleString()} row{pivotRowCount === 1 ? '' : 's'}
+            Total rows: {pivotRowCount.toLocaleString()}
           </span>
         </div>
       </div>
@@ -4145,6 +4138,21 @@ export default function DataGrid({
         </div>
       </div>
       )}
+      </div>{/* end grid column */}
+      {pivotEnabled && pivotPanelOpen && (
+        <PivotPanel
+          columns={pivotColumns}
+          model={pivotModel}
+          onChange={setPivotModel}
+          onClose={() => setPivotPanelOpen(false)}
+          enabled={pivotOn}
+          onEnabledChange={setPivotEnabled}
+          width={pivotPanelWidth}
+          onWidthChange={setPivotPanelWidth}
+          fill={!!fillHeight}
+        />
+      )}
+      </div>{/* end grid + panel row */}
       </div>{/* end card wrapper */}
       {/* Active-filters popover — one row per narrowing filter with a
           per-item clear, plus clear-all.  The mirror image of the

@@ -130,6 +130,15 @@ between them:
   filters and search") stays at the top. It explains what you're looking
   at and why paging vanished, so it has to be readable at the moment you
   might actually wonder — which is deep in the rows, not at the top.
+- the **panel is a PEER COLUMN of the whole grid** — toolbar, body and
+  footer all sit to its left — not a box inside the body region. Nested
+  in the body it began below the toolbar and stopped above the footer,
+  which read as something the table contained. MUI stands it alongside,
+  which is what it actually is: a second surface, not part of the table.
+- the **row count** reports the REPORT's size (`bodyRows.length`), not
+  the lines currently on screen. Counting visible rows made a "total"
+  that shrank every time a group was collapsed — describing the
+  viewport, not the report.
 - the **row count** is rendered by `DataGrid`, in the pagination bar's
   own slot and with its exact shell (`p-3 bg-muted border-t`, `text-xs`,
   filter hint left / figure right). PivotView reports the number up

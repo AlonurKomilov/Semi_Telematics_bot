@@ -94,7 +94,13 @@ export default function PivotView({
     return true;
   }), [result.bodyRows, collapsed]);
 
-  useEffect(() => { onRowCount?.(visibleRows.length); }, [visibleRows.length, onRowCount]);
+  // The REPORT's size, not the number of lines currently on screen.
+  // Reporting visibleRows made a "total" that shrank every time a group
+  // was collapsed — a total that moves when you fold a row is describing
+  // the viewport, not the report.
+  useEffect(() => {
+    onRowCount?.(result.bodyRows.length);
+  }, [result.bodyRows.length, onRowCount]);
 
   if (result.empty) {
     // Only ROWS are required now: without a measure the report still

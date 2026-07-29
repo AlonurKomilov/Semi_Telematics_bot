@@ -437,7 +437,12 @@ export default function PivotPanel({
         role="separator"
         aria-orientation="vertical"
         aria-label="Resize pivot panel"
-        className="absolute inset-y-0 -left-0.5 w-1 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 z-10"
+        // S5 (proportion & placement): the grab strip was w-1 — a 4px
+        // target, and at the panel edge no WCAG spacing exception
+        // applies (the row grips' 24px circles intersect it).  The HIT
+        // area is now 10px; the paint still only appears on hover, so
+        // nothing thickens visually at rest.
+        className="absolute inset-y-0 -left-1 w-2.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 z-10"
         onPointerDown={(e) => {
           e.preventDefault();
           const startX = e.clientX;
@@ -549,7 +554,7 @@ export default function PivotPanel({
                     <button
                       type="button"
                       aria-label={`Add ${byKey.get(key)?.label ?? key}`}
-                      className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                     >
                       <Plus size={14} />
                     </button>
@@ -754,7 +759,7 @@ function FieldRow({
           {...attributes}
           {...listeners}
           aria-label={`Reorder ${label}`}
-          className="shrink-0 -ml-1 cursor-grab active:cursor-grabbing text-muted-foreground/60 hover:text-foreground transition-colors touch-none"
+          className="shrink-0 p-1 -ml-2 rounded cursor-grab active:cursor-grabbing text-muted-foreground/60 hover:text-foreground hover:bg-muted transition-colors touch-none"
         >
           <GripVertical size={14} />
         </button>
@@ -786,7 +791,7 @@ function FieldRow({
             <button
               type="button"
               aria-label={`${label} options`}
-              className="shrink-0 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              className="shrink-0 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <MoreVertical size={14} />
             </button>
