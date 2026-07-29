@@ -2600,6 +2600,27 @@ export default function DataGrid({
   // scrollbar (drag) and a wheel handler (trackpad).
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  // The table branch UNMOUNTS whenever pivot is switched on, and mounts
+  // a BRAND NEW element when it's switched off again.  Every observer
+  // below was set up in an effect keyed on things that don't change
+  // across that swap, so after one pivot round-trip they were all still
+  // watching a detached node: scroll metrics froze, and with them the
+  // custom horizontal and vertical scrollbars simply stopped rendering
+  // — the grid could no longer be scrolled sideways at all.
+  //
+  // Publishing the node through a callback ref makes every measurement
+  // effect key on the ELEMENT, so they re-attach whenever it is
+  // replaced, for any reason — not just this one.
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  const setScrollNode = useCallback((el: HTMLDivElement | null) => {
+    scrollContainerRef.current = el;
+    setScrollEl(el);
+  }, []);
+  const [theadEl, setTheadEl] = useState<HTMLTableSectionElement | null>(null);
+  const setTheadNode = useCallback((el: HTMLTableSectionElement | null) => {
+    theadRef.current = el;
+    setTheadEl(el);
+  }, []);
 
   // Scroll position is only meaningful relative to the list you were
   // reading — so when the list changes IDENTITY (page, sort, filter,
@@ -2634,7 +2655,7 @@ export default function DataGrid({
   const theadRef = useRef<HTMLTableSectionElement | null>(null);
   const [headerHeight, setHeaderHeight] = useState(0);
   useEffect(() => {
-    const el = theadRef.current;
+    const el = theadEl;
     if (!el) return;
     const measure = () => setHeaderHeight(h => {
       const next = el.offsetHeight;
@@ -2644,14 +2665,14 @@ export default function DataGrid({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [bodyScrolls, density]);
+  }, [theadEl, bodyScrolls, density]);
 
   const [scrollMetrics, setScrollMetrics] = useState({
     scrollLeft: 0, clientWidth: 0, scrollWidth: 0,
     scrollTop: 0, clientHeight: 0, scrollHeight: 0,
   });
   useEffect(() => {
-    const el = scrollContainerRef.current;
+    const el = scrollEl;
     if (!el) return;
     const update = () => {
       setScrollMetrics({
@@ -2687,7 +2708,7 @@ export default function DataGrid({
       el.removeEventListener('wheel', onWheel);
       ro.disconnect();
     };
-  }, []);
+  }, [scrollEl]);
 
   // Measure pinned column widths directly from the live DOM after
   // every render.  Reading ``columnSizing`` would also work but lags
@@ -2696,7 +2717,7 @@ export default function DataGrid({
   // DOM measurement is one synchronous frame and avoids that flash.
   const [pinnedWidths, setPinnedWidths] = useState({ left: 0, right: 0 });
   useLayoutEffect(() => {
-    const el = scrollContainerRef.current;
+    const el = scrollEl;
     if (!el) return;
     const measure = () => {
       // Measure the LEAF header row (marked data-header-row="leaf"),
@@ -2715,7 +2736,7 @@ export default function DataGrid({
     if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => ro.disconnect();
   // Re-measure when pinning / order / visibility changes the layout.
-  }, [effectivePinning, columnOrder, columnVisibility, columnSizing]);
+  }, [scrollEl, effectivePinning, columnOrder, columnVisibility, columnSizing]);
   const pinnedLeftWidth  = pinnedWidths.left;
   const pinnedRightWidth = pinnedWidths.right;
 
@@ -3462,7 +3483,7 @@ export default function DataGrid({
          and becomes the row below the body (see below). */
       <div className={cn('relative group/grid', fillHeight && 'flex flex-1 flex-col min-h-[16rem]')}>
       <div
-        ref={scrollContainerRef}
+        ref={setScrollNode}
         // ``overflow-x: hidden`` + ``overflow-y: auto``: the native
         // horizontal scrollbar never exists (and therefore never paints
         // a reserved track at the bottom of the container the way
@@ -3528,7 +3549,7 @@ export default function DataGrid({
           } : undefined}
         >
           <TableHeader
-            ref={theadRef}
+            ref={setTheadNode}
             className={bodyScrolls ? 'sticky top-0 z-10 bg-card' : undefined}
           >
             {/* Group bracket row — one spanning cell per contiguous

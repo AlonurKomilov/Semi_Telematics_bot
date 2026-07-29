@@ -22,8 +22,11 @@ import { render, screen, cleanup, act } from '@testing-library/react';
 import type { SortingState } from '@tanstack/react-table';
 import type { AnyColumn } from '../../types';
 
+// Counts observe() calls so a test can prove the grid re-attaches its
+// measurement observers to a replacement element.
+const observed: Element[] = [];
 globalThis.ResizeObserver = class {
-  observe() {}
+  observe(el: Element) { observed.push(el); }
   unobserve() {}
   disconnect() {}
 } as unknown as typeof ResizeObserver;
@@ -39,20 +42,26 @@ vi.mock('react-i18next', () => ({
 }));
 vi.mock('../../hooks/useTimezone', () => ({ useTimezone: () => 'UTC' }));
 vi.mock('../../preferences', async () => {
-  const { TABLE_PARTS } = await vi.importActual<
+  const actual = await vi.importActual<
     typeof import('../../preferences/registry')
   >('../../preferences/registry');
+  const { useState } = await import('react');
   return {
     useSyncLoaded: () => true,
-    useTablePreference: (_t: unknown, key: string, fallback?: unknown) => ({
-      value: fallback !== undefined
+    // STATEFUL on purpose.  A no-op setValue means pivot can never
+    // actually turn on, so any test that "toggles pivot" would be
+    // asserting against a grid that never changed.
+    useTablePreference: (_t: unknown, key: string, fallback?: unknown) => {
+      const initial = fallback !== undefined
         ? fallback
-        : (TABLE_PARTS as Record<string, { default: unknown }>)[key]?.default,
-      setValue: () => {},
-    }),
-    usePreference: (_k: string, fallback: unknown) => ({
-      value: fallback, setValue: () => {},
-    }),
+        : (actual.TABLE_PARTS as Record<string, { default: unknown }>)[key]?.default;
+      const [value, setValue] = useState(initial);
+      return { value, setValue };
+    },
+    usePreference: (_k: string, fallback: unknown) => {
+      const [value, setValue] = useState(fallback);
+      return { value, setValue };
+    },
   };
 });
 
@@ -194,5 +203,41 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
     });
 
     expect(scroll.writes).toEqual([]);
+  });
+});
+
+describe('measurement survives the pivot round-trip', () => {
+  // Switching pivot ON unmounts the table branch entirely; switching it
+  // OFF mounts a BRAND NEW element. The three measurement observers
+  // (scroll metrics, header height, pinned widths) were set up in
+  // effects keyed on things that don't change across that swap, so
+  // afterwards they all watched a DETACHED node: metrics froze and the
+  // custom scrollbars stopped rendering, leaving a wide grid with no way
+  // to scroll sideways. Callback refs re-key those effects on the
+  // element, so they follow whatever is live.
+  it('re-observes the replacement scroll container', async () => {
+    render(<DataGrid columns={COLUMNS} data={ROWS} tableId="t" pivot fillHeight />);
+    const before = screen.getByRole('region', { name: 'Table rows' });
+    observed.length = 0;
+
+    const toggle = () => screen.getByRole('button', { name: 'Pivot' }).click();
+    await act(async () => { toggle(); });                       // panel opens
+    await act(async () => {
+      screen.getByRole('switch', { name: 'Pivot the grid' }).click();   // pivot ON
+    });
+
+    // The table branch is gone while pivoting.
+    expect(screen.queryByRole('region', { name: 'Table rows' })).toBeNull();
+
+    await act(async () => {
+      screen.getByRole('switch', { name: 'Pivot the grid' }).click();   // pivot OFF
+    });
+
+    const after = screen.getByRole('region', { name: 'Table rows' });
+    // A genuinely new element...
+    expect(after).not.toBe(before);
+    expect(before.isConnected).toBe(false);
+    // ...and the grid is measuring THAT one, not the corpse.
+    expect(observed).toContain(after);
   });
 });

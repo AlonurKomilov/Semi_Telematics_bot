@@ -296,6 +296,18 @@ touch, keyboard and scroll-into-view are untouched. (MUI gets this for
 free because its headers are a separate element outside the scroller;
 ours share one `<table>` so the columns can't drift out of alignment.)
 
+**Measurement effects key on the ELEMENT, via callback refs.** Pivot
+unmounts the table branch and mounts a brand-new one on the way back, so
+any observer set up in an effect keyed on props/state alone ends up
+watching a detached node. That happened to all three at once (scroll
+metrics, header height, pinned widths): metrics froze, and with them the
+custom scrollbars stopped rendering — a wide grid with no way to scroll
+sideways, only after a pivot round-trip. `setScrollNode` / `setTheadNode`
+publish the live node into state so the effects re-attach whenever the
+element is replaced, for any reason. `DataGrid.fillHeight.test.tsx` pins
+it (and needs a STATEFUL preferences mock — with a no-op `setValue`
+pivot never actually toggles and the test is theatre).
+
 Two gotchas the implementation encodes, both easy to reintroduce:
 
 - **`min-h-0` at every level.** A flex item defaults to `min-height:
