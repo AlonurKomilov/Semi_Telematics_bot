@@ -113,24 +113,35 @@ function fmtIso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-function fmtNice(d: Date, tz?: string): string {
-  return formatDay(d, { timeZone: tz, intl: { month: 'short', day: 'numeric', year: 'numeric' } });
-}
-
-/** "Jul 20 – 26, 2026" — the year (and month, when shared) written
- *  once.  Cross-month: "Jun 15 – Jul 2, 2026"; cross-year keeps both
- *  years.  Repeating "Jul 20, 2026 → Jul 26, 2026" wastes the footer's
- *  width on characters the reader already has. */
-function fmtRange(lo: Date, hi: Date, tz?: string): string {
-  const dayOnly = (d: Date) =>
-    formatDay(d, { timeZone: tz, intl: { day: 'numeric' } });
-  const monthDay = (d: Date) =>
-    formatDay(d, { timeZone: tz, intl: { month: 'short', day: 'numeric' } });
+/** Range label where each TIME sits with ITS OWN date, so both ends
+ *  read as complete moments — "8:00 AM Jul 13 – 5:00 PM Jul 19, 2026"
+ *  (owner's design) rather than two dates followed by two dangling
+ *  times.  The year is written once unless the ends straddle years;
+ *  with no times and one month it compresses to "Jul 13 – 19, 2026".
+ *
+ *  ``year: undefined`` is REQUIRED in every override — formatDay hard-
+ *  codes ``year: 'numeric'`` and spreads the caller's intl over it, so
+ *  omitting the key leaves the year in and prints it twice. */
+function fmtRange(
+  lo: Date, hi: Date, tz?: string,
+  loTime?: string | null, hiTime?: string | null,
+): string {
+  const dayOnly = (d: Date) => formatDay(d, {
+    timeZone: tz, intl: { day: 'numeric', month: undefined, year: undefined },
+  });
+  const monthDay = (d: Date) => formatDay(d, {
+    timeZone: tz, intl: { month: 'short', day: 'numeric', year: undefined },
+  });
   const sameYear = lo.getFullYear() === hi.getFullYear();
   const sameMonth = sameYear && lo.getMonth() === hi.getMonth();
-  if (sameMonth) return `${monthDay(lo)} – ${dayOnly(hi)}, ${hi.getFullYear()}`;
-  if (sameYear) return `${monthDay(lo)} – ${monthDay(hi)}, ${hi.getFullYear()}`;
-  return `${fmtNice(lo, tz)} – ${fmtNice(hi, tz)}`;
+  const withTimes = Boolean(loTime || hiTime);
+  const loLabel = `${loTime ? `${loTime} ` : ''}${monthDay(lo)}`;
+  // The end keeps its month whenever a time rides with it — "5:00 PM
+  // 19" would read as a stray number.
+  const hiLabel = `${hiTime ? `${hiTime} ` : ''}${
+    sameMonth && !withTimes ? dayOnly(hi) : monthDay(hi)}`;
+  if (sameYear) return `${loLabel} – ${hiLabel}, ${hi.getFullYear()}`;
+  return `${loLabel}, ${lo.getFullYear()} – ${hiLabel}, ${hi.getFullYear()}`;
 }
 
 function labelFor(value: number, opts: { label: string; days: number }[]): string {
@@ -416,12 +427,12 @@ export default function DateRangePresets({
   // window LENGTH matches a preset ("last 7 ending Jun 20" ≠ "Last 7").
   const isCustom = end != null || !options.some((o) => o.days === value);
   const endDate = end ? startOfDay(new Date(`${end}T00:00:00`)) : null;
-  const appliedClock =
-    appliedTimes && (appliedTimes.start || appliedTimes.end)
-      ? ` · ${appliedTimes.start ? formatClock(appliedTimes.start) : 'start of day'}–${appliedTimes.end ? formatClock(appliedTimes.end) : 'end of day'}`
-      : '';
   const rangeLabel = endDate
-    ? `${fmtRange(new Date(endDate.getTime() - value * 86_400_000), endDate, tz)}${appliedClock}`
+    ? fmtRange(
+        new Date(endDate.getTime() - value * 86_400_000), endDate, tz,
+        appliedTimes?.start ? formatClock(appliedTimes.start) : null,
+        appliedTimes?.end ? formatClock(appliedTimes.end) : null,
+      )
     : null;
 
   const monthShift = (delta: number) => {
@@ -450,17 +461,20 @@ export default function DateRangePresets({
     ? (startOfDay(pickedStart) <= startOfDay(previewFar)
         ? [pickedStart, previewFar] : [previewFar, pickedStart])
     : [null, null];
-  const draftClock = withTime && !timesAreDefault
-    ? ` · ${timeStart === '00:00' ? 'start of day' : formatClock(timeStart)} – ${timeEnd === '24:00' ? 'end of day' : formatClock(timeEnd)}`
-    : '';
+  // Times ride WITH their own boundary in the range label, so the
+  // footer's tail carries only the count (and the all-day note).
+  const draftLoTime = withTime && timeStart !== '00:00' ? formatClock(timeStart) : null;
+  const draftHiTime = withTime && timeEnd !== '24:00' ? formatClock(timeEnd) : null;
   // INCLUSIVE day count: the calendar highlights Jul 20…26 = 7 boxes,
   // so printing the arithmetic difference (6) reads as a bug even when
   // the query is right.  The picker's ``days`` contract is unchanged —
   // this is the human-facing count only.
-  const footerRange = sumLo && sumHi ? fmtRange(sumLo, sumHi, tz) : '';
+  const footerRange = sumLo && sumHi
+    ? fmtRange(sumLo, sumHi, tz, draftLoTime, draftHiTime)
+    : '';
   const footerMeta = sumLo && sumHi
     ? `${daysBetween(sumLo, sumHi) + 1} days${
-        withTime ? (draftClock || ' · all day') : ''
+        withTime && timesAreDefault ? ' · all day' : ''
       }`
     : '';
   const footerHint = rangeCapable
