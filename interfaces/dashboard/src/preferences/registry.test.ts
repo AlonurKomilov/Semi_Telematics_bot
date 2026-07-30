@@ -24,6 +24,7 @@ const FROZEN_KEYS: readonly string[] = [
   'sidebar.collapsed',
   'notif.bannerLevel',
   'notif.position',
+  'parking.showSafe',
   'livemap.overlay.utilheat',
   'livemap.overlay.companycolors',
   'notifications.center.filter',

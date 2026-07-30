@@ -739,3 +739,67 @@ describe('hideEmptyColumns', () => {
     expect(on.grandRowTotal).toEqual(off.grandRowTotal);
   });
 });
+
+describe('windowing arithmetic (the part that must not drift)', () => {
+  // The renderer's spacer offsets are `from * rowH` and
+  // `(total - to) * rowH`. If those two plus the rendered slice don't add
+  // up to the full list's height, the scrollbar lies and rows land in the
+  // wrong place the further you scroll. Pure arithmetic, so it's testable
+  // here rather than in jsdom, which has no layout.
+  const windowFor = (
+    total: number, bucket: number, perView: number,
+    BUCKET = 10, OVERSCAN = 15,
+  ) => {
+    if (total <= perView + OVERSCAN * 2) {
+      return { from: 0, to: total, padTop: 0, padBottom: 0 };
+    }
+    const maxFrom = Math.max(0, total - perView - OVERSCAN);
+    const from = Math.min(maxFrom, Math.max(0, bucket * BUCKET - OVERSCAN));
+    const to = Math.min(total, from + perView + OVERSCAN * 2);
+    return { from, to, padTop: from, padBottom: total - to };
+  };
+
+  it('always accounts for every row', () => {
+    for (const bucket of [0, 1, 5, 12, 35, 100]) {
+      const w = windowFor(360, bucket, 30);
+      const rendered = w.to - w.from;
+      expect(w.padTop + rendered + w.padBottom).toBe(360);
+    }
+  });
+
+  it('renders a bounded slice, not the whole list', () => {
+    const w = windowFor(360, 12, 30);
+    expect(w.to - w.from).toBeLessThanOrEqual(30 + 15 * 2);
+  });
+
+  it('never windows a list that fits — no spacers, no chance to be wrong', () => {
+    const w = windowFor(40, 0, 30);
+    expect(w).toEqual({ from: 0, to: 40, padTop: 0, padBottom: 0 });
+  });
+
+  it('clamps at both ends', () => {
+    expect(windowFor(360, 0, 30).from).toBe(0);
+    const last = windowFor(360, 100, 30);
+    expect(last.to).toBe(360);
+    expect(last.padBottom).toBe(0);
+  });
+
+  it('never lands past the end of a list that shrank under it', () => {
+    // Scroll deep into 360 rows, then collapse every group to 4. The
+    // bucket is still ~30; an unclamped window would slice past the end
+    // and render nothing behind a tall spacer.
+    const w = windowFor(4, 30, 30);
+    expect(w.from).toBe(0);
+    expect(w.to).toBe(4);
+    expect(w.padTop).toBe(0);
+    expect(w.padBottom).toBe(0);
+  });
+
+  it('keeps overscan ahead of the bucket boundary', () => {
+    // A scroll inside one bucket must already have its rows rendered, or
+    // you see blank space until the next bucket lands.
+    const w = windowFor(360, 3, 30);
+    expect(w.from).toBeLessThanOrEqual(3 * 10);
+    expect(w.to).toBeGreaterThanOrEqual(3 * 10 + 30);
+  });
+});

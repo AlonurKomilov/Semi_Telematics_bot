@@ -181,10 +181,44 @@ Three rules the tests pin:
 columns hidden") because a matrix quietly missing columns is worse than
 one showing empty ones.
 
-## Cost: the matrix is not virtualised
+## Row windowing
 
-~360 rows × 61 columns is ~22,000 cells in the DOM. Two things this
-makes non-negotiable:
+Under `fill` the matrix renders a WINDOW of rows — roughly the viewport
+plus 15 rows of overscan each side — with spacer `<tr>`s carrying the
+height of everything not rendered. ~2,000 cells in the DOM instead of
+~22,000.
+
+- **The subscription is QUANTISED.** It re-windows once per BUCKET of 10
+  rows scrolled, not per frame. This is the sanctioned exception to
+  "nothing outside a scrollbar subscribes to scroll" (see
+  [../CLAUDE.md](../CLAUDE.md)): it watches a coarse bucket, not the
+  position, so a scroll costs a handful of ~2,000-cell renders rather
+  than 60 renders of 22,000.
+- **Zebra keys on the ABSOLUTE index** (`win.from + i`). Keyed on the
+  slice index the stripes strobe as you scroll.
+- **Rows must be UNIFORM height** — the offsets are `from × rowH`. The
+  fold button used to make parent rows ~6px taller than leaves, which
+  would drift the further you scrolled; the row content now carries
+  `min-h-6` and the button is exactly 24×24 (the WCAG floor, and on the
+  4px scale).
+- **`from` is clamped against the list's own end.** Scroll deep into 360
+  rows, then collapse every group to 4: the bucket is still ~30, so an
+  unclamped start slices past the end and you get a tall spacer with no
+  rows behind it.
+- **It self-bootstraps.** `rowH` is 0 on first paint, so windowing is
+  off, all rows render, one is measured, and the window engages. It also
+  stays off for any list that fits — no spacers, no chance to be wrong.
+- Gated on `fill`: a non-`fill` matrix has no owned scroller.
+
+The arithmetic (spacers + slice always accounting for every row) is
+pinned by tests in `pivot.test.ts` rather than jsdom, which has no
+layout.
+
+## Cost: what is still not virtualised
+
+Rows are windowed (above), so the DOM holds ~2,000 cells. COLUMNS are
+not — all 61 render for every windowed row. Two things this makes
+non-negotiable:
 
 - **Never hand it a fresh `rows` array.** Built inline in JSX the prop
   changed identity every render, so `useMemo` never hit and the whole

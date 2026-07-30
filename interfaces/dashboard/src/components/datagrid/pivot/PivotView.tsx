@@ -17,6 +17,13 @@ import {
   pivot, pivotCellRows, splitLeafId, type PivotModel, type PivotBodyRow,
 } from './pivot';
 
+/** Rows of scroll before the window is recomputed.  Coarse on purpose —
+ *  the overscan covers the gap, and each re-window is a real render. */
+const WINDOW_BUCKET = 10;
+/** Rows rendered beyond the viewport on each side, so a fast scroll
+ *  never shows blank space before the next bucket lands. */
+const OVERSCAN = 15;
+
 /**
  * The pivoted matrix — a READ-ONLY report view.
  *
@@ -121,6 +128,9 @@ export default function PivotView({
   // froze the tab.  The bars watch the element themselves.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const [insets, setInsets] = useState({ left: 0, right: 0, top: 0 });
+  // Windowing geometry, measured from the DOM by the same
+  // ResizeObserver — never from a scroll listener.
+  const [box, setBox] = useState({ viewport: 0, rowH: 0 });
   useEffect(() => {
     const el = scrollEl;
     if (!el) return;
@@ -139,6 +149,18 @@ export default function PivotView({
         prev.left === next.left && prev.right === next.right && prev.top === next.top
           ? prev : next
       ));
+      // One rendered data row decides the window's arithmetic.  Rows are
+      // single-line (`whitespace-nowrap`) and now share a min-height, so
+      // one measurement is valid for all of them.
+      const row = el.querySelector<HTMLElement>('tbody tr[data-prow]');
+      const nextBox = {
+        viewport: el.clientHeight,
+        rowH: row?.offsetHeight ?? 0,
+      };
+      setBox((prev) => (
+        prev.viewport === nextBox.viewport && prev.rowH === nextBox.rowH
+          ? prev : nextBox
+      ));
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -146,6 +168,56 @@ export default function PivotView({
     if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => ro.disconnect();
   }, [scrollEl, padding, model]);
+
+  // ── Row windowing ─────────────────────────────────────────────────
+  // A wide report is ~22,000 cells; only ~30 rows are ever on screen.
+  //
+  // The subscription is QUANTISED on purpose: it re-windows once per
+  // BUCKET of rows scrolled, not per frame, so a scroll produces a
+  // handful of renders of ~2,000 cells instead of 60 renders of 22,000.
+  // This is the sanctioned exception to "nothing outside a scrollbar
+  // subscribes to scroll" — it subscribes to a coarse BUCKET, not to the
+  // position.
+  const [bucket, setBucket] = useState(0);
+  const windowing = !!fill && box.rowH > 0;
+  useEffect(() => {
+    const el = scrollEl;
+    if (!el || !windowing) return;
+    const step = box.rowH * WINDOW_BUCKET;
+    const onScroll = () => {
+      const next = Math.max(0, Math.floor(el.scrollTop / step));
+      setBucket((prev) => (prev === next ? prev : next));
+    };
+    onScroll();
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [scrollEl, windowing, box.rowH]);
+
+  const win = useMemo(() => {
+    const all = visibleRows;
+    if (!windowing) return { rows: all, from: 0, padTop: 0, padBottom: 0 };
+    const perView = Math.max(1, Math.ceil(
+      Math.max(0, box.viewport - insets.top) / box.rowH,
+    ));
+    // Below this there is nothing to win, and a spacer would only add
+    // a chance to be wrong.
+    if (all.length <= perView + OVERSCAN * 2) {
+      return { rows: all, from: 0, padTop: 0, padBottom: 0 };
+    }
+    // Clamp the START against the list's own end.  Scroll deep into 360
+    // rows, then collapse every group down to 4: the bucket is still ~30,
+    // so an unclamped ``from`` lands past the end, the slice comes back
+    // EMPTY, and you get a tall spacer with no rows behind it.
+    const maxFrom = Math.max(0, all.length - perView - OVERSCAN);
+    const from = Math.min(maxFrom, Math.max(0, bucket * WINDOW_BUCKET - OVERSCAN));
+    const to = Math.min(all.length, from + perView + OVERSCAN * 2);
+    return {
+      rows: all.slice(from, to),
+      from,
+      padTop: from * box.rowH,
+      padBottom: (all.length - to) * box.rowH,
+    };
+  }, [visibleRows, windowing, bucket, box.rowH, box.viewport, insets.top]);
 
   if (result.empty) {
     // Only ROWS are required now: without a measure the report still
@@ -399,9 +471,22 @@ export default function PivotView({
         </thead>
 
         <tbody>
-          {visibleRows.map((row, rowIdx) => (
+          {/* Spacers carry the height of the rows NOT rendered, so the
+              scrollbar and the scroll position stay honest while only a
+              window of rows exists in the DOM. */}
+          {win.padTop > 0 && (
+            <tr aria-hidden style={{ height: win.padTop }}>
+              <td colSpan={leafCount + 1 + result.totalLabels.length} />
+            </tr>
+          )}
+          {win.rows.map((row, i) => {
+            // ABSOLUTE index, not the slice's.  Zebra keyed on the slice
+            // index would make the stripes strobe as you scroll.
+            const rowIdx = win.from + i;
+            return (
             <tr
               key={row.key}
+              data-prow
               className={cn(
                 'border-b border-border group/prow transition-colors hover:bg-muted',
                 rowIdx % 2 === 1 && 'bg-muted/30',
@@ -433,7 +518,13 @@ export default function PivotView({
                   />
                 )}
                 <span
-                  className="relative inline-flex items-center gap-1"
+                  // ``min-h-6`` is load-bearing for WINDOWING, not just
+                  // rhythm: the fold button is taller than bare label
+                  // text, so parent rows were ~6px taller than leaves.
+                  // Windowing computes its spacer offsets from ONE row
+                  // height, and mixed heights would drift the further you
+                  // scrolled.  Every row is now padding + 24px.
+                  className="relative inline-flex min-h-6 items-center gap-1"
                   // Nesting depth as indentation — the only cue that a
                   // row belongs to the group above it.
                   style={{ paddingLeft: row.depth * 16 }}
@@ -444,20 +535,20 @@ export default function PivotView({
                       onClick={() => toggle(row.key)}
                       aria-expanded={!collapsed.has(row.key)}
                       aria-label={collapsed.has(row.key) ? `Expand ${row.label}` : `Collapse ${row.label}`}
-                      // p-1.5 -> 26x26, clearing the 24px WCAG 2.5.8
-                      // floor.  It was 18x18 (p-0.5 + a 14px glyph) and no
-                      // exception applied: not inline text, and no larger
-                      // control does the same job — this is the ONLY way
-                      // to fold a group.
-                      className="shrink-0 -ml-1.5 p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      // p-1 + a 16px glyph = exactly 24x24: the WCAG
+                      // 2.5.8 floor, and unlike 26px it sits on the 4px
+                      // scale so it matches the row's own min-h-6.  It
+                      // was 18x18 (p-0.5 + 14px) with no exception
+                      // available — this is the ONLY way to fold a group.
+                      className="shrink-0 -ml-1 p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                     >
                       {collapsed.has(row.key)
-                        ? <ChevronRight size={14} />
-                        : <ChevronDown size={14} />}
+                        ? <ChevronRight size={16} />
+                        : <ChevronDown size={16} />}
                     </button>
                   ) : (
                     // Keep leaves aligned with their expandable siblings.
-                    row.depth > 0 && <span aria-hidden className="w-[26px] shrink-0" />
+                    row.depth > 0 && <span aria-hidden className="w-6 shrink-0" />
                   )}
                   {row.label}
                   {/* How many source rows produced this line — the operator
@@ -518,7 +609,13 @@ export default function PivotView({
                 </td>
               ))}
             </tr>
-          ))}
+            );
+          })}
+          {win.padBottom > 0 && (
+            <tr aria-hidden style={{ height: win.padBottom }}>
+              <td colSpan={leafCount + 1 + result.totalLabels.length} />
+            </tr>
+          )}
           {/* Slack absorber.  ``sticky bottom-0`` on the totals row only
               pins it once the content OVERFLOWS — with four rows there
               is nothing to stick past, so the total sat directly under
