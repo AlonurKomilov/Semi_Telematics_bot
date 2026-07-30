@@ -49,11 +49,16 @@ async def list_parts(
     work-order editor's autocomplete (hence the widened read gate)."""
     from adapters.storage.service_assemblies import suggest_assembly_for
     rows = await tenant_db.list_parts_catalog(user["account_id"])
-    # Assembly fill is suggest-confirm: annotate blanks with the
-    # keyword guess; nothing is written until a human clicks.
+    # Assembly fill is suggest-confirm: annotate blanks, nothing is
+    # written until a human clicks.  Two hint sources, name first:
+    # the keyword matcher reads what the part IS; purchase history
+    # reads what job it was bought for ("Mystery Clamp" bought during
+    # Water Pump Replacement is probably a water-pump part).
+    task_hints = await tenant_db.task_assembly_hints(user["account_id"])
     for r in rows:
         if not r.get("assembly_key"):
-            hint = suggest_assembly_for(r.get("name") or "")
+            hint = (suggest_assembly_for(r.get("name") or "")
+                    or task_hints.get(int(r["id"]), ""))
             if hint:
                 r["suggested_assembly"] = hint
     return {"parts": rows}
@@ -230,6 +235,15 @@ async def get_part(
     )
     if not data:
         raise HTTPException(status_code=404, detail="Catalog part not found")
+    # Same suggest-confirm annotation the list gets — the detail page's
+    # Classification strip offers the chip from here.
+    from adapters.storage.service_assemblies import suggest_assembly_for
+    if not data["part"].get("assembly_key"):
+        hint = (suggest_assembly_for(data["part"].get("name") or "")
+                or (await tenant_db.task_assembly_hints(
+                    user["account_id"])).get(part_id, ""))
+        if hint:
+            data["part"]["suggested_assembly"] = hint
     public = None
     gid = data["part"].get("global_part_id")
     if gid:

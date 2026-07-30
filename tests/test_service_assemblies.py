@@ -320,3 +320,39 @@ async def test_assembly_locked_on_standard_tasks(db, acct):
     # Their tuning fields still work on the same task.
     assert await db.update_service_task(
         t["id"], acct, expected_labor_hours=2.0) is True
+
+
+@pytest.mark.asyncio
+async def test_task_assembly_hints_from_purchase_history(db, acct):
+    """'Mystery Clamp' means nothing to the keyword matcher, but it was
+    bought during Water Pump Replacement — purchase history is the
+    second suggestion source.  Most recent line wins; blank-assembly
+    tasks contribute nothing."""
+    await _assembly_task(db, acct, "Water Pump Replacement",
+                         "cooling", "water_pump")
+    wo = await db.add_work_order(acct, "", "234", "Shop",
+                                 service_date="2026-07-01")
+    await _line(db, acct, wo, "Mystery Clamp", "", "Water Pump Replacement", 9)
+
+    hints = await db.task_assembly_hints(acct)
+    part = next(p for p in await db.list_parts_catalog(acct)
+                if p["name"] == "Mystery Clamp")
+    assert hints.get(int(part["id"])) == "water_pump"
+
+    # A LATER purchase under a different assembly-specific task wins.
+    await _assembly_task(db, acct, "Thermostat Replacement",
+                         "cooling", "thermostat")
+    wo2 = await db.add_work_order(acct, "", "234", "Shop",
+                                  service_date="2026-07-15")
+    await _line(db, acct, wo2, "Mystery Clamp", "", "Thermostat Replacement", 9)
+    hints = await db.task_assembly_hints(acct)
+    assert hints.get(int(part["id"])) == "thermostat"
+
+    # Bought under a task with NO assembly → no hint appears/changes.
+    wo3 = await db.add_work_order(acct, "", "234", "Shop",
+                                  service_date="2026-07-20")
+    await _line(db, acct, wo3, "Loose Bolt", "", "pm_service", 1)
+    hints = await db.task_assembly_hints(acct)
+    bolt = next(p for p in await db.list_parts_catalog(acct)
+                if p["name"] == "Loose Bolt")
+    assert int(bolt["id"]) not in hints

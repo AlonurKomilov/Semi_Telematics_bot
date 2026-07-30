@@ -226,6 +226,33 @@ class PartsCatalogMixin:
         "     WHEN p.quantity > 0 THEN p.total_cost / p.quantity END"
     )
 
+    async def task_assembly_hints(self, account_id: int) -> dict[int, str]:
+        """part_id → the assembly of the task it was most recently
+        bought under — the SECOND suggestion source for blank parts.
+
+        The name-keyword matcher can't recognise "Mystery Clamp"; its
+        purchase history can: bought during Water Pump Replacement, it
+        is probably a water-pump part.  Suggestion only — written by a
+        human click, same as every assembly fill.  Most recent line
+        wins so a part that migrated between jobs follows its current
+        life, and only assembly-specific tasks contribute (blank task
+        assemblies can't hint).
+        """
+        cur = await self._db.execute(
+            "SELECT DISTINCT ON (p.part_id) p.part_id, st.assembly_key "
+            "FROM work_order_parts p "
+            "JOIN work_orders w ON w.id = p.work_order_id "
+            "JOIN service_tasks st ON st.id = p.service_task_id "
+            "     AND st.account_id = w.account_id "
+            "WHERE w.account_id = ? AND p.part_id IS NOT NULL "
+            "  AND COALESCE(st.assembly_key, '') <> '' "
+            "  AND w.status != 'void' AND w.payment_status != 'void' "
+            "ORDER BY p.part_id, w.service_date DESC NULLS LAST, p.id DESC",
+            (account_id,),
+        )
+        return {int(r["part_id"]): r["assembly_key"]
+                for r in (dict(x) for x in await cur.fetchall())}
+
     async def part_price_context(
         self, account_id: int, names: list[str], *,
         company_codes: list[str] | None = None,
