@@ -167,7 +167,8 @@
     "audit_log": "Journal d’audit",
     "knowledge_base": "Base de connaissances",
     "settings": "Paramètres",
-    "settings_group": "Paramètres"
+    "settings_group": "Paramètres",
+    "truck_anatomy": "Truck Anatomy"
   },
   "scorecards": {
     "page_title": "Scorecards Véhicules",

@@ -167,7 +167,8 @@
     "audit_log": "Registro de auditoría",
     "knowledge_base": "Base de conocimientos",
     "settings": "Configuración",
-    "settings_group": "Configuración"
+    "settings_group": "Configuración",
+    "truck_anatomy": "Truck Anatomy"
   },
   "scorecards": {
     "page_title": "Tarjetas de Vehículos",

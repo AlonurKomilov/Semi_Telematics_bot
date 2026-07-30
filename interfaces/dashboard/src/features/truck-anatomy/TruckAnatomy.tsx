@@ -7,10 +7,12 @@
  * scene renders one node per assembly: real GLB when one exists under
  * /models/truck-anatomy/<key>.glb, labeled placeholder otherwise.
  *
- * Hidden route by design (no nav entry yet): reachable at
- * /truck-anatomy while it grows from placeholder rig to real models.
- * The whole feature lives in THIS folder — delete it plus one route
- * line and it's gone (owner requirement: manage or remove as a unit).
+ * DARK by permission (owner decision): gated on can_truck_anatomy,
+ * seeded to the owner ONLY — no other role — so nothing is marketed
+ * before it's ready.  Granting is a per-account call in the
+ * Permissions matrix; the nav entry (featureCatalog) appears only for
+ * holders.  The whole feature lives in THIS folder — delete it plus
+ * one route line and it's gone (owner requirement: remove as a unit).
  */
 import { Suspense, lazy, useMemo, useState } from 'react';
 import { ChevronRight, RotateCcw, Search, Truck } from 'lucide-react';

@@ -157,6 +157,7 @@ class FeatureSet:
     can_manage_role_bot: bool = False   # Settings → Telegram Bot reachability for role MANAGERS (their own row: group, Sub bot, topics).  Granted ONLY via the manager tier — never a base-role seed; the API re-checks is_manager+role per persona regardless.
     can_manage_config_role: bool = False  # Config family, ROLE scope: feature config for their OWN role (team-default page layouts today).  Seeded on at manager tier, delegatable to ANY tier via the matrix.  The own-role wall is code: only can_manage_account crosses roles.  NOTE: deliberately looser than can_manage_role_bot, which stays hard-locked to the manager tier.  SSOT: docs/architecture/config.md.
     can_manage_config_all: bool = False  # Config family, ACCOUNT scope: a feature's SHARED settings — scorecard rules + pillar caps, KPI thresholds, every future one.  One truth per account (data-meaning config never varies by role).  Absorbed can_manage_scorecard_rules 2026-07-29 (stored grants carried over by migration).  SSOT: docs/architecture/config.md.
+    can_truck_anatomy: bool = False     # Truck Anatomy — the 3D learning model (education). DARK BY DEFAULT: owner-only until the owner decides to market it; no other role is seeded, granting is a per-account matrix decision.
     can_location_map: bool = False      # live location map (all trucks)
     can_location_vehicle: bool = False      # live location map (assigned vehicle)
     can_fuel_cost: bool = False         # fuel cost tracker
@@ -259,6 +260,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_work_orders_all=True, can_work_orders_vehicle=True,
         can_parts=True,
         can_service_tasks=True,
+        can_truck_anatomy=True,   # owner invariant: every flag True; NO other role is seeded
         can_cost_reports=True,
         can_scorecard_all=True, can_scorecard_vehicle=True,
         can_location_map=True, can_location_vehicle=True,
@@ -1185,6 +1187,7 @@ _FEATURE_LABELS: dict[str, str] = {
     "can_work_orders_all": "work orders (all trucks)",
     "can_work_orders_vehicle": "work orders (assigned vehicle)",
     "can_parts": "parts catalog & analytics",
+    "can_truck_anatomy": "truck anatomy (3D learning model)",
     "can_service_tasks": "service tasks (shared task list)",
     "can_parking_all": "parking events (all trucks)",
     "can_parking_vehicle": "parking events (assigned vehicle)",

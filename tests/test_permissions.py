@@ -62,7 +62,22 @@ class TestRolePermissions:
     # ── Owner: full access ────────────────────────────────────────
 
     def test_owner_has_all_permissions(self):
-        from capabilities.permissions.roles import DERIVED_SERVICE_FIELDS
+        from capabilities.permissions.roles import (
+            DERIVED_SERVICE_FIELDS, ROLE_PERMISSIONS, TIER_GRANTS,
+        )
+        # Tier-only flags are DELIBERATELY never a base-role seed
+        # (roles.py: can_manage_role_bot — "never a base-role seed; the
+        # API re-checks is_manager+role regardless").  Computed, not
+        # hardcoded: a tier flag that some base role DOES seed stops
+        # being exempt automatically.
+        base_seeded = {
+            f for fs in ROLE_PERMISSIONS.values()
+            for f in FeatureSet.__dataclass_fields__
+            if getattr(fs, f)
+        }
+        tier_only = {
+            f for t in TIER_GRANTS.values() for f in t.grants
+        } - base_seeded
         perms = get_permissions(Role.OWNER)
         # The derived service surfaces (Alerts inbox, AI assistant) are not
         # plain "all True" flags — the inbox scope is mutually exclusive, so
@@ -70,7 +85,7 @@ class TestRolePermissions:
         # redundant own-vehicle flag.  Assert those explicitly; blanket-check
         # every other field stays True for the owner.
         for field_name in FeatureSet.__dataclass_fields__:
-            if field_name in DERIVED_SERVICE_FIELDS:
+            if field_name in DERIVED_SERVICE_FIELDS or field_name in tier_only:
                 continue
             assert getattr(perms, field_name) is True, (
                 f"Owner should have {field_name}=True"
@@ -273,9 +288,11 @@ class TestPermSsotDriftDetection:
         from capabilities.permissions.roles import FeatureSet
 
         repo_root = os.path.dirname(os.path.dirname(__file__))
+        # PERM_GROUPS moved to permRows.ts in the RoleLens refactor —
+        # the guard follows the block, not the filename.
         tsx_path = os.path.join(
             repo_root,
-            "interfaces/dashboard/src/features/permissions/Permissions.tsx",
+            "interfaces/dashboard/src/features/permissions/permRows.ts",
         )
         with open(tsx_path) as f:
             content = f.read()
@@ -288,10 +305,33 @@ class TestPermSsotDriftDetection:
             content,
             re.DOTALL,
         )
-        assert block, "Could not locate PERM_GROUPS in Permissions.tsx"
+        assert block, "Could not locate PERM_GROUPS in permRows.ts"
         groups_src = block.group(1)
+        # The driver's view-own flags are DELIBERATELY not matrix rows —
+        # they live in the dedicated Driver self-service panel
+        # (DRIVER_PANEL_FLAGS; see the comment beside it).  Scan that
+        # block too so the guard mirrors the real UI, not one array.
+        # (DRIVER_PANEL_FLAGS itself is a one-line spread of these two.)
+        for name in ("DRIVER_TRUCK", "DRIVER_RECORDS"):
+            panel = re.search(
+                rf"const {name}[^=]*=\s*\[(.+?)\];\s*\n",
+                content,
+                re.DOTALL,
+            )
+            if panel:
+                groups_src += panel.group(1)
 
-        from capabilities.permissions.roles import DERIVED_SERVICE_FIELDS
+        from capabilities.permissions.roles import (
+            DERIVED_SERVICE_FIELDS, ROLE_PERMISSIONS, TIER_GRANTS,
+        )
+        base_seeded = {
+            f for fs in ROLE_PERMISSIONS.values()
+            for f in FeatureSet.__dataclass_fields__
+            if getattr(fs, f)
+        }
+        tier_only = {
+            f for t in TIER_GRANTS.values() for f in t.grants
+        } - base_seeded
 
         flag_names = [f.name for f in FeatureSet.__dataclass_fields__.values()]
         # The derived service surfaces (Alerts inbox, AI assistant) are
@@ -301,11 +341,12 @@ class TestPermSsotDriftDetection:
         missing = [
             n for n in flag_names
             if n not in DERIVED_SERVICE_FIELDS
+            and n not in tier_only
             and f"'{n}'" not in groups_src and f'"{n}"' not in groups_src
         ]
 
         assert not missing, (
             f"FeatureSet flags missing from dashboard's PERM_GROUPS: {sorted(missing)}\n"
-            "Add them to interfaces/dashboard/src/features/permissions/Permissions.tsx "
+            "Add them to interfaces/dashboard/src/features/permissions/permRows.ts "
             "so admins can customize them per account."
         )

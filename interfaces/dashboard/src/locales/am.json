@@ -167,7 +167,8 @@
     "audit_log": "የኦዲት ምዝግብ",
     "knowledge_base": "የእውቀት መሠረት",
     "settings": "ቅንብሮች",
-    "settings_group": "ቅንብሮች"
+    "settings_group": "ቅንብሮች",
+    "truck_anatomy": "Truck Anatomy"
   },
   "scorecards": {
     "page_title": "የተሽከርካሪ ስኮርካርዶች",

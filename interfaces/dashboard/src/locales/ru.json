@@ -167,7 +167,8 @@
     "audit_log": "Журнал аудита",
     "knowledge_base": "База знаний",
     "settings": "Настройки",
-    "settings_group": "Настройки"
+    "settings_group": "Настройки",
+    "truck_anatomy": "Truck Anatomy"
   },
   "scorecards": {
     "page_title": "Оценки транспорта",
