@@ -803,3 +803,69 @@ describe('windowing arithmetic (the part that must not drift)', () => {
     expect(w.to).toBeGreaterThanOrEqual(3 * 10 + 30);
   });
 });
+
+describe('widest candidates (what stops column widths jittering)', () => {
+  const COLS: AnyColumn[] = [
+    { key: 'customer', label: 'Customer', pivotable: true },
+    { key: 'driver', label: 'Driver', pivotable: true },
+    { key: 'rate', label: 'Rate', aggregable: true },
+  ];
+  const ROWS = [
+    { customer: 'A', driver: 'Ann', rate: 5 },
+    { customer: 'BBBBBBBBBB', driver: 'Ann', rate: 1_000_000 },
+    { customer: 'C', driver: 'Ann', rate: 50 },
+  ];
+  const M = (fn: 'sum' | 'min' | 'avg'): PivotModel => ({
+    rows: ['customer'], columns: ['driver'], values: [{ key: 'rate', aggFn: fn }],
+  });
+
+  it('is at least as wide as anything that can appear in the column', () => {
+    // That is the actual contract — not "the widest body value".  Sizing
+    // from a window that only held the `5` row would make the column snap
+    // wider the moment 1,000,000 scrolled in; the candidate has to cover
+    // every body cell AND the total.
+    const r = pivot(ROWS, M('sum'), COLS);
+    const candidate = Math.abs(r.leafWidest[0]!);
+    for (const row of r.bodyRows) {
+      if (row.cells[0] !== null) expect(candidate).toBeGreaterThanOrEqual(Math.abs(row.cells[0]));
+    }
+    expect(candidate).toBeGreaterThanOrEqual(Math.abs(r.grandTotal[0]!));
+  });
+
+  it('beats the grand total when a BODY value is wider — the min case', () => {
+    // This is the case the always-present Total row does NOT cover: the
+    // grand min is the SMALLEST number, so it is the narrowest string,
+    // while a body cell can be far wider.
+    const r = pivot(ROWS, M('min'), COLS);
+    expect(r.grandTotal).toEqual([5]);
+    expect(r.leafWidest).toEqual([1_000_000]);
+  });
+
+  it('falls back to the grand total when it is the widest', () => {
+    // A sum is at least as wide as any addend, so here the tfoot already
+    // dominated — the candidate must not come out NARROWER than it.
+    const r = pivot(ROWS, M('sum'), COLS);
+    expect(Math.abs(r.leafWidest[0]!)).toBeGreaterThanOrEqual(Math.abs(r.grandTotal[0]!));
+  });
+
+  it('picks the row label that renders widest, indent included', () => {
+    const r = pivot(ROWS, M('sum'), COLS);
+    expect(r.widestRow?.label).toBe('BBBBBBBBBB');
+  });
+
+  it('sizes the Total column from the whole report too', () => {
+    const r = pivot(ROWS, M('sum'), COLS);
+    expect(r.totalWidest).toHaveLength(1);
+    expect(Math.abs(r.totalWidest[0]!)).toBeGreaterThanOrEqual(1_000_000);
+  });
+
+  it('is defined but valueless when there is nothing to size', () => {
+    const r = pivot([], M('sum'), COLS);
+    // No column buckets exist, so there are no leaves...
+    expect(r.leafWidest).toEqual([]);
+    // ...but the Total column still has one slot per value field, and it
+    // must be null rather than undefined so renderCell paints a dash.
+    expect(r.totalWidest).toEqual([null]);
+    expect(r.widestRow).toBeNull();
+  });
+});

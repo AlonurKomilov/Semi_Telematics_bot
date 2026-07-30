@@ -116,6 +116,18 @@ export interface PivotResult {
    *  the surface can SAY so — a matrix quietly missing columns is worse
    *  than one showing empty ones. */
   hiddenColumns: number;
+  /** Per leaf, the value most likely to render WIDEST — the greatest
+   *  magnitude across every body row, and the grand total.  Once rows are
+   *  windowed, column widths would otherwise be decided by whichever
+   *  rows happen to be in the DOM, so they'd shift as you scroll.  This
+   *  lets the view size columns from the whole REPORT instead: width
+   *  becomes a function of the data, not of scroll position. */
+  leafWidest: (number | null)[];
+  /** Same, for the pinned Total column. */
+  totalWidest: (number | null)[];
+  /** The body row whose label will render widest — longest label at the
+   *  deepest indent.  Sizes the frozen row-label column. */
+  widestRow: { label: string; depth: number; count: number } | null;
   /** True when the model can't produce a table yet — i.e. no ROW field.
    *  Measures and column dimensions are optional; without them the
    *  report still lists the groups and their counts. */
@@ -188,7 +200,8 @@ export function pivot(
   const blank: PivotResult = {
     headerLevels: [], leafIds: [], leafValueKeys: [],
     rowFieldLabel: '', bodyRows: [], grandTotal: [],
-    grandRowTotal: [], totalLabels: [], hiddenColumns: 0, empty: true,
+    grandRowTotal: [], totalLabels: [], hiddenColumns: 0,
+    leafWidest: [], totalWidest: [], widestRow: null, empty: true,
   };
   // Only a ROW field is mandatory.  Measures and column dimensions are
   // refinements: switch every measure off and you still get the groups
@@ -475,6 +488,42 @@ export function pivot(
     return reduce(v.aggFn, totals.get(leaf), colCounts.get(colOf(leaf)) ?? totalRowCount);
   });
 
+  const grandRowTotalCells = wantsTotalCol
+    ? valueFields.map((v) => reduce(v.aggFn, allValues.get(v.key), totalRowCount))
+    : [];
+
+  // ── Widest candidates ──────────────────────────────────────────────
+  // Greatest MAGNITUDE stands in for "longest when formatted": with one
+  // formatter per column, more digits means a wider string.  Cheap (one
+  // pass) and it only has to be an upper bound good enough to stop the
+  // width moving.
+  const widerOf = (a: number | null, b: number | null) => {
+    if (a === null) return b;
+    if (b === null) return a;
+    return Math.abs(b) > Math.abs(a) ? b : a;
+  };
+  const leafWidest = leafIds.map((_, i) => {
+    let best = grandTotal[i];
+    for (const r of bodyRows) best = widerOf(best, r.cells[i]);
+    return best;
+  });
+  const totalWidest = (wantsTotalCol ? valueFields : []).map((_, i) => {
+    let best = grandRowTotalCells[i] ?? null;
+    for (const r of bodyRows) best = widerOf(best, r.totals[i] ?? null);
+    return best;
+  });
+  let widestRow: PivotResult['widestRow'] = null;
+  let widestScore = -1;
+  for (const r of bodyRows) {
+    // Indent counts double per level because it is 16px against roughly
+    // an 8px character — an estimate, not a measurement.
+    const score = r.depth * 2 + r.label.length + String(r.count).length;
+    if (score > widestScore) {
+      widestScore = score;
+      widestRow = { label: r.label, depth: r.depth, count: r.count };
+    }
+  }
+
   return {
     headerLevels,
     leafIds,
@@ -482,13 +531,14 @@ export function pivot(
     rowFieldLabel: rowDims.map((c) => c.label).join(' / '),
     bodyRows,
     grandTotal,
-    grandRowTotal: wantsTotalCol
-      ? valueFields.map((v) => reduce(v.aggFn, allValues.get(v.key), totalRowCount))
-      : [],
+    grandRowTotal: grandRowTotalCells,
     totalLabels: wantsTotalCol
       ? valueFields.map((v) => cols.get(v.key)?.label ?? v.key)
       : [],
     hiddenColumns: keptColPaths.length ? hiddenColumns : 0,
+    leafWidest,
+    totalWidest,
+    widestRow,
     empty: false,
   };
 }

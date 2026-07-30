@@ -214,6 +214,35 @@ The arithmetic (spacers + slice always accounting for every row) is
 pinned by tests in `pivot.test.ts` rather than jsdom, which has no
 layout.
 
+## Column widths come from the REPORT, not from the window
+
+Auto table layout sizes a column from the cells that are in the DOM. Once
+rows are windowed that is whichever rows you happen to be scrolled to, so
+widths would snap every time a wider figure scrolled in.
+
+The fix is a **sizer row**, mounted only while windowing: one zero-height
+`aria-hidden` row carrying, per column, the widest candidate the whole
+report holds — through the *same* `cellPad` classes and the *same*
+`renderCell`. The browser's own sizing then settles on a width that is a
+function of the data. No measurement pass, no pinned pixel values,
+nothing to drift out of sync with the real cells.
+
+- `visibility: hidden` preserves layout, so the width still counts;
+  `py-0 h-0` plus a clipping span removes every visual trace.
+- It carries **no `data-prow`**, so the row-height measurement can't pick
+  it up as a real row.
+- The candidate is the greatest **magnitude** across every body row *and*
+  the grand total — more digits means a wider string under one formatter.
+  An estimate with a guarantee: never narrower than anything that can
+  appear in the column.
+- **Why the grand total isn't enough on its own:** for `sum`/`count` the
+  always-mounted `<tfoot>` already dominates (a sum is at least as wide as
+  any addend). For **`min`** it is the opposite — the grand min is the
+  smallest number, so the narrowest string, while a body cell can be far
+  wider. That case is what the body pass exists for, and a test pins it.
+- The sizer must never drift from `renderCell`/`cellPad`. Format the
+  candidate any other way and the pinned width stops matching the cells.
+
 ## Cost: what is still not virtualised
 
 Rows are windowed (above), so the DOM holds ~2,000 cells. COLUMNS are

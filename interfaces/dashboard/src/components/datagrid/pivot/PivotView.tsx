@@ -471,6 +471,54 @@ export default function PivotView({
         </thead>
 
         <tbody>
+          {/* SIZER ROW — the fix for width jitter under windowing.
+              With only a window of rows in the DOM, auto table layout
+              sizes each column from whichever rows happen to be rendered,
+              so widths would shift every time you scrolled past a wider
+              figure.  This row carries the widest candidate the WHOLE
+              report holds, through the SAME cellPad classes and the SAME
+              renderCell, so the browser's own sizing settles on a width
+              that is a function of the data rather than of scroll
+              position — no measurement, no pinning, nothing to drift.
+
+              Zero-height and ``invisible``: visibility:hidden preserves
+              layout (so the width still counts) while ``py-0 h-0`` plus a
+              clipping span removes every trace of it.  It carries no
+              ``data-prow``, so the row-height measurement can't pick it.
+              Only mounted while windowing — an unwindowed matrix already
+              has every row present to size from. */}
+          {windowing && win.rows.length < visibleRows.length && (
+            <tr aria-hidden className="h-0">
+              <th className={cn(cellPad, 'py-0 h-0 text-left font-medium whitespace-nowrap')}>
+                <span className="block h-0 overflow-hidden invisible">
+                  <span
+                    className="inline-flex items-center gap-1"
+                    style={{ paddingLeft: (result.widestRow?.depth ?? 0) * 16 }}
+                  >
+                    <span aria-hidden className="w-6 shrink-0" />
+                    {result.widestRow?.label ?? ''}
+                    <span className="text-2xs font-normal tabular-nums">
+                      ({(result.widestRow?.count ?? 0).toLocaleString()})
+                    </span>
+                  </span>
+                </span>
+              </th>
+              {result.leafWidest.map((value, i) => (
+                <td key={`sz-${result.leafIds[i]}`} className={cn(cellPad, 'py-0 h-0', CELL_NUM)}>
+                  <span className="block h-0 overflow-hidden invisible">
+                    {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
+                  </span>
+                </td>
+              ))}
+              {result.totalWidest.map((value, i) => (
+                <td key={`szt-${i}`} className={cn(cellPad, 'py-0 h-0', CELL_NUM, 'font-semibold')}>
+                  <span className="block h-0 overflow-hidden invisible">
+                    {renderCell(value, model.values[i].key, model.values[i].aggFn)}
+                  </span>
+                </td>
+              ))}
+            </tr>
+          )}
           {/* Spacers carry the height of the rows NOT rendered, so the
               scrollbar and the scroll position stay honest while only a
               window of rows exists in the DOM. */}
