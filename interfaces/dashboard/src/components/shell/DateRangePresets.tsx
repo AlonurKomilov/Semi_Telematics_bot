@@ -291,7 +291,7 @@ export default function DateRangePresets({
   // Time-of-day (withTime only) — HOUR granularity by design: the
   // warehouse answers from 5-minute snapshots and banked hourly
   // readings, so offering minutes would imply precision the data
-  // can't back.  Defaults are VISIBLE ("00:00" → "End of day") so the
+  // can't back.  Defaults are VISIBLE ("00:00" → "24:00") so the
   // whole-day behavior is stated, not guessed from an empty "--:--".
   const [timeStart, setTimeStart] = useState('00:00');
   const [timeEnd, setTimeEnd] = useState('24:00');
@@ -367,7 +367,7 @@ export default function DateRangePresets({
         ? [pickedStart, previewFar] : [previewFar, pickedStart])
     : [null, null];
   const draftClock = withTime && !timesAreDefault
-    ? ` · ${formatClock(timeStart)}–${timeEnd === '24:00' ? 'end of day' : formatClock(timeEnd)}`
+    ? ` · ${formatClock(timeStart)}–${timeEnd === '24:00' ? '24:00' : formatClock(timeEnd)}`
     : '';
   const footerSummary = sumLo && sumHi
     ? `${fmtNice(sumLo, tz)} → ${fmtNice(sumHi, tz)} · ${daysBetween(sumLo, sumHi)} days${draftClock}`
@@ -523,7 +523,7 @@ export default function DateRangePresets({
                       const v = h === 24 ? '24:00' : `${String(h).padStart(2, '0')}:00`;
                       return (
                         <option key={v} value={v}>
-                          {h === 24 ? 'End of day' : formatClock(v)}
+                          {h === 24 ? '24:00' : formatClock(v)}
                         </option>
                       );
                     })}

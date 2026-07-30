@@ -202,12 +202,14 @@ export function formatAgoShort(
 }
 
 
-/** "HH:MM" (24h, as `<input type="time">` emits) → the viewer's locale
- *  clock ("10:30 PM" / "22:30"), so our rendered copy matches the
- *  native time inputs beside it instead of speaking a second dialect. */
+/** "HH:MM" → the 24-hour clock, always (owner decision 2026-07-30).
+ *  Operational time in this product is 24h: dispatch and drivers read
+ *  "00:00"/"22:00" natively, and the 12-hour clock cannot even WRITE
+ *  "midnight at the end of the day" unambiguously ("12:00 AM" is the
+ *  start, "12:00 PM" is noon — the classic trap).  "24:00" is the
+ *  standard 24h notation for end-of-day. */
 export function formatClock(hhmm: string): string {
   const [h, m] = hhmm.split(':').map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
-  const d = new Date(2000, 0, 1, h, m);
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
