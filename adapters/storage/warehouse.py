@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import statistics
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Iterable, Optional
 
 logger = logging.getLogger(__name__)
@@ -613,6 +613,10 @@ class WarehouseMixin(_MixinBase):
                 float(r.get("idle_min") or 0),
                 float(r.get("max_speed_mph") or 0),
                 int(r.get("harsh_event_count") or 0),
+                (float(r["odometer_eod"])
+                 if r.get("odometer_eod") is not None else None),
+                (float(r["engine_hours_eod"])
+                 if r.get("engine_hours_eod") is not None else None),
                 ts,
             ))
         if values:
@@ -623,14 +627,17 @@ class WarehouseMixin(_MixinBase):
                 INSERT INTO vehicle_telemetry (
                     account_id, vehicle_id, granularity, bucket_start,
                     miles, drive_min, idle_min,
-                    max_speed_mph, harsh_event_count, ingested_at
-                ) VALUES (?, ?, 'hourly', ?, ?, ?, ?, ?, ?, ?)
+                    max_speed_mph, harsh_event_count,
+                    odometer_eod, engine_hours_eod, ingested_at
+                ) VALUES (?, ?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(account_id, vehicle_id, granularity, bucket_start) DO UPDATE SET
                     miles=excluded.miles,
                     drive_min=excluded.drive_min,
                     idle_min=excluded.idle_min,
                     max_speed_mph=excluded.max_speed_mph,
                     harsh_event_count=excluded.harsh_event_count,
+                    odometer_eod=excluded.odometer_eod,
+                    engine_hours_eod=excluded.engine_hours_eod,
                     ingested_at=excluded.ingested_at
                 """,
                 values,
@@ -1231,8 +1238,19 @@ class WarehouseMixin(_MixinBase):
 
     async def get_period_mileage(
         self, account_id: int, start: str, end: str,
+        *, start_ts: str | None = None, end_ts: str | None = None,
     ) -> list[dict]:
         """Miles driven per vehicle in [start, end] (inclusive dates).
+
+        ``start_ts`` / ``end_ts`` (optional, naive-UTC ISO
+        "YYYY-MM-DDTHH:MM:SS") request EXACT-TIME boundaries.  Each is
+        resolved down a precision ladder: the 5-minute snapshot (kept
+        7 days) → the hourly tier's banked end-of-hour odometer (kept
+        90 days, populated from 2026-07-30 forward) → the day logic
+        below as the fallback.  Rows report which sides were exact via
+        ``start_precise`` / ``end_precise`` so the API can say "time
+        of day was not applied for these vehicles" instead of quietly
+        answering a different question than was asked.
 
         The authoritative number is an ODOMETER DELTA — Samsara's own
         mileage guide computes distance this way — not a sum of daily
@@ -1363,6 +1381,84 @@ class WarehouseMixin(_MixinBase):
         baselines = _merge(await _last_reading_per_vehicle(start, strict=True),
                            await _last_snapshot_per_vehicle(start))
 
+        # ── Exact-time boundaries (precision ladder) ────────────────
+        async def _last_hourly_reading_per_vehicle(le_hour_label: str):
+            cur = await self._db.execute(
+                "SELECT t.vehicle_id, t.odometer_eod, t.bucket_start "
+                "FROM vehicle_telemetry t "
+                "JOIN (SELECT vehicle_id, MAX(bucket_start) AS mb "
+                "      FROM vehicle_telemetry "
+                "      WHERE account_id = ? AND granularity = 'hourly' "
+                "      AND bucket_start <= ? AND odometer_eod IS NOT NULL "
+                "      GROUP BY vehicle_id) m "
+                "  ON m.vehicle_id = t.vehicle_id AND m.mb = t.bucket_start "
+                "WHERE t.account_id = ? AND t.granularity = 'hourly' "
+                "AND t.odometer_eod IS NOT NULL",
+                (account_id, le_hour_label, account_id),
+            )
+            return {str(d["vehicle_id"]): d
+                    for r in await cur.fetchall() for d in (dict(r),)}
+
+        async def _precise_boundary(ts: str) -> dict:
+            """{vid: {odo, read_at}} — the reading AT ``ts`` where any
+            tier can actually answer; absent vids fall back to days."""
+            out2: dict[str, dict] = {}
+            # Hourly first (coarser), snapshots overwrite (finer).  An
+            # hourly bucket is only usable when the WHOLE hour closed
+            # at/-before ts — its odometer is the max over the hour.
+            try:
+                _t = datetime.fromisoformat(ts)
+                closed = (_t - timedelta(hours=1)).strftime("%Y-%m-%dT%H:00:00")
+            except ValueError:
+                return out2
+            for vid, h in (await _last_hourly_reading_per_vehicle(closed)).items():
+                out2[vid] = {"odo": float(h["odometer_eod"]),
+                             "read_at": str(h["bucket_start"])}
+            cur = await self._db.execute(
+                "SELECT s.vehicle_id, s.odometer_mi, s.captured_at "
+                "FROM vehicle_state_snapshot s "
+                "JOIN (SELECT vehicle_id, MAX(captured_at) AS mc "
+                "      FROM vehicle_state_snapshot "
+                "      WHERE account_id = ? AND captured_at <= ? "
+                "      AND odometer_mi IS NOT NULL "
+                "      GROUP BY vehicle_id) m "
+                "  ON m.vehicle_id = s.vehicle_id AND m.mc = s.captured_at "
+                "WHERE s.account_id = ? AND s.odometer_mi IS NOT NULL",
+                (account_id, ts, account_id),
+            )
+            for r in await cur.fetchall():
+                d = dict(r)
+                out2[str(d["vehicle_id"])] = {
+                    "odo": float(d["odometer_mi"]),
+                    "read_at": str(d["captured_at"]),
+                }
+            return out2
+
+        # A time-tier reading is only the TRUE boundary when the tier
+        # actually reaches ts — a reading days older than ts means the
+        # tiers have been pruned past it; the day logic (with its gap
+        # interpolation) is more honest there.
+        def _fresh_enough(read_at: str, ts: str, hours: float = 26.0) -> bool:
+            try:
+                a = datetime.fromisoformat(str(read_at)[:19])
+                b = datetime.fromisoformat(str(ts)[:19])
+            except ValueError:
+                return False
+            return (b - a) <= timedelta(hours=hours)
+
+        precise_starts: dict[str, dict] = {}
+        precise_ends: dict[str, dict] = {}
+        if start_ts:
+            precise_starts = {
+                vid: v for vid, v in (await _precise_boundary(start_ts)).items()
+                if _fresh_enough(v["read_at"], start_ts)
+            }
+        if end_ts:
+            precise_ends = {
+                vid: v for vid, v in (await _precise_boundary(end_ts)).items()
+                if _fresh_enough(v["read_at"], end_ts)
+            }
+
         # First IN-RANGE reading — the 'partial' fallback baseline —
         # and the in-range daily aggregates in one pass.
         cur = await self._db.execute(
@@ -1411,6 +1507,18 @@ class WarehouseMixin(_MixinBase):
             b = baselines.get(vid)
             nxt = after_start.get(vid)
             flag = ""
+            start_precise = False
+            end_precise = False
+            _ps = precise_starts.get(vid)
+            if _ps is not None:
+                b = {"odo": _ps["odo"], "read_on": str(_ps["read_at"])[:10]}
+                nxt = None            # exact reading — no interpolation
+                start_precise = True
+            _pe = precise_ends.get(vid)
+            if _pe is not None:
+                end_odo = _pe["odo"]
+                e = {**e, "read_on": str(_pe["read_at"])[:10]}
+                end_precise = True
             # -- START boundary -------------------------------------
             # Reaching back to "the last reading whenever it was" is only
             # safe when that reading sits ON the boundary.  With days of
@@ -1419,7 +1527,10 @@ class WarehouseMixin(_MixinBase):
             # 9,932 mi where Samsara's own odometer said 5,997.  So a
             # stale boundary is INTERPOLATED between the readings that
             # bracket it, and the row says it is estimated.
-            if b is not None and self._days_between(b["read_on"], start) <= 1:
+            if start_precise:
+                start_odo = b["odo"]
+                start_read_on = b["read_on"]
+            elif b is not None and self._days_between(b["read_on"], start) <= 1:
                 start_odo = b["odo"]
                 start_read_on = b["read_on"]
             elif (b is not None and nxt is not None
@@ -1450,8 +1561,10 @@ class WarehouseMixin(_MixinBase):
             # window when one exists.
             end_read_on = e["read_on"]
             nxt_e = after_end.get(vid)
-            if (self._days_between(end_read_on, end) > 0
-                    and nxt_e is not None
+            if end_precise:
+                nxt_e = None          # exact reading — no interpolation
+            if (nxt_e is not None
+                    and self._days_between(end_read_on, end) > 0
                     and nxt_e["odo"] >= end_odo
                     and self._days_between(end_read_on, nxt_e["read_on"]) > 0):
                 span_e = self._days_between(end_read_on, nxt_e["read_on"])
@@ -1477,12 +1590,15 @@ class WarehouseMixin(_MixinBase):
                 "end_read_on": end_read_on,
                 "days_covered": int(agg.get("days_covered") or 0),
                 "flag": flag,
+                "start_precise": start_precise,
+                "end_precise": end_precise,
             })
         out.sort(key=lambda r: -r["miles"])
         return out
 
     async def get_vehicle_period_mileage(
         self, account_id: int, vehicle_name: str, start: str, end: str,
+        *, start_ts: str | None = None, end_ts: str | None = None,
     ) -> Optional[dict]:
         """Single-vehicle period mileage + the per-day breakdown.
 
@@ -1505,7 +1621,8 @@ class WarehouseMixin(_MixinBase):
         if not vrow:
             return None
         vid = str(dict(vrow)["vehicle_id"])
-        rows = await self.get_period_mileage(account_id, start, end)
+        rows = await self.get_period_mileage(
+            account_id, start, end, start_ts=start_ts, end_ts=end_ts)
         summary = next((r for r in rows if r["vehicle_id"] == vid), None)
         if summary is None:
             return None

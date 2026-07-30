@@ -307,3 +307,66 @@ class TestDataFreshness:
         r = await _get(mileage_app["app"], f"/api/vehicles/mileage?{RANGE}",
                        mileage_app["token_owner"])
         assert r.json()["data_through"] == "2026-07-03"
+
+
+class TestTimeOfDayParams:
+    """start/end accept datetimes; times are account-tz; honesty fields
+    say when the tiers couldn't answer at that precision."""
+
+    @pytest.mark.asyncio
+    async def test_datetime_params_accepted_with_honesty_fields(self, mileage_app):
+        r = await _get(mileage_app["app"],
+                       "/api/vehicles/mileage?start=2026-07-02T08:00&end=2026-07-03T20:00",
+                       mileage_app["token_owner"])
+        assert r.status_code == 200
+        body = r.json()
+        assert body["time_requested"] is True
+        # Fixture has only daily rows — no snapshot/hourly tier can
+        # answer 08:00, so every returned vehicle is named imprecise.
+        names = {v["vehicle_name"] for v in body["vehicles"]}
+        assert set(body["imprecise_time_for"]) == names
+
+    @pytest.mark.asyncio
+    async def test_date_only_reports_no_time_request(self, mileage_app):
+        r = await _get(mileage_app["app"], f"/api/vehicles/mileage?{RANGE}",
+                       mileage_app["token_owner"])
+        assert r.status_code == 200
+        body = r.json()
+        assert body["time_requested"] is False
+        assert body["imprecise_time_for"] == []
+
+    @pytest.mark.asyncio
+    async def test_bad_time_is_422(self, mileage_app):
+        r = await _get(mileage_app["app"],
+                       "/api/vehicles/mileage?start=2026-07-02T99:00&end=2026-07-03",
+                       mileage_app["token_owner"])
+        assert r.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_trips_window_honors_exact_times(self, mileage_app, monkeypatch):
+        import infra.services as _svc
+        captured = {}
+
+        class _SC:
+            async def get_vehicle_trips(self, vehicle_id, start_ms, end_ms):
+                captured["start_ms"], captured["end_ms"] = start_ms, end_ms
+                return []
+
+        class _MC:
+            clients = {"MF": _SC()}
+
+        async def fake_get_client(account_id, **kw):
+            return _MC()
+        monkeypatch.setattr(_svc, "get_client", fake_get_client)
+        r = await _get(
+            mileage_app["app"],
+            "/api/vehicles/107/trips?start=2026-07-02T08:00&end=2026-07-02T20:00",
+            mileage_app["token_owner"])
+        assert r.status_code == 200
+        from datetime import datetime, timezone as _tz
+        from zoneinfo import ZoneInfo
+        et = ZoneInfo("America/New_York")   # account default tz
+        want_start = int(datetime(2026, 7, 2, 8, 0, tzinfo=et).timestamp() * 1000)
+        want_end = int(datetime(2026, 7, 2, 20, 0, tzinfo=et).timestamp() * 1000)
+        assert captured["start_ms"] == want_start
+        assert captured["end_ms"] == want_end

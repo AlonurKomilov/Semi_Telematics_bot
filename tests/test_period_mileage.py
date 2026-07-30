@@ -267,3 +267,89 @@ class TestTieredFreshness:
         rows = await tenant.get_period_mileage(1, "2026-07-03", "2026-07-03")
         assert len(rows) == 1
         assert rows[0]["miles"] == 140.0
+
+
+class TestExactTimeBoundaries:
+    """start_ts/end_ts request the odometer AT a moment, resolved down
+    the precision ladder: 5-min snapshot -> banked hourly reading ->
+    the day logic as fallback.  Rows report which sides were exact."""
+
+    @staticmethod
+    async def _snap(db, vid, captured_at, odo, account_id=1):
+        await db.upsert_vehicle_state_snapshots(account_id, [
+            {"vehicle_id": vid, "captured_at": captured_at,
+             "odometer_mi": odo, "engine_hours": 10,
+             "engine_state": "moving", "speed_mph": 55},
+        ])
+
+    @staticmethod
+    async def _hourly(db, vid, hour_label, odo, account_id=1):
+        await db.upsert_vehicle_telemetry_hourly(account_id, [
+            {"vehicle_id": vid, "hour_utc": hour_label, "miles": 0,
+             "drive_min": 0, "idle_min": 0, "max_speed_mph": 0,
+             "harsh_event_count": 0, "odometer_eod": odo},
+        ])
+
+    @pytest.mark.asyncio
+    async def test_snapshot_gives_exact_boundaries(self, tenant):
+        # Day tier alone would answer 1000 -> 2000; the timestamps ask
+        # for 08:00 -> 20:00 of Jul 2 specifically.
+        await _day(tenant, "v1", "132", "2026-07-01", 1_000, 0)
+        await _day(tenant, "v1", "132", "2026-07-02", 2_000, 1000)
+        await self._snap(tenant, "v1", "2026-07-02T07:55:00+00:00", 1_200)
+        await self._snap(tenant, "v1", "2026-07-02T19:58:00+00:00", 1_900)
+        rows = await tenant.get_period_mileage(
+            1, "2026-07-02", "2026-07-02",
+            start_ts="2026-07-02T08:00:00", end_ts="2026-07-02T20:00:00")
+        r = rows[0]
+        assert r["miles"] == 700.0          # 1900 - 1200, not 1000
+        assert r["start_precise"] is True and r["end_precise"] is True
+        assert r["flag"] == ""
+
+    @pytest.mark.asyncio
+    async def test_hourly_bank_answers_when_snapshots_pruned(self, tenant):
+        # Snapshots for that day are gone (7d prune); the banked hourly
+        # odometer still answers, at whole-closed-hour precision.
+        await _day(tenant, "v1", "132", "2026-07-01", 1_000, 0)
+        await _day(tenant, "v1", "132", "2026-07-02", 2_000, 1000)
+        await self._hourly(tenant, "v1", "2026-07-02T07:00:00", 1_150)
+        await self._hourly(tenant, "v1", "2026-07-02T19:00:00", 1_880)
+        rows = await tenant.get_period_mileage(
+            1, "2026-07-02", "2026-07-02",
+            start_ts="2026-07-02T08:00:00", end_ts="2026-07-02T20:00:00")
+        r = rows[0]
+        assert r["miles"] == 730.0          # 1880 - 1150
+        assert r["start_precise"] and r["end_precise"]
+
+    @pytest.mark.asyncio
+    async def test_unreachable_times_fall_back_to_day_logic(self, tenant):
+        # No snapshot/hourly reading anywhere near the requested times
+        # (pruned past) -> day answer, sides reported imprecise.
+        await _day(tenant, "v1", "132", "2026-07-01", 1_000, 0)
+        await _day(tenant, "v1", "132", "2026-07-02", 2_000, 1000)
+        rows = await tenant.get_period_mileage(
+            1, "2026-07-02", "2026-07-02",
+            start_ts="2026-07-02T08:00:00", end_ts="2026-07-02T20:00:00")
+        r = rows[0]
+        assert r["miles"] == 1000.0
+        assert r["start_precise"] is False and r["end_precise"] is False
+
+    @pytest.mark.asyncio
+    async def test_stale_snapshot_does_not_pose_as_exact(self, tenant):
+        # A snapshot 3 days before the requested moment is NOT "the
+        # odometer at that moment" - day logic wins.
+        await _day(tenant, "v1", "132", "2026-07-01", 1_000, 0)
+        await _day(tenant, "v1", "132", "2026-07-02", 2_000, 1000)
+        await self._snap(tenant, "v1", "2026-06-29T12:00:00+00:00", 900)
+        rows = await tenant.get_period_mileage(
+            1, "2026-07-02", "2026-07-02",
+            start_ts="2026-07-02T08:00:00", end_ts=None)
+        assert rows[0]["start_precise"] is False
+
+    @pytest.mark.asyncio
+    async def test_without_ts_rows_report_imprecise_flags_only(self, tenant):
+        await _day(tenant, "v1", "132", "2026-07-01", 1_000, 0)
+        await _day(tenant, "v1", "132", "2026-07-02", 1_500, 500)
+        rows = await tenant.get_period_mileage(1, "2026-07-02", "2026-07-02")
+        assert rows[0]["start_precise"] is False
+        assert rows[0]["end_precise"] is False

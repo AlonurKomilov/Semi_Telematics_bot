@@ -492,10 +492,72 @@ async def fleet_utilization_summary(
 MILEAGE_RETENTION_DAYS = 730
 
 
+def _parse_boundary(value: str, *, is_end: bool) -> tuple[str, str | None]:
+    """``"YYYY-MM-DD"`` or ``"YYYY-MM-DD[T ]HH:MM[:SS]"`` →
+    ``(day, "HH:MM:SS" | None)``.  A bare date means the whole day —
+    which for an END boundary is 23:59:59, not midnight."""
+    v = (value or "").strip().replace(" ", "T")
+    day, _, clock = v.partition("T")
+    from datetime import date, time as _time
+    try:
+        date.fromisoformat(day)
+    except ValueError:
+        raise HTTPException(422, "start/end must be YYYY-MM-DD or YYYY-MM-DDTHH:MM")
+    if not clock:
+        return day, None
+    try:
+        t = _time.fromisoformat(clock)
+    except ValueError:
+        raise HTTPException(422, f"bad time of day: {clock!r}")
+    del is_end
+    return day, t.strftime("%H:%M:%S")
+
+
+async def _mileage_bounds(account_id: int, start: str, end: str):
+    """Parse + validate both boundaries; returns
+    ``(start_day, end_day, start_ts_utc, end_ts_utc, tz)`` where the ts
+    values are naive-UTC ISO strings (or None when no time was given).
+    Times are interpreted in the ACCOUNT timezone — the same clock the
+    rest of the Mileage tab speaks."""
+    from datetime import date, datetime, timedelta
+    from zoneinfo import ZoneInfo
+    from infra.services import get_platform_db as _get_pdb
+
+    s_day, s_clock = _parse_boundary(start, is_end=False)
+    e_day, e_clock = _parse_boundary(end, is_end=True)
+    if (s_day, s_clock or "00:00:00") > (e_day, e_clock or "23:59:59"):
+        raise HTTPException(422, "start must be on or before end")
+    if date.fromisoformat(s_day) < date.today() - timedelta(days=MILEAGE_RETENTION_DAYS):
+        raise HTTPException(
+            422,
+            f"odometer history is kept {MILEAGE_RETENTION_DAYS} days — "
+            "choose a more recent start date",
+        )
+    tz = None
+    s_ts = e_ts = None
+    if s_clock or e_clock:
+        account = await _get_pdb().get_account(account_id)
+        try:
+            tz = ZoneInfo((getattr(account, "timezone", None) or "")
+                          or "America/New_York")
+        except Exception:
+            tz = ZoneInfo("America/New_York")
+
+        def _to_utc(day: str, clock: str) -> str:
+            local = datetime.fromisoformat(f"{day}T{clock}").replace(tzinfo=tz)
+            return local.astimezone(ZoneInfo("UTC")).strftime("%Y-%m-%dT%H:%M:%S")
+        if s_clock:
+            s_ts = _to_utc(s_day, s_clock)
+        if e_clock:
+            e_ts = _to_utc(e_day, e_clock)
+    return s_day, e_day, s_ts, e_ts, tz
+
+
 def _validate_mileage_range(start: str, end: str) -> None:
+    """Kept for callers that only need day validation."""
     from datetime import date, timedelta
     try:
-        s, e = date.fromisoformat(start), date.fromisoformat(end)
+        s, e = date.fromisoformat(start[:10]), date.fromisoformat(end[:10])
     except ValueError:
         raise HTTPException(422, "start/end must be YYYY-MM-DD")
     if s > e:
@@ -556,9 +618,11 @@ async def account_period_mileage(
     separately by name (``no_data``) so the UI can say "no odometer
     data" instead of silently omitting them (omitted ≠ zero).
     """
-    _validate_mileage_range(start, end)
+    s_day, e_day, s_ts, e_ts, _tz = await _mileage_bounds(
+        user["account_id"], start, end)
     tenant_db = await _get_tenant_db(user["account_id"])
-    rows = await tenant_db.get_period_mileage(user["account_id"], start, end)
+    rows = await tenant_db.get_period_mileage(
+        user["account_id"], s_day, e_day, start_ts=s_ts, end_ts=e_ts)
 
     # Visibility cross-reference — mirrors /utilization-summary.
     allowed = await get_user_company_codes(user)
@@ -596,12 +660,24 @@ async def account_period_mileage(
     # quietly disagree with Samsara.
     data_through = max((v.get("end_read_on") or "" for v in vehicles),
                        default="")
+    # Time-of-day honesty: when exact times were requested, name the
+    # vehicles the tiers couldn't answer at that precision (their rows
+    # fell back to whole-day boundaries).
+    imprecise: list[str] = []
+    if s_ts or e_ts:
+        imprecise = sorted(
+            v["vehicle_name"] for v in vehicles
+            if (s_ts and not v.get("start_precise"))
+            or (e_ts and not v.get("end_precise"))
+        )
     return {
         "start": start, "end": end,
         "vehicles": vehicles,
         "total_miles": round(sum(v["miles"] for v in vehicles), 1),
         "no_data": no_data,
         "data_through": data_through,
+        "time_requested": bool(s_ts or e_ts),
+        "imprecise_time_for": imprecise,
     }
 
 
@@ -619,7 +695,8 @@ async def vehicle_period_mileage(
     enforced against the same visible-vehicles set as the list route,
     so this can't become a side door around Team-Management scoping.
     """
-    _validate_mileage_range(start, end)
+    s_day, e_day, s_ts, e_ts, _tz = await _mileage_bounds(
+        user["account_id"], start, end)
     allowed = await get_user_company_codes(user)
     visible = await _wh_reader.get_current_vehicles(user["account_id"])
     visible = filter_by_allowed_companies(visible, allowed)
@@ -629,7 +706,8 @@ async def vehicle_period_mileage(
         raise HTTPException(404, "Vehicle not found")
     tenant_db = await _get_tenant_db(user["account_id"])
     out = await tenant_db.get_vehicle_period_mileage(
-        user["account_id"], vehicle_name, start, end)
+        user["account_id"], vehicle_name, s_day, e_day,
+        start_ts=s_ts, end_ts=e_ts)
     if out is None:
         return {"start": start, "end": end, "vehicle_name": vehicle_name,
                 "no_data": True}
@@ -654,7 +732,8 @@ async def vehicle_period_trips(
     row labeled.  Same visibility wall as the mileage detail: a truck
     outside the caller's visible set is a 404, not a fetch.
     """
-    _validate_mileage_range(start, end)
+    s_day, e_day, s_clock_ts, e_clock_ts, _tz0 = await _mileage_bounds(
+        user["account_id"], start, end)
     allowed = await get_user_company_codes(user)
     visible = await _wh_reader.get_current_vehicles(user["account_id"])
     visible = filter_by_allowed_companies(visible, allowed)
@@ -682,8 +761,16 @@ async def vehicle_period_trips(
         tz = ZoneInfo((account.timezone if account else "") or "America/New_York")
     except Exception:
         tz = ZoneInfo("America/New_York")
-    start_dt = datetime.fromisoformat(start).replace(tzinfo=tz)
-    end_dt = (datetime.fromisoformat(end) + timedelta(days=1)).replace(tzinfo=tz)
+    # Exact times win when given (parsed to UTC already); bare dates
+    # keep whole-day semantics in the account timezone.
+    if s_clock_ts:
+        start_dt = datetime.fromisoformat(s_clock_ts).replace(tzinfo=ZoneInfo("UTC"))
+    else:
+        start_dt = datetime.fromisoformat(s_day).replace(tzinfo=tz)
+    if e_clock_ts:
+        end_dt = datetime.fromisoformat(e_clock_ts).replace(tzinfo=ZoneInfo("UTC"))
+    else:
+        end_dt = (datetime.fromisoformat(e_day) + timedelta(days=1)).replace(tzinfo=tz)
 
     from infra.services import get_client
     from adapters.telematics.samsara.circuit_breaker import SamsaraUnavailable

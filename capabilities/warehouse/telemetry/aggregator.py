@@ -159,6 +159,7 @@ async def _aggregate_hour_window(
         "vehicle_id", "miles_in_window",
         "max_speed", "avg_fuel_pct",
         "drive_samples", "idle_samples",
+        "odometer_eoh", "engine_hours_eoh",
     ]
     cur = await tenant._db.execute(
         """
@@ -167,7 +168,9 @@ async def _aggregate_hour_window(
                MAX(COALESCE(speed_mph, 0))         AS max_speed,
                AVG(COALESCE(fuel_pct, 0))          AS avg_fuel_pct,
                SUM(CASE WHEN engine_state = 'moving' THEN 1 ELSE 0 END) AS drive_samples,
-               SUM(CASE WHEN engine_state = 'idle'   THEN 1 ELSE 0 END) AS idle_samples
+               SUM(CASE WHEN engine_state = 'idle'   THEN 1 ELSE 0 END) AS idle_samples,
+               MAX(odometer_mi)                    AS odometer_eoh,
+               MAX(engine_hours)                   AS engine_hours_eoh
           FROM vehicle_state_snapshot
          WHERE account_id = ?
            AND captured_at >= ?
@@ -207,6 +210,12 @@ async def _aggregate_hour_window(
             "max_speed_mph":     max_speed,
             "avg_fuel_pct":      avg_fuel,
             "harsh_event_count": int(evt.get("harsh_event_count") or 0),
+            # End-of-hour odometer/engine-hours (max over the hour's
+            # samples — both monotonic).  Banked so hour-precision
+            # mileage boundaries survive the 7-day snapshot prune:
+            # the hourly tier keeps 90 days.
+            "odometer_eod":      sr.get("odometer_eoh"),
+            "engine_hours_eod":  sr.get("engine_hours_eoh"),
         })
 
     # Vehicles that had safety events but no snapshot in the window
