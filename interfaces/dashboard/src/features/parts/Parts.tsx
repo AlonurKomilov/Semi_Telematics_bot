@@ -251,7 +251,7 @@ export default function Parts() {
       <PageHeader
         icon={Cog}
         title="Parts"
-        description="Every part your invoices mention, deduplicated into one catalog. Open a part to see which trucks keep needing it and what each shop charges."
+        description="Every part your invoices mention, deduplicated into one catalog. Open a part to see which trucks keep needing it and what each shop charges. Assembly is level 2 of System → Assembly → Part — it groups a part inside its system so Cost Reports can break a system's bar down."
         actions={(
           <Button size="sm" onClick={() => setAddOpen(true)}>
             <Plus size={14} /> Add part

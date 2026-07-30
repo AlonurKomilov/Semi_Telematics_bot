@@ -26,6 +26,7 @@ import {
 } from '../../components/ui/dialog';
 import { toneClasses } from '../../lib/status';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
+import { useAssemblies } from '../parts/useAssemblies';
 import type { AnyColumn } from '../../types';
 import {
   SERVICE_TASKS_KEY, SYSTEMS_KEY, deleteServiceTask, fetchServiceTasks,
@@ -120,6 +121,7 @@ export default function ServiceTaskDetail() {
   const shared = !!task.canonical_key;
   const systemLabel = (systemsData?.systems ?? [])
     .find((s) => s.key === task.system_key)?.label;
+  const { labelOf: assemblyLabel } = useAssemblies();
   const links = partsData?.parts ?? [];
 
   return (
@@ -165,10 +167,17 @@ export default function ServiceTaskDetail() {
 
       {/* ── Facts ────────────────────────────────────────────────── */}
       <div className="rounded-lg border border-border bg-card p-4 mb-4">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Field label="System">
             {systemLabel || task.system_key || (
               <span className="text-muted-foreground">Unassigned</span>
+            )}
+          </Field>
+          <Field label="Assembly">
+            {task.assembly_key ? (
+              assemblyLabel.get(task.assembly_key) ?? task.assembly_key
+            ) : (
+              <span className="text-muted-foreground">None — most tasks</span>
             )}
           </Field>
           <Field label="Est. labor">

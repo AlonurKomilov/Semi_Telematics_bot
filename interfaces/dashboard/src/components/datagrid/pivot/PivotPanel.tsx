@@ -642,6 +642,21 @@ export default function PivotPanel({
                       </p>
                     </div>
                   )}
+                  {/* Governs COLUMN buckets, so it belongs in the
+                      section that owns them.  Only offered when there IS
+                      a column dimension — with none there is nothing to
+                      prune and the control would be a dead end. */}
+                  {axis === 'columns' && keys.length > 0 && (
+                    <label className="flex items-center gap-2 px-3 pb-2 text-2xs text-muted-foreground cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={!!model.hideEmptyColumns}
+                        onChange={(e) => onChange({ ...model, hideEmptyColumns: e.target.checked })}
+                        className="shrink-0 cursor-pointer"
+                      />
+                      Hide columns with no values
+                    </label>
+                  )}
                   <SortableContext
                     items={keys.map((k) => itemId(axis, k))}
                     strategy={verticalListSortingStrategy}

@@ -178,6 +178,9 @@ describe('pivot — guards', () => {
       // Same contract for the on/off list: rebuilding the model field
       // by field is exactly how ``sort`` got lost.
       disabled: [],
+      // ...and for every field added since.  This assertion is the guard
+      // that has caught all three additions; keep it exhaustive.
+      hideEmptyColumns: false,
     });
   });
 
@@ -663,5 +666,76 @@ describe('the drop lands where the insertion line drew it', () => {
     // fromIndex -1 = the field isn't in this list, so nothing moves up.
     expect(insertionIndex(-1, 0)).toBe(0);
     expect(insertionIndex(-1, 2)).toBe(2);
+  });
+});
+
+describe('hideEmptyColumns', () => {
+  // A driver appears in a handful of companies, not all of them, so a
+  // wide cross-tab is mostly dashes. Pruning is a LEGIBILITY win first.
+  const COLS: AnyColumn[] = [
+    { key: 'customer', label: 'Customer', pivotable: true },
+    { key: 'driver', label: 'Driver', pivotable: true },
+    { key: 'rate', label: 'Rate', aggregable: true },
+  ];
+  const M = (over: Partial<PivotModel> = {}): PivotModel => ({
+    rows: ['customer'], columns: ['driver'],
+    values: [{ key: 'rate', aggFn: 'sum' }], ...over,
+  });
+  const ROWS = [
+    { customer: 'Acme', driver: 'Ann', rate: 10 },
+    { customer: 'Acme', driver: 'Bob', rate: 20 },
+    // Cal has a row but NO measure — the column would be all dashes.
+    { customer: 'Bolt', driver: 'Cal', rate: null },
+  ];
+
+  it('is off by default — an empty column still renders', () => {
+    const r = pivot(ROWS, M(), COLS);
+    expect(r.headerLevels[0].map((h) => h.label)).toEqual(['Ann', 'Bob', 'Cal']);
+    expect(r.hiddenColumns).toBe(0);
+  });
+
+  it('drops a bucket whose every cell is empty, and says how many', () => {
+    const r = pivot(ROWS, M({ hideEmptyColumns: true }), COLS);
+    expect(r.headerLevels[0].map((h) => h.label)).toEqual(['Ann', 'Bob']);
+    expect(r.hiddenColumns).toBe(1);
+    // The rows themselves are untouched.
+    expect(r.bodyRows.map((b) => b.label)).toEqual(['Acme', 'Bolt']);
+  });
+
+  it('keeps a bucket that has ROWS but no measure when count is asked for', () => {
+    // ``count`` reports the population, so such a column shows a real
+    // number — pruning it would delete an answer.
+    const r = pivot(
+      ROWS,
+      M({ hideEmptyColumns: true, values: [{ key: 'rate', aggFn: 'count' }] }),
+      COLS,
+    );
+    expect(r.headerLevels[0].map((h) => h.label)).toEqual(['Ann', 'Bob', 'Cal']);
+    expect(r.hiddenColumns).toBe(0);
+  });
+
+  it('never prunes to nothing', () => {
+    // Every measure missing: pruning would collapse the report to bare
+    // row labels with no explanation, which reads as broken.
+    const allEmpty = [{ customer: 'Acme', driver: 'Ann', rate: null }];
+    const r = pivot(allEmpty, M({ hideEmptyColumns: true }), COLS);
+    expect(r.empty).toBe(false);
+    expect(r.headerLevels[0].map((h) => h.label)).toEqual(['Ann']);
+    expect(r.hiddenColumns).toBe(0);
+  });
+
+  it('survives the prune, like every other model field', () => {
+    expect(prunePivotModel(M({ hideEmptyColumns: true }), COLS).hideEmptyColumns).toBe(true);
+    expect(prunePivotModel(M(), COLS).hideEmptyColumns).toBe(false);
+  });
+
+  it('leaves the Total column totalling only what is shown', () => {
+    // The Total column re-aggregates the ROW's source rows, so a pruned
+    // all-empty bucket contributed nothing to it anyway — the figure must
+    // be identical with and without pruning.
+    const on = pivot(ROWS, M({ hideEmptyColumns: true }), COLS);
+    const off = pivot(ROWS, M(), COLS);
+    expect(on.bodyRows.map((b) => b.totals)).toEqual(off.bodyRows.map((b) => b.totals));
+    expect(on.grandRowTotal).toEqual(off.grandRowTotal);
   });
 });

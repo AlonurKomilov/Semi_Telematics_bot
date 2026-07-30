@@ -48,6 +48,14 @@ export interface PivotModel {
    *  OPTIONAL and additive on purpose: a model saved before this existed
    *  has no such list, which reads correctly as "nothing is off". */
   disabled?: string[];
+  /** Drop column buckets that hold nothing.  On a wide report most
+   *  intersections are empty — a driver appears in a handful of
+   *  companies, not all of them — so a 61-column matrix can be ~90%
+   *  dashes.  Pruning them is a LEGIBILITY win first (what remains is
+   *  the data) and a size win second.  Off by default: silently
+   *  removing columns would be worse than showing empty ones, so the
+   *  view reports how many it hid. */
+  hideEmptyColumns?: boolean;
 }
 
 /** One header cell — ``span`` is a colSpan over the leaf columns below. */
@@ -104,6 +112,10 @@ export interface PivotResult {
   /** Labels for the Total column group, one per value field.  Empty when
    *  there is no column dimension to total ACROSS. */
   totalLabels: string[];
+  /** How many column buckets ``hideEmptyColumns`` removed.  Reported so
+   *  the surface can SAY so — a matrix quietly missing columns is worse
+   *  than one showing empty ones. */
+  hiddenColumns: number;
   /** True when the model can't produce a table yet — i.e. no ROW field.
    *  Measures and column dimensions are optional; without them the
    *  report still lists the groups and their counts. */
@@ -176,7 +188,7 @@ export function pivot(
   const blank: PivotResult = {
     headerLevels: [], leafIds: [], leafValueKeys: [],
     rowFieldLabel: '', bodyRows: [], grandTotal: [],
-    grandRowTotal: [], totalLabels: [], empty: true,
+    grandRowTotal: [], totalLabels: [], hiddenColumns: 0, empty: true,
   };
   // Only a ROW field is mandatory.  Measures and column dimensions are
   // refinements: switch every measure off and you still get the groups
@@ -211,11 +223,30 @@ export function pivot(
   const seenPath = new Set<string>();
   const pathOf = (r: Record<string, unknown>) => rowDims.map((c) => bucketOf(r, c));
 
+  // Which column buckets hold at least one real number.  A bucket can
+  // have ROWS and still be all dashes (the measure is missing for them),
+  // so presence of rows is not the test — presence of a finite measure
+  // is.  ``count`` is the exception: it reports the population, so any
+  // bucket with rows shows something under it.
+  const countsAsValue = valueFields.some((v) => v.aggFn === 'count');
+  const colHasValue = new Set<string>();
   for (const r of rows) {
     if (colCols.length) {
       const path = colCols.map((c) => bucketOf(r, c));
       const id = path.join(PATH_SEP);
       if (!seenPath.has(id)) { seenPath.add(id); colPaths.push(path); }
+      if (!colHasValue.has(id)) {
+        if (countsAsValue) {
+          colHasValue.add(id);
+        } else {
+          for (const v of valueFields) {
+            if (Number.isFinite(measureOf(r, cols.get(v.key)!))) {
+              colHasValue.add(id);
+              break;
+            }
+          }
+        }
+      }
     }
     // Register EVERY prefix so parents exist even when a child is the
     // only thing that produced them.
@@ -230,7 +261,15 @@ export function pivot(
   // children and siblings stay together.
   rowPathIds.sort();
   colPaths.sort((a, b) => a.join(PATH_SEP).localeCompare(b.join(PATH_SEP)));
-  const effectiveColPaths = colCols.length ? colPaths : [[]];
+  const keptColPaths = (model.hideEmptyColumns && colCols.length)
+    ? colPaths.filter((p) => colHasValue.has(p.join(PATH_SEP)))
+    : colPaths;
+  const hiddenColumns = colPaths.length - keptColPaths.length;
+  // Never prune to nothing: an all-empty report would collapse to the
+  // row labels with no explanation, which reads as broken.  Better to
+  // show the empty columns and let the count say what happened.
+  const usableColPaths = keptColPaths.length ? keptColPaths : colPaths;
+  const effectiveColPaths = colCols.length ? usableColPaths : [[]];
   const effectiveColBuckets = effectiveColPaths.map((p) => p.join(PATH_SEP));
 
   // ── Leaves ─────────────────────────────────────────────────────────
@@ -449,6 +488,7 @@ export function pivot(
     totalLabels: wantsTotalCol
       ? valueFields.map((v) => cols.get(v.key)?.label ?? v.key)
       : [],
+    hiddenColumns: keptColPaths.length ? hiddenColumns : 0,
     empty: false,
   };
 }
@@ -510,6 +550,7 @@ export function prunePivotModel(model: PivotModel, columns: AnyColumn[]): PivotM
     // to discard the user's choice here.
     sort: model.sort ?? null,
     disabled: (model.disabled ?? []).filter((k) => assigned.has(k)),
+    hideEmptyColumns: model.hideEmptyColumns ?? false,
   };
 }
 

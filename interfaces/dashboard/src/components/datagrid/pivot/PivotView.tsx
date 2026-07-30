@@ -37,6 +37,7 @@ import {
  */
 export default function PivotView({
   rows, model, columns, padding, onModelChange, onOpenPanel, fill, onRowCount,
+  onHiddenColumns,
 }: {
   /** MUST be the same post-segment/filter/search rows the grid's own
    *  footer aggregation reduces, so the two can never disagree. */
@@ -62,6 +63,10 @@ export default function PivotView({
    *  smaller size with no background, so switching modes visibly
    *  changed the shape of the card's bottom edge. */
   onRowCount?: (n: number) => void;
+  /** How many column buckets ``hideEmptyColumns`` removed, so the footer
+   *  can SAY so.  A matrix quietly missing columns is worse than one
+   *  showing empty ones. */
+  onHiddenColumns?: (n: number) => void;
 }) {
   const result = useMemo(
     () => pivot(rows, model, columns),
@@ -102,6 +107,9 @@ export default function PivotView({
   useEffect(() => {
     onRowCount?.(result.bodyRows.length);
   }, [result.bodyRows.length, onRowCount]);
+  useEffect(() => {
+    onHiddenColumns?.(result.hiddenColumns);
+  }, [result.hiddenColumns, onHiddenColumns]);
 
   // Our own scroll container + the insets its bars need.  The shared
   // scrollbars own the track geometry; what to inset BY is local,

@@ -713,6 +713,10 @@ export default function DataGrid({
   // Reported up by PivotView so the count can live in the card's own
   // footer band rather than inside the matrix column.
   const [pivotRowCount, setPivotRowCount] = useState(0);
+  // Reported so the footer can name what was pruned.  Hiding columns
+  // without saying how many would be the grid answering for data it
+  // decided not to show.
+  const [pivotHiddenCols, setPivotHiddenCols] = useState(0);
   // Device-scoped, NOT per-table: how you like the panel/report split is
   // a habit about this screen, not a property of one grid.
   const { value: pivotPanelWidth, setValue: setPivotPanelWidth } =
@@ -3345,6 +3349,7 @@ export default function DataGrid({
             <PivotView
               fill={!!fillHeight}
               onRowCount={setPivotRowCount}
+              onHiddenColumns={setPivotHiddenCols}
               rows={pivotSourceRows}
               model={pivotModel}
               columns={pivotColumns}
@@ -3928,6 +3933,11 @@ export default function DataGrid({
             : ' '}
         </p>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
+          {pivotHiddenCols > 0 && (
+            <span className="tabular-nums">
+              {pivotHiddenCols.toLocaleString()} empty column{pivotHiddenCols === 1 ? '' : 's'} hidden
+            </span>
+          )}
           <span className="tabular-nums">
             Total rows: {pivotRowCount.toLocaleString()}
           </span>

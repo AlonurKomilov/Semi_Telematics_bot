@@ -29,6 +29,7 @@ import { Button } from '../../components/ui/button';
 import type { MenuAction } from '../../components/ui/context-menu';
 import { toneClasses } from '../../lib/status';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
+import { useAssemblies } from '../parts/useAssemblies';
 import type { AnyColumn } from '../../types';
 import {
   SERVICE_TASKS_KEY, SYSTEMS_KEY, createServiceTask, deleteServiceTask,
@@ -93,6 +94,7 @@ export default function ServiceTasks() {
   const systems = systemsData?.systems ?? [];
   const systemLabel = (k: unknown) =>
     systems.find((sy) => sy.key === k)?.label ?? '';
+  const { labelOf: assemblyLabel } = useAssemblies();
 
   const rows = useMemo(
     () => ((data?.service_tasks ?? []) as unknown as Record<string, unknown>[])
@@ -187,6 +189,17 @@ export default function ServiceTasks() {
       },
     },
     {
+      key: 'assembly_key', label: 'Assembly', sortable: true, filterable: true,
+      filterValue: (row) => String((row as unknown as ServiceTask).assembly_key ?? ''),
+      filterLabel: (row) => {
+        const k = String((row as unknown as ServiceTask).assembly_key ?? '');
+        return k ? (assemblyLabel.get(k) ?? k) : '(none)';
+      },
+      render: (v) => (v
+        ? <span className="text-sm">{assemblyLabel.get(String(v)) ?? String(v)}</span>
+        : <span className="text-muted-foreground">—</span>),
+    },
+    {
       key: 'vehicle_type', label: 'Applies to', sortable: true, filterable: true,
       render: (v) => (v
         ? <span className="capitalize text-sm">{String(v)}s only</span>
@@ -258,7 +271,7 @@ export default function ServiceTasks() {
       <PageHeader
         icon={ClipboardList}
         title="Service Tasks"
-        description="The shared list of work your fleet does — used by both maintenance schedules and work orders, so the same job is named the same way everywhere."
+        description="The shared list of work your fleet does — used by both maintenance schedules and work orders, so the same job is named the same way everywhere. System is the reporting axis ('what are brakes costing us?'); labor always follows the task's system, and an assembly-specific task also gives its labor an assembly."
         actions={canManage ? (
           <Button size="sm" onClick={() => setAddOpen(true)}>
             <Plus size={14} /> Add service task

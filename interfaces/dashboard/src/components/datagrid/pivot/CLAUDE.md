@@ -159,6 +159,28 @@ overlay** span, hidden on hover so the row's hover fill isn't doubled.
 That also matches the body's stripe exactly: same alpha over the same
 card colour.
 
+## `hideEmptyColumns` — prune buckets that hold nothing
+
+Opt-in on the model, toggled from the COLUMNS section of the panel (it
+governs column buckets, so it lives with them, and it's only offered when
+there IS a column dimension). On a wide report most intersections are
+empty — a driver appears in a handful of companies, not all of them — so
+a 61-column matrix can be ~90% dashes. Pruning is a **legibility** win
+first; the render saving is a bonus.
+
+Three rules the tests pin:
+
+- **Rows are not the test, a finite MEASURE is.** A bucket can have rows
+  and still be all dashes because the measure is missing for them.
+- **`count` keeps its bucket.** It reports the population, so a column
+  with rows shows a real number — pruning it would delete an answer.
+- **Never prune to nothing.** An all-empty report would collapse to bare
+  row labels with no explanation, which reads as broken.
+
+`PivotResult.hiddenColumns` is reported up to the footer band ("12 empty
+columns hidden") because a matrix quietly missing columns is worse than
+one showing empty ones.
+
 ## Cost: the matrix is not virtualised
 
 ~360 rows × 61 columns is ~22,000 cells in the DOM. Two things this

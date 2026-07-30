@@ -24,6 +24,10 @@ export interface ServiceTask {
   /** The reporting axis above a task ("what are brakes costing us?").
    *  '' = unassigned. Ours, not VMRS — see the storage module. */
   system_key: string;
+  /** Level 2 for LABOR — set only on assembly-specific tasks
+   *  (Water Pump Replacement → water_pump); '' is the common,
+   *  correct value.  Operator-owned on Shared tasks, like system. */
+  assembly_key: string;
   /** Server-side best guess for an UNASSIGNED task — shown as a
    *  one-click confirm chip, never auto-applied. */
   suggested_system?: string;
@@ -62,7 +66,7 @@ export async function updateServiceTask(
   id: number,
   body: Partial<Pick<ServiceTask,
     'name' | 'description' | 'expected_labor_hours' | 'status'
-    | 'vehicle_type' | 'parent_id' | 'system_key'>>,
+    | 'vehicle_type' | 'parent_id' | 'system_key' | 'assembly_key'>>,
 ): Promise<ServiceTask> {
   return apiJSON(`/service-tasks/${id}`, { method: 'PUT', body });
 }

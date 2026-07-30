@@ -22,6 +22,7 @@ import {
 } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
 import { toneClasses } from '../../lib/status';
+import { useAssemblies } from '../parts/useAssemblies';
 import { useQuery } from '@tanstack/react-query';
 import {
   SERVICE_TASKS_KEY, SYSTEMS_KEY, fetchTaskSystems, updateServiceTask,
@@ -49,6 +50,7 @@ export default function EditTaskDialog({
   const [vehicleType, setVehicleType] = useState('');
   const [parentId, setParentId] = useState('');
   const [systemKey, setSystemKey] = useState('');
+  const [assemblyKey, setAssemblyKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [clash, setClash] = useState<ServiceTask | null>(null);
 
@@ -62,6 +64,7 @@ export default function EditTaskDialog({
     setVehicleType(task.vehicle_type ?? '');
     setParentId(task.parent_id ? String(task.parent_id) : '');
     setSystemKey(task.system_key ?? '');
+    setAssemblyKey(task.assembly_key ?? '');
     setClash(null);
   }, [task]);
 
@@ -72,6 +75,8 @@ export default function EditTaskDialog({
     queryKey: SYSTEMS_KEY, queryFn: fetchTaskSystems, staleTime: 5 * 60_000,
   });
   const systems = systemsData?.systems ?? [];
+  const { forSystem } = useAssemblies();
+  const assemblyOptions = forSystem(systemKey);
 
   const parentOptions = allTasks.filter(
     (t) => !t.parent_id && t.id !== task?.id && t.status === 'active',
@@ -100,6 +105,7 @@ export default function EditTaskDialog({
         expected_labor_hours: Number(hours) || 0,
         vehicle_type: vehicleType as ServiceTask['vehicle_type'],
         system_key: systemKey,
+        assembly_key: assemblyKey,
         // 0 detaches — see the API's parent_id contract.
         parent_id: parentId ? Number(parentId) : 0,
       });
@@ -205,7 +211,13 @@ export default function EditTaskDialog({
             <select
               value={systemKey}
               disabled={isStandard}
-              onChange={(e) => setSystemKey(e.target.value)}
+              onChange={(e) => {
+                // The pair rule: an assembly lives under ONE system,
+                // so moving the system clears the assembly rather
+                // than letting the save bounce off the server.
+                setSystemKey(e.target.value);
+                setAssemblyKey('');
+              }}
               className={`${inputCls} disabled:opacity-60`}
             >
               <option value="">Unassigned</option>
@@ -217,6 +229,30 @@ export default function EditTaskDialog({
               {isStandard
                 ? 'Groups this task for spend reporting. Set centrally on a standard task, for the same reason the name is — a system that means Brakes in one fleet and Other in another makes the comparison worthless.'
                 : 'Groups this task for spend reporting — “what are brakes costing us?”'}
+            </span>
+          </label>
+
+          <label className="block">
+            <span className="block text-xs text-muted-foreground mb-1">
+              Assembly (optional)
+            </span>
+            <select
+              value={assemblyKey}
+              disabled={isStandard || !systemKey}
+              onChange={(e) => setAssemblyKey(e.target.value)}
+              className={`${inputCls} disabled:opacity-60`}
+            >
+              <option value="">No assembly (most tasks)</option>
+              {assemblyOptions.map((a) => (
+                <option key={a.key} value={a.key}>{a.label}</option>
+              ))}
+            </select>
+            <span className="mt-1 block text-2xs text-muted-foreground">
+              {isStandard
+                ? 'Set centrally, like the system — it decides which assembly this task\'s LABOR files under in the drill-down.'
+                : systemKey
+                  ? 'Only for assembly-specific tasks (Water Pump Replacement → Water Pump). It routes this task\'s LABOR in the assembly drill-down; parts always keep their own.'
+                  : 'Pick a system first — an assembly lives under one.'}
             </span>
           </label>
 

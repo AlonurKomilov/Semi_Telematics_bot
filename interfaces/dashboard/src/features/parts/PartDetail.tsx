@@ -20,7 +20,8 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
   Tooltip as ChartTooltip, CartesianGrid,
 } from 'recharts';
-import { ArrowLeft, Cog, Globe, Link2Off, Merge, Pencil, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Check, Cog, Globe, Link2Off, Merge, Pencil, TriangleAlert } from 'lucide-react';
+import { useAssemblies } from './useAssemblies';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';
 import { PageHeader, EmptyState, ErrorState, TableSkeleton } from '../../components/shell';
@@ -68,6 +69,7 @@ export default function PartDetail() {
   });
   const mergeTargets = (catalogData?.parts ?? []).filter((p) => p.id !== partId);
 
+  const { groups: asmGroups, labelOf: asmLabelOf, all: asmAll } = useAssemblies();
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', part_number: '', notes: '' });
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -288,6 +290,22 @@ export default function PartDetail() {
     }
   };
 
+  const setAssembly = async (key: string) => {
+    setBusy(true);
+    try {
+      await apiJSON(`/parts/${partId}`, {
+        method: 'PUT', body: { assembly_key: key },
+      });
+      toast.success(key ? 'Assembly set' : 'Assembly cleared');
+      qc.invalidateQueries({ queryKey: ['part-detail', partId] });
+      qc.invalidateQueries({ queryKey: ['parts-catalog'] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not save');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const doMerge = async () => {
     if (!mergeTarget) return;
     setBusy(true);
@@ -404,6 +422,63 @@ export default function PartDetail() {
                 <p className="text-xl font-bold tabular-nums text-foreground">{s.value}</p>
               </div>
             ))}
+          </div>
+
+          {/* Classification — the approved mock: the whole ladder in
+              one line.  System is never picked; it DERIVES from the
+              chosen assembly, and saying so is the lesson.  Sits as
+              the sibling of the catalog strip on purpose: that strip
+              answers "which product is this?" (identity), this one
+              "what kind of thing is this?" (classification). */}
+          <div className="bg-card border border-border rounded-lg p-3 mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+            <Cog size={16} className="text-muted-foreground shrink-0" />
+            <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">System</span>
+            {(() => {
+              const asm = asmAll.find((a) => a.key === (data.part.assembly_key ?? ''));
+              const sysLabel = asm
+                ? asmGroups.find((g) => g.systemKey === asm.system_key)?.systemLabel ?? asm.system_key
+                : null;
+              return sysLabel ? (
+                <span className="text-sm text-foreground">
+                  {sysLabel}
+                  <span className="ml-1.5 text-2xs text-muted-foreground">from the assembly</span>
+                </span>
+              ) : (
+                <span className="text-sm text-muted-foreground">Unassigned</span>
+              );
+            })()}
+            <span className="text-muted-foreground/60">→</span>
+            <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">Assembly</span>
+            <select
+              value={data.part.assembly_key ?? ''}
+              disabled={busy}
+              onChange={(e) => setAssembly(e.target.value)}
+              aria-label="Assembly"
+              className="h-8 bg-muted border border-border rounded-md px-2 text-sm text-foreground focus:outline-none focus:border-ring"
+            >
+              <option value="">— No assembly —</option>
+              {asmGroups.map((g) => (
+                <optgroup key={g.systemKey} label={g.systemLabel}>
+                  {g.items.map((a) => (
+                    <option key={a.key} value={a.key}>{a.label}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            {!data.part.assembly_key && data.part.suggested_assembly && (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setAssembly(data.part.suggested_assembly!)}
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium transition hover:brightness-110 ${toneClasses('info')}`}
+              >
+                <Check size={12} aria-hidden />
+                {asmLabelOf.get(data.part.suggested_assembly) ?? data.part.suggested_assembly}?
+              </button>
+            )}
+            <span className="text-muted-foreground/60">→</span>
+            <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">Part</span>
+            <span className="text-sm font-medium text-foreground min-w-0 truncate">{data.part.name}</span>
           </div>
 
           {/* Public-catalog link state: linking is automatic by name
