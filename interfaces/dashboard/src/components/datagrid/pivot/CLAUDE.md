@@ -134,6 +134,32 @@ This is also what makes the two sticky edges earn their keep — the
 row-label column and the Total column only mean anything once there IS
 horizontal scroll.
 
+## Both edges of the matrix are pinned
+
+`<thead>` and `<tfoot>` are `sticky` under `fillHeight`, exactly as list
+mode pins its own. A three-level header that scrolls away leaves every
+figure without a column identity — with 60 columns there is nothing to
+guess from — and a grand total reachable only at the end of a scroll is
+not a summary. `z-30` on both: it clears every sticky cell in the body
+(max `z-20`), so the frozen Total column cannot paint over the header it
+belongs under.
+
+## Hand-rolled cells must restate the primitives' padding
+
+`DENSITY_PADDING` is **vertical only** (`py-1` / `py-3` / `py-5`). List
+mode gets horizontal padding from the primitives (`TableCell` is `p-2`,
+`TableHead` is `px-2`); this view hand-rolls `<td>`/`<th>` and inherited
+none of it, so adjacent columns' figures touched — `—$47,200.00`,
+`$28,$1,530,862.60`. Every matrix cell uses `cellPad` (`padding` +
+`px-2`), never `padding` alone.
+
+**And a rule taught in the header is kept in the body.** The group
+header levels draw `border-l` at each boundary; the leaf level and the
+body cells now do too (`border-border` for chrome, `border-border/50`
+for data). Teaching a separator in one band and dropping it in the next
+makes the header a promise the data breaks — 60 identical `RATE sum`
+labels over an unruled number field can't be traced to their column.
+
 ## The card keeps one skeleton across both modes
 
 Pagination is genuinely meaningless on a pivot, so the footer bar goes —

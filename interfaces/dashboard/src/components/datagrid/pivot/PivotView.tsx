@@ -137,6 +137,13 @@ export default function PivotView({
   };
 
   const leafCount = result.leafIds.length;
+  // ``padding`` is the density token and it is VERTICAL ONLY
+  // (py-1/py-3/py-5).  List mode still gets horizontal padding because it
+  // renders through the primitives — ``TableCell`` is ``p-2``,
+  // ``TableHead`` is ``px-2`` — but this view hand-rolls <td>/<th> and so
+  // inherited none of it.  That is why adjacent columns' figures touched
+  // ("—$47,200.00", "$28,$1,530,862.60"): there was no gutter at all.
+  const cellPad = cn(padding, 'px-2');
   // The row-label column stays put during horizontal scroll — otherwise a
   // wide matrix scrolls the identity off screen and the numbers lose
   // their subject.  Plain sticky; deliberately not the grid's pin maths.
@@ -178,7 +185,14 @@ export default function PivotView({
           and the wrapper's ``overflow-x-auto`` finally has a job — which
           matters most exactly when the fields panel narrows the grid. */}
       <table className="min-w-full text-sm border-collapse">
-        <thead>
+        {/* PINNED.  A three-level header (quarter > year > month > driver
+            > measure) that scrolls away leaves every figure with no
+            column identity, and there are 60 columns to guess between.
+            List mode pins its header for the same reason; this view
+            simply never did.  ``z-30`` clears every sticky cell in the
+            body (max z-20), so the frozen Total column can't paint over
+            the header it belongs under. */}
+        <thead className={cn(fill && 'sticky top-0 z-30')}>
           {result.headerLevels.map((level, levelIdx) => {
             const isLeafLevel = levelIdx === result.headerLevels.length - 1;
             return (
@@ -189,7 +203,7 @@ export default function PivotView({
                   <th
                     rowSpan={result.headerLevels.length}
                     className={cn(
-                      padding,
+                      cellPad,
                       stickyHead,
                       'text-left align-bottom text-xs font-medium text-muted-foreground uppercase tracking-wide border-b border-border',
                     )}
@@ -202,12 +216,17 @@ export default function PivotView({
                     key={`${levelIdx}-${i}-${cell.label}`}
                     colSpan={cell.span}
                     className={cn(
-                      padding,
+                      cellPad,
                       'text-right text-xs font-medium text-muted-foreground uppercase tracking-wide whitespace-nowrap',
                       'border-b border-border',
                       // A vertical rule at each column-group boundary so
                       // "North | South" reads as two blocks, not one run.
                       !isLeafLevel && 'border-l border-border first:border-l-0 text-left',
+                      // ...and on the LEAF level too.  Teaching a rule in
+                      // the group bands and dropping it here left 60
+                      // identical "RATE sum" labels running together as
+                      // one unbroken strip.
+                      isLeafLevel && i > 0 && 'border-l border-border',
                     )}
                   >
                     {cell.aggFn ? (
@@ -265,7 +284,7 @@ export default function PivotView({
                       <th
                         key={`tot-${i}-${label}`}
                         className={cn(
-                          padding, stickyTotalHead,
+                          cellPad, stickyTotalHead,
                           'text-right text-xs font-medium uppercase tracking-wide',
                           'border-b border-l border-border text-muted-foreground',
                         )}
@@ -283,7 +302,7 @@ export default function PivotView({
                         rowSpan={result.headerLevels.length - 1}
                         colSpan={result.totalLabels.length}
                         className={cn(
-                          padding, stickyTotalHead,
+                          cellPad, stickyTotalHead,
                           'text-left align-bottom text-xs font-medium uppercase tracking-wide',
                           'border-b border-l border-border text-muted-foreground',
                         )}
@@ -309,7 +328,7 @@ export default function PivotView({
               <th
                 scope="row"
                 className={cn(
-                  padding,
+                  cellPad,
                   stickyCol,
                   'text-left font-medium whitespace-nowrap transition-colors',
                   'group-hover/prow:bg-muted',
@@ -328,7 +347,12 @@ export default function PivotView({
                       onClick={() => toggle(row.key)}
                       aria-expanded={!collapsed.has(row.key)}
                       aria-label={collapsed.has(row.key) ? `Expand ${row.label}` : `Collapse ${row.label}`}
-                      className="shrink-0 -ml-1 p-0.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      // p-1.5 -> 26x26, clearing the 24px WCAG 2.5.8
+                      // floor.  It was 18x18 (p-0.5 + a 14px glyph) and no
+                      // exception applied: not inline text, and no larger
+                      // control does the same job — this is the ONLY way
+                      // to fold a group.
+                      className="shrink-0 -ml-1.5 p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
                     >
                       {collapsed.has(row.key)
                         ? <ChevronRight size={14} />
@@ -336,7 +360,7 @@ export default function PivotView({
                     </button>
                   ) : (
                     // Keep leaves aligned with their expandable siblings.
-                    row.depth > 0 && <span aria-hidden className="w-[18px] shrink-0" />
+                    row.depth > 0 && <span aria-hidden className="w-[26px] shrink-0" />
                   )}
                   {row.label}
                   {/* How many source rows produced this line — the operator
@@ -349,10 +373,17 @@ export default function PivotView({
               {row.cells.map((value, i) => (
                 <td
                   key={result.leafIds[i]}
-                  className={cn(padding, 'text-right tabular-nums whitespace-nowrap p-0')}
+                  className={cn(
+                    'text-right tabular-nums whitespace-nowrap p-0',
+                    // Lighter than the header's rule: the body is data,
+                    // not chrome, but the column boundary the header
+                    // promises has to exist down here or a figure can't
+                    // be traced to its heading.
+                    i > 0 && 'border-l border-border/50',
+                  )}
                 >
                   {value === null ? (
-                    <span className={cn(padding, 'block')}>
+                    <span className={cn(cellPad, 'block')}>
                       {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
                     </span>
                   ) : (
@@ -361,8 +392,15 @@ export default function PivotView({
                       type="button"
                       onClick={() => setDrill({ row, leafIdx: i })}
                       className={cn(
-                        padding,
-                        'block w-full text-right tabular-nums hover:bg-primary/10 hover:text-primary transition-colors cursor-pointer',
+                        cellPad,
+                        'block w-full text-right tabular-nums cursor-pointer transition-colors',
+                        // A cue AT REST.  Every non-empty figure is a
+                        // button and every empty one is a span, but both
+                        // read as plain text until hovered — so the
+                        // drill-down was discoverable by accident with a
+                        // mouse and not at all by touch.
+                        'underline decoration-dotted decoration-border underline-offset-4',
+                        'hover:bg-primary/10 hover:text-primary hover:decoration-primary',
                       )}
                       title="Show the rows behind this number"
                     >
@@ -375,7 +413,7 @@ export default function PivotView({
                 <td
                   key={`tot-${i}`}
                   className={cn(
-                    padding, stickyTotalCell,
+                    cellPad, stickyTotalCell,
                     'text-right tabular-nums whitespace-nowrap font-semibold border-l border-border',
                     'transition-colors group-hover/prow:bg-muted',
                     rowIdx % 2 === 1 && 'bg-muted/30',
@@ -388,7 +426,7 @@ export default function PivotView({
           ))}
           {result.bodyRows.length === 0 && (
             <tr>
-              <td colSpan={leafCount + 1 + result.totalLabels.length} className={cn(padding, 'text-center text-muted-foreground')}>
+              <td colSpan={leafCount + 1 + result.totalLabels.length} className={cn(cellPad, 'text-center text-muted-foreground')}>
                 Nothing matches the current filters.
               </td>
             </tr>
@@ -396,8 +434,15 @@ export default function PivotView({
         </tbody>
 
         {result.bodyRows.length > 0 && (
-          <tfoot>
-            <tr>
+          /* PINNED, like list mode's footer.  The one figure the report
+             exists to produce was reachable only by scrolling to the
+             end — invisible at 4 rows, always invisible at 364. */
+          <tfoot className={cn(fill && 'sticky bottom-0 z-30')}>
+            {/* ``border-t-2`` — the comment here used to claim "weight +
+                a top rule carry the emphasis" while no rule existed, so
+                the row was separated from a bg-muted/30 zebra stripe by
+                a barely-visible fill step. */}
+            <tr className="border-t-2 border-border">
               <th
                 scope="row"
                 // Blue is the INTERACTION colour here — value cells turn
@@ -405,7 +450,7 @@ export default function PivotView({
                 // wore the same blue while being entirely unclickable, so
                 // the one colour meant two things.  Weight + a top rule
                 // carry the emphasis instead.
-                className={cn(padding, stickyCol, 'text-left bg-muted font-semibold text-foreground')}
+                className={cn(cellPad, stickyCol, 'text-left bg-muted font-semibold text-foreground')}
               >
                 Total
               </th>
@@ -413,7 +458,7 @@ export default function PivotView({
                 <td
                   key={result.leafIds[i]}
                   className={cn(
-                    padding,
+                    cellPad,
                     'bg-muted font-semibold text-foreground tabular-nums text-right whitespace-nowrap',
                   )}
                 >
@@ -425,7 +470,7 @@ export default function PivotView({
                 <td
                   key={`gtot-${i}`}
                   className={cn(
-                    padding, stickyTotalHead,
+                    cellPad, stickyTotalHead,
                     'font-semibold text-foreground tabular-nums text-right whitespace-nowrap border-l border-border',
                   )}
                 >
