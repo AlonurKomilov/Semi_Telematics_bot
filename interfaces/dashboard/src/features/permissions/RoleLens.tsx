@@ -60,7 +60,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   }
   for (const cap of GRID.capabilities) if (rowDelta(cap)) deltaNames.push(cap.label);
 
-  const chk = (f: TickRow, ariaSuffix: string) => {
+  const chk = (f: TickRow, ariaSuffix: string, soft = false) => {
     const on = api.granted(col.key, f);
     const lock = api.locked(col.key, f);
     const changed = api.changed(col.key, f);
@@ -76,8 +76,13 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
         }${lock
           ? 'bg-primary/40 border-primary/40 text-primary-foreground cursor-not-allowed'
           : on
-            ? 'bg-primary border-primary text-primary-foreground'
-            : 'bg-transparent border-border text-transparent hover:border-muted-foreground'
+            ? soft
+              // Derived tick: a primary-coloured check on a light primary
+              // wash reads on BOTH themes (primary-foreground would go
+              // invisible against a 20% wash on the light theme).
+              ? 'bg-primary/20 border-primary/40 text-primary'
+              : 'bg-primary border-primary text-primary-foreground'
+            : `bg-transparent text-transparent hover:border-muted-foreground ${soft ? 'border-border/60' : 'border-border'}`
         }`}
       >
         {lock ? <Lock size={12} strokeWidth={2.5} /> : <CheckMark />}
@@ -92,28 +97,34 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   // One verb cell.  The tint marks THIS cell as what the senior tier adds —
   // never the whole row: a row whose View is identical in both tiers must
   // not claim the tier "adds" it just because its Manage differs.
-  const verbCell = (f: TickRow | null, ariaSuffix: string, extra?: ReactNode): ReactNode => {
+  const verbCell = (
+    f: TickRow | null, ariaSuffix: string, extra?: ReactNode, soft = false,
+  ): ReactNode => {
     if (!f) return emptyCell;
     const delta = seniorView && rowDelta(f);
     return (
       <div className={`text-center py-0.5 ${delta ? 'bg-ok/10 rounded' : ''}`}>
-        <span className="inline-flex items-center gap-1">{chk(f, ariaSuffix)}{extra}</span>
+        <span className="inline-flex items-center gap-1">{chk(f, ariaSuffix, soft)}{extra}</span>
       </div>
     );
   };
 
-  // A single write-level flag covers View AND Manage.  The tick stays in
-  // the View column so that column can still be scanned top to bottom;
-  // a tie line reaches into Manage to say "the same flag covers me".
-  const tieCell = (f: TickRow): ReactNode => {
-    const delta = seniorView && rowDelta(f);
-    const on = api.granted(col.key, f);
-    return (
-      <div className={`flex items-center justify-center py-0.5 ${delta ? 'bg-ok/10 rounded' : ''}`} aria-hidden>
-        <span className={`w-6 border-t-2 ${on ? 'border-primary/50' : 'border-border'}`} />
-      </div>
-    );
-  };
+  // A single write-level flag covers View AND Manage, so BOTH columns show
+  // the real state — a column a reader can't trust is worse than a little
+  // repetition, and the first draft's tie line read as "—", i.e. "nothing
+  // here", the exact opposite of what it meant.  The Manage side is drawn
+  // softer and carries the link glyph — the same "this control isn't
+  // local" mark the shared config cells use — because either tick toggles
+  // the one flag.
+  const linkedCell = (f: TickRow): ReactNode => verbCell(
+    f, 'manage — the same flag as view',
+    (
+      <Tip label="One flag covers View and Manage for this feature — toggling either changes both.">
+        <span className="inline-flex text-muted-foreground"><Link2 size={12} aria-hidden /></span>
+      </Tip>
+    ),
+    true,
+  );
 
   // The config cell edits a flag SHARED with other features — a link
   // glyph says so before the click (an ⓘ would only promise an
@@ -146,7 +157,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             )}
           </div>
           {fam.merged ? (
-            <>{verbCell(fam.parent, 'view + manage')}{tieCell(fam.parent)}</>
+            <>{verbCell(fam.parent, 'view')}{linkedCell(fam.parent)}</>
           ) : (
             <>{verbCell(fam.parent, 'view')}{verbCell(fam.manage ?? null, 'manage')}</>
           )}
@@ -163,7 +174,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 )}
               </div>
               {c.verb === 'merged' ? (
-                <>{verbCell(c.row, 'view + manage')}{tieCell(c.row)}</>
+                <>{verbCell(c.row, 'view')}{linkedCell(c.row)}</>
               ) : (
                 <>
                   {verbCell(c.verb === 'view' ? c.row : null, 'view')}
@@ -294,7 +305,8 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
         })}
         <p className="text-2xs text-muted-foreground mt-3">
           A dashed square means this feature has no flag of that verb — nothing to grant, not a denial.
-          A tick in View joined to Manage by a line means the feature has ONE flag covering both.
+          Where one flag covers both verbs, the Manage tick is drawn softer with a link
+          mark (<Link2 size={12} className="inline align-[-2px]" aria-hidden />) — either tick toggles both.
           * scoped feature — whose data is set per-user in Team Management.
         </p>
       </div>
