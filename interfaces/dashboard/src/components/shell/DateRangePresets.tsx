@@ -292,8 +292,50 @@ export default function DateRangePresets({
 
   const resetPicks = () => { setPickedStart(null); setPickedEnd(null); };
 
+  /** Reopening must SHOW the window that's in force — a blank calendar
+   *  made the user re-derive their own current selection from the
+   *  trigger label.  Seeds the date band, the visible months, and the
+   *  hour selects from the applied state. */
+  const seedFromApplied = () => {
+    const appliedEnd = end
+      ? startOfDay(new Date(`${end}T00:00:00`))
+      : startOfDay(new Date());
+    const appliedStart = new Date(appliedEnd.getTime() - value * 86_400_000);
+    if (rangeCapable) {
+      setPickedStart(appliedStart);
+      setPickedEnd(appliedEnd);
+      // Put the applied END in the right-hand month so both ends of a
+      // same-or-adjacent-month range are on screen.
+      const m = new Date(appliedEnd);
+      m.setDate(1);
+      m.setMonth(m.getMonth() - 1);
+      setPickerMonth(m);
+    }
+    if (withTime) {
+      setTimeStart(appliedTimes?.start ?? '00:00');
+      setTimeEnd(appliedTimes?.end ?? '24:00');
+    }
+  };
+
+  const toggleOpen = () => {
+    setOpen((o) => {
+      if (!o) seedFromApplied();
+      else resetPicks();
+      return !o;
+    });
+  };
+
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
+      const el = e.target as HTMLElement | null;
+      // The hour dropdowns render in a PORTAL at document.body, so a
+      // click on one of their options is not inside ``ref`` and used to
+      // read as "clicked outside" — picking a time slammed the whole
+      // calendar shut.  Anything belonging to a select popup counts as
+      // inside.
+      if (el?.closest?.('[data-slot="select-content"], [data-slot="select-positioner"]')) {
+        return;
+      }
       if (ref.current && !ref.current.contains(e.target as Node)) {
         setOpen(false);
         resetPicks();
@@ -442,7 +484,7 @@ export default function DateRangePresets({
           ))}
           <button
             disabled={disabled}
-            onClick={() => setOpen((o) => !o)}
+            onClick={toggleOpen}
             className={`inline-flex items-center gap-1 ${segChip(isCustom)} disabled:opacity-50`}
             aria-label="Custom range"
             aria-expanded={open}
@@ -456,7 +498,7 @@ export default function DateRangePresets({
       ) : (
         <button
           disabled={disabled}
-          onClick={() => { setOpen((o) => !o); }}
+          onClick={toggleOpen}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-background border border-border rounded-md text-sm text-foreground/80 hover:bg-muted transition disabled:opacity-50 disabled:cursor-not-allowed"
           aria-haspopup="dialog"
           aria-expanded={open}
