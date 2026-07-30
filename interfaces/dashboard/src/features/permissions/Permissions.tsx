@@ -6,6 +6,7 @@ import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
 import { useAuth } from '../../context/AuthContext';
 import { PageHeader, CardSkeleton } from '../../components/shell';
+import { InfoTip } from '../../components/tooltip';
 import { toneClasses } from '../../lib/status';
 import { RoleLens } from './RoleLens';
 import type { RoleLensApi } from './RoleLens';
@@ -295,8 +296,9 @@ export default function Permissions() {
           {canManageModules && modData && (
             <div className="mb-3 rounded-lg border border-border bg-card px-4 py-2.5">
               <div className="flex items-center gap-x-4 gap-y-2 flex-wrap">
-                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground inline-flex items-center gap-1">
                   Departments
+                  <InfoTip size={12} label="A department that is off hides its features from every sidebar, for every role — the permissions below stay as they are." />
                 </span>
                 {Object.entries(GROUP_MODULE).map(([title, id]) => {
                   const on = moduleOn(id);
@@ -317,9 +319,6 @@ export default function Permissions() {
                     </span>
                   );
                 })}
-                <span className="text-2xs text-muted-foreground">
-                  a department that is off hides its features from every sidebar
-                </span>
               </div>
             </div>
           )}

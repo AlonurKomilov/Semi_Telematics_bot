@@ -10,7 +10,7 @@ import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { Eye, Link2, Lock } from 'lucide-react';
 import { toneClasses } from '../../lib/status';
-import { Tip } from '../../components/tooltip';
+import { InfoTip, Tip } from '../../components/tooltip';
 import { usePreference } from '../../preferences';
 import { useRoleView } from '../../context/RoleViewContext';
 import { DRIVER_KEY, buildVerbGrid, driverBands } from './verbGrid';
@@ -242,18 +242,24 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           <button
             type="button"
             onClick={() => setRoleView(role)}
+            aria-label={`Preview the dashboard as ${api.roleLabel(role)}`}
             className="inline-flex items-center gap-1.5 text-xs px-3 py-1 rounded-md border border-border text-foreground hover:bg-muted"
           >
-            <Eye size={14} aria-hidden /> Preview dashboard as {api.roleLabel(role)}
+            <Eye size={14} aria-hidden /> Preview dashboard
           </button>
         )}
       </div>
 
-      {/* Tier switch */}
+      {/* Tier switch + the delta, on ONE line.  The delta belongs beside
+          the control that changes tiers, not in a full-width banner above
+          the grid — and the "highlighted cells" hint is gone: the pill
+          already names what the senior tier adds, and those are the cells
+          tinted in the same green.  Long lists truncate into the tooltip
+          so this row can never wrap and shove the grid down. */}
       {cols.length > 1 && !isDriver && (
-        <div className="flex items-center gap-2 px-4 pt-2.5">
-          <span className="text-xs text-muted-foreground">Tier</span>
-          <div className="inline-flex bg-muted border border-border rounded-md p-0.5">
+        <div className="flex items-center gap-2 px-4 pt-2.5 min-w-0">
+          <span className="text-xs text-muted-foreground shrink-0">Tier</span>
+          <div className="inline-flex bg-muted border border-border rounded-md p-0.5 shrink-0">
             {cols.map((c, i) => (
               <button
                 key={c.key}
@@ -269,35 +275,28 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
               </button>
             ))}
           </div>
-          {seniorView && (
-            <span className="text-2xs text-muted-foreground">
-              cells the {cols[0].label} tier lacks are highlighted
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* The tier delta, as a sentence */}
-      {cols.length > 1 && !isDriver && (
-        <p className={`mx-4 mt-2.5 px-3 py-1.5 rounded-md text-xs flex items-baseline gap-1 min-w-0 ${toneClasses(deltaNames.length ? 'ok' : 'neutral')}`}>
-          {/* One line, always — tab clicks must not move the grid below
-              (the full list rides the tooltip). */}
-          {deltaNames.length ? (
-            <>
-              <span className="font-semibold shrink-0">{cols[1].label} adds {deltaNames.length} grant{deltaNames.length > 1 ? 's' : ''}:</span>
-              <Tip label={deltaNames.join(' · ')}>
-                <span className="truncate min-w-0">{deltaNames.join(' · ')}</span>
+          <span className={`inline-flex items-baseline gap-1 min-w-0 px-2 py-0.5 rounded-md text-2xs ${toneClasses(deltaNames.length ? 'ok' : 'neutral')}`}>
+            {deltaNames.length ? (
+              <>
+                <span className="font-semibold shrink-0">
+                  {cols[1].label} adds {deltaNames.length}:
+                </span>
+                <Tip label={deltaNames.join(' · ')}>
+                  <span className="truncate min-w-0">{deltaNames.join(' · ')}</span>
+                </Tip>
+              </>
+            ) : (
+              <span className="truncate min-w-0">
+                {cols[1].label} adds nothing beyond {cols[0].label}
+              </span>
+            )}
+            {role === 'owner' && (
+              <Tip label="Primary also exclusively holds the Owner powers — Manage owners, Delete / restore account. They aren't flags and can never be granted to a co-owner; see the Owner powers band below.">
+                <span className="shrink-0 underline decoration-dotted cursor-help">+ Owner powers</span>
               </Tip>
-            </>
-          ) : (
-            <span className="truncate min-w-0">{cols[1].label} currently adds nothing beyond {cols[0].label} for this role.</span>
-          )}
-          {role === 'owner' && (
-            <Tip label="Primary also exclusively holds the Owner powers — Manage owners, Delete / restore account — which aren't flags and can never be granted to a co-owner (see the matrix lens's Owner powers rows).">
-              <span className="shrink-0 text-2xs opacity-80 underline decoration-dotted cursor-help">+ Owner powers</span>
-            </Tip>
-          )}
-        </p>
+            )}
+          </span>
+        </div>
       )}
 
       {/* Verb grid */}
@@ -309,12 +308,9 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">Config</span>
         </div>
         {isDriver && (
-          <p className="text-2xs text-muted-foreground pt-2.5">
-            Drivers work in the Telegram <span className="font-medium text-foreground/80">mini app</span> only
-            and never manage anything, so their grants are all View — and always their
-            own truck. Changes reach every driver&apos;s app on next load; the
-            <span className="font-medium text-foreground/80"> Alerts</span> inbox and
-            <span className="font-medium text-foreground/80"> AI assistant</span> come with the Vehicle grant.
+          <p className="text-2xs text-muted-foreground pt-2.5 inline-flex items-center gap-1">
+            Mini app only — every grant is View, always their own truck.
+            <InfoTip size={12} label="Drivers never manage anything and work in the Telegram mini app only. Changes reach every driver's app on next load. The Alerts inbox and the AI assistant come automatically with the Vehicle grant." />
           </p>
         )}
         {isDriver && DRIVER_BANDS.map((b) => (
