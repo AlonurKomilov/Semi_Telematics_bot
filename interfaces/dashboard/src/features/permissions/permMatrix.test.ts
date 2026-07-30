@@ -16,11 +16,11 @@ type Row = {
   scoped?: boolean; indented?: boolean;
 };
 
-const KINDS = ['feature', 'subfeature', 'component', 'action', 'capability'];
+const KINDS = ['feature', 'subfeature', 'component', 'action', 'cross_feature'];
 // Fixed family order: the parent itself, then Manage/actions, then
 // sub-features, then components; capabilities close the (Settings) block.
 const ORDER: Record<string, number> = {
-  feature: 0, action: 1, subfeature: 2, component: 3, capability: 4,
+  feature: 0, action: 1, subfeature: 2, component: 3, cross_feature: 4,
 };
 
 const allRows: Row[] = PERM_GROUPS.flatMap((g) => g.flags as Row[]);
@@ -59,10 +59,9 @@ describe('every row declares its kind', () => {
 });
 
 describe('the nesting law', () => {
-  const byKey = new Map(tickable.map((r) => [primaryKey(r), r]));
 
-  it('capabilities never nest and are exactly the config family', () => {
-    const caps = tickable.filter((r) => r.kind === 'capability');
+  it('cross-feature rows never nest and are exactly the config family', () => {
+    const caps = tickable.filter((r) => r.kind === 'cross_feature');
     expect(caps.map((c) => primaryKey(c)).sort()).toEqual(
       ['can_manage_config_all', 'can_manage_config_role']);
     for (const c of caps) expect(c.parentKey, c.label).toBeUndefined();

@@ -276,15 +276,6 @@ export const DEFS = {
     },
     note: 'Pivot fields panel width in px.',
   }),
-  // Which Permissions lens is open: the focused per-role editor or the
-  // cross-role matrix.  device — a wide monitor favors the matrix, a
-  // laptop the role lens; it's about THIS screen, not the person.
-  'permissions.lens': def<'role' | 'matrix'>({
-    default: 'role',
-    scope: 'device',
-    sanitize: (v) => (v === 'role' || v === 'matrix' ? v : undefined),
-    note: 'Permissions page lens (one role vs compare all).',
-  }),
   // Last role opened in the Permissions "One role" lens.  device, like
   // permissions.lens: it's where THIS screen left off, not a fact about
   // the person.  Validated against the live role list at read time.

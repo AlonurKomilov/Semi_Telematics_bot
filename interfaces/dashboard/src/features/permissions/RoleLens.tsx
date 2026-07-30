@@ -30,6 +30,12 @@ export interface RoleLensApi {
   changed: (colKey: string, f: PermFlag) => boolean;
   locked: (colKey: string, f: PermFlag) => boolean;
   onToggle: (colKey: string, f: PermFlag) => void;
+  /** Primary-owner-only ACTIONS (is_primary_owner gates, not flags) —
+   *  shown read-only on the Owner tab. */
+  ownerPowers: { key: string; label: string; description: string }[];
+  /** Every role label that holds this flag — the cross-role question the
+   *  matrix used to answer by column-scanning. */
+  heldBy: (f: PermFlag) => string[];
 }
 
 export function RoleLens({ api }: { api: RoleLensApi }) {
@@ -60,7 +66,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     if (fam.manage && rowDelta(fam.manage)) deltaNames.push(`Manage (${fam.parent.label})`);
     for (const c of fam.children) if (rowDelta(c.row)) deltaNames.push(`${c.row.label} (${fam.parent.label})`);
   }
-  for (const cap of GRID.capabilities) if (rowDelta(cap)) deltaNames.push(cap.label);
+  for (const cap of GRID.crossFeature) if (rowDelta(cap)) deltaNames.push(cap.label);
 
   const chk = (f: TickRow, ariaSuffix: string, soft = false) => {
     const on = api.granted(col.key, f);
@@ -144,6 +150,22 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     ));
   };
 
+  // Which OTHER roles hold this grant.  Inline and tiny: the answer the
+  // deleted matrix gave by eye-scanning a column, now in words — and it
+  // must not add a line, or every row's rhythm changes (S2).
+  const alsoChip = (f: TickRow): ReactNode => {
+    const me = api.roleLabel(role);
+    const others = api.heldBy(f).filter((r) => r !== me);
+    if (!others.length) return null;
+    return (
+      <Tip label={`Also granted to: ${others.join(', ')}`}>
+        <span className="ml-2 text-3xs text-muted-foreground/70 cursor-help">
+          {others.length} other{others.length > 1 ? 's' : ''}
+        </span>
+      </Tip>
+    );
+  };
+
   const famRow = (fam: VerbFamily) => {
     // The chip names what the tier adds, so it belongs to the row whose
     // OWN flag differs — never to a parent whose child's flag differs.
@@ -156,6 +178,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
               {fam.parent.label}
               {isScoped(fam.parent) && <span className="text-2xs text-muted-foreground ml-1">*</span>}
               {ownDelta && <DeltaChip />}
+              {alsoChip(fam.parent)}
             </span>
             {fam.parent.description && (
               <div className="text-2xs text-muted-foreground/70">{fam.parent.description}</div>
@@ -173,7 +196,9 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           return (
             <div key={rowId(c.row)} className={rowCls()}>
               <div className="min-w-0 pl-4 border-l-2 border-border ml-0.5">
-                <span className="text-sm text-muted-foreground">{c.row.label}{cDelta && <DeltaChip />}</span>
+                <span className="text-sm text-muted-foreground">
+                  {c.row.label}{cDelta && <DeltaChip />}{alsoChip(c.row)}
+                </span>
                 {c.row.description && (
                   <div className="text-2xs text-muted-foreground/60">{c.row.description}</div>
                 )}
@@ -320,12 +345,37 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             {b.families.map(famRow)}
           </div>
         ))}
+        {/* Owner powers: not flags — is_primary_owner gates.  They are the
+            ONLY real difference between Primary and Co-owner, so an owner
+            weighing how much to trust a co-owner has to see them. */}
+        {role === 'owner' && (
+          <>
+            <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+              Owner powers <span className="normal-case tracking-normal text-muted-foreground/70">— primary owner only · not editable</span>
+            </div>
+            {api.ownerPowers.map((op) => (
+              <div key={op.key} className={rowCls()}>
+                <div className="min-w-0">
+                  <span className="text-sm font-medium">{op.label}</span>
+                  <div className="text-2xs text-muted-foreground/70">{op.description}</div>
+                </div>
+                <div className="text-center">
+                  {seniorView
+                    ? <span className="inline-flex items-center justify-center w-5 h-5 rounded bg-primary/40 text-primary-foreground" aria-label="held"><CheckMark /></span>
+                    : noflag}
+                </div>
+                {emptyCell}
+                {emptyCell}
+              </div>
+            ))}
+          </>
+        )}
         {!isDriver && (
           <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
             Configuration
           </div>
         )}
-        {!isDriver && GRID.capabilities.map((cap) => {
+        {!isDriver && GRID.crossFeature.map((cap) => {
           const delta = seniorView && rowDelta(cap);
           return (
             <div key={rowId(cap)} className={rowCls()}>
@@ -355,7 +405,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
 
 const rowId = (r: TickRow): string => (isScoped(r) ? r.allKey : (r as { key: string }).key);
 const capRow = (key: 'can_manage_config_all' | 'can_manage_config_role'): TickRow =>
-  GRID.capabilities.find((c) => rowId(c) === key)!;
+  GRID.crossFeature.find((c) => rowId(c) === key)!;
 const rowCls = (): string =>
   'grid grid-cols-[1fr_84px_84px_96px] gap-x-2 items-center py-1.5 border-t border-border';
 

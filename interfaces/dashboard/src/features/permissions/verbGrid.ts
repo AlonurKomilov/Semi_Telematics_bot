@@ -13,7 +13,7 @@
  *    ("one flag") — never a fake split;
  *  - Config cells appear only on features that HAVE config, and they
  *    ride the two family flags (docs/architecture/config.md) — the
- *    cell edits the capability row, visibly shared.
+ *    cell edits the cross-feature row, visibly shared.
  */
 import {
   DRIVER_RECORDS, DRIVER_TRUCK, GROUP_BLOCKS, isHeader, isScoped,
@@ -31,7 +31,7 @@ export interface VerbFamily {
   /** The bare "Manage" action child, promoted into the parent's row. */
   manage?: TickRow;
   children: VerbChild[];
-  /** The capability row this feature's config rides, when it has one. */
+  /** The cross-feature row this feature's config rides, if any. */
   configVia?: 'can_manage_config_all' | 'can_manage_config_role';
   configNote?: string;
 }
@@ -71,7 +71,9 @@ function familyFrom(block: Block): VerbFamily {
     const row = c.parent as TickRow;
     // The bare "Manage" child IS the parent's Manage cell; everything
     // else (named actions, sub-features, components) stays a child row.
-    if (row.kind === 'action' && row.label === 'Manage' && !fam.manage) {
+    // A MERGED parent's Manage column is the tie to its own tick, so a
+    // promoted child there would never render — keep it a child row.
+    if (!fam.merged && row.kind === 'action' && row.label === 'Manage' && !fam.manage) {
       fam.manage = row;
     } else {
       fam.children.push({ row, verb: childVerb(row) });
@@ -84,11 +86,11 @@ function familyFrom(block: Block): VerbFamily {
   return fam;
 }
 
-export interface VerbGrid { bands: VerbBand[]; capabilities: TickRow[] }
+export interface VerbGrid { bands: VerbBand[]; crossFeature: TickRow[] }
 
 export function buildVerbGrid(): VerbGrid {
   const bands: VerbBand[] = [];
-  const capabilities: TickRow[] = [];
+  const crossFeature: TickRow[] = [];
   for (const g of GROUP_BLOCKS) {
     const families: VerbFamily[] = [];
     for (const block of g.blocks) {
@@ -97,23 +99,23 @@ export function buildVerbGrid(): VerbGrid {
         // their own single-row family under the same band.
         for (const child of block.children) {
           const row = child.parent as TickRow;
-          if (row.kind === 'capability') { capabilities.push(row); continue; }
+          if (row.kind === 'cross_feature') { crossFeature.push(row); continue; }
           families.push(familyFrom(child));
         }
         continue;
       }
       const row = block.parent as TickRow;
-      if (row.kind === 'capability') { capabilities.push(row); continue; }
+      if (row.kind === 'cross_feature') { crossFeature.push(row); continue; }
       families.push(familyFrom(block));
     }
     if (families.length) bands.push({ band: g.title, families });
   }
-  return { bands, capabilities };
+  return { bands, crossFeature };
 }
 
 /** Every tickable row the grid places — the completeness test's input. */
 export function placedRows(grid: VerbGrid): PermFlag[] {
-  const out: PermFlag[] = [...grid.capabilities];
+  const out: PermFlag[] = [...grid.crossFeature];
   for (const b of grid.bands) for (const f of b.families) {
     out.push(f.parent);
     if (f.manage) out.push(f.manage);

@@ -27,10 +27,12 @@
 //                 (Health/Faults/Fuel/Efficiency under features/vehicles/)
 //   component   — flag-gated part of the parent's surface, no own home
 //   action      — a do/write verb on one feature (the "Manage" rows)
-//   capability  — spans features (the two Config rows)
+//   cross_feature — a do-verb that spans features, owned by none (the
+//                 config pair).  NOT called "capability": that word is
+//                 already the four hubs' in docs/FEATURES.md.
 // Services (Alerts / AI / Reports) have NO kind because they have no rows:
 // always-on, nothing to grant — see the System Services panel below.
-export type RowKind = 'feature' | 'subfeature' | 'component' | 'action' | 'capability';
+export type RowKind = 'feature' | 'subfeature' | 'component' | 'action' | 'cross_feature';
 export interface RowMeta {
   kind: RowKind;
   /** Attach under the row with this PRIMARY key (allKey for scoped rows)
@@ -112,19 +114,22 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_manage_integrations', kind: 'feature', label: 'Integrations', description: 'Telematics connections (Samsara, Datatruck)' },
       { key: 'can_manage_storage',      kind: 'feature', label: 'Storage', description: 'File-storage backend & quota' },
       { header: 'Settings', description: 'account administration — each component has its own permission' },
-      // General settings is the Settings FEATURE's own front door; the rows
-      // after it are that feature's components (flag-gated parts of its
-      // surface, no home of their own — docs/FEATURES.md).
-      { key: 'can_manage_account',     kind: 'feature', label: 'General settings', indented: true, description: 'The Settings page itself — timezone, bot + forum routing; also rides: department modules' },
+      // Every row under this header is a COMPONENT of the one Settings
+      // feature — including General settings, which docs/FEATURES.md lists
+      // as the "Account Settings" component.  The feature itself is the
+      // header row: it owns no flag of its own.
+      { key: 'can_manage_account',     kind: 'component', label: 'General settings', indented: true, description: 'The Settings page itself — timezone, bot + forum routing; also rides: department modules' },
       { key: 'can_manage_users',       kind: 'component', label: 'Team Management', indented: true, description: 'Members, roles, data scope — also gates the Audit Log' },
       { key: 'can_invite',             kind: 'component', label: 'Send Invites', indented: true, description: 'Invite new members — the invite carries the role the sender picks' },
       { key: 'can_manage_companies',   kind: 'component', label: 'Manage Companies', indented: true, description: 'Sub-companies in the account — codes, names, per-company data scope' },
       { key: 'can_manage_work_hours',  kind: 'component', label: 'Working Hours', indented: true, description: 'Shift schedules — they also drive the alert do-not-disturb window' },
-      // The config FAMILY (docs/architecture/config.md) — capabilities, not
-      // Settings components: they span features.  Never nested, never tagged
-      // (their labels announce themselves).
-      { key: 'can_manage_config_role', kind: 'capability', label: 'Config — own role', indented: true, description: 'Save team-default page layouts for their OWN role (the page gear’s "Team default" block). General settings holders can set any role’s.' },
-      { key: 'can_manage_config_all', kind: 'capability', label: 'Config — account-wide', indented: true, description: 'A feature’s SHARED settings, one truth for everyone: scorecard rules + pillar caps, KPI grade thresholds, and every future feature setting.' },
+      { header: 'Configuration', description: 'cross-feature settings — one flag each, covering every feature they touch' },
+      // The config FAMILY (docs/architecture/config.md).  Under its OWN
+      // header, not Settings': these span features, so calling them
+      // Settings components would misplace them (and the role lens
+      // already bands them apart — the two lenses must agree).
+      { key: 'can_manage_config_role', kind: 'cross_feature', label: 'Config — own role', indented: true, description: 'Save team-default page layouts for their OWN role (the page gear’s "Team default" block). General settings holders can set any role’s.' },
+      { key: 'can_manage_config_all', kind: 'cross_feature', label: 'Config — account-wide', indented: true, description: 'A feature’s SHARED settings, one truth for everyone: scorecard rules + pillar caps, KPI grade thresholds, and every future feature setting.' },
     ],
   },
   {
@@ -147,7 +152,7 @@ export const PERM_GROUPS: PermGroup[] = [
       { allKey: 'can_geofence_all', vehicleKey: 'can_geofence_vehicle', kind: 'feature', label: 'Geofences', scoped: true },
       { key: 'can_kpi', kind: 'feature', label: 'KPI & Performance', description: 'Account-wide performance analytics — dispatcher grades first; fleet/safety/driver sections later' },
       { key: 'can_manage_driver_docs', kind: 'feature', writeLevel: true, label: 'Drivers', description: 'Manage — driver list + document management' },
-      { key: 'can_manage_drivers',     kind: 'action', label: 'Manage', indented: true, description: 'Roster admin — invite drivers, assign trucks, link Samsara/TMS, activate/deactivate' },
+      { key: 'can_manage_drivers',     kind: 'action', label: 'Roster admin', indented: true, description: 'Invite drivers, assign trucks, link Samsara/TMS, activate / deactivate' },
       // NOTE: can_driver_docs_own (a driver viewing their OWN docs) is a
       // driver self-service flag — it lives in the "Driver — self-service"
       // panel, not this staff matrix.  Same for the other view-own flags.
@@ -218,8 +223,8 @@ export const PERM_GROUPS: PermGroup[] = [
     title: 'Accounting',
     flags: [
       { header: 'Costs', description: 'fuel spend + cost-per-mile components' },
-      { key: 'can_fuel_cost',     kind: 'feature', label: 'Fuel Costs', indented: true },
-      { key: 'can_cost_per_mile', kind: 'feature', label: 'Cost per Mile', indented: true },
+      { key: 'can_fuel_cost',     kind: 'component', label: 'Fuel Costs', indented: true },
+      { key: 'can_cost_per_mile', kind: 'component', label: 'Cost per Mile', indented: true },
       // The Cost Reports tab — executive maintenance/work-order cost rollups,
       // a report TYPE (feature) surfaced in the always-on Reports hub.  Lives
       // here because it's cost-owned data (deliberately split from Maintenance).

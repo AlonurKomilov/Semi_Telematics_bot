@@ -71,7 +71,14 @@ const ALLOWLIST = new Set([
   'src/features/settings/Invites.tsx',
   'src/features/settings/WorkHours.tsx',
   'src/features/ai/Chat.tsx',
+  // The permissions feature is exempt as a FAMILY, not as one file: on
+  // this page a role literal is the ROW BEING EDITED (which role's
+  // grants am I looking at, which tier stores them), never "who is the
+  // viewer".  Splitting Permissions.tsx into a row model + a lens moved
+  // that same code into these two files.
   'src/features/permissions/Permissions.tsx',
+  'src/features/permissions/permRows.ts',
+  'src/features/permissions/RoleLens.tsx',
 ]);
 
 // Match BOTH === and !== so an "if (role !== 'owner')" check is

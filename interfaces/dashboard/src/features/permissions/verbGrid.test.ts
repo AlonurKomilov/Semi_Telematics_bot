@@ -17,8 +17,8 @@ describe('verb grid completeness', () => {
     for (const f of tickable) expect(placed, (f as { label: string }).label).toContain(f);
   });
 
-  it('the capabilities band is exactly the config family', () => {
-    expect(grid.capabilities.map((c) => ('key' in c ? c.key : '')).sort())
+  it('the cross-feature band is exactly the config family', () => {
+    expect(grid.crossFeature.map((c) => ('key' in c ? c.key : '')).sort())
       .toEqual(['can_manage_config_all', 'can_manage_config_role']);
   });
 
