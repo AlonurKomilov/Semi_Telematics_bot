@@ -274,6 +274,15 @@ export const DEFS = {
     sanitize: (v) => (v === 'role' || v === 'matrix' ? v : undefined),
     note: 'Permissions page lens (one role vs compare all).',
   }),
+  // Last role opened in the Permissions "One role" lens.  device, like
+  // permissions.lens: it's where THIS screen left off, not a fact about
+  // the person.  Validated against the live role list at read time.
+  'permissions.role': def<string>({
+    default: '',
+    scope: 'device',
+    sanitize: (v) => (typeof v === 'string' && v.length <= 32 ? v : undefined),
+    note: 'Permissions page: last role opened in the One-role lens.',
+  }),
   'assistant.expanded': def<boolean>({
     default: false,
     scope: 'device',

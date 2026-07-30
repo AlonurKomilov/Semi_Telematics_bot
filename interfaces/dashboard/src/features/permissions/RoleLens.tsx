@@ -7,9 +7,11 @@
  * dialog exactly like a matrix tick.
  */
 import { useState } from 'react';
-import { Eye, Lock } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { Eye, Link2, Lock } from 'lucide-react';
 import { toneClasses } from '../../lib/status';
-import { InfoTip, Tip } from '../../components/tooltip';
+import { Tip } from '../../components/tooltip';
+import { usePreference } from '../../preferences';
 import { useRoleView } from '../../context/RoleViewContext';
 import { buildVerbGrid } from './verbGrid';
 import type { TickRow, VerbFamily } from './verbGrid';
@@ -31,18 +33,25 @@ export interface RoleLensApi {
 
 export function RoleLens({ api }: { api: RoleLensApi }) {
   const { setRoleView, canSwitchView } = useSafeRoleSwitch();
-  const [role, setRole] = useState<string>(api.roles[2] ?? api.roles[0]);
-  const [tier, setTier] = useState(1);   // open on the senior tier: the delta is the point
+  // Last role opened, per device — an owner returning to the page almost
+  // always continues on the role they were editing.
+  const { value: lastRole, setValue: setLastRole } = usePreference('permissions.role');
+  const [role, setRoleState] = useState<string>(() =>
+    (lastRole && api.roles.includes(lastRole) ? lastRole : (api.roles[2] ?? api.roles[0])));
+  const setRole = (r: string) => { setRoleState(r); setLastRole(r); };
+  // Open on the BASE tier: that's where most people on the role sit, so
+  // the first tick lands on the row the owner meant.  The delta sentence
+  // below reports the senior tier either way — no information is lost by
+  // not starting there.
+  const [tier, setTier] = useState(0);
   const cols = api.tierCols(role);
   const col = cols[Math.min(tier, cols.length - 1)];
   const seniorView = cols.length > 1 && col.key === cols[1].key;
 
-  // Rows where the two tiers differ — the delta bar + row highlight.
+  // Flags whose value differs between the tiers — the delta sentence
+  // and the per-cell highlight.
   const rowDelta = (f: PermFlag): boolean =>
     cols.length > 1 && api.granted(cols[0].key, f) !== api.granted(cols[1].key, f);
-  const famDelta = (fam: VerbFamily): boolean =>
-    rowDelta(fam.parent) || (fam.manage ? rowDelta(fam.manage) : false) ||
-    fam.children.some((c) => rowDelta(c.row));
   const deltaNames: string[] = [];
   for (const b of GRID.bands) for (const fam of b.families) {
     if (rowDelta(fam.parent)) deltaNames.push(fam.parent.label);
@@ -78,46 +87,75 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   const noflag = (
     <span className="inline-flex w-5 h-5 rounded border border-dashed border-border opacity-40" aria-hidden />
   );
+  const emptyCell = <div className="text-center">{noflag}</div>;
+
+  // One verb cell.  The tint marks THIS cell as what the senior tier adds —
+  // never the whole row: a row whose View is identical in both tiers must
+  // not claim the tier "adds" it just because its Manage differs.
+  const verbCell = (f: TickRow | null, ariaSuffix: string, extra?: ReactNode): ReactNode => {
+    if (!f) return emptyCell;
+    const delta = seniorView && rowDelta(f);
+    return (
+      <div className={`text-center py-0.5 ${delta ? 'bg-ok/10 rounded' : ''}`}>
+        <span className="inline-flex items-center gap-1">{chk(f, ariaSuffix)}{extra}</span>
+      </div>
+    );
+  };
+
+  // A single write-level flag covers View AND Manage.  The tick stays in
+  // the View column so that column can still be scanned top to bottom;
+  // a tie line reaches into Manage to say "the same flag covers me".
+  const tieCell = (f: TickRow): ReactNode => {
+    const delta = seniorView && rowDelta(f);
+    const on = api.granted(col.key, f);
+    return (
+      <div className={`flex items-center justify-center py-0.5 ${delta ? 'bg-ok/10 rounded' : ''}`} aria-hidden>
+        <span className={`w-6 border-t-2 ${on ? 'border-primary/50' : 'border-border'}`} />
+      </div>
+    );
+  };
+
+  // The config cell edits a flag SHARED with other features — a link
+  // glyph says so before the click (an ⓘ would only promise an
+  // explanation; the shape has to say "not local").
+  const configCell = (fam: VerbFamily): ReactNode => {
+    if (!fam.configVia) return emptyCell;
+    const cap = capRow(fam.configVia);
+    return verbCell(cap, 'config', (
+      <Tip label={`Shared control — the same flag as “${cap.label}”${fam.configNote ? ` (here: ${fam.configNote})` : ''}. Changing it here changes it everywhere that flag appears.`}>
+        <span className="inline-flex text-muted-foreground"><Link2 size={12} aria-hidden /></span>
+      </Tip>
+    ));
+  };
 
   const famRow = (fam: VerbFamily) => {
-    const delta = seniorView && famDelta(fam);
+    // The chip names what the tier adds, so it belongs to the row whose
+    // OWN flag differs — never to a parent whose child's flag differs.
+    const ownDelta = seniorView && rowDelta(fam.parent);
     return (
       <div key={rowId(fam.parent)}>
-        <div className={rowCls(delta)}>
+        <div className={rowCls()}>
           <div className="min-w-0">
             <span className="text-sm font-medium">
               {fam.parent.label}
               {isScoped(fam.parent) && <span className="text-2xs text-muted-foreground ml-1">*</span>}
-              {delta && <DeltaChip />}
+              {ownDelta && <DeltaChip />}
             </span>
             {fam.parent.description && (
               <div className="text-2xs text-muted-foreground/70">{fam.parent.description}</div>
             )}
           </div>
           {fam.merged ? (
-            <div className="col-span-2 text-center">
-              {chk(fam.parent, 'view + manage')}
-              <div className="text-3xs text-muted-foreground/70 mt-0.5">view + manage · one flag</div>
-            </div>
+            <>{verbCell(fam.parent, 'view + manage')}{tieCell(fam.parent)}</>
           ) : (
-            <>
-              <div className="text-center">{chk(fam.parent, 'view')}</div>
-              <div className="text-center">{fam.manage ? chk(fam.manage, 'manage') : noflag}</div>
-            </>
+            <>{verbCell(fam.parent, 'view')}{verbCell(fam.manage ?? null, 'manage')}</>
           )}
-          <div className="text-center">
-            {fam.configVia ? (
-              <span className="inline-flex items-center gap-1">
-                {chk(capRow(fam.configVia), 'config')}
-                <InfoTip size={12} label={`Rides ${capRow(fam.configVia).label} — one flag for every feature it covers${fam.configNote ? ` (here: ${fam.configNote})` : ''}.`} />
-              </span>
-            ) : noflag}
-          </div>
+          {configCell(fam)}
         </div>
         {fam.children.map((c) => {
           const cDelta = seniorView && rowDelta(c.row);
           return (
-            <div key={rowId(c.row)} className={rowCls(cDelta)}>
+            <div key={rowId(c.row)} className={rowCls()}>
               <div className="min-w-0 pl-4 border-l-2 border-border ml-0.5">
                 <span className="text-sm text-muted-foreground">{c.row.label}{cDelta && <DeltaChip />}</span>
                 {c.row.description && (
@@ -125,17 +163,14 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 )}
               </div>
               {c.verb === 'merged' ? (
-                <div className="col-span-2 text-center">
-                  {chk(c.row, 'view + manage')}
-                  <div className="text-3xs text-muted-foreground/70 mt-0.5">one flag</div>
-                </div>
+                <>{verbCell(c.row, 'view + manage')}{tieCell(c.row)}</>
               ) : (
                 <>
-                  <div className="text-center">{c.verb === 'view' ? chk(c.row, 'view') : noflag}</div>
-                  <div className="text-center">{c.verb === 'manage' ? chk(c.row, 'manage') : noflag}</div>
+                  {verbCell(c.verb === 'view' ? c.row : null, 'view')}
+                  {verbCell(c.verb === 'manage' ? c.row : null, 'manage')}
                 </>
               )}
-              <div className="text-center">{noflag}</div>
+              {emptyCell}
             </div>
           );
         })}
@@ -195,7 +230,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           </div>
           {seniorView && (
             <span className="text-2xs text-muted-foreground">
-              rows the {cols[0].label} tier lacks are highlighted
+              cells the {cols[0].label} tier lacks are highlighted
             </span>
           )}
         </div>
@@ -241,24 +276,25 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           </div>
         ))}
         <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-          Configuration (the family flags themselves)
+          Configuration
         </div>
         {GRID.capabilities.map((cap) => {
           const delta = seniorView && rowDelta(cap);
           return (
-            <div key={rowId(cap)} className={rowCls(delta)}>
+            <div key={rowId(cap)} className={rowCls()}>
               <div className="min-w-0">
                 <span className="text-sm font-medium">{cap.label}{delta && <DeltaChip />}</span>
                 {cap.description && <div className="text-2xs text-muted-foreground/70">{cap.description}</div>}
               </div>
-              <div className="text-center">{noflag}</div>
-              <div className="text-center">{noflag}</div>
-              <div className="text-center">{chk(cap, 'config')}</div>
+              {emptyCell}
+              {emptyCell}
+              {verbCell(cap, 'config')}
             </div>
           );
         })}
         <p className="text-2xs text-muted-foreground mt-3">
           A dashed square means this feature has no flag of that verb — nothing to grant, not a denial.
+          A tick in View joined to Manage by a line means the feature has ONE flag covering both.
           * scoped feature — whose data is set per-user in Team Management.
         </p>
       </div>
@@ -271,10 +307,8 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
 const rowId = (r: TickRow): string => (isScoped(r) ? r.allKey : (r as { key: string }).key);
 const capRow = (key: 'can_manage_config_all' | 'can_manage_config_role'): TickRow =>
   GRID.capabilities.find((c) => rowId(c) === key)!;
-const rowCls = (delta: boolean): string =>
-  `grid grid-cols-[1fr_84px_84px_96px] gap-x-2 items-center py-1.5 border-t border-border ${
-    delta ? 'bg-ok/10 rounded' : ''
-  }`;
+const rowCls = (): string =>
+  'grid grid-cols-[1fr_84px_84px_96px] gap-x-2 items-center py-1.5 border-t border-border';
 
 function DeltaChip() {
   return (

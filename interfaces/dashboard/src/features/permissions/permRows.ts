@@ -117,9 +117,9 @@ export const PERM_GROUPS: PermGroup[] = [
       // surface, no home of their own — docs/FEATURES.md).
       { key: 'can_manage_account',     kind: 'feature', label: 'General settings', indented: true, description: 'The Settings page itself — timezone, bot + forum routing; also rides: department modules' },
       { key: 'can_manage_users',       kind: 'component', label: 'Team Management', indented: true, description: 'Members, roles, data scope — also gates the Audit Log' },
-      { key: 'can_invite',             kind: 'component', label: 'Send Invites', indented: true },
-      { key: 'can_manage_companies',   kind: 'component', label: 'Manage Companies', indented: true },
-      { key: 'can_manage_work_hours',  kind: 'component', label: 'Working Hours', indented: true },
+      { key: 'can_invite',             kind: 'component', label: 'Send Invites', indented: true, description: 'Invite new members — the invite carries the role the sender picks' },
+      { key: 'can_manage_companies',   kind: 'component', label: 'Manage Companies', indented: true, description: 'Sub-companies in the account — codes, names, per-company data scope' },
+      { key: 'can_manage_work_hours',  kind: 'component', label: 'Working Hours', indented: true, description: 'Shift schedules — they also drive the alert do-not-disturb window' },
       // The config FAMILY (docs/architecture/config.md) — capabilities, not
       // Settings components: they span features.  Never nested, never tagged
       // (their labels announce themselves).
