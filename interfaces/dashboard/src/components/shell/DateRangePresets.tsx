@@ -117,6 +117,22 @@ function fmtNice(d: Date, tz?: string): string {
   return formatDay(d, { timeZone: tz, intl: { month: 'short', day: 'numeric', year: 'numeric' } });
 }
 
+/** "Jul 20 – 26, 2026" — the year (and month, when shared) written
+ *  once.  Cross-month: "Jun 15 – Jul 2, 2026"; cross-year keeps both
+ *  years.  Repeating "Jul 20, 2026 → Jul 26, 2026" wastes the footer's
+ *  width on characters the reader already has. */
+function fmtRange(lo: Date, hi: Date, tz?: string): string {
+  const dayOnly = (d: Date) =>
+    formatDay(d, { timeZone: tz, intl: { day: 'numeric' } });
+  const monthDay = (d: Date) =>
+    formatDay(d, { timeZone: tz, intl: { month: 'short', day: 'numeric' } });
+  const sameYear = lo.getFullYear() === hi.getFullYear();
+  const sameMonth = sameYear && lo.getMonth() === hi.getMonth();
+  if (sameMonth) return `${monthDay(lo)} – ${dayOnly(hi)}, ${hi.getFullYear()}`;
+  if (sameYear) return `${monthDay(lo)} – ${monthDay(hi)}, ${hi.getFullYear()}`;
+  return `${fmtNice(lo, tz)} – ${fmtNice(hi, tz)}`;
+}
+
 function labelFor(value: number, opts: { label: string; days: number }[]): string {
   const match = opts.find((o) => o.days === value);
   if (match) return match.label;
@@ -363,7 +379,7 @@ export default function DateRangePresets({
       ? ` · ${appliedTimes.start ? formatClock(appliedTimes.start) : 'start of day'}–${appliedTimes.end ? formatClock(appliedTimes.end) : 'end of day'}`
       : '';
   const rangeLabel = endDate
-    ? `${fmtNice(new Date(endDate.getTime() - value * 86_400_000), tz)} – ${fmtNice(endDate, tz)}${appliedClock}`
+    ? `${fmtRange(new Date(endDate.getTime() - value * 86_400_000), endDate, tz)}${appliedClock}`
     : null;
 
   const monthShift = (delta: number) => {
@@ -393,13 +409,21 @@ export default function DateRangePresets({
         ? [pickedStart, previewFar] : [previewFar, pickedStart])
     : [null, null];
   const draftClock = withTime && !timesAreDefault
-    ? ` · ${timeStart === '00:00' ? 'start of day' : formatClock(timeStart)}–${timeEnd === '24:00' ? 'end of day' : formatClock(timeEnd)}`
+    ? ` · ${timeStart === '00:00' ? 'start of day' : formatClock(timeStart)} – ${timeEnd === '24:00' ? 'end of day' : formatClock(timeEnd)}`
     : '';
-  const footerSummary = sumLo && sumHi
-    ? `${fmtNice(sumLo, tz)} → ${fmtNice(sumHi, tz)} · ${daysBetween(sumLo, sumHi)} days${draftClock}`
-    : rangeCapable
-      ? 'Click a start date, then an end date'
-      : 'Click a start date — the range ends today';
+  // INCLUSIVE day count: the calendar highlights Jul 20…26 = 7 boxes,
+  // so printing the arithmetic difference (6) reads as a bug even when
+  // the query is right.  The picker's ``days`` contract is unchanged —
+  // this is the human-facing count only.
+  const footerRange = sumLo && sumHi ? fmtRange(sumLo, sumHi, tz) : '';
+  const footerMeta = sumLo && sumHi
+    ? `${daysBetween(sumLo, sumHi) + 1} days${
+        withTime ? (draftClock || ' · all day') : ''
+      }`
+    : '';
+  const footerHint = rangeCapable
+    ? 'Click a start date, then an end date'
+    : 'Click a start date — the range ends today';
 
   return (
     <div ref={ref} className="relative inline-block">
@@ -565,7 +589,16 @@ export default function DateRangePresets({
 
             {/* ── footer: live summary + actions ── */}
             <div className="mt-3 pt-2.5 border-t border-border flex items-center justify-between gap-3">
-              <span className="text-2xs text-muted-foreground">{footerSummary}</span>
+              <span className="text-2xs">
+                {footerRange ? (
+                  <>
+                    <span className="font-medium text-foreground">{footerRange}</span>
+                    <span className="text-muted-foreground"> · {footerMeta}</span>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">{footerHint}</span>
+                )}
+              </span>
               <span className="flex items-center gap-2">
                 <button
                   onClick={() => { setOpen(false); resetPicks(); }}
