@@ -76,7 +76,7 @@ export default function TripsDrawer({
   const { data, isLoading, error } = useQuery<TripsResponse>({
     queryKey: ['vehicle-trips', vehicleName, start, end],
     queryFn: () => apiJSON<TripsResponse>(
-      `/vehicles/${encodeURIComponent(vehicleName)}/trips?start=${start}&end=${end}`,
+      `/vehicles/${encodeURIComponent(vehicleName)}/trips?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
     ),
     staleTime: 5 * 60_000,
     retry: false,
@@ -153,7 +153,7 @@ export default function TripsDrawer({
               Trips — {vehicleName}
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              {start} → {end}
+              {start.replace('T', ' ')} → {end.replace('T', ' ')}
               {data && !data.no_data && (
                 <>
                   {' · '}{data.trip_count} trip{data.trip_count === 1 ? '' : 's'}

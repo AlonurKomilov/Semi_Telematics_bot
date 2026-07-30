@@ -123,6 +123,7 @@ export default function Parking() {
   const [resolving, setResolving] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [mapUrls, setMapUrls] = useState<Record<number, string>>({});
+  const [mapErrors, setMapErrors] = useState<Record<number, string>>({});
 
   const queryKey = ['parking', tab, vehicleSearch, tab === 'active' ? showAll : null, tab === 'history' ? days : null, tab === 'history' ? classFilter : null] as const;
   const { data, isLoading: loading, isFetching, error: queryError, refetch, dataUpdatedAt } = useQuery<ParkingEventsResponse>({
@@ -164,16 +165,31 @@ export default function Parking() {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
-    // Fetch map image on first expand (authenticated)
-    if (!mapUrls[id] && ev.map_image_path) {
+    // Fetch map image on first expand (authenticated).
+    //
+    // A failure MUST become visible state.  This used to map a non-OK
+    // response to null and drop it, so the panel sat on "Loading map..."
+    // for good — which is exactly how a 404 on every event went
+    // unnoticed until the browser console was opened.  A spinner that
+    // never resolves reads as "slow", not "broken".
+    if (!mapUrls[id] && !mapErrors[id] && ev.map_image_path) {
       apiFetch(`/parking/${id}/map-image`)
-        .then((res) => res.ok ? res.blob() : null)
-        .then((blob) => {
-          if (blob) {
-            setMapUrls((prev) => ({ ...prev, [id]: URL.createObjectURL(blob) }));
+        .then(async (res) => {
+          if (!res.ok) {
+            setMapErrors((prev) => ({
+              ...prev,
+              [id]: res.status === 404
+                ? 'Map image unavailable for this event.'
+                : `Could not load map (HTTP ${res.status}).`,
+            }));
+            return;
           }
+          const blob = await res.blob();
+          setMapUrls((prev) => ({ ...prev, [id]: URL.createObjectURL(blob) }));
         })
-        .catch(() => {});
+        .catch(() => {
+          setMapErrors((prev) => ({ ...prev, [id]: 'Could not load map — network error.' }));
+        });
     }
   }
 
@@ -326,6 +342,8 @@ export default function Parking() {
                                     className="rounded-lg border border-border max-w-full"
                                     style={{ maxHeight: '300px' }}
                                   />
+                                ) : mapErrors[ev.id] ? (
+                                  <p className="text-xs text-destructive">{mapErrors[ev.id]}</p>
                                 ) : (
                                   <p className="text-xs text-muted-foreground">Loading map...</p>
                                 )}

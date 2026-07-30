@@ -230,7 +230,7 @@ export default function PivotView({
           overflowed.  Allowed to take its natural width it overflows,
           and the wrapper's ``overflow-x-auto`` finally has a job — which
           matters most exactly when the fields panel narrows the grid. */}
-      <table className="min-w-full text-sm border-collapse">
+      <table className={cn('min-w-full text-sm border-collapse', fill && 'h-full')}>
         {/* PINNED.  A three-level header (quarter > year > month > driver
             > measure) that scrolls away leaves every figure with no
             column identity, and there are 60 columns to guess between.
@@ -473,6 +473,19 @@ export default function PivotView({
               ))}
             </tr>
           ))}
+          {/* Slack absorber.  ``sticky bottom-0`` on the totals row only
+              pins it once the content OVERFLOWS — with four rows there
+              is nothing to stick past, so the total sat directly under
+              the last row with a large blank area beneath it, floating
+              mid-card.  A row with ``height: 100%`` takes the leftover
+              height (tables hand surplus to such a row), which pushes
+              the totals to the bottom edge where a total belongs, and
+              collapses to nothing the moment the rows do overflow. */}
+          {fill && result.bodyRows.length > 0 && (
+            <tr aria-hidden className="h-full">
+              <td colSpan={leafCount + 1 + result.totalLabels.length} />
+            </tr>
+          )}
           {result.bodyRows.length === 0 && (
             <tr>
               <td colSpan={leafCount + 1 + result.totalLabels.length} className={cn(cellPad, 'text-center text-muted-foreground')}>

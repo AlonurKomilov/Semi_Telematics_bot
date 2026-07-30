@@ -54,6 +54,10 @@ interface MileageResponse {
   /** Newest stored odometer day across the result — when it trails the
    *  requested end, the totals are short by exactly that much. */
   data_through?: string;
+  time_requested?: boolean;
+  /** Vehicles whose stored tiers couldn't answer at the requested
+   *  time-of-day precision (their rows fell back to whole days). */
+  imprecise_time_for?: string[];
 }
 
 /** Range start for the picker's convention: DateRangePresets computes
@@ -100,15 +104,23 @@ export default function Mileage() {
   // null = range ends today (the presets path); a custom calendar pick
   // sets an explicit end and the backend honors it.
   const [endDay, setEndDay] = useState<string | null>(null);
+  // Optional times-of-day ("HH:MM" | null) — appended to the date
+  // params; the backend resolves them down its precision ladder and
+  // names any vehicle it had to answer in whole days instead.
+  const [times, setTimes] = useState<{ start: string | null; end: string | null }>(
+    { start: null, end: null },
+  );
 
   const end = endDay ?? todayInTimeZone(tz);
   const start = startFor(end, days);
+  const startParam = times.start ? `${start}T${times.start}` : start;
+  const endParam = times.end ? `${end}T${times.end}` : end;
 
   const { data, isLoading, isFetching, error, refetch } =
     useQuery<MileageResponse>({
-      queryKey: ['vehicle-mileage', start, end],
+      queryKey: ['vehicle-mileage', startParam, endParam],
       queryFn: () => apiJSON<MileageResponse>(
-        `/vehicles/mileage?start=${start}&end=${end}`,
+        `/vehicles/mileage?start=${encodeURIComponent(startParam)}&end=${encodeURIComponent(endParam)}`,
       ),
       staleTime: 5 * 60_000,
     });
@@ -164,18 +176,38 @@ export default function Mileage() {
       <div className="mb-4 flex items-center justify-between gap-2 flex-wrap">
         <span className="text-sm text-muted-foreground">
           {data && rows.length > 0
-            ? `${data.total_miles.toLocaleString()} mi across ${rows.length} vehicle${rows.length === 1 ? '' : 's'}`
+            ? `${data.total_miles.toLocaleString()} mi across ${rows.length} vehicle${rows.length === 1 ? '' : 's'}${
+                times.start || times.end
+                  ? ` · ${times.start ?? '00:00'} → ${times.end ?? '23:59'}`
+                  : ''
+              }`
             : ''}
         </span>
         <DateRangePresets
           value={days}
-          onChange={(d) => { setDays(d); setEndDay(null); }}
-          onApplyRange={(d, e) => { setDays(d); setEndDay(e); }}
+          onChange={(d) => {
+            setDays(d); setEndDay(null);
+            setTimes({ start: null, end: null });
+          }}
+          onApplyRange={(d, e, t) => {
+            setDays(d); setEndDay(e);
+            setTimes({ start: t?.start ?? null, end: t?.end ?? null });
+          }}
           end={endDay}
           maxDays={RETENTION_DAYS}
           isFetching={isFetching}
+          withTime
         />
       </div>
+
+      {(data?.imprecise_time_for?.length ?? 0) > 0 && (
+        <p className="mb-3 text-xs text-muted-foreground">
+          Time of day applied where stored readings allow (last 7 days in
+          5-minute detail; hourly detail grows to 90 days as it accrues).
+          Whole-day totals were used for:{' '}
+          {data!.imprecise_time_for!.join(', ')}
+        </p>
+      )}
 
       {data?.data_through && data.data_through < end && rows.length > 0 && (
         <p className="mb-3 text-xs text-muted-foreground">
@@ -216,8 +248,8 @@ export default function Mileage() {
         <TripsDrawer
           vehicleName={drawer.name}
           rowMiles={drawer.miles}
-          start={start}
-          end={end}
+          start={startParam}
+          end={endParam}
           onClose={() => setDrawer(null)}
         />
       )}

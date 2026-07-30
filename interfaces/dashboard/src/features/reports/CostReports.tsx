@@ -31,6 +31,7 @@ interface SystemRow {
 interface AssemblyRow {
   assembly_key: string;
   assembly: string;
+  labor_spent: number;
   line_count: number;
   total_spent: number;
 }
@@ -547,7 +548,8 @@ export default function Reports() {
                   <h4 className="text-sm font-semibold">
                     {drillSystem.system} — by assembly
                     <span className="ml-2 text-xs font-normal text-muted-foreground">
-                      parts only · labor isn’t attributable to an assembly
+                      parts + labor · labor on a task without an assembly
+                      shows as Unassigned
                     </span>
                   </h4>
                   <button
@@ -562,7 +564,7 @@ export default function Reports() {
                   <p className="text-sm text-muted-foreground">Loading…</p>
                 ) : (perAssembly.data?.rows ?? []).length === 0 ? (
                   <p className="text-sm text-muted-foreground">
-                    No part lines in this system for the selected period.
+                    No lines in this system for the selected period.
                   </p>
                 ) : (
                   <ul className="space-y-1">
@@ -573,10 +575,12 @@ export default function Reports() {
                           {r.assembly}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          {r.line_count} line{r.line_count === 1 ? '' : 's'}
+                          {r.line_count} part line{r.line_count === 1 ? '' : 's'}
+                          {(r.labor_spent ?? 0) > 0 &&
+                            ` · labor ${moneyDetail(r.labor_spent)}`}
                         </span>
                         <span className="ml-auto tabular-nums font-medium">
-                          {moneyDetail(r.total_spent)}
+                          {moneyDetail(r.total_spent + (r.labor_spent ?? 0))}
                         </span>
                       </li>
                     ))}

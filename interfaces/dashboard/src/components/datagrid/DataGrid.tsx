@@ -3396,7 +3396,13 @@ export default function DataGrid({
           // Type size follows density — compact drops the whole table
           // to text-xs so the tighter padding actually buys more rows
           // per screen instead of just cramping the same-size text.
-          className={cn('min-w-full caption-bottom', DENSITY_TEXT[density])}
+          className={cn(
+            'min-w-full caption-bottom', DENSITY_TEXT[density],
+            // A definite height so the slack-absorbing row below can
+            // resolve its percentage; on overflow a table's height acts
+            // as a minimum, so this never truncates.
+            fillHeight && 'h-full',
+          )}
           // Once the operator has resized any column, widths become
           // authoritative: fixed layout + explicit total width (sum
           // of column sizes) so a drag actually changes the column
@@ -3812,6 +3818,17 @@ export default function DataGrid({
                   </TableRow>
                 );
               })
+            )}
+            {/* Slack absorber — the same problem the pivot matrix had:
+                ``sticky bottom-0`` on the totals row only pins it once
+                the rows OVERFLOW, so on a short page the total hugged
+                the last row and floated mid-card with blank space
+                beneath.  A ``height: 100%`` row takes the surplus and
+                collapses when the rows do overflow. */}
+            {fillHeight && rowCount > 0 && (
+              <TableRow aria-hidden className="h-full hover:bg-transparent border-0">
+                <td colSpan={table.getVisibleLeafColumns().length} />
+              </TableRow>
             )}
           </TableBody>
           {/* Aggregation footer — one total row, rendered only when a

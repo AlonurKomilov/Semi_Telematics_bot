@@ -57,7 +57,17 @@ export interface DateRangePresetsProps {
    *  the page's backend honors an explicit end date; called with the
    *  window length and the end day (null = ends today).  Presets keep
    *  firing plain ``onChange`` — reset your end state there. */
-  onApplyRange?: (days: number, end: string | null) => void;
+  onApplyRange?: (
+    days: number,
+    end: string | null,
+    times?: { start: string | null; end: string | null },
+  ) => void;
+  /** Show start/end TIME fields in the custom-range calendar.  The
+   *  applied times ride the third ``onApplyRange`` argument
+   *  ("HH:MM" or null = whole day).  Presets always clear times.
+   *  Pass ONLY when the page's backend accepts date-times — the
+   *  Mileage tab's precision ladder is the reference consumer. */
+  withTime?: boolean;
   /**
    * When true, render a subtle spinner inside the trigger so the user
    * sees feedback while the new period's data is being fetched.  Pages
@@ -211,6 +221,7 @@ export default function DateRangePresets({
   align = 'end',
   end = null,
   onApplyRange,
+  withTime = false,
   isFetching = false,
 }: DateRangePresetsProps) {
   const rangeCapable = onApplyRange !== undefined;
@@ -269,6 +280,10 @@ export default function DateRangePresets({
     }
   };
 
+  // Time-of-day fields (withTime only).  Empty string = whole day.
+  const [timeStart, setTimeStart] = useState('');
+  const [timeEnd, setTimeEnd] = useState('');
+
   const applyCustom = () => {
     if (!pickedStart) return;
     const effEnd = pickedEnd ?? today;
@@ -277,7 +292,13 @@ export default function DateRangePresets({
     const days = Math.max(1, Math.min(maxDays, daysBetween(pickedStart, effEnd)));
     if (rangeCapable && onApplyRange) {
       const endsToday = fmtIso(effEnd) === fmtIso(today);
-      onApplyRange(days, endsToday ? null : fmtIso(effEnd));
+      onApplyRange(
+        days,
+        endsToday ? null : fmtIso(effEnd),
+        withTime
+          ? { start: timeStart || null, end: timeEnd || null }
+          : undefined,
+      );
     } else {
       onChange(days);
     }
@@ -443,6 +464,44 @@ export default function DateRangePresets({
                 />
               </div>
             </div>
+
+            {/* ── time-of-day row (withTime pages only) ── */}
+            {withTime && (
+              <div className="mt-3 pt-2.5 border-t border-border flex items-center gap-3">
+                <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Time
+                </span>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  from
+                  <input
+                    type="time"
+                    value={timeStart}
+                    onChange={(e) => setTimeStart(e.target.value)}
+                    className="h-7 px-2 rounded-md border border-border bg-background text-foreground text-xs"
+                    aria-label="Start time"
+                  />
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  to
+                  <input
+                    type="time"
+                    value={timeEnd}
+                    onChange={(e) => setTimeEnd(e.target.value)}
+                    className="h-7 px-2 rounded-md border border-border bg-background text-foreground text-xs"
+                    aria-label="End time"
+                  />
+                </label>
+                {(timeStart || timeEnd) && (
+                  <button
+                    type="button"
+                    onClick={() => { setTimeStart(''); setTimeEnd(''); }}
+                    className="text-2xs text-muted-foreground hover:text-foreground"
+                  >
+                    clear
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* ── footer: live summary + actions ── */}
             <div className="mt-3 pt-2.5 border-t border-border flex items-center justify-between gap-3">

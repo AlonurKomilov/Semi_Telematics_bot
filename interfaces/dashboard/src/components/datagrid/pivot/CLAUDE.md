@@ -144,6 +144,21 @@ not a summary. `z-30` on both: it clears every sticky cell in the body
 (max `z-20`), so the frozen Total column cannot paint over the header it
 belongs under.
 
+## The totals row sits at the BOTTOM, not under the last row
+
+`sticky bottom-0` alone only pins a totals row once the content
+OVERFLOWS — with four rows there is nothing to stick past, so the total
+landed directly beneath the last one and floated mid-card above a large
+blank area. A totals row belongs at the foot of the surface whether
+there are four rows or four hundred.
+
+The fix is a **slack-absorbing row**: an `aria-hidden` `<tr>` with
+`height: 100%` after the data rows, plus `h-full` on the table so the
+percentage resolves. Tables hand surplus height to such a row, which
+pushes the footer to the bottom edge; the moment the rows do overflow it
+collapses to nothing and the sticky behaviour takes over. Both renderers
+do this — the record list's aggregation footer had the identical defect.
+
 ## Hand-rolled cells must restate the primitives' padding
 
 `DENSITY_PADDING` is **vertical only** (`py-1` / `py-3` / `py-5`). List
