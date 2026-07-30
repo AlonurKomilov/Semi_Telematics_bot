@@ -19,6 +19,8 @@ import { isScoped } from './permRows';
 import type { PermFlag } from './permRows';
 
 const GRID = buildVerbGrid();
+const HEAD_COLS = 'grid grid-cols-[1fr_84px_84px_76px_84px]';
+type ConfigScope = 'can_manage_config_role' | 'can_manage_config_all';
 const DRIVER_BANDS = driverBands();
 
 export interface RoleLensApi {
@@ -140,8 +142,15 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   // The config cell edits a flag SHARED with other features — a link
   // glyph says so before the click (an ⓘ would only promise an
   // explanation; the shape has to say "not local").
-  const configCell = (fam: VerbFamily): ReactNode => {
-    if (!fam.configVia) return emptyCell;
+  // Two cells: one per config scope, so the tick's column is the answer.
+  const configCells = (fam: VerbFamily): ReactNode => (
+    <>
+      {configCell(fam, 'can_manage_config_role')}
+      {configCell(fam, 'can_manage_config_all')}
+    </>
+  );
+  const configCell = (fam: VerbFamily, scope: ConfigScope): ReactNode => {
+    if (fam.configVia !== scope) return emptyCell;
     const cap = capRow(fam.configVia);
     return verbCell(cap, 'config', (
       <Tip label={`Shared control — the same flag as “${cap.label}”${fam.configNote ? ` (here: ${fam.configNote})` : ''}. Changing it here changes it everywhere that flag appears.`}>
@@ -189,7 +198,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           ) : (
             <>{verbCell(fam.parent, 'view')}{verbCell(fam.manage ?? null, 'manage')}</>
           )}
-          {configCell(fam)}
+          {configCells(fam)}
         </div>
         {fam.children.map((c) => {
           const cDelta = seniorView && rowDelta(c.row);
@@ -211,6 +220,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                   {verbCell(c.verb === 'manage' ? c.row : null, 'manage')}
                 </>
               )}
+              {emptyCell}
               {emptyCell}
             </div>
           );
@@ -301,11 +311,30 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
 
       {/* Verb grid */}
       <div className="px-4 pb-4">
-        <div className="grid grid-cols-[1fr_84px_84px_96px] gap-x-2 pt-3 pb-1.5 border-b border-border sticky top-0 bg-card z-10">
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Feature</span>
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">View</span>
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">Manage</span>
-          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">Config</span>
+        {/* Two-level header for CONFIG alone: its two columns ARE the two
+            config flags, so a tick's COLUMN says which scope it is and
+            features sharing a flag line up under it — position carries
+            what the link mark used to carry by itself.  The scope
+            descriptions live on these headers because the column is the
+            flag. */}
+        <div className="sticky top-0 bg-card z-10 border-b border-border pt-3 pb-1.5">
+          <div className={`${HEAD_COLS} gap-x-2`}>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Feature</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">View</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">Manage</span>
+            <span className="col-span-2 text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">Config</span>
+          </div>
+          <div className={`${HEAD_COLS} gap-x-2`}>
+            <span /><span /><span />
+            <span className="text-3xs text-muted-foreground/70 text-center inline-flex items-center justify-center gap-0.5">
+              own role
+              <InfoTip size={12} label="Team-default page layouts for the holder's OWN role — the page gear's “Team default” block. General-settings holders can set any role's." />
+            </span>
+            <span className="text-3xs text-muted-foreground/70 text-center inline-flex items-center justify-center gap-0.5">
+              account-wide
+              <InfoTip size={12} label="A feature's SHARED settings, one truth for everyone: scorecard rules + pillar caps, KPI grade thresholds, and every future feature setting." />
+            </span>
+          </div>
         </div>
         {isDriver && (
           <p className="text-2xs text-muted-foreground pt-2.5 inline-flex items-center gap-1">
@@ -327,6 +356,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                   )}
                 </div>
                 {verbCell(r, 'view')}
+                {emptyCell}
                 {emptyCell}
                 {emptyCell}
               </div>
@@ -362,6 +392,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 </div>
                 {emptyCell}
                 {emptyCell}
+                {emptyCell}
               </div>
             ))}
           </>
@@ -371,20 +402,25 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             Configuration
           </div>
         )}
-        {!isDriver && GRID.crossFeature.map((cap) => {
-          const delta = seniorView && rowDelta(cap);
-          return (
-            <div key={rowId(cap)} className={rowCls()}>
-              <div className="min-w-0">
-                <span className="text-sm font-medium">{cap.label}{delta && <DeltaChip />}</span>
-                {cap.description && <div className="text-2xs text-muted-foreground/70">{cap.description}</div>}
+        {/* The flags themselves — ONE row, because they are not features:
+            the label spans the verb columns (no "– –" on rows that were
+            never about View or Manage) and each tick sits under its own
+            scope, in the same column as every feature that rides it.
+            They still need a row of their own: can_manage_config_role
+            governs page layouts, and the only page with layouts today is
+            Alerts — an always-on service with no row to hang a cell on. */}
+        {!isDriver && (
+          <div className={rowCls()}>
+            <div className="min-w-0 col-span-3">
+              <span className="text-sm font-medium">Who may configure</span>
+              <div className="text-2xs text-muted-foreground/70">
+                the two flags above — one covers page layouts for their own role, the other a feature's shared settings
               </div>
-              {emptyCell}
-              {emptyCell}
-              {verbCell(cap, 'config')}
             </div>
-          );
-        })}
+            {verbCell(capRow('can_manage_config_role'), 'config — own role')}
+            {verbCell(capRow('can_manage_config_all'), 'config — account-wide')}
+          </div>
+        )}
         <p className="text-2xs text-muted-foreground mt-3">
           <span className="font-medium">–</span> means this feature has no flag of that verb —
           nothing to grant, not a denial.
@@ -403,7 +439,7 @@ const rowId = (r: TickRow): string => (isScoped(r) ? r.allKey : (r as { key: str
 const capRow = (key: 'can_manage_config_all' | 'can_manage_config_role'): TickRow =>
   GRID.crossFeature.find((c) => rowId(c) === key)!;
 const rowCls = (): string =>
-  'grid grid-cols-[1fr_84px_84px_96px] gap-x-2 items-center py-1.5 border-t border-border';
+  'grid grid-cols-[1fr_84px_84px_76px_84px] gap-x-2 items-center py-1.5 border-t border-border';
 
 function DeltaChip() {
   return (
