@@ -15,7 +15,9 @@
  *    ride the two family flags (docs/architecture/config.md) — the
  *    cell edits the capability row, visibly shared.
  */
-import { GROUP_BLOCKS, isHeader, isScoped } from './permRows';
+import {
+  DRIVER_RECORDS, DRIVER_TRUCK, GROUP_BLOCKS, isHeader, isScoped,
+} from './permRows';
 import type { Block, PermFlag, ScopedFlag, SimpleFlag } from './permRows';
 
 export type TickRow = ScopedFlag | SimpleFlag;
@@ -118,4 +120,34 @@ export function placedRows(grid: VerbGrid): PermFlag[] {
     for (const c of f.children) out.push(c.row);
   }
   return out;
+}
+
+
+// ── The Driver, as a role the lens can open ────────────────────────
+//
+// A driver IS a role, so the One-role lens gives it a tab like any
+// other.  What it can't do is share the staff row model: a driver's
+// grants are always own-truck scoped, they never manage anything, and
+// five of their flags (own documents, paystubs, coaching, loads, risk
+// summary) deliberately have NO staff-matrix row at all.  So the tab
+// renders these two bands instead of the verb families, and the matrix
+// lens keeps its separate panel (a Driver *column* there is still
+// nonsense).  Same storage key, same toggle, same save pipeline.
+export const DRIVER_KEY = 'driver';
+
+export interface DriverBand { title: string; note: string; rows: TickRow[] }
+
+export function driverBands(): DriverBand[] {
+  return [
+    {
+      title: 'Own truck',
+      note: 'always their assigned truck only — never account-wide',
+      rows: DRIVER_TRUCK as TickRow[],
+    },
+    {
+      title: 'Own records',
+      note: 'their own documents and history, nobody else\u2019s',
+      rows: DRIVER_RECORDS as TickRow[],
+    },
+  ];
 }

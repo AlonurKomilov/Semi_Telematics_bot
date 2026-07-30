@@ -13,12 +13,13 @@ import { toneClasses } from '../../lib/status';
 import { Tip } from '../../components/tooltip';
 import { usePreference } from '../../preferences';
 import { useRoleView } from '../../context/RoleViewContext';
-import { buildVerbGrid } from './verbGrid';
+import { DRIVER_KEY, buildVerbGrid, driverBands } from './verbGrid';
 import type { TickRow, VerbFamily } from './verbGrid';
 import { isScoped } from './permRows';
 import type { PermFlag } from './permRows';
 
 const GRID = buildVerbGrid();
+const DRIVER_BANDS = driverBands();
 
 export interface RoleLensApi {
   roles: readonly string[];
@@ -44,6 +45,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
   // below reports the senior tier either way — no information is lost by
   // not starting there.
   const [tier, setTier] = useState(0);
+  const isDriver = role === DRIVER_KEY;
   const cols = api.tierCols(role);
   const col = cols[Math.min(tier, cols.length - 1)];
   const seniorView = cols.length > 1 && col.key === cols[1].key;
@@ -89,8 +91,11 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
       </button>
     );
   };
+  // "Nothing to grant here" is an en dash — the SAME mark the matrix
+  // lens uses on its owners-only rows.  A bespoke dashed square would be
+  // a second vocabulary for one meaning on one page.
   const noflag = (
-    <span className="inline-flex w-5 h-5 rounded border border-dashed border-border opacity-40" aria-hidden />
+    <span className="inline-flex text-muted-foreground/40 text-xs leading-5" aria-hidden>–</span>
   );
   const emptyCell = <div className="text-center">{noflag}</div>;
 
@@ -193,7 +198,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
     <div>
       {/* Role tabs + preview */}
       <div className="flex items-center gap-1.5 flex-wrap px-4 pt-3">
-        {api.roles.map((r) => (
+        {[...api.roles, DRIVER_KEY].map((r) => (
           <button
             key={r}
             type="button"
@@ -208,7 +213,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           </button>
         ))}
         <span className="flex-1" />
-        {canSwitchView && (
+        {canSwitchView && !isDriver && (
           <button
             type="button"
             onClick={() => setRoleView(role)}
@@ -220,7 +225,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
       </div>
 
       {/* Tier switch */}
-      {cols.length > 1 && (
+      {cols.length > 1 && !isDriver && (
         <div className="flex items-center gap-2 px-4 pt-2.5">
           <span className="text-xs text-muted-foreground">Tier</span>
           <div className="inline-flex bg-muted border border-border rounded-md p-0.5">
@@ -248,7 +253,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
       )}
 
       {/* The tier delta, as a sentence */}
-      {cols.length > 1 && (
+      {cols.length > 1 && !isDriver && (
         <p className={`mx-4 mt-2.5 px-3 py-1.5 rounded-md text-xs flex items-baseline gap-1 min-w-0 ${toneClasses(deltaNames.length ? 'ok' : 'neutral')}`}>
           {/* One line, always — tab clicks must not move the grid below
               (the full list rides the tooltip). */}
@@ -278,7 +283,36 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">Manage</span>
           <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground text-center">Config</span>
         </div>
-        {GRID.bands.map((b) => (
+        {isDriver && (
+          <p className="text-2xs text-muted-foreground pt-2.5">
+            Drivers work in the Telegram <span className="font-medium text-foreground/80">mini app</span> only
+            and never manage anything, so their grants are all View — and always their
+            own truck. Changes reach every driver&apos;s app on next load; the
+            <span className="font-medium text-foreground/80"> Alerts</span> inbox and
+            <span className="font-medium text-foreground/80"> AI assistant</span> come with the Vehicle grant.
+          </p>
+        )}
+        {isDriver && DRIVER_BANDS.map((b) => (
+          <div key={b.title}>
+            <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+              {b.title} <span className="normal-case tracking-normal text-muted-foreground/70">— {b.note}</span>
+            </div>
+            {b.rows.map((r) => (
+              <div key={rowId(r)} className={rowCls()}>
+                <div className="min-w-0">
+                  <span className="text-sm font-medium">{r.label}</span>
+                  {r.description && (
+                    <div className="text-2xs text-muted-foreground/70">{r.description}</div>
+                  )}
+                </div>
+                {verbCell(r, 'view')}
+                {emptyCell}
+                {emptyCell}
+              </div>
+            ))}
+          </div>
+        ))}
+        {!isDriver && GRID.bands.map((b) => (
           <div key={b.band}>
             <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
               {b.band}
@@ -286,10 +320,12 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
             {b.families.map(famRow)}
           </div>
         ))}
-        <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-          Configuration
-        </div>
-        {GRID.capabilities.map((cap) => {
+        {!isDriver && (
+          <div className="-mx-4 px-4 py-1 mt-1 bg-muted/40 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+            Configuration
+          </div>
+        )}
+        {!isDriver && GRID.capabilities.map((cap) => {
           const delta = seniorView && rowDelta(cap);
           return (
             <div key={rowId(cap)} className={rowCls()}>
@@ -304,7 +340,8 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           );
         })}
         <p className="text-2xs text-muted-foreground mt-3">
-          A dashed square means this feature has no flag of that verb — nothing to grant, not a denial.
+          <span className="font-medium">–</span> means this feature has no flag of that verb —
+          nothing to grant, not a denial.
           Where one flag covers both verbs, the Manage tick is drawn softer with a link
           mark (<Link2 size={12} className="inline align-[-2px]" aria-hidden />) — either tick toggles both.
           * scoped feature — whose data is set per-user in Team Management.

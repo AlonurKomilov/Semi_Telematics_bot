@@ -3,8 +3,8 @@
  * the row model so the two lenses can never drift apart.
  */
 import { describe, expect, it } from 'vitest';
-import { PERM_GROUPS, isHeader } from './permRows';
-import { buildVerbGrid, placedRows } from './verbGrid';
+import { DRIVER_PANEL_FLAGS, PERM_GROUPS, isHeader } from './permRows';
+import { buildVerbGrid, driverBands, placedRows } from './verbGrid';
 
 const grid = buildVerbGrid();
 
@@ -38,6 +38,28 @@ describe('verb grid completeness', () => {
   it('merged families are single write-level flags, never scoped pairs', () => {
     for (const b of grid.bands) for (const fam of b.families) {
       if (fam.merged) expect('allKey' in fam.parent).toBe(false);
+    }
+  });
+});
+
+describe('the Driver tab', () => {
+  it('covers every driver flag exactly once — nothing strands', () => {
+    // The driver's flags live outside the staff row model, so the
+    // completeness guarantee has to be stated separately: the tab's two
+    // bands ARE the driver panel's flag list, or a grant becomes
+    // unreachable in the lens.
+    const banded = driverBands().flatMap((b) => b.rows);
+    expect(banded.length).toBe(DRIVER_PANEL_FLAGS.length);
+    expect(new Set(banded).size).toBe(banded.length);
+    for (const f of DRIVER_PANEL_FLAGS) expect(banded).toContain(f);
+  });
+
+  it('driver rows never appear in the staff verb grid', () => {
+    const staff = new Set(placedRows(buildVerbGrid()));
+    for (const f of DRIVER_PANEL_FLAGS) {
+      // can_loads_own / can_risk_report_own are the vehicleKey half of a
+      // staff scoped PAIR, never a staff ROW of their own.
+      expect(staff.has(f), (f as { label: string }).label).toBe(false);
     }
   });
 });

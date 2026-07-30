@@ -588,11 +588,13 @@ export default function Permissions() {
             )}
           </div>
 
-          {/* Driver — self-service.  The driver role lives HERE, not in the
-              staff matrix: a driver only ever sees their OWN truck + records,
-              in the Telegram mini app.  Edits write the `driver` role's stored
-              perms, which the mini app reads via /api/user/me — so a change
-              reaches every driver's app on next load. */}
+          {/* Driver — self-service, the MATRIX lens's driver surface.  A
+              Driver *column* in the matrix is nonsense (a driver manages
+              nothing and lives in the mini app), so it gets this panel.
+              The One-role lens has no such problem — there the driver is
+              simply a tab — so the panel would be a second editor for the
+              same flags and is hidden. */}
+          {lens === 'matrix' && (
           <div className="mt-4 rounded-lg border border-border bg-card p-4">
             <div className="flex items-center gap-2 mb-1">
               <Smartphone size={16} className="text-primary shrink-0" />
@@ -630,6 +632,7 @@ export default function Permissions() {
               {DRIVER_RECORDS.map(renderDriverRow)}
             </ul>
           </div>
+          )}
 
           {/* System Services — always-on infrastructure, NOT owner-toggled.
               Access is derived from each role's feature permissions, so there
