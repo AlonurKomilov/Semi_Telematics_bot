@@ -140,8 +140,17 @@ export default function PivotView({
   // The row-label column stays put during horizontal scroll — otherwise a
   // wide matrix scrolls the identity off screen and the numbers lose
   // their subject.  Plain sticky; deliberately not the grid's pin maths.
-  const stickyCol = 'sticky left-0 z-10 bg-card';
-  const stickyHead = 'sticky left-0 z-20 bg-muted';
+  //
+  // Every pinned edge carries a SEAM: a crisp 1px inset line plus the
+  // grid's own --pin-shadow token (theme-tuned).  Without it the
+  // scrolled column slides under the pinned one with nothing marking
+  // the boundary — headers fused into "DUFITU THEMI NSENG|TOTAL" and
+  // digits glued across the join (layout-audit S1: two regions must
+  // never read as one).  box-shadow, not border: these tables are
+  // border-collapse, where borders don't reliably travel with sticky
+  // cells.
+  const stickyCol = 'sticky left-0 z-10 bg-card [box-shadow:inset_-1px_0_0_var(--border),var(--pin-shadow-right)]';
+  const stickyHead = 'sticky left-0 z-20 bg-muted [box-shadow:inset_-1px_0_0_var(--border),var(--pin-shadow-right)]';
   // The Total column pins to the RIGHT edge for the same reason the row
   // label pins left: with 60 driver columns the figure you actually came
   // for would otherwise sit past the end of a long horizontal scroll.
@@ -150,8 +159,8 @@ export default function PivotView({
   // pinned SUMMARY should cleanly occlude the label rather than the two
   // interleaving and slicing a figure mid-glyph ("$190,384.0").  Still a
   // collision; this makes it a legible one.
-  const stickyTotalCell = 'sticky right-0 z-20 bg-card';
-  const stickyTotalHead = 'sticky right-0 z-30 bg-muted';
+  const stickyTotalCell = 'sticky right-0 z-20 bg-card [box-shadow:inset_1px_0_0_var(--border),var(--pin-shadow-left)]';
+  const stickyTotalHead = 'sticky right-0 z-30 bg-muted [box-shadow:inset_1px_0_0_var(--border),var(--pin-shadow-left)]';
 
   return (
     <div className={cn(fill && 'flex h-full flex-col min-h-0')}>

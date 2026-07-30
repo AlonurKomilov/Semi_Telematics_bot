@@ -215,6 +215,12 @@ right, mirroring the Total row — a 2-D pivot could otherwise show every
 driver's contribution to a company but never the company's own figure,
 which is usually the number the reader came for.
 
+Both pinned edges (row-label left, Total right) carry a seam — a 1px
+inset line + the grid's `--pin-shadow-*` token, via box-shadow because
+these tables are border-collapse and borders don't travel with sticky
+cells. Without it, mid-scroll columns slid under the pinned ones with
+headers fusing into one word (layout-audit S1 catch, owner-reported).
+
 Its values are **re-aggregated from the source rows**, never summed
 across the cells: adding per-column averages is arithmetic nonsense and
 `count` would multiply. Same rule as the Total row. Without a column
