@@ -665,10 +665,19 @@ async def account_period_mileage(
     # fell back to whole-day boundaries).
     imprecise: list[str] = []
     if s_ts or e_ts:
+        # Same unit number in two companies = two real trucks — the
+        # bare name would print as a baffling duplicate ("103, 103"),
+        # so repeated names carry their company.
+        hits = [(v["vehicle_name"], v.get("company") or "")
+                for v in vehicles
+                if (s_ts and not v.get("start_precise"))
+                or (e_ts and not v.get("end_precise"))]
+        name_counts: dict[str, int] = {}
+        for nm, _co in hits:
+            name_counts[nm] = name_counts.get(nm, 0) + 1
         imprecise = sorted(
-            v["vehicle_name"] for v in vehicles
-            if (s_ts and not v.get("start_precise"))
-            or (e_ts and not v.get("end_precise"))
+            f"{nm} ({co})" if name_counts[nm] > 1 and co else nm
+            for nm, co in hits
         )
     return {
         "start": start, "end": end,
