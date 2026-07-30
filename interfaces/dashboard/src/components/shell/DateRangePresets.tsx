@@ -64,7 +64,8 @@ export interface DateRangePresetsProps {
     end: string | null,
     times?: { start: string | null; end: string | null },
   ) => void;
-  /** Show start/end TIME fields in the custom-range calendar.  The
+  /** Show start/end TIME selectors (HOUR granularity) in the
+   *  custom-range calendar.  The
    *  applied times ride the third ``onApplyRange`` argument
    *  ("HH:MM" or null = whole day).  Presets always clear times.
    *  Pass ONLY when the page's backend accepts date-times — the
@@ -287,9 +288,14 @@ export default function DateRangePresets({
     }
   };
 
-  // Time-of-day fields (withTime only).  Empty string = whole day.
-  const [timeStart, setTimeStart] = useState('');
-  const [timeEnd, setTimeEnd] = useState('');
+  // Time-of-day (withTime only) — HOUR granularity by design: the
+  // warehouse answers from 5-minute snapshots and banked hourly
+  // readings, so offering minutes would imply precision the data
+  // can't back.  Defaults are VISIBLE ("00:00" → "End of day") so the
+  // whole-day behavior is stated, not guessed from an empty "--:--".
+  const [timeStart, setTimeStart] = useState('00:00');
+  const [timeEnd, setTimeEnd] = useState('24:00');
+  const timesAreDefault = timeStart === '00:00' && timeEnd === '24:00';
 
   const applyCustom = () => {
     if (!pickedStart) return;
@@ -303,7 +309,10 @@ export default function DateRangePresets({
         days,
         endsToday ? null : fmtIso(effEnd),
         withTime
-          ? { start: timeStart || null, end: timeEnd || null }
+          ? {
+              start: timeStart === '00:00' ? null : timeStart,
+              end: timeEnd === '24:00' ? null : timeEnd,
+            }
           : undefined,
       );
     } else {
@@ -357,8 +366,8 @@ export default function DateRangePresets({
     ? (startOfDay(pickedStart) <= startOfDay(previewFar)
         ? [pickedStart, previewFar] : [previewFar, pickedStart])
     : [null, null];
-  const draftClock = withTime && (timeStart || timeEnd)
-    ? ` · ${formatClock(timeStart || '00:00')}–${formatClock(timeEnd || '23:59')}`
+  const draftClock = withTime && !timesAreDefault
+    ? ` · ${formatClock(timeStart)}–${timeEnd === '24:00' ? 'end of day' : formatClock(timeEnd)}`
     : '';
   const footerSummary = sumLo && sumHi
     ? `${fmtNice(sumLo, tz)} → ${fmtNice(sumHi, tz)} · ${daysBetween(sumLo, sumHi)} days${draftClock}`
@@ -487,31 +496,46 @@ export default function DateRangePresets({
                 </span>
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   from
-                  <input
-                    type="time"
+                  <select
                     value={timeStart}
                     onChange={(e) => setTimeStart(e.target.value)}
                     className="h-7 px-2 rounded-md border border-border bg-background text-foreground text-xs"
-                    aria-label="Start time"
-                  />
+                    aria-label="Start time (hour)"
+                  >
+                    {Array.from({ length: 24 }, (_, h) => {
+                      const v = `${String(h).padStart(2, '0')}:00`;
+                      return (
+                        <option key={v} value={v}>{formatClock(v)}</option>
+                      );
+                    })}
+                  </select>
                 </label>
                 <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   to
-                  <input
-                    type="time"
+                  <select
                     value={timeEnd}
                     onChange={(e) => setTimeEnd(e.target.value)}
                     className="h-7 px-2 rounded-md border border-border bg-background text-foreground text-xs"
-                    aria-label="End time"
-                  />
+                    aria-label="End time (hour)"
+                  >
+                    {Array.from({ length: 24 }, (_, i) => {
+                      const h = i + 1;
+                      const v = h === 24 ? '24:00' : `${String(h).padStart(2, '0')}:00`;
+                      return (
+                        <option key={v} value={v}>
+                          {h === 24 ? 'End of day' : formatClock(v)}
+                        </option>
+                      );
+                    })}
+                  </select>
                 </label>
-                {(timeStart || timeEnd) && (
+                {!timesAreDefault && (
                   <button
                     type="button"
-                    onClick={() => { setTimeStart(''); setTimeEnd(''); }}
+                    onClick={() => { setTimeStart('00:00'); setTimeEnd('24:00'); }}
                     className="text-2xs text-muted-foreground hover:text-foreground"
                   >
-                    clear
+                    reset
                   </button>
                 )}
               </div>
