@@ -18,11 +18,21 @@ import AssistantHost from './features/ai/AssistantHost';
  * reload instead of leaving the SPA wedged on a white screen with
  * ``Failed to fetch dynamically imported module``.
  *
- * We guard against reload loops with a sessionStorage flag — if a
- * reload already happened for this session and we still can't load
- * the chunk, surface the error so it shows up in the error boundary
- * rather than spinning forever.
+ * The loop guard is TIME-BOXED, not once-per-session.  It used to read
+ * the stored value as a mere boolean — so the first stale chunk in a
+ * session reloaded, and every stale chunk after that re-threw and left
+ * the SPA wedged on exactly the error this wrapper exists to prevent.
+ * That is not a rare case: any session spanning two deploys hits it, and
+ * a session spanning several (an afternoon of frontend work) hits it
+ * repeatedly.  The value was already a timestamp; now it is actually
+ * compared against.
+ *
+ * A genuine reload loop retries within milliseconds, while a later
+ * deploy is minutes away — so a short window separates the two cleanly.
  */
+const CHUNK_RELOAD_KEY = 'chunk-reload-attempted';
+/** Below this, a repeat failure means the reload itself is not helping. */
+const CHUNK_RELOAD_LOOP_WINDOW_MS = 10_000;
 // Components have heterogeneous props (most take none, Chat takes an
 // optional `variant`), so this router helper is intentionally prop-
 // agnostic via `any` — the concrete prop types are enforced at each
@@ -37,9 +47,14 @@ function lazyWithReload<T extends { default: React.ComponentType<any> }>(
         msg.includes('Failed to fetch dynamically imported module') ||
         msg.includes('Importing a module script failed') ||
         msg.includes('error loading dynamically imported module');
-      const alreadyReloaded = sessionStorage.getItem('chunk-reload-attempted');
-      if (isChunkLoadError && !alreadyReloaded) {
-        sessionStorage.setItem('chunk-reload-attempted', String(Date.now()));
+      const last = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) ?? 0);
+      // NaN/0 (never reloaded, or a legacy non-numeric value) reads as
+      // "long ago", which is the safe direction: recover rather than wedge.
+      const inLoopWindow =
+        Number.isFinite(last) && last > 0
+        && Date.now() - last < CHUNK_RELOAD_LOOP_WINDOW_MS;
+      if (isChunkLoadError && !inLoopWindow) {
+        sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()));
         window.location.reload();
         // Reload is async — return a never-resolving promise so React
         // doesn't try to render the broken module in the meantime.
@@ -99,6 +114,7 @@ const CostReports      = lazyWithReload(() => import('./features/reports/CostRep
 // editor (as tabs) — the editor is fleet's tool, not a separate admin
 // page.  Loaded as a single chunk.
 const Inspections      = lazyWithReload(() => import('./features/inspections/Inspections'));
+const TruckAnatomy     = lazyWithReload(() => import('./features/truck-anatomy/TruckAnatomy'));
 const KnowledgeBase    = lazyWithReload(() => import('./features/knowledge/KnowledgeBase'));
 const TeamManagement   = lazyWithReload(() => import('./features/settings/TeamManagement'));
 const Companies        = lazyWithReload(() => import('./features/settings/Companies'));
@@ -261,6 +277,10 @@ export default function AppRouter() {
 
         {/* Knowledge Base */}
         <Route path="knowledge" element={L(<KnowledgeBase />)} />
+        {/* Hidden route (no nav entry yet): the taxonomy as a 3D
+            learning model. Whole feature = features/truck-anatomy/ +
+            this line — removable as a unit. */}
+        <Route path="truck-anatomy" element={L(<TruckAnatomy />)} />
 
         {/* Account / Settings pages — clean top-level paths (the
             meaningless /admin/* prefix was retired 2026-06-11).  Each
