@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { formatClock } from '../../utils/datetime';
 import {
-  Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
+  Select, SelectTrigger, SelectContent, SelectItem,
 } from '../ui/select';
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useTimezone } from '../../hooks/useTimezone';
@@ -523,8 +523,13 @@ export default function DateRangePresets({
                 <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   From
                   <Select value={timeStart} onValueChange={setTimeStart} items={HOUR_ITEMS_FROM}>
-                    <SelectTrigger size="sm" className="w-24" aria-label="Start time (hour)">
-                      <SelectValue />
+                    {/* Closed trigger shows the COMPACT value; the
+                        "(midnight)"/"(noon)" disambiguation lives in the
+                        dropdown options where the choice happens — the
+                        long form overflowed the trigger and collided
+                        with the To label. */}
+                    <SelectTrigger size="sm" className="text-xs" aria-label="Start time (hour)">
+                      <span>{formatClock(timeStart)}</span>
                     </SelectTrigger>
                     <SelectContent>
                       {HOUR_ITEMS_FROM.map((it) => (
@@ -536,8 +541,8 @@ export default function DateRangePresets({
                 <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                   To
                   <Select value={timeEnd} onValueChange={setTimeEnd} items={HOUR_ITEMS_TO}>
-                    <SelectTrigger size="sm" className="w-24" aria-label="End time (hour)">
-                      <SelectValue />
+                    <SelectTrigger size="sm" className="text-xs" aria-label="End time (hour)">
+                      <span>{timeEnd === '24:00' ? 'End of day' : formatClock(timeEnd)}</span>
                     </SelectTrigger>
                     <SelectContent>
                       {HOUR_ITEMS_TO.map((it) => (
