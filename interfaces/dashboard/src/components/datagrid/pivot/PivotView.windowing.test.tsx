@@ -155,3 +155,47 @@ describe('row windowing bounds the DOM', () => {
     expect(region.getAttribute('tabindex')).toBe('0');
   });
 });
+
+describe('the frozen columns stay frozen', () => {
+  // `sticky` and `relative` are the SAME tailwind-merge group (position),
+  // so any class list that appends `relative` to a sticky cell silently
+  // replaces it and the column stops freezing. That happened once, when a
+  // `relative` was added to host the zebra overlay — and it is invisible
+  // in jsdom (no layout) and easy to miss in a browser, because the header
+  // corner keeps its own sticky and looks correct while the body labels
+  // scroll away beneath it. The merged class string is checkable, so it is
+  // the guard.
+  const freeze = (sel: string) => {
+    const el = document.querySelector(sel);
+    expect(el, `expected ${sel} to exist`).not.toBeNull();
+    return (el as HTMLElement).className;
+  };
+
+  it('keeps position:sticky on the row-label column', async () => {
+    await act(async () => {
+      render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
+    });
+    const cls = freeze('tbody tr[data-prow] th');
+    expect(cls).toContain('sticky');
+    // The overlay's containing block comes from `sticky` itself.
+    expect(cls.split(/\s+/)).not.toContain('relative');
+  });
+
+  it('keeps position:sticky on the Total column', async () => {
+    await act(async () => {
+      render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
+    });
+    const cells = document.querySelectorAll('tbody tr[data-prow] td');
+    const last = cells[cells.length - 1] as HTMLElement;
+    expect(last.className).toContain('sticky');
+    expect(last.className.split(/\s+/)).not.toContain('relative');
+  });
+
+  it('keeps the header corner and the totals label frozen too', async () => {
+    await act(async () => {
+      render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
+    });
+    expect(freeze('thead th[data-pin="left"]')).toContain('sticky');
+    expect(freeze('tfoot th')).toContain('sticky');
+  });
+});

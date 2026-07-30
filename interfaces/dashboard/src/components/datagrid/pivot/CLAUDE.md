@@ -144,6 +144,24 @@ not a summary. `z-30` on both: it clears every sticky cell in the body
 (max `z-20`), so the frozen Total column cannot paint over the header it
 belongs under.
 
+## Never append `relative` to a sticky cell
+
+`sticky` and `relative` are the SAME tailwind-merge group (`position`), so
+`cn(stickyCol, 'relative …')` keeps the LAST one and the column silently
+**stops freezing**. That shipped: a `relative` was added to host the zebra
+overlay, and both frozen body columns thawed. It is nearly invisible —
+jsdom has no layout, and in a browser the header corner and the totals
+label keep their own `sticky` and look right, so what you see is a pinned
+header floating over unrelated data rather than an obviously broken
+column.
+
+`position: sticky` is itself a positioned value, so it ALREADY forms the
+containing block an `absolute inset-0` overlay resolves against —
+`relative` was never needed. `PivotView.windowing.test.tsx` asserts the
+merged class string still contains `sticky` and not `relative`, because
+the merged string is the only part of this that is checkable without a
+layout engine.
+
 ## A pinned cell must be fully OPAQUE
 
 The zebra stripe is `bg-muted/30` — 30% alpha. Applied directly to a

@@ -586,7 +586,15 @@ export default function PivotView({
                 className={cn(
                   cellPad,
                   stickyCol,
-                  'relative text-left font-medium whitespace-nowrap transition-colors',
+                  // NO ``relative`` here.  ``sticky`` and ``relative`` are
+                  // the same tailwind-merge group (position), so adding
+                  // ``relative`` for the zebra overlay silently REPLACED
+                  // ``sticky`` and the frozen column stopped freezing —
+                  // leaving a pinned header cell floating over unrelated
+                  // data.  ``position: sticky`` is itself a positioned
+                  // value, so it already forms the containing block the
+                  // ``absolute inset-0`` overlay resolves against.
+                  'text-left font-medium whitespace-nowrap transition-colors',
                   'group-hover/prow:bg-muted',
                 )}
               >
@@ -685,7 +693,9 @@ export default function PivotView({
                   key={`tot-${i}`}
                   className={cn(
                     cellPad, stickyTotalCell,
-                    'relative text-right tabular-nums whitespace-nowrap font-semibold border-l border-border',
+                    // Same trap as the row-label column: no ``relative``,
+                    // or this stops being a frozen column.
+                    'text-right tabular-nums whitespace-nowrap font-semibold border-l border-border',
                     'transition-colors group-hover/prow:bg-muted',
                   )}
                 >
