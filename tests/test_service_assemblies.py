@@ -170,14 +170,25 @@ async def test_cost_by_assembly_agrees_with_its_bar(db, acct):
     # A PM-task oil filter delegates to Engine — must NOT appear here.
     await _line(db, acct, wo, "Oil Filter Z", "oil_lubrication", "pm_service", 40)
 
+    # Labor on the coolant task: reaches the drill-down via the
+    # TASK's assembly (none here → Unassigned), and both measures
+    # must reconcile with the bar exactly.
+    await db.add_work_order_labor(
+        wo, acct, description="Flush labor", service_task="coolant",
+        total_cost=150)
+
     rows = await db.cost_by_assembly(acct, "cooling")
     total = round(sum(r["total_spent"] for r in rows), 2)
+    labor = round(sum(r["labor_spent"] for r in rows), 2)
     bar = next(r for r in await db.cost_by_system(acct)
                if r["system_key"] == "cooling")
     assert total == bar["total_spent"] == 420.0
+    assert labor == bar["labor_spent"] == 150.0
     by_label = {r["assembly"]: r["total_spent"] for r in rows}
     assert by_label["Water Pump"] == 300
     assert by_label["Unassigned"] == 15                  # visible, reconciles
+    unass = next(r for r in rows if r["assembly_key"] == "")
+    assert unass["labor_spent"] == 150.0   # coolant task has no assembly
 
 
 # ── Bulk apply is confirm-gated and blank-only ──────────────────────
@@ -206,3 +217,106 @@ async def test_bulk_apply_only_touches_blanks(db, acct):
     # The hand-set value survived.
     assert (await db.get_catalog_part(manual["id"], acct))["assembly_key"] \
         == "drums_rotors"
+
+
+# ── Phase 1: the task's assembly — labor's route into level 2 ───────
+
+async def _assembly_task(db, acct, name, system, assembly):
+    t = await db.create_service_task(acct, name)
+    assert await db.update_service_task(
+        t["id"], acct, system_key=system, assembly_key=assembly) is True
+    return t
+
+
+@pytest.mark.asyncio
+async def test_labor_lands_on_the_tasks_assembly(db, acct):
+    """The gap this phase closes: a brake job's labor was invisible in
+    every assembly drill-down because labor has no part."""
+    await _assembly_task(db, acct, "Water Pump Replacement",
+                         "cooling", "water_pump")
+    wo = await db.add_work_order(acct, "", "234", "Shop",
+                                 service_date="2026-07-01")
+    await db.add_work_order_labor(
+        wo, acct, description="R&R water pump",
+        service_task="Water Pump Replacement", total_cost=400)
+
+    rows = await db.cost_by_assembly(acct, "cooling")
+    wp = next(r for r in rows if r["assembly_key"] == "water_pump")
+    assert wp["labor_spent"] == 400.0
+    bar = next(r for r in await db.cost_by_system(acct)
+               if r["system_key"] == "cooling")
+    assert round(sum(r["labor_spent"] for r in rows), 2) == bar["labor_spent"]
+
+
+@pytest.mark.asyncio
+async def test_part_own_assembly_always_beats_the_tasks(db, acct):
+    """Fleetio stamps every line with the task's assembly — the lumping
+    bug we refused.  A part that KNOWS its assembly keeps it; only a
+    blank part falls back to the task's, display-time only."""
+    await _assembly_task(db, acct, "Water Pump Replacement",
+                         "cooling", "water_pump")
+    wo = await db.add_work_order(acct, "", "234", "Shop",
+                                 service_date="2026-07-01")
+    # The gasket bought during the pump job is tagged thermostat by its
+    # own catalog entry — it must NOT be lumped under water_pump.
+    await _line(db, acct, wo, "Thermostat Gasket", "thermostat",
+                "Water Pump Replacement", 60)
+    # A blank part on the same task borrows the task's assembly.
+    await _line(db, acct, wo, "Mystery Clamp", "",
+                "Water Pump Replacement", 15)
+
+    rows = {r["assembly_key"]: r for r in
+            await db.cost_by_assembly(acct, "cooling")}
+    assert rows["thermostat"]["total_spent"] == 60
+    assert rows["water_pump"]["total_spent"] == 15
+    # Nothing was WRITTEN to the blank part — fallback is display-only.
+    part = next(p for p in await db.list_parts_catalog(acct)
+                if p["name"] == "Mystery Clamp")
+    assert not part.get("assembly_key")
+
+
+@pytest.mark.asyncio
+async def test_the_pair_rule(db, acct):
+    """A task's assembly must live under the task's system — otherwise
+    the same labor dollars file under two different systems (bar via
+    task.system, drill via assembly.system)."""
+    t = await db.create_service_task(acct, "Pair Rule Probe")
+    assert await db.update_service_task(
+        t["id"], acct, system_key="cooling") is True
+    # Assembly from ANOTHER system → refused.
+    assert await db.update_service_task(
+        t["id"], acct, assembly_key="pads_shoes") is False
+    # Matching pair → accepted.
+    assert await db.update_service_task(
+        t["id"], acct, assembly_key="water_pump") is True
+    # Moving the system out from under the assembly → refused whole.
+    assert await db.update_service_task(
+        t["id"], acct, system_key="brakes") is False
+    # System + matching assembly together → fine.
+    assert await db.update_service_task(
+        t["id"], acct, system_key="brakes", assembly_key="pads_shoes") is True
+    # Clearing is always allowed; then the system may move freely.
+    assert await db.update_service_task(
+        t["id"], acct, assembly_key="") is True
+    assert await db.update_service_task(
+        t["id"], acct, system_key="cooling") is True
+    # A task with NO system can't carry an assembly.
+    bare = await db.create_service_task(acct, "Systemless Probe")
+    assert await db.update_service_task(
+        bare["id"], acct, assembly_key="water_pump") is False
+
+
+@pytest.mark.asyncio
+async def test_assembly_locked_on_standard_tasks(db, acct):
+    """Same ownership split as name and system_key: on a Shared task
+    the assembly is the operator's (fan-out delivers it in Phase 2)."""
+    t = await db.create_service_task(acct, "Fauxnonical")
+    await db._db.execute(
+        "UPDATE service_tasks SET canonical_key = 'fauxnonical', "
+        "system_key = 'cooling' WHERE id = ?", (t["id"],))
+    await db._db.commit()
+    assert await db.update_service_task(
+        t["id"], acct, assembly_key="water_pump") is False
+    # Their tuning fields still work on the same task.
+    assert await db.update_service_task(
+        t["id"], acct, expected_labor_hours=2.0) is True

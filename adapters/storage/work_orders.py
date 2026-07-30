@@ -1212,19 +1212,30 @@ class WorkOrdersMixin:
         self, account_id: int, system_key: str,
         since: Optional[str] = None,
     ) -> list[dict]:
-        """Parts spend within ONE system, grouped by assembly — the
-        drill-down under a system bar.  PARTS ONLY by construction
-        (labor has no part, so it can never reach level 2 — the UI
-        labels this permanently).  Rows whose part has no assembly
-        stay visible as 'Unassigned' so the parts total reconciles.
+        """Spend within ONE system, grouped by assembly — the
+        drill-down under a system bar.  Parts AND labor.
 
-        Membership uses the same delegation rule as cost_by_system, so
-        a bar and its drill-down agree about which lines they contain.
+        Labor reaches level 2 through the TASK's ``assembly_key`` (a
+        labor line has no part, so that is its only possible source);
+        labor on a task with no assembly lands on the Unassigned row.
+        A part line's effective assembly is its OWN first, falling
+        back to the task's only when the part is blank — display-time
+        only, nothing is written.
+
+        Reconciliation is exact on both measures: membership for parts
+        uses the identical delegation CASE as ``cost_by_system`` and
+        for labor the identical task-system rule, so
+        sum(total_spent) == the bar's total_spent and
+        sum(labor_spent) == the bar's labor_spent, always.
         """
+        # Parts.  The al join on the PART's assembly stays exactly as
+        # cost_by_system has it — it feeds the membership CASE.  The
+        # GROUPING key is the effective assembly (own, else task's);
+        # labels resolve in Python through the fail-open map so
+        # archived keys keep their names.
         q = (
-            "SELECT COALESCE(NULLIF(pc.assembly_key, ''), '') AS assembly_key, "
-            "       COALESCE(al.label, NULLIF(pc.assembly_key, ''), "
-            "                'Unassigned') AS assembly, "
+            "SELECT COALESCE(NULLIF(pc.assembly_key, ''), "
+            "                NULLIF(st.assembly_key, ''), '') AS assembly_key, "
             "       COUNT(*) AS line_count, "
             "       SUM(p.total_cost) AS total_spent "
             "FROM work_order_parts p "
@@ -1243,16 +1254,58 @@ class WorkOrdersMixin:
             q += " AND w.service_date >= ?"
             params.append(since)
         q += (
-            " GROUP BY COALESCE(NULLIF(pc.assembly_key, ''), ''), "
-            "          COALESCE(al.label, NULLIF(pc.assembly_key, ''), "
-            "                   'Unassigned')"
-            " ORDER BY total_spent DESC"
+            " GROUP BY COALESCE(NULLIF(pc.assembly_key, ''), "
+            "                   NULLIF(st.assembly_key, ''), '')"
         )
+        buckets: dict[str, dict] = {}
+
+        def _bucket(key: str) -> dict:
+            if key not in buckets:
+                buckets[key] = {
+                    "assembly_key": key, "line_count": 0,
+                    "total_spent": 0.0, "labor_spent": 0.0,
+                }
+            return buckets[key]
+
         cur = await self._db.execute(q, params)
-        return [
-            {**dict(r), "total_spent": round(float(r["total_spent"] or 0), 2)}
-            for r in (dict(x) for x in await cur.fetchall())
-        ]
+        for r in (dict(x) for x in await cur.fetchall()):
+            b = _bucket(r["assembly_key"] or "")
+            b["line_count"] += int(r["line_count"] or 0)
+            b["total_spent"] = round(
+                b["total_spent"] + float(r["total_spent"] or 0), 2)
+
+        # Labor: membership = the task's system (the delegation rule's
+        # labor half, byte-identical to cost_by_system's labor query).
+        q = (
+            "SELECT COALESCE(NULLIF(st.assembly_key, ''), '') AS assembly_key, "
+            "       SUM(l.total_cost) AS labor_spent "
+            "FROM work_order_labor l "
+            "JOIN work_orders w ON w.id = l.work_order_id "
+            "     AND w.account_id = l.account_id "
+            "LEFT JOIN service_tasks st ON st.id = l.service_task_id "
+            "WHERE l.account_id = ? AND w.service_date IS NOT NULL "
+            "  AND w.status != 'void' AND w.payment_status != 'void' "
+            "  AND COALESCE(st.system_key, '') = ?"
+        )
+        params = [account_id, system_key]
+        if since:
+            q += " AND w.service_date >= ?"
+            params.append(since)
+        q += " GROUP BY COALESCE(NULLIF(st.assembly_key, ''), '')"
+        cur = await self._db.execute(q, params)
+        for r in (dict(x) for x in await cur.fetchall()):
+            b = _bucket(r["assembly_key"] or "")
+            b["labor_spent"] = round(float(r["labor_spent"] or 0), 2)
+
+        labels = await self.assembly_labels()
+        rows = list(buckets.values())
+        for b in rows:
+            k = b["assembly_key"]
+            b["assembly"] = (
+                labels.get(k, {}).get("label") or k or "Unassigned")
+        rows.sort(key=lambda r: r["total_spent"] + r["labor_spent"],
+                  reverse=True)
+        return rows
 
     async def cost_by_part(
         self, account_id: int, since: Optional[str] = None,

@@ -364,6 +364,12 @@ async def create_tables(conn) -> None:
             -- The reporting axis above a task ("Brakes cost us $12k").
             -- Ours, not VMRS — see adapters/storage/service_tasks.py.
             system_key           TEXT    NOT NULL DEFAULT '',
+            -- Level 2, for LABOR: a labor line has no part, so the
+            -- task's assembly is its only route into the assembly
+            -- drill-down.  Only assembly-specific tasks set it
+            -- (water_pump — yes; Brake Service / PM — stays '').
+            -- A part line's own assembly always wins over this.
+            assembly_key         TEXT    NOT NULL DEFAULT '',
             status               TEXT    NOT NULL DEFAULT 'active',
             created_by           INTEGER NOT NULL DEFAULT 0,
             created_at           TEXT    NOT NULL DEFAULT '',

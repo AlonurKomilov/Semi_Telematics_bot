@@ -7358,6 +7358,32 @@ async def migrate_service_task_backfill_sweep(conn) -> None:
     logger.info("Migration 165: swept %d stragglers onto service_task_id", swept)
 
 
+@_register("171_service_tasks_assembly_key")
+async def migrate_service_tasks_assembly_key(conn) -> None:
+    """Level 2 lands on the TASK as well — for LABOR's sake.
+
+    ``cost_by_assembly`` was parts-only by construction: labor has no
+    part, so a brake job's $400 of labor could never reach the
+    assembly drill-down.  A task's ``assembly_key`` is labor's only
+    possible level-2 source.
+
+    Scope discipline (the plan's rule): only genuinely
+    assembly-specific tasks carry one — Water Pump Replacement →
+    water_pump; Brake Service / PM / inspections stay '' because a
+    multi-assembly or activity task has no single honest answer.
+    Blank is the common, correct value.  Precedence is fixed: a part
+    line's OWN assembly always wins; the task's only catches labor
+    and (display-time) parts left blank.
+
+    (Numbered 171: 170 is reserved for the legacy task_type /
+    service_task column rename batch sequenced in 169's docstring.)
+    """
+    await conn.execute(
+        "ALTER TABLE service_tasks "
+        "ADD COLUMN IF NOT EXISTS assembly_key TEXT NOT NULL DEFAULT ''"
+    )
+
+
 @_register("169_service_task_backfill_final_sweep")
 async def migrate_service_task_backfill_final_sweep(conn) -> None:
     """Final catch-up before the legacy string columns can go.

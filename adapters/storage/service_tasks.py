@@ -331,8 +331,8 @@ class ServiceTasksMixin:
         local tuning is the account's.
 
         Locked here and pushed by fan-out — NAME, because it is the
-        task's identity, and SYSTEM_KEY, because it is the axis every
-        fleet's spend rolls up on.  Either one differing per account
+        task's identity, and SYSTEM_KEY + ASSEMBLY_KEY, because they
+        are the axes every fleet's spend rolls up on.  Either one differing per account
         breaks the promise that makes the shared key worth having:
         "what does a brake job cost" has to mean the same thing in
         every fleet.
@@ -349,7 +349,7 @@ class ServiceTasksMixin:
         allowed = {"description", "expected_labor_hours", "status",
                    "parent_id", "vehicle_type"}
         if not task.get("canonical_key"):
-            allowed.update({"name", "system_key"})
+            allowed.update({"name", "system_key", "assembly_key"})
         updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if not updates:
             return False
@@ -365,6 +365,29 @@ class ServiceTasksMixin:
             if sk and sk not in SYSTEM_KEYS:
                 return False
             updates["system_key"] = sk
+        if "assembly_key" in updates:
+            ak = str(updates["assembly_key"]).strip().lower()
+            if ak and not await self.assembly_key_valid_for_assignment(ak):
+                return False
+            updates["assembly_key"] = ak
+        # THE PAIR RULE: a task's assembly must live under the task's
+        # system, judged on the FINAL state of both fields.  Labor
+        # lands on a system via the task and on an assembly via the
+        # task — if the assembly's parent system disagreed with the
+        # task's own, the drill-down and its bar would file the same
+        # dollars under two different systems.
+        final_assembly = updates.get(
+            "assembly_key", task.get("assembly_key") or "")
+        if final_assembly:
+            final_system = updates.get(
+                "system_key", task.get("system_key") or "")
+            cur = await self._db.execute(
+                "SELECT system_key FROM service_assembly_library "
+                "WHERE key = ?", (final_assembly,),
+            )
+            arow = await cur.fetchone()
+            if not arow or dict(arow)["system_key"] != final_system:
+                return False
         if "parent_id" in updates:
             pid = updates["parent_id"]
             if pid:
