@@ -36,12 +36,17 @@ function Pill({ value }: { value: unknown }) {
   );
 }
 
+// CACHED formatter: this renders once per pivot cell, so a fresh
+// Intl instance per call was thousands of allocations per render.
+const MONEY = new Intl.NumberFormat(undefined, {
+  minimumFractionDigits: 2, maximumFractionDigits: 2,
+});
+
 function MoneyCell({ value }: { value: unknown }) {
   if (value == null || value === '') return <span className="text-muted-foreground">—</span>;
-  const n = Number(value);
   return (
     <span className="tabular-nums font-medium">
-      ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+      ${MONEY.format(Number(value))}
     </span>
   );
 }

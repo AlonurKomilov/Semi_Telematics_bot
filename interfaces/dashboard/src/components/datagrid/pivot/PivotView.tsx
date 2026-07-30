@@ -182,6 +182,31 @@ export default function PivotView({
   // ("—$47,200.00", "$28,$1,530,862.60"): there was no gutter at all.
   const cellPad = cn(padding, 'px-2');
 
+  // Class strings for the cell grid, computed ONCE per render.
+  //
+  // These were built inside the row loop with ``cn`` — which is
+  // ``twMerge(clsx(...))``, i.e. it PARSES class strings and resolves
+  // conflicts — twice per cell.  At 360 rows x 62 columns that was
+  // ~45,000 parses per render for what is really four invariant strings.
+  const CELL_NUM = 'text-right tabular-nums whitespace-nowrap';
+  const RULE = 'border-l border-border/50';
+  // An empty intersection is now ONE element: the dash is a text child of
+  // the <td>.  It used to be three (<td> > padded <span> > muted <span>),
+  // and on a matrix that is ~90% dashes those two extra nodes per cell
+  // were ~40,000 DOM nodes drawing nothing.
+  const emptyCell = cn(cellPad, CELL_NUM, 'text-muted-foreground/60');
+  const emptyCellRuled = cn(emptyCell, RULE);
+  const valueCell = cn(CELL_NUM, 'p-0');
+  const valueCellRuled = cn(valueCell, RULE);
+  const valueButton = cn(
+    cellPad,
+    'block w-full text-right tabular-nums cursor-pointer',
+    // A cue AT REST — every non-empty figure drills down, and both
+    // empty and filled cells read as plain text until hovered.
+    'underline decoration-dotted decoration-border underline-offset-4',
+    'hover:bg-primary/10 hover:text-primary hover:decoration-primary',
+  );
+
   // The row-label column stays put during horizontal scroll — otherwise a
   // wide matrix scrolls the identity off screen and the numbers lose
   // their subject.  Plain sticky; deliberately not the grid's pin maths.
@@ -435,43 +460,29 @@ export default function PivotView({
                 </span>
               </th>
               {row.cells.map((value, i) => (
-                <td
-                  key={result.leafIds[i]}
-                  className={cn(
-                    'text-right tabular-nums whitespace-nowrap p-0',
-                    // Lighter than the header's rule: the body is data,
-                    // not chrome, but the column boundary the header
-                    // promises has to exist down here or a figure can't
-                    // be traced to its heading.
-                    i > 0 && 'border-l border-border/50',
-                  )}
-                >
-                  {value === null ? (
-                    <span className={cn(cellPad, 'block')}>
-                      {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
-                    </span>
-                  ) : (
-                    // Every non-empty number is a question: "which rows?"
-                    <button
-                      type="button"
-                      onClick={() => setDrill({ row, leafIdx: i })}
-                      className={cn(
-                        cellPad,
-                        'block w-full text-right tabular-nums cursor-pointer',
-                        // A cue AT REST.  Every non-empty figure is a
-                        // button and every empty one is a span, but both
-                        // read as plain text until hovered — so the
-                        // drill-down was discoverable by accident with a
-                        // mouse and not at all by touch.
-                        'underline decoration-dotted decoration-border underline-offset-4',
-                        'hover:bg-primary/10 hover:text-primary hover:decoration-primary',
-                      )}
-                      title="Show the rows behind this number"
+                value === null
+                  // The dash IS the cell — no wrapper, no inner span.
+                  ? <td key={result.leafIds[i]} className={i > 0 ? emptyCellRuled : emptyCell}>—</td>
+                  : (
+                    <td
+                      key={result.leafIds[i]}
+                      // The rule is lighter than the header's: the body is
+                      // data, not chrome, but the column boundary the
+                      // header promises has to exist down here or a figure
+                      // can't be traced to its heading.
+                      className={i > 0 ? valueCellRuled : valueCell}
                     >
-                      {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
-                    </button>
-                  )}
-                </td>
+                      {/* Every non-empty number is a question: "which rows?" */}
+                      <button
+                        type="button"
+                        onClick={() => setDrill({ row, leafIdx: i })}
+                        className={valueButton}
+                        title="Show the rows behind this number"
+                      >
+                        {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
+                      </button>
+                    </td>
+                  )
               ))}
               {row.totals.map((value, i) => (
                 <td

@@ -35,10 +35,14 @@ export function computeAggregate(fn: AggFn, values: number[], rowCount: number):
  * Fallback footer formatting when a column declares no `aggFormat` — a
  * plain locale number, with decimals only for a (non-integer) average.
  */
+// CACHED.  ``toLocaleString`` with an options object builds a formatter
+// on nearly every call, and this runs once per pivot cell — thousands of
+// times per render on a wide cross-tab.  Two shapes cover every agg fn.
+const NUM_0 = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+const NUM_2 = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
+
 export function formatAggDefault(value: number, fn: AggFn): string {
-  return value.toLocaleString(undefined, {
-    maximumFractionDigits: fn === 'avg' ? 2 : 0,
-  });
+  return (fn === 'avg' ? NUM_2 : NUM_0).format(value);
 }
 
 /**

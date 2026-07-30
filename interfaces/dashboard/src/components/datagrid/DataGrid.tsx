@@ -1,4 +1,4 @@
-import { Fragment, useState, useMemo, useEffect, useRef, useCallback, useLayoutEffect, type Dispatch, type SetStateAction } from 'react';
+import { Fragment, useState, useMemo, useEffect, useRef, useCallback, useLayoutEffect, startTransition, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   useReactTable,
@@ -750,7 +750,13 @@ export default function DataGrid({
   // panel saying it owns that decision.  Setting a field while pivot is
   // off now just builds the report you'll turn on when you're ready.
   const setPivotModel = useCallback((model: PivotModel) => {
-    setPivotPref({ enabled: !!pivotPrefRef.current?.enabled, model });
+    // A model change rebuilds the whole cross-tab, which on a wide report
+    // is a long synchronous render.  As a TRANSITION it stops blocking
+    // input, so the checkbox you clicked responds immediately instead of
+    // appearing stuck until the matrix has finished.
+    startTransition(() => {
+      setPivotPref({ enabled: !!pivotPrefRef.current?.enabled, model });
+    });
   }, [setPivotPref]);
   const setPivotEnabled = useCallback((next: boolean) => {
     // A STARTER model on first enable: flipping the switch should
