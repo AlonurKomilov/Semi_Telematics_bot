@@ -31,6 +31,9 @@ class EntryCreate(BaseModel):
     expected_labor_hours: float = Field(0, ge=0, le=1000)
     vehicle_type: str = Field("", pattern="^(truck|trailer|)$")
     system_key: str = Field("", max_length=40)
+    # Level 2 for labor.  Validated in storage: active key, living
+    # under the entry's own system (the pair rule).
+    assembly_key: str = Field("", max_length=60)
 
 
 class EntryUpdate(BaseModel):
@@ -39,6 +42,7 @@ class EntryUpdate(BaseModel):
     expected_labor_hours: float | None = Field(None, ge=0, le=1000)
     vehicle_type: str | None = Field(None, pattern="^(truck|trailer|)$")
     system_key: str | None = Field(None, max_length=40)
+    assembly_key: str | None = Field(None, max_length=60)
     status: str | None = Field(None, pattern="^(active|archived)$")
 
 
@@ -84,6 +88,7 @@ async def create_entry(
         expected_labor_hours=body.expected_labor_hours,
         vehicle_type=body.vehicle_type,
         system_key=body.system_key,
+        assembly_key=body.assembly_key,
     )
     if not entry:
         raise HTTPException(

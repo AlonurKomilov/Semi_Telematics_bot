@@ -90,12 +90,29 @@ class ServiceTaskLibraryMixin:
         row = await cur.fetchone()
         return dict(row) if row else None
 
+    async def _lib_assembly_ok(self, system_key: str,
+                               assembly_key: str) -> bool:
+        """An entry's assembly must be an ACTIVE key living under the
+        entry's own system — the pair rule, held at the library so the
+        fan-out can only ever push coherent pairs.  A task with no
+        system cannot carry an assembly."""
+        if not system_key:
+            return False
+        cur = await self._db.execute(
+            "SELECT system_key FROM service_assembly_library "
+            "WHERE key = ? AND status = 'active'",
+            (assembly_key,),
+        )
+        row = await cur.fetchone()
+        return bool(row) and dict(row)["system_key"] == system_key
+
     async def create_service_task_library_entry(
         self, name: str, *,
         description: str = "",
         expected_labor_hours: float = 0.0,
         vehicle_type: str = "",
         system_key: str = "",
+        assembly_key: str = "",
     ) -> Optional[dict[str, Any]]:
         """Add a standard task and hand it to every account.
 
@@ -107,17 +124,22 @@ class ServiceTaskLibraryMixin:
         key = canonical_key_from(name)
         if not name or not key:
             return None
+        system_key = system_key if system_key in SYSTEM_KEYS else ""
+        assembly_key = (assembly_key or "").strip().lower()
+        if assembly_key and not await self._lib_assembly_ok(
+                system_key, assembly_key):
+            return None
         now = self._now()
         cur = await self._db.execute(
             "INSERT INTO service_task_library "
             "(canonical_key, name, description, expected_labor_hours, "
-            " vehicle_type, system_key, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            " vehicle_type, system_key, assembly_key, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT (canonical_key) DO NOTHING "
             "RETURNING id",
             (key, name, description, float(expected_labor_hours or 0),
              vehicle_type if vehicle_type in ("truck", "trailer") else "",
-             system_key if system_key in SYSTEM_KEYS else "", now, now),
+             system_key, assembly_key, now, now),
         )
         row = await cur.fetchone()
         await self._db.commit()
@@ -138,7 +160,7 @@ class ServiceTaskLibraryMixin:
         if not entry:
             return False
         allowed = {"name", "description", "expected_labor_hours",
-                   "vehicle_type", "system_key", "status"}
+                   "vehicle_type", "system_key", "assembly_key", "status"}
         updates = {k: v for k, v in fields.items()
                    if k in allowed and v is not None}
         if not updates:
@@ -155,6 +177,19 @@ class ServiceTaskLibraryMixin:
             if sk and sk not in SYSTEM_KEYS:
                 return False
             updates["system_key"] = sk
+        if "assembly_key" in updates:
+            updates["assembly_key"] = str(
+                updates["assembly_key"]).strip().lower()
+        # THE PAIR RULE, judged on the final state — same invariant the
+        # tenant-side update enforces, held at the source so a fan-out
+        # can never push an incoherent pair.
+        final_assembly = updates.get(
+            "assembly_key", entry.get("assembly_key") or "")
+        if final_assembly:
+            final_system = updates.get(
+                "system_key", entry.get("system_key") or "")
+            if not await self._lib_assembly_ok(final_system, final_assembly):
+                return False
         if "name" in updates:
             nm = str(updates["name"]).strip()
             if not nm:
@@ -172,7 +207,7 @@ class ServiceTaskLibraryMixin:
         if fresh and fresh["status"] == LIB_ACTIVE and (
             "name" in updates or "description" in updates
             or "expected_labor_hours" in updates or "vehicle_type" in updates
-            or "system_key" in updates
+            or "system_key" in updates or "assembly_key" in updates
         ):
             await self.fan_out_service_task_library_entry(fresh)
         return True
@@ -244,6 +279,7 @@ class ServiceTaskLibraryMixin:
         # overwrite" rule the invoice prefill follows.
         await self._db.execute(
             "UPDATE service_tasks SET name = ?, name_key = ?, system_key = ?, "
+            "       assembly_key = ?, "
             "       description = CASE WHEN COALESCE(description, '') = '' "
             "                          THEN ? ELSE description END, "
             "       expected_labor_hours = CASE "
@@ -254,6 +290,7 @@ class ServiceTaskLibraryMixin:
             "       updated_at = ? "
             "WHERE canonical_key = ?",
             (name, service_task_name_key(name), entry.get("system_key") or "",
+             entry.get("assembly_key") or "",
              entry.get("description") or "",
              float(entry.get("expected_labor_hours") or 0),
              entry.get("vehicle_type") or "", now, key),
@@ -270,15 +307,16 @@ class ServiceTaskLibraryMixin:
                 "INSERT INTO service_tasks "
                 "(account_id, name, name_key, canonical_key, description, "
                 " expected_labor_hours, vehicle_type, system_key, "
-                " created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                " assembly_key, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (account_id, name_key) DO NOTHING "
                 "RETURNING id",
                 (int(row["id"]), name, service_task_name_key(name), key,
                  entry.get("description") or "",
                  float(entry.get("expected_labor_hours") or 0),
                  entry.get("vehicle_type") or "",
-                 entry.get("system_key") or "", now, now),
+                 entry.get("system_key") or "",
+                 entry.get("assembly_key") or "", now, now),
             )
             if await c.fetchone():
                 created += 1

@@ -308,3 +308,67 @@ async def test_account_cannot_move_a_shared_task_to_another_system(lib):
     assert await lib.update_service_task_library_entry(
         entry["id"], system_key="suspension") is True
     assert (await lib.get_service_task(shared["id"], a))["system_key"] == "suspension"
+
+
+# ── Phase 2: the library carries the task's assembly ────────────────
+
+@pytest.mark.asyncio
+async def test_library_assembly_pair_rule_and_hard_push(lib):
+    """The entry validates the pair at the SOURCE (an incoherent pair
+    must never exist to be fanned out), and the fan-out hard-pushes
+    assembly like name and system — identity, not tuning."""
+    a = (await lib.create_account("Asm Push Co")).id
+    # No system → no assembly; wrong-system assembly refused.
+    assert await lib.create_service_task_library_entry(
+        "Bad Pair A", assembly_key="water_pump") is None
+    assert await lib.create_service_task_library_entry(
+        "Bad Pair B", system_key="brakes", assembly_key="water_pump") is None
+
+    entry = await lib.create_service_task_library_entry(
+        "Water Pump Replacement", system_key="cooling",
+        assembly_key="water_pump")
+    assert entry and entry["assembly_key"] == "water_pump"
+
+    mine = next(t for t in await lib.list_service_tasks(a)
+                if t["canonical_key"] == "water_pump_replacement")
+    assert mine["assembly_key"] == "water_pump"
+    assert mine["system_key"] == "cooling"
+
+    # The account cannot move it (same lock as system_key)…
+    assert await lib.update_service_task(
+        mine["id"], a, assembly_key="thermostat") is False
+    # …and a drifted value is corrected by the next fan-out (hard push).
+    await lib._db.execute(
+        "UPDATE service_tasks SET assembly_key = 'thermostat' WHERE id = ?",
+        (mine["id"],))
+    await lib._db.commit()
+    assert await lib.update_service_task_library_entry(
+        entry["id"], assembly_key="water_pump") is True
+    fresh = await lib.get_service_task(mine["id"], a)
+    assert fresh["assembly_key"] == "water_pump"
+
+    # Update-side pair rule holds too: a wrong-system assembly is
+    # refused, clearing the system OUT FROM UNDER a set assembly is
+    # refused, and clearing both together is the sanctioned way out.
+    assert await lib.update_service_task_library_entry(
+        entry["id"], assembly_key="pads_shoes") is False
+    assert await lib.update_service_task_library_entry(
+        entry["id"], system_key="") is False
+    assert await lib.update_service_task_library_entry(
+        entry["id"], system_key="", assembly_key="") is True
+
+
+@pytest.mark.asyncio
+async def test_new_account_seeds_carry_system_and_assembly(lib):
+    """The seed-rows SELECT once dropped system_key entirely (every row
+    fell back to the code map) — operator-added tasks reached new
+    accounts systemless.  Pinned here together with the new assembly."""
+    entry = await lib.create_service_task_library_entry(
+        "Thermostat Replacement", system_key="cooling",
+        assembly_key="thermostat")
+    assert entry
+    b = (await lib.create_account("Late Asm Joiner")).id
+    got = next(t for t in await lib.list_service_tasks(b)
+               if t["canonical_key"] == "thermostat_replacement")
+    assert got["system_key"] == "cooling"
+    assert got["assembly_key"] == "thermostat"

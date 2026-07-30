@@ -272,6 +272,11 @@ async def create_tables(conn) -> None:
             expected_labor_hours REAL    NOT NULL DEFAULT 0,
             vehicle_type         TEXT    NOT NULL DEFAULT '',
             system_key           TEXT    NOT NULL DEFAULT '',
+            -- Level 2 for LABOR (see service_tasks.assembly_key):
+            -- hard-pushed by fan-out like name and system.  Only
+            -- assembly-specific tasks carry one; '' is the common,
+            -- correct value (Brake Service, PM, inspections).
+            assembly_key         TEXT    NOT NULL DEFAULT '',
             status               TEXT    NOT NULL DEFAULT 'active',
             created_at           TEXT    NOT NULL,
             updated_at           TEXT    NOT NULL DEFAULT ''

@@ -164,8 +164,14 @@ class ServiceTasksMixin:
         """
         try:
             cur = await self._db.execute(
+                # system_key/assembly_key were MISSING from this SELECT
+                # once — every row fell back to the code map, so an
+                # operator-added task's system never reached accounts
+                # created later.  Keep the column list in sync with
+                # what the dict below reads.
                 "SELECT canonical_key, name, description, "
-                "       expected_labor_hours, vehicle_type "
+                "       expected_labor_hours, vehicle_type, "
+                "       system_key, assembly_key "
                 "FROM service_task_library WHERE status = 'active' "
                 "ORDER BY name",
             )
@@ -178,11 +184,13 @@ class ServiceTasksMixin:
                      "hours": float(r.get("expected_labor_hours") or 0),
                      "vehicle_type": r.get("vehicle_type") or "",
                      "system": r.get("system_key")
-                               or _STANDARD_SYSTEMS.get(r["canonical_key"], "")}
+                               or _STANDARD_SYSTEMS.get(r["canonical_key"], ""),
+                     "assembly": r.get("assembly_key") or ""}
                     for r in rows]
         return [{"key": e["key"], "name": e["name"], "description": "",
                  "hours": 0.0, "vehicle_type": "",
-                 "system": _STANDARD_SYSTEMS.get(e["key"], "")}
+                 "system": _STANDARD_SYSTEMS.get(e["key"], ""),
+                 "assembly": ""}
                 for e in STANDARD_SERVICE_TASKS]
 
     async def seed_service_tasks(self, account_id: int) -> int:
@@ -199,14 +207,14 @@ class ServiceTasksMixin:
                 "INSERT INTO service_tasks "
                 "(account_id, name, name_key, canonical_key, description, "
                 " expected_labor_hours, vehicle_type, system_key, "
-                " created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                " assembly_key, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 "ON CONFLICT (account_id, name_key) DO NOTHING "
                 "RETURNING id",
                 (account_id, entry["name"], service_task_name_key(entry["name"]),
                  entry["key"], entry.get("description", ""),
                  entry.get("hours", 0.0), entry.get("vehicle_type", ""),
-                 entry.get("system", ""), now, now),
+                 entry.get("system", ""), entry.get("assembly", ""), now, now),
             )
             created += 1 if await cur.fetchone() else 0
         await self._db.commit()

@@ -15,6 +15,7 @@ import { apiJSON } from '../api/client';
 //     history under it, and hiding it is their decision.
 
 interface TaskSystem { key: string; label: string }
+interface Assembly { key: string; label: string; system_key: string }
 
 interface Candidate {
   name_key: string;
@@ -33,6 +34,9 @@ interface LibraryEntry {
    *  set — accounts can't change it, so a wrong value here is wrong in
    *  every fleet until it's fixed here. */
   system_key: string;
+  /** '' for most tasks — only assembly-specific ones carry a value
+   *  (the pair rule: must live under the entry's system). */
+  assembly_key: string;
   status: 'active' | 'archived';
   /** How many accounts currently hold this task. */
   accounts: number;
@@ -55,6 +59,7 @@ export default function ServiceTaskLibraryPage() {
   const [entries, setEntries] = useState<LibraryEntry[]>([]);
   const [cands, setCands] = useState<Candidate[]>([]);
   const [systems, setSystems] = useState<TaskSystem[]>([]);
+  const [assemblies, setAssemblies] = useState<Assembly[]>([]);
   const [err, setErr] = useState('');
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState('');
@@ -64,19 +69,21 @@ export default function ServiceTaskLibraryPage() {
   const [draft, setDraft] = useState<Partial<LibraryEntry>>({});
   const [newForm, setNewForm] = useState({
     name: '', description: '', expected_labor_hours: '', vehicle_type: '',
-    system_key: '',
+    system_key: '', assembly_key: '',
   });
 
   const load = useCallback(async () => {
     try {
-      const [r, c, sy] = await Promise.all([
+      const [r, c, sy, asm] = await Promise.all([
         apiJSON<{ entries: LibraryEntry[] }>('/system/service-task-library'),
         apiJSON<{ candidates: Candidate[] }>('/system/service-task-library/candidates'),
         apiJSON<{ systems: TaskSystem[] }>('/system/service-task-library/systems'),
+        apiJSON<{ assemblies: Assembly[] }>('/system/service-assemblies'),
       ]);
       setEntries(r.entries);
       setCands(c.candidates);
       setSystems(sy.systems);
+      setAssemblies(asm.assemblies);
       setErr('');
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Load failed');
@@ -109,10 +116,11 @@ export default function ServiceTaskLibraryPage() {
           expected_labor_hours: Number(newForm.expected_labor_hours) || 0,
           vehicle_type: newForm.vehicle_type,
           system_key: newForm.system_key,
+          assembly_key: newForm.assembly_key,
         }),
       }).then(() => setNewForm({
         name: '', description: '', expected_labor_hours: '', vehicle_type: '',
-        system_key: '',
+        system_key: '', assembly_key: '',
       })));
 
   const saveEdit = (id: number) =>
@@ -125,6 +133,7 @@ export default function ServiceTaskLibraryPage() {
           expected_labor_hours: draft.expected_labor_hours,
           vehicle_type: draft.vehicle_type,
           system_key: draft.system_key,
+          assembly_key: draft.assembly_key,
         }),
       }).then(() => setEditing(null)));
 
@@ -214,12 +223,29 @@ export default function ServiceTaskLibraryPage() {
           />
           <select
             className={inputCls} value={newForm.system_key}
-            onChange={(e) => setNewForm({ ...newForm, system_key: e.target.value })}
+            onChange={(e) => setNewForm({
+              ...newForm, system_key: e.target.value, assembly_key: '',
+            })}
           >
             <option value="">No system</option>
             {systems.map((sy) => (
               <option key={sy.key} value={sy.key}>{sy.label}</option>
             ))}
+          </select>
+          <select
+            className={inputCls} value={newForm.assembly_key}
+            disabled={!newForm.system_key}
+            title={newForm.system_key
+              ? 'Only for assembly-specific tasks — most stay blank'
+              : 'Pick a system first'}
+            onChange={(e) => setNewForm({ ...newForm, assembly_key: e.target.value })}
+          >
+            <option value="">No assembly (most tasks)</option>
+            {assemblies
+              .filter((a) => a.system_key === newForm.system_key)
+              .map((a) => (
+                <option key={a.key} value={a.key}>{a.label}</option>
+              ))}
           </select>
           <div className="flex gap-2">
             <select
@@ -256,6 +282,7 @@ export default function ServiceTaskLibraryPage() {
               <th className="text-left px-3 py-2 font-medium">Key</th>
               <th className="text-left px-3 py-2 font-medium">Est. labor</th>
               <th className="text-left px-3 py-2 font-medium">System</th>
+              <th className="text-left px-3 py-2 font-medium">Assembly</th>
               <th className="text-left px-3 py-2 font-medium">Applies to</th>
               <th className="text-left px-3 py-2 font-medium">Accounts</th>
               <th className="text-left px-3 py-2 font-medium">Status</th>
@@ -302,6 +329,26 @@ export default function ServiceTaskLibraryPage() {
                   ) : (
                     systems.find((sy) => sy.key === e.system_key)?.label
                       || <span className="text-amber-400">Unassigned</span>
+                  )}
+                </td>
+                <td className="px-3 py-2 text-slate-400">
+                  {editing === e.id ? (
+                    <select
+                      className={inputCls}
+                      value={draft.assembly_key ?? e.assembly_key}
+                      disabled={!(draft.system_key ?? e.system_key)}
+                      onChange={(ev) => setDraft({ ...draft, assembly_key: ev.target.value })}
+                    >
+                      <option value="">No assembly</option>
+                      {assemblies
+                        .filter((a) => a.system_key === (draft.system_key ?? e.system_key))
+                        .map((a) => (
+                          <option key={a.key} value={a.key}>{a.label}</option>
+                        ))}
+                    </select>
+                  ) : (
+                    assemblies.find((a) => a.key === e.assembly_key)?.label
+                      || <span className="text-slate-600">—</span>
                   )}
                 </td>
                 <td className="px-3 py-2 text-slate-400 capitalize">

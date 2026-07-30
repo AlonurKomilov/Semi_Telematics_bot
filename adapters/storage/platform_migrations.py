@@ -4354,6 +4354,14 @@ async def migrate_service_task_library(conn) -> None:
         "ALTER TABLE service_task_library "
         "ADD COLUMN IF NOT EXISTS system_key TEXT NOT NULL DEFAULT ''"
     )
+    # Level 2 for labor — the task-assembly column (Phase 2 of the
+    # taxonomy plan).  Values are the OPERATOR's data pass, not a code
+    # seed: only assembly-specific tasks get one, and which those are
+    # is an owner curation call made on system.4truck.us.
+    await conn.execute(
+        "ALTER TABLE service_task_library "
+        "ADD COLUMN IF NOT EXISTS assembly_key TEXT NOT NULL DEFAULT ''"
+    )
     for key, system in _STANDARD_SYSTEMS.items():
         await conn.execute(
             "UPDATE service_task_library SET system_key = ? "
