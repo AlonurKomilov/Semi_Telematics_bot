@@ -159,7 +159,7 @@ export default function Mileage() {
           {data && rows.length > 0
             ? `${data.total_miles.toLocaleString()} mi across ${rows.length} vehicle${rows.length === 1 ? '' : 's'}${
                 times.start || times.end
-                  ? ` · ${formatClock(times.start ?? '00:00')} → ${formatClock(times.end ?? '23:59')}`
+                  ? ` · ${times.start ? formatClock(times.start) : 'start of day'} → ${times.end ? formatClock(times.end) : 'end of day'}`
                   : ''
               }`
             : ''}

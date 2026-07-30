@@ -228,7 +228,7 @@ function CalendarMonth({ monthStart, start, endPicked, hover, bandEnd, rangeCapa
 // a day, nor midnight for a zero-length one.
 const HOUR_ITEMS_FROM = Array.from({ length: 24 }, (_, h) => {
   const v = `${String(h).padStart(2, '0')}:00`;
-  const label = h === 0 ? '12:00 AM (midnight)'
+  const label = h === 0 ? 'Start of day'
     : h === 12 ? '12:00 PM (noon)'
     : formatClock(v);
   return { value: v, label };
@@ -236,7 +236,7 @@ const HOUR_ITEMS_FROM = Array.from({ length: 24 }, (_, h) => {
 const HOUR_ITEMS_TO = Array.from({ length: 24 }, (_, i) => {
   const h = i + 1;
   const v = h === 24 ? '24:00' : `${String(h).padStart(2, '0')}:00`;
-  const label = h === 24 ? '12:00 AM (end of day)'
+  const label = h === 24 ? 'End of day'
     : h === 12 ? '12:00 PM (noon)'
     : formatClock(v);
   return { value: v, label };
@@ -317,7 +317,7 @@ export default function DateRangePresets({
   // Time-of-day (withTime only) — HOUR granularity by design: the
   // warehouse answers from 5-minute snapshots and banked hourly
   // readings, so offering minutes would imply precision the data
-  // can't back.  Defaults are VISIBLE ("12:00 AM (midnight)" → "end of day") so the
+  // can't back.  Defaults are VISIBLE ("Start of day" → "End of day") so the
   // whole-day behavior is stated, not guessed from an empty "--:--".
   const [timeStart, setTimeStart] = useState('00:00');
   const [timeEnd, setTimeEnd] = useState('24:00');
@@ -360,7 +360,7 @@ export default function DateRangePresets({
   const endDate = end ? startOfDay(new Date(`${end}T00:00:00`)) : null;
   const appliedClock =
     appliedTimes && (appliedTimes.start || appliedTimes.end)
-      ? ` · ${formatClock(appliedTimes.start ?? '00:00')}–${formatClock(appliedTimes.end ?? '23:59')}`
+      ? ` · ${appliedTimes.start ? formatClock(appliedTimes.start) : 'start of day'}–${appliedTimes.end ? formatClock(appliedTimes.end) : 'end of day'}`
       : '';
   const rangeLabel = endDate
     ? `${fmtNice(new Date(endDate.getTime() - value * 86_400_000), tz)} – ${fmtNice(endDate, tz)}${appliedClock}`
@@ -393,7 +393,7 @@ export default function DateRangePresets({
         ? [pickedStart, previewFar] : [previewFar, pickedStart])
     : [null, null];
   const draftClock = withTime && !timesAreDefault
-    ? ` · ${formatClock(timeStart)}–${timeEnd === '24:00' ? 'end of day' : formatClock(timeEnd)}`
+    ? ` · ${timeStart === '00:00' ? 'start of day' : formatClock(timeStart)}–${timeEnd === '24:00' ? 'end of day' : formatClock(timeEnd)}`
     : '';
   const footerSummary = sumLo && sumHi
     ? `${fmtNice(sumLo, tz)} → ${fmtNice(sumHi, tz)} · ${daysBetween(sumLo, sumHi)} days${draftClock}`
@@ -529,7 +529,7 @@ export default function DateRangePresets({
                         long form overflowed the trigger and collided
                         with the To label. */}
                     <SelectTrigger size="sm" className="text-xs" aria-label="Start time (hour)">
-                      <span>{formatClock(timeStart)}</span>
+                      <span>{timeStart === '00:00' ? 'Start of day' : formatClock(timeStart)}</span>
                     </SelectTrigger>
                     <SelectContent>
                       {HOUR_ITEMS_FROM.map((it) => (
