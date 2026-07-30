@@ -56,6 +56,17 @@ export interface PivotModel {
    *  removing columns would be worse than showing empty ones, so the
    *  view reports how many it hid. */
   hideEmptyColumns?: boolean;
+  /** Freeze the row-label column against the left edge.  ONE setting for
+   *  the whole column, not per field: the renderer draws a single merged
+   *  label cell ("Company / Customer"), so a per-field pin would silently
+   *  govern its neighbours.  Default ON — with 60 measure columns an
+   *  unfrozen identity scrolls out of sight and every figure loses its
+   *  subject — but it costs real width, so it is the reader's call. */
+  pinRowLabels?: boolean;
+  /** Freeze the Total column against the right edge.  Lives with VALUES
+   *  because the Total column is GENERATED from them (one per value
+   *  field) — it is not a field and so has no field row of its own. */
+  pinTotals?: boolean;
 }
 
 /** One header cell — ``span`` is a colSpan over the leaf columns below. */
@@ -601,6 +612,10 @@ export function prunePivotModel(model: PivotModel, columns: AnyColumn[]): PivotM
     sort: model.sort ?? null,
     disabled: (model.disabled ?? []).filter((k) => assigned.has(k)),
     hideEmptyColumns: model.hideEmptyColumns ?? false,
+    // Default ON, so a model saved before these existed keeps today's
+    // frozen edges rather than silently thawing on next load.
+    pinRowLabels: model.pinRowLabels ?? true,
+    pinTotals: model.pinTotals ?? true,
   };
 }
 

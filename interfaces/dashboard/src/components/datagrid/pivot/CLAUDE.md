@@ -144,6 +144,32 @@ not a summary. `z-30` on both: it clears every sticky cell in the body
 (max `z-20`), so the frozen Total column cannot paint over the header it
 belongs under.
 
+## Both frozen edges are opt-out, and the controls are ZONE-level
+
+`pinRowLabels` and `pinTotals` default **ON** (with 60 measure columns an
+unfrozen identity scrolls out of sight and every figure loses its
+subject) and are toggled from the panel: "Keep row labels in view" in
+ROWS, "Keep Total column in view" in VALUES.
+
+Two reasons they are not items on a field's ⋮ menu:
+
+- The renderer draws **ONE merged row-label column** for every row field
+  (`Company / Customer` is a single cell), so a per-field pin would
+  silently govern its neighbours.
+- The **Total column is generated from Values** — one per value field —
+  so it is not a field at all and has no field row to hang off. That is
+  also why its control lives in VALUES, and why it isn't offered when
+  there is no column dimension to total across.
+
+Unpinned, those cells become **ordinary**: no position, no z-index, no
+opaque fill, no seam, and no zebra overlay. A cell that isn't frozen has
+nothing to occlude, and keeping `bg-card` would only hide the row's own
+stripe. `data-pin` goes with them, or the horizontal scrollbar would keep
+reserving an inset for an edge that now scrolls.
+
+The prune writes `?? true`, so a report saved before these flags existed
+keeps today's frozen edges instead of silently thawing on next load.
+
 ## Never append `relative` to a sticky cell
 
 `sticky` and `relative` are the SAME tailwind-merge group (`position`), so

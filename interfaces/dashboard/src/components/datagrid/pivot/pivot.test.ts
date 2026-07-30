@@ -181,6 +181,8 @@ describe('pivot — guards', () => {
       // ...and for every field added since.  This assertion is the guard
       // that has caught all three additions; keep it exhaustive.
       hideEmptyColumns: false,
+      pinRowLabels: true,
+      pinTotals: true,
     });
   });
 
@@ -867,5 +869,45 @@ describe('widest candidates (what stops column widths jittering)', () => {
     // must be null rather than undefined so renderCell paints a dash.
     expect(r.totalWidest).toEqual([null]);
     expect(r.widestRow).toBeNull();
+  });
+});
+
+describe('pinning the frozen edges is opt-out, and survives a reload', () => {
+  const COLS: AnyColumn[] = [
+    { key: 'customer', label: 'Customer', pivotable: true },
+    { key: 'driver', label: 'Driver', pivotable: true },
+    { key: 'rate', label: 'Rate', aggregable: true },
+  ];
+  const M: PivotModel = {
+    rows: ['customer'], columns: ['driver'],
+    values: [{ key: 'rate', aggFn: 'sum' }],
+  };
+
+  it('defaults ON, so a model saved before the flags existed keeps its frozen edges', () => {
+    // The dangerous failure here is silent THAWING on next load: a saved
+    // report suddenly scrolling its identity away with nothing to explain
+    // it. `?? true` on the prune is what prevents that.
+    const pruned = prunePivotModel(M, COLS);
+    expect(pruned.pinRowLabels).toBe(true);
+    expect(pruned.pinTotals).toBe(true);
+  });
+
+  it('carries an explicit OFF through the prune', () => {
+    const off = prunePivotModel({ ...M, pinRowLabels: false, pinTotals: false }, COLS);
+    expect(off.pinRowLabels).toBe(false);
+    expect(off.pinTotals).toBe(false);
+  });
+
+  it('changes nothing about the numbers — it is presentation only', () => {
+    const on = pivot([{ customer: 'A', driver: 'D', rate: 5 }], M, COLS);
+    const off = pivot(
+      [{ customer: 'A', driver: 'D', rate: 5 }],
+      { ...M, pinRowLabels: false, pinTotals: false },
+      COLS,
+    );
+    expect(off.bodyRows.map((r) => r.cells)).toEqual(on.bodyRows.map((r) => r.cells));
+    expect(off.bodyRows.map((r) => r.totals)).toEqual(on.bodyRows.map((r) => r.totals));
+    expect(off.grandTotal).toEqual(on.grandTotal);
+    expect(off.totalLabels).toEqual(on.totalLabels);
   });
 });

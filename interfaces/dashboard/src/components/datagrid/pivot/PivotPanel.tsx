@@ -149,6 +149,9 @@ export default function PivotPanel({
     .map((c) => c.key);
 
   const keysIn = (zone: Zone): string[] => (zone === 'pool' ? poolKeys : keysOn(zone));
+  // No column dimension means no Total column to freeze, so the control
+  // that governs it would be a dead end.
+  const hasColumnDim = model.columns.some((k) => !(model.disabled ?? []).includes(k));
 
   // ── Model edits ────────────────────────────────────────────────────
 
@@ -650,6 +653,27 @@ export default function PivotPanel({
                       section that owns them.  Only offered when there IS
                       a column dimension — with none there is nothing to
                       prune and the control would be a dead end. */}
+                  {/* Zone-level SETTINGS, each living with the column it
+                      governs.  Deliberately not on a field's ⋮ menu: the
+                      renderer draws ONE merged row-label column for every
+                      row field, so a per-field pin would silently govern
+                      its neighbours — and the Total column is generated
+                      from Values, so it has no field row to hang off at
+                      all. */}
+                  {axis === 'rows' && keys.length > 0 && (
+                    <ZoneSetting
+                      checked={model.pinRowLabels ?? true}
+                      onChange={(v) => onChange({ ...model, pinRowLabels: v })}
+                      label="Keep row labels in view"
+                    />
+                  )}
+                  {axis === 'values' && keys.length > 0 && hasColumnDim && (
+                    <ZoneSetting
+                      checked={model.pinTotals ?? true}
+                      onChange={(v) => onChange({ ...model, pinTotals: v })}
+                      label="Keep Total column in view"
+                    />
+                  )}
                   {axis === 'columns' && keys.length > 0 && (
                     <label className="flex items-center gap-2 px-3 pb-2 text-2xs text-muted-foreground cursor-pointer">
                       <input
@@ -736,6 +760,26 @@ function DropZone({ zone, active, className, children }: {
     >
       {children}
     </div>
+  );
+}
+
+/** A zone-level setting: governs the whole zone's rendered column, not a
+ *  field.  One shell so the three of them can't drift apart. */
+function ZoneSetting({ checked, onChange, label }: {
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  label: string;
+}) {
+  return (
+    <label className="flex items-center gap-2 px-3 pb-2 text-2xs text-muted-foreground cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="shrink-0 cursor-pointer accent-primary"
+      />
+      {label}
+    </label>
   );
 }
 

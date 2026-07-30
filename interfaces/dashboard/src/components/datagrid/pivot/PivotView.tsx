@@ -314,8 +314,18 @@ export default function PivotView({
   // never read as one).  box-shadow, not border: these tables are
   // border-collapse, where borders don't reliably travel with sticky
   // cells.
-  const stickyCol = 'sticky left-0 z-10 bg-card [box-shadow:inset_-1px_0_0_var(--border),var(--pin-shadow-right)]';
-  const stickyHead = 'sticky left-0 z-20 bg-muted [box-shadow:inset_-1px_0_0_var(--border),var(--pin-shadow-right)]';
+  // Both frozen edges are opt-out (default ON).  Unpinned they become
+  // ORDINARY cells — no position, no z-index, no opaque fill and no seam:
+  // a cell that isn't frozen has nothing to occlude, and keeping bg-card
+  // would only hide the row's own zebra stripe.
+  const pinRows = model.pinRowLabels ?? true;
+  const pinTotals = model.pinTotals ?? true;
+  const stickyCol = pinRows
+    ? 'sticky left-0 z-10 bg-card [box-shadow:inset_-1px_0_0_var(--border),var(--pin-shadow-right)]'
+    : '';
+  const stickyHead = pinRows
+    ? 'sticky left-0 z-20 bg-muted [box-shadow:inset_-1px_0_0_var(--border),var(--pin-shadow-right)]'
+    : '';
   // The Total column pins to the RIGHT edge for the same reason the row
   // label pins left: with 60 driver columns the figure you actually came
   // for would otherwise sit past the end of a long horizontal scroll.
@@ -324,8 +334,12 @@ export default function PivotView({
   // pinned SUMMARY should cleanly occlude the label rather than the two
   // interleaving and slicing a figure mid-glyph ("$190,384.0").  Still a
   // collision; this makes it a legible one.
-  const stickyTotalCell = 'sticky right-0 z-20 bg-card [box-shadow:inset_1px_0_0_var(--border),var(--pin-shadow-left)]';
-  const stickyTotalHead = 'sticky right-0 z-30 bg-muted [box-shadow:inset_1px_0_0_var(--border),var(--pin-shadow-left)]';
+  const stickyTotalCell = pinTotals
+    ? 'sticky right-0 z-20 bg-card [box-shadow:inset_1px_0_0_var(--border),var(--pin-shadow-left)]'
+    : '';
+  const stickyTotalHead = pinTotals
+    ? 'sticky right-0 z-30 bg-muted [box-shadow:inset_1px_0_0_var(--border),var(--pin-shadow-left)]'
+    : '';
 
   return (
     <div className={cn(fill && 'flex h-full flex-col min-h-0')}>
@@ -375,7 +389,7 @@ export default function PivotView({
                     dimension the rows are broken down by. */}
                 {levelIdx === 0 && (
                   <th
-                    data-pin="left"
+                    data-pin={pinRows ? 'left' : undefined}
                     rowSpan={result.headerLevels.length}
                     className={cn(
                       cellPad,
@@ -469,7 +483,7 @@ export default function PivotView({
                     ? result.totalLabels.map((label, i) => (
                       <th
                         key={`tot-${i}-${label}`}
-                        data-pin="right"
+                        data-pin={pinTotals ? 'right' : undefined}
                         className={cn(
                           cellPad, stickyTotalHead,
                           'text-right text-xs font-medium uppercase tracking-wide',
@@ -486,7 +500,7 @@ export default function PivotView({
                     ))
                     : levelIdx === 0 && (
                       <th
-                        data-pin="right"
+                        data-pin={pinTotals ? 'right' : undefined}
                         rowSpan={result.headerLevels.length - 1}
                         colSpan={result.totalLabels.length}
                         className={cn(
@@ -608,7 +622,7 @@ export default function PivotView({
                     that, which also matches the body's stripe exactly
                     (same alpha over the same card colour).  Hidden on
                     hover so the row's own hover fill isn't doubled. */}
-                {rowIdx % 2 === 1 && (
+                {pinRows && rowIdx % 2 === 1 && (
                   <span
                     aria-hidden
                     className="absolute inset-0 bg-muted/30 group-hover/prow:opacity-0 pointer-events-none"
@@ -704,7 +718,7 @@ export default function PivotView({
                       directly made the frozen Total column see-through,
                       so scrolled figures showed through it
                       ("$2,550$2,550.00"). */}
-                  {rowIdx % 2 === 1 && (
+                  {pinTotals && rowIdx % 2 === 1 && (
                     <span
                       aria-hidden
                       className="absolute inset-0 bg-muted/30 group-hover/prow:opacity-0 pointer-events-none"
