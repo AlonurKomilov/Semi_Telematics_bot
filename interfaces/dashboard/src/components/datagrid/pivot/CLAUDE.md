@@ -144,6 +144,38 @@ not a summary. `z-30` on both: it clears every sticky cell in the body
 (max `z-20`), so the frozen Total column cannot paint over the header it
 belongs under.
 
+## A pinned cell must be fully OPAQUE
+
+The zebra stripe is `bg-muted/30` — 30% alpha. Applied directly to a
+sticky cell it wins the cascade over that cell's `bg-card`, leaving the
+frozen column **70% transparent**: the scrolled columns underneath bleed
+through and the text visibly overlaps (`4,72RMR (65)`,
+`$2,550$2,550.00`). Sticky positioning lifts a cell above its siblings,
+but only its own opaque background occludes them — the row's background
+paints *behind* every cell, so it can't help.
+
+So sticky cells keep `bg-card` and take the stripe as an **inset
+overlay** span, hidden on hover so the row's hover fill isn't doubled.
+That also matches the body's stripe exactly: same alpha over the same
+card colour.
+
+## Cost: the matrix is not virtualised
+
+~360 rows × 61 columns is ~22,000 cells in the DOM. Two things this
+makes non-negotiable:
+
+- **Never hand it a fresh `rows` array.** Built inline in JSX the prop
+  changed identity every render, so `useMemo` never hit and the whole
+  cross-tab was rebuilt for any unrelated state change. `DataGrid`
+  memoises `pivotSourceRows`.
+- **Nothing may re-render it at scroll rate** — see the scrollbar note in
+  [../CLAUDE.md](../CLAUDE.md).
+
+Initial render is still heavy by construction. Virtualising a table with
+two sticky edges, nested header levels and a slack-absorbing row is a
+real piece of work; until then the honest mitigation is narrowing the
+column dimension.
+
 ## The totals row sits at the BOTTOM, not under the last row
 
 `sticky bottom-0` alone only pins a totals row once the content

@@ -17,6 +17,7 @@ import { toneClasses } from '../../../lib/status';
 import { useTimezone } from '../../../hooks/useTimezone';
 import { todayInTimeZone, formatDay } from '../../../utils/datetime';
 import type { VehicleSectionProps } from './_shared/types';
+import { FLAG_NOTE } from '../mileageFlags';
 
 interface DayMiles { day: string; miles: number }
 
@@ -39,12 +40,6 @@ function startFor(end: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-const FLAG_TIP: Record<string, string> = {
-  estimated: 'A boundary fell in a data gap — its odometer is interpolated from the readings around it.',
-  catchup: 'Some days absorbed a reporting backlog — the total is real, the per-day bars are lumpy.',
-  partial: 'Odometer history starts inside this range — real miles are at least this.',
-  reset: 'The odometer dropped mid-range (device swap) — miles summed from daily readings.',
-};
 
 export default function VehicleMileage({ vehicleName }: VehicleSectionProps) {
   const tz = useTimezone();
@@ -100,10 +95,10 @@ export default function VehicleMileage({ vehicleName }: VehicleSectionProps) {
               odometer {Math.round(data.start_odo ?? 0).toLocaleString()} →{' '}
               {Math.round(data.end_odo ?? 0).toLocaleString()}
             </span>
-            {data.flag && FLAG_TIP[data.flag] && (
-              <Tip label={FLAG_TIP[data.flag]}>
+            {data.flag && FLAG_NOTE[data.flag] && (
+              <Tip label={FLAG_NOTE[data.flag].tip}>
                 <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${toneClasses('warn')}`}>
-                  {data.flag === 'reset' ? 'Odometer reset' : data.flag === 'catchup' ? 'Catch-up days' : data.flag === 'estimated' ? 'Estimated' : 'Partial'}
+                  {FLAG_NOTE[data.flag].label}
                 </span>
               </Tip>
             )}

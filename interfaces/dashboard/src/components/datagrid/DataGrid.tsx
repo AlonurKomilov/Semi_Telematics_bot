@@ -2593,6 +2593,19 @@ export default function DataGrid({
 
   const padding = DENSITY_PADDING[density];
 
+  // The rows the pivot summarises.  MEMOISED deliberately: built inline
+  // in the JSX this was a fresh array on every render, so PivotView's
+  // own ``useMemo`` never hit and the entire cross-tab — 500 source rows
+  // into ~22,000 cells — was rebuilt for any unrelated state change
+  // (a menu opening, a hover, the row-count report coming back).
+  const filteredRowModel = table.getFilteredRowModel();
+  const pivotSourceRows = useMemo(
+    () => filteredRowModel.rows
+      .filter((r) => !r.getIsGrouped())
+      .map((r) => r.original as Record<string, unknown>),
+    [filteredRowModel],
+  );
+
 
   // ── Custom horizontal scrollbar ─────────────────────────────
   //
@@ -3326,9 +3339,7 @@ export default function DataGrid({
             <PivotView
               fill={!!fillHeight}
               onRowCount={setPivotRowCount}
-              rows={table.getFilteredRowModel().rows
-                .filter((r) => !r.getIsGrouped())
-                .map((r) => r.original as Record<string, unknown>)}
+              rows={pivotSourceRows}
               model={pivotModel}
               columns={pivotColumns}
               padding={padding}

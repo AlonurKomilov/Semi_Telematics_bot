@@ -29,8 +29,9 @@ import {
 import { Tip } from '../../components/tooltip';
 import { toneClasses } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
-import { todayInTimeZone } from '../../utils/datetime';
+import { todayInTimeZone, formatClock } from '../../utils/datetime';
 import TripsDrawer from './TripsDrawer';
+import { FLAG_NOTE } from './mileageFlags';
 
 interface MileageRow {
   vehicle_id: string;
@@ -43,6 +44,8 @@ interface MileageRow {
   end_read_on: string;
   days_covered: number;
   flag: '' | 'partial' | 'reset' | 'catchup' | 'device_change' | 'estimated';
+  start_precise?: boolean;
+  end_precise?: boolean;
 }
 
 interface MileageResponse {
@@ -70,28 +73,6 @@ function startFor(end: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-const FLAG_NOTE: Record<string, { label: string; tip: string }> = {
-  device_change: {
-    label: 'Device change',
-    tip: 'This unit reported from more than one telematics device in the range. Miles are summed across them; the odometer columns show the device that drove most of them, so the span alone will not equal the total.',
-  },
-  estimated: {
-    label: 'Estimated',
-    tip: 'A range boundary fell inside a data gap, so the odometer at that boundary is interpolated between the readings around it — without this, driving from before the window would be counted inside it.',
-  },
-  catchup: {
-    label: 'Catch-up days',
-    tip: 'The odometer feed went silent for some days and then reported the backlog in one reading — the range total is real, but if the range starts inside such a gap it can include some earlier driving.',
-  },
-  partial: {
-    label: 'Partial',
-    tip: 'Odometer history starts inside this range — real miles are at least the number shown.',
-  },
-  reset: {
-    label: 'Odometer reset',
-    tip: 'The odometer dropped mid-range (device swap or reset) — miles are summed from daily readings instead.',
-  },
-};
 
 // 730 days of stored history (the backend rejects older starts).
 const RETENTION_DAYS = 730;
@@ -100,7 +81,7 @@ export default function Mileage() {
   const tz = useTimezone();
   const [days, setDays] = useState(30);
   // Row click → trips drill-in for THAT vehicle over the SAME range.
-  const [drawer, setDrawer] = useState<{ name: string; miles: number } | null>(null);
+  const [drawer, setDrawer] = useState<{ name: string; miles: number; flag: string } | null>(null);
   // null = range ends today (the presets path); a custom calendar pick
   // sets an explicit end and the backend honors it.
   const [endDay, setEndDay] = useState<string | null>(null);
@@ -178,7 +159,7 @@ export default function Mileage() {
           {data && rows.length > 0
             ? `${data.total_miles.toLocaleString()} mi across ${rows.length} vehicle${rows.length === 1 ? '' : 's'}${
                 times.start || times.end
-                  ? ` · ${times.start ?? '00:00'} → ${times.end ?? '23:59'}`
+                  ? ` · ${formatClock(times.start ?? '00:00')} → ${formatClock(times.end ?? '23:59')}`
                   : ''
               }`
             : ''}
@@ -197,17 +178,32 @@ export default function Mileage() {
           maxDays={RETENTION_DAYS}
           isFetching={isFetching}
           withTime
+          appliedTimes={times}
         />
       </div>
 
-      {(data?.imprecise_time_for?.length ?? 0) > 0 && (
-        <p className="mb-3 text-xs text-muted-foreground">
-          Time of day applied where stored readings allow (last 7 days in
-          5-minute detail; hourly detail grows to 90 days as it accrues).
-          Whole-day totals were used for:{' '}
-          {data!.imprecise_time_for!.join(', ')}
-        </p>
-      )}
+      {data?.time_requested && (data.imprecise_time_for?.length ?? 0) > 0 && (() => {
+        // Enumerations cap at ~10 names; past that the note inverts to
+        // counts + the precise FEW — a six-line wall of truck numbers
+        // reads as "broken", not as information.
+        const imprecise = data.imprecise_time_for ?? [];
+        const preciseNames = rows
+          .filter((r) =>
+            ((!times.start || r.start_precise) && (!times.end || r.end_precise)))
+          .map((r) => r.vehicle_name);
+        const stored = 'stored 5-minute detail covers the last 7 days; hourly detail grows to 90 days as it accrues';
+        let text: string;
+        if (imprecise.length <= 10) {
+          text = `Time of day applied where stored readings allow (${stored}). Whole-day totals were used for: ${imprecise.join(', ')}.`;
+        } else if (preciseNames.length === 0) {
+          text = `Time of day couldn’t be applied to this range — ${stored}. All totals are whole-day.`;
+        } else if (preciseNames.length <= 10) {
+          text = `Time of day applied for ${preciseNames.length} vehicle${preciseNames.length === 1 ? '' : 's'} (${preciseNames.join(', ')}) — ${stored}. The other ${imprecise.length} use whole-day totals.`;
+        } else {
+          text = `Time of day applied for ${preciseNames.length} vehicles (${stored}); ${imprecise.length} use whole-day totals.`;
+        }
+        return <p className="mb-3 text-xs text-muted-foreground">{text}</p>;
+      })()}
 
       {data?.data_through && data.data_through < end && rows.length > 0 && (
         <p className="mb-3 text-xs text-muted-foreground">
@@ -239,7 +235,7 @@ export default function Mileage() {
           searchKey={['vehicle_name', 'company']}
           onRowClick={(row) => {
             const r = row as unknown as MileageRow;
-            setDrawer({ name: r.vehicle_name, miles: r.miles });
+            setDrawer({ name: r.vehicle_name, miles: r.miles, flag: r.flag });
           }}
         />
       )}
@@ -248,6 +244,7 @@ export default function Mileage() {
         <TripsDrawer
           vehicleName={drawer.name}
           rowMiles={drawer.miles}
+          rowFlag={drawer.flag}
           start={startParam}
           end={endParam}
           onClose={() => setDrawer(null)}

@@ -23,6 +23,9 @@ import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';
 import { formatDate } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
+import { Tip } from '../../components/tooltip';
+import { toneClasses } from '../../lib/status';
+import { FLAG_NOTE } from './mileageFlags';
 
 interface TripRow {
   start_ms: number;
@@ -54,11 +57,14 @@ function hhmm(min: number): string {
 }
 
 export default function TripsDrawer({
-  vehicleName, rowMiles, start, end, onClose,
+  vehicleName, rowMiles, rowFlag = '', start, end, onClose,
 }: {
   vehicleName: string;
   /** The odometer-delta miles the Mileage row showed — the cross-check. */
   rowMiles: number;
+  /** The row's coverage flag — echoed here so the warning travels with
+   *  the drill-in instead of staying behind on the grid. */
+  rowFlag?: string;
   start: string;
   end: string;
   onClose: () => void;
@@ -131,8 +137,14 @@ export default function TripsDrawer({
   ];
 
   const gpsTotal = data?.total_trip_miles ?? 0;
-  const showsCrossCheck = !isLoading && !error && trips.length > 0
-    && Math.abs(gpsTotal - rowMiles) > 1;
+  const gap = Math.abs(gpsTotal - rowMiles);
+  const showsCrossCheck = !isLoading && !error && trips.length > 0 && gap > 1;
+  // "Small gaps are normal" was written for the ±3% case and must not
+  // crown a jumped odometer as authoritative: production truck 233
+  // showed 24,352 odometer miles against 0.6 GPS miles.  Past 25% AND
+  // 100 mi, the honest message inverts.
+  const gapIsAbsurd = gap > 100
+    && gap / Math.max(gpsTotal, rowMiles, 1) > 0.25;
 
   return (
     <>
@@ -149,8 +161,15 @@ export default function TripsDrawer({
       >
         <header className="px-5 py-4 border-b border-border flex items-start gap-3 shrink-0">
           <div className="flex-1 min-w-0">
-            <h2 className="text-base font-semibold">
+            <h2 className="text-base font-semibold flex items-center gap-2">
               Trips — {vehicleName}
+              {rowFlag && FLAG_NOTE[rowFlag] && (
+                <Tip label={FLAG_NOTE[rowFlag].tip}>
+                  <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${toneClasses('warn')}`}>
+                    {FLAG_NOTE[rowFlag].label}
+                  </span>
+                </Tip>
+              )}
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
               {start.replace('T', ' ')} → {end.replace('T', ' ')}
@@ -201,11 +220,20 @@ export default function TripsDrawer({
               enableToolbar={false}
             />
           )}
-          {showsCrossCheck && (
+          {showsCrossCheck && !gapIsAbsurd && (
             <p className="mt-3 text-xs text-muted-foreground">
               GPS trip miles ({gpsTotal.toLocaleString()}) and the odometer
               delta ({rowMiles.toLocaleString()}) measure differently — small
               gaps are normal; the odometer number is the authoritative one.
+            </p>
+          )}
+          {showsCrossCheck && gapIsAbsurd && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              These numbers disagree badly — the odometer delta
+              ({rowMiles.toLocaleString()} mi) doesn’t match GPS trips
+              ({gpsTotal.toLocaleString()} mi). An odometer device jump or
+              swap is the likely cause; for this vehicle the GPS trips
+              number is closer to reality.
             </p>
           )}
         </div>

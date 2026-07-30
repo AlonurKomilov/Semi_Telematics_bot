@@ -200,3 +200,14 @@ export function formatAgoShort(
     return new Intl.DateTimeFormat(undefined, rest).format(d);
   }
 }
+
+
+/** "HH:MM" (24h, as `<input type="time">` emits) → the viewer's locale
+ *  clock ("10:30 PM" / "22:30"), so our rendered copy matches the
+ *  native time inputs beside it instead of speaking a second dialect. */
+export function formatClock(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
+  const d = new Date(2000, 0, 1, h, m);
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}

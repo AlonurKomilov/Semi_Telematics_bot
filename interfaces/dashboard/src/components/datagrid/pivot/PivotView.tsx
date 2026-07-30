@@ -379,13 +379,28 @@ export default function PivotView({
                 className={cn(
                   cellPad,
                   stickyCol,
-                  'text-left font-medium whitespace-nowrap transition-colors',
+                  'relative text-left font-medium whitespace-nowrap transition-colors',
                   'group-hover/prow:bg-muted',
-                  rowIdx % 2 === 1 && 'bg-muted/30',
                 )}
               >
+                {/* The zebra tint is an OVERLAY, not a replacement.
+                    ``bg-muted/30`` is 30% alpha, and applied directly it
+                    won the cascade over the sticky cell's ``bg-card`` —
+                    leaving the frozen column 70% TRANSPARENT, so the
+                    scrolled columns underneath bled through it and the
+                    text visibly overlapped ("4,72RMR (65)").  A pinned
+                    cell must be fully opaque; the stripe rides on top of
+                    that, which also matches the body's stripe exactly
+                    (same alpha over the same card colour).  Hidden on
+                    hover so the row's own hover fill isn't doubled. */}
+                {rowIdx % 2 === 1 && (
+                  <span
+                    aria-hidden
+                    className="absolute inset-0 bg-muted/30 group-hover/prow:opacity-0 pointer-events-none"
+                  />
+                )}
                 <span
-                  className="inline-flex items-center gap-1"
+                  className="relative inline-flex items-center gap-1"
                   // Nesting depth as indentation — the only cue that a
                   // row belongs to the group above it.
                   style={{ paddingLeft: row.depth * 16 }}
@@ -463,12 +478,24 @@ export default function PivotView({
                   key={`tot-${i}`}
                   className={cn(
                     cellPad, stickyTotalCell,
-                    'text-right tabular-nums whitespace-nowrap font-semibold border-l border-border',
+                    'relative text-right tabular-nums whitespace-nowrap font-semibold border-l border-border',
                     'transition-colors group-hover/prow:bg-muted',
-                    rowIdx % 2 === 1 && 'bg-muted/30',
                   )}
                 >
-                  {renderCell(value, model.values[i].key, model.values[i].aggFn)}
+                  {/* Opaque base + overlay stripe — same reason as the
+                      row-label column: a 30%-alpha stripe applied
+                      directly made the frozen Total column see-through,
+                      so scrolled figures showed through it
+                      ("$2,550$2,550.00"). */}
+                  {rowIdx % 2 === 1 && (
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 bg-muted/30 group-hover/prow:opacity-0 pointer-events-none"
+                    />
+                  )}
+                  <span className="relative">
+                    {renderCell(value, model.values[i].key, model.values[i].aggFn)}
+                  </span>
                 </td>
               ))}
             </tr>

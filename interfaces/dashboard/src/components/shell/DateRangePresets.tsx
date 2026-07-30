@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+
+import { formatClock } from '../../utils/datetime';
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
@@ -68,6 +70,10 @@ export interface DateRangePresetsProps {
    *  Pass ONLY when the page's backend accepts date-times — the
    *  Mileage tab's precision ladder is the reference consumer. */
   withTime?: boolean;
+  /** The APPLIED times (the page owns that state) — echoed into the
+   *  trigger label so the control describes the whole query it made,
+   *  not just the date half. */
+  appliedTimes?: { start: string | null; end: string | null };
   /**
    * When true, render a subtle spinner inside the trigger so the user
    * sees feedback while the new period's data is being fetched.  Pages
@@ -222,6 +228,7 @@ export default function DateRangePresets({
   end = null,
   onApplyRange,
   withTime = false,
+  appliedTimes,
   isFetching = false,
 }: DateRangePresetsProps) {
   const rangeCapable = onApplyRange !== undefined;
@@ -316,8 +323,12 @@ export default function DateRangePresets({
   // window LENGTH matches a preset ("last 7 ending Jun 20" ≠ "Last 7").
   const isCustom = end != null || !options.some((o) => o.days === value);
   const endDate = end ? startOfDay(new Date(`${end}T00:00:00`)) : null;
+  const appliedClock =
+    appliedTimes && (appliedTimes.start || appliedTimes.end)
+      ? ` · ${formatClock(appliedTimes.start ?? '00:00')}–${formatClock(appliedTimes.end ?? '23:59')}`
+      : '';
   const rangeLabel = endDate
-    ? `${fmtNice(new Date(endDate.getTime() - value * 86_400_000), tz)} – ${fmtNice(endDate, tz)}`
+    ? `${fmtNice(new Date(endDate.getTime() - value * 86_400_000), tz)} – ${fmtNice(endDate, tz)}${appliedClock}`
     : null;
 
   const monthShift = (delta: number) => {
@@ -346,8 +357,11 @@ export default function DateRangePresets({
     ? (startOfDay(pickedStart) <= startOfDay(previewFar)
         ? [pickedStart, previewFar] : [previewFar, pickedStart])
     : [null, null];
+  const draftClock = withTime && (timeStart || timeEnd)
+    ? ` · ${formatClock(timeStart || '00:00')}–${formatClock(timeEnd || '23:59')}`
+    : '';
   const footerSummary = sumLo && sumHi
-    ? `${fmtNice(sumLo, tz)} → ${fmtNice(sumHi, tz)} · ${daysBetween(sumLo, sumHi)} days`
+    ? `${fmtNice(sumLo, tz)} → ${fmtNice(sumHi, tz)} · ${daysBetween(sumLo, sumHi)} days${draftClock}`
     : rangeCapable
       ? 'Click a start date, then an end date'
       : 'Click a start date — the range ends today';
