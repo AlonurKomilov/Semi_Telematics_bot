@@ -59,9 +59,12 @@ export interface PivotModel {
   /** Freeze the row-label column against the left edge.  ONE setting for
    *  the whole column, not per field: the renderer draws a single merged
    *  label cell ("Company / Customer"), so a per-field pin would silently
-   *  govern its neighbours.  Default ON — with 60 measure columns an
-   *  unfrozen identity scrolls out of sight and every figure loses its
-   *  subject — but it costs real width, so it is the reader's call. */
+   *  govern its neighbours.
+   *
+   *  Default OFF (owner's call, and MUI's behaviour): a frozen column
+   *  costs real width on every report, and most reports are narrow enough
+   *  not to need it.  Turn it on from ROWS when a wide matrix starts
+   *  scrolling the identity out of sight. */
   pinRowLabels?: boolean;
   /** Freeze the Total column against the right edge.  Lives with VALUES
    *  because the Total column is GENERATED from them (one per value
@@ -612,10 +615,14 @@ export function prunePivotModel(model: PivotModel, columns: AnyColumn[]): PivotM
     sort: model.sort ?? null,
     disabled: (model.disabled ?? []).filter((k) => assigned.has(k)),
     hideEmptyColumns: model.hideEmptyColumns ?? false,
-    // Default ON, so a model saved before these existed keeps today's
-    // frozen edges rather than silently thawing on next load.
-    pinRowLabels: model.pinRowLabels ?? true,
-    pinTotals: model.pinTotals ?? true,
+    // Default OFF.  Note what this means for an existing saved report:
+    // it has no explicit value, so it picks up the new default and its
+    // edges unfreeze on next load.  That is the intended change, not a
+    // migration bug — but it IS a visible change to saved reports, which
+    // is why the flag is written explicitly from here on, so a future
+    // flip of the default can't silently move them again.
+    pinRowLabels: model.pinRowLabels ?? false,
+    pinTotals: model.pinTotals ?? false,
   };
 }
 

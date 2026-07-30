@@ -662,14 +662,14 @@ export default function PivotPanel({
                       all. */}
                   {axis === 'rows' && keys.length > 0 && (
                     <ZoneSetting
-                      checked={model.pinRowLabels ?? true}
+                      checked={model.pinRowLabels ?? false}
                       onChange={(v) => onChange({ ...model, pinRowLabels: v })}
                       label="Keep row labels in view"
                     />
                   )}
                   {axis === 'values' && keys.length > 0 && hasColumnDim && (
                     <ZoneSetting
-                      checked={model.pinTotals ?? true}
+                      checked={model.pinTotals ?? false}
                       onChange={(v) => onChange({ ...model, pinTotals: v })}
                       label="Keep Total column in view"
                     />

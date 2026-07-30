@@ -318,8 +318,8 @@ export default function PivotView({
   // ORDINARY cells — no position, no z-index, no opaque fill and no seam:
   // a cell that isn't frozen has nothing to occlude, and keeping bg-card
   // would only hide the row's own zebra stripe.
-  const pinRows = model.pinRowLabels ?? true;
-  const pinTotals = model.pinTotals ?? true;
+  const pinRows = model.pinRowLabels ?? false;
+  const pinTotals = model.pinTotals ?? false;
   const stickyCol = pinRows
     ? 'sticky left-0 z-10 bg-card [box-shadow:inset_-1px_0_0_var(--border),var(--pin-shadow-right)]'
     : '';

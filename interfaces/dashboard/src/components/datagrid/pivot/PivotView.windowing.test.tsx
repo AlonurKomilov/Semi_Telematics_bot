@@ -157,6 +157,11 @@ describe('row windowing bounds the DOM', () => {
 });
 
 describe('the frozen columns stay frozen', () => {
+  // Pinning is opt-IN now, so these must ask for it explicitly — which is
+  // the sharper test anyway: it exercises the pinned path rather than
+  // relying on a default that can be flipped by an owner decision.
+  const PINNED: PivotModel = { ...MODEL, pinRowLabels: true, pinTotals: true };
+
   // `sticky` and `relative` are the SAME tailwind-merge group (position),
   // so any class list that appends `relative` to a sticky cell silently
   // replaces it and the column stops freezing. That happened once, when a
@@ -173,7 +178,7 @@ describe('the frozen columns stay frozen', () => {
 
   it('keeps position:sticky on the row-label column', async () => {
     await act(async () => {
-      render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
+      render(<PivotView rows={ROWS} model={PINNED} columns={COLUMNS} padding="py-3" fill />);
     });
     const cls = freeze('tbody tr[data-prow] th');
     expect(cls).toContain('sticky');
@@ -183,7 +188,7 @@ describe('the frozen columns stay frozen', () => {
 
   it('keeps position:sticky on the Total column', async () => {
     await act(async () => {
-      render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
+      render(<PivotView rows={ROWS} model={PINNED} columns={COLUMNS} padding="py-3" fill />);
     });
     const cells = document.querySelectorAll('tbody tr[data-prow] td');
     const last = cells[cells.length - 1] as HTMLElement;
@@ -193,9 +198,27 @@ describe('the frozen columns stay frozen', () => {
 
   it('keeps the header corner and the totals label frozen too', async () => {
     await act(async () => {
-      render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
+      render(<PivotView rows={ROWS} model={PINNED} columns={COLUMNS} padding="py-3" fill />);
     });
     expect(freeze('thead th[data-pin="left"]')).toContain('sticky');
     expect(freeze('tfoot th')).toContain('sticky');
+  });
+});
+
+describe('unpinned means ORDINARY, not just un-shadowed', () => {
+  it('drops position, fill and data-pin when the pins are off', async () => {
+    await act(async () => {
+      render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
+    });
+    const label = document.querySelector('tbody tr[data-prow] th') as HTMLElement;
+    const cls = label.className.split(/\s+/);
+    expect(cls).not.toContain('sticky');
+    // ``bg-card`` exists only so a FROZEN cell can occlude what scrolls
+    // under it; left on an ordinary cell it would hide the row's zebra.
+    expect(cls).not.toContain('bg-card');
+    // The scrollbar insets are driven off data-pin, so it has to go too or
+    // the bar reserves space for an edge that now scrolls.
+    expect(document.querySelector('thead th[data-pin="left"]')).toBeNull();
+    expect(document.querySelector('thead th[data-pin="right"]')).toBeNull();
   });
 });

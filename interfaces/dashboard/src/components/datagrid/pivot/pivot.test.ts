@@ -181,8 +181,8 @@ describe('pivot — guards', () => {
       // ...and for every field added since.  This assertion is the guard
       // that has caught all three additions; keep it exhaustive.
       hideEmptyColumns: false,
-      pinRowLabels: true,
-      pinTotals: true,
+      pinRowLabels: false,
+      pinTotals: false,
     });
   });
 
@@ -883,19 +883,19 @@ describe('pinning the frozen edges is opt-out, and survives a reload', () => {
     values: [{ key: 'rate', aggFn: 'sum' }],
   };
 
-  it('defaults ON, so a model saved before the flags existed keeps its frozen edges', () => {
-    // The dangerous failure here is silent THAWING on next load: a saved
-    // report suddenly scrolling its identity away with nothing to explain
-    // it. `?? true` on the prune is what prevents that.
+  it('defaults OFF — a frozen column costs width on every report', () => {
     const pruned = prunePivotModel(M, COLS);
-    expect(pruned.pinRowLabels).toBe(true);
-    expect(pruned.pinTotals).toBe(true);
+    expect(pruned.pinRowLabels).toBe(false);
+    expect(pruned.pinTotals).toBe(false);
   });
 
-  it('carries an explicit OFF through the prune', () => {
-    const off = prunePivotModel({ ...M, pinRowLabels: false, pinTotals: false }, COLS);
-    expect(off.pinRowLabels).toBe(false);
-    expect(off.pinTotals).toBe(false);
+  it('carries an explicit ON through the prune', () => {
+    // The flag must survive the prune in BOTH directions, or turning a
+    // pin on would last exactly until the next model rebuild — which is
+    // how `sort` was lost.
+    const on = prunePivotModel({ ...M, pinRowLabels: true, pinTotals: true }, COLS);
+    expect(on.pinRowLabels).toBe(true);
+    expect(on.pinTotals).toBe(true);
   });
 
   it('changes nothing about the numbers — it is presentation only', () => {

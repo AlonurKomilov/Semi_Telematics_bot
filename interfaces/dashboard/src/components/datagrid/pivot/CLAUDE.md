@@ -146,10 +146,11 @@ belongs under.
 
 ## Both frozen edges are opt-out, and the controls are ZONE-level
 
-`pinRowLabels` and `pinTotals` default **ON** (with 60 measure columns an
-unfrozen identity scrolls out of sight and every figure loses its
-subject) and are toggled from the panel: "Keep row labels in view" in
-ROWS, "Keep Total column in view" in VALUES.
+`pinRowLabels` and `pinTotals` default **OFF** (owner's call, and MUI's
+behaviour — a frozen column costs real width on every report) and are
+toggled from the panel: "Keep row labels in view" in ROWS, "Keep Total
+column in view" in VALUES. Turn them on when a wide matrix starts
+scrolling the identity out of sight.
 
 Two reasons they are not items on a field's ⋮ menu:
 
@@ -167,8 +168,16 @@ nothing to occlude, and keeping `bg-card` would only hide the row's own
 stripe. `data-pin` goes with them, or the horizontal scrollbar would keep
 reserving an inset for an edge that now scrolls.
 
-The prune writes `?? true`, so a report saved before these flags existed
-keeps today's frozen edges instead of silently thawing on next load.
+The prune writes the flag EXPLICITLY (`?? false`) rather than leaving it
+undefined, so a future change of default can't silently move reports that
+already exist. Note the one-off cost of the current default: reports
+saved while pinning was on have no explicit value, so they pick up the
+new default and unfreeze once.
+
+**These are the only pin controls in pivot mode.** The record list's
+per-column ⋮ (Sort / Filter / Pin / Group / Hide) does not exist here —
+the matrix is a separate read-only renderer with no per-column menus — so
+the panel is the only place the setting can live.
 
 ## Never append `relative` to a sticky cell
 
