@@ -327,6 +327,14 @@ export default function PivotView({
           fill ? 'flex-1 min-h-0 overflow-y-auto' : 'overflow-y-visible',
           HIDE_NATIVE_SCROLLBAR,
         )}
+        // Same treatment the record list's scroller already had, and
+        // missing here for the same reason it was missing there: a plain
+        // ``overflow`` div is not focusable, so PageDown / arrows never
+        // reach it and every row past the first screen is mouse-only
+        // (WCAG 2.1.1).  Focusable + named makes it a real region.
+        tabIndex={0}
+        role="region"
+        aria-label="Pivot report"
       >
       {/* ``min-w-full``, NOT ``w-full``.  Pinned to the container width
           the table had no choice but to compress: 60 driver columns
