@@ -307,6 +307,15 @@ stays `auto` so wheel/touch/keyboard/scroll-into-view are untouched;
 `overflow-x` is `hidden` (a native x-bar reserves a track even at height
 0) with a wheel handler restoring trackpad swipe.
 
+⚠️ **Nothing outside a scrollbar may subscribe to scroll POSITION.**
+`useScrollMetrics` sets state per frame, so a surface that calls it
+re-renders its whole subtree while you scroll — on a pivot matrix that
+is ~22,000 cells (360 rows × 61 columns) reconciled per frame, which
+freezes the tab. The bars are two divs, and they subscribe themselves.
+A surface that needs "is there overflow" for a layout class uses
+**`useOverflow`**, which is ResizeObserver-driven and never watches
+scrolling. Updates are rAF-coalesced on top of that.
+
 The seam is deliberate: **track geometry is shared, insets are local.**
 The two renderers freeze different things — the list reads `data-pin` off
 its leaf header row, the matrix measures its corner cell and Total group

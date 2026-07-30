@@ -75,7 +75,7 @@ import PivotView from './pivot/PivotView';
 import PivotPanel from './pivot/PivotPanel';
 import { prunePivotModel, pivot, pivotToCsvRows, type PivotModel } from './pivot/pivot';
 import {
-  useScrollMetrics, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR,
+  useOverflow, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR,
 } from './scrollbars';
 import { derivePivotDimensions } from './pivot/derived';
 
@@ -2670,7 +2670,10 @@ export default function DataGrid({
     return () => ro.disconnect();
   }, [theadEl, bodyScrolls, density]);
 
-  const scrollMetrics = useScrollMetrics(scrollEl);
+  // Booleans, NOT live metrics.  Subscribing the whole grid to scroll
+  // position re-rendered every row on every frame; only the bars need
+  // that, and they subscribe themselves.
+  const overflow = useOverflow(scrollEl);
 
   // Measure pinned column widths directly from the live DOM after
   // every render.  Reading ``columnSizing`` would also work but lags
@@ -2705,7 +2708,7 @@ export default function DataGrid({
   // Scrollbar geometry — only shown when content overflows.  The
   // track spans the centre region; thumb width is proportional to
   // the visible-to-total ratio, with a floor so it stays grabbable.
-  const needsHScroll = scrollMetrics.scrollWidth > scrollMetrics.clientWidth + 1;
+  const needsHScroll = overflow.x;
 
   // CSV export — visible columns in current display order, filtered
   // + sorted rows.  Filename uses ``tableId`` + today's local date so
@@ -3881,13 +3884,12 @@ export default function DataGrid({
           the viewport's edge. */}
       <ScrollbarH
         el={scrollEl}
-        metrics={scrollMetrics}
         insetLeft={pinnedLeftWidth}
         insetRight={pinnedRightWidth}
         flow={!!fillHeight}
       />
       {bodyScrolls && (
-        <ScrollbarV el={scrollEl} metrics={scrollMetrics} insetTop={headerHeight} />
+        <ScrollbarV el={scrollEl} insetTop={headerHeight} />
       )}
       </div>
       )}

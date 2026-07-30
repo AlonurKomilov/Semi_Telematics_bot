@@ -48,12 +48,21 @@ const ZERO: ScrollMetrics = {
 /**
  * Live scroll geometry for one container.
  *
+ * ⚠️ Call this INSIDE a scrollbar, never in the surface that owns the
+ * rows.  It sets state on every scroll frame, so a parent that
+ * subscribes re-renders its whole subtree while you scroll — on a pivot
+ * matrix that is ~22,000 cells reconciled per frame, which freezes the
+ * tab.  The bars are two divs; that is the only tree allowed to
+ * re-render at scroll rate.  Parents that need "is there overflow"
+ * for a layout class use ``useOverflow`` instead, which doesn't watch
+ * scrolling at all.
+ *
  * Keyed on the ELEMENT, not on props: the table branch unmounts and
  * remounts (pivot on/off), and an effect keyed on anything else ends up
  * observing a detached node — at which point the metrics freeze and the
  * bars silently stop rendering.  Pass the node from a callback ref.
  */
-export function useScrollMetrics(el: HTMLElement | null): ScrollMetrics {
+function useScrollMetrics(el: HTMLElement | null): ScrollMetrics {
   const [metrics, setMetrics] = useState<ScrollMetrics>(ZERO);
   useEffect(() => {
     if (!el) return;
@@ -68,7 +77,14 @@ export function useScrollMetrics(el: HTMLElement | null): ScrollMetrics {
       });
     };
     update();
-    el.addEventListener('scroll', update, { passive: true });
+    // Coalesce to one update per frame.  Scroll fires far faster than
+    // paint, and each extra call is a wasted render of the bar.
+    let raf = 0;
+    const schedule = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => { raf = 0; update(); });
+    };
+    el.addEventListener('scroll', schedule, { passive: true });
     // Trackpad horizontal swipe / shift+wheel — the container is
     // ``overflow-x: hidden`` so the browser would normally ignore these
     // gestures; convert ``deltaX`` (or shift+deltaY) into a direct
@@ -86,12 +102,38 @@ export function useScrollMetrics(el: HTMLElement | null): ScrollMetrics {
     // change widens cells, a column resized).
     if (el.firstElementChild) ro.observe(el.firstElementChild);
     return () => {
-      el.removeEventListener('scroll', update);
+      if (raf) cancelAnimationFrame(raf);
+      el.removeEventListener('scroll', schedule);
       el.removeEventListener('wheel', onWheel);
       ro.disconnect();
     };
   }, [el]);
   return metrics;
+}
+
+/**
+ * Does this container overflow?  Booleans only, and NO scroll listener —
+ * a surface that needs to reserve space for a scrollbar re-renders when
+ * overflow appears or disappears, not while you scroll.
+ */
+export function useOverflow(el: HTMLElement | null): { x: boolean; y: boolean } {
+  const [state, setState] = useState({ x: false, y: false });
+  useEffect(() => {
+    if (!el) return;
+    const measure = () => setState((prev) => {
+      const next = {
+        x: el.scrollWidth > el.clientWidth + 1,
+        y: el.scrollHeight > el.clientHeight + 1,
+      };
+      return prev.x === next.x && prev.y === next.y ? prev : next;
+    });
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [el]);
+  return state;
 }
 
 /** Shared thumb geometry for one axis. */
@@ -120,14 +162,14 @@ const THUMB = 'absolute bg-muted-foreground/50 hover:bg-muted-foreground/70'
  * scrolled to the very end.
  */
 export function ScrollbarH({
-  el, metrics, insetLeft = 0, insetRight = 0, flow = false,
+  el, insetLeft = 0, insetRight = 0, flow = false,
 }: {
   el: HTMLElement | null;
-  metrics: ScrollMetrics;
   insetLeft?: number;
   insetRight?: number;
   flow?: boolean;
 }) {
+  const metrics = useScrollMetrics(el);
   const track = Math.max(0, metrics.clientWidth - insetLeft - insetRight);
   const needed = metrics.scrollWidth > metrics.clientWidth + 1;
   const { max, thumb, thumbMax, offset } =
@@ -184,12 +226,12 @@ export function ScrollbarH({
  * requires the wrapper to carry ``group/grid``.
  */
 export function ScrollbarV({
-  el, metrics, insetTop = 0,
+  el, insetTop = 0,
 }: {
   el: HTMLElement | null;
-  metrics: ScrollMetrics;
   insetTop?: number;
 }) {
+  const metrics = useScrollMetrics(el);
   const track = Math.max(0, metrics.clientHeight - insetTop);
   const needed = metrics.scrollHeight > metrics.clientHeight + 1;
   const { max, thumb, thumbMax, offset } =

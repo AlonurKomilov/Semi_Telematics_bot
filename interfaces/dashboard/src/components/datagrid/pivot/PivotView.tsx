@@ -4,9 +4,7 @@ import {
 } from 'lucide-react';
 
 import { cn } from '../../../lib/utils';
-import {
-  useScrollMetrics, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR,
-} from '../scrollbars';
+import { ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR } from '../scrollbars';
 import { EmptyState } from '../../shell';
 import { Button } from '../../ui/button';
 import {
@@ -110,8 +108,10 @@ export default function PivotView({
   // because the two renderers freeze different things — the record list
   // reads ``data-pin`` off its leaf header row, this table's frozen
   // edges are the corner cell and the Total group.
+  // NO scroll subscription here.  The matrix is ~22,000 cells at 360
+  // rows x 61 columns; re-rendering it on every scroll frame is what
+  // froze the tab.  The bars watch the element themselves.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
-  const metrics = useScrollMetrics(scrollEl);
   const [insets, setInsets] = useState({ left: 0, right: 0, top: 0 });
   useEffect(() => {
     const el = scrollEl;
@@ -442,7 +442,7 @@ export default function PivotView({
                       onClick={() => setDrill({ row, leafIdx: i })}
                       className={cn(
                         cellPad,
-                        'block w-full text-right tabular-nums cursor-pointer transition-colors',
+                        'block w-full text-right tabular-nums cursor-pointer',
                         // A cue AT REST.  Every non-empty figure is a
                         // button and every empty one is a span, but both
                         // read as plain text until hovered — so the
@@ -546,13 +546,12 @@ export default function PivotView({
       </div>
       <ScrollbarH
         el={scrollEl}
-        metrics={metrics}
         insetLeft={insets.left}
         insetRight={insets.right}
         flow={!!fill}
       />
       {fill && (
-        <ScrollbarV el={scrollEl} metrics={metrics} insetTop={insets.top} />
+        <ScrollbarV el={scrollEl} insetTop={insets.top} />
       )}
       </div>
       {/* Row count of the REPORT (groups), distinct from the source-row
