@@ -202,14 +202,17 @@ export function formatAgoShort(
 }
 
 
-/** "HH:MM" → the 24-hour clock, always (owner decision 2026-07-30).
- *  Operational time in this product is 24h: dispatch and drivers read
- *  "00:00"/"22:00" natively, and the 12-hour clock cannot even WRITE
- *  "midnight at the end of the day" unambiguously ("12:00 AM" is the
- *  start, "12:00 PM" is noon — the classic trap).  "24:00" is the
- *  standard 24h notation for end-of-day. */
+/** "HH:MM" → the 12-hour US clock ("8:00 AM"), matching what every
+ *  other timestamp in the product renders (formatDate → locale 12h)
+ *  and what US dispatch/drivers/Samsara speak (owner decision
+ *  2026-07-30 after a 24h detour: picker-internal consistency isn't
+ *  worth contradicting the trip times on the same screen).  The 12h
+ *  clock's midnight/noon ambiguity is handled at the OPTION labels
+ *  ("(midnight)"/"(noon)"/"(end of day)"), not here. */
 export function formatClock(hhmm: string): string {
   const [h, m] = hhmm.split(':').map(Number);
   if (!Number.isFinite(h) || !Number.isFinite(m)) return hhmm;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  if (h === 24) return '12:00 AM';
+  const d = new Date(2000, 0, 1, h, m);
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }

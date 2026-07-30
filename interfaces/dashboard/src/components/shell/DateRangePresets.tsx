@@ -219,17 +219,27 @@ function CalendarMonth({ monthStart, start, endPicked, hover, bandEnd, rangeCapa
   );
 }
 
-// Hour steps for the withTime selectors — 24-hour clock by owner
-// decision (12h cannot write end-of-day midnight: "12:00 AM" is the
-// start, "12:00 PM" is noon).  "24:00" is the standard end-of-day
-// notation; it applies as whole-day-end (null time upstream).
+// Hour steps for the withTime selectors — 12-hour US labels (the
+// product-wide clock: formatDate, trip times, Samsara, US dispatch all
+// speak AM/PM).  The 12h clock's two traps are disambiguated IN the
+// labels: midnight and noon are named, and the end boundary "12:00 AM
+// (end of day)" carries value 24:00, which applies as whole-day-end
+// (null time upstream) — so noon can never be mistaken for the end of
+// a day, nor midnight for a zero-length one.
 const HOUR_ITEMS_FROM = Array.from({ length: 24 }, (_, h) => {
   const v = `${String(h).padStart(2, '0')}:00`;
-  return { value: v, label: v };
+  const label = h === 0 ? '12:00 AM (midnight)'
+    : h === 12 ? '12:00 PM (noon)'
+    : formatClock(v);
+  return { value: v, label };
 });
 const HOUR_ITEMS_TO = Array.from({ length: 24 }, (_, i) => {
-  const v = i + 1 === 24 ? '24:00' : `${String(i + 1).padStart(2, '0')}:00`;
-  return { value: v, label: v };
+  const h = i + 1;
+  const v = h === 24 ? '24:00' : `${String(h).padStart(2, '0')}:00`;
+  const label = h === 24 ? '12:00 AM (end of day)'
+    : h === 12 ? '12:00 PM (noon)'
+    : formatClock(v);
+  return { value: v, label };
 });
 
 // ── The picker ───────────────────────────────────────────────
@@ -307,7 +317,7 @@ export default function DateRangePresets({
   // Time-of-day (withTime only) — HOUR granularity by design: the
   // warehouse answers from 5-minute snapshots and banked hourly
   // readings, so offering minutes would imply precision the data
-  // can't back.  Defaults are VISIBLE ("00:00" → "24:00") so the
+  // can't back.  Defaults are VISIBLE ("12:00 AM (midnight)" → "end of day") so the
   // whole-day behavior is stated, not guessed from an empty "--:--".
   const [timeStart, setTimeStart] = useState('00:00');
   const [timeEnd, setTimeEnd] = useState('24:00');
@@ -383,7 +393,7 @@ export default function DateRangePresets({
         ? [pickedStart, previewFar] : [previewFar, pickedStart])
     : [null, null];
   const draftClock = withTime && !timesAreDefault
-    ? ` · ${formatClock(timeStart)}–${timeEnd === '24:00' ? '24:00' : formatClock(timeEnd)}`
+    ? ` · ${formatClock(timeStart)}–${timeEnd === '24:00' ? 'end of day' : formatClock(timeEnd)}`
     : '';
   const footerSummary = sumLo && sumHi
     ? `${fmtNice(sumLo, tz)} → ${fmtNice(sumHi, tz)} · ${daysBetween(sumLo, sumHi)} days${draftClock}`
