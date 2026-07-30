@@ -121,6 +121,39 @@ data to another.
    answers identity ("which one"). Same part row answers both, through
    different columns.
 
+### VMRS adoption runbook (owner intent 2026-07-30: license later — this is the whole migration)
+
+When the TMC/ATA licence is purchased, VMRS arrives as DATA, never as
+renames. Nothing in this list touches an existing name, wire key, or
+report:
+
+1. **New module `adapters/storage/vmrs.py`** — honestly named, because
+   it will hold actual VMRS material: the licensed CK31/CK32 mappings
+   (`{"brakes": "013", ...}` — one of ours may map to several of
+   theirs) and the CK33 component list.
+2. **Mapping columns, additive** — each `VEHICLE_SYSTEMS` /
+   `SERVICE_ASSEMBLIES` entry gains a `vmrs` code via that module.
+   Our slugs stay primary (environment-independent, readable in
+   GROUP BY and history); the code is a projection.
+3. **`component_key` builds** (principle 8's reserved L3 slot): the
+   licensed CK33 list IS the vocabulary — seeded into
+   `service_taxonomy`, column on `parts_catalog`, suggest-matcher +
+   bulk-apply chips, the same recipe `assembly_key` proved.
+4. **Reports/exports emit codes beside labels** — the same GROUP BY
+   gains a `vmrs_code` column through the mapping; historical rows
+   convert for free because every row already carries
+   `system_key`/`assembly_key`.
+
+Deliberately rejected, twice (2026-07-28 advisor on `canonical_key`,
+2026-07-30 owner review): renaming `system_key`/`assembly_key`/
+`component_key` to `ck31/ck32/ck33`, numbering our own entries in
+VMRS's `013-001-023` format, or naming our taxonomy module "vmrs"
+before it holds licensed content. A name that promises VMRS semantics
+over non-VMRS values is a false friend in every export and
+integration; and the eventual migration contains no rename step, so
+the churn would buy nothing. Name follows content — in both
+directions.
+
 ---
 
 ## 3. Phase A — Per-account vendor registry (approved)
