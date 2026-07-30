@@ -1,0 +1,236 @@
+// ── Custom scrollbars — one implementation for every scrolling surface
+//    in the grid family ─────────────────────────────────────────────
+//
+// WHY custom at all: with pinned (frozen) columns a native bar spans the
+// WHOLE container, which implies the pinned columns scroll too.  The
+// convention (AG Grid's, and ours) is a bar over only the SCROLLABLE
+// region.  The vertical one starts below the sticky header for the same
+// reason — a native bar runs up alongside the column labels and their ⋮
+// menus, so the rows read as scrolling "into" the header.
+//
+// Only the PAINTING is ours.  ``overflow-y`` stays ``auto`` so wheel,
+// touch, keyboard and scroll-into-view keep working natively;
+// ``overflow-x`` is ``hidden`` (a native x-bar reserves a track at the
+// container's bottom even at height 0) with a wheel handler restoring
+// trackpad swipe.
+//
+// EXTRACTED because the record list and the pivot matrix are two
+// renderers inside ONE card.  Each had grown its own answer — the list a
+// custom track, the matrix the native bar — and a scrollbar that looks
+// different depending on which mode you're in reads as two products.
+// What is genuinely shared is the TRACK geometry; what to inset by is
+// local, because the two renderers have different DOM (the list knows
+// its pinned columns from ``data-pin``, the matrix from its own sticky
+// cells), so measurement deliberately stays with the caller.
+
+import { useEffect, useState } from 'react';
+
+import { cn } from '../../lib/utils';
+
+/** Hide the native bars on a container whose scrollbars we draw. */
+export const HIDE_NATIVE_SCROLLBAR =
+  '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
+
+export interface ScrollMetrics {
+  scrollLeft: number;
+  clientWidth: number;
+  scrollWidth: number;
+  scrollTop: number;
+  clientHeight: number;
+  scrollHeight: number;
+}
+
+const ZERO: ScrollMetrics = {
+  scrollLeft: 0, clientWidth: 0, scrollWidth: 0,
+  scrollTop: 0, clientHeight: 0, scrollHeight: 0,
+};
+
+/**
+ * Live scroll geometry for one container.
+ *
+ * Keyed on the ELEMENT, not on props: the table branch unmounts and
+ * remounts (pivot on/off), and an effect keyed on anything else ends up
+ * observing a detached node — at which point the metrics freeze and the
+ * bars silently stop rendering.  Pass the node from a callback ref.
+ */
+export function useScrollMetrics(el: HTMLElement | null): ScrollMetrics {
+  const [metrics, setMetrics] = useState<ScrollMetrics>(ZERO);
+  useEffect(() => {
+    if (!el) return;
+    const update = () => {
+      setMetrics({
+        scrollLeft: el.scrollLeft,
+        clientWidth: el.clientWidth,
+        scrollWidth: el.scrollWidth,
+        scrollTop: el.scrollTop,
+        clientHeight: el.clientHeight,
+        scrollHeight: el.scrollHeight,
+      });
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    // Trackpad horizontal swipe / shift+wheel — the container is
+    // ``overflow-x: hidden`` so the browser would normally ignore these
+    // gestures; convert ``deltaX`` (or shift+deltaY) into a direct
+    // ``scrollLeft`` change so the swipe still feels native.  Passive:
+    // nothing to preventDefault, the browser already won't scroll.
+    const onWheel = (e: WheelEvent) => {
+      const dx = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
+      if (dx === 0) return;
+      el.scrollLeft += dx;
+    };
+    el.addEventListener('wheel', onWheel, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    // Also re-measure when the inner table reflows (rows added, density
+    // change widens cells, a column resized).
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => {
+      el.removeEventListener('scroll', update);
+      el.removeEventListener('wheel', onWheel);
+      ro.disconnect();
+    };
+  }, [el]);
+  return metrics;
+}
+
+/** Shared thumb geometry for one axis. */
+function geometry(track: number, visible: number, total: number, at: number) {
+  const max = Math.max(0, total - visible);
+  const ratio = total > 0 ? visible / total : 1;
+  // Floor of 24px so the thumb stays grabbable on a very long table.
+  const thumb = Math.max(24, Math.round(track * ratio));
+  const thumbMax = Math.max(0, track - thumb);
+  const offset = Math.round(thumbMax * (max > 0 ? at / max : 0));
+  return { max, thumb, thumbMax, offset };
+}
+
+const TRACK = 'relative bg-muted/40 rounded-full cursor-pointer';
+const THUMB = 'absolute bg-muted-foreground/50 hover:bg-muted-foreground/70'
+  + ' rounded-full cursor-grab active:cursor-grabbing';
+
+/**
+ * Horizontal scrollbar, spanning only the region that actually scrolls.
+ *
+ * ``flow`` places it as a normal-flow row BELOW the body instead of an
+ * absolute overlay.  That matters when the container is a fixed-height
+ * viewport: an overlay pinned to the container's bottom rides
+ * permanently over whichever row sits at the edge, and padding can't
+ * reserve space for it because that padding only pays out once you've
+ * scrolled to the very end.
+ */
+export function ScrollbarH({
+  el, metrics, insetLeft = 0, insetRight = 0, flow = false,
+}: {
+  el: HTMLElement | null;
+  metrics: ScrollMetrics;
+  insetLeft?: number;
+  insetRight?: number;
+  flow?: boolean;
+}) {
+  const track = Math.max(0, metrics.clientWidth - insetLeft - insetRight);
+  const needed = metrics.scrollWidth > metrics.clientWidth + 1;
+  const { max, thumb, thumbMax, offset } =
+    geometry(track, metrics.clientWidth, metrics.scrollWidth, metrics.scrollLeft);
+  if (!needed || track <= 0) return null;
+
+  const drag = (e: React.PointerEvent) => {
+    if (thumbMax <= 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const from = metrics.scrollLeft;
+    const move = (mv: PointerEvent) => {
+      const next = Math.max(0, Math.min(max, from + ((mv.clientX - startX) / thumbMax) * max));
+      if (el) el.scrollLeft = next;
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  // Click the empty track to page in that direction — standard bar.
+  const page = (e: React.MouseEvent) => {
+    if (e.target !== e.currentTarget || thumbMax <= 0 || !el) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const forward = e.clientX - rect.left > offset + thumb / 2;
+    el.scrollLeft = Math.max(0, Math.min(max, metrics.scrollLeft + (forward ? track : -track)));
+  };
+
+  return (
+    <div
+      className={cn('h-2', flow ? 'shrink-0 my-1' : 'absolute bottom-1')}
+      style={flow
+        ? { marginLeft: insetLeft, marginRight: insetRight }
+        : { left: insetLeft, right: insetRight }}
+    >
+      <div className={cn(TRACK, 'h-full w-full')} onClick={page}>
+        <div
+          className={cn(THUMB, 'top-0 bottom-0')}
+          style={{ width: thumb, transform: `translateX(${offset}px)` }}
+          onPointerDown={drag}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Vertical scrollbar, starting BELOW the sticky header so it never runs
+ * alongside the column labels or their ⋮ menus.  Invisible until the
+ * pointer is over the surface, matching the app's slim-scrollbar
+ * treatment (index.css) — hence the ``group-hover/grid`` hook, which
+ * requires the wrapper to carry ``group/grid``.
+ */
+export function ScrollbarV({
+  el, metrics, insetTop = 0,
+}: {
+  el: HTMLElement | null;
+  metrics: ScrollMetrics;
+  insetTop?: number;
+}) {
+  const track = Math.max(0, metrics.clientHeight - insetTop);
+  const needed = metrics.scrollHeight > metrics.clientHeight + 1;
+  const { max, thumb, thumbMax, offset } =
+    geometry(track, metrics.clientHeight, metrics.scrollHeight, metrics.scrollTop);
+  if (!needed || track <= 0) return null;
+
+  const drag = (e: React.PointerEvent) => {
+    if (thumbMax <= 0) return;
+    e.preventDefault();
+    const startY = e.clientY;
+    const from = metrics.scrollTop;
+    const move = (mv: PointerEvent) => {
+      const next = Math.max(0, Math.min(max, from + ((mv.clientY - startY) / thumbMax) * max));
+      if (el) el.scrollTop = next;
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  const page = (e: React.MouseEvent) => {
+    if (e.target !== e.currentTarget || thumbMax <= 0 || !el) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const down = e.clientY - rect.top > offset + thumb / 2;
+    el.scrollTop = Math.max(0, Math.min(max, metrics.scrollTop + (down ? track : -track)));
+  };
+
+  return (
+    <div
+      className="absolute right-0.5 w-2 opacity-0 group-hover/grid:opacity-100 transition-opacity"
+      style={{ top: insetTop, height: track }}
+    >
+      <div className={cn(TRACK, 'h-full w-full')} onClick={page}>
+        <div
+          className={cn(THUMB, 'left-0 right-0')}
+          style={{ height: thumb, transform: `translateY(${offset}px)` }}
+          onPointerDown={drag}
+        />
+      </div>
+    </div>
+  );
+}

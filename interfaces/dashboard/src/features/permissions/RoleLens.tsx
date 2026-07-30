@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import { Eye, Lock } from 'lucide-react';
 import { toneClasses } from '../../lib/status';
+import { InfoTip, Tip } from '../../components/tooltip';
 import { useRoleView } from '../../context/RoleViewContext';
 import { buildVerbGrid } from './verbGrid';
 import type { TickRow, VerbFamily } from './verbGrid';
@@ -106,11 +107,9 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
           )}
           <div className="text-center">
             {fam.configVia ? (
-              <span className="inline-flex flex-col items-center gap-0.5">
+              <span className="inline-flex items-center gap-1">
                 {chk(capRow(fam.configVia), 'config')}
-                <span className="text-3xs text-muted-foreground/70 whitespace-nowrap">
-                  rides {capRow(fam.configVia).label}{fam.configNote ? ` · ${fam.configNote}` : ''}
-                </span>
+                <InfoTip size={12} label={`Rides ${capRow(fam.configVia).label} — one flag for every feature it covers${fam.configNote ? ` (here: ${fam.configNote})` : ''}.`} />
               </span>
             ) : noflag}
           </div>
@@ -184,7 +183,7 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                 key={c.key}
                 type="button"
                 onClick={() => setTier(i)}
-                className={`text-xs px-2.5 py-0.5 rounded transition ${
+                className={`text-xs px-2.5 py-1 rounded transition ${
                   i === Math.min(tier, cols.length - 1)
                     ? 'bg-card text-foreground font-medium shadow-sm'
                     : 'text-muted-foreground'
@@ -204,16 +203,23 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
 
       {/* The tier delta, as a sentence */}
       {cols.length > 1 && (
-        <p className={`mx-4 mt-2.5 px-3 py-1.5 rounded-md text-xs ${toneClasses(deltaNames.length ? 'ok' : 'neutral')}`}>
-          {deltaNames.length
-            ? <><span className="font-semibold">{cols[1].label} adds {deltaNames.length} grant{deltaNames.length > 1 ? 's' : ''}:</span> {deltaNames.join(' · ')}</>
-            : <>{cols[1].label} currently adds nothing beyond {cols[0].label} for this role.</>}
+        <p className={`mx-4 mt-2.5 px-3 py-1.5 rounded-md text-xs flex items-baseline gap-1 min-w-0 ${toneClasses(deltaNames.length ? 'ok' : 'neutral')}`}>
+          {/* One line, always — tab clicks must not move the grid below
+              (the full list rides the tooltip). */}
+          {deltaNames.length ? (
+            <>
+              <span className="font-semibold shrink-0">{cols[1].label} adds {deltaNames.length} grant{deltaNames.length > 1 ? 's' : ''}:</span>
+              <Tip label={deltaNames.join(' · ')}>
+                <span className="truncate min-w-0">{deltaNames.join(' · ')}</span>
+              </Tip>
+            </>
+          ) : (
+            <span className="truncate min-w-0">{cols[1].label} currently adds nothing beyond {cols[0].label} for this role.</span>
+          )}
           {role === 'owner' && (
-            <span className="block mt-0.5 text-2xs opacity-80">
-              Primary also exclusively holds the Owner powers — Manage owners,
-              Delete / restore account — which aren't flags and can never be
-              granted to a co-owner (see the matrix lens's Owner powers rows).
-            </span>
+            <Tip label="Primary also exclusively holds the Owner powers — Manage owners, Delete / restore account — which aren't flags and can never be granted to a co-owner (see the matrix lens's Owner powers rows).">
+              <span className="shrink-0 text-2xs opacity-80 underline decoration-dotted cursor-help">+ Owner powers</span>
+            </Tip>
           )}
         </p>
       )}

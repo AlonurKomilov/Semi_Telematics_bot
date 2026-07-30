@@ -4,6 +4,9 @@ import {
 } from 'lucide-react';
 
 import { cn } from '../../../lib/utils';
+import {
+  useScrollMetrics, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR,
+} from '../scrollbars';
 import { EmptyState } from '../../shell';
 import { Button } from '../../ui/button';
 import {
@@ -102,6 +105,40 @@ export default function PivotView({
     onRowCount?.(result.bodyRows.length);
   }, [result.bodyRows.length, onRowCount]);
 
+  // Our own scroll container + the insets its bars need.  The shared
+  // scrollbars own the track geometry; what to inset BY is local,
+  // because the two renderers freeze different things — the record list
+  // reads ``data-pin`` off its leaf header row, this table's frozen
+  // edges are the corner cell and the Total group.
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  const metrics = useScrollMetrics(scrollEl);
+  const [insets, setInsets] = useState({ left: 0, right: 0, top: 0 });
+  useEffect(() => {
+    const el = scrollEl;
+    if (!el) return;
+    const measure = () => {
+      const head = el.querySelector<HTMLElement>('thead');
+      const corner = el.querySelector<HTMLElement>('thead [data-pin="left"]');
+      const rights = el.querySelectorAll<HTMLElement>('thead [data-pin="right"]');
+      let right = 0;
+      rights.forEach((c) => { right += c.offsetWidth; });
+      const next = {
+        left: corner?.offsetWidth ?? 0,
+        right,
+        top: head?.offsetHeight ?? 0,
+      };
+      setInsets((prev) => (
+        prev.left === next.left && prev.right === next.right && prev.top === next.top
+          ? prev : next
+      ));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    if (el.firstElementChild) ro.observe(el.firstElementChild);
+    return () => ro.disconnect();
+  }, [scrollEl, padding, model]);
+
   if (result.empty) {
     // Only ROWS are required now: without a measure the report still
     // shows the groups and their counts, so the one thing that can't be
@@ -144,6 +181,7 @@ export default function PivotView({
   // inherited none of it.  That is why adjacent columns' figures touched
   // ("—$47,200.00", "$28,$1,530,862.60"): there was no gutter at all.
   const cellPad = cn(padding, 'px-2');
+
   // The row-label column stays put during horizontal scroll — otherwise a
   // wide matrix scrolls the identity off screen and the numbers lose
   // their subject.  Plain sticky; deliberately not the grid's pin maths.
@@ -176,7 +214,15 @@ export default function PivotView({
           500") and the footer ("Total rows: 4") — the two places people
           already look — so the sentence was a third telling of the same
           fact, costing a row of height on every report. */}
-      <div className={cn('overflow-x-auto', fill && 'flex-1 min-h-0 overflow-y-auto')}>
+      <div className={cn('relative group/grid', fill && 'flex flex-1 flex-col min-h-0')}>
+      <div
+        ref={setScrollEl}
+        className={cn(
+          'overflow-x-hidden',
+          fill ? 'flex-1 min-h-0 overflow-y-auto' : 'overflow-y-visible',
+          HIDE_NATIVE_SCROLLBAR,
+        )}
+      >
       {/* ``min-w-full``, NOT ``w-full``.  Pinned to the container width
           the table had no choice but to compress: 60 driver columns
           squeezed to a few characters each, headers wrapped to three
@@ -201,6 +247,7 @@ export default function PivotView({
                     dimension the rows are broken down by. */}
                 {levelIdx === 0 && (
                   <th
+                    data-pin="left"
                     rowSpan={result.headerLevels.length}
                     className={cn(
                       cellPad,
@@ -283,6 +330,7 @@ export default function PivotView({
                     ? result.totalLabels.map((label, i) => (
                       <th
                         key={`tot-${i}-${label}`}
+                        data-pin="right"
                         className={cn(
                           cellPad, stickyTotalHead,
                           'text-right text-xs font-medium uppercase tracking-wide',
@@ -299,6 +347,7 @@ export default function PivotView({
                     ))
                     : levelIdx === 0 && (
                       <th
+                        data-pin="right"
                         rowSpan={result.headerLevels.length - 1}
                         colSpan={result.totalLabels.length}
                         className={cn(
@@ -481,6 +530,17 @@ export default function PivotView({
           </tfoot>
         )}
       </table>
+      </div>
+      <ScrollbarH
+        el={scrollEl}
+        metrics={metrics}
+        insetLeft={insets.left}
+        insetRight={insets.right}
+        flow={!!fill}
+      />
+      {fill && (
+        <ScrollbarV el={scrollEl} metrics={metrics} insetTop={insets.top} />
+      )}
       </div>
       {/* Row count of the REPORT (groups), distinct from the source-row
           count in the line above — an operator comparing the two can see

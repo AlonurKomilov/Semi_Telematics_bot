@@ -296,6 +296,23 @@ touch, keyboard and scroll-into-view are untouched. (MUI gets this for
 free because its headers are a separate element outside the scroller;
 ours share one `<table>` so the columns can't drift out of alignment.)
 
+**Scrollbars are shared, not per-renderer.** [`scrollbars.tsx`](scrollbars.tsx)
+owns `useScrollMetrics` + `<ScrollbarH>` + `<ScrollbarV>` +
+`HIDE_NATIVE_SCROLLBAR`, and both the record list and the pivot matrix
+use them. Custom rather than native because with pinned columns a native
+bar spans the WHOLE container, implying the frozen columns scroll too;
+the vertical one starts below the sticky header instead of running up
+beside the column ⋮ menus. Only the PAINTING is ours — `overflow-y`
+stays `auto` so wheel/touch/keyboard/scroll-into-view are untouched;
+`overflow-x` is `hidden` (a native x-bar reserves a track even at height
+0) with a wheel handler restoring trackpad swipe.
+
+The seam is deliberate: **track geometry is shared, insets are local.**
+The two renderers freeze different things — the list reads `data-pin` off
+its leaf header row, the matrix measures its corner cell and Total group
+— so each measures its own and passes `insetLeft/insetRight/insetTop`.
+Anything else and one renderer's DOM assumptions leak into the other.
+
 **Measurement effects key on the ELEMENT, via callback refs.** Pivot
 unmounts the table branch and mounts a brand-new one on the way back, so
 any observer set up in an effect keyed on props/state alone ends up

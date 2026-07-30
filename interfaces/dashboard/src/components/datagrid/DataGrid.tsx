@@ -74,6 +74,9 @@ import { usePreference, useTablePreference, useSyncLoaded } from '../../preferen
 import PivotView from './pivot/PivotView';
 import PivotPanel from './pivot/PivotPanel';
 import { prunePivotModel, pivot, pivotToCsvRows, type PivotModel } from './pivot/pivot';
+import {
+  useScrollMetrics, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR,
+} from './scrollbars';
 import { derivePivotDimensions } from './pivot/derived';
 
 type Density = 'compact' | 'default' | 'roomy';
@@ -2667,48 +2670,7 @@ export default function DataGrid({
     return () => ro.disconnect();
   }, [theadEl, bodyScrolls, density]);
 
-  const [scrollMetrics, setScrollMetrics] = useState({
-    scrollLeft: 0, clientWidth: 0, scrollWidth: 0,
-    scrollTop: 0, clientHeight: 0, scrollHeight: 0,
-  });
-  useEffect(() => {
-    const el = scrollEl;
-    if (!el) return;
-    const update = () => {
-      setScrollMetrics({
-        scrollLeft: el.scrollLeft,
-        clientWidth: el.clientWidth,
-        scrollWidth: el.scrollWidth,
-        scrollTop: el.scrollTop,
-        clientHeight: el.clientHeight,
-        scrollHeight: el.scrollHeight,
-      });
-    };
-    update();
-    el.addEventListener('scroll', update, { passive: true });
-    // Trackpad horizontal swipe / shift+wheel — the container is
-    // ``overflow-x: hidden`` so the browser would normally ignore
-    // these gestures; convert ``deltaX`` (or shift+deltaY) into a
-    // direct ``scrollLeft`` change so the user's swipe still feels
-    // native.  Passive listener since we don't need to preventDefault
-    // (browser already won't scroll because overflow-x is hidden).
-    const onWheel = (e: WheelEvent) => {
-      const dx = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
-      if (dx === 0) return;
-      el.scrollLeft += dx;
-    };
-    el.addEventListener('wheel', onWheel, { passive: true });
-    const ro = new ResizeObserver(update);
-    ro.observe(el);
-    // Also re-measure when the inner table reflows (rows added /
-    // density change widens cells / etc.).
-    if (el.firstElementChild) ro.observe(el.firstElementChild);
-    return () => {
-      el.removeEventListener('scroll', update);
-      el.removeEventListener('wheel', onWheel);
-      ro.disconnect();
-    };
-  }, [scrollEl]);
+  const scrollMetrics = useScrollMetrics(scrollEl);
 
   // Measure pinned column widths directly from the live DOM after
   // every render.  Reading ``columnSizing`` would also work but lags
@@ -2744,109 +2706,6 @@ export default function DataGrid({
   // track spans the centre region; thumb width is proportional to
   // the visible-to-total ratio, with a floor so it stays grabbable.
   const needsHScroll = scrollMetrics.scrollWidth > scrollMetrics.clientWidth + 1;
-
-  const trackWidth = Math.max(0, scrollMetrics.clientWidth - pinnedLeftWidth - pinnedRightWidth);
-  const maxScrollLeft = Math.max(0, scrollMetrics.scrollWidth - scrollMetrics.clientWidth);
-  const visibleRatio = scrollMetrics.scrollWidth > 0
-    ? scrollMetrics.clientWidth / scrollMetrics.scrollWidth
-    : 1;
-  const thumbWidth = Math.max(24, Math.round(trackWidth * visibleRatio));
-  const thumbMax = Math.max(0, trackWidth - thumbWidth);
-  const scrollRatio = maxScrollLeft > 0 ? scrollMetrics.scrollLeft / maxScrollLeft : 0;
-  const thumbLeft = Math.round(thumbMax * scrollRatio);
-
-  // Drag the thumb to scroll horizontally.  ``thumbMax`` maps to
-  // ``maxScrollLeft`` linearly, so a pixel of thumb drag = (max /
-  // thumbMax) pixels of container scroll.
-  const onThumbPointerDown = (e: React.PointerEvent) => {
-    if (thumbMax <= 0) return;
-    e.preventDefault();
-    const startX = e.clientX;
-    const startScroll = scrollMetrics.scrollLeft;
-    const move = (mv: PointerEvent) => {
-      const dx = mv.clientX - startX;
-      const next = Math.max(0, Math.min(
-        maxScrollLeft,
-        startScroll + (dx / thumbMax) * maxScrollLeft,
-      ));
-      const el = scrollContainerRef.current;
-      if (el) el.scrollLeft = next;
-    };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  };
-  // ── Vertical scrollbar (only when the BODY scrolls) ──────────────
-  // Same geometry as the horizontal one, one axis over.  The track
-  // starts below the sticky header so it never runs alongside the
-  // column labels or their ⋮ menus.  Only the PAINTING is ours —
-  // ``overflow-y`` stays ``auto``, so wheel, touch, keyboard and
-  // scroll-into-view all keep working natively.
-  const needsVScroll = bodyScrolls
-    && scrollMetrics.scrollHeight > scrollMetrics.clientHeight + 1;
-  const vTrackHeight = Math.max(0, scrollMetrics.clientHeight - headerHeight);
-  const maxScrollTop = Math.max(0, scrollMetrics.scrollHeight - scrollMetrics.clientHeight);
-  const vVisibleRatio = scrollMetrics.scrollHeight > 0
-    ? scrollMetrics.clientHeight / scrollMetrics.scrollHeight
-    : 1;
-  const vThumbHeight = Math.max(24, Math.round(vTrackHeight * vVisibleRatio));
-  const vThumbMax = Math.max(0, vTrackHeight - vThumbHeight);
-  const vScrollRatio = maxScrollTop > 0 ? scrollMetrics.scrollTop / maxScrollTop : 0;
-  const vThumbTop = Math.round(vThumbMax * vScrollRatio);
-
-  const onVThumbPointerDown = (e: React.PointerEvent) => {
-    if (vThumbMax <= 0) return;
-    e.preventDefault();
-    const startY = e.clientY;
-    const startScroll = scrollMetrics.scrollTop;
-    const move = (mv: PointerEvent) => {
-      const dy = mv.clientY - startY;
-      const next = Math.max(0, Math.min(
-        maxScrollTop,
-        startScroll + (dy / vThumbMax) * maxScrollTop,
-      ));
-      const el = scrollContainerRef.current;
-      if (el) el.scrollTop = next;
-    };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  };
-  const onVTrackClick = (e: React.MouseEvent) => {
-    if (e.target !== e.currentTarget || vThumbMax <= 0) return;
-    const trackRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const clickRel = e.clientY - trackRect.top;
-    const goDown = clickRel > vThumbTop + vThumbHeight / 2;
-    const page = vTrackHeight;
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    el.scrollTop = Math.max(0, Math.min(
-      maxScrollTop,
-      scrollMetrics.scrollTop + (goDown ? page : -page),
-    ));
-  };
-
-  // Click on the empty track jumps the centre by one page in that
-  // direction.  Standard scrollbar behaviour.
-  const onTrackClick = (e: React.MouseEvent) => {
-    if (e.target !== e.currentTarget || thumbMax <= 0) return;
-    const trackRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const clickRel = e.clientX - trackRect.left;
-    const goRight = clickRel > thumbLeft + thumbWidth / 2;
-    const page = scrollMetrics.clientWidth - pinnedLeftWidth - pinnedRightWidth;
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    el.scrollLeft = Math.max(0, Math.min(
-      maxScrollLeft,
-      scrollMetrics.scrollLeft + (goRight ? page : -page),
-    ));
-  };
 
   // CSV export — visible columns in current display order, filtered
   // + sorted rows.  Filename uses ``tableId`` + today's local date so
@@ -3510,7 +3369,7 @@ export default function DataGrid({
           // would otherwise run the container's full height, up beside
           // the sticky column labels.  Scrolling itself is untouched
           // (overflow-y stays auto); only the painting moves.
-          bodyScrolls && '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+          bodyScrolls && HIDE_NATIVE_SCROLLBAR,
         )}
         style={stickyHeader ? { maxHeight: stickyHeader } : undefined}
         // Moving the scrolling from the document into this div would
@@ -3995,67 +3854,23 @@ export default function DataGrid({
           )}
         </table>
       </div>
-      {/* Custom horizontal scrollbar — spanning ONLY the centre
-          (non-pinned) region.  Mirrors AG Grid's "scrollbar over the
-          scrollable area" pattern: pinned columns visually don't have a
-          scrollbar because they don't scroll.  Only renders when
-          content overflows; hidden otherwise.
-
-          Two positionings, because "the bottom" means different things
-          in the two modes.  Growing to fit its rows, the container's
-          bottom IS the table's end, so an absolute overlay only ever
-          covers the final row.  Under fillHeight the container's bottom
-          is the bottom of the VIEWPORT — an overlay there would ride
-          permanently over whichever row happens to be at the edge, and
-          the ``pb-3`` reservation can't help because that padding only
-          pays out once you've scrolled to the very end.  So it becomes
-          the flex row below the body instead, and covers nothing. */}
-      {needsHScroll && trackWidth > 0 && (
-        <div
-          className={cn('h-2', fillHeight ? 'shrink-0 mt-1 mb-1' : 'absolute bottom-1')}
-          style={fillHeight
-            ? { marginLeft: pinnedLeftWidth, marginRight: pinnedRightWidth }
-            : { left: pinnedLeftWidth, right: pinnedRightWidth }}
-        >
-          <div
-            className="relative h-full bg-muted/40 rounded-full cursor-pointer"
-            onClick={onTrackClick}
-          >
-            <div
-              className="absolute top-0 bottom-0 bg-muted-foreground/50 hover:bg-muted-foreground/70 rounded-full cursor-grab active:cursor-grabbing"
-              style={{
-                width: thumbWidth,
-                transform: `translateX(${thumbLeft}px)`,
-              }}
-              onPointerDown={onThumbPointerDown}
-            />
-          </div>
-        </div>
-      )}
-      {/* Vertical scrollbar — starts BELOW the sticky header, so it
-          never runs beside the column labels and their ⋮ menus the way
-          the native bar did.  Same rest/hover treatment as the rest of
-          the app's slim scrollbars (index.css): invisible until the
-          pointer is over the grid. */}
-      {needsVScroll && vTrackHeight > 0 && (
-        <div
-          className="absolute right-0.5 w-2 group-hover/grid:opacity-100 opacity-0 transition-opacity"
-          style={{ top: headerHeight, height: vTrackHeight }}
-        >
-          <div
-            className="relative h-full w-full bg-muted/40 rounded-full cursor-pointer"
-            onClick={onVTrackClick}
-          >
-            <div
-              className="absolute left-0 right-0 bg-muted-foreground/50 hover:bg-muted-foreground/70 rounded-full cursor-grab active:cursor-grabbing"
-              style={{
-                height: vThumbHeight,
-                transform: `translateY(${vThumbTop}px)`,
-              }}
-              onPointerDown={onVThumbPointerDown}
-            />
-          </div>
-        </div>
+      {/* Scrollbars — one shared implementation for the record list and
+          the pivot matrix (./scrollbars.tsx), which is where the reasons
+          live: a bar over only the scrollable region so pinned columns
+          don't appear to scroll, and a vertical bar that starts below
+          the sticky header instead of running up beside the column ⋮
+          menus.  ``flow`` under fillHeight puts the horizontal bar in
+          normal flow below the body rather than overlaying the row at
+          the viewport's edge. */}
+      <ScrollbarH
+        el={scrollEl}
+        metrics={scrollMetrics}
+        insetLeft={pinnedLeftWidth}
+        insetRight={pinnedRightWidth}
+        flow={!!fillHeight}
+      />
+      {bodyScrolls && (
+        <ScrollbarV el={scrollEl} metrics={scrollMetrics} insetTop={headerHeight} />
       )}
       </div>
       )}
