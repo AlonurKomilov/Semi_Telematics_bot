@@ -8,11 +8,12 @@
  * /models/truck-anatomy/<key>.glb, labeled placeholder otherwise.
  *
  * DARK by permission (owner decision): gated on can_truck_anatomy,
- * seeded to the owner ONLY — no other role — so nothing is marketed
- * before it's ready.  Granting is a per-account call in the
- * Permissions matrix; the nav entry (featureCatalog) appears only for
- * holders.  The whole feature lives in THIS folder — delete it plus
- * one route line and it's gone (owner requirement: remove as a unit).
+ * seeded to NOBODY — the owner included — so nothing is marketed
+ * before it's ready, anywhere.  The owner self-grants in the
+ * Permissions matrix (the flag is deliberately not owner-protected);
+ * the nav entry appears only for holders.  The whole feature lives in
+ * THIS folder — delete it plus one route line and it's gone (owner
+ * requirement: remove as a unit).
  */
 import { Suspense, lazy, useMemo, useState } from 'react';
 import { ChevronRight, RotateCcw, Search, Truck } from 'lucide-react';

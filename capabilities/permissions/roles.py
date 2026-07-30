@@ -157,7 +157,7 @@ class FeatureSet:
     can_manage_role_bot: bool = False   # Settings → Telegram Bot reachability for role MANAGERS (their own row: group, Sub bot, topics).  Granted ONLY via the manager tier — never a base-role seed; the API re-checks is_manager+role per persona regardless.
     can_manage_config_role: bool = False  # Config family, ROLE scope: feature config for their OWN role (team-default page layouts today).  Seeded on at manager tier, delegatable to ANY tier via the matrix.  The own-role wall is code: only can_manage_account crosses roles.  NOTE: deliberately looser than can_manage_role_bot, which stays hard-locked to the manager tier.  SSOT: docs/architecture/config.md.
     can_manage_config_all: bool = False  # Config family, ACCOUNT scope: a feature's SHARED settings — scorecard rules + pillar caps, KPI thresholds, every future one.  One truth per account (data-meaning config never varies by role).  Absorbed can_manage_scorecard_rules 2026-07-29 (stored grants carried over by migration).  SSOT: docs/architecture/config.md.
-    can_truck_anatomy: bool = False     # Truck Anatomy — the 3D learning model (education). DARK BY DEFAULT: owner-only until the owner decides to market it; no other role is seeded, granting is a per-account matrix decision.
+    can_truck_anatomy: bool = False     # Truck Anatomy — the 3D learning model (education). DARK FEATURE (see DARK_FEATURE_FIELDS): seeded to NOBODY, the owner included, until the owner grants it in the Permissions matrix.
     can_location_map: bool = False      # live location map (all trucks)
     can_location_vehicle: bool = False      # live location map (assigned vehicle)
     can_fuel_cost: bool = False         # fuel cost tracker
@@ -240,6 +240,16 @@ OWN_VEHICLE_SCOPE_FLAGS: tuple[str, ...] = (
 )
 
 
+# Dark features (owner decision 2026-07-30): shipped seeded to NOBODY —
+# the owner included — so an unfinished feature markets itself to no
+# one, not even its own builder's sidebar.  NOT a lockout: the flag
+# keeps its Permissions-matrix row (it is not OWNER_PROTECTED), so the
+# owner self-grants per account the day it's ready.  The owner
+# blanket-invariant test exempts exactly this set; keep it tiny and
+# deliberate.
+DARK_FEATURE_FIELDS: frozenset[str] = frozenset({"can_truck_anatomy"})
+
+
 # ─── Role → Permission Map ───────────────────────────────────────
 
 ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
@@ -260,7 +270,6 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_work_orders_all=True, can_work_orders_vehicle=True,
         can_parts=True,
         can_service_tasks=True,
-        can_truck_anatomy=True,   # owner invariant: every flag True; NO other role is seeded
         can_cost_reports=True,
         can_scorecard_all=True, can_scorecard_vehicle=True,
         can_location_map=True, can_location_vehicle=True,

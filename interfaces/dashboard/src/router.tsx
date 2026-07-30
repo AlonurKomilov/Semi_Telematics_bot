@@ -278,10 +278,10 @@ export default function AppRouter() {
         {/* Knowledge Base */}
         <Route path="knowledge" element={L(<KnowledgeBase />)} />
         {/* Truck Anatomy — the taxonomy as a 3D learning model.  Gated
-            by can_truck_anatomy: DARK by default (owner-only seed, no
-            other role), granted per-account via the Permissions matrix
-            when the owner decides to roll it out.  Whole feature =
-            features/truck-anatomy/ + this line — removable as a unit. */}
+            by can_truck_anatomy: a DARK feature — seeded to nobody,
+            the owner included — until granted per-account in the
+            Permissions matrix.  Whole feature = features/truck-anatomy/
+            + this line — removable as a unit. */}
         <Route path="truck-anatomy" element={L(<P perm="can_truck_anatomy"><TruckAnatomy /></P>)} />
 
         {/* Account / Settings pages — clean top-level paths (the

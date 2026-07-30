@@ -129,9 +129,9 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // vendor).  Graduated from a Work Orders component; feature-owned gate.
   { id: 'parts', labelKey: 'nav.parts', path: '/parts', icon: Cog,                      modules: ['fleet'], tier: 'role', permission: 'can_parts', navGroup: 'operations' },
   { id: 'service-tasks', labelKey: 'nav.service_tasks', path: '/service-tasks', icon: ClipboardList, modules: ['fleet'], tier: 'role', permission: 'can_service_tasks', navGroup: 'operations' },
-  // Truck Anatomy — the 3D learning model (education).  DARK: owner-only
-  // by default; no other role is seeded, so the nav entry exists only for
-  // whoever is explicitly granted.  Marketed when the owner says so.
+  // Truck Anatomy — the 3D learning model (education).  DARK FEATURE:
+  // seeded to NOBODY, owner included (DARK_FEATURE_FIELDS in roles.py);
+  // the nav entry exists only after a grant in the Permissions matrix.
   { id: 'truck-anatomy', labelKey: 'nav.truck_anatomy', path: '/truck-anatomy', icon: Truck, modules: ['fleet'], tier: 'shared', permission: 'can_truck_anatomy', navGroup: 'operations' },
   { id: 'inspections', labelKey: 'nav.inspections', path: '/inspections', icon: ClipboardCheck, modules: ['fleet'], tier: 'role', permission: ['can_inspections_all', 'can_inspections_vehicle'], navGroup: 'operations' },
   // Geofences: zones serve both fleet (sites/yards) and dispatch

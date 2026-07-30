@@ -63,7 +63,8 @@ class TestRolePermissions:
 
     def test_owner_has_all_permissions(self):
         from capabilities.permissions.roles import (
-            DERIVED_SERVICE_FIELDS, ROLE_PERMISSIONS, TIER_GRANTS,
+            DARK_FEATURE_FIELDS, DERIVED_SERVICE_FIELDS,
+            ROLE_PERMISSIONS, TIER_GRANTS,
         )
         # Tier-only flags are DELIBERATELY never a base-role seed
         # (roles.py: can_manage_role_bot — "never a base-role seed; the
@@ -85,7 +86,9 @@ class TestRolePermissions:
         # redundant own-vehicle flag.  Assert those explicitly; blanket-check
         # every other field stays True for the owner.
         for field_name in FeatureSet.__dataclass_fields__:
-            if field_name in DERIVED_SERVICE_FIELDS or field_name in tier_only:
+            if (field_name in DERIVED_SERVICE_FIELDS
+                    or field_name in tier_only
+                    or field_name in DARK_FEATURE_FIELDS):
                 continue
             assert getattr(perms, field_name) is True, (
                 f"Owner should have {field_name}=True"
@@ -93,6 +96,26 @@ class TestRolePermissions:
         assert perms.can_alerts_all is True        # account-wide Alerts inbox
         assert perms.can_alerts_vehicle is False   # mutually exclusive with _all
         assert perms.can_ai_chat is True           # always-on AI service
+
+    def test_dark_features_seed_nobody_but_stay_grantable(self):
+        """The dark-feature contract (owner decision 2026-07-30): a dark
+        flag is seeded to NO role — the owner included — so nothing is
+        marketed before it's ready.  Two guards keep it honest: every
+        role defaults to False, AND the flag must never be
+        owner-protected (that would turn dark into locked-out, since
+        the matrix cell is the only way to ever grant it)."""
+        from capabilities.permissions.roles import (
+            DARK_FEATURE_FIELDS, OWNER_PROTECTED_PERMS, ROLE_PERMISSIONS,
+        )
+        for flag in DARK_FEATURE_FIELDS:
+            for role, fs in ROLE_PERMISSIONS.items():
+                assert getattr(fs, flag) is False, (
+                    f"dark feature {flag} must not be seeded to {role}"
+                )
+            assert flag not in OWNER_PROTECTED_PERMS, (
+                f"dark feature {flag} is owner-protected — that is a "
+                "lockout, not a launch switch"
+            )
 
     # ── Admin: no company management ──────────────────────────────
 

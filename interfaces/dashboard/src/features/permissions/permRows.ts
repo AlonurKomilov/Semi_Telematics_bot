@@ -170,7 +170,7 @@ export const PERM_GROUPS: PermGroup[] = [
       // row governs both); Parts is feature-owned — its list still
       // serves the WO editor's autocomplete for can_work_orders_all.
       { key: 'can_parts', kind: 'feature', label: 'Parts', description: 'Parts catalog + per-part analytics (recurrence, price per vendor)' },
-      { key: 'can_truck_anatomy', kind: 'feature', label: 'Truck Anatomy', description: '3D learning model of the rig (System → Assembly → Part). New feature — owner-only by default until it\u2019s ready to roll out.' },
+      { key: 'can_truck_anatomy', kind: 'feature', label: 'Truck Anatomy', description: '3D learning model of the rig (System → Assembly → Part). Ships dark — no role has it, the owner included, until it\u2019s granted right here.' },
       { key: 'can_service_tasks', kind: 'feature', writeLevel: true, label: 'Service Tasks', description: 'Manage — the shared task list maintenance and work orders both pick from (reads stay open to anyone who can create those records)' },
       { allKey: 'can_inspections_all', vehicleKey: 'can_inspections_vehicle', kind: 'feature', label: 'PTI Inspections', scoped: true },
     ],
