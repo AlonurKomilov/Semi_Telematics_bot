@@ -1516,8 +1516,18 @@ export default function DataGrid({
         const def: ColumnDef<Record<string, unknown>> = {
           id: col.key,
           accessorKey: col.key,
-          // Per-column floor, above the 60px global one.
-          ...(col.minWidth ? { minSize: col.minWidth, size: col.minWidth } : {}),
+          // ``minSize`` ONLY — a FLOOR, never a width.
+          //
+          // This also set ``size``, which is the column's WIDTH, not its
+          // minimum.  Once an operator has resized any column the table
+          // switches to fixed layout and applies ``getSize()`` per
+          // column, so setting ``size`` silently RE-WIDTHED their stored
+          // layout — narrowing DEL date from the 150 default to 116 and
+          // squeezing content into truncation.  ``minSize`` alone does
+          // what was intended: ``getSize()`` clamps to it, so a column
+          // that was too narrow is raised to the floor and one that was
+          // already wider is left alone.
+          ...(col.minWidth ? { minSize: col.minWidth } : {}),
           // ``headerRender`` wins over the plain string label when
           // the column wants a rich header (e.g. the bulk-select
           // column's master "select all" checkbox).  tanstack's
@@ -2603,6 +2613,18 @@ export default function DataGrid({
 
   const padding = DENSITY_PADDING[density];
 
+  // The footer's narrowing hint, shared by both modes.  It fired on
+  // ``globalFilter`` but counted only ``columnFilters``, so a view
+  // narrowed by the SEARCH BOX and nothing else announced "0 filters
+  // active" — a count contradicting the very condition that printed it.
+  // Search IS a narrowing; it just isn't a column filter.
+  const narrowings = columnFilters.length + (globalFilter ? 1 : 0);
+  const narrowingHint = narrowings > 0
+    ? `${narrowings} filter${narrowings === 1 ? '' : 's'} active`
+    // NON-BREAKING space, as before: it holds the footer's line height so
+    // the bar doesn't change height when the hint clears.
+    : '\u00a0';
+
   // The rows the pivot summarises.  MEMOISED deliberately: built inline
   // in the JSX this was a fresh array on every render, so PivotView's
   // own ``useMemo`` never hit and the entire cross-tab — 500 source rows
@@ -3172,8 +3194,15 @@ export default function DataGrid({
                     variant={pivotOn ? 'default' : 'outline'}
                     size="icon"
                     onClick={() => setPivotPanelOpen((o) => !o)}
+                    // ``aria-pressed`` tracks what this button DOES —
+                    // open the panel.  The FILL tracks something else
+                    // (whether the grid is pivoted), so that state is said
+                    // in the NAME rather than left to contradict it.
                     aria-pressed={pivotPanelOpen}
-                    aria-label="Pivot"
+                    // Named "Pivot", matching the panel's own heading —
+                    // renaming it "Pivot fields" would have added a FOURTH
+                    // name for one surface, which the audit also flagged.
+                    aria-label={pivotOn ? 'Pivot — on' : 'Pivot'}
                     disabled={holdsPartialData}
                     className="size-8"
                   >
@@ -3928,15 +3957,19 @@ export default function DataGrid({
       {pivotOn && (
       <div className="flex flex-wrap items-center justify-between p-3 gap-3 bg-muted border-t border-border">
         <p className="text-xs text-muted-foreground">
-          {columnFilters.length > 0 || globalFilter
-            ? `${columnFilters.length} filter${columnFilters.length === 1 ? '' : 's'} active`
-            : ' '}
+          {narrowingHint}
         </p>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           {pivotHiddenCols > 0 && (
             <span className="tabular-nums">
               {pivotHiddenCols.toLocaleString()} empty column{pivotHiddenCols === 1 ? '' : 's'} hidden
             </span>
+          )}
+          {/* Asked for, nothing to do.  Silence here read as a broken
+              checkbox: you tick it, the matrix doesn't change, and nothing
+              says the request was even understood. */}
+          {pivotModel.hideEmptyColumns && pivotHiddenCols === 0 && (
+            <span>no empty columns to hide</span>
           )}
           <span className="tabular-nums">
             Total rows: {pivotRowCount.toLocaleString()}
@@ -3951,9 +3984,7 @@ export default function DataGrid({
             cluster on the right mirrors the reference layout
             (Show per page · range · prev/next). */}
         <p className="text-xs text-muted-foreground">
-          {columnFilters.length > 0 || globalFilter
-            ? `${columnFilters.length} filter${columnFilters.length === 1 ? '' : 's'} active`
-            : ' '}
+          {narrowingHint}
         </p>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
           <label className="inline-flex items-center gap-2">

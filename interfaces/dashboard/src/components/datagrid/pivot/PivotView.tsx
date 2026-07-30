@@ -6,6 +6,7 @@ import {
 import { cn } from '../../../lib/utils';
 import { ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR } from '../scrollbars';
 import { EmptyState } from '../../shell';
+import { Tip } from '../../tooltip';
 import { Button } from '../../ui/button';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
@@ -193,6 +194,20 @@ export default function PivotView({
     return () => el.removeEventListener('scroll', onScroll);
   }, [scrollEl, windowing, box.rowH]);
 
+  // The family rule is "scroll position resets when the list changes
+  // IDENTITY", and datagrid/CLAUDE.md claims it holds in BOTH modes.  It
+  // didn't: DataGrid's effect writes ``scrollContainerRef``, which is the
+  // record list's scroller — the matrix owns a different element, so
+  // changing a filter, the search or the tab left the report scrolled
+  // mid-way through a set of rows that no longer meant the same thing.
+  // The bucket resets with it, or the window would be computed for a
+  // scroll position that no longer exists.
+  useEffect(() => {
+    const el = scrollEl;
+    if (el && el.scrollTop !== 0) el.scrollTop = 0;
+    setBucket(0);
+  }, [scrollEl, rows, model]);
+
   const win = useMemo(() => {
     const all = visibleRows;
     if (!windowing) return { rows: all, from: 0, padTop: 0, padBottom: 0 };
@@ -234,7 +249,7 @@ export default function PivotView({
         // only describing where to find it.
         description="In the Pivot panel, open Rows and pick what each line should represent, e.g. Customer. Add numbers to total under Values."
         action={onOpenPanel ? (
-          <Button type="button" onClick={onOpenPanel}>Open pivot fields</Button>
+          <Button type="button" onClick={onOpenPanel}>Open Pivot</Button>
         ) : undefined}
       />
     );
@@ -393,6 +408,17 @@ export default function PivotView({
                       // Clicking a measure header sorts rows BY that
                       // measure: desc (biggest first — the question people
                       // actually ask) -> asc -> back to label order.
+                      //
+                      // ``Tip``, not native ``title=`` (banned: unthemed,
+                      // delayed, invisible on touch).  Affordable here
+                      // because leaf headers are BOUNDED — one per leaf
+                      // column, mounted once per model change — unlike the
+                      // per-cell drill button, where ~2,000 tooltip roots
+                      // would undo the render work this file just did.
+                      // Tip renders its child untouched when the label is
+                      // undefined, so the non-interactive case needs no
+                      // second branch.
+                      <Tip label={onModelChange ? `Sort rows by ${cell.label}` : undefined}>
                       <button
                         type="button"
                         onClick={() => {
@@ -417,7 +443,6 @@ export default function PivotView({
                           onModelChange && 'hover:text-foreground transition-colors cursor-pointer',
                           model.sort?.leaf === result.leafIds[i] && 'text-foreground',
                         )}
-                        title={onModelChange ? `Sort rows by ${cell.label}` : undefined}
                       >
                         <span className="inline-flex items-center gap-1">
                           {model.sort?.leaf === result.leafIds[i] && (
@@ -431,6 +456,7 @@ export default function PivotView({
                           {AGG_FN_LABELS[cell.aggFn].toLowerCase()}
                         </span>
                       </button>
+                      </Tip>
                     ) : cell.label}
                   </th>
                 ))}
@@ -495,7 +521,14 @@ export default function PivotView({
               ``data-prow``, so the row-height measurement can't pick it.
               Only mounted while windowing — an unwindowed matrix already
               has every row present to size from. */}
-          {windowing && win.rows.length < visibleRows.length && (
+          {/* Mounted whenever this matrix owns its height — NOT only while
+              windowing.  Gated on windowing it unmounted the moment you
+              folded enough groups for the list to fit, and the widths
+              then recomputed from the visible rows and jumped; folding
+              back re-mounted it and they jumped again.  One extra
+              zero-height row is a trivial price for widths that never
+              move. */}
+          {fill && (
             <tr aria-hidden className="h-0">
               <th className={cn(cellPad, 'py-0 h-0 text-left font-medium whitespace-nowrap')}>
                 <span className="block h-0 overflow-hidden invisible">
@@ -632,7 +665,15 @@ export default function PivotView({
                         type="button"
                         onClick={() => setDrill({ row, leafIdx: i })}
                         className={valueButton}
-                        title="Show the rows behind this number"
+                        // No ``title`` and no ``aria-label``.  Native
+                        // title= is banned, but the obvious replacement is
+                        // worse here: aria-label REPLACES the accessible
+                        // name, which today is the figure — so ~2,000
+                        // cells in a numeric matrix would all announce the
+                        // same sentence and a screen-reader user would
+                        // lose the number itself.  The at-rest dotted
+                        // underline is the affordance; the interaction is
+                        // explained once, in the panel's InfoTip.
                       >
                         {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
                       </button>

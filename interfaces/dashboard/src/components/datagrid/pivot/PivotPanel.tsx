@@ -475,7 +475,7 @@ export default function PivotPanel({
           Pivot
           <InfoTip
             size={12}
-            label="Summarise the rows currently in view. Filters, search and tabs still apply — pivot reports on what they left."
+            label="Summarise the rows currently in view. Filters, search and tabs still apply — pivot reports on what they left. Click any figure to see the rows behind it."
           />
         </h3>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close pivot panel">
@@ -605,14 +605,18 @@ export default function PivotPanel({
               >
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   {AXIS_LABEL[axis]}
-                  {/* Rows and Values are BOTH required — a report can't
-                      render without either.  Marking only one implied
-                      the other was optional.  A chip, not grey text the
-                      same colour as the heading: warn-toned while the
-                      constraint is unmet, quiet once satisfied. */}
-                  {axis !== 'columns' && (
+                  {/* ROWS only.  Values carried this too, and the marker
+                      stayed behind when the transform stopped requiring
+                      them: with no measure the report still shows the
+                      groups and their counts (pivot.ts gates on active
+                      ROWS alone).  A "required" badge on a field the
+                      engine renders happily without is the UI
+                      contradicting the thing it controls.  A chip, not
+                      grey text the same colour as the heading:
+                      warn-toned while unmet, quiet once satisfied. */}
+                  {axis === 'rows' && (
                     <span className={cn(
-                      'ml-1.5 px-1 py-px rounded border normal-case tracking-normal font-medium text-3xs',
+                      'ml-1.5 px-1.5 py-0.5 rounded border normal-case tracking-normal font-medium text-3xs',
                       keys.length === 0
                         ? toneClasses('warn')
                         : 'border-border text-muted-foreground',
@@ -652,7 +656,10 @@ export default function PivotPanel({
                         type="checkbox"
                         checked={!!model.hideEmptyColumns}
                         onChange={(e) => onChange({ ...model, hideEmptyColumns: e.target.checked })}
-                        className="shrink-0 cursor-pointer"
+                        // ``accent-primary`` or the tick paints the OS
+                        // accent — a literal colour from outside the token
+                        // set, which also ignores the theme picker.
+                        className="shrink-0 cursor-pointer accent-primary"
                       />
                       Hide columns with no values
                     </label>
@@ -787,7 +794,7 @@ function FieldRow({
             checked={!!checked}
             onChange={(e) => onToggle?.(e.target.checked)}
             aria-label={`Include ${label} in the report`}
-            className="shrink-0 cursor-pointer"
+            className="shrink-0 cursor-pointer accent-primary"
           />
         ) : (
           // Reserved checkbox column: pool rows have no tick, but the
