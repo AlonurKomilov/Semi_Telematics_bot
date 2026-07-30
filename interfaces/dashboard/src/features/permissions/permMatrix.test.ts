@@ -8,7 +8,7 @@
  * silently rot back into implicit indentation.
  */
 import { describe, expect, it } from 'vitest';
-import { PERM_GROUPS } from './Permissions';
+import { PERM_GROUPS } from './permRows';
 
 type Row = {
   key?: string; allKey?: string; vehicleKey?: string; header?: string;

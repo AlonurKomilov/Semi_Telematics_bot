@@ -36,6 +36,7 @@ const FROZEN_KEYS: readonly string[] = [
   'dispatch.soundOn',
   'assistant.panelWidth',
   'pivot.panelWidth',
+  'permissions.lens',
   'assistant.expanded',
   'roleView.previewAsManager',
   'roleView.activeView',

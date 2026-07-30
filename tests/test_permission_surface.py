@@ -25,7 +25,7 @@ from capabilities.permissions.roles import DERIVED_SERVICE_FIELDS, FeatureSet
 _MATRIX_FILE = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
     "interfaces", "dashboard", "src", "features", "permissions",
-    "Permissions.tsx",
+    "permRows.ts",
 )
 
 # Flags with a live UI that deliberately is NOT the Permissions matrix.
