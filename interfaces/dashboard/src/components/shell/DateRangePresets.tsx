@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { formatClock } from '../../utils/datetime';
+import {
+  Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
+} from '../ui/select';
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
@@ -215,6 +218,19 @@ function CalendarMonth({ monthStart, start, endPicked, hover, bandEnd, rangeCapa
     </div>
   );
 }
+
+// Hour steps for the withTime selectors — 24-hour clock by owner
+// decision (12h cannot write end-of-day midnight: "12:00 AM" is the
+// start, "12:00 PM" is noon).  "24:00" is the standard end-of-day
+// notation; it applies as whole-day-end (null time upstream).
+const HOUR_ITEMS_FROM = Array.from({ length: 24 }, (_, h) => {
+  const v = `${String(h).padStart(2, '0')}:00`;
+  return { value: v, label: v };
+});
+const HOUR_ITEMS_TO = Array.from({ length: 24 }, (_, i) => {
+  const v = i + 1 === 24 ? '24:00' : `${String(i + 1).padStart(2, '0')}:00`;
+  return { value: v, label: v };
+});
 
 // ── The picker ───────────────────────────────────────────────
 
@@ -494,48 +510,39 @@ export default function DateRangePresets({
                 <span className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
                   Time
                 </span>
-                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  from
-                  <select
-                    value={timeStart}
-                    onChange={(e) => setTimeStart(e.target.value)}
-                    className="h-7 px-2 rounded-md border border-border bg-background text-foreground text-xs"
-                    aria-label="Start time (hour)"
-                  >
-                    {Array.from({ length: 24 }, (_, h) => {
-                      const v = `${String(h).padStart(2, '0')}:00`;
-                      return (
-                        <option key={v} value={v}>{formatClock(v)}</option>
-                      );
-                    })}
-                  </select>
-                </label>
-                <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  to
-                  <select
-                    value={timeEnd}
-                    onChange={(e) => setTimeEnd(e.target.value)}
-                    className="h-7 px-2 rounded-md border border-border bg-background text-foreground text-xs"
-                    aria-label="End time (hour)"
-                  >
-                    {Array.from({ length: 24 }, (_, i) => {
-                      const h = i + 1;
-                      const v = h === 24 ? '24:00' : `${String(h).padStart(2, '0')}:00`;
-                      return (
-                        <option key={v} value={v}>
-                          {h === 24 ? '24:00' : formatClock(v)}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </label>
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  From
+                  <Select value={timeStart} onValueChange={setTimeStart} items={HOUR_ITEMS_FROM}>
+                    <SelectTrigger size="sm" className="w-24" aria-label="Start time (hour)">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HOUR_ITEMS_FROM.map((it) => (
+                        <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </span>
+                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  To
+                  <Select value={timeEnd} onValueChange={setTimeEnd} items={HOUR_ITEMS_TO}>
+                    <SelectTrigger size="sm" className="w-24" aria-label="End time (hour)">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HOUR_ITEMS_TO.map((it) => (
+                        <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </span>
                 {!timesAreDefault && (
                   <button
                     type="button"
                     onClick={() => { setTimeStart('00:00'); setTimeEnd('24:00'); }}
                     className="text-2xs text-muted-foreground hover:text-foreground"
                   >
-                    reset
+                    Reset
                   </button>
                 )}
               </div>
