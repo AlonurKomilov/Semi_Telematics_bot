@@ -12,8 +12,14 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
 
 from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, paginate, resolve_user_id, get_user_company_codes, filter_by_allowed_companies
+from capabilities.activity_trail import new_group_id
 from capabilities.permissions.roles import can
 from features.maintenance.service import apply_live_readings, has_maintenance_access, spawn_recurring_if_completed
+
+# Who-did-what now rides capabilities/activity_trail (recorded inside
+# the storage mutations, same transaction, field-level old→new — the
+# thin add_audit_log calls that used to live in these endpoints are
+# gone).  The old audit_log rows remain readable on the /audit page.
 
 logger = logging.getLogger(__name__)
 
@@ -487,12 +493,7 @@ async def create_task(
         work_order_id=body.work_order_id,
         last_odometer=last_odo,
         last_engine_hours=last_hrs,
-    )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "maintenance_create",
-        target_type="maintenance", target_id=str(task_id),
-        details=f"{body.task_type}: {body.vehicle_name}",
+        actor_user_id=await resolve_user_id(user),
     )
     return {"id": task_id, "status": "created"}
 
@@ -550,6 +551,8 @@ async def bulk_create_tasks(
     from features.maintenance.service import (
         fetch_current_telemetry_for_vehicle,
     )
+    actor = await resolve_user_id(user)
+    group = new_group_id()      # one bulk action, N events, one group
     created: list[dict] = []
     failed: list[dict] = []
     for vname in body.vehicle_names:
@@ -575,19 +578,13 @@ async def bulk_create_tasks(
                 recur_interval_engine_hours=body.recur_interval_engine_hours,
                 last_odometer=last_odo,
                 last_engine_hours=last_hrs,
+                actor_user_id=actor,
+                trail_group_id=group,
             )
             created.append({"id": task_id, "vehicle_name": vname})
         except Exception as e:
             failed.append({"vehicle_name": vname, "error": str(e)})
 
-    if created:
-        await tenant_db.add_audit_log(
-            user["account_id"], int(user["sub"]),
-            "maintenance_bulk_create",
-            target_type="maintenance",
-            target_id=",".join(str(c["id"]) for c in created[:10]),
-            details=f"{body.task_type}: {len(created)} vehicles",
-        )
     return {"created": created, "failed": failed}
 
 
@@ -623,20 +620,21 @@ async def update_task(
     if not kwargs:
         raise HTTPException(status_code=422, detail="No fields to update")
 
+    actor = await resolve_user_id(user)
     # If status change, use the dedicated method
     if "status" in kwargs and len(kwargs) == 1:
-        ok = await tenant_db.update_maintenance_status(task_id, kwargs["status"], account_id=user["account_id"])
+        ok = await tenant_db.update_maintenance_status(
+            task_id, kwargs["status"], account_id=user["account_id"],
+            actor_user_id=actor,
+        )
     else:
-        ok = await tenant_db.update_maintenance_task(task_id, account_id=user["account_id"], **kwargs)
+        ok = await tenant_db.update_maintenance_task(
+            task_id, account_id=user["account_id"], actor_user_id=actor,
+            **kwargs,
+        )
 
     spawned_id: Optional[int] = None
     if ok:
-        await tenant_db.add_audit_log(
-            user["account_id"], int(user["sub"]),
-            "maintenance_update",
-            target_type="maintenance", target_id=str(task_id),
-            details=str(list(kwargs.keys())),
-        )
         # Recurring-task auto-spawn: if the user just flipped status to
         # 'completed' AND the parent has recur_interval_days / _miles set
         # (or is a compliance task with a default interval like DOT), the
@@ -656,14 +654,8 @@ async def update_task(
                 pass
             spawned_id = await spawn_recurring_if_completed(
                 task_id, user["account_id"], "completed", tenant_db,
+                actor_user_id=actor,
             )
-            if spawned_id:
-                await tenant_db.add_audit_log(
-                    user["account_id"], int(user["sub"]),
-                    "maintenance_recurring_spawn",
-                    target_type="maintenance", target_id=str(spawned_id),
-                    details=f"from parent {task_id}",
-                )
 
     return {"ok": ok, "spawned_id": spawned_id}
 
@@ -703,14 +695,45 @@ async def snooze_task(
     await _require_company_visible_task(task, user)
     ok = await tenant_db.snooze_task(
         task_id, account_id=user["account_id"], until_iso=body.until,
-    )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "maintenance_snooze",
-        target_type="maintenance", target_id=str(task_id),
-        details=f"until={body.until or 'cleared'}",
+        actor_user_id=await resolve_user_id(user),
     )
     return {"ok": ok, "snoozed_until": body.until}
+
+
+@router.get("/tasks/{task_id}/history")
+async def get_task_history(
+    task_id: int,
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """The task's activity trail — who did what, field-level old→new.
+
+    Visible to anyone who can see the task itself (the trail's values
+    are the task's own fields, so no extra permission tier).  Events
+    for DELETED tasks are still returned — that is the point: the
+    History dialog answers "where did it go" after the row is gone.
+    """
+    if not has_maintenance_access(user["role"]):
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
+    if task:
+        await _require_company_visible_task(task, user)
+    events = await tenant_db.list_activity_events(
+        user["account_id"],
+        entity_type="maintenance_task", entity_id=str(task_id),
+    )
+    if not task and not events:
+        raise HTTPException(status_code=404, detail="Task not found")
+    names: dict[int, str] = {}
+    for e in events:
+        uid = e["actor_user_id"]
+        if uid is None or uid in names:
+            continue
+        u = await tenant_db.get_user(int(uid))
+        names[int(uid)] = ((u.display_name if u else "") or "").strip() or f"#{uid}"
+    for e in events:
+        e["actor_name"] = names.get(e["actor_user_id"], "") if e["actor_user_id"] else ""
+    return {"events": events}
 
 
 @router.post("/tasks/{task_id}/attachment")
@@ -782,12 +805,7 @@ async def upload_task_attachment(
         attachment_path=file_path,
         attachment_name=safe_name,
         attachment_content_type=content_type,
-    )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "maintenance_attachment_upload",
-        target_type="maintenance", target_id=str(task_id),
-        details=f"{safe_name} ({len(raw)} bytes)",
+        actor_user_id=await resolve_user_id(user),
     )
     return {
         "ok": True,
@@ -885,11 +903,7 @@ async def delete_task_attachment(
     await tenant_db.set_task_attachment(
         task_id, account_id=user["account_id"],
         attachment_path=None, attachment_name=None, attachment_content_type=None,
-    )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "maintenance_attachment_delete",
-        target_type="maintenance", target_id=str(task_id),
+        actor_user_id=await resolve_user_id(user),
     )
     return {"ok": True}
 
@@ -906,11 +920,9 @@ async def delete_task(
         raise HTTPException(status_code=404, detail="Task not found")
     await _require_company_visible_task(task, user)
 
-    await tenant_db.delete_maintenance_task(task_id, account_id=user["account_id"])
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "maintenance_delete",
-        target_type="maintenance", target_id=str(task_id),
+    await tenant_db.delete_maintenance_task(
+        task_id, account_id=user["account_id"],
+        actor_user_id=await resolve_user_id(user),
     )
     return {"ok": True}
 
@@ -963,8 +975,11 @@ async def bulk_update_status(
             if prev and prev.get("status") != "completed":
                 newly_transitioned.append(tid)
 
+    actor = await resolve_user_id(user)
+    group = new_group_id()
     touched = await tenant_db.update_maintenance_status_bulk(
         user["account_id"], body.task_ids, body.status,
+        actor_user_id=actor, trail_group_id=group,
     )
     spawned: list[int] = []
     if body.status == "completed":
@@ -981,16 +996,10 @@ async def bulk_update_status(
                 pass
             child = await spawn_recurring_if_completed(
                 tid, user["account_id"], "completed", tenant_db,
+                actor_user_id=actor,
             )
             if child:
                 spawned.append(child)
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "maintenance_bulk_status",
-        target_type="maintenance",
-        target_id=",".join(str(i) for i in body.task_ids[:10]),  # first 10 for display
-        details=f"status={body.status} count={touched}",
-    )
     return {"updated": touched, "spawned_ids": spawned}
 
 
@@ -1000,16 +1009,17 @@ async def bulk_delete(
     user: dict = Depends(require_permission("can_maintenance_all")),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Bulk-delete N maintenance tasks (account-scoped, idempotent)."""
+    """Bulk-delete N maintenance tasks (account-scoped, idempotent).
+
+    The trail records one delete event PER task — full field values,
+    all sharing one group — so a wrong bulk delete is reconstructable
+    from the audit page alone.  (The 2026-07-30 incident's fix: the old
+    thin log truncated the id list to 10 of 33 and kept no values.)
+    """
     deleted = await tenant_db.delete_maintenance_tasks_bulk(
         user["account_id"], body.task_ids,
-    )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "maintenance_bulk_delete",
-        target_type="maintenance",
-        target_id=",".join(str(i) for i in body.task_ids[:10]),
-        details=f"count={deleted}",
+        actor_user_id=await resolve_user_id(user),
+        trail_group_id=new_group_id(),
     )
     return {"deleted": deleted}
 
@@ -1238,6 +1248,7 @@ async def create_template(
             recur_interval_miles=body.recur_interval_miles,
             recur_interval_engine_hours=body.recur_interval_engine_hours,
             created_by=await resolve_user_id(user),
+            actor_user_id=await resolve_user_id(user),
         )
     except Exception as e:
         # The UNIQUE(account_id, name) constraint surfaces here when
@@ -1248,12 +1259,6 @@ async def create_template(
                 detail="A template with that name already exists.",
             )
         raise
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "maintenance_template_create",
-        target_type="maintenance_template", target_id=str(tid),
-        details=body.name,
-    )
     return {"id": tid, "status": "created"}
 
 
@@ -1269,12 +1274,8 @@ async def update_template(
         raise HTTPException(status_code=404, detail="Template not found")
     ok = await tenant_db.update_maintenance_template(
         template_id, account_id=user["account_id"],
+        actor_user_id=await resolve_user_id(user),
         **body.model_dump(),
-    )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "maintenance_template_update",
-        target_type="maintenance_template", target_id=str(template_id),
     )
     return {"ok": ok}
 
@@ -1285,14 +1286,12 @@ async def delete_template(
     user: dict = Depends(require_permission("can_maintenance_all")),
     tenant_db=Depends(get_tenant_db),
 ):
-    ok = await tenant_db.delete_maintenance_template(template_id, user["account_id"])
+    ok = await tenant_db.delete_maintenance_template(
+        template_id, user["account_id"],
+        actor_user_id=await resolve_user_id(user),
+    )
     if not ok:
         raise HTTPException(status_code=404, detail="Template not found")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "maintenance_template_delete",
-        target_type="maintenance_template", target_id=str(template_id),
-    )
     return {"ok": True}
 
 

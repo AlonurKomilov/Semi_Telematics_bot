@@ -89,6 +89,73 @@ def test_mask_never_mutates_at_write_shape():
     assert mask_changes("mystery", changes, viewer_can_see=False) == changes
 
 
+# ── the read facade: one wire shape from four arms ────────────────
+
+def test_facade_normalizes_all_arm_shapes_to_one():
+    from capabilities.activity_trail.facade import (
+        normalize_inventory, normalize_legacy, normalize_load,
+        normalize_trail,
+    )
+    trail = normalize_trail({
+        "id": 1, "entity_type": "maintenance_task", "entity_id": "64",
+        "action": "delete", "changes": {"due_miles": {"from": 236772, "to": None}},
+        "actor_user_id": 7, "group_id": "g1", "context": {}, "note": "",
+        "created_at": "2026-07-31T10:00:00+00:00",
+    })
+    load = normalize_load({
+        "id": 2, "load_id": 9, "event_type": "edited",
+        "changes": {"total_rate": [1500, 1700]},        # legacy pair form
+        "actor_user_id": 7, "dispatcher_user_id": None, "note": "",
+        "created_at": "2026-07-31T09:00:00+00:00",
+    })
+    inv = normalize_inventory({
+        "id": 3, "item_id": 5, "event_type": "status_change",
+        "from_status": "missing", "to_status": "installed",
+        "from_vehicle_id": None, "to_vehicle_id": None,
+        "actor_user_id": 7, "driver_user_id": 11, "note": "",
+        "created_at": "2026-07-31T08:00:00+00:00",
+    })
+    legacy = normalize_legacy({
+        "id": 4, "user_id": 8846901592, "action": "permissions_update",
+        "target_type": "role", "target_id": "fleet", "details": "",
+        "created_at": "2026-07-31T07:00:00+00:00",
+    })
+    for ev in (trail, load, inv, legacy):
+        assert set(ev) >= {"source", "entity_type", "entity_id", "action",
+                           "changes", "actor_user_id", "actor_space",
+                           "created_at"}
+    # every arm's changes speak {from,to} — including loads' pair form
+    assert load["changes"] == {"total_rate": {"from": 1500, "to": 1700}}
+    assert inv["changes"]["status"] == {"from": "missing", "to": "installed"}
+    # the frozen log's telegram ids are marked so names resolve right
+    assert legacy["actor_space"] == "telegram"
+    assert trail["actor_space"] == "platform"
+
+
+def test_facade_merge_is_newest_first_and_capped():
+    from capabilities.activity_trail.facade import merge_arms
+    a = [{"created_at": "2026-07-31T10:00:00"}, {"created_at": "2026-07-31T08:00:00"}]
+    b = [{"created_at": "2026-07-31T09:00:00"}]
+    merged = merge_arms(a, b, limit=2)
+    assert [e["created_at"][11:13] for e in merged] == ["10", "09"]
+
+
+def test_facade_collapses_bulk_groups_without_losing_count():
+    from capabilities.activity_trail.facade import collapse_groups
+    ev = lambda i, gid=None: {
+        "source": "trail", "id": f"trail:{i}", "entity_type": "maintenance_task",
+        "entity_id": str(i), "action": "delete", "changes": {},
+        "actor_user_id": 7, "actor_space": "platform", "group_id": gid,
+        "context": {}, "note": "", "created_at": f"2026-07-31T10:00:{i:02d}",
+    }
+    rows = [ev(1), ev(2, "g"), ev(3, "g"), ev(4, "g"), ev(5)]
+    out = collapse_groups(rows)
+    assert len(out) == 3                       # single + group + single
+    group = next(e for e in out if e.get("is_group"))
+    assert group["count"] == 3                 # NEVER truncated
+    assert group["sample_entity_ids"] == ["2", "3", "4"]
+
+
 # ── structural contract on the storage mixin ─────────────────────
 
 def test_append_never_commits_and_requires_system_context():

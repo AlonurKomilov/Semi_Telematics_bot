@@ -618,6 +618,7 @@ COMPLIANCE_DEFAULT_INTERVAL_DAYS: dict[str, int] = {
 
 async def spawn_recurring_if_completed(
     task_id: int, account_id: int, new_status: str, tenant_db,
+    actor_user_id: Optional[int] = None,
 ) -> Optional[int]:
     """Auto-create the next instance of a recurring task on completion.
 
@@ -666,7 +667,9 @@ async def spawn_recurring_if_completed(
                 task_id, task_type, COMPLIANCE_DEFAULT_INTERVAL_DAYS[task_type],
             )
 
-    return await tenant_db.spawn_recurring_followup(task_id, account_id=account_id)
+    return await tenant_db.spawn_recurring_followup(
+        task_id, account_id=account_id, actor_user_id=actor_user_id,
+    )
 
 
 # ── Auto-maintenance from critical fault codes ────────────────────────────────

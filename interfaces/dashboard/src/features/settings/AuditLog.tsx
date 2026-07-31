@@ -1,17 +1,33 @@
+/**
+ * Audit Log — the unified who-did-what feed.
+ *
+ * Reads /admin/activity: the activity_events trail + the loads and
+ * inventory rich trails + the frozen thin log's human rows, one wire
+ * shape.  Field-level old→new renders inline; bulk actions arrive
+ * collapsed as ONE group row (count is the REAL count — the store
+ * keeps every member) and expand into a dialog on demand.
+ */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Layers } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';
-import { Tip } from '../../components/tooltip';
 import {
   PageHeader,
   EmptyState,
   ErrorState,
   TableSkeleton,
 } from '../../components/shell';
-import type { AuditLogEntry, AnyColumn } from '../../types';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '../../components/ui/dialog';
+import { Button } from '../../components/ui/button';
+import {
+  ChangeLines, HistoryList, actionLabel as trailActionLabel,
+  entityLabel, type ActivityEvent,
+} from '../../components/history/HistoryList';
+import type { AnyColumn } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
@@ -19,16 +35,13 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '.
 const LIMIT_ITEMS = [
   { value: '50', label: 'Last 50' },
   { value: '100', label: 'Last 100' },
-  { value: '250', label: 'Last 250' },
-  { value: '500', label: 'Last 500' },
+  { value: '200', label: 'Last 200' },
 ];
 
-// Human-readable labels for the audit-log ``action`` enum.  Unknown
-// actions fall through to the raw snake_case string so a newly-added
-// action surfaces as e.g. ``invoice_void`` rather than ``[object
-// Object]`` until someone adds the matching label here.  Extend this
-// map whenever a new audit_log action ships on the backend.
-const ACTION_LABEL: Record<string, string> = {
+// Legacy-arm actions that deserve a friendlier sentence than the
+// generic snake→spaces fallback.  The trail's own action vocabulary
+// (create/update/delete/…) is labeled by the shared history module.
+const LEGACY_ACTION_LABEL: Record<string, string> = {
   invite_create: 'Invite created',
   invite_revoke: 'Invite revoked',
   invite_extend: 'Invite extended',
@@ -36,64 +49,96 @@ const ACTION_LABEL: Record<string, string> = {
   invite_declined: 'Invite declined by recipient',
   invite_email_bounced: 'Invite email bounced',
   invite_email_complained: 'Invite reported as spam',
-  // AI copilot actions — actor is the human who approved/undid, never
-  // the model.  The "AI:" prefix clusters them in the column filter,
-  // giving owners an "AI actions only" view for free.
+  permissions_update: 'Permissions changed',
+  manager_tier_change: 'Manager tier changed',
   'ai_write:import_inventory_items': 'AI: imported inventory items',
   'ai_undo:import_inventory_items': 'AI: undid inventory import',
   'ai_write:create_maintenance_task': 'AI: created maintenance task',
   'ai_write:acknowledge_alerts': 'AI: acknowledged alerts',
 };
 
-/** Friendly label with a generic fallback for FUTURE AI tools — an
- *  unmapped ai_write:/ai_undo: still reads as an AI action, never a
- *  raw wire key. */
 function actionLabel(s: string): string {
-  if (ACTION_LABEL[s]) return ACTION_LABEL[s];
+  if (LEGACY_ACTION_LABEL[s]) return LEGACY_ACTION_LABEL[s];
   if (s.startsWith('ai_write:')) return `AI action: ${s.slice(9).replace(/_/g, ' ')}`;
   if (s.startsWith('ai_undo:')) return `AI undo: ${s.slice(8).replace(/_/g, ' ')}`;
-  return s;
+  return trailActionLabel(s);
 }
 
-const makeColumns = (tz: string): AnyColumn[] => [
+const makeColumns = (
+  tz: string,
+  onExpandGroup: (e: ActivityEvent) => void,
+): AnyColumn[] => [
   { key: 'created_at', label: 'Time', sortable: true,
     filterable: true, filterMode: 'date-range',
     render: (v) => v ? formatDate(String(v), { timeZone: tz }) : '—' },
+  { key: 'actor_name', label: 'User', sortable: true, filterable: true,
+    render: (v, row) => String(v || ((row as ActivityEvent).actor_user_id == null ? 'System' : `#${(row as ActivityEvent).actor_user_id}`)) },
   {
     key: 'action',
     label: 'Action',
     sortable: true,
-    // Action codes are a bounded enum — filter matches the raw code,
-    // dropdown shows the same friendly label the cell renders.
     filterable: true,
-    filterValue: (row) => String((row as { action?: string }).action ?? ''),
-    filterLabel: (row) => actionLabel(String((row as { action?: string }).action ?? '')),
-    render: (v) => actionLabel(String(v ?? '')),
+    filterValue: (row) => String((row as ActivityEvent).action ?? ''),
+    filterLabel: (row) => actionLabel(String((row as ActivityEvent).action ?? '')),
+    render: (v, row) => {
+      const e = row as unknown as ActivityEvent;
+      return e.is_group
+        ? `${actionLabel(String(v ?? ''))} · ${e.count} items`
+        : actionLabel(String(v ?? ''));
+    },
   },
-  { key: 'user_id', label: 'User ID', sortable: true, filterable: true },
-  { key: 'target_type', label: 'Target', sortable: true, filterable: true },
-  { key: 'target_id', label: 'Target ID' },
-  { key: 'details', label: 'Details', render: (v) => {
-    const s = String(v || '');
-    return s.length > 80
-      ? <Tip label={s}><span>{s.slice(0, 80)}…</span></Tip>
-      : s;
-  }},
+  { key: 'entity_type', label: 'Feature', sortable: true, filterable: true,
+    filterLabel: (row) => entityLabel(String((row as ActivityEvent).entity_type ?? '')),
+    render: (v) => entityLabel(String(v ?? '')) },
+  { key: 'entity_id', label: 'Target',
+    render: (v, row) => {
+      const e = row as unknown as ActivityEvent;
+      if (!e.is_group) return String(v ?? '');
+      const sample = (e.sample_entity_ids ?? []).join(', ');
+      return e.count && e.count > (e.sample_entity_ids?.length ?? 0)
+        ? `${sample}, …` : sample;
+    } },
+  { key: 'changes', label: 'Changes',
+    render: (_v, row) => {
+      const e = row as unknown as ActivityEvent;
+      if (e.is_group) {
+        return (
+          <Button
+            size="sm" variant="outline"
+            onClick={(ev) => { ev.stopPropagation(); onExpandGroup(e); }}
+          >
+            <Layers size={14} /> View all {e.count}
+          </Button>
+        );
+      }
+      const n = Object.keys(e.changes ?? {}).length;
+      if (n === 0) return e.note ? <span className="text-xs text-muted-foreground">{e.note}</span> : '—';
+      return <ChangeLines changes={e.changes} max={3} />;
+    } },
 ];
 
 export default function AuditLog() {
   const { t } = useTranslation();
   const tz = useTimezone();
   const [limit, setLimit] = useState(100);
-  const columns = makeColumns(tz);
+  const [group, setGroup] = useState<ActivityEvent | null>(null);
 
   const { data, isLoading: loading, error: queryError, refetch } = useQuery({
-    queryKey: ['admin-audit', limit],
-    queryFn: () => apiJSON<{ entries: AuditLogEntry[] }>('/admin/audit-log?limit=' + limit),
+    queryKey: ['admin-activity', limit],
+    queryFn: () => apiJSON<{ events: ActivityEvent[] }>('/admin/activity?limit=' + limit),
     placeholderData: (prev) => prev,
   });
-  const entries = data?.entries ?? [];
+  const events = data?.events ?? [];
   const error = queryError instanceof Error ? queryError.message : '';
+
+  const groupQuery = useQuery({
+    queryKey: ['admin-activity-group', group?.group_id],
+    queryFn: () => apiJSON<{ events: ActivityEvent[] }>(
+      `/admin/activity/group/${group!.group_id}`),
+    enabled: !!group?.group_id,
+  });
+
+  const columns = makeColumns(tz, setGroup);
 
   return (
     <div>
@@ -113,21 +158,44 @@ export default function AuditLog() {
 
       {error ? (
         <ErrorState
-          title="Couldn't load audit log"
+          title="Couldn't load the activity feed"
           message={error}
           onRetry={() => refetch()}
         />
-      ) : loading && entries.length === 0 ? (
+      ) : loading && events.length === 0 ? (
         <TableSkeleton rows={8} cols={6} />
-      ) : entries.length === 0 ? (
+      ) : events.length === 0 ? (
         <EmptyState
           icon={ClipboardList}
-          title="No audit entries yet"
-          description="Activity from invites, role changes, and admin edits will appear here as it happens."
+          title="No activity yet"
+          description="Team actions — edits, deletions, invites, permission changes — appear here with their before and after values."
         />
       ) : (
-        <DataGrid tableId="audit-log" columns={columns} data={entries as unknown as Record<string, unknown>[]} searchKey={['action', 'details', 'target_id']} />
+        <DataGrid
+          tableId="audit-log"
+          columns={columns}
+          data={events as unknown as Record<string, unknown>[]}
+          searchKey={['action', 'entity_type', 'entity_id', 'actor_name', 'note']}
+        />
       )}
+
+      {/* Bulk-action expansion: every member event, full values each. */}
+      <Dialog open={!!group} onOpenChange={(open) => { if (!open) setGroup(null); }}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>
+              {group ? `${actionLabel(group.action)} · ${group.count} ${entityLabel(group.entity_type).toLowerCase()}s` : ''}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto pr-1">
+            {groupQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">Loading…</p>
+            ) : (
+              <HistoryList events={groupQuery.data?.events ?? []} tz={tz} />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

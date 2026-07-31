@@ -33,6 +33,7 @@ import { VehiclePicker, MilesPicker, HoursPicker, DaysPicker, type VehicleSummar
 import { CalendarMonth } from './CalendarMonth';
 import { toneClasses } from '@/lib/status';
 import { ServiceHistoryModal } from './ServiceHistoryModal';
+import { TaskHistoryDialog } from './TaskHistoryDialog';
 import { TemplatesModal } from './TemplatesModal';
 import type { MaintenanceTemplate } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
@@ -290,6 +291,7 @@ export default function Tasks() {
   const [error, setError] = useState('');
   const [showAdd, setShowAdd] = useState(false);
   const [selected, setSelected] = useState<MaintenanceTask | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
   // Service-history modal — null when closed; vehicle_name when open.
   // Kept separate from ``selected`` so the user can open history without
   // losing their place in the edit sidebar.
@@ -1833,6 +1835,17 @@ export default function Tasks() {
                   </dd>
                 </div>
               )}
+              {/* The record's own activity trail — who did what, with
+                  before→after values (capabilities/activity_trail). */}
+              <div className="pt-2 border-t border-border">
+                <button
+                  type="button"
+                  onClick={() => setHistoryOpen(true)}
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <History size={14} /> View change history
+                </button>
+              </div>
             </dl>
             <div className="space-y-3">
               <label className="block">
@@ -2259,6 +2272,11 @@ export default function Tasks() {
           onClose={() => setHistoryVehicle(null)}
         />
       )}
+      <TaskHistoryDialog
+        taskId={selected?.id ?? null}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+      />
 
       {templatesOpen && (
         <TemplatesModal
