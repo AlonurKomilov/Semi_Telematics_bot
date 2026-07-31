@@ -38,6 +38,11 @@ export default defineConfig({
           // it into a shared chunk for those automatically.  A forced
           // ``map-vendor`` manualChunk just produces an empty chunk
           // (nothing in the static graph imports it), so it's omitted.
+          // three IS also lazy-only, but unlike leaflet the split works
+          // (verified in dist: a real chunk, imported only by Scene) —
+          // it exists for CACHE STABILITY: editing our Scene code must
+          // not re-download ~260 kB gzip of unchanged 3D libraries.
+          'three-vendor': ['three'],
           'ui-vendor': ['@base-ui/react', 'lucide-react', 'sonner'],
           'i18n-vendor': ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
           'util-vendor': ['clsx', 'tailwind-merge', 'class-variance-authority', 'react-is'],
