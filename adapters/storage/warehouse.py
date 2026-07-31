@@ -636,8 +636,12 @@ class WarehouseMixin(_MixinBase):
                     idle_min=excluded.idle_min,
                     max_speed_mph=excluded.max_speed_mph,
                     harsh_event_count=excluded.harsh_event_count,
-                    odometer_eod=excluded.odometer_eod,
-                    engine_hours_eod=excluded.engine_hours_eod,
+                    -- Keep a prior non-null banked reading when a re-run
+                    -- can't recompute one: replaying an hour whose 5-min
+                    -- snapshots have since been pruned yields a row only
+                    -- from safety events, carrying no odometer at all.
+                    odometer_eod=COALESCE(excluded.odometer_eod, vehicle_telemetry.odometer_eod),
+                    engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_telemetry.engine_hours_eod),
                     ingested_at=excluded.ingested_at
                 """,
                 values,

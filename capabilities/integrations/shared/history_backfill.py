@@ -518,23 +518,30 @@ def _resample_to_snapshot_rows(
                 t = _parse_sample_time(sample.get("time", ""))
                 if t is None:
                     continue
+                raw = sample.get("value")
+                if raw is None:
+                    continue
+                if column == "engine_state":
+                    value = _ENGINE_STATE_MAP.get(
+                        str(raw).strip().lower(), "off",
+                    )
+                else:
+                    try:
+                        value = converter(raw) if converter else raw
+                    except (TypeError, ValueError):
+                        continue
+                # Claim the slot only once the value survives conversion.
+                # Creating the row first meant valueless or malformed
+                # samples minted rows carrying nothing but a timestamp —
+                # and because the snapshot upsert leaves existing keys
+                # alone, those empty rows then blocked every later
+                # attempt to backfill the same slot with real readings.
                 slot_key = (vid, _floor_to_slot(t))
                 row = by_slot.setdefault(slot_key, {
                     "vehicle_id": vid,
                     "captured_at": slot_key[1],
                 })
-                raw = sample.get("value")
-                if raw is None:
-                    continue
-                if column == "engine_state":
-                    row[column] = _ENGINE_STATE_MAP.get(
-                        str(raw).strip().lower(), "off",
-                    )
-                else:
-                    try:
-                        row[column] = converter(raw) if converter else raw
-                    except (TypeError, ValueError):
-                        continue
+                row[column] = value
     return list(by_slot.values())
 
 
@@ -550,19 +557,31 @@ def _accumulate_gps(
         t = _parse_sample_time(s.get("time", ""))
         if t is None:
             continue
+        value = s.get("value") or {}
+        if not isinstance(value, dict):
+            continue
+        fields: dict[str, Any] = {}
+        for key, column in (("latitude", "lat"),
+                            ("longitude", "lon"),
+                            ("speedMilesPerHour", "speed_mph")):
+            if value.get(key) is None:
+                continue
+            try:
+                fields[column] = float(value[key])
+            except (TypeError, ValueError):
+                continue
+        # Claim the slot only once something will actually go into it —
+        # a fix-less GPS sample would otherwise mint a row holding just a
+        # timestamp, and the snapshot upsert leaves existing keys alone,
+        # so that empty row blocks the slot against every later backfill.
+        if not fields:
+            continue
         slot_key = (vehicle_id, _floor_to_slot(t))
         row = by_slot.setdefault(slot_key, {
             "vehicle_id": vehicle_id,
             "captured_at": slot_key[1],
         })
-        value = s.get("value") or {}
-        if isinstance(value, dict):
-            if value.get("latitude") is not None:
-                row["lat"] = float(value["latitude"])
-            if value.get("longitude") is not None:
-                row["lon"] = float(value["longitude"])
-            if value.get("speedMilesPerHour") is not None:
-                row["speed_mph"] = float(value["speedMilesPerHour"])
+        row.update(fields)
 
 
 def _merge_batch(

@@ -23,6 +23,17 @@ from infra.services import get_tenant_db
 
 logger = logging.getLogger(__name__)
 
+# A single jump between consecutive odometer readings this large is the
+# device re-baselining, not a truck driving.  Deliberately far above any
+# real bucket: readings arrive in coarse quanta and in catch-up bursts
+# after a quiet stretch, so the largest legitimate one-bucket absorption
+# measured across 126k production buckets is ~5,165 miles.  This sits at
+# roughly twice that, low enough to catch the re-baselines (the worst
+# real one booked 24,352 miles) and high enough that no honest reading
+# has ever approached it.  Distance is dropped, never clamped — a
+# clamped value would look like miles somebody drove.
+IMPLAUSIBLE_STEP_MILES = 10_000.0
+
 
 async def snapshot_vehicle_state(account_id: int) -> int:
     """Copy the current ``vehicle_state`` row for every active vehicle
@@ -155,8 +166,20 @@ async def _aggregate_hour_window(
     # Window snapshot rollup - one query per account, grouped by
     # vehicle.  Vehicles with zero snapshots in the window simply
     # don't get a row this hour.
+    #
+    # Miles sum the POSITIVE, plausible steps between consecutive
+    # readings rather than taking MAX-MIN across the window.  For a
+    # healthy odometer the two are identical (the steps telescope), but
+    # they part company exactly where the odometer misbehaves: a gateway
+    # that re-baselines mid-window makes MAX-MIN report the whole old
+    # reading as distance driven (one truck booked 24,352 miles in a
+    # single hour that way), and a reading that resumes after a silent
+    # stretch dumps the entire catch-up into whichever bucket saw both
+    # values.  Steps beyond ``IMPLAUSIBLE_STEP_MILES`` are dropped, not
+    # clamped: they are an artefact of the device, not distance the
+    # truck covered.  Negative steps are resets and contribute nothing.
     snap_cols = [
-        "vehicle_id", "miles_in_window",
+        "vehicle_id", "miles_in_window", "reset_steps", "jump_steps",
         "max_speed", "avg_fuel_pct",
         "drive_samples", "idle_samples",
         "odometer_eoh", "engine_hours_eoh",
@@ -164,21 +187,34 @@ async def _aggregate_hour_window(
     cur = await tenant._db.execute(
         """
         SELECT vehicle_id,
-               MAX(odometer_mi) - MIN(odometer_mi) AS miles_in_window,
+               SUM(CASE WHEN step > 0 AND step <= ? THEN step ELSE 0 END)
+                                                   AS miles_in_window,
+               SUM(CASE WHEN step < 0 THEN 1 ELSE 0 END) AS reset_steps,
+               SUM(CASE WHEN step > ? THEN 1 ELSE 0 END) AS jump_steps,
                MAX(COALESCE(speed_mph, 0))         AS max_speed,
                AVG(COALESCE(fuel_pct, 0))          AS avg_fuel_pct,
                SUM(CASE WHEN engine_state = 'moving' THEN 1 ELSE 0 END) AS drive_samples,
                SUM(CASE WHEN engine_state = 'idle'   THEN 1 ELSE 0 END) AS idle_samples,
                MAX(odometer_mi)                    AS odometer_eoh,
                MAX(engine_hours)                   AS engine_hours_eoh
-          FROM vehicle_state_snapshot
-         WHERE account_id = ?
-           AND captured_at >= ?
-           AND captured_at <  ?
-           AND odometer_mi IS NOT NULL
+          FROM (
+              SELECT vehicle_id, odometer_mi, speed_mph, fuel_pct,
+                     engine_state, engine_hours,
+                     odometer_mi - LAG(odometer_mi) OVER (
+                         PARTITION BY vehicle_id ORDER BY captured_at
+                     ) AS step
+                FROM vehicle_state_snapshot
+               WHERE account_id = ?
+                 AND captured_at >= ?
+                 AND captured_at <  ?
+                 AND odometer_mi IS NOT NULL
+          ) ordered
          GROUP BY vehicle_id
         """,
-        (account_id, hour_start.isoformat(), hour_end.isoformat()),
+        # Placeholder order follows the SQL text: the two ceilings sit in
+        # the select list, ahead of the derived table's own filters.
+        (IMPLAUSIBLE_STEP_MILES, IMPLAUSIBLE_STEP_MILES,
+         account_id, hour_start.isoformat(), hour_end.isoformat()),
     )
     snap_rows = [dict(zip(snap_cols, r)) for r in await cur.fetchall()]
 
@@ -194,6 +230,14 @@ async def _aggregate_hour_window(
             continue
         seen_vids.add(vid)
         miles = max(0.0, float(sr.get("miles_in_window") or 0))
+        dropped = int(sr.get("reset_steps") or 0) + int(sr.get("jump_steps") or 0)
+        if dropped:
+            logger.warning(
+                "odometer discontinuity acct=%d vehicle=%s hour=%s "
+                "resets=%s jumps=%s — those steps excluded from miles",
+                account_id, vid, hour_label,
+                sr.get("reset_steps"), sr.get("jump_steps"),
+            )
         max_speed = float(sr.get("max_speed") or 0)
         avg_fuel = float(sr.get("avg_fuel_pct") or 0)
         drive_min = int(sr.get("drive_samples") or 0) * SAMPLE_INTERVAL_MIN
@@ -384,6 +428,16 @@ async def aggregate_metrics_daily(account_id: int) -> int:
     day_start = (now - timedelta(days=1)).replace(
         hour=0, minute=0, second=0, microsecond=0,
     )
+
+    # Close the day's LAST hour ourselves before summing it.  Both crons
+    # fire at :05, so this one used to read the hourly tier while the
+    # 23:00 bucket was still being written by the other — every day lost
+    # its final hour, and with it 6-9% of the day's miles.  Ordering now
+    # comes from the code rather than from which job happens to win.
+    await _aggregate_hour_window(
+        tenant, account_id, day_start + timedelta(hours=23),
+    )
+
     n = await _aggregate_day_window(tenant, account_id, day_start)
     day_label = day_start.strftime("%Y-%m-%d")
     logger.info(
@@ -391,60 +445,40 @@ async def aggregate_metrics_daily(account_id: int) -> int:
         account_id, day_label, n,
     )
 
-    # Self-heal: fill any day the tier is missing inside the lookback.
-    # Bounded by _DAILY_HEAL_DAYS because a day can only be rebuilt
-    # while its HOURLY rows still exist; older gaps need the Samsara
-    # history backfill, which is an operator action, not a cron.
+    # Re-roll the recent past unconditionally.  Filling only ABSENT days
+    # left every day that was written WRONG — a hole heals itself, a bad
+    # number never did.  The daily tier sums the hourly one, which keeps
+    # 90 days, so re-summing is cheap, idempotent, and picks up whatever
+    # later corrected the hours underneath (a history backfill, the hour
+    # -23 fix above).  Bounded by _DAILY_HEAL_DAYS: past the hourly
+    # tier's reach there is nothing new to learn.
+    #
+    # Anything repaired by hand must be written to the HOURLY tier, not
+    # straight into a daily row — the next pass rebuilds daily rows from
+    # hours and would quietly undo it.
     healed = 0
-    expected = [day_start - timedelta(days=i)
-                for i in range(1, _DAILY_HEAL_DAYS + 1)]
-    for missing in await _missing_buckets(tenant, account_id, "daily", expected):
-        rows = await _aggregate_day_window(tenant, account_id, missing)
-        healed += rows
-        logger.info(
-            "aggregate_metrics_daily HEALED acct=%d day=%s rows=%d",
-            account_id, missing.strftime("%Y-%m-%d"), rows,
-        )
+    rolled = 0
+    for i in range(1, _DAILY_HEAL_DAYS + 1):
+        past = day_start - timedelta(days=i)
+        # Only days the 5-min tier still covers.  Past that edge the
+        # hours can no longer be rebuilt, so re-summing would republish
+        # the hourly tier over a daily row that may be the better copy.
+        if not await _day_has_snapshots(tenant, account_id, past):
+            continue
+        healed += await _aggregate_day_window(tenant, account_id, past)
+        rolled += 1
+    logger.info(
+        "aggregate_metrics_daily RE-ROLLED acct=%d days=%d rows=%d",
+        account_id, rolled, healed,
+    )
     return n + healed
 
 
-# How far back each self-healing pass looks for holes.  Daily is capped
-# by the HOURLY tier's own retention (a day can only be rebuilt while its
-# hourly rows survive); weekly reads the 730-day daily tier, so it can
-# afford a longer memory.
+# How far back each pass re-rolls.  Daily is capped by the HOURLY tier's
+# own retention (a day can only be rebuilt while its hourly rows survive);
+# weekly reads the 730-day daily tier, so it can afford a longer memory.
 _DAILY_HEAL_DAYS = 7
 _WEEKLY_HEAL_WEEKS = 4
-
-
-async def _missing_buckets(
-    tenant,
-    account_id: int,
-    granularity: str,
-    expected: list[datetime],
-) -> list[datetime]:
-    """Of ``expected`` bucket starts, the ones the tier has no row for.
-
-    Both live wrappers only ever process the JUST-CLOSED period, so a
-    single missed run (a restart landing on the fire time, a service
-    outage spanning midnight) left a permanent hole — a whole week for
-    the weekly tier.  Production hit exactly that: the daily tier lost
-    2026-07-27/28 to an ingest outage and the weekly tier lost the week
-    of 2026-07-20 to one skipped Monday, and neither ever came back on
-    its own.  Feeding this list back through the same window function
-    makes each run self-healing over a bounded lookback.
-    """
-    if not expected:
-        return []
-    labels = [d.strftime("%Y-%m-%d") for d in expected]
-    placeholders = ", ".join("?" for _ in labels)
-    cur = await tenant._db.execute(
-        f"SELECT DISTINCT bucket_start FROM vehicle_telemetry "
-        f"WHERE account_id = ? AND granularity = ? "
-        f"AND bucket_start IN ({placeholders})",
-        (account_id, granularity, *labels),
-    )
-    present = {str(dict(r)["bucket_start"])[:10] for r in await cur.fetchall()}
-    return [d for d, lbl in zip(expected, labels) if lbl not in present]
 
 
 async def _aggregate_week_window(
@@ -539,20 +573,21 @@ async def aggregate_metrics_weekly(account_id: int) -> int:
         account_id, last_week_monday.strftime("%Y-%m-%d"), n,
     )
 
-    # Self-heal: one skipped Monday used to cost a whole week forever
-    # (production lost the week of 2026-07-20 exactly this way).  The
-    # daily tier this reads from is kept 730 days, so re-rolling a few
-    # older weeks is cheap and idempotent.
+    # Re-roll recent weeks unconditionally, for the same reason the
+    # daily pass does: a skipped Monday used to cost a whole week
+    # forever, and a week rolled from a daily tier that was later
+    # repaired kept its stale total just as permanently (production
+    # carried weeks disagreeing with their own days by up to 85%).  The
+    # daily tier is kept 730 days, so re-summing a few weeks is cheap.
     healed = 0
-    expected = [last_week_monday - timedelta(days=7 * i)
-                for i in range(1, _WEEKLY_HEAL_WEEKS + 1)]
-    for missing in await _missing_buckets(tenant, account_id, "weekly", expected):
-        rows = await _aggregate_week_window(tenant, account_id, missing)
+    for i in range(1, _WEEKLY_HEAL_WEEKS + 1):
+        past = last_week_monday - timedelta(days=7 * i)
+        rows = await _aggregate_week_window(tenant, account_id, past)
         healed += rows
-        logger.info(
-            "aggregate_metrics_weekly HEALED acct=%d week=%s rows=%d",
-            account_id, missing.strftime("%Y-%m-%d"), rows,
-        )
+    logger.info(
+        "aggregate_metrics_weekly RE-ROLLED acct=%d weeks=%d rows=%d",
+        account_id, _WEEKLY_HEAL_WEEKS, healed,
+    )
     return n + healed
 
 
@@ -648,4 +683,109 @@ async def backfill_aggregations(
         "days": days_done,
         "hourly_rows": hourly_rows_total,
         "daily_rows": daily_rows_total,
+    }
+
+
+async def _day_has_snapshots(tenant, account_id: int, day_start: datetime) -> bool:
+    """Whether the 5-min tier still covers this UTC day."""
+    cur = await tenant._db.execute(
+        "SELECT 1 FROM vehicle_state_snapshot WHERE account_id = ? "
+        "AND captured_at >= ? AND captured_at < ? LIMIT 1",
+        (account_id,
+         day_start.strftime("%Y-%m-%d"),
+         (day_start + timedelta(days=1)).strftime("%Y-%m-%d")),
+    )
+    return await cur.fetchone() is not None
+
+
+async def reaggregate_window(
+    account_id: int,
+    *,
+    first_day: datetime,
+    last_day: datetime,
+    rebuild_unbacked_days: bool = False,
+) -> dict[str, int]:
+    """Rebuild the hourly + daily tiers over an EXPLICIT UTC day range.
+
+    ``backfill_aggregations`` walks back from *now* by a day count, which
+    suits a fresh history backfill but not a repair: a damaged or missing
+    day has to be rebuilt without disturbing the days around it.  This
+    states the window instead — inclusive on both ends — so the blast
+    radius is exactly what the caller named.
+
+    Both tiers upsert, so calls are idempotent and the hourly pass
+    completes before the daily one sums it.  What the window CANNOT
+    rebuild it leaves alone: an hour whose 5-min snapshots have aged out
+    produces no row, and the daily upsert keeps the reading it already
+    banked.
+
+    Days the 5-min tier no longer covers are left ALONE by default.
+    Their hours can no longer be rebuilt, so re-summing a daily row
+    there does not refresh it — it merely republishes whatever the hourly
+    tier happens to hold, and if anything damaged those hours the daily
+    row was the last copy of the better number.  Pass
+    ``rebuild_unbacked_days`` only right after a history backfill has put
+    real readings back underneath them.
+    """
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        return {"hours": 0, "days": 0, "hourly_rows": 0, "daily_rows": 0}
+
+    day_start = first_day.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_last = last_day.replace(hour=0, minute=0, second=0, microsecond=0)
+    if day_last < day_start:
+        return {"hours": 0, "days": 0, "hourly_rows": 0, "daily_rows": 0}
+
+    end_exclusive = day_last + timedelta(days=1)
+
+    # Decide per day BEFORE touching either tier.  A day the 5-min tier
+    # no longer covers cannot be rebuilt from anything local, and running
+    # the passes anyway is not merely useless: the hourly pass still
+    # emits a zero-mile row for any vehicle that logged a safety event
+    # that hour, overwriting the real mileage the tier was holding.
+    buildable: list[datetime] = []
+    skipped: list[str] = []
+    day_cursor = day_start
+    while day_cursor < end_exclusive:
+        if rebuild_unbacked_days or await _day_has_snapshots(
+            tenant, account_id, day_cursor,
+        ):
+            buildable.append(day_cursor)
+        else:
+            skipped.append(day_cursor.strftime("%Y-%m-%d"))
+        day_cursor += timedelta(days=1)
+
+    hourly_rows = 0
+    hours_done = 0
+    for day in buildable:
+        for hour in range(24):
+            hourly_rows += await _aggregate_hour_window(
+                tenant, account_id, day + timedelta(hours=hour),
+            )
+            hours_done += 1
+
+    daily_rows = 0
+    days_done = 0
+    for day in buildable:
+        daily_rows += await _aggregate_day_window(tenant, account_id, day)
+        days_done += 1
+
+    if skipped:
+        logger.warning(
+            "reaggregate_window acct=%d left %d day(s) alone — no 5-min "
+            "coverage left to rebuild them from: %s",
+            account_id, len(skipped), ", ".join(skipped),
+        )
+
+    logger.info(
+        "reaggregate_window acct=%d %s..%s hours=%d days=%d "
+        "hourly_rows=%d daily_rows=%d",
+        account_id, day_start.strftime("%Y-%m-%d"), day_last.strftime("%Y-%m-%d"),
+        hours_done, days_done, hourly_rows, daily_rows,
+    )
+    return {
+        "hours": hours_done,
+        "days": days_done,
+        "hourly_rows": hourly_rows,
+        "daily_rows": daily_rows,
     }

@@ -123,6 +123,52 @@ def test_resample_gps_fans_out_into_three_columns():
     assert rows[0]["speed_mph"] == 62.5
 
 
+def test_resample_skips_slots_whose_samples_carry_no_value():
+    """A valueless sample must not mint a row.
+
+    Rows holding nothing but a timestamp are worse than no rows: the
+    snapshot upsert leaves existing keys alone, so an empty row claims
+    its 5-minute slot against every later backfill.  Production wore
+    exactly that — a whole day of 288 timestamp-only rows per truck,
+    which then could not be repaired from the provider at all.
+    """
+    samples = {
+        "vid-1": {
+            "obdOdometerMeters": [
+                {"time": "2026-05-15T14:23:00Z", "value": None},
+            ],
+            "gps": [
+                # A fix-less GPS reading: present, but empty.
+                {"time": "2026-05-15T14:23:00Z", "value": {}},
+                {"time": "2026-05-15T14:28:00Z", "value": None},
+            ],
+        },
+    }
+    assert _resample_to_snapshot_rows(samples) == []
+
+
+def test_resample_keeps_the_readings_that_do_have_values():
+    """The skip must be per-sample, not per-slot — one bad reading in a
+    slot cannot discard its healthy siblings."""
+    samples = {
+        "vid-1": {
+            "gps": [
+                {"time": "2026-05-15T14:23:00Z",
+                 "value": {"latitude": 39.25, "longitude": None,
+                           "speedMilesPerHour": 62.5}},
+            ],
+            "obdOdometerMeters": [
+                {"time": "2026-05-15T14:24:00Z", "value": None},
+            ],
+        },
+    }
+    rows = _resample_to_snapshot_rows(samples)
+    assert len(rows) == 1
+    assert rows[0]["lat"] == 39.25
+    assert rows[0]["speed_mph"] == 62.5
+    assert "lon" not in rows[0]
+
+
 def test_resample_merges_distinct_stat_types_into_one_row():
     samples = {
         "vid-1": {

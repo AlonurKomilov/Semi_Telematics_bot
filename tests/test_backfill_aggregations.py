@@ -60,15 +60,16 @@ async def test_aggregate_hour_window_accepts_arbitrary_hour():
     await _aggregate_hour_window(tenant, 42, historical_hour)
 
     # Two execute calls (safety events + snapshot rollup) — both must
-    # have been bound with the requested hour, not ``now``.
+    # have been bound with the requested hour, not ``now``.  Checked by
+    # membership rather than position: the queries also carry tuning
+    # constants, and where those sit depends on the SQL's shape.
     calls = tenant._db.execute.call_args_list
     assert len(calls) >= 2
     for call in calls:
         params = call.args[1]
-        # account_id, hour_start_iso, hour_end_iso
-        assert params[0] == 42
-        assert params[1] == "2026-05-14T07:00:00+00:00"
-        assert params[2] == "2026-05-14T08:00:00+00:00"
+        assert 42 in params
+        assert "2026-05-14T07:00:00+00:00" in params
+        assert "2026-05-14T08:00:00+00:00" in params
 
 
 @pytest.mark.asyncio
@@ -411,16 +412,94 @@ async def test_daily_run_heals_a_missing_earlier_day(tenant, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_missing_buckets_reports_only_absent_days(tenant):
-    from datetime import datetime as _dt, timezone as _tz
-    from capabilities.warehouse.telemetry.aggregator import _missing_buckets
+async def test_daily_run_re_rolls_a_day_that_is_present_but_wrong(tenant, monkeypatch):
+    """Healing holes was never enough — a day written WRONG stayed wrong.
 
-    await tenant._db.execute(
-        "INSERT INTO vehicle_telemetry (account_id, vehicle_id, vehicle_name, "
-        "granularity, bucket_start, miles) VALUES (?, ?, '', 'daily', ?, 0)",
-        (1, "v1", "2026-07-27"),
+    Production carried days whose stored total disagreed with the hours
+    underneath them (an outage repaired later, the lost 23:00 bucket),
+    and the old missing-only pass skipped every one of them because a
+    row existed.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+    from capabilities.warehouse.telemetry import aggregator as agg
+
+    await tenant.upsert_vehicle_state(1, [
+        {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
+    ])
+    day = _dt(2026, 7, 27, 12, tzinfo=_tz.utc)
+    await tenant.upsert_vehicle_state_snapshots(1, [
+        {"vehicle_id": "v1", "captured_at": day.isoformat(),
+         "odometer_mi": 1_000, "engine_hours": 10,
+         "engine_state": "moving", "speed_mph": 55},
+        {"vehicle_id": "v1", "captured_at": (day.replace(minute=30)).isoformat(),
+         "odometer_mi": 1_120, "engine_hours": 12,
+         "engine_state": "moving", "speed_mph": 55},
+    ])
+    await agg._aggregate_hour_window(tenant, 1, day)
+
+    # A stale daily row claiming a total the hours do not support.
+    await tenant.upsert_vehicle_metrics_daily(1, [
+        {"vehicle_id": "v1", "day_utc": "2026-07-27", "miles": 9_999.0},
+    ])
+
+    now = _dt(2026, 7, 29, 6, 0, tzinfo=_tz.utc)
+
+    class _FrozenDT(_dt):
+        @classmethod
+        def now(cls, tz=None):
+            return now
+    monkeypatch.setattr(agg, "datetime", _FrozenDT)
+
+    async def _tdb(_acct):
+        return tenant
+    monkeypatch.setattr(agg, "get_tenant_db", _tdb)
+
+    await agg.aggregate_metrics_daily(1)
+
+    cur = await tenant._db.execute(
+        "SELECT miles FROM vehicle_telemetry WHERE account_id = ? "
+        "AND granularity = 'daily' AND bucket_start = ?", (1, "2026-07-27"))
+    miles = float(dict(await cur.fetchone())["miles"])
+    assert miles == pytest.approx(120.0), (
+        "a wrong day must be re-summed from its hours, not left alone"
     )
-    await tenant._db.commit()
-    expected = [_dt(2026, 7, 27, tzinfo=_tz.utc), _dt(2026, 7, 28, tzinfo=_tz.utc)]
-    missing = await _missing_buckets(tenant, 1, "daily", expected)
-    assert [d.strftime("%Y-%m-%d") for d in missing] == ["2026-07-28"]
+
+
+@pytest.mark.asyncio
+async def test_odometer_re_baseline_does_not_become_miles(tenant):
+    """A gateway swap must not read as distance driven.
+
+    One truck booked 24,352 miles in a single hour when its ECU
+    re-baselined: the window's span counted the whole discarded reading
+    as travel.  Miles now come from the steps between readings, so the
+    jump is dropped while the surrounding real movement survives.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+    from capabilities.warehouse.telemetry import aggregator as agg
+
+    await tenant.upsert_vehicle_state(1, [
+        {"vehicle_id": "v1", "vehicle_name": "233", "company_code": "A"},
+    ])
+    hour = _dt(2026, 7, 21, 15, tzinfo=_tz.utc)
+    await tenant.upsert_vehicle_state_snapshots(1, [
+        {"vehicle_id": "v1", "captured_at": hour.replace(minute=0).isoformat(),
+         "odometer_mi": 282_050, "engine_state": "moving", "speed_mph": 60},
+        {"vehicle_id": "v1", "captured_at": hour.replace(minute=5).isoformat(),
+         "odometer_mi": 282_056, "engine_state": "moving", "speed_mph": 60},
+        # ECU re-baselines to a fresh unit's reading.
+        {"vehicle_id": "v1", "captured_at": hour.replace(minute=10).isoformat(),
+         "odometer_mi": 306_408, "engine_state": "moving", "speed_mph": 60},
+    ])
+    await agg._aggregate_hour_window(tenant, 1, hour)
+
+    cur = await tenant._db.execute(
+        "SELECT miles, odometer_eod FROM vehicle_telemetry "
+        "WHERE account_id = ? AND granularity = 'hourly' AND bucket_start = ?",
+        (1, "2026-07-21T15:00:00"))
+    row = dict(await cur.fetchone())
+    assert float(row["miles"]) == pytest.approx(6.0), (
+        "only the real 6 miles between the first two readings count"
+    )
+    # The odometer itself still banks the newest reading — the reading is
+    # real, it is the DISTANCE that was fiction.
+    assert float(row["odometer_eod"]) == pytest.approx(306_408)
