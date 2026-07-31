@@ -36,8 +36,11 @@ combination exists.
 
 ## Who may change what
 
-Decided by the **Permissions matrix** (two adjacent rows in the
-Settings group), enforced server-side per request through
+Decided by the **Permissions page** — the two flags sit under their own
+**Configuration** header, and every feature that rides one shows its tick
+in that flag's **Config column** (own role · account-wide), so sharing is
+visible as column alignment.  They are NOT Settings components: they span
+features.  Enforced server-side per request through
 effective-permission resolution (tier row + per-account overrides —
 matrix edits apply without redeploy or re-login):
 
@@ -140,7 +143,8 @@ feature's modules, as scorecard rules does.
 * `account_id` comes only from the JWT — a hostile tenant can only
   address their own empty namespace (`tests/test_page_layouts.py`).
 * The own-role wall holds under every grant combination; delegation and
-  revocation through the matrix take effect via cache invalidation.
+  revocation through the Permissions page take effect via cache
+  invalidation.
 * An invalid team default degrades to the shipped layout, never to a
   crash or a partial apply (`pageLayoutConfig.test.ts`).
 * Legacy permission keys are migrated, not aliased —

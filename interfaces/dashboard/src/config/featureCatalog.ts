@@ -54,7 +54,16 @@ export type Module =
 //   role   = one department's own tool (Maintenance, Routes, Driver Pay…)
 // NB: distinct from the `modules` field (WHICH department) — tier is the
 // breadth, modules is the owner.
-export type Tier = 'system' | 'shared' | 'role';
+// Who is this for?  (docs/FEATURES.md is the SSOT.)  "system" retired
+// 2026-07-30: it had become a synonym for "miscellaneous account-wide"
+// once Alerts/AI/Reports left to be services.
+//   personal       — the individual, about themselves
+//   shared         — several departments
+//   role           — one department's workflow
+//   administration — governing the account itself
+//   service        — NOT a tier: an always-on service (docs/SERVICES.md);
+//                    the entry exists here only for routing/nav.
+export type Tier = 'personal' | 'shared' | 'role' | 'administration' | 'service';
 
 // Sidebar section a feature lives in (display grouping for the generated
 // nav).  `main` = pinned top (no header); `tail` = pinned bottom.
@@ -94,23 +103,23 @@ const P_REPORTS = ['can_faults', 'can_risk_report_all', 'can_risk_report_own', '
 
 export const FEATURE_CATALOG: CatalogFeature[] = [
   // ── CORE (always on) ──────────────────────────────────────────────
-  { id: 'overview',       labelKey: 'nav.overview',       path: '/',          icon: LayoutDashboard, modules: ['core'], tier: 'system', permission: null, navGroup: 'main' },
+  { id: 'overview',       labelKey: 'nav.overview',       path: '/',          icon: LayoutDashboard, modules: ['core'], tier: 'shared', permission: null, navGroup: 'main' },
   // Route-only: the assistant launches from the topbar icon (beside the
   // avatar) + ⌘J, not a sidebar row — navHidden keeps the route guard
   // and can_ai_chat wiring while dropping the nav entry.
-  { id: 'ai_assistant',   labelKey: 'nav.ai_assistant',   path: '/ai/chat',   icon: Bot,             modules: ['core'], tier: 'system', permission: ['can_ai_chat'], navGroup: 'main', navHidden: true },
+  { id: 'ai_assistant',   labelKey: 'nav.ai_assistant',   path: '/ai/chat',   icon: Bot,             modules: ['core'], tier: 'service', permission: ['can_ai_chat'], navGroup: 'main', navHidden: true },
   // Alerts launches from the topbar bell (a monitoring SERVICE beside
   // the AI icon), not a sidebar row — navHidden keeps the /alerts route
   // guard + P_ALERTS wiring while dropping the nav entry.
-  { id: 'alerts',         labelKey: 'nav.alerts',         path: '/alerts',    icon: Bell,            modules: ['core'], tier: 'system', permission: P_ALERTS, navGroup: 'monitoring', navHidden: true },
-  { id: 'reports',        labelKey: 'nav.reports',        path: '/reports',   icon: FileText,        modules: ['core'], tier: 'system', permission: P_REPORTS, navGroup: 'reports' },
+  { id: 'alerts',         labelKey: 'nav.alerts',         path: '/alerts',    icon: Bell,            modules: ['core'], tier: 'service', permission: P_ALERTS, navGroup: 'monitoring', navHidden: true },
+  { id: 'reports',        labelKey: 'nav.reports',        path: '/reports',   icon: FileText,        modules: ['core'], tier: 'service', permission: P_REPORTS, navGroup: 'reports' },
   // KPI — the account-wide performance analytics surface (dispatcher grades
   // first; fleet/safety/driver sections later).  Shared-tier, delegatable via
   // can_kpi.  Tagged `account` (like Billing) so it lives in the Owner/Admin
   // persona's own sidebar — it's management oversight, not a department tool;
   // dispatch/accounting surface it for department leads granted the flag.
   { id: 'kpi',            labelKey: 'nav.kpi',            path: '/kpi',       icon: Gauge,           modules: ['account', 'dispatch', 'accounting'], tier: 'shared', permission: ['can_kpi'], navGroup: 'reports' },
-  { id: 'knowledge_base', labelKey: 'nav.knowledge_base', path: '/knowledge', icon: BookOpen,        modules: ['core'], tier: 'system', permission: null, navGroup: 'tail' },
+  { id: 'knowledge_base', labelKey: 'nav.knowledge_base', path: '/knowledge', icon: BookOpen,        modules: ['core'], tier: 'shared', permission: null, navGroup: 'tail' },
   // Universal operational views — every working persona needs to find a
   // truck, so these live in core (always available) rather than a module.
   { id: 'live_map', labelKey: 'nav.live_map', path: '/live-map', icon: MapIcon, modules: ['core'], tier: 'shared', permission: P_LOCATION, navGroup: 'operations' },
@@ -184,22 +193,22 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // ── ACCOUNT ADMIN (always on for owner/admin) ─────────────────────
   // Invites is reached via the Team Management page tab now (navHidden),
   // but stays in the catalog so HR's onboarding entry + the route resolve.
-  { id: 'invites',          labelKey: 'nav.invites',          path: '/invites',         icon: Link,          modules: ['hr', 'account'], tier: 'role', permission: ['can_invite'], navGroup: 'people', navHidden: true },
-  { id: 'team_management',  labelKey: 'nav.team_management',  path: '/team',           icon: Users,         modules: ['account'], tier: 'system', permission: ['can_manage_users'], navGroup: 'settings' },
+  { id: 'invites',          labelKey: 'nav.invites',          path: '/invites',         icon: Link,          modules: ['hr', 'account'], tier: 'administration', permission: ['can_invite'], navGroup: 'people', navHidden: true },
+  { id: 'team_management',  labelKey: 'nav.team_management',  path: '/team',           icon: Users,         modules: ['account'], tier: 'administration', permission: ['can_manage_users'], navGroup: 'settings' },
   // Billing — accounting owns the relationship; the owner always has it.
   { id: 'billing',          labelKey: 'nav.billing',          path: '/billing',         icon: CreditCard,    modules: ['accounting', 'account'], tier: 'role', permission: ['can_manage_billing'], navGroup: 'account' },
-  { id: 'companies',        labelKey: 'nav.companies',        path: '/companies',       icon: Building2,     modules: ['account'], tier: 'system', permission: ['can_manage_companies'], navGroup: 'settings' },
-  { id: 'integrations',     labelKey: 'nav.integrations',     path: '/integrations',    icon: Plug,          modules: ['account'], tier: 'system', permission: ['can_manage_integrations'], navGroup: 'account' },
-  { id: 'storage',          labelKey: 'nav.storage',          path: '/storage',         icon: Cloud,         modules: ['account'], tier: 'system', permission: ['can_manage_storage'], navGroup: 'account' },
-  { id: 'settings',         labelKey: 'nav.settings',         path: '/settings',        icon: SettingsIcon,  modules: ['account'], tier: 'system', permission: ['can_manage_account', 'can_manage_role_bot'], navGroup: 'settings' },
-  { id: 'role_permissions', labelKey: 'nav.role_permissions', path: '/permissions',     icon: Shield,        modules: ['account'], tier: 'system', permission: ['can_manage_permissions'], navGroup: 'account' },
+  { id: 'companies',        labelKey: 'nav.companies',        path: '/companies',       icon: Building2,     modules: ['account'], tier: 'administration', permission: ['can_manage_companies'], navGroup: 'settings' },
+  { id: 'integrations',     labelKey: 'nav.integrations',     path: '/integrations',    icon: Plug,          modules: ['account'], tier: 'administration', permission: ['can_manage_integrations'], navGroup: 'account' },
+  { id: 'storage',          labelKey: 'nav.storage',          path: '/storage',         icon: Cloud,         modules: ['account'], tier: 'administration', permission: ['can_manage_storage'], navGroup: 'account' },
+  { id: 'settings',         labelKey: 'nav.settings',         path: '/settings',        icon: SettingsIcon,  modules: ['account'], tier: 'administration', permission: ['can_manage_account', 'can_manage_role_bot'], navGroup: 'settings' },
+  { id: 'role_permissions', labelKey: 'nav.role_permissions', path: '/permissions',     icon: Shield,        modules: ['account'], tier: 'administration', permission: ['can_manage_permissions'], navGroup: 'account' },
   // Scorecard Rules is the Scorecards (Shared) feature's CONFIG
   // component — reached via the gear icon on /scorecards (navHidden
   // keeps the route + deep links alive without a second sidebar entry).
   // Tier + modules MIRROR the parent scorecards (Shared, safety/hr) so
   // it appears/masks in lockstep with the feature it configures.
   { id: 'scorecard_rules',  labelKey: 'nav.scorecard_rules',  path: '/scorecard-rules', icon: Trophy,        modules: ['safety', 'hr'], tier: 'shared', permission: ['can_manage_config_all'], navGroup: 'monitoring', navHidden: true },
-  { id: 'audit_log',        labelKey: 'nav.audit_log',        path: '/audit',           icon: ClipboardList, modules: ['account'], tier: 'system', permission: ['can_manage_users'], navGroup: 'settings' },
+  { id: 'audit_log',        labelKey: 'nav.audit_log',        path: '/audit',           icon: ClipboardList, modules: ['account'], tier: 'administration', permission: ['can_manage_users'], navGroup: 'settings' },
 ];
 
 /** Display metadata for the 5 toggleable department modules (Core +

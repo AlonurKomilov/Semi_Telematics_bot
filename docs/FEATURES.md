@@ -1,8 +1,9 @@
-# Feature taxonomy — the 3-tier model
+# Feature taxonomy — the 4-tier model
 
-Decided 2026-06-10. This is the SSOT for how we classify product surface.
-The catalog (`interfaces/dashboard/src/config/featureCatalog.ts`) encodes the
-tier per feature; the Permissions matrix groups by tier → department.
+Decided 2026-06-10; retiered 2026-07-30 (see "Tier definitions").  This is
+the SSOT for how we classify product surface.  The catalog
+(`interfaces/dashboard/src/config/featureCatalog.ts`) encodes the tier per
+feature; the Permissions page bands its rows the same way.
 
 > **Alerts, the AI assistant, and Reports are NOT features** — they are
 > always-on **system services** (every role has them; access is *derived*, not
@@ -15,14 +16,15 @@ tier per feature; the Permissions matrix groups by tier → department.
 
 | Axis | Question | Mechanism |
 |---|---|---|
-| **Tier** (System / Shared / Role) | how broadly does the feature apply? | catalog `tier` |
-| **Module** | is the department switched on for the account? | the Permissions matrix band-switches (`capabilities/permissions/modules.py`) |
-| **Permission** | may this role open it? | Permissions matrix (`can_*` flags) |
+| **Tier** (Personal / Shared / Role / Administration) | who is this for? | catalog `tier` |
+| **Module** | is the department switched on for the account? | the Departments strip on the Permissions page (`capabilities/permissions/modules.py`) |
+| **Permission** | may this role open it? | the Permissions page's per-role grid (`can_*` flags) |
 | **Data scope** | whose data do they see? (All / Company / Vehicle) | Team Management, per-user |
 | **Backend pattern** (hub / entity / workflow) | how is it implemented? | not a tier — see below |
 
-"Admin" is **not** a tier or feature category — it's the permission axis
-(`can_manage_*` gates on System-tier governance features).
+"Admin" is **not** the permission axis' name either — `can_manage_*` gates
+are just permissions, and the governance features they gate now have their
+own tier (Administration).
 
 A **feature** has its own identity and lifecycle. A **component** is a part of
 one (a config panel, a preferences page, a viewer, a sub-permission). Tiers
@@ -30,36 +32,64 @@ classify features only; components inherit their parent's tier.
 
 ## Tier definitions
 
-1. **System** — works account-wide regardless of department modules. The
-   System-tier *features* are *core standalone* surfaces: Knowledge Base, the
-   governance/config pages (Permissions, Integrations, Storage, Settings),
-   Overview (an aggregator page), and personal pages (Profile). The
-   *aggregator hubs* Alerts / AI / Reports are **no longer features** — they
-   became always-on **system services** (see [`SERVICES.md`](SERVICES.md)); an
-   owner shapes them only through the features that feed them. Hub *machinery*
-   carries no tier — only user-facing surfaces do; e.g. the Scoring hub is
-   backend-only and its viewer page (Scorecards) is Shared.
-2. **Shared** — one entity/view useful to several departments, but the page
-   **composes different components per role** (persona layouts). Visible to
-   all permitted roles; relevance differs.
+Every tier answers ONE question: **who is this for?**
+
+1. **Personal** — the individual, *about themselves*. The test is whose data
+   it shows, not who it is assembled for: Profile (name / language / timezone
+   / DND) and the own-record surfaces (`can_driver_docs_own`,
+   `can_driver_pay_view_own`, `can_coaching_view_own`, `can_loads_own`,
+   `can_risk_report_own`).  Each own-record surface is the twin of a
+   department's admin one — Coaching (HR) ↔ Own Coaching, Driver Pay
+   (Accounting) ↔ Own Paystubs, Risk Summary (Safety) ↔ Own Risk Summary.
+   Naming the pattern is what stops the next pair being invented ad hoc.
+   NOTE Profile lives in `src/pages/` with the app-shell pages: placement is
+   not taxonomy (the same principle that kept Working Hours' classification
+   when its router moved).
+2. **Shared** — one entity/view useful to several departments. Usually the
+   page **composes different components per role** (persona layouts);
+   Overview is the purest case, and Knowledge Base the case where every
+   department reads the same thing. A Shared feature may have NO permission
+   at all (Overview, Knowledge Base) — tier and permission are separate
+   axes on purpose.
 3. **Role** — a single department's workflow; surfaced only when that
    department's module is on. A Role feature MAY list several modules
    (e.g. Safety Events: safety + hr) — tier describes its single-workflow
    nature, modules describe who surfaces it.
+4. **Administration** — governing the account itself: Permissions,
+   Integrations, Storage, General settings, Team Management, Send Invites,
+   Manage Companies, Working Hours. Each is a FEATURE with its own home
+   (a folder + router under `features/settings/` or `capabilities/`) and its
+   own catalog entry; the Settings page groups several in the NAV, and
+   grouping was never ownership.
 
-## Structural units — feature, sub-feature, component, action, capability
+**"System" was retired 2026-07-30.** Once Alerts / AI / Reports left to
+become always-on **services** ([`SERVICES.md`](SERVICES.md)), the tier held
+only governance pages (now Administration) plus Overview / Knowledge Base
+(Shared) and Profile (Personal) — i.e. it had become a synonym for
+"miscellaneous account-wide". Hub *machinery* still carries no tier; the
+three service entries in the catalog carry `tier: 'service'`, which marks
+them as outside the axis rather than pretending they sit on it.
 
-Every grantable row in the Permissions matrix declares one of these
-kinds (`RowKind` in `interfaces/dashboard/src/features/permissions/Permissions.tsx` — the matrix
-is the enforced mirror of this section):
+## Structural units — feature, sub-feature, component, action, cross-feature
+
+Every grantable row on the Permissions page declares one of these kinds
+(`RowKind` in
+`interfaces/dashboard/src/features/permissions/permRows.ts` — the row model
+is the enforced mirror of this section; `permMatrix.test.ts` and
+`verbGrid.test.ts` pin it):
 
 | Unit | Rule (checkable, not vibes) | Examples |
 |---|---|---|
 | **Feature** | own surface + lifecycle (its row = the front door; untagged row grants VIEW) | Vehicles, Live Map, Parts |
 | **Sub-feature** | own HOME — a folder with its own hub contributions (`report.py` / `ai_tool.py` / `alert.py` / `scoring_signal.py`) — nested under a parent family; rides the parent's router/service | Health, Faults, Fuel, Efficiency under `features/vehicles/<x>/` |
-| **Component** | flag-gated part of the parent's surface, NO home of its own | Team Management, Working Hours (of Settings) |
-| **Feature action** | a do/write verb on one feature (the "Manage" rows; a specific verb when it isn't generic admin — "Hire Applicant") | Manage under Vehicles, Manage POI Layers |
-| **Cross-feature capability** | spans features; never nested, never per-feature | the config family (`can_manage_config_role` / `_all`, docs/architecture/config.md) |
+| **Component** | flag-gated part of the parent's surface, NO home of its own | POI Layers (of Live Map), Driver roster (of Drivers), Fuel Costs · Cost per Mile (of Costs) |
+| **Feature action** | a do/write verb on one feature.  A generic one renders as the parent's **Manage column**, not a row; only a SPECIFIC verb no column can express stays a row | Manage (Vehicles · Loads · Carrier Directory) → columns; **Hire Applicant** → the one action row |
+| **Cross-feature** | a do-verb that spans features, owned by none.  Never nested, never per-feature.  NOT called "capability" — that word is the four hubs' | the config family (`can_manage_config_role` / `_all`, docs/architecture/config.md) |
+
+**Row = noun, column = verb.**  The Permissions page puts features down and
+verbs across (View · Manage · Config), so a row that names its own verb
+("Manage POI Layers") says it twice.  The row is the object; the column
+supplies the action.
 
 **Graduation path** (each step is a real structural change, not a rename):
 
@@ -69,18 +99,18 @@ component  →  sub-feature  →  feature
                 + contributions)     lifecycle, nav entry)
 ```
 
-A sub-feature MAY grow its own action/component rows (they nest under
-it in the matrix, depth 2 via `parentKey`); a component may NOT — needing
-an action or config participation is the graduation signal. Capabilities
-never nest and never multiply per feature.
+A sub-feature MAY grow its own action/component rows (they nest under it,
+depth 2 via `parentKey`); a component may NOT — needing an action or config
+participation is the graduation signal.  Cross-feature rows never nest and
+never multiply per feature.
 
 **Derived service flags** — `can_alerts_all/_vehicle`, `can_ai_chat`,
 `can_digest` — exist in `FeatureSet` but are COMPUTED
 (`derive_service_perms`), never granted: live enforcement for the
-always-on services, deliberately without matrix rows. The drift-guard
+always-on services, deliberately without rows of their own. The drift-guard
 test (`tests/test_permission_surface.py`) holds every `FeatureSet` field
-to exactly one home: matrix row, driver panel, derived list, or the
-explicit exempt list.
+to exactly one home: a permissions row, the Driver tab, the derived list,
+or the explicit exempt list.
 
 ## The feature → component tree
 
@@ -89,28 +119,43 @@ explicit exempt list.
 > they surface (Risk Summary, Cost Reports) are features and now sit under
 > their owning departments (Safety, Accounting), below.
 
-### 🟦 System
-| Feature | Components |
+### 🟨 Personal
+| Feature | Parts |
 |---|---|
-| **Overview** | greeting · alert strip · AI fleet brief · status grid · KPI grid (a System-tier *feature* — an aggregator page, permission-gated by what it shows) |
-| **Knowledge Base** | articles · categories · approval workflow · bookmarks · uploads |
-| **Settings** — ONE governance feature; components are FLAT siblings, each with its own permission so administration can be one role's or delegated piecemeal (STEP 2 DONE: granular flags live, migration 102 defaults them from stored can_manage_account. NAV: the components collapse under ONE "Settings" sidebar parent — closed by default, auto-open while a child route is active, flag-filtered per user. MODULES: the standalone page is GONE — department on/off switches live on the Permissions matrix section headers, riding can_manage_account; /admin/modules redirects to /admin/permissions) | *components (flag):* **Account Settings** (`can_manage_account`: timezone · bot config · forum routing · AI usage · Modules) · **Team Management** (`can_manage_users`; also Audit Log; its page HOSTS sibling components as tabs — UI hosting ≠ taxonomy) · **Invites** (`can_invite`) · **Working Hours** (`can_manage_work_hours`; schedules feed the DND gate in `capabilities/alerting/`) · **Companies** (`can_manage_companies`) · (Permissions, Storage, Integrations are NOT Settings components — they're standalone **System features** backed by capabilities/, in the Account nav group) |
-| **Permissions / Integrations / Storage** | standalone System-tier features (own pages, Account nav group); backend = `capabilities/{permissions,integrations,storage}/` (shared infra, like Alerts↔alerting). NOT Settings components. |
-| **Profile** | personal prefs (name/language/timezone) · DND toggle · My Notifications is Alerts', not Profile's |
+| **Profile** | personal prefs (name/language/timezone) · DND toggle.  Lives in `src/pages/` — placement isn't taxonomy.  "My Notifications" is Alerts', not Profile's |
+| **Own records** | the view-own twins of department features: Own Documents · Own Paystubs · Own Coaching · Own Loads · Own Risk Summary (edited on the Permissions page's **Driver** tab) |
+
+### 🟦 Administration
+| Feature | Home |
+|---|---|
+| **Permissions / Integrations / Storage** | own pages, Account nav group; backend `capabilities/{permissions,integrations,storage}/` |
+| **General settings** | the Settings page — timezone, bot + forum routing, department modules; `features/settings/account/` |
+| **Team Management** | members, roles, data scope; also gates the Audit Log; `features/settings/team_management/` |
+| **Send Invites** | `features/settings/invites/` |
+| **Manage Companies** | `features/settings/companies/` |
+| **Working Hours** | schedules feed the DND gate in `capabilities/alerting/`; `features/settings/work_hours/` |
+
+> These eight were called "Settings components" until 2026-07-30.  The
+> catalog already gave each its own entry, path and permission, and the
+> backend already gave each its own folder + router — only this doc and the
+> permissions rows still said component.  The Settings page groups several
+> of them in the NAV; grouping was never ownership.
 
 ### 🟩 Shared (persona-composed pages)
 | Feature | Components |
 |---|---|
+| **Overview** | greeting · alert strip · AI fleet brief · status grid · KPI grid — the purest persona-composed page; no permission of its own (each section is gated by what the role can already see) |
+| **Knowledge Base** | articles · categories · approval workflow · bookmarks · uploads — every department reads the same thing; no permission |
 | **Vehicles** | list · detail sections: health, faults, location, timeline, usage, inspections |
-| **Drivers** | profiles · documents (+ View Own) · assignments · expiry |
-| **Live Map** | map · overlays · Manage POI Layers |
+| **Drivers** | profiles · documents (+ Own Documents → Personal) · **Driver roster** (component: invite, assign trucks, TMS links) · expiry |
+| **Live Map** | map · overlays · **POI Layers** (component — the Live Map grant shows them, its own flag edits them) |
 | **Geofences** | zones CRUD · entry/exit alert contribution |
 | **Scorecards** | scoreboard (viewer) · **Scorecard Rules** (config component — gated by the config family's `can_manage_config_all`, docs/architecture/config.md) · scoring engine + signals (backend) · drop-alert contribution |
 
 ### 🟪 Role
 | Department | Features (components) |
 |---|---|
-| Fleet | Maintenance (tasks · calendar · custom types) · Work Orders (+ invoice upload · cost-report contribution) · **Vendors** (registry · profile w/ spend history · merge — referenced by Work Orders, never owned by it; global directory is a platform sub-family sibling, see docs/architecture/vendor-parts-master-data.md) · **Parts** (catalog · per-part analytics: recurrence per vehicle, price per vendor · merge — graduated from a Work Orders component 2026-07-16, feature-owned `can_parts`; WO consumes it via line resolve + autocomplete) · PTI Inspections (+ template) · **Truck Anatomy** (3D learning model of the rig, taxonomy-as-scene-graph — DARK FEATURE: `can_truck_anatomy` seeded to NOBODY incl. owner; self-granted via the Permissions matrix when marketed) |
+| Fleet | Maintenance (tasks · calendar · custom types) · Work Orders (+ invoice upload · cost-report contribution) · **Vendors** (registry · profile w/ spend history · merge — referenced by Work Orders, never owned by it; global directory is a platform sub-family sibling, see docs/architecture/vendor-parts-master-data.md) · **Parts** (catalog · per-part analytics: recurrence per vehicle, price per vendor · merge — graduated from a Work Orders component 2026-07-16, feature-owned `can_parts`; WO consumes it via line resolve + autocomplete) · PTI Inspections (+ template) · **Truck Anatomy** (3D learning model of the rig, taxonomy-as-scene-graph — DARK FEATURE: `can_truck_anatomy` seeded to NOBODY incl. owner; self-granted on the Permissions page when marketed) |
 | Dispatch | Routes |
 | Safety | Safety Events · Cameras · **Parking** (unsafe-parking events only) · **Risk Summary** (the stakeholder/personnel risk report — a Reports-hub *tab*, owned here; `can_risk_report_*`) |
 | HR | Coaching (+ View Own) |
@@ -283,12 +328,15 @@ Standing rules (tightened by the consistency pass, same day):
   (My Notifications → alerting `user_router`) and
   `/user/scheduled-reports` (→ reporting `user_router`) out of `user.py` —
   all URLs unchanged (extra routers keep the historical prefixes).
-  Deliberate stays: Companies/Invites/**Working Hours**/bot-config/
-  forum-routing remain in `admin.py` — they are Settings/Team-Management
-  COMPONENTS and admin.py IS that governance router. (Working Hours was
-  briefly given a standalone router; reverted — it's a Team Management
-  component per the tree above, and the component rule wins. Its backend
-  the DND gate lives in `capabilities/alerting/` (on_shift.py/dnd.py); the work-hours schedule CRUD is a thin tenant_db pass-through in features/settings/work_hours/.)
+  SUPERSEDED 2026-07-30: Companies / Invites / **Working Hours** /
+  account settings / audit no longer live in `admin.py` — each has its own
+  folder and router under `features/settings/<x>/`, which is why they are
+  **Administration features**, not Settings components (the earlier
+  "Working Hours reverted to a component" note described a code layout that
+  no longer exists).  Split responsibilities that DO stay split: the DND
+  gate lives in `capabilities/alerting/` (on_shift.py / dnd.py) while the
+  work-hours schedule CRUD is a thin tenant_db pass-through in
+  `features/settings/work_hours/`.
 - **Dependency exception, stated once**: `router.py` is interface-layer
   code co-located with its feature — ONLY `router.py` may import
   `interfaces.api.deps`; `service.py`/`alert.py`/etc. never may. (The

@@ -84,8 +84,14 @@ export const OWNER_PROTECTED = new Set([
 // Exported for the drift-guard tests and the verb-grid derivation.
 export const PERM_GROUPS: PermGroup[] = [
   {
-    // System — available to everyone, account-wide.
-    title: 'System',
+    // Administration — governing the ACCOUNT itself.  Not "System": that
+    // word had drifted into "miscellaneous account-wide", and the three
+    // things that made it a category (Alerts, AI, Reports) are services
+    // now.  Every row here is a FEATURE with its own home — a folder and
+    // router under features/settings/ or capabilities/, and its own
+    // featureCatalog entry.  The Settings page groups several of them in
+    // the NAV; grouping was never ownership (docs/FEATURES.md).
+    title: 'Administration',
     flags: [
       // Alerts (the inbox) and Reports (the hub) are NOT rows here — both are
       // always-on services EVERY role has.  Disabling a feature only drops
@@ -113,16 +119,12 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_manage_permissions',  kind: 'feature', label: 'Permissions', description: 'This role matrix — the owner always keeps it' },
       { key: 'can_manage_integrations', kind: 'feature', label: 'Integrations', description: 'Telematics connections (Samsara, Datatruck)' },
       { key: 'can_manage_storage',      kind: 'feature', label: 'Storage', description: 'File-storage backend & quota' },
-      { header: 'Settings', description: 'account administration — each component has its own permission' },
-      // Every row under this header is a COMPONENT of the one Settings
-      // feature — including General settings, which docs/FEATURES.md lists
-      // as the "Account Settings" component.  The feature itself is the
-      // header row: it owns no flag of its own.
-      { key: 'can_manage_account',     kind: 'component', label: 'General settings', indented: true, description: 'The Settings page itself — timezone, bot + forum routing; also rides: department modules' },
-      { key: 'can_manage_users',       kind: 'component', label: 'Team Management', indented: true, description: 'Members, roles, data scope — also gates the Audit Log' },
-      { key: 'can_invite',             kind: 'component', label: 'Send Invites', indented: true, description: 'Invite new members — the invite carries the role the sender picks' },
-      { key: 'can_manage_companies',   kind: 'component', label: 'Manage Companies', indented: true, description: 'Sub-companies in the account — codes, names, per-company data scope' },
-      { key: 'can_manage_work_hours',  kind: 'component', label: 'Working Hours', indented: true, description: 'Shift schedules — they also drive the alert do-not-disturb window' },
+
+      { key: 'can_manage_account',     kind: 'feature', label: 'General settings', description: 'The Settings page itself — timezone, bot + forum routing; also rides: department modules' },
+      { key: 'can_manage_users',       kind: 'feature', label: 'Team Management', description: 'Members, roles, data scope — also gates the Audit Log' },
+      { key: 'can_invite',             kind: 'feature', label: 'Send Invites', description: 'Invite new members — the invite carries the role the sender picks' },
+      { key: 'can_manage_companies',   kind: 'feature', label: 'Manage Companies', description: 'Sub-companies in the account — codes, names, per-company data scope' },
+      { key: 'can_manage_work_hours',  kind: 'feature', label: 'Working Hours', description: 'Shift schedules — they also drive the alert do-not-disturb window' },
       { header: 'Configuration', description: 'cross-feature settings — one flag each, covering every feature they touch' },
       // The config FAMILY (docs/architecture/config.md).  Under its OWN
       // header, not Settings': these span features, so calling them
@@ -137,9 +139,10 @@ export const PERM_GROUPS: PermGroup[] = [
     title: 'Shared',
     flags: [
       { allKey: 'can_location_map', vehicleKey: 'can_location_vehicle', kind: 'feature', label: 'Live Map', scoped: true },
-      // Keeps its specific verb phrase: it manages POI layers (a sub-thing),
-      // not the Live Map feature itself — a bare "Manage" would over-claim.
-      { key: 'can_manage_poi_layers', kind: 'action', label: 'Manage POI Layers', indented: true },
+      // The row is the OBJECT, the column supplies the verb: POI layers
+      // are a flag-gated part of Live Map's surface (features/location/
+      // pois.py — a file, not a home of its own), manage-only.
+      { key: 'can_manage_poi_layers', kind: 'component', label: 'POI Layers', indented: true, description: 'Custom map overlays — the Live Map grant shows them, this one edits them' },
       { allKey: 'can_vehicle_all',  vehicleKey: 'can_vehicle_vehicle',  kind: 'feature', label: 'Vehicles', scoped: true },
       { key: 'can_manage_vehicles', kind: 'action', label: 'Manage', indented: true, description: 'Add / edit / remove vehicles in the registry (trucks + trailers, with or without telematics)' },
       // SUB-FEATURES of the Vehicles family: each has its OWN home
@@ -152,7 +155,7 @@ export const PERM_GROUPS: PermGroup[] = [
       { allKey: 'can_geofence_all', vehicleKey: 'can_geofence_vehicle', kind: 'feature', label: 'Geofences', scoped: true },
       { key: 'can_kpi', kind: 'feature', label: 'KPI & Performance', description: 'Account-wide performance analytics — dispatcher grades first; fleet/safety/driver sections later' },
       { key: 'can_manage_driver_docs', kind: 'feature', writeLevel: true, label: 'Drivers', description: 'Manage — driver list + document management' },
-      { key: 'can_manage_drivers',     kind: 'action', label: 'Roster admin', indented: true, description: 'Invite drivers, assign trucks, link Samsara/TMS, activate / deactivate' },
+      { key: 'can_manage_drivers',     kind: 'component', label: 'Driver roster', indented: true, description: 'Invite drivers, assign trucks, link Samsara/TMS, activate / deactivate' },
       // NOTE: can_driver_docs_own (a driver viewing their OWN docs) is a
       // driver self-service flag — it lives in the "Driver — self-service"
       // panel, not this staff matrix.  Same for the other view-own flags.
