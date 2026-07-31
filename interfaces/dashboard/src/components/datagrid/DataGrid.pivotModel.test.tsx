@@ -94,14 +94,19 @@ async function openPanel() {
   await act(async () => { btn.click(); });
 }
 
-/** Zone settings are SWITCHES (checkbox means "field membership" here),
- *  so they report state through aria-checked, not `.checked`. */
-const box = (name: string) => {
-  const el = screen.getByRole('switch', { name });
-  return { checked: el.getAttribute('aria-checked') === 'true' };
-};
+/** Zone settings live in the ZONE's own ⋮ — the same place list mode
+ *  keeps Pin and Hide.  So reading one means opening that menu first. */
+async function zoneSetting(zone: string, label: string) {
+  const trigger = screen.getByRole('button', { name: `${zone} settings` });
+  await act(async () => { trigger.click(); });
+  const item = screen.getByRole('menuitem', { name: new RegExp(label) });
+  // A check mark is the on-state; the icon slot is filled either way so
+  // the label can't shift sideways as it toggles.
+  const checked = !!item.querySelector('svg');
+  return { checked, item };
+}
 /** Drilling is report-wide, so its control is a pressed BUTTON in the
- *  panel header rather than a zone switch. */
+ *  panel header rather than anything zone-scoped. */
 const drillBtn = () =>
   screen.getByRole('button', { name: 'Open the rows behind a figure' });
 
@@ -112,19 +117,19 @@ describe('stored pivot settings survive the model rebuild', () => {
   it('carries hideEmptyColumns', async () => {
     stored = { enabled: true, model: { ...FULL, hideEmptyColumns: true } };
     await openPanel();
-    expect(box('Hide columns with no values').checked).toBe(true);
+    expect((await zoneSetting('Columns', 'Hide columns with no values')).checked).toBe(true);
   });
 
   it('carries pinRowLabels', async () => {
     stored = { enabled: true, model: { ...FULL, pinRowLabels: true } };
     await openPanel();
-    expect(box('Keep row labels in view').checked).toBe(true);
+    expect((await zoneSetting('Rows', 'Pin row labels')).checked).toBe(true);
   });
 
   it('carries pinTotals', async () => {
     stored = { enabled: true, model: { ...FULL, pinTotals: true } };
     await openPanel();
-    expect(box('Keep Total column in view').checked).toBe(true);
+    expect((await zoneSetting('Values', 'Pin Total column')).checked).toBe(true);
   });
 
   it('carries drillDown', async () => {
@@ -136,9 +141,7 @@ describe('stored pivot settings survive the model rebuild', () => {
   it('leaves an unset flag off — the default is not "sticky true"', async () => {
     stored = { enabled: true, model: FULL };
     await openPanel();
-    expect(box('Hide columns with no values').checked).toBe(false);
-    expect(box('Keep row labels in view').checked).toBe(false);
-    expect(box('Keep Total column in view').checked).toBe(false);
+    expect((await zoneSetting('Rows', 'Pin row labels')).checked).toBe(false);
     expect(drillBtn().getAttribute('aria-pressed')).toBe('false');
   });
 });
@@ -151,9 +154,10 @@ describe('the panel says what each control governs', () => {
     // as though it only applies there.
     stored = { enabled: true, model: FULL };
     await openPanel();
-    expect(screen.queryByRole('switch', { name: 'Open the rows behind a figure' }))
-      .toBeNull();
     expect(drillBtn()).toBeTruthy();
+    const values = screen.getByRole('button', { name: 'Values settings' });
+    await act(async () => { values.click(); });
+    expect(screen.queryByRole('menuitem', { name: /Open the rows behind/ })).toBeNull();
   });
 
   it('is disabled until the grid is actually pivoted', async () => {
@@ -165,21 +169,39 @@ describe('the panel says what each control governs', () => {
     expect((drillBtn() as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('separates behaviour from membership by SHAPE, not by label', async () => {
+  it('keeps zone settings OUT of the field list entirely', async () => {
     // COLUMNS used to stack five identical checkboxes in one run: one
     // governing the zone, four governing which fields contribute.  Same
-    // shape, two meanings — you had to read every label to tell them
-    // apart.  Zone settings are switches now; only fields are checkboxes.
+    // shape, same x, two unrelated meanings — you had to read every
+    // label to tell them apart.  The zone's settings live in the zone's
+    // ⋮ now, so the only controls beside a field are that field's own.
     stored = { enabled: true, model: FULL };
     await openPanel();
     for (const name of [
-      'Keep row labels in view', 'Keep Total column in view',
+      'Pin row labels', 'Pin Total column',
       'Hide columns with no values',
     ]) {
-      expect(screen.getByRole('switch', { name })).toBeTruthy();
       expect(screen.queryByRole('checkbox', { name })).toBeNull();
+      expect(screen.queryByRole('switch', { name })).toBeNull();
     }
-    // ...and a FIELD is still a checkbox — membership, not behaviour.
+    // A FIELD is still a checkbox — membership, which is what a checkbox
+    // is for.
     expect(screen.getByRole('checkbox', { name: /Include Company/ })).toBeTruthy();
+  });
+
+  it('toggles from the zone menu and the change sticks', async () => {
+    stored = { enabled: true, model: FULL };
+    await openPanel();
+    const { item } = await zoneSetting('Rows', 'Pin row labels');
+    await act(async () => { (item as HTMLElement).click(); });
+    expect((await zoneSetting('Rows', 'Pin row labels')).checked).toBe(true);
+  });
+
+  it('offers no Total-column setting when there is no column dimension', async () => {
+    // Nothing to total across, so the item would be a dead end — offered
+    // and then unable to do anything.
+    stored = { enabled: true, model: { ...FULL, columns: [] } };
+    await openPanel();
+    expect(screen.queryByRole('button', { name: 'Values settings' })).toBeNull();
   });
 });

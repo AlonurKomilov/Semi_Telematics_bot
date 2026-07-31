@@ -151,42 +151,70 @@ not a summary. `z-30` on both: it clears every sticky cell in the body
 (max `z-20`), so the frozen Total column cannot paint over the header it
 belongs under.
 
-## Zone settings are SWITCHES; only fields are checkboxes
+## A zone's settings live in the ZONE's ⋮ — like a column's do
 
-Each zone stacks its setting directly above its field rows. With both
-drawn as checkboxes, COLUMNS showed **five identical boxes in one
-vertical run** — one governing the zone, four governing which fields
-contribute. Same shape, same size, same x, two unrelated meanings; the
-only way to tell them apart was to read every label. (Owner-reported.)
+`zoneMenu(axis)` puts each zone's settings on a ⋮ in its header band,
+which is exactly where list mode keeps Pin and Hide: **a column's ⋮**.
 
-So: **checkbox answers "is this field in the report?", switch answers "is
-this behaviour on?"** — now a dashboard-wide rule in
-[../../../CLAUDE.md](../../../../CLAUDE.md). The panel reads top to
-bottom as switch (pivot on) → button (drill, report-wide) → switches
-(zone behaviours) → checkboxes (which fields).
+**And they reuse list mode's word.** Freezing a column against an edge is
+ONE concept, so it gets one name: **"Pin row labels"** and **"Pin Total
+column"**, sharing the verb with the column ⋮'s Pin submenu (Pin to Left
+/ Pin to Right). An earlier draft said "Keep row labels in view" —
+a second name for something the product already named, which makes a
+returning user relearn a thing they know. The OBJECT is named too,
+unlike list mode: there you opened that column's own ⋮ so a bare "Pin"
+was unambiguous, whereas the Values zone holds a field AND generates the
+Total column, so "Pin" alone could read as "pin Rate".
 
-`ZoneSetting` is the one shell for all of them. It is deliberately NOT a
-`<label>` wrapper: `Switch` is a `<button role="switch">` naming itself
-via `aria-label`, so a label would announce the text twice and add a
-second click target for the same toggle.
+⚠️ **"Hide columns with no values" is deliberately NOT shortened to list
+mode's "Hide".** That hides ONE column the operator picked; this prunes
+every bucket that came out empty. Same word, different act — sharing it
+would be a false friend, which is the opposite of the win above.
+The panel had drifted from that — the settings were inline controls
+stacked directly above the field rows, so COLUMNS showed **five
+identical checkboxes in one vertical run**, one governing the zone and
+four governing which fields contribute. Same shape, same x, two
+unrelated meanings. (Owner-reported, twice.)
 
-## Both frozen edges are opt-out, and the controls are ZONE-level
+**Why the zone and not a field.** ROWS renders ONE merged label column
+(`rowFieldLabel` is the row fields joined with `" / "`, and the body is a
+tree inside that single cell). So a pin on Company would silently govern
+Customer, and it would hop to a different field's menu the moment the
+zone was reordered — a setting that relocates for a reason unrelated to
+itself can't be found twice. The Total column has the mirror problem: it
+is generated FROM Values, so it is not a field at all.
+
+Consequences to keep:
+
+- The header band is a **row, not a button** — it carries a fold control
+  and a menu button, and a `<button>` may not contain another button.
+  The fold target keeps `flex-1` so the band still reads as one click
+  surface.
+- **A checkable item fills its icon slot in BOTH states** (`check()`).
+  `MenuActionList` renders `{icon}{label}` with no reserved column, so an
+  unchecked item sits left of a checked one and the label visibly jumps
+  sideways as you toggle it.
+- A zone with no fields, and VALUES with no column dimension, return `[]`
+  — no ⋮ at all rather than a menu whose only item is a dead end.
+
+The remaining shape rule, now dashboard-wide in
+[../../../CLAUDE.md](../../../../CLAUDE.md): **checkbox = "is this item in
+the set?", switch = "is this behaviour on?"**, and a behaviour that must
+live in a toolbar or header is a **pressed icon-button** (which is what
+drilling is).
+
+## Both frozen edges are opt-in, and the controls are ZONE-level
 
 `pinRowLabels` and `pinTotals` default **OFF** (owner's call, and MUI's
 behaviour — a frozen column costs real width on every report) and are
-toggled from the panel: "Keep row labels in view" in ROWS, "Keep Total
-column in view" in VALUES. Turn them on when a wide matrix starts
+toggled from the ZONE's ⋮ (see above): "Pin row labels" in ROWS, "Pin
+Total column" in VALUES. Turn them on when a wide matrix starts
 scrolling the identity out of sight.
 
-Two reasons they are not items on a field's ⋮ menu:
-
-- The renderer draws **ONE merged row-label column** for every row field
-  (`Company / Customer` is a single cell), so a per-field pin would
-  silently govern its neighbours.
-- The **Total column is generated from Values** — one per value field —
-  so it is not a field at all and has no field row to hang off. That is
-  also why its control lives in VALUES, and why it isn't offered when
-  there is no column dimension to total across.
+They are ZONE items, never FIELD items, for the reasons in that section —
+one merged row-label column, and a Total column generated from Values
+rather than being a field. The Total item is also withheld entirely when
+there is no column dimension to total across.
 
 Unpinned, those cells become **ordinary**: no position, no z-index, no
 opaque fill, no seam, and no zebra overlay. A cell that isn't frozen has

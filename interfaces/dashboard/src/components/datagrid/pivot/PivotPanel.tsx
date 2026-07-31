@@ -359,6 +359,66 @@ export default function PivotPanel({
   };
 
   /** The per-field ⋮ menu — reorder, send to another axis, remove. */
+  /** A checkable menu item.  The icon slot must be filled in BOTH states
+   *  — `MenuActionList` renders `{icon}{label}` with no reserved column,
+   *  so an unchecked item would sit left of a checked one and the label
+   *  would visibly jump sideways each time you toggled it. */
+  const check = (on: boolean) => (
+    on ? <Check size={14} /> : <span aria-hidden className="inline-block w-3.5 shrink-0" />
+  );
+
+  /** The zone's OWN settings — they govern the column this zone renders,
+   *  not any field in it.
+   *
+   *  Here rather than on a field's ⋮ because ROWS draws ONE merged label
+   *  column ("Company / Customer" is a single cell): a pin on Company
+   *  would silently govern Customer, and it would move to a different
+   *  field's menu whenever the zone was reordered.  A setting that
+   *  relocates for a reason unrelated to itself cannot be found twice.
+   *
+   *  In a zone ⋮ rather than an inline switch so the panel matches list
+   *  mode, where Pin and Hide are exactly this: a column's ⋮ actions. */
+  const zoneMenu = (axis: Axis): MenuAction[] => {
+    const keys = keysOn(axis);
+    if (keys.length === 0) return [];
+    const toggle = (patch: Partial<PivotModel>) => onChange({ ...model, ...patch });
+    // "Pin" is the product's OWN word for this — list mode's column ⋮
+    // has a Pin submenu (Pin to Left / Pin to Right).  Freezing a column
+    // against an edge is one concept, so it gets one name; an earlier
+    // draft said "Keep row labels in view", which was a second name for
+    // something already named and made a returning user relearn it.
+    //
+    // The OBJECT is named too, unlike list mode.  There you opened that
+    // column's own ⋮, so a bare "Pin" was unambiguous; here the Values
+    // zone holds a field AND generates the Total column, so "Pin" alone
+    // could read as "pin Rate".
+    if (axis === 'rows') {
+      const on = model.pinRowLabels ?? false;
+      return [{
+        key: 'pin-rows', label: 'Pin row labels', icon: check(on),
+        onSelect: () => toggle({ pinRowLabels: !on }),
+      }];
+    }
+    if (axis === 'columns') {
+      // NOT shortened to list mode's "Hide".  That hides ONE column the
+      // operator picked; this prunes every bucket that came out empty.
+      // Same word, different act — sharing it would be a false friend.
+      const on = !!model.hideEmptyColumns;
+      return [{
+        key: 'hide-empty', label: 'Hide columns with no values', icon: check(on),
+        onSelect: () => toggle({ hideEmptyColumns: !on }),
+      }];
+    }
+    // No column dimension means no Total column to freeze, so the item
+    // would be a dead end — offered and then unable to do anything.
+    if (!hasColumnDim) return [];
+    const on = model.pinTotals ?? false;
+    return [{
+      key: 'pin-totals', label: 'Pin Total column', icon: check(on),
+      onSelect: () => toggle({ pinTotals: !on }),
+    }];
+  };
+
   const fieldMenu = (axis: Axis, key: string): MenuAction[] => {
     const list = keysOn(axis);
     const at = list.indexOf(key);
@@ -630,14 +690,23 @@ export default function PivotPanel({
                   (and a hairline under it while open) puts the control
                   that governs the zone on a different plane than the
                   rows it governs — the S1 region-anatomy rule. */}
+              {/* A ROW, not a button — the band now carries a fold
+                  control AND a settings menu, and a <button> may not
+                  contain another button.  The fold target keeps the
+                  whole remaining width so the band still reads as one
+                  click surface. */}
+              <div
+                className={cn(
+                  'flex items-stretch bg-muted/70 transition-colors',
+                  open && 'border-b border-border',
+                )}
+              >
               <button
                 type="button"
                 onClick={() => toggleFold(axis)}
                 aria-expanded={open}
-                className={cn(
-                  'w-full flex items-center justify-between gap-2 px-3 py-2 bg-muted/70 hover:bg-muted transition-colors',
-                  open && 'border-b border-border',
-                )}
+                aria-label={`${AXIS_LABEL[axis]} — ${open ? 'collapse' : 'expand'}`}
+                className="flex-1 min-w-0 flex items-center justify-between gap-2 px-3 py-2 hover:bg-muted transition-colors"
               >
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   {AXIS_LABEL[axis]}
@@ -667,6 +736,25 @@ export default function PivotPanel({
                     : <ChevronDown size={14} className="text-muted-foreground" />}
                 </span>
               </button>
+              {/* The zone's own settings, in the zone's own menu — the
+                  same place list mode keeps Pin and Hide (a column's ⋮).
+                  They govern the COLUMN the zone renders, which is why
+                  they cannot hang off a field: ROWS draws ONE merged
+                  label column, so a per-field pin would silently govern
+                  its neighbours, and it would hop to another field's
+                  menu the moment you reordered the zone. */}
+              {zoneMenu(axis).length > 0 && (
+                <ActionMenu items={zoneMenu(axis)}>
+                  <button
+                    type="button"
+                    aria-label={`${AXIS_LABEL[axis]} settings`}
+                    className="shrink-0 px-2 flex items-center text-muted-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
+                  >
+                    <MoreVertical size={14} />
+                  </button>
+                </ActionMenu>
+              )}
+              </div>
               {open && (
                 <>
                   {keys.length === 0 && (
@@ -682,45 +770,11 @@ export default function PivotPanel({
                       </p>
                     </div>
                   )}
-                  {/* Governs COLUMN buckets, so it belongs in the
-                      section that owns them.  Only offered when there IS
-                      a column dimension — with none there is nothing to
-                      prune and the control would be a dead end. */}
-                  {/* Zone-level SETTINGS, each living with the column it
-                      governs.  Deliberately not on a field's ⋮ menu: the
-                      renderer draws ONE merged row-label column for every
-                      row field, so a per-field pin would silently govern
-                      its neighbours — and the Total column is generated
-                      from Values, so it has no field row to hang off at
-                      all. */}
-                  {axis === 'rows' && keys.length > 0 && (
-                    <ZoneSetting
-                      checked={model.pinRowLabels ?? false}
-                      onChange={(v) => onChange({ ...model, pinRowLabels: v })}
-                      label="Keep row labels in view"
-                    />
-                  )}
-                  {axis === 'values' && keys.length > 0 && hasColumnDim && (
-                    <ZoneSetting
-                      checked={model.pinTotals ?? false}
-                      onChange={(v) => onChange({ ...model, pinTotals: v })}
-                      label="Keep Total column in view"
-                    />
-                  )}
-                  {/* Drilling is NOT a zone setting and no longer lives
-                      here.  It started in VALUES because only value
-                      cells drilled — then the Total column and the whole
-                      footer became drillable too, which made it a
-                      REPORT-WIDE behaviour sitting inside one zone.  It
-                      is now a control in the panel header, beside the
-                      pivot switch it belongs with. */}
-                  {axis === 'columns' && keys.length > 0 && (
-                    <ZoneSetting
-                      checked={!!model.hideEmptyColumns}
-                      onChange={(v) => onChange({ ...model, hideEmptyColumns: v })}
-                      label="Hide columns with no values"
-                    />
-                  )}
+                  {/* Zone SETTINGS used to sit here as inline
+                      switches, directly above the field rows.  They are
+                      in the zone's ⋮ now (see zoneMenu): they govern the
+                      column the zone renders, which is what list mode
+                      puts on a column's ⋮ as Pin / Hide. */}
                   <SortableContext
                     items={keys.map((k) => itemId(axis, k))}
                     strategy={verticalListSortingStrategy}
@@ -792,40 +846,6 @@ function DropZone({ zone, active, className, children }: {
       )}
     >
       {children}
-    </div>
-  );
-}
-
-/** A zone-level setting: governs the whole zone's rendered output, not a
- *  field.  One shell so they can't drift apart — "Hide columns with no
- *  values" was a hand-rolled copy of this markup and had already started
- *  to.
- *
- *  ⚠️ A SWITCH, deliberately, because a checkbox here meant two things.
- *  Every zone stacks its setting directly above its field rows, and
- *  those rows carry checkboxes too — so COLUMNS showed five identical
- *  boxes in one vertical run where one governed the ZONE and four
- *  governed field MEMBERSHIP.  Same shape, same size, same x, two
- *  unrelated meanings; you had to read every label to tell them apart.
- *
- *  The rule (now in design.md): **checkbox answers "is this item in the
- *  set?", switch answers "is this behaviour on?"**  The pivot master
- *  control is already a Switch, so the panel reads top-to-bottom as
- *  switch (pivot on) → switches (behaviours) → checkboxes (which
- *  fields). */
-function ZoneSetting({ checked, onChange, label }: {
-  checked: boolean;
-  onChange: (next: boolean) => void;
-  label: string;
-}) {
-  return (
-    // NOT a <label> wrapper: Switch is a <button role="switch"> and takes
-    // its accessible name from aria-label, so nesting it in a label would
-    // announce the text twice and give the row a second click target that
-    // toggles the same thing.
-    <div className="flex items-center gap-2 px-3 pb-2 text-2xs text-muted-foreground">
-      <Switch size="sm" checked={checked} onCheckedChange={onChange} aria-label={label} />
-      <span className="cursor-default">{label}</span>
     </div>
   );
 }
