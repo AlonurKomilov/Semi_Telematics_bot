@@ -54,16 +54,17 @@ export type Module =
 //   role   = one department's own tool (Maintenance, Routes, Driver Pay…)
 // NB: distinct from the `modules` field (WHICH department) — tier is the
 // breadth, modules is the owner.
-// Who is this for?  (docs/FEATURES.md is the SSOT.)  "system" retired
-// 2026-07-30: it had become a synonym for "miscellaneous account-wide"
-// once Alerts/AI/Reports left to be services.
+// Who is this FEATURE for?  (docs/FEATURES.md is the SSOT.)  "system"
+// retired 2026-07-30: it had become a synonym for "miscellaneous
+// account-wide" once Alerts/AI/Reports left to be services.
 //   personal       — the individual, about themselves
 //   shared         — several departments
 //   role           — one department's workflow
 //   administration — governing the account itself
-//   service        — NOT a tier: an always-on service (docs/SERVICES.md);
-//                    the entry exists here only for routing/nav.
-export type Tier = 'personal' | 'shared' | 'role' | 'administration' | 'service';
+//
+// Services are NOT on this axis — a value inside the union would claim
+// they are.  The kind question is asked first, by the type below.
+export type Tier = 'personal' | 'shared' | 'role' | 'administration';
 
 // Sidebar section a feature lives in (display grouping for the generated
 // nav).  `main` = pinned top (no header); `tail` = pinned bottom.
@@ -71,7 +72,7 @@ export type NavGroupKey =
   | 'main' | 'operations' | 'monitoring' | 'reports'
   | 'people' | 'costs' | 'account' | 'settings' | 'governance' | 'tail';
 
-export interface CatalogFeature {
+interface CatalogBase {
   /** Stable id (also the i18n suffix `nav.<id>`). */
   id: string;
   labelKey: string;
@@ -79,7 +80,6 @@ export interface CatalogFeature {
   icon: LucideIcon;
   /** Surfaced when ANY of these account modules is enabled. */
   modules: Module[];
-  tier: Tier;
   /** can_* flag(s) gating access — ANY-of.  Null = open to all. */
   permission: string | string[] | null;
   /** Which sidebar section the generated nav places it in. */
@@ -95,6 +95,20 @@ export interface CatalogFeature {
   parentId?: string;
 }
 
+/**
+ * A catalog entry is a FEATURE or a SERVICE — that question comes before
+ * "which tier", and the type enforces the answer: a service literally
+ * cannot carry a tier, because it isn't on that axis (docs/SERVICES.md).
+ * Services appear here at all only because this catalog doubles as the
+ * route + nav registry.
+ */
+export type CatalogEntry =
+  | (CatalogBase & { kind?: 'feature'; tier: Tier })
+  | (CatalogBase & { kind: 'service'; tier?: never });
+
+/** @deprecated name — kept while call sites migrate to CatalogEntry. */
+export type CatalogFeature = CatalogEntry;
+
 // Reusable permission groups (kept in sync with capabilities/iam/permissions.py).
 const P_LOCATION = ['can_location_map', 'can_location_vehicle'];
 const P_VEHICLE = ['can_vehicle_all', 'can_vehicle_vehicle'];
@@ -107,12 +121,12 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // Route-only: the assistant launches from the topbar icon (beside the
   // avatar) + ⌘J, not a sidebar row — navHidden keeps the route guard
   // and can_ai_chat wiring while dropping the nav entry.
-  { id: 'ai_assistant',   labelKey: 'nav.ai_assistant',   path: '/ai/chat',   icon: Bot,             modules: ['core'], tier: 'service', permission: ['can_ai_chat'], navGroup: 'main', navHidden: true },
+  { id: 'ai_assistant',   labelKey: 'nav.ai_assistant',   path: '/ai/chat',   icon: Bot,             modules: ['core'], kind: 'service', permission: ['can_ai_chat'], navGroup: 'main', navHidden: true },
   // Alerts launches from the topbar bell (a monitoring SERVICE beside
   // the AI icon), not a sidebar row — navHidden keeps the /alerts route
   // guard + P_ALERTS wiring while dropping the nav entry.
-  { id: 'alerts',         labelKey: 'nav.alerts',         path: '/alerts',    icon: Bell,            modules: ['core'], tier: 'service', permission: P_ALERTS, navGroup: 'monitoring', navHidden: true },
-  { id: 'reports',        labelKey: 'nav.reports',        path: '/reports',   icon: FileText,        modules: ['core'], tier: 'service', permission: P_REPORTS, navGroup: 'reports' },
+  { id: 'alerts',         labelKey: 'nav.alerts',         path: '/alerts',    icon: Bell,            modules: ['core'], kind: 'service', permission: P_ALERTS, navGroup: 'monitoring', navHidden: true },
+  { id: 'reports',        labelKey: 'nav.reports',        path: '/reports',   icon: FileText,        modules: ['core'], kind: 'service', permission: P_REPORTS, navGroup: 'reports' },
   // KPI — the account-wide performance analytics surface (dispatcher grades
   // first; fleet/safety/driver sections later).  Shared-tier, delegatable via
   // can_kpi.  Tagged `account` (like Billing) so it lives in the Owner/Admin

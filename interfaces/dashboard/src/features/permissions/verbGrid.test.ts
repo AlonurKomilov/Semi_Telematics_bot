@@ -3,8 +3,9 @@
  * the row model so the two lenses can never drift apart.
  */
 import { describe, expect, it } from 'vitest';
+import { FEATURE_CATALOG } from '../../config/featureCatalog';
 import { DRIVER_PANEL_FLAGS, PERM_GROUPS, isHeader } from './permRows';
-import { buildVerbGrid, driverBands, placedRows } from './verbGrid';
+import { buildVerbGrid, driverBands, placedRows, serviceRows } from './verbGrid';
 
 const grid = buildVerbGrid();
 
@@ -60,6 +61,30 @@ describe('the Driver tab', () => {
       // can_loads_own / can_risk_report_own are the vehicleKey half of a
       // staff scoped PAIR, never a staff ROW of their own.
       expect(staff.has(f), (f as { label: string }).label).toBe(false);
+    }
+  });
+});
+
+describe('the Services band', () => {
+  it('is the catalog\u2019s services — never a second hand-written list', () => {
+    const fromCatalog = FEATURE_CATALOG.filter((e) => e.kind === 'service').map((e) => e.id).sort();
+    expect(serviceRows().map((s) => s.id).sort()).toEqual(fromCatalog);
+  });
+
+  it('every service carries copy — a blank row would explain nothing', () => {
+    for (const s of serviceRows()) {
+      expect(s.label, s.id).toBeTruthy();
+      expect(s.note.length, s.id).toBeGreaterThan(20);
+    }
+  });
+
+  it('no service is also a grantable row', () => {
+    // Services are derived (derive_service_perms) and the save endpoint
+    // strips their flags; a tickable row would be a lying checkbox.
+    const grantable = new Set(placedRows(buildVerbGrid()).map((f) =>
+      ('allKey' in f ? f.allKey : (f as { key?: string }).key)));
+    for (const id of serviceRows().map((s) => s.id)) {
+      expect(grantable.has(`can_${id}`), id).toBe(false);
     }
   });
 });

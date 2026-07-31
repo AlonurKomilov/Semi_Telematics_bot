@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Shield, Check, X, Bell, Bot, FileText } from 'lucide-react';
+import { Shield, Check, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useRoleView } from '../../context/RoleViewContext';
 import { useAuth } from '../../context/AuthContext';
@@ -326,42 +326,6 @@ export default function Permissions() {
             <RoleLens api={roleLensApi} />
           </div>
 
-          {/* System Services — always-on infrastructure, NOT owner-toggled.
-              Access is derived from each role's feature permissions, so there
-              is nothing to tick.  This panel documents the model in-place so
-              an admin isn't left wondering where the old Alerts / AI rows went. */}
-          <div className="mt-4 rounded-lg border border-border bg-card p-4">
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">System Services</span>
-              <span className={`text-2xs px-1.5 py-0.5 rounded-md normal-case tracking-normal ${toneClasses('ok')}`}>always on</span>
-            </div>
-            <p className="text-2xs text-muted-foreground mb-3">
-              Infrastructure services — not granted here. Each one follows the role&apos;s feature permissions automatically: disable a feature and its slice stops, but the service itself never stops.
-            </p>
-            <ul className="space-y-2.5">
-              <li className="flex items-start gap-2.5">
-                <Bell size={16} className="text-muted-foreground mt-0.5 shrink-0" />
-                <div>
-                  <div className="text-sm font-medium text-foreground">Alerts</div>
-                  <div className="text-2xs text-muted-foreground">Every role has the inbox. It shows the alerts for whichever features the role can see — disable a feature (Faults, Health, Fuel, Safety Events, Geofences, Maintenance) and just those alerts drop out. Scope follows the role&apos;s vehicle access — account-wide or own-vehicle.</div>
-                </div>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <Bot size={16} className="text-muted-foreground mt-0.5 shrink-0" />
-                <div>
-                  <div className="text-sm font-medium text-foreground">AI Assistant</div>
-                  <div className="text-2xs text-muted-foreground">Available to every role. Each AI tool answers only from data the role can already see — a tool&apos;s access is just its feature&apos;s access (e.g. the engine-state lookup follows Vehicles), so there&apos;s nothing separate to grant.</div>
-                </div>
-              </li>
-              <li className="flex items-start gap-2.5">
-                <FileText size={16} className="text-muted-foreground mt-0.5 shrink-0" />
-                <div>
-                  <div className="text-sm font-medium text-foreground">Reports</div>
-                  <div className="text-2xs text-muted-foreground">The Reports hub and its scheduled-report subscription are open to every role. Which report tabs appear follows the role&apos;s features — the report TYPES (Risk Summary, Cost Reports) stay grantable above, under Safety and Accounting.</div>
-                </div>
-              </li>
-            </ul>
-          </div>
         </>
       )}
 

@@ -15,6 +15,7 @@
  *    ride the two family flags (docs/architecture/config.md) — the
  *    cell edits the cross-feature row, visibly shared.
  */
+import { FEATURE_CATALOG } from '../../config/featureCatalog';
 import {
   DRIVER_RECORDS, DRIVER_TRUCK, GROUP_BLOCKS, isHeader, isScoped,
 } from './permRows';
@@ -152,4 +153,37 @@ export function driverBands(): DriverBand[] {
       rows: DRIVER_RECORDS as TickRow[],
     },
   ];
+}
+
+
+// ── Services — the band above everything grantable ─────────────────
+//
+// Alerts / AI / Reports are always-on and their access is DERIVED
+// (capabilities/permissions/roles.derive_service_perms; the save endpoint
+// strips those flags), so they have nothing to tick.  They lead the grid
+// anyway: the page then reads top-down as the model — what every role
+// always has, then what you grant, then what you configure.
+//
+// The membership comes from the CATALOG (entries whose kind is
+// 'service'), never a second hand-written list; verbGrid.test.ts fails if
+// a service ships without copy here.
+const SERVICE_COPY: Record<string, string> = {
+  alerts: 'The inbox every role has. It shows the alerts for whichever features the role can see — disable a feature and just its alerts drop out.',
+  ai_assistant: 'Available to every role. Each tool answers only from data the role can already see, so a tool\u2019s access is simply its feature\u2019s access.',
+  reports: 'The hub and its scheduled-report subscription are open to every role; which tabs appear follows the role\u2019s features. The report TYPES (Risk Summary, Cost Reports) stay grantable below.',
+};
+
+export interface ServiceRow { id: string; label: string; note: string }
+
+export function serviceRows(): ServiceRow[] {
+  return FEATURE_CATALOG
+    .filter((e) => e.kind === 'service')
+    .map((e) => ({
+      id: e.id,
+      // nav.<id> is the i18n key; the plain label is its tail, which is
+      // what this read-only band needs (no translation plumbing for a
+      // row nobody can act on).
+      label: e.id.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' '),
+      note: SERVICE_COPY[e.id] ?? '',
+    }));
 }
