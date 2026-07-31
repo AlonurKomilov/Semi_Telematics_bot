@@ -723,14 +723,23 @@ export default function DataGrid({
     usePreference('pivot.panelWidth');
   const pivotModel = useMemo<PivotModel>(() => {
     const stored = pivotPref?.model;
-    // ``sort`` is carried through deliberately — see prunePivotModel.
-    // Listing fields by hand here is what dropped it before, so any new
-    // PivotModel field must be added to BOTH places.
+    // SPREAD, never a hand-written field list.  This rebuild is half of
+    // the persistence path (``prunePivotModel`` is the other half), and
+    // listing fields by hand meant every model field had to be added in
+    // two places or it was silently dropped between them — the stored
+    // value went in, an undefined came out, and the prune's ``?? false``
+    // turned that into a default.  It killed ``sort`` once, then
+    // ``hideEmptyColumns`` / ``pinRowLabels`` / ``pinTotals`` together:
+    // three checkboxes that wrote themselves correctly and did nothing.
+    // TypeScript cannot catch it (every such field is optional), so the
+    // fix is structural — spreading carries fields this line has never
+    // heard of, including the next one somebody adds.
+    // ``DataGrid.pivotModel.test.tsx`` goes red if this regresses.
     const base: PivotModel = stored
       ? {
+          ...stored,
           rows: stored.rows ?? [], columns: stored.columns ?? [],
-          values: stored.values ?? [], sort: stored.sort ?? null,
-          disabled: stored.disabled ?? [],
+          values: stored.values ?? [],
         }
       : { rows: [], columns: [], values: [], sort: null, disabled: [] };
     // A saved model can name columns this grid no longer has.

@@ -47,10 +47,17 @@ to the grid's height instead of capping at 32rem, so it can't float
 short of a much taller card.
 
 ```
-pivot.ts        the pure transform (+ pivot.test.ts) — no React
-PivotView.tsx   the read-only matrix renderer
-PivotPanel.tsx  Rows / Columns / Values pickers
+pivot.ts         the pure transform (+ pivot.test.ts) — no React
+PivotView.tsx    the read-only matrix renderer
+PivotPanel.tsx   Rows / Columns / Values pickers
+drill.ts         drill-down: which rows are behind a cell (pure)
+DrillDialog.tsx  drill-down: how they're shown (+ owns its open state)
+derived.ts       generated Year / Quarter / Month date grains
 ```
+
+Sub-features get a **pure file + a React file**, named for the feature
+(`drill.ts` / `DrillDialog.tsx`), not scattered through the two big
+ones. Nothing outside this folder imports any of them.
 
 ## Why it's a separate renderer, not a DataGrid mode
 
@@ -440,15 +447,51 @@ per-row totals.
 
 ## Drill-down
 
-Every non-empty cell is a button: clicking it opens the SOURCE ROWS
-behind that number. Rows are recomputed on demand (`pivotCellRows`) —
-caching them per cell would hold an array for every cell in the matrix to
-answer a question asked about one.
+**Opt-in, default OFF** — "Click a figure to see its rows", in the VALUES
+zone (only value cells drill; the row labels are the grouping and the
+Total column is re-aggregated rather than drawn from one bucket). Same
+default as the two pins: a report starts as the report you asked for.
+
+Switched OFF, a figure is a plain text node. Not a disabled button, not
+a button without a handler — **no button at all**, so a dense matrix
+doesn't carry thousands of focus stops for a feature nobody turned on.
+The `<td>` is `p-0` and expects a padded child, so the plain span must
+restate `cellPad` or the figures fuse with the next column.
+
+⚠️ The label has to SAY what the feature does, because default-off means
+nobody meets it by accident. "Drill-down" is our word, not the reader's.
+
+Switched ON, every non-empty cell is a button. Rows are recomputed on
+demand (`pivotCellRows`) — caching them per cell would hold an array for
+every cell in the matrix to answer a question asked about one.
 
 Clicking a COLLAPSED PARENT drills its whole subtree, because the
 parent's number IS the sum of its descendants — a drill-down that showed
 fewer rows than the number accounts for would be lying. A test asserts
 the drilled rows re-aggregate to the figure on screen.
+
+### The dialog owns its own open state
+
+`DrillDialog` holds the "which cell is open" state itself and is opened
+through an imperative handle (`drillRef.current.open(target)`), NOT via a
+prop from PivotView.
+
+That is not a style choice. `PivotView` is one ~900-line component with
+no internal memo boundary, so a `useState` up there re-rendered the
+ENTIRE matrix to display a dialog that changes nothing about the matrix
+— measured at ~12% of a full mount to open and ~3% to close, essentially
+all of it wasted. A prop would put the state back in the parent and undo
+the point.
+
+### `pivotCellRows` must mirror `pivot()` — and no longer sits next to it
+
+`pivot()` filters rows, columns AND values through `disabled`, and the
+drill query must filter identically or the dialog hands back rows the
+number on screen never counted. The two now live in different files, so
+that mirror is held by a TEST (`drill.test.ts`, "ignores a switched-off
+dimension") rather than by adjacency. `splitLeafId` deliberately stayed
+in `pivot.ts`, beside the code that builds leaf ids — a decoder that
+drifts away from its encoder breaks silently.
 
 ## Export
 

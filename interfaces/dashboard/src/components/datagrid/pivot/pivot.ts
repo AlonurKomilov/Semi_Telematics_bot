@@ -70,6 +70,17 @@ export interface PivotModel {
    *  because the Total column is GENERATED from them (one per value
    *  field) — it is not a field and so has no field row of its own. */
   pinTotals?: boolean;
+  /** Make every figure clickable, opening the source rows behind it.
+   *
+   *  Default OFF, matching the two pins: a report starts as the report
+   *  you asked for, and the extras are opt-in.  It also costs real DOM —
+   *  ON, every non-empty cell is a <button> rather than a text node, so
+   *  a dense matrix carries thousands of them.
+   *
+   *  Lives with VALUES because only value cells drill; the row labels
+   *  are the grouping and the Total column is re-aggregated rather than
+   *  drawn from one bucket. */
+  drillDown?: boolean;
 }
 
 /** One header cell — ``span`` is a colSpan over the leaf columns below. */
@@ -623,6 +634,7 @@ export function prunePivotModel(model: PivotModel, columns: AnyColumn[]): PivotM
     // flip of the default can't silently move them again.
     pinRowLabels: model.pinRowLabels ?? false,
     pinTotals: model.pinTotals ?? false,
+    drillDown: model.drillDown ?? false,
   };
 }
 
@@ -680,46 +692,11 @@ export function pivotToCsvRows(result: PivotResult): string[][] {
 }
 
 
-/**
- * The source rows behind one cell — "which loads made up that $400?".
- *
- * Recomputed on demand rather than cached per cell: a matrix of R x C
- * cells would otherwise hold R x C row arrays alive for a question the
- * operator asks about ONE of them.
- *
- * ``rowPath`` may be a PREFIX (a collapsed parent), in which case every
- * descendant's rows are returned — the parent's number is their sum, so
- * its drill-down has to be their union.  ``colPath`` empty means "every
- * column" (the row-total case, and grids with no column dimension).
- */
-export function pivotCellRows(
-  rows: Record<string, unknown>[],
-  model: PivotModel,
-  columns: AnyColumn[],
-  rowPath: string[],
-  colPath: string[],
-): Record<string, unknown>[] {
-  const cols = new Map(columns.map((c) => [c.key, c]));
-  // Must mirror pivot()'s own filtering EXACTLY — a drill-down that
-  // matched on a switched-off dimension would return rows the number on
-  // screen never counted.
-  const off = new Set(model.disabled ?? []);
-  const dimsOf = (keys: string[]) => keys
-    .filter((k) => !off.has(k))
-    .map((k) => cols.get(k))
-    .filter((c): c is AnyColumn => !!c);
-  const rowDims = dimsOf(model.rows);
-  const colDims = dimsOf(model.columns);
-  return rows.filter((r) => {
-    for (let i = 0; i < rowPath.length && i < rowDims.length; i += 1) {
-      if (bucketOf(r, rowDims[i]) !== rowPath[i]) return false;
-    }
-    for (let i = 0; i < colPath.length && i < colDims.length; i += 1) {
-      if (bucketOf(r, colDims[i]) !== colPath[i]) return false;
-    }
-    return true;
-  });
-}
+
+// ``pivotCellRows`` (the drill query) now lives in ``drill.ts`` with the
+// rest of the drill-down feature.  ``splitLeafId`` stays HERE, next to
+// the code that builds leaf ids — a decoder that drifts away from its
+// encoder breaks silently.
 
 /** Split a leaf id back into its column path + value key. */
 export function splitLeafId(leaf: string): { colPath: string[]; valueKey: string } {

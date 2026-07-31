@@ -674,19 +674,25 @@ export default function PivotPanel({
                       label="Keep Total column in view"
                     />
                   )}
+                  {/* Only VALUE cells drill, so the switch lives with the
+                      values.  Phrased as the gesture rather than the
+                      feature name ("drill-down" is our word, not the
+                      reader's) — and it has to say what it does, because
+                      OFF by default means nobody discovers it by
+                      accident. */}
+                  {axis === 'values' && keys.length > 0 && (
+                    <ZoneSetting
+                      checked={model.drillDown ?? false}
+                      onChange={(v) => onChange({ ...model, drillDown: v })}
+                      label="Click a figure to see its rows"
+                    />
+                  )}
                   {axis === 'columns' && keys.length > 0 && (
-                    <label className="flex items-center gap-2 px-3 pb-2 text-2xs text-muted-foreground cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={!!model.hideEmptyColumns}
-                        onChange={(e) => onChange({ ...model, hideEmptyColumns: e.target.checked })}
-                        // ``accent-primary`` or the tick paints the OS
-                        // accent — a literal colour from outside the token
-                        // set, which also ignores the theme picker.
-                        className="shrink-0 cursor-pointer accent-primary"
-                      />
-                      Hide columns with no values
-                    </label>
+                    <ZoneSetting
+                      checked={!!model.hideEmptyColumns}
+                      onChange={(v) => onChange({ ...model, hideEmptyColumns: v })}
+                      label="Hide columns with no values"
+                    />
                   )}
                   <SortableContext
                     items={keys.map((k) => itemId(axis, k))}
@@ -763,8 +769,10 @@ function DropZone({ zone, active, className, children }: {
   );
 }
 
-/** A zone-level setting: governs the whole zone's rendered column, not a
- *  field.  One shell so the three of them can't drift apart. */
+/** A zone-level setting: governs the whole zone's rendered output, not a
+ *  field.  One shell so the four of them can't drift apart — "Hide
+ *  columns with no values" was a hand-rolled copy of this markup and had
+ *  already started to. */
 function ZoneSetting({ checked, onChange, label }: {
   checked: boolean;
   onChange: (next: boolean) => void;
@@ -776,6 +784,9 @@ function ZoneSetting({ checked, onChange, label }: {
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
+        // ``accent-primary`` or the tick paints the OS accent — a literal
+        // colour from outside the token set, which also ignores the
+        // theme picker.
         className="shrink-0 cursor-pointer accent-primary"
       />
       {label}

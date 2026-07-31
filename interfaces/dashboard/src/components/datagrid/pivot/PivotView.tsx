@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   TableProperties, ChevronRight, ChevronDown, ArrowUp, ArrowDown,
 } from 'lucide-react';
@@ -8,15 +8,11 @@ import { ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR } from '../scrollbars';
 import { EmptyState } from '../../shell';
 import { Tip } from '../../tooltip';
 import { Button } from '../../ui/button';
-import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
-} from '../../ui/dialog';
 import { AGG_FN_LABELS } from '../../../types';
 import type { AnyColumn, AggFn } from '../../../types';
 import { formatAggDefault } from '../aggregation';
-import {
-  pivot, pivotCellRows, splitLeafId, type PivotModel, type PivotBodyRow,
-} from './pivot';
+import { pivot, type PivotModel } from './pivot';
+import DrillDialog, { type DrillHandle } from './DrillDialog';
 
 /** Rows of scroll before the window is recomputed.  Coarse on purpose —
  *  the overscan covers the gap, and each re-window is a real render. */
@@ -24,6 +20,28 @@ const WINDOW_BUCKET = 10;
 /** Rows rendered beyond the viewport on each side, so a fast scroll
  *  never shows blank space before the next bucket lands. */
 const OVERSCAN = 15;
+/** First-paint row-height estimates, keyed by the density token.
+ *
+ *  Windowing needs a row height, and the real one comes from the DOM —
+ *  which does not exist yet on the first paint.  Rather than render the
+ *  whole report to find out (what this used to do), start from what the
+ *  density already tells us: `min-h-6` content plus the token's own
+ *  vertical padding.
+ *
+ *  Deliberately UNDER-estimates.  Too small means a slightly larger
+ *  window — a few wasted rows; too large would mean too few rows and a
+ *  visible gap at the bottom of the viewport for one frame. */
+const EST_ROW_H: Record<string, number> = {
+  'py-1': 28,
+  'py-3': 40,
+  'py-5': 56,
+};
+/** For a density token this file hasn't been told about. */
+const EST_ROW_H_FALLBACK = 40;
+/** First-paint viewport estimate — generous, for the same reason the row
+ *  heights are conservative: over-estimating renders extra rows, while
+ *  under-estimating would briefly show a short table on a tall screen. */
+const EST_VIEWPORT = 900;
 
 /**
  * The pivoted matrix — a READ-ONLY report view.
@@ -90,10 +108,13 @@ export default function PivotView({
   // more surprising than starting expanded.  Default = expanded, so the
   // data is visible before the operator has learned the chevron.
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
-  // Which cell the operator opened.  Rows are computed on demand — the
-  // matrix would otherwise hold a row array per cell for a question asked
-  // about one of them.
-  const [drill, setDrill] = useState<{ row: PivotBodyRow; leafIdx: number } | null>(null);
+  // Opening a cell must NOT re-render the matrix, so the dialog owns its
+  // own state and is reached imperatively.  Held as state here it cost
+  // ~12% of a full mount per click to display a dialog that changes
+  // nothing about the table — see DrillDialog's header.
+  const drillRef = useRef<DrillHandle>(null);
+  // Opt-in (default off), so an ordinary report carries no buttons at all.
+  const canDrill = model.drillDown ?? false;
   const toggle = (key: string) => setCollapsed((prev) => {
     const next = new Set(prev);
     if (next.has(key)) next.delete(key); else next.add(key);
@@ -180,11 +201,27 @@ export default function PivotView({
   // subscribes to scroll" — it subscribes to a coarse BUCKET, not to the
   // position.
   const [bucket, setBucket] = useState(0);
-  const windowing = !!fill && box.rowH > 0;
+  // Measurement WINS; the estimate exists only to cover the first paint.
+  //
+  // Windowing used to be gated on ``box.rowH > 0``, and rowH starts at 0
+  // because it comes from the DOM — so the first paint had no window and
+  // rendered every row (~22,000 cells on a wide report), one row was
+  // measured, and the second paint threw ~90% of that away.  It drew the
+  // whole table just to find out how tall a row is, on EVERY mount:
+  // every switch-on, every trip back from list mode.  Measured at ~8x
+  // the cost of any other interaction in this view.
+  //
+  // We already know the answer well enough to start: density is a prop
+  // with three possible values.  The estimates are deliberately LOW, so
+  // the error mode is "rendered a few rows more than needed" — never a
+  // gap at the bottom of the viewport.
+  const rowH = box.rowH || EST_ROW_H[padding] || EST_ROW_H_FALLBACK;
+  const viewport = box.viewport || EST_VIEWPORT;
+  const windowing = !!fill;
   useEffect(() => {
     const el = scrollEl;
     if (!el || !windowing) return;
-    const step = box.rowH * WINDOW_BUCKET;
+    const step = rowH * WINDOW_BUCKET;
     const onScroll = () => {
       const next = Math.max(0, Math.floor(el.scrollTop / step));
       setBucket((prev) => (prev === next ? prev : next));
@@ -192,7 +229,7 @@ export default function PivotView({
     onScroll();
     el.addEventListener('scroll', onScroll, { passive: true });
     return () => el.removeEventListener('scroll', onScroll);
-  }, [scrollEl, windowing, box.rowH]);
+  }, [scrollEl, windowing, rowH]);
 
   // The family rule is "scroll position resets when the list changes
   // IDENTITY", and datagrid/CLAUDE.md claims it holds in BOTH modes.  It
@@ -212,7 +249,7 @@ export default function PivotView({
     const all = visibleRows;
     if (!windowing) return { rows: all, from: 0, padTop: 0, padBottom: 0 };
     const perView = Math.max(1, Math.ceil(
-      Math.max(0, box.viewport - insets.top) / box.rowH,
+      Math.max(0, viewport - insets.top) / rowH,
     ));
     // Below this there is nothing to win, and a spacer would only add
     // a chance to be wrong.
@@ -229,10 +266,10 @@ export default function PivotView({
     return {
       rows: all.slice(from, to),
       from,
-      padTop: from * box.rowH,
-      padBottom: (all.length - to) * box.rowH,
+      padTop: from * rowH,
+      padBottom: (all.length - to) * rowH,
     };
-  }, [visibleRows, windowing, bucket, box.rowH, box.viewport, insets.top]);
+  }, [visibleRows, windowing, bucket, rowH, viewport, insets.top]);
 
   if (result.empty) {
     // Only ROWS are required now: without a measure the report still
@@ -293,6 +330,11 @@ export default function PivotView({
   const emptyCellRuled = cn(emptyCell, RULE);
   const valueCell = cn(CELL_NUM, 'p-0');
   const valueCellRuled = cn(valueCell, RULE);
+  // Drill OFF.  The <td> is ``p-0`` (it expects a padded child), so the
+  // padding rides here exactly as it does on the button — otherwise the
+  // figures fuse with the next column, which is the defect this file has
+  // already been bitten by twice.
+  const valueText = cn(cellPad, 'block w-full text-right tabular-nums');
   const valueButton = cn(
     cellPad,
     'block w-full text-right tabular-nums cursor-pointer',
@@ -314,7 +356,7 @@ export default function PivotView({
   // never read as one).  box-shadow, not border: these tables are
   // border-collapse, where borders don't reliably travel with sticky
   // cells.
-  // Both frozen edges are opt-out (default ON).  Unpinned they become
+  // Both frozen edges are opt-IN (default off).  Unpinned they become
   // ORDINARY cells — no position, no z-index, no opaque fill and no seam:
   // a cell that isn't frozen has nothing to occlude, and keeping bg-card
   // would only hide the row's own zebra stripe.
@@ -682,10 +724,21 @@ export default function PivotView({
                       // can't be traced to its heading.
                       className={i > 0 ? valueCellRuled : valueCell}
                     >
-                      {/* Every non-empty number is a question: "which rows?" */}
+                      {/* Every non-empty number is a question: "which
+                          rows?" — but only when the operator asked for
+                          that. Off, the figure is a plain text node:
+                          no button, no focus stop, no dotted rule
+                          promising an interaction that won't happen. */}
+                      {!canDrill ? (
+                        <span className={valueText}>
+                          {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
+                        </span>
+                      ) : (
                       <button
                         type="button"
-                        onClick={() => setDrill({ row, leafIdx: i })}
+                        onClick={() => drillRef.current?.open({
+                          rowPath: row.path, rowLabel: row.label, leafIdx: i,
+                        })}
                         className={valueButton}
                         // No ``title`` and no ``aria-label``.  Native
                         // title= is banned, but the obvious replacement is
@@ -699,6 +752,7 @@ export default function PivotView({
                       >
                         {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
                       </button>
+                      )}
                     </td>
                   )
               ))}
@@ -818,72 +872,18 @@ export default function PivotView({
         <ScrollbarV el={scrollEl} insetTop={insets.top} />
       )}
       </div>
-      {/* Row count of the REPORT (groups), distinct from the source-row
-          count in the line above — an operator comparing the two can see
-          how much the grouping collapsed. */}
-      {drill && (() => {
-        const { colPath, valueKey } = splitLeafId(result.leafIds[drill.leafIdx]);
-        const sourceRows = pivotCellRows(rows, model, columns, drill.row.path, colPath);
-        const measure = colByKey.get(valueKey);
-        // Show the grid's own columns (not the synthetic pivot ones) —
-        // these are real records again, so they should read like records.
-        const showCols = columns.filter((c) => !c.key.includes('::')).slice(0, 6);
-        return (
-          <Dialog open onOpenChange={(o) => { if (!o) setDrill(null); }}>
-            <DialogContent className="max-w-3xl">
-              <DialogHeader>
-                <DialogTitle>
-                  {drill.row.label}
-                  {colPath.length > 0 && ` · ${colPath.join(' · ')}`}
-                </DialogTitle>
-                <DialogDescription>
-                  {sourceRows.length.toLocaleString()} row{sourceRows.length === 1 ? '' : 's'}
-                  {measure ? ` behind this ${measure.label.toLowerCase()}` : ''}.
-                </DialogDescription>
-              </DialogHeader>
-              {/* The scroll was always there; the AFFORDANCE wasn't.
-                  With no visible scrollbar and no fade, a name clipped
-                  to "BENOIT T…" reads as broken rather than scrollable.
-                  A right-edge fade marks the cut, and ``min-w-max``
-                  stops the w-full table from squeezing cells to the
-                  point where every column truncates at once. */}
-              <div className="relative">
-                <div className="max-h-[60vh] overflow-auto">
-                <table className="min-w-max w-full text-xs border-collapse">
-                  <thead className="sticky top-0 bg-muted">
-                    <tr>
-                      {showCols.map((c) => (
-                        <th key={c.key} className="px-2 py-1.5 text-left font-medium text-muted-foreground border-b border-border">
-                          {c.label}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sourceRows.map((r, i) => (
-                      <tr key={i} className={cn('border-b border-border', i % 2 === 1 && 'bg-muted/30')}>
-                        {showCols.map((c) => (
-                          <td key={c.key} className="px-2 py-1.5 whitespace-nowrap">
-                            {c.render ? c.render(r[c.key], r) : String(r[c.key] ?? '—')}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                </div>
-                {/* Marks the cut so a truncated name reads as "there is
-                    more to the right", not as broken rendering.
-                    pointer-events-none so it never blocks the scroll. */}
-                <div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-background to-transparent"
-                />
-              </div>
-            </DialogContent>
-          </Dialog>
-        );
-      })()}
+      {/* The drill dialog owns its own open state (see DrillDialog):
+          mounted here it re-rendered the whole matrix on every click.
+          Not mounted at all when drilling is switched off. */}
+      {canDrill && (
+        <DrillDialog
+          ref={drillRef}
+          rows={rows}
+          model={model}
+          columns={columns}
+          leafIds={result.leafIds}
+        />
+      )}
 
 
     </div>

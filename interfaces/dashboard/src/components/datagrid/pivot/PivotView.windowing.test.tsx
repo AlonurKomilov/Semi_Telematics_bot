@@ -59,6 +59,9 @@ const MODEL: PivotModel = {
 };
 
 let descriptors: { h?: PropertyDescriptor; c?: PropertyDescriptor } = {};
+/** Flip off to simulate the FIRST PAINT, where nothing has been measured
+ *  yet because the rows don't exist in the DOM. */
+let measures = true;
 
 beforeAll(() => {
   descriptors = {
@@ -70,16 +73,18 @@ beforeAll(() => {
     get(this: HTMLElement) {
       // Only a real data row reports a height — that is precisely what
       // the component measures to derive the window.
-      return this.matches?.('tr[data-prow]') ? ROW_H : 0;
+      return measures && this.matches?.('tr[data-prow]') ? ROW_H : 0;
     },
   });
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
     configurable: true,
     get(this: HTMLElement) {
-      return this.getAttribute?.('role') === 'region' ? VIEWPORT : 0;
+      return measures && this.getAttribute?.('role') === 'region' ? VIEWPORT : 0;
     },
   });
 });
+
+afterEach(() => { measures = true; });
 
 afterAll(() => {
   if (descriptors.h) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', descriptors.h);
@@ -95,12 +100,45 @@ describe('row windowing bounds the DOM', () => {
     await act(async () => {
       render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
     });
-    // The first paint has no measured row height, so every row renders and
-    // one gets measured; the window engages on the next commit.
     expect(dataRows()).toBeGreaterThan(0);
     expect(dataRows()).toBeLessThanOrEqual(PER_VIEW + OVERSCAN * 2);
     // ...and it is genuinely a fraction of the report.
     expect(dataRows()).toBeLessThan(360);
+  });
+
+  it('windows on the FIRST paint, without waiting to measure a row', async () => {
+    // The expensive defect this pins: windowing used to be gated on a
+    // MEASURED row height (`box.rowH > 0`), and that measurement can
+    // only happen once rows exist.  So the first paint rendered all 360
+    // rows — ~22,000 cells — purely to discover how tall one row is,
+    // then threw ~90% of it away on the next commit.  It ran on every
+    // mount: every switch-on, every trip back from list mode, and it
+    // measured ~8x the cost of any other interaction in this view.
+    //
+    // With measurement returning 0 (exactly the first-paint condition),
+    // the density estimate must carry it — a bounded table, not 360 rows.
+    measures = false;
+    await act(async () => {
+      render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
+    });
+    expect(dataRows()).toBeGreaterThan(0);
+    expect(dataRows()).toBeLessThan(360);
+  });
+
+  it('still lets the MEASURED height win once it arrives', async () => {
+    // The estimate is a bootstrap, not a source of truth.  If it stuck,
+    // every spacer height would be wrong by whatever the estimate missed
+    // by, and the scrollbar would describe a table of the wrong length.
+    await act(async () => {
+      render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
+    });
+    // py-3's estimate is 40px; the stub measures 32.  Spacer heights are
+    // multiples of the row height, so a spacer divisible by 32 (and not
+    // by the estimate) proves the measurement replaced the guess.
+    const spacer = document.querySelector('tbody tr[aria-hidden][style*="height"]') as HTMLElement;
+    expect(spacer).not.toBeNull();
+    const h = Number.parseInt(spacer.style.height, 10);
+    expect(h % ROW_H).toBe(0);
   });
 
   it('keeps the whole report scrollable via spacer rows', async () => {
