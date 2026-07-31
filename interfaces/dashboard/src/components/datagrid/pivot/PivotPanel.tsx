@@ -413,8 +413,17 @@ export default function PivotPanel({
     // would be a dead end — offered and then unable to do anything.
     if (!hasColumnDim) return [];
     const on = model.pinTotals ?? false;
+    // There is one Total column PER MEASURE (`totalLabels` maps over the
+    // value fields), so with Rate + Miles assigned this freezes TWO
+    // columns.  A hard-coded singular quietly under-described what the
+    // setting did the moment a second measure was added.
+    const nTotals = model.values.filter(
+      (v) => !(model.disabled ?? []).includes(v.key),
+    ).length;
     return [{
-      key: 'pin-totals', label: 'Pin Total column', icon: check(on),
+      key: 'pin-totals',
+      label: nTotals > 1 ? `Pin ${nTotals} Total columns` : 'Pin Total column',
+      icon: check(on),
       onSelect: () => toggle({ pinTotals: !on }),
     }];
   };

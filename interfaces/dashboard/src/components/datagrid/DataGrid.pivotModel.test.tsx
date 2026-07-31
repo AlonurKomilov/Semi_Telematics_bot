@@ -72,12 +72,14 @@ const COLUMNS: AnyColumn[] = [
   { key: 'company', label: 'Company', pivotable: true },
   { key: 'driver', label: 'Driver', pivotable: true },
   { key: 'rate', label: 'Rate', aggregable: true },
+  { key: 'miles', label: 'Miles', aggregable: true },
 ];
 
 const ROWS = Array.from({ length: 12 }, (_, i) => ({
   company: `Company ${i % 3}`,
   driver: `Driver ${i % 4}`,
   rate: (i + 1) * 100,
+  miles: (i + 1) * 10,
 }));
 
 /** Every zone populated, so all three zone settings are on screen. */
@@ -203,5 +205,29 @@ describe('the panel says what each control governs', () => {
     stored = { enabled: true, model: { ...FULL, columns: [] } };
     await openPanel();
     expect(screen.queryByRole('button', { name: 'Values settings' })).toBeNull();
+  });
+
+  it('counts the Total columns it will pin — there is one per measure', async () => {
+    // `totalLabels` maps over the value fields, so two measures means two
+    // Total columns.  A hard-coded "Pin Total column" under-described the
+    // setting the moment a second measure was assigned.
+    stored = {
+      enabled: true,
+      model: {
+        ...FULL,
+        values: [
+          { key: 'rate', aggFn: 'sum' },
+          { key: 'miles', aggFn: 'sum' },
+        ],
+      },
+    };
+    await openPanel();
+    expect((await zoneSetting('Values', 'Pin 2 Total columns')).checked).toBe(false);
+  });
+
+  it('stays singular with one measure', async () => {
+    stored = { enabled: true, model: FULL };
+    await openPanel();
+    expect((await zoneSetting('Values', 'Pin Total column')).checked).toBe(false);
   });
 });
