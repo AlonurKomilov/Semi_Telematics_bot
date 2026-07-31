@@ -612,6 +612,7 @@ class WarehouseMixin(_MixinBase):
                 float(r.get("drive_min") or 0),
                 float(r.get("idle_min") or 0),
                 float(r.get("max_speed_mph") or 0),
+                _opt_float(r.get("avg_fuel_pct")),
                 int(r.get("harsh_event_count") or 0),
                 (float(r["odometer_eod"])
                  if r.get("odometer_eod") is not None else None),
@@ -627,14 +628,15 @@ class WarehouseMixin(_MixinBase):
                 INSERT INTO vehicle_telemetry (
                     account_id, vehicle_id, granularity, bucket_start,
                     miles, drive_min, idle_min,
-                    max_speed_mph, harsh_event_count,
+                    max_speed_mph, avg_fuel_pct, harsh_event_count,
                     odometer_eod, engine_hours_eod, ingested_at
-                ) VALUES (?, ?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(account_id, vehicle_id, granularity, bucket_start) DO UPDATE SET
                     miles=excluded.miles,
                     drive_min=excluded.drive_min,
                     idle_min=excluded.idle_min,
                     max_speed_mph=excluded.max_speed_mph,
+                    avg_fuel_pct=excluded.avg_fuel_pct,
                     harsh_event_count=excluded.harsh_event_count,
                     -- Keep a prior non-null banked reading when a re-run
                     -- can't recompute one: replaying an hour whose 5-min
@@ -2312,7 +2314,7 @@ class WarehouseMixin(_MixinBase):
                    COALESCE(SUM(drive_min), 0)          AS total_drive_min,
                    COALESCE(SUM(idle_min), 0)           AS total_idle_min,
                    COALESCE(MAX(max_speed_mph), 0)      AS max_speed_mph,
-                   COALESCE(AVG(avg_fuel_pct), 0)       AS avg_fuel_pct,
+                   AVG(avg_fuel_pct)                    AS avg_fuel_pct,
                    COALESCE(SUM(harsh_event_count), 0)  AS harsh_events,
                    COUNT(*)                             AS days_with_data
               FROM vehicle_telemetry
@@ -2379,7 +2381,10 @@ class WarehouseMixin(_MixinBase):
             "idle_hours":        round(idle_min / 60.0, 2),
             "utilization_pct":   round(utilization_pct, 1),
             "max_speed_mph":     round(float(d.get("max_speed_mph") or 0), 1),
-            "avg_fuel_pct":      round(float(d.get("avg_fuel_pct") or 0), 1),
+            # NULL, not 0: "no fuel reading" and "tank empty" are
+            # different answers, and only one of them is alarming.
+            "avg_fuel_pct":      (round(float(d["avg_fuel_pct"]), 1)
+                                  if d.get("avg_fuel_pct") is not None else None),
             "harsh_events":      int(d.get("harsh_events") or 0),
             "total_cost":        round(total_cost, 2),
             "work_order_count":  int(cd.get("work_order_count") or 0),

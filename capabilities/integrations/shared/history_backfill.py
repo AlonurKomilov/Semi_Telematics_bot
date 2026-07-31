@@ -80,6 +80,7 @@ from adapters.telematics.samsara.throttle import (
     backfill_account_lock,
     samsara_backfill_throttle,
 )
+from capabilities.integrations.shared.engine_state import resolve_engine_state
 from infra import cache as _redis
 from infra import observability as _obs
 from infra.config import SAMSARA_BACKFILL_DAY_CHUNK_SEC
@@ -135,12 +136,10 @@ STAT_TYPE_TO_COLUMN: dict[str, tuple[str, Any]] = {
     "engineLoadPercent":              ("engine_load_pct",  float),
     "engineRpm":                      ("rpm",              float),
     # engineStates → engine_state.  Samsara returns literal
-    # "On"/"Idle"/"Off"; we lowercase + map "On" → "moving" to match
-    # the live ingest's vocabulary.
+    # "On"/"Idle"/"Off", carried through raw and resolved against the
+    # slot's speed once the slot is complete (see resolve_engine_state).
     "engineStates":                   ("engine_state",     None),
 }
-
-_ENGINE_STATE_MAP = {"on": "moving", "idle": "idle", "off": "off"}
 
 
 # ── Result + status ──────────────────────────────────────────────
@@ -522,9 +521,11 @@ def _resample_to_snapshot_rows(
                 if raw is None:
                     continue
                 if column == "engine_state":
-                    value = _ENGINE_STATE_MAP.get(
-                        str(raw).strip().lower(), "off",
-                    )
+                    # Kept raw here; resolved once the slot is complete,
+                    # because the provider's state alone cannot tell
+                    # moving from idling — that needs the speed reading,
+                    # which arrives in a different stat batch.
+                    value = raw
                 else:
                     try:
                         value = converter(raw) if converter else raw
@@ -542,6 +543,20 @@ def _resample_to_snapshot_rows(
                     "captured_at": slot_key[1],
                 })
                 row[column] = value
+
+    # Resolve engine state last, when each slot holds both the provider's
+    # state and the speed that separates a moving truck from an idling
+    # one.  Same resolver the live ingest uses, so a backfilled day and a
+    # live day put the same vocabulary in the column.
+    for row in by_slot.values():
+        if "engine_state" in row or "speed_mph" in row:
+            resolved = resolve_engine_state(
+                row.get("engine_state"), row.get("speed_mph"),
+            )
+            if resolved:
+                row["engine_state"] = resolved
+            else:
+                row.pop("engine_state", None)
     return list(by_slot.values())
 
 

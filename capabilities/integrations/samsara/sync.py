@@ -25,6 +25,7 @@ from typing import Any
 
 from infra.services import get_tenant_db, get_client
 
+from capabilities.integrations.shared.engine_state import resolve_engine_state
 from capabilities.integrations.shared.helpers import (
     _for_each_account_with_capability,
 )
@@ -188,6 +189,7 @@ async def ingest_vehicle_state(account_id: int) -> int:
     # readers degrade to "—".
     odometer_by_vehicle_id: dict[str, dict] = {}
     engine_hours_by_vehicle_id: dict[str, dict] = {}
+    engine_state_by_vehicle_id: dict[str, str] = {}
     # MultiCompanyClient exposes `.clients` (per-company SamsaraClient
     # instances); test stubs are flat single-company clients.  Iterate
     # the per-company map when present, otherwise call the flat stub.
@@ -230,6 +232,28 @@ async def ingest_vehicle_state(account_id: int) -> int:
                         "hours": reading.get("engine_hours"),
                         "time":  reading.get("time"),
                     }
+        # Engine state rides its own stats endpoint — the fleet overview
+        # never carried it, so this column read empty for the life of the
+        # table and every drive/idle minute derived from it came out
+        # zero.  Same non-fatal contract as the readings above: a plan
+        # without engine states leaves the field unset rather than
+        # failing the tick.
+        if hasattr(company_client, "get_engine_states"):
+            try:
+                states = await company_client.get_engine_states()
+            except Exception as e:
+                logger.warning(
+                    "engine-state fetch failed acct=%d: %s", account_id, e,
+                )
+                states = []
+            for reading in states or []:
+                vehicle_id = reading.get("id")
+                if not vehicle_id:
+                    continue
+                block = reading.get("engineStates")
+                value = block.get("value") if isinstance(block, dict) else block
+                if value:
+                    engine_state_by_vehicle_id[str(vehicle_id)] = str(value)
 
     rows = [_vehicle_overview_to_state_row(v) for v in fleet]
     for row in rows:
@@ -244,13 +268,18 @@ async def ingest_vehicle_state(account_id: int) -> int:
         if eng:
             row["engine_hours"] = eng.get("hours")
             row["engine_hours_time"] = eng.get("time")
+        row["engine_state"] = resolve_engine_state(
+            engine_state_by_vehicle_id.get(vid), row.get("speed_mph"),
+        )
 
     n = await tenant.upsert_vehicle_state(account_id, rows)
     logger.info(
-        "ingest_vehicle_state acct=%d persisted=%d with_odometer=%d with_engine_hours=%d",
+        "ingest_vehicle_state acct=%d persisted=%d with_odometer=%d "
+        "with_engine_hours=%d with_engine_state=%d",
         account_id, n,
         len(odometer_by_vehicle_id),
         len(engine_hours_by_vehicle_id),
+        len(engine_state_by_vehicle_id),
     )
     # Surface a whole-fleet odometer stall: we persisted vehicles but got
     # ZERO odometer readings.  Covers both failure modes — the endpoint

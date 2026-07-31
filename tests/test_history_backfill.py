@@ -102,6 +102,46 @@ def test_resample_engine_state_maps_on_to_moving():
     assert rows[0]["engine_state"] == "moving"
 
 
+def test_resample_engine_on_but_stopped_is_idle_not_moving():
+    """"On" means the engine runs, not that the truck goes anywhere.
+
+    Booking engine-on-and-parked as driving would inflate utilisation
+    and leave idle time — the hours that burn fuel for no miles —
+    reading as zero.
+    """
+    samples = {
+        "vid-1": {
+            "engineStates": [
+                {"time": "2026-05-15T14:23:00Z", "value": "On"},
+            ],
+            "gps": [
+                {"time": "2026-05-15T14:23:30Z",
+                 "value": {"latitude": 39.25, "longitude": -84.45,
+                           "speedMilesPerHour": 0.0}},
+            ],
+        },
+    }
+    rows = _resample_to_snapshot_rows(samples)
+    assert rows[0]["engine_state"] == "idle"
+
+
+def test_resample_engine_on_and_rolling_stays_moving():
+    samples = {
+        "vid-1": {
+            "engineStates": [
+                {"time": "2026-05-15T14:23:00Z", "value": "On"},
+            ],
+            "gps": [
+                {"time": "2026-05-15T14:23:30Z",
+                 "value": {"latitude": 39.25, "longitude": -84.45,
+                           "speedMilesPerHour": 62.5}},
+            ],
+        },
+    }
+    rows = _resample_to_snapshot_rows(samples)
+    assert rows[0]["engine_state"] == "moving"
+
+
 def test_resample_gps_fans_out_into_three_columns():
     samples = {
         "vid-1": {

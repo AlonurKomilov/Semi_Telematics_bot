@@ -33,7 +33,9 @@ interface UsageSummary {
   idle_hours: number;
   utilization_pct: number;
   max_speed_mph: number;
-  avg_fuel_pct: number;
+  // Null when no vehicle reported a fuel level in the window — an empty
+  // tank reads 0 and must stay distinguishable from no reading at all.
+  avg_fuel_pct: number | null;
   harsh_events: number;
   total_cost: number;
   work_order_count: number;
@@ -157,7 +159,7 @@ export default function VehicleUsage({ vehicleName, company }: VehicleSectionPro
                 hint={`${summary.work_order_count} order${summary.work_order_count === 1 ? '' : 's'}`}
               />
             )}
-            {summary.avg_fuel_pct > 0 && (
+            {summary.avg_fuel_pct != null && (
               <StatTile
                 label="Avg fuel"
                 value={summary.avg_fuel_pct.toFixed(0)}

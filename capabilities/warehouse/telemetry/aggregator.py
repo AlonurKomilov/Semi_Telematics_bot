@@ -192,7 +192,7 @@ async def _aggregate_hour_window(
                SUM(CASE WHEN step < 0 THEN 1 ELSE 0 END) AS reset_steps,
                SUM(CASE WHEN step > ? THEN 1 ELSE 0 END) AS jump_steps,
                MAX(COALESCE(speed_mph, 0))         AS max_speed,
-               AVG(COALESCE(fuel_pct, 0))          AS avg_fuel_pct,
+               AVG(fuel_pct)                       AS avg_fuel_pct,
                SUM(CASE WHEN engine_state = 'moving' THEN 1 ELSE 0 END) AS drive_samples,
                SUM(CASE WHEN engine_state = 'idle'   THEN 1 ELSE 0 END) AS idle_samples,
                MAX(odometer_mi)                    AS odometer_eoh,
@@ -239,7 +239,8 @@ async def _aggregate_hour_window(
                 sr.get("reset_steps"), sr.get("jump_steps"),
             )
         max_speed = float(sr.get("max_speed") or 0)
-        avg_fuel = float(sr.get("avg_fuel_pct") or 0)
+        raw_fuel = sr.get("avg_fuel_pct")
+        avg_fuel = float(raw_fuel) if raw_fuel is not None else None
         drive_min = int(sr.get("drive_samples") or 0) * SAMPLE_INTERVAL_MIN
         idle_min = int(sr.get("idle_samples") or 0) * SAMPLE_INTERVAL_MIN
         evt = event_by_vid.get(vid, {})
@@ -275,7 +276,7 @@ async def _aggregate_hour_window(
             "drive_min":         0,
             "idle_min":          0,
             "max_speed_mph":     float(evt.get("max_speed_mph") or 0),
-            "avg_fuel_pct":      0,
+            "avg_fuel_pct":      None,
             "harsh_event_count": int(evt.get("harsh_event_count") or 0),
         })
 
@@ -338,7 +339,7 @@ async def _aggregate_day_window(
                SUM(COALESCE(drive_min, 0))         AS drive_min,
                SUM(COALESCE(idle_min, 0))          AS idle_min,
                MAX(COALESCE(max_speed_mph, 0))     AS max_speed_mph,
-               AVG(COALESCE(avg_fuel_pct, 0))      AS avg_fuel_pct,
+               AVG(avg_fuel_pct)                   AS avg_fuel_pct,
                SUM(COALESCE(harsh_event_count, 0)) AS harsh_event_count
           FROM vehicle_telemetry
          WHERE account_id = ?
@@ -511,7 +512,7 @@ async def _aggregate_week_window(
                SUM(COALESCE(drive_min, 0))         AS drive_min,
                SUM(COALESCE(idle_min, 0))          AS idle_min,
                MAX(COALESCE(max_speed_mph, 0))     AS max_speed_mph,
-               AVG(COALESCE(avg_fuel_pct, 0))      AS avg_fuel_pct,
+               AVG(avg_fuel_pct)                   AS avg_fuel_pct,
                SUM(COALESCE(harsh_event_count, 0)) AS harsh_event_count,
                MAX(COALESCE(fault_count_eod, 0))   AS fault_count_eod,
                MAX(odometer_eod)                   AS odometer_eod,
