@@ -447,10 +447,39 @@ per-row totals.
 
 ## Drill-down
 
-**Opt-in, default OFF** — "Click a figure to see its rows", in the VALUES
-zone (only value cells drill; the row labels are the grouping and the
-Total column is re-aggregated rather than drawn from one bucket). Same
-default as the two pins: a report starts as the report you asked for.
+**Opt-in, default OFF** — "Open the rows behind a figure", in the VALUES
+zone (values are what produce figures). Same default as the two pins: a
+report starts as the report you asked for.
+
+The label is written in the imperative, describing what the setting does
+to the REPORT — the same voice as its three siblings ("Keep row labels in
+view", "Keep Total column in view", "Hide columns with no values"). An
+earlier draft read "Click a figure to see its rows", which instructed the
+USER instead: four identical checkboxes with one written as a tutorial
+line. "Drill-down" stays out of the UI entirely — our word, not the
+reader's.
+
+⚠️ **Default-OFF means the panel's help text must not assert the
+behaviour.** The Pivot InfoTip used to end "Click any figure to see the
+rows behind it", which became false for every new report the moment the
+default flipped — the user clicked, nothing happened, and the only help
+on the surface was what misled them. It now points at the switch, which
+also carries the discoverability a default-off feature otherwise loses.
+
+### Every figure drills — no exceptions
+
+Leaf cells, the Total column, the grand-total row and the bottom-right
+corner. The rule has to be learnable in one sentence, and "figures open
+their rows, except that one column" is not it — the Total column sits
+inline with the body rows and looks exactly like them.
+
+This falls out of `pivotCellRows` rather than needing special cases: an
+empty `colPath` means "every column", which IS the Total column's
+definition, and an empty `rowPath` means "every row", which is the
+footer's. The four cell kinds differ only in which paths they pass.
+
+The `Total` LABEL in the footer stays uncoloured and unclickable — it
+names the band, it isn't a figure.
 
 Switched OFF, a figure is a plain text node. Not a disabled button, not
 a button without a handler — **no button at all**, so a dense matrix
@@ -469,6 +498,20 @@ Clicking a COLLAPSED PARENT drills its whole subtree, because the
 parent's number IS the sum of its descendants — a drill-down that showed
 fewer rows than the number accounts for would be lying. A test asserts
 the drilled rows re-aggregate to the figure on screen.
+
+### The dialog names the whole ancestry
+
+`DrillTarget` carries `rowPath` (query keys) AND `rowLabels` (display
+strings) as separate fields, plus `colPath` and `colLabel`. That is not
+redundancy: a month bucket's key is `2026-01` while its header reads
+`Jan 2026`, so joining the key path for a title would print raw buckets
+back at the reader.
+
+The title uses the FULL chain — `Acme › Bolt · Jan 2026` — because a leaf
+label alone stops identifying anything the moment two parents each have a
+child by that name, which is the normal case in a pivot. Rows join with
+`›` (a path), the column coordinate with `·` (a separate fact). An empty
+row path renders "All rows" rather than a blank title.
 
 ### The dialog owns its own open state
 

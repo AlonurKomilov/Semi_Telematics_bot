@@ -11,7 +11,7 @@ import { Button } from '../../ui/button';
 import { AGG_FN_LABELS } from '../../../types';
 import type { AnyColumn, AggFn } from '../../../types';
 import { formatAggDefault } from '../aggregation';
-import { pivot, type PivotModel } from './pivot';
+import { pivot, splitLeafId, type PivotModel } from './pivot';
 import DrillDialog, { type DrillHandle } from './DrillDialog';
 
 /** Rows of scroll before the window is recomputed.  Coarse on purpose —
@@ -42,6 +42,11 @@ const EST_ROW_H_FALLBACK = 40;
  *  heights are conservative: over-estimating renders extra rows, while
  *  under-estimating would briefly show a short table on a tall screen. */
 const EST_VIEWPORT = 900;
+/** Joins a bucket path into one map key.  NUL because it cannot occur in
+ *  a bucket value, so ["A B"] and ["A","B"] can never collide.  Named
+ *  rather than inlined: written as a raw character it is INVISIBLE in
+ *  the source and unmatchable by search. */
+const PATH_KEY = '\u0000';
 
 /**
  * The pivoted matrix — a READ-ONLY report view.
@@ -115,6 +120,28 @@ export default function PivotView({
   const drillRef = useRef<DrillHandle>(null);
   // Opt-in (default off), so an ordinary report carries no buttons at all.
   const canDrill = model.drillDown ?? false;
+  // Display label per bucket path, so a drill can name a row's whole
+  // ANCESTRY and not just its leaf.  "Bolt" alone stops identifying
+  // anything the moment two companies each have a customer called that
+  // — and a pivot exists precisely because bucket names recur under
+  // different parents.  Labels, never the raw path: a month bucket's
+  // key is `2026-01` while its header reads `Jan 2026`.
+  const labelByPath = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const r of result.bodyRows) m.set(r.path.join(PATH_KEY), r.label);
+    return m;
+  }, [result.bodyRows]);
+  const labelsFor = (path: string[]) => path.map(
+    (bucket, d) => labelByPath.get(path.slice(0, d + 1).join(PATH_KEY)) ?? bucket,
+  );
+  // Column coordinates for leaf column ``i`` — the query path plus what
+  // to call it.  The Total column passes its own (empty path, "Total"),
+  // which is what makes it drillable at all: an empty colPath means
+  // "every column", which is exactly what a Total re-aggregates over.
+  const leafCoords = (i: number) => {
+    const { colPath, valueKey } = splitLeafId(result.leafIds[i]);
+    return { colPath, colLabel: colPath.join(' · '), valueKey };
+  };
   const toggle = (key: string) => setCollapsed((prev) => {
     const next = new Set(prev);
     if (next.has(key)) next.delete(key); else next.add(key);
@@ -124,7 +151,7 @@ export default function PivotView({
   // prefix (not just the parent) keeps a deep tree correct.
   const visibleRows = useMemo(() => result.bodyRows.filter((row) => {
     for (let d = 1; d < row.path.length; d += 1) {
-      if (collapsed.has(row.path.slice(0, d).join('\u0000'))) return false;
+      if (collapsed.has(row.path.slice(0, d).join(PATH_KEY))) return false;
     }
     return true;
   }), [result.bodyRows, collapsed]);
@@ -737,7 +764,9 @@ export default function PivotView({
                       <button
                         type="button"
                         onClick={() => drillRef.current?.open({
-                          rowPath: row.path, rowLabel: row.label, leafIdx: i,
+                          rowPath: row.path,
+                          rowLabels: labelsFor(row.path),
+                          ...leafCoords(i),
                         })}
                         className={valueButton}
                         // No ``title`` and no ``aria-label``.  Native
@@ -760,7 +789,10 @@ export default function PivotView({
                 <td
                   key={`tot-${i}`}
                   className={cn(
-                    cellPad, stickyTotalCell,
+                    // ``p-0`` when drillable: the padding rides the button
+                    // instead, exactly as it does on a leaf value cell.
+                    canDrill && value !== null ? 'p-0' : cellPad,
+                    stickyTotalCell,
                     // Same trap as the row-label column: no ``relative``,
                     // or this stops being a frozen column.
                     'text-right tabular-nums whitespace-nowrap font-semibold border-l border-border',
@@ -778,9 +810,31 @@ export default function PivotView({
                       className="absolute inset-0 bg-muted/30 group-hover/prow:opacity-0 pointer-events-none"
                     />
                   )}
-                  <span className="relative">
-                    {renderCell(value, model.values[i].key, model.values[i].aggFn)}
-                  </span>
+                  {/* The Total column drills too, and must: it sits
+                      inline with the body rows and looks exactly like
+                      them, so "figures open their rows" with one silent
+                      exception is a rule nobody can learn.  An empty
+                      ``colPath`` IS the Total's own definition — every
+                      column — so the same query answers it. */}
+                  {canDrill && value !== null ? (
+                    <button
+                      type="button"
+                      onClick={() => drillRef.current?.open({
+                        rowPath: row.path,
+                        rowLabels: labelsFor(row.path),
+                        colPath: [],
+                        colLabel: 'Total',
+                        valueKey: model.values[i].key,
+                      })}
+                      className={cn(valueButton, 'relative')}
+                    >
+                      {renderCell(value, model.values[i].key, model.values[i].aggFn)}
+                    </button>
+                  ) : (
+                    <span className="relative">
+                      {renderCell(value, model.values[i].key, model.values[i].aggFn)}
+                    </span>
+                  )}
                 </td>
               ))}
             </tr>
@@ -825,11 +879,10 @@ export default function PivotView({
             <tr className="border-t-2 border-border">
               <th
                 scope="row"
-                // Blue is the INTERACTION colour here — value cells turn
-                // primary on hover because they drill down.  The total row
-                // wore the same blue while being entirely unclickable, so
-                // the one colour meant two things.  Weight + a top rule
-                // carry the emphasis instead.
+                // Blue is the INTERACTION colour here — a figure turns
+                // primary on hover because it drills down.  This LABEL
+                // never does (it names the band, it isn't a figure), so
+                // it keeps weight + the top rule and stays uncoloured.
                 className={cn(cellPad, stickyCol, 'text-left bg-muted font-semibold text-foreground')}
               >
                 Total
@@ -838,23 +891,56 @@ export default function PivotView({
                 <td
                   key={result.leafIds[i]}
                   className={cn(
-                    cellPad,
+                    canDrill && value !== null ? 'p-0' : cellPad,
                     'bg-muted font-semibold text-foreground tabular-nums text-right whitespace-nowrap',
                   )}
                 >
-                  {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
+                  {/* The grand total drills as well — an EMPTY rowPath
+                      means "every row", so the same query serves it.
+                      Stopping at the body would leave the rule as
+                      "figures open their rows, except in the footer",
+                      which is the split this pass exists to remove. */}
+                  {canDrill && value !== null ? (
+                    <button
+                      type="button"
+                      onClick={() => drillRef.current?.open({
+                        rowPath: [], rowLabels: [], ...leafCoords(i),
+                      })}
+                      className={valueButton}
+                    >
+                      {renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))}
+                    </button>
+                  ) : (
+                    renderCell(value, result.leafValueKeys[i], leafAggFn(result, i))
+                  )}
                 </td>
               ))}
-              {/* Bottom-right corner: the whole report in one figure. */}
+              {/* Bottom-right corner: the whole report in one figure —
+                  so both paths are empty, and the drill returns every
+                  row the report was built from. */}
               {result.grandRowTotal.map((value, i) => (
                 <td
                   key={`gtot-${i}`}
                   className={cn(
-                    cellPad, stickyTotalHead,
+                    canDrill && value !== null ? 'p-0' : cellPad,
+                    stickyTotalHead,
                     'font-semibold text-foreground tabular-nums text-right whitespace-nowrap border-l border-border',
                   )}
                 >
-                  {renderCell(value, model.values[i].key, model.values[i].aggFn)}
+                  {canDrill && value !== null ? (
+                    <button
+                      type="button"
+                      onClick={() => drillRef.current?.open({
+                        rowPath: [], rowLabels: [], colPath: [],
+                        colLabel: 'Total', valueKey: model.values[i].key,
+                      })}
+                      className={valueButton}
+                    >
+                      {renderCell(value, model.values[i].key, model.values[i].aggFn)}
+                    </button>
+                  ) : (
+                    renderCell(value, model.values[i].key, model.values[i].aggFn)
+                  )}
                 </td>
               ))}
             </tr>
@@ -876,13 +962,7 @@ export default function PivotView({
           mounted here it re-rendered the whole matrix on every click.
           Not mounted at all when drilling is switched off. */}
       {canDrill && (
-        <DrillDialog
-          ref={drillRef}
-          rows={rows}
-          model={model}
-          columns={columns}
-          leafIds={result.leafIds}
-        />
+        <DrillDialog ref={drillRef} rows={rows} model={model} columns={columns} />
       )}
 
 

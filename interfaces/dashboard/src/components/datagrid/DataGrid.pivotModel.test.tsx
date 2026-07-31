@@ -122,7 +122,7 @@ describe('stored pivot settings survive the model rebuild', () => {
   it('carries drillDown', async () => {
     stored = { enabled: true, model: { ...FULL, drillDown: true } };
     await openPanel();
-    expect(box('Click a figure to see its rows').checked).toBe(true);
+    expect(box('Open the rows behind a figure').checked).toBe(true);
   });
 
   it('leaves an unset flag off — the default is not "sticky true"', async () => {
@@ -131,6 +131,6 @@ describe('stored pivot settings survive the model rebuild', () => {
     expect(box('Hide columns with no values').checked).toBe(false);
     expect(box('Keep row labels in view').checked).toBe(false);
     expect(box('Keep Total column in view').checked).toBe(false);
-    expect(box('Click a figure to see its rows').checked).toBe(false);
+    expect(box('Open the rows behind a figure').checked).toBe(false);
   });
 });

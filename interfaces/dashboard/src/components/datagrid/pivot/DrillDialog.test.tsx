@@ -93,9 +93,28 @@ describe('drilling is opt-in', () => {
         />,
       );
     });
-    // PTG/Ann and CFT/Bo hold numbers; the other two intersections are
-    // empty and stay dashes rather than becoming empty buttons.
-    expect(figures()).toHaveLength(2);
+    // Two leaf intersections hold numbers (PTG/Ann, CFT/Bo) and each
+    // row's Total holds one — four in all.  The other two intersections
+    // are empty and stay dashes rather than becoming empty buttons.
+    expect(figures()).toHaveLength(4);
+  });
+
+  it('drills the Total column and the footer too — no silent exceptions', async () => {
+    // The rule has to be "a figure opens its rows", full stop.  The
+    // Total column sits inline with the body and looks exactly like it,
+    // so one unclickable column teaches nothing except that clicking is
+    // unreliable.  Same for the grand total.
+    await act(async () => {
+      render(
+        <PivotView
+          rows={ROWS} model={{ ...BASE, drillDown: true }}
+          columns={COLUMNS} padding="py-3"
+        />,
+      );
+    });
+    const total = document.querySelectorAll('tbody tr[data-prow] td:last-child button');
+    expect(total.length).toBe(2);                       // one per body row
+    expect(document.querySelectorAll('tfoot button').length).toBeGreaterThan(0);
   });
 });
 
@@ -131,6 +150,85 @@ describe('the dialog answers for the cell that opened it', () => {
     // The CFT/Bo cell has exactly one load behind it.
     await act(async () => { figure('50').click(); });
     expect(screen.getByRole('dialog').textContent).toMatch(/1 row\b/);
+  });
+
+  it('names the row\'s whole ANCESTRY, not just its leaf bucket', async () => {
+    // "Bolt" stops identifying anything the moment two companies each
+    // have a customer by that name — and a pivot exists precisely
+    // because bucket names recur under different parents.  Two Anns
+    // here, under PTG and under CFT.
+    const nested = [
+      { id: 1, company: 'PTG', customer: 'Ann', driver: 'Dee', rate: 100 },
+      { id: 2, company: 'CFT', customer: 'Ann', driver: 'Dee', rate: 700 },
+    ];
+    const cols: AnyColumn[] = [
+      { key: 'company', label: 'Company', pivotable: true },
+      { key: 'customer', label: 'Customer', pivotable: true },
+      { key: 'driver', label: 'Driver', pivotable: true },
+      { key: 'rate', label: 'Rate', aggregable: true },
+    ];
+    await act(async () => {
+      render(
+        <PivotView
+          rows={nested}
+          model={{
+            rows: ['company', 'customer'], columns: ['driver'],
+            values: [{ key: 'rate', aggFn: 'sum' }], drillDown: true,
+          }}
+          columns={cols} padding="py-3"
+        />,
+      );
+    });
+    // Target the CUSTOMER row, not its company parent — the parent
+    // carries the same 700 (it has one child), and its own title is
+    // correctly just "CFT".  Pick the row whose label reads Ann and
+    // sits under CFT: the second data row in the tree.
+    const annRow = Array.from(
+      document.querySelectorAll('tbody tr[data-prow]'),
+    ).find((tr) => tr.querySelector('th')?.textContent?.includes('Ann')
+      && tr.querySelector('td button')?.textContent?.trim() === '700')!;
+    await act(async () => {
+      (annRow.querySelector('td button') as HTMLButtonElement).click();
+    });
+    // Not "Ann · Dee" — that would name both customers identically.
+    expect(screen.getByRole('dialog').textContent).toContain('CFT › Ann');
+  });
+
+  it('says which figure a Total came from', async () => {
+    await act(async () => {
+      render(
+        <PivotView
+          rows={ROWS} model={{ ...BASE, drillDown: true }}
+          columns={COLUMNS} padding="py-3"
+        />,
+      );
+    });
+    // The Total column has no column bucket, so without an explicit
+    // label its dialog would open on a bare row name with nothing
+    // saying which figure was clicked.
+    const total = document.querySelectorAll(
+      'tbody tr[data-prow] td:last-child button',
+    )[1] as HTMLButtonElement;
+    await act(async () => { total.click(); });
+    expect(screen.getByRole('dialog').textContent).toContain('Total');
+  });
+
+  it('drills the grand total to every row in the report', async () => {
+    await act(async () => {
+      render(
+        <PivotView
+          rows={ROWS} model={{ ...BASE, drillDown: true }}
+          columns={COLUMNS} padding="py-3"
+        />,
+      );
+    });
+    const foot = document.querySelectorAll('tfoot button');
+    await act(async () => { (foot[foot.length - 1] as HTMLButtonElement).click(); });
+    const text = screen.getByRole('dialog').textContent ?? '';
+    // An empty row path means every row — and it has to SAY so rather
+    // than open with a blank title.
+    expect(text).toContain('All rows');
+    expect(text).toContain('3 rows');
   });
 
   it('is not mounted at all until a figure is clicked', async () => {

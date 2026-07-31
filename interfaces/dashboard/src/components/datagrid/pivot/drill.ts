@@ -16,17 +16,35 @@ import { bucketOf, type PivotModel } from './pivot';
 
 /** Which cell the operator opened.
  *
- *  Carries the row's PATH and LABEL rather than the whole `PivotBodyRow`:
- *  everything else on that object (depth, children, cells, totals)
- *  describes how the row is drawn, which the drill has no business
- *  holding on to. */
+ *  Carries only what the drill needs: the coordinates to QUERY by and
+ *  the words to SHOW.  Not the whole `PivotBodyRow` — depth, children,
+ *  cells and totals all describe how a row is drawn, which the dialog
+ *  has no business holding on to.
+ *
+ *  ⚠️ The query keys and the display strings are SEPARATE fields, and
+ *  that is not redundancy.  A bucket's key is `2026-01` while its header
+ *  reads `Jan 2026`; joining the key path for the title would print the
+ *  raw buckets back at the reader. */
 export interface DrillTarget {
-  /** Bucket path of the row, outermost first.  May be a PREFIX. */
+  /** Bucket path of the row, outermost first.  May be a PREFIX (a
+   *  collapsed parent), and EMPTY means every row — the grand total. */
   rowPath: string[];
-  /** What to call it in the dialog's title. */
-  rowLabel: string;
-  /** Index into `PivotResult.leafIds` — identifies the column + measure. */
-  leafIdx: number;
+  /** Display label per level of `rowPath`, outermost first.
+   *
+   *  The whole ancestor chain, not just the leaf: "Bolt" alone is
+   *  ambiguous the moment two companies both have a customer by that
+   *  name, and a pivot's whole point is that the same bucket name
+   *  recurs under different parents. */
+  rowLabels: string[];
+  /** Column bucket path.  EMPTY means every column — which is exactly
+   *  what the Total column aggregates over. */
+  colPath: string[];
+  /** What to call the column coordinate: the bucket path for a leaf
+   *  cell, "Total" for the Total column, empty for a report with no
+   *  column dimension (where there is no column coordinate to name). */
+  colLabel: string;
+  /** Which measure the figure came from. */
+  valueKey: string;
 }
 
 /**

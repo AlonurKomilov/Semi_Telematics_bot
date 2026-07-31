@@ -24,7 +24,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../ui/dialog';
 import type { AnyColumn } from '../../../types';
-import { splitLeafId, type PivotModel } from './pivot';
+import type { PivotModel } from './pivot';
 import { pivotCellRows, type DrillTarget } from './drill';
 
 /** What PivotView holds a ref to.  One verb: open this cell. */
@@ -37,15 +37,13 @@ interface Props {
   rows: Record<string, unknown>[];
   model: PivotModel;
   columns: AnyColumn[];
-  /** `PivotResult.leafIds` — decodes a leafIdx into column path + measure. */
-  leafIds: string[];
 }
 
 /** How many of the grid's own columns the dialog shows. */
 const MAX_COLS = 6;
 
 const DrillDialog = forwardRef<DrillHandle, Props>(function DrillDialog(
-  { rows, model, columns, leafIds }, ref,
+  { rows, model, columns }, ref,
 ) {
   const [target, setTarget] = useState<DrillTarget | null>(null);
   // ``open`` is stable, so a parent holding this ref never re-renders
@@ -65,25 +63,31 @@ const DrillDialog = forwardRef<DrillHandle, Props>(function DrillDialog(
 
   const view = useMemo(() => {
     if (!target) return null;
-    const { colPath, valueKey } = splitLeafId(leafIds[target.leafIdx]);
     return {
-      colPath,
-      measure: colByKey.get(valueKey),
-      sourceRows: pivotCellRows(rows, model, columns, target.rowPath, colPath),
+      measure: colByKey.get(target.valueKey),
+      sourceRows: pivotCellRows(rows, model, columns, target.rowPath, target.colPath),
     };
-  }, [target, leafIds, colByKey, rows, model, columns]);
+  }, [target, colByKey, rows, model, columns]);
 
   if (!target || !view) return null;
-  const { colPath, measure, sourceRows } = view;
+  const { measure, sourceRows } = view;
   const hidden = columns.filter((c) => !c.key.includes('::')).length - showCols.length;
+  // The row chain reads as a PATH (`›`), the column coordinate as a
+  // separate fact (`·`) — so "which group" and "which column" stay
+  // legible as two different things in one line.  With no row path at
+  // all this is the grand total, which has to say so rather than open
+  // with a bare column name.
+  const rowTitle = target.rowLabels.length > 0
+    ? target.rowLabels.join(' › ')
+    : 'All rows';
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) setTarget(null); }}>
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>
-            {target.rowLabel}
-            {colPath.length > 0 && ` · ${colPath.join(' · ')}`}
+            {rowTitle}
+            {target.colLabel && ` · ${target.colLabel}`}
           </DialogTitle>
           <DialogDescription>
             {sourceRows.length.toLocaleString()} row{sourceRows.length === 1 ? '' : 's'}

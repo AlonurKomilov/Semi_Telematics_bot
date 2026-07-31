@@ -478,7 +478,14 @@ export default function PivotPanel({
           Pivot
           <InfoTip
             size={12}
-            label="Summarise the rows currently in view. Filters, search and tabs still apply — pivot reports on what they left. Click any figure to see the rows behind it."
+            // The tail used to ASSERT "Click any figure to see the rows
+            // behind it."  Drilling now defaults off, so for every new
+            // report that sentence was false — the user clicked, nothing
+            // happened, and the only help on the surface was what misled
+            // them.  It points at the switch instead, which also carries
+            // the discoverability that a default-off feature otherwise
+            // loses.
+            label="Summarise the rows currently in view. Filters, search and tabs still apply — pivot reports on what they left. Turn on “Open the rows behind a figure” in Values to click into any number."
           />
         </h3>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close pivot panel">
@@ -674,17 +681,20 @@ export default function PivotPanel({
                       label="Keep Total column in view"
                     />
                   )}
-                  {/* Only VALUE cells drill, so the switch lives with the
-                      values.  Phrased as the gesture rather than the
-                      feature name ("drill-down" is our word, not the
-                      reader's) — and it has to say what it does, because
-                      OFF by default means nobody discovers it by
-                      accident. */}
+                  {/* Only figures drill, so the switch lives with the
+                      values that produce them.  Named for what it does
+                      to the REPORT, in the imperative — the same voice
+                      as its three siblings ("Keep…", "Hide…").  An
+                      earlier draft read "Click a figure to see its
+                      rows", which instructed the user instead: four
+                      identical checkboxes, one written as a tutorial
+                      line.  "Drill-down" stays out of it — that is our
+                      word, not the reader's. */}
                   {axis === 'values' && keys.length > 0 && (
                     <ZoneSetting
                       checked={model.drillDown ?? false}
                       onChange={(v) => onChange({ ...model, drillDown: v })}
-                      label="Click a figure to see its rows"
+                      label="Open the rows behind a figure"
                     />
                   )}
                   {axis === 'columns' && keys.length > 0 && (
