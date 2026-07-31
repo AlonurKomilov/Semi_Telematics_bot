@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/button';
 import { InfoTip } from '../../components/tooltip';
 import { toneClasses, toneText } from '../../lib/status';
 import DataGrid from '../../components/datagrid';
+import OnboardingQueue from './OnboardingQueue';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import {
   PageHeader,
@@ -329,6 +330,10 @@ export default function Drivers() {
           </span>
         }
       />
+
+      {/* The recruiting hand-off — only for holders of the onboarding
+          grant, and only when someone is actually waiting. */}
+      {viewHas('can_onboard_drivers') && <OnboardingQueue />}
 
       {error && <div className="mb-3"><ErrorState message={error} /></div>}
       {success && <p className="text-ok text-sm mb-3">{success}</p>}

@@ -87,6 +87,7 @@ _JOB_META = {
     "driver_samsara_sync":            ("Integrations", "Sync drivers from Samsara"),
     # ── Recruiting ──
     "application_draft_reminders":    ("Recruiting", "Nudge abandoned apply drafts (per-link opt-in policy)"),
+    "carrier_intake_lifecycle":       ("Recruiting", "Remind carriers about unfilled self-fill links + warn managers before one lapses"),
     # ── Storage & data lifecycle ──
     "storage_sync":                   ("Storage & data", "Upload queued media to the customer's cloud (Drive)"),
     "data_retention":                 ("Storage & data", "Prune every retention target to its window"),
@@ -142,6 +143,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     import interfaces.bot.geofences              # noqa: F401  geofence_check
     import interfaces.bot.maintenance            # noqa: F401  maintenance_* (x4)
     import features.drivers.documents.alert      # noqa: F401  driver_doc_expiry_check
+    import features.drivers.onboarding.alert     # noqa: F401  driver_onboarding_stale_check
     import interfaces.bot.driver_samsara_sync    # noqa: F401  driver_samsara_sync
     import capabilities.scorecards.jobs             # noqa: F401  scorecard_drop_alerts
 
@@ -434,6 +436,19 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     scheduler.add_job(
         job_send_draft_reminders, "interval",
         hours=1, args=[app], id="application_draft_reminders",
+        max_instances=1, coalesce=True,
+    )
+
+    # Carrier self-fill link lifecycle — daily, not hourly: both passes are
+    # one-shot per link (marker columns), so a finer cadence would only add
+    # queries.  09:00 UTC lands in business hours across US operating
+    # regions, which is when a manager can actually act on a warning.
+    from features.carrier_directory.intake_lifecycle import (
+        job_carrier_intake_lifecycle,
+    )
+    scheduler.add_job(
+        job_carrier_intake_lifecycle, "cron",
+        hour=9, minute=15, args=[app], id="carrier_intake_lifecycle",
         max_instances=1, coalesce=True,
     )
     scheduler.add_job(

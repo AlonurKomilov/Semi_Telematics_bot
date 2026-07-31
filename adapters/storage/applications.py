@@ -325,6 +325,30 @@ class ApplicationsMixin(_MixinBase):
         )
         return [dict(r) for r in await cur.fetchall()]
 
+    async def list_stale_approved_applications(
+        self, account_id: int, *, older_than_days: int = 3, limit: int = 50,
+    ) -> list[dict]:
+        """Approved applicants nobody has onboarded yet, waiting too long.
+
+        The failure mode the recruiting↔onboarding split creates: two
+        people now own the two halves, so a hand-off can stall silently.
+        Rows whose ``reviewed_at`` is blank (approved before the column
+        existed) are never nudged — an unknown wait isn't a late one.
+        """
+        import datetime as _dt
+        cutoff = (
+            _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(days=older_than_days)
+        ).isoformat()
+        cur = await self._db.execute(
+            """SELECT id, reference, first_name, last_name, email, reviewed_at
+                 FROM driver_applications
+                WHERE account_id = ? AND status = 'approved'
+                  AND reviewed_at <> '' AND reviewed_at < ?
+                ORDER BY reviewed_at ASC LIMIT ?""",
+            (account_id, cutoff, limit),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
     async def find_duplicate_applications(self, account_id: int, app_id: int) -> list[dict]:
         """Other applications in this account that share the given one's SSN
         (blind index), email, or phone — the recruiter 're-applicant' panel.
@@ -440,17 +464,18 @@ class ApplicationsMixin(_MixinBase):
         on the current status (an atomic compare-and-set) and returns False
         if it didn't match — the hire flow uses this so two concurrent
         converts can't both claim one applicant."""
+        now = self._now()
         if expect_status is not None:
             cur = await self._db.execute(
-                "UPDATE driver_applications SET status = ?, reviewed_by = ? "
-                "WHERE id = ? AND account_id = ? AND status = ?",
-                (status, reviewed_by, app_id, account_id, expect_status),
+                "UPDATE driver_applications SET status = ?, reviewed_by = ?, "
+                "reviewed_at = ? WHERE id = ? AND account_id = ? AND status = ?",
+                (status, reviewed_by, now, app_id, account_id, expect_status),
             )
         else:
             cur = await self._db.execute(
-                "UPDATE driver_applications SET status = ?, reviewed_by = ? "
-                "WHERE id = ? AND account_id = ?",
-                (status, reviewed_by, app_id, account_id),
+                "UPDATE driver_applications SET status = ?, reviewed_by = ?, "
+                "reviewed_at = ? WHERE id = ? AND account_id = ?",
+                (status, reviewed_by, now, app_id, account_id),
             )
         await self._db.commit()
         return cur.rowcount > 0

@@ -27,6 +27,7 @@ from capabilities.warehouse.telemetry import router as telemetry_routes
 from capabilities.jobs import router as jobs_routes
 from interfaces.api.routes import system as system_routes
 from features.applications import router as applications_routes
+from features.drivers.onboarding import router as driver_onboarding_routes
 from features.carrier_directory import router as carrier_directory_routes
 from capabilities.permissions import router as permissions_routes
 from interfaces.api.routes import webhooks as webhooks_routes
@@ -467,6 +468,7 @@ def create_api() -> FastAPI:
         app.include_router(jobs_routes.router, prefix=prefix)
         app.include_router(system_routes.router, prefix=prefix)
         app.include_router(applications_routes.router, prefix=prefix)
+        app.include_router(driver_onboarding_routes.router, prefix=prefix)
         app.include_router(carrier_directory_routes.router, prefix=prefix)
         app.include_router(permissions_routes.router, prefix=prefix)
         app.include_router(maintenance_routes.router, prefix=prefix)

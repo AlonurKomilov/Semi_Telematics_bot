@@ -675,6 +675,9 @@ async def migrate_config_perm_keys(conn) -> None:
         ("can_manage_role_pages", "can_manage_config_role"),
         ("can_manage_role_config", "can_manage_config_role"),
         ("can_manage_scorecard_rules", "can_manage_config_all"),
+        # Hiring became a Drivers sub-feature (2026-07-30): an owner who had
+        # granted or revoked it keeps that decision under the new name.
+        ("can_convert_to_driver", "can_onboard_drivers"),
     ]
     try:
         import json as _json
@@ -683,6 +686,7 @@ async def migrate_config_perm_keys(conn) -> None:
             " WHERE permissions LIKE '%can_manage_role_pages%'"
             "    OR permissions LIKE '%can_manage_role_config%'"
             "    OR permissions LIKE '%can_manage_scorecard_rules%'"
+            "    OR permissions LIKE '%can_convert_to_driver%'"
         )
         rows = await cur.fetchall()
         changed = 0

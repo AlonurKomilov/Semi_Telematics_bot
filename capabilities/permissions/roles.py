@@ -195,12 +195,16 @@ class FeatureSet:
     can_inspections_vehicle: bool = False
     # Recruiting — driver-application intake.  ``can_manage_applications``
     # gates the Applications dashboard + recruiting-link management;
-    # ``can_convert_to_driver`` is the narrower right to turn an approved
-    # applicant into a driver/invite WITHOUT the broad ``can_invite``
-    # (so a recruiter can hire without being granted full user-invite
-    # power).  The public applicant form needs neither — it's unauthed.
+    # The public applicant form needs neither — it's unauthed.
     can_manage_applications: bool = False
-    can_convert_to_driver: bool = False
+    # Driver ONBOARDING — turning an approved applicant into a driver +
+    # invite.  A Drivers sub-feature (features/drivers/onboarding/), not an
+    # Applications action: approving is recruiting, minting a user is roster
+    # work.  Deliberately narrower than BOTH neighbours — ``can_invite``
+    # (any role, any time) and ``can_manage_drivers`` (roster admin, which
+    # Fleet holds) — so hiring is granted on purpose, never inherited.
+    # Renamed from ``can_convert_to_driver`` 2026-07-30.
+    can_onboard_drivers: bool = False
     # Carrier Knowledge Base — a recruiter-facing reference directory of the
     # external carriers the account recruits for (pre-qual criteria, sales
     # sheet, process notes).  ``can_carrier_directory`` reads it (recruiter +
@@ -285,7 +289,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_manage_drivers=True,
         can_inspections_all=True, can_inspections_vehicle=True,
-        can_manage_applications=True, can_convert_to_driver=True,
+        can_manage_applications=True, can_onboard_drivers=True,
         can_carrier_directory=True, can_manage_carrier_directory=True,
     ),
     Role.ADMIN: FeatureSet(
@@ -318,7 +322,7 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_driver_docs=True, can_driver_docs_own=True,
         can_manage_drivers=True,
         can_inspections_all=True, can_inspections_vehicle=True,
-        can_manage_applications=True, can_convert_to_driver=True,
+        can_manage_applications=True, can_onboard_drivers=True,
         can_carrier_directory=True, can_manage_carrier_directory=True,
     ),
     Role.FLEET: FeatureSet(
@@ -410,7 +414,13 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_manage_users=True,                 # User admin
         can_coaching_admin=True,               # Training / coaching workflows
         can_manage_driver_docs=True,           # CDL / medical / docs
-        can_manage_drivers=True,               # driver roster (onboarding is HR's job)
+        can_manage_drivers=True,               # driver roster
+        # Onboarding is HR's job, so it's seeded on the BASE role, not the
+        # manager tier: an HR employee who administers the roster should be
+        # able to finish a hire the recruiter approved.  Fleet holds
+        # can_manage_drivers too but NOT this — hiring is granted on
+        # purpose, never inherited from truck administration.
+        can_onboard_drivers=True,
         can_inspections_all=True,              # PTI review for compliance audit
         # Read-only context — HR needs to see WHO is doing WHAT,
         # not edit fleet ops:
@@ -467,11 +477,10 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
     ),
     # RECRUITER — driver acquisition / onboarding.  Operationally a
     # driver-equivalent baseline (no fleet ops / costs / admin) PLUS the
-    # two recruiting rights granted by default so the role is USABLE out of
-    # the box: can_manage_applications (the applications surface) and
-    # can_convert_to_driver (hire → driver invite).  Owners can still
-    # tighten or widen any flag per account from the Permissions matrix
-    # (e.g. revoke can_convert_to_driver for a screening-only recruiter).
+    # recruiting right granted by default so the role is USABLE out of the
+    # box: can_manage_applications (the applications surface).  Onboarding
+    # is deliberately NOT seeded here — see the flag's comment.  Owners can
+    # still tighten or widen any flag per account from the Permissions page.
     # Hierarchy rank is 2 (not 1 like driver) so a matrix-granted
     # can_invite actually lets the recruiter invite drivers.
     Role.RECRUITER: FeatureSet(
@@ -503,11 +512,14 @@ ROLE_PERMISSIONS: dict[Role, FeatureSet] = {
         can_coaching_admin=False, can_coaching_view_own=False,
         can_manage_driver_docs=False, can_driver_docs_own=False,
         can_inspections_all=False, can_inspections_vehicle=False,
-        # Recruiting IS the recruiter's defining function — granted by
-        # default so the role is usable out of the box.  Owners can
-        # narrow to screening-only by revoking can_convert_to_driver in
-        # the Permissions matrix.
-        can_manage_applications=True, can_convert_to_driver=True,
+        # Recruiting IS the recruiter's defining function — the pipeline
+        # is granted by default so the role is usable out of the box.
+        # ONBOARDING is not: approving is recruiting, minting a user is
+        # roster work, so the recruiter approves and hands over to whoever
+        # administers drivers (owner decision 2026-07-30).  An owner who
+        # wants the old one-person flow just ticks Onboarding for the
+        # recruiter on the Permissions page.
+        can_manage_applications=True, can_onboard_drivers=False,
         can_carrier_directory=True,   # read the carrier directory (managers also edit)
     ),
 }
@@ -583,12 +595,12 @@ TIER_GRANTS: dict[Role, RoleTier] = {
     ),
     Role.HR: RoleTier(
         senior_label="Manager", base_label="Employee",
-        # HR base already invites + manages users; the lead adds schedule
-        # ownership + recruiting-pipeline oversight.
+        # HR base already invites, manages users and administers drivers
+        # (onboarding included); the lead adds schedule ownership +
+        # recruiting-pipeline oversight.
         grants=frozenset({
             "can_manage_work_hours", "can_manage_applications",
-            "can_convert_to_driver", "can_manage_role_bot",
-            "can_manage_config_role",
+            "can_manage_role_bot", "can_manage_config_role",
         }),
     ),
     Role.ACCOUNTING: RoleTier(

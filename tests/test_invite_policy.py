@@ -78,10 +78,12 @@ class TestManagerTier:
         assert TIER_GRANTS[Role.DISPATCHER].grants == frozenset(
             {"can_manage_work_hours", "can_manage_poi_layers", "can_invite",
              "can_manage_role_bot", "can_manage_config_role"})
+        # Onboarding left this tier for the HR BASE role (2026-07-30): an
+        # HR employee who administers the roster finishes the hire the
+        # recruiter approved, so it can't be a manager-only grant.
         assert TIER_GRANTS[Role.HR].grants == frozenset(
             {"can_manage_work_hours", "can_manage_applications",
-             "can_convert_to_driver", "can_manage_role_bot",
-             "can_manage_config_role"})
+             "can_manage_role_bot", "can_manage_config_role"})
         assert TIER_GRANTS[Role.ACCOUNTING].grants == frozenset(
             {"can_work_orders_all", "can_maintenance_all",
              "can_parts", "can_service_tasks", "can_manage_role_bot",

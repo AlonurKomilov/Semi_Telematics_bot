@@ -155,6 +155,11 @@ export const PERM_GROUPS: PermGroup[] = [
       { allKey: 'can_geofence_all', vehicleKey: 'can_geofence_vehicle', kind: 'feature', label: 'Geofences', scoped: true },
       { key: 'can_kpi', kind: 'feature', label: 'KPI & Performance', description: 'Account-wide performance analytics — dispatcher grades first; fleet/safety/driver sections later' },
       { key: 'can_manage_driver_docs', kind: 'feature', writeLevel: true, label: 'Drivers', description: 'Manage — driver list + document management' },
+      // A sub-feature, not a component: features/drivers/onboarding/ has
+      // its own home AND its own hub contribution (the stale-approval
+      // alert).  Deliberately separate from Driver roster so hiring is
+      // granted on purpose — Fleet administers drivers but does not hire.
+      { key: 'can_onboard_drivers',    kind: 'subfeature', label: 'Onboarding', indented: true, description: 'Finish the hire a recruiter approved — creates the driver’s invite' },
       { key: 'can_manage_drivers',     kind: 'component', label: 'Driver roster', indented: true, description: 'Invite drivers, assign trucks, link Samsara/TMS, activate / deactivate' },
       // NOTE: can_driver_docs_own (a driver viewing their OWN docs) is a
       // driver self-service flag — it lives in the "Driver — self-service"
@@ -217,8 +222,6 @@ export const PERM_GROUPS: PermGroup[] = [
     title: 'Recruiting',
     flags: [
       { key: 'can_manage_applications', kind: 'feature', writeLevel: true, label: 'Applications', description: 'Manage — recruiting links + the driver-application dashboard' },
-      // Specific verb kept: hiring is one concrete act, not feature admin.
-      { key: 'can_convert_to_driver',  kind: 'action', label: 'Hire Applicant', indented: true, description: 'Convert an approved application into a driver / invite — without full Send-Invites power' },
       { key: 'can_carrier_directory', kind: 'feature', label: 'Carrier Directory', description: 'Reference directory of the external carriers we recruit for (pre-qual, presentation, process notes)' },
       { key: 'can_manage_carrier_directory', kind: 'action', label: 'Manage', indented: true, description: 'Add, edit & delete carriers — without this the directory is read-only' },
     ],

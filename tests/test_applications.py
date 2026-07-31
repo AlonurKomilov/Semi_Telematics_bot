@@ -332,28 +332,45 @@ class TestPipelineEnforcement:
             assert r2.status_code == 409
 
     async def test_convert_requires_approved(self, api):
+        """The pipeline gate, now across the recruiting↔onboarding HANDOFF.
+
+        The recruiter walks the application to 'approved' and stops there
+        — hiring moved to features/drivers/onboarding/ (2026-07-30)
+        because it mints a USER.  So this test drives two actors, and the
+        recruiter's own 403 on the hire is part of the contract.
+        """
+        from interfaces.api.auth import create_jwt
         app, db = api
         acct = await db.create_account("Pipe C")
         rec = await db.create_user(551003, acct.id, role=Role.RECRUITER)
         headers = _recruiter_headers(rec, acct)
+        hr = await db.create_user(551004, acct.id, role=Role.HR)
+        hr_headers = {"Authorization": f"Bearer {create_jwt(hr.telegram_id or 0, acct.id, 'hr', user_id=hr.id)}"}
+        convert = lambda aid: f"/api/drivers/onboarding/{aid}/convert"   # noqa: E731
+
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
             app_id = await self._submit(c, headers)
-            # Hiring straight from 'submitted' is blocked.
-            r = await c.post(f"/api/applications/{app_id}/convert",
-                             headers=headers)
+            # The recruiter approves but never hires — that grant is HR's.
+            assert (await c.post(convert(app_id), headers=headers)).status_code == 403
+            # Hiring straight from 'submitted' is blocked, even for HR.
+            r = await c.post(convert(app_id), headers=hr_headers)
             assert r.status_code == 409
             assert "approved" in r.json()["detail"].lower()
             # Record the required pre-hire checks — 'approved' is gated on them.
             for ck in ("psp", "mvr", "clearinghouse"):
                 await c.patch(f"/api/applications/{app_id}/vetting",
                               headers=headers, json={"check": ck, "done": True})
-            # Walk the pipeline to 'approved', then the hire succeeds.
+            # Walk the pipeline to 'approved', then the handoff succeeds.
             for st in ("screening", "interview", "approved"):
                 rr = await c.patch(f"/api/applications/{app_id}/status",
                                    headers=headers, json={"status": st})
                 assert rr.status_code == 200, (st, rr.text)
-            r2 = await c.post(f"/api/applications/{app_id}/convert",
-                              headers=headers)
+            # It reaches HR's queue WITHOUT the recruiting dashboard grant.
+            q = await c.get("/api/drivers/onboarding/queue", headers=hr_headers)
+            assert q.status_code == 200, q.text
+            assert any(a["id"] == app_id for a in q.json()["applicants"])
+
+            r2 = await c.post(convert(app_id), headers=hr_headers)
             assert r2.status_code == 200, r2.text
             assert r2.json()["status"] == "hired"
             assert "/signup/" in r2.json()["invite_link"]

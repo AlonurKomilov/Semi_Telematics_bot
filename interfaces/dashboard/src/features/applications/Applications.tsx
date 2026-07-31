@@ -988,7 +988,6 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
   const [app, setApp] = useState<AppDetail | null>(null);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
-  const [hireResult, setHireResult] = useState<string>('');
 
   useEffect(() => {
     apiJSON<AppDetail>(`/applications/${appId}`).then((d) => {
@@ -1031,19 +1030,6 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
     setBusy(true);
     try {
       await apiJSON(`/applications/${appId}/notes`, { method: 'PATCH', body: { notes } });
-    } finally { setBusy(false); }
-  };
-
-  const hire = async () => {
-    if (!confirm('Hire this applicant? This creates a driver invite link to share with them.')) return;
-    setBusy(true);
-    try {
-      const r = await apiJSON<{ invite_link: string }>(`/applications/${appId}/convert`, { method: 'POST' });
-      setHireResult(r.invite_link);
-      setApp((a) => a ? { ...a, status: 'hired' } : a);
-      onChanged();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Convert failed');
     } finally { setBusy(false); }
   };
 
@@ -1103,15 +1089,16 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
               ))}
             </div>
 
-            {hireResult ? (
-              <div className={`rounded-md p-3 text-sm ${statusClasses('hired')}`}>
-                <p className="font-medium">Invite created — share this link with the driver:</p>
-                <code className="text-xs break-all">{hireResult}</code>
+            {app.status === 'approved' && (
+              // Approving is where recruiting ends: onboarding mints a USER,
+              // so it belongs to driver administration and happens on
+              // Drivers → Onboarding (owner decision 2026-07-30).
+              <div className="rounded-md border border-border p-3 text-2xs text-muted-foreground">
+                <span className="font-medium text-foreground">Approved.</span>{' '}
+                Whoever administers drivers finishes the hire from
+                <span className="font-medium text-foreground"> Drivers → Onboarding</span> —
+                that step creates the driver invite.
               </div>
-            ) : app.status !== 'hired' && (
-              <Button onClick={hire} disabled={busy} size="sm" className="gap-1.5">
-                <UserPlus size={14} /> Hire — create driver invite
-              </Button>
             )}
 
             <Section title="Pre-hire checks">

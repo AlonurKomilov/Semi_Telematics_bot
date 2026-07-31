@@ -7563,3 +7563,98 @@ async def migrate_load_events(conn) -> None:
         logger.info("Migration 170: RLS enabled on load_events")
     except Exception as e:
         logger.warning("Migration 170: RLS setup failed: %s", e)
+
+
+@_register("172_public_sender_identity")
+async def migrate_public_sender_identity(conn) -> None:
+    """Give an account control over the name external parties see.
+
+    Until now the carrier self-fill page and its invite email printed
+    ``accounts.name`` — the tenant's registered name — to an outside
+    business with no employment relationship to it, with no way to
+    change or withhold it.  Two columns replace that hard-wiring:
+
+    * ``accounts.public_display_name`` — the account-wide outward name.
+    * ``carrier_profile.intake_display_name`` — a per-link override for
+      one carrier's invite.
+
+    Both default to '' meaning "not set"; the resolver in
+    features/carrier_directory/service.py walks override → account →
+    neutral wording and NEVER reaches ``accounts.name``.  Blank on both
+    is therefore a real answer (show nothing), not a missing value.
+    """
+    for table, name, decl in (
+        ("accounts", "public_display_name", "TEXT NOT NULL DEFAULT ''"),
+        ("carrier_profile", "intake_display_name", "TEXT NOT NULL DEFAULT ''"),
+    ):
+        try:
+            cur = await conn.execute(f"PRAGMA table_info({table})")
+            cols = {r[1] for r in await cur.fetchall()}
+            if name not in cols:
+                await conn.execute(
+                    f"ALTER TABLE {table} ADD COLUMN {name} {decl}"
+                )
+            await conn.commit()
+        except Exception as e:
+            logger.error("Migration 172 (%s.%s) failed: %s", table, name, e)
+            try:
+                await conn.rollback()
+            except Exception:
+                pass
+    logger.info("Migration 172: public sender-identity columns ready")
+
+
+@_register("173_carrier_intake_lifecycle")
+async def migrate_carrier_intake_lifecycle(conn) -> None:
+    """Track what actually HAPPENED to a carrier intake link, not just what
+    was requested.
+
+    ``intake_email`` records the address a manager typed; it was written
+    before the send was attempted and the send result was thrown away, so
+    the UI claimed "sent to X" for mail that never left.  ``intake_email_sent_at``
+    is stamped only on a confirmed hand-off to the relay.
+
+    The two ``*_at`` marker columns let the nightly sweep be idempotent: a
+    carrier gets at most one reminder and a manager at most one pre-expiry
+    warning per link, so a scheduler retry can't spam either side.
+    """
+    adds = [
+        ("intake_email_sent_at", "TEXT NOT NULL DEFAULT ''"),
+        ("intake_reminded_at", "TEXT NOT NULL DEFAULT ''"),
+        ("intake_expiry_warned_at", "TEXT NOT NULL DEFAULT ''"),
+    ]
+    try:
+        cur = await conn.execute("PRAGMA table_info(carrier_profile)")
+        cols = {r[1] for r in await cur.fetchall()}
+        for name, decl in adds:
+            if name not in cols:
+                await conn.execute(
+                    f"ALTER TABLE carrier_profile ADD COLUMN {name} {decl}"
+                )
+        await conn.commit()
+        logger.info("Migration 173: carrier intake lifecycle columns ready")
+    except Exception as e:
+        logger.error("Migration 173 failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
+@_register("174_application_reviewed_at")
+async def migrate_application_reviewed_at(conn) -> None:
+    """Stamp WHEN an application's status was last set.
+
+    The onboarding hand-off needs "approved N days ago", and the table
+    only carried ``submitted_at`` — so a fast approval of an old
+    application would have looked stale the moment it was approved.  The
+    stale-approval nudge (features/drivers/onboarding/alert.py) measures
+    this column; existing rows stay blank and are simply never nudged,
+    which is the honest default for approvals nobody timed.
+    """
+    await conn.execute(
+        "ALTER TABLE driver_applications "
+        "ADD COLUMN IF NOT EXISTS reviewed_at TEXT NOT NULL DEFAULT ''"
+    )
+    await conn.commit()
+    logger.info("Migration 174: driver_applications.reviewed_at ready")

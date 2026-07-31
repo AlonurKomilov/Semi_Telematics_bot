@@ -95,7 +95,7 @@ FLAG_MODULES: dict[str, frozenset[str]] = {
     # HR module means disabling HR turns recruiting OFF at the API too, not
     # just hidden in the nav — so "module off" is a real switch.
     "can_manage_applications": frozenset({"hr"}),
-    "can_convert_to_driver": frozenset({"hr"}),
+    "can_onboard_drivers": frozenset({"hr"}),   # the Drivers-family sub-feature
     # Accounting (costs + driver pay)
     "can_fuel_cost": frozenset({"accounting", "dispatch"}),
     "can_cost_per_mile": frozenset({"accounting", "fleet"}),

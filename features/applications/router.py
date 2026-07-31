@@ -18,7 +18,6 @@ RECRUITER surface (gated by can_manage_applications):
   GET    /applications/{id}     full detail (PII decrypted)
   PATCH  /applications/{id}/status
   PATCH  /applications/{id}/notes
-  POST   /applications/{id}/convert   → driver invite (can_convert_to_driver)
 
 SECURITY POSTURE for the public endpoint (no Turnstile by product
 decision — real drivers must not be blocked):
@@ -1397,88 +1396,10 @@ async def update_verification(
     return {"ok": True}
 
 
-@router.post("/{app_id:int}/convert")
-async def convert_to_driver(
-    app_id: int,
-    user: dict = Depends(require_permission("can_convert_to_driver")),
-    platform_db=Depends(get_platform_db),
-):
-    """Hire an applicant → mint a driver invite + mark the app hired.
-
-    Gated by the NARROW ``can_convert_to_driver`` (not the broad
-    ``can_invite``) so a recruiter can hire without full user-invite
-    power.  Returns the invite code + a /signup/<code> link the recruiter
-    shares with the new driver.  The invite carries
-    ``source_application_id`` so ``redeem_invite`` stamps this
-    application's ``converted_to_user_id`` once the driver onboards —
-    closing the application↔driver round-trip.
-    """
-    from adapters.storage import Role
-
-    app = await platform_db.get_driver_application(user["account_id"], app_id)
-    if not app:
-        raise HTTPException(status_code=404, detail="Application not found")
-    if app.get("status") == "hired":
-        raise HTTPException(status_code=409, detail="Applicant already hired")
-    # Gate the hire on a completed review — a driver must not be onboarded
-    # before their FMCSA vetting (PSP / MVR / Clearinghouse) is reviewed and
-    # the application moved to 'approved'.  Without this the pipeline stages
-    # are decorative and a recruiter could hire straight from 'submitted'.
-    if app.get("status") != "approved":
-        raise HTTPException(
-            status_code=409,
-            detail="Applicant must be 'approved' before hiring",
-        )
-
-    db_user_id = None
-    try:
-        du = await get_current_db_user(user, platform_db)
-        db_user_id = du.id if du else None
-    except Exception:
-        pass
-
-    # Atomic claim: flip approved → hired CONDITIONALLY first.  Only one
-    # concurrent convert wins; the loser gets 0 rows and a 409 — so a
-    # double-click can't mint two driver invites for one applicant.
-    claimed = await platform_db.update_application_status(
-        user["account_id"], app_id, "hired", reviewed_by=db_user_id,
-        expect_status="approved",
-    )
-    if not claimed:
-        raise HTTPException(status_code=409, detail="Applicant already being processed")
-
-    # Now mint the invite.  If that fails, roll the claim back to 'approved'
-    # so the applicant stays hireable (no stuck 'hired'-without-invite row).
-    try:
-        invite = await platform_db.create_invite(
-            user["account_id"],
-            created_by=db_user_id or 0,
-            role=Role.DRIVER,
-            hours=168,  # 7-day window for a new hire to onboard
-            source_application_id=app_id,
-        )
-    except Exception:
-        await platform_db.update_application_status(
-            user["account_id"], app_id, "approved", reviewed_by=db_user_id,
-        )
-        logger.exception("convert: invite mint failed, rolled back app=%s", app_id)
-        raise HTTPException(status_code=500, detail="Could not create the driver invite. Please try again.")
-    try:
-        await platform_db.add_platform_audit(
-            "driver_application_converted",
-            account_id=user["account_id"],
-            actor=f"recruiter:{db_user_id}",
-            details=f"app_id={app_id} ref={app.get('reference')} invite={invite.code}",
-        )
-    except Exception:
-        logger.exception("convert audit write failed app=%s", app_id)
-
-    from interfaces.api.auth import _signup_base_url
-    return {
-        "status": "hired",
-        "invite_code": invite.code,
-        "invite_link": f"{_signup_base_url()}/signup/{invite.code}",
-    }
+# The hire moved to features/drivers/onboarding/ (2026-07-30): approving is
+# recruiting, but onboarding MINTS A USER, so it belongs to driver
+# administration and carries its own grant there.  This router keeps the
+# pipeline; POST /drivers/onboarding/{id}/convert performs the hire.
 
 
 # ── Recruiter: view an uploaded document ────────────────────────────
