@@ -76,7 +76,7 @@ export default function TruckAnatomy() {
       <PageHeader
         icon={Truck}
         title="Truck Anatomy"
-        description="The whole rig as a walkable model, organized the way the product already thinks: System → Assembly → Part. Grey boxes are placeholders — each becomes a real 3D part as its model lands, one assembly at a time."
+        description="Two vehicles, shown uncoupled — a tractor and a trailer, the way the registry already thinks — organized by the same language as the rest of the product: System → Assembly → Part. Grey boxes are placeholders — each becomes a real 3D part as its model lands, one assembly at a time."
         actions={(
           <div className="flex items-center gap-3">
             <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">

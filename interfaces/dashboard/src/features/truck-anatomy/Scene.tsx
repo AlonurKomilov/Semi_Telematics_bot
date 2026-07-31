@@ -13,8 +13,16 @@ import * as THREE from 'three';
 import type { Assembly } from '../parts/useAssemblies';
 import AssemblyNode from './AssemblyNode';
 import GhostChassis from './GhostChassis';
-import { resolveLayout, type ResolvedLayout } from './layout';
+import { UNIT_CAPTIONS, resolveLayout, type ResolvedLayout } from './layout';
 import { useSceneTokens } from './colors';
+
+// Resting view — wide enough to frame BOTH uncoupled vehicles plus the
+// gap between them.  One constant, used by the first-mount jump and
+// every fly-back, so the two can't drift apart.
+const HOME = {
+  eye: [17, 10, 17] as const,
+  target: [-4, 1, 1] as const,
+};
 
 export interface SceneSelection {
   systemKey: string | null;
@@ -82,7 +90,7 @@ export default function Scene({
         void c.setLookAt(x + 4, y + 2.5, z + 4, x, y, z, true);
       }
     } else {
-      void c.setLookAt(14, 8, 14, -1, 1, 0, true);
+      void c.setLookAt(...HOME.eye, ...HOME.target, true);
     }
   }, [selection.assemblyKey, layout]);
 
@@ -100,7 +108,7 @@ export default function Scene({
   return (
     <Canvas
       shadows={false}
-      camera={{ position: [14, 8, 14], fov: 40 }}
+      camera={{ position: [...HOME.eye], fov: 40 }}
       onPointerMissed={() => onPick(null)}
     >
       <ambientLight intensity={0.9} />
@@ -129,6 +137,22 @@ export default function Scene({
           />
         );
       })}
+      {/* Vehicle captions: the rig is TWO machines, named on the open
+          floor beside each — the page's first lesson. */}
+      {UNIT_CAPTIONS.map((u) => (
+        <Html
+          key={u.key}
+          center
+          zIndexRange={[10, 0]}
+          position={u.pos}
+          className="pointer-events-none select-none"
+          distanceFactor={22}
+        >
+          <span className="text-2xs font-medium uppercase tracking-widest text-muted-foreground whitespace-nowrap">
+            {u.label}
+          </span>
+        </Html>
+      ))}
       {/* Floating shelf-cluster captions: which system a parked group
           belongs to, until it graduates onto the chassis. */}
       {[...layout.clusters.entries()].map(([systemKey, pos]) => (
@@ -152,7 +176,7 @@ export default function Scene({
           // react-query cache can't leave the camera staring at 0,0,0.
           if (c && !cameraInitialised.current) {
             cameraInitialised.current = true;
-            void c.setLookAt(14, 8, 14, -1, 1, 0, false);
+            void c.setLookAt(...HOME.eye, ...HOME.target, false);
           }
         }}
         makeDefault
