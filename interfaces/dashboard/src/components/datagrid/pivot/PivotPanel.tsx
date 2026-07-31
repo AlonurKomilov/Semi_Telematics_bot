@@ -381,49 +381,63 @@ export default function PivotPanel({
   const zoneMenu = (axis: Axis): MenuAction[] => {
     const keys = keysOn(axis);
     if (keys.length === 0) return [];
-    const toggle = (patch: Partial<PivotModel>) => onChange({ ...model, ...patch });
-    // "Pin" is the product's OWN word for this — list mode's column ⋮
-    // has a Pin submenu (Pin to Left / Pin to Right).  Freezing a column
-    // against an edge is one concept, so it gets one name; an earlier
-    // draft said "Keep row labels in view", which was a second name for
-    // something already named and made a returning user relearn it.
+    // Only COLUMNS keeps a zone menu.  ``hideEmptyColumns`` is about
+    // BUCKETS the data produced, not about any field you assigned, so
+    // there is no field row it could hang off — unlike the two pins,
+    // which moved onto the fields themselves (see pinItem).
     //
-    // The OBJECT is named too, unlike list mode.  There you opened that
-    // column's own ⋮, so a bare "Pin" was unambiguous; here the Values
-    // zone holds a field AND generates the Total column, so "Pin" alone
-    // could read as "pin Rate".
+    // NOT shortened to list mode's "Hide": that removes ONE column the
+    // operator picked, this prunes every bucket that came out empty.
+    // Same word, different act — sharing it would be a false friend.
+    if (axis !== 'columns') return [];
+    const on = !!model.hideEmptyColumns;
+    return [{
+      key: 'hide-empty', label: 'Hide columns with no values', icon: check(on),
+      onSelect: () => toggle({ hideEmptyColumns: !on }),
+    }];
+  };
+
+  const toggle = (patch: Partial<PivotModel>) => onChange({ ...model, ...patch });
+
+  /** The Pin item for a field's own ⋮ — owner's call, and it matches
+   *  where list mode keeps Pin: on the column menu, not on some
+   *  container's.
+   *
+   *  ⚠️ It reads "Pin ROW LABELS", not "Pin Company", and that wording is
+   *  load-bearing.  The renderer draws ONE merged label column for every
+   *  row field (`rowFieldLabel` joins them with " / " and the body is a
+   *  tree inside that single cell), so this freezes Company AND Customer
+   *  together — there is no Company column to pin by itself.  The item
+   *  therefore appears on EVERY row field with the same state: whichever
+   *  one you open, you are looking at the same column's pin.  Naming the
+   *  field instead would promise a per-field freeze the matrix cannot
+   *  do.  (Per-field pinning would need a flat/tabular row layout —
+   *  a separate piece of work, noted in this folder's CLAUDE.md.)
+   *
+   *  Values is the same shape from the other side: the Total column is
+   *  GENERATED from the measures, one per measure, so pinning from
+   *  Rate's menu freezes every Total column, and the label counts them. */
+  const pinItem = (axis: Axis): MenuAction[] => {
     if (axis === 'rows') {
       const on = model.pinRowLabels ?? false;
       return [{
-        key: 'pin-rows', label: 'Pin row labels', icon: check(on),
+        key: 'pin', label: 'Pin row labels', icon: check(on),
+        separatorBefore: true,
         onSelect: () => toggle({ pinRowLabels: !on }),
       }];
     }
-    if (axis === 'columns') {
-      // NOT shortened to list mode's "Hide".  That hides ONE column the
-      // operator picked; this prunes every bucket that came out empty.
-      // Same word, different act — sharing it would be a false friend.
-      const on = !!model.hideEmptyColumns;
-      return [{
-        key: 'hide-empty', label: 'Hide columns with no values', icon: check(on),
-        onSelect: () => toggle({ hideEmptyColumns: !on }),
-      }];
-    }
-    // No column dimension means no Total column to freeze, so the item
-    // would be a dead end — offered and then unable to do anything.
-    if (!hasColumnDim) return [];
+    // No column dimension means no Total column exists to freeze, so the
+    // item would be a dead end — offered and then unable to do anything.
+    if (axis !== 'values' || !hasColumnDim) return [];
     const on = model.pinTotals ?? false;
-    // There is one Total column PER MEASURE (`totalLabels` maps over the
-    // value fields), so with Rate + Miles assigned this freezes TWO
-    // columns.  A hard-coded singular quietly under-described what the
-    // setting did the moment a second measure was added.
     const nTotals = model.values.filter(
       (v) => !(model.disabled ?? []).includes(v.key),
     ).length;
     return [{
-      key: 'pin-totals',
+      key: 'pin',
       label: nTotals > 1 ? `Pin ${nTotals} Total columns` : 'Pin Total column',
       icon: check(on),
+      separatorBefore: true,
       onSelect: () => toggle({ pinTotals: !on }),
     }];
   };
@@ -450,6 +464,10 @@ export default function PivotPanel({
         key: 'bottom', label: 'Move to bottom', icon: <ChevronsDown size={14} />,
         disabled: at >= last, onSelect: () => moveTo(axis, key, last),
       },
+      // Freezing sits between PLACEMENT (the moves above) and
+      // DESTINATION (the axis list below) — it changes how the field's
+      // column is drawn, not where the field lives.
+      ...pinItem(axis),
       // Where else this field can go.  A check marks where it IS, so the
       // menu doubles as "which axis am I on?" without closing it.
       // Verb-first and explicit.  Bare "Rows" / "Columns" sat among

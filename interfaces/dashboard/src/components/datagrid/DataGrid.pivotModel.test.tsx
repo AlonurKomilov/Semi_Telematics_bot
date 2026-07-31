@@ -96,10 +96,29 @@ async function openPanel() {
   await act(async () => { btn.click(); });
 }
 
-/** Zone settings live in the ZONE's own ⋮ — the same place list mode
- *  keeps Pin and Hide.  So reading one means opening that menu first. */
+/** ``hideEmptyColumns`` is about BUCKETS, not any assigned field, so it
+ *  is the one setting still on a zone's ⋮. */
 async function zoneSetting(zone: string, label: string) {
   const trigger = screen.getByRole('button', { name: `${zone} settings` });
+  await act(async () => { trigger.click(); });
+  const item = screen.getByRole('menuitem', { name: new RegExp(label) });
+  const checked = !!item.querySelector('svg');
+  return { checked, item };
+}
+
+/** Pin lives on the FIELD's ⋮, where list mode keeps it too.
+ *
+ *  Closes any menu already open first: these menus portal into the body
+ *  and do NOT dismiss when another trigger is clicked programmatically,
+ *  so reading two fields in one test would otherwise match the same item
+ *  in two live menus. */
+async function fieldSetting(field: string, label: string) {
+  await act(async () => {
+    document.body.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+  });
+  const trigger = screen.getByRole('button', { name: `${field} options` });
   await act(async () => { trigger.click(); });
   const item = screen.getByRole('menuitem', { name: new RegExp(label) });
   // A check mark is the on-state; the icon slot is filled either way so
@@ -125,13 +144,13 @@ describe('stored pivot settings survive the model rebuild', () => {
   it('carries pinRowLabels', async () => {
     stored = { enabled: true, model: { ...FULL, pinRowLabels: true } };
     await openPanel();
-    expect((await zoneSetting('Rows', 'Pin row labels')).checked).toBe(true);
+    expect((await fieldSetting('Company', 'Pin row labels')).checked).toBe(true);
   });
 
   it('carries pinTotals', async () => {
     stored = { enabled: true, model: { ...FULL, pinTotals: true } };
     await openPanel();
-    expect((await zoneSetting('Values', 'Pin Total column')).checked).toBe(true);
+    expect((await fieldSetting('Rate', 'Pin Total column')).checked).toBe(true);
   });
 
   it('carries drillDown', async () => {
@@ -143,7 +162,7 @@ describe('stored pivot settings survive the model rebuild', () => {
   it('leaves an unset flag off — the default is not "sticky true"', async () => {
     stored = { enabled: true, model: FULL };
     await openPanel();
-    expect((await zoneSetting('Rows', 'Pin row labels')).checked).toBe(false);
+    expect((await fieldSetting('Company', 'Pin row labels')).checked).toBe(false);
     expect(drillBtn().getAttribute('aria-pressed')).toBe('false');
   });
 });
@@ -157,8 +176,9 @@ describe('the panel says what each control governs', () => {
     stored = { enabled: true, model: FULL };
     await openPanel();
     expect(drillBtn()).toBeTruthy();
-    const values = screen.getByRole('button', { name: 'Values settings' });
-    await act(async () => { values.click(); });
+    // Not on the measure that produces the figures, either.
+    const rate = screen.getByRole('button', { name: 'Rate options' });
+    await act(async () => { rate.click(); });
     expect(screen.queryByRole('menuitem', { name: /Open the rows behind/ })).toBeNull();
   });
 
@@ -171,12 +191,12 @@ describe('the panel says what each control governs', () => {
     expect((drillBtn() as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('keeps zone settings OUT of the field list entirely', async () => {
+  it('keeps settings out of the inline field list entirely', async () => {
     // COLUMNS used to stack five identical checkboxes in one run: one
     // governing the zone, four governing which fields contribute.  Same
     // shape, same x, two unrelated meanings — you had to read every
-    // label to tell them apart.  The zone's settings live in the zone's
-    // ⋮ now, so the only controls beside a field are that field's own.
+    // label to tell them apart.  Every setting is a MENU item now, so
+    // the only inline control beside a field is that field's own tick.
     stored = { enabled: true, model: FULL };
     await openPanel();
     for (const name of [
@@ -191,20 +211,41 @@ describe('the panel says what each control governs', () => {
     expect(screen.getByRole('checkbox', { name: /Include Company/ })).toBeTruthy();
   });
 
-  it('toggles from the zone menu and the change sticks', async () => {
-    stored = { enabled: true, model: FULL };
+  it('shows the SAME pin state on every row field — they share one column', async () => {
+    // Company and Customer are not two columns: `rowFieldLabel` joins the
+    // row fields into one header and the body is a tree inside a single
+    // cell.  So the pin is one setting, reachable from either field's ⋮,
+    // and it must not look like a per-field freeze.
+    stored = {
+      enabled: true,
+      // ``columns: []`` because Driver is the second ROW field here — left
+      // on the column axis too it would render two "Driver options"
+      // buttons and the query would be ambiguous.
+      model: {
+        ...FULL, rows: ['company', 'driver'], columns: [], pinRowLabels: true,
+      },
+    };
     await openPanel();
-    const { item } = await zoneSetting('Rows', 'Pin row labels');
-    await act(async () => { (item as HTMLElement).click(); });
-    expect((await zoneSetting('Rows', 'Pin row labels')).checked).toBe(true);
+    expect((await fieldSetting('Company', 'Pin row labels')).checked).toBe(true);
+    expect((await fieldSetting('Driver', 'Pin row labels')).checked).toBe(true);
   });
 
-  it('offers no Total-column setting when there is no column dimension', async () => {
-    // Nothing to total across, so the item would be a dead end — offered
-    // and then unable to do anything.
+  it('toggles from the field menu and the change sticks', async () => {
+    stored = { enabled: true, model: FULL };
+    await openPanel();
+    const { item } = await fieldSetting('Company', 'Pin row labels');
+    await act(async () => { (item as HTMLElement).click(); });
+    expect((await fieldSetting('Company', 'Pin row labels')).checked).toBe(true);
+  });
+
+  it('offers no Total-column pin when there is no column dimension', async () => {
+    // Nothing to total across, so no Total column exists — the item would
+    // be a dead end, offered and then unable to do anything.
     stored = { enabled: true, model: { ...FULL, columns: [] } };
     await openPanel();
-    expect(screen.queryByRole('button', { name: 'Values settings' })).toBeNull();
+    const rate = screen.getByRole('button', { name: 'Rate options' });
+    await act(async () => { rate.click(); });
+    expect(screen.queryByRole('menuitem', { name: /^Pin/ })).toBeNull();
   });
 
   it('counts the Total columns it will pin — there is one per measure', async () => {
@@ -222,12 +263,12 @@ describe('the panel says what each control governs', () => {
       },
     };
     await openPanel();
-    expect((await zoneSetting('Values', 'Pin 2 Total columns')).checked).toBe(false);
+    expect((await fieldSetting('Rate', 'Pin 2 Total columns')).checked).toBe(false);
   });
 
   it('stays singular with one measure', async () => {
     stored = { enabled: true, model: FULL };
     await openPanel();
-    expect((await zoneSetting('Values', 'Pin Total column')).checked).toBe(false);
+    expect((await fieldSetting('Rate', 'Pin Total column')).checked).toBe(false);
   });
 });

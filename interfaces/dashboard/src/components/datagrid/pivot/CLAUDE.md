@@ -151,20 +151,45 @@ not a summary. `z-30` on both: it clears every sticky cell in the body
 (max `z-20`), so the frozen Total column cannot paint over the header it
 belongs under.
 
-## A zone's settings live in the ZONE's ⋮ — like a column's do
+## Pin is on the FIELD's ⋮; only `hideEmptyColumns` is on a zone's
 
-`zoneMenu(axis)` puts each zone's settings on a ⋮ in its header band,
-which is exactly where list mode keeps Pin and Hide: **a column's ⋮**.
+**Pin sits where list mode keeps it — on the field's own ⋮** (owner
+decision, asked for three times; earlier drafts had it inline in the zone
+and then on the zone's ⋮). `pinItem(axis)` adds it to every ROW field and
+every VALUE field, between the move block and the axis list: it changes
+how the field's column is DRAWN, not where the field lives.
 
-**And they reuse list mode's word.** Freezing a column against an edge is
-ONE concept, so it gets one name: **"Pin row labels"** and **"Pin Total
-column"**, sharing the verb with the column ⋮'s Pin submenu (Pin to Left
-/ Pin to Right). An earlier draft said "Keep row labels in view" —
-a second name for something the product already named, which makes a
-returning user relearn a thing they know. The OBJECT is named too,
-unlike list mode: there you opened that column's own ⋮ so a bare "Pin"
-was unambiguous, whereas the Values zone holds a field AND generates the
-Total column, so "Pin" alone could read as "pin Rate".
+`zoneMenu` now returns items for COLUMNS only. `hideEmptyColumns` is
+about BUCKETS the data produced rather than any field you assigned, so
+there is no field row it could hang off. The other two zones render no ⋮
+at all rather than an empty menu.
+
+⚠️ **The label names the COLUMN, never the field** — "Pin row labels",
+not "Pin Company". The renderer draws ONE merged label column for every
+row field (`rowFieldLabel` joins them with `" / "`, and the body is a
+tree inside that single cell), so this freezes Company AND Customer
+together. The item therefore appears on **every** row field showing the
+**same** state: whichever you open, it is the same column's pin. Naming
+the field would promise a per-field freeze the matrix cannot perform.
+A test pins the shared state.
+
+Values is the same shape from the other side: the Total column is
+GENERATED from the measures, **one per measure**, so pinning from Rate's
+menu freezes every Total column — and the label counts them ("Pin 2
+Total columns"). A hard-coded singular under-described it the moment a
+second measure was assigned.
+
+**Per-field pinning would need a flat/tabular row layout** — row fields
+rendered as separate columns (Excel's "Tabular" vs "Compact") instead of
+a tree in one. That is a real feature touching the header build, the body
+renderer, the collapse model, the sizer row and the windowing
+arithmetic — not a menu change. Until then, one column means one pin.
+
+**The word is list mode's own.** Freezing a column against an edge is ONE
+concept, so it gets one name, sharing the verb with the column ⋮'s Pin
+submenu (Pin to Left / Pin to Right). An earlier draft said "Keep row
+labels in view" — a second name for something already named, which makes
+a returning user relearn what they know.
 
 ⚠️ **"Hide columns with no values" is deliberately NOT shortened to list
 mode's "Hide".** That hides ONE column the operator picked; this prunes
@@ -203,18 +228,18 @@ the set?", switch = "is this behaviour on?"**, and a behaviour that must
 live in a toolbar or header is a **pressed icon-button** (which is what
 drilling is).
 
-## Both frozen edges are opt-in, and the controls are ZONE-level
+## Both frozen edges are opt-in, and the controls are FIELD-level
 
 `pinRowLabels` and `pinTotals` default **OFF** (owner's call, and MUI's
 behaviour — a frozen column costs real width on every report) and are
-toggled from the ZONE's ⋮ (see above): "Pin row labels" in ROWS, "Pin
-Total column" in VALUES. Turn them on when a wide matrix starts
-scrolling the identity out of sight.
+toggled from a FIELD's ⋮ (see above). Turn them on when a wide matrix
+starts scrolling the identity out of sight.
 
-They are ZONE items, never FIELD items, for the reasons in that section —
-one merged row-label column, and a Total column generated from Values
-rather than being a field. The Total item is also withheld entirely when
-there is no column dimension to total across.
+Each is ONE setting reachable from several menus — the row fields share a
+merged label column, and the Total columns are generated from the
+measures — so the labels name the column rather than the field. The Total
+pin is withheld entirely when there is no column dimension to total
+across.
 
 Unpinned, those cells become **ordinary**: no position, no z-index, no
 opaque fill, no seam, and no zebra overlay. A cell that isn't frozen has
