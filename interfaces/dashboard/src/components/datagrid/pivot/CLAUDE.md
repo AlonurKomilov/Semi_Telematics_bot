@@ -151,6 +151,25 @@ not a summary. `z-30` on both: it clears every sticky cell in the body
 (max `z-20`), so the frozen Total column cannot paint over the header it
 belongs under.
 
+## Zone settings are SWITCHES; only fields are checkboxes
+
+Each zone stacks its setting directly above its field rows. With both
+drawn as checkboxes, COLUMNS showed **five identical boxes in one
+vertical run** — one governing the zone, four governing which fields
+contribute. Same shape, same size, same x, two unrelated meanings; the
+only way to tell them apart was to read every label. (Owner-reported.)
+
+So: **checkbox answers "is this field in the report?", switch answers "is
+this behaviour on?"** — now a dashboard-wide rule in
+[../../../CLAUDE.md](../../../../CLAUDE.md). The panel reads top to
+bottom as switch (pivot on) → button (drill, report-wide) → switches
+(zone behaviours) → checkboxes (which fields).
+
+`ZoneSetting` is the one shell for all of them. It is deliberately NOT a
+`<label>` wrapper: `Switch` is a `<button role="switch">` naming itself
+via `aria-label`, so a label would announce the text twice and add a
+second click target for the same toggle.
+
 ## Both frozen edges are opt-out, and the controls are ZONE-level
 
 `pinRowLabels` and `pinTotals` default **OFF** (owner's call, and MUI's
@@ -447,17 +466,22 @@ per-row totals.
 
 ## Drill-down
 
-**Opt-in, default OFF** — "Open the rows behind a figure", in the VALUES
-zone (values are what produce figures). Same default as the two pins: a
-report starts as the report you asked for.
+**Opt-in, default OFF** — "Open the rows behind a figure". Same default
+as the two pins: a report starts as the report you asked for.
 
-The label is written in the imperative, describing what the setting does
-to the REPORT — the same voice as its three siblings ("Keep row labels in
-view", "Keep Total column in view", "Hide columns with no values"). An
-earlier draft read "Click a figure to see its rows", which instructed the
-USER instead: four identical checkboxes with one written as a tutorial
-line. "Drill-down" stays out of the UI entirely — our word, not the
-reader's.
+**The control is in the panel HEADER, beside the pivot switch — not in a
+zone.** It began in VALUES, when only value cells drilled; once the Total
+column and the footer became drillable it governed the whole matrix, and
+a report-wide behaviour parked inside one zone reads as if it applied
+only there. It is a **pressed icon-button** (`ListTree`, `aria-pressed`,
+filled when on) rather than a switch — owner's call, and it matches the
+toolbar's own active-Pivot convention. Disabled with a reason while the
+grid isn't pivoted: there is no report to drill into yet.
+
+The label is written in the imperative, describing what it does to the
+REPORT. An earlier draft read "Click a figure to see its rows", which
+instructed the USER instead. "Drill-down" stays out of the UI entirely —
+our word, not the reader's.
 
 ⚠️ **Default-OFF means the panel's help text must not assert the
 behaviour.** The Pivot InfoTip used to end "Click any figure to see the

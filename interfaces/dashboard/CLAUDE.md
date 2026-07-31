@@ -53,6 +53,18 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
 - **Compose primitives.** Build from [`src/components/ui/`](src/components/ui/)
   and [`src/components/shell/`](src/components/shell/) — don't re-implement
   buttons, badges, dialogs, empty/error/loading states.
+- **Checkbox = membership · Switch = behaviour.** A checkbox answers
+  *"is this ITEM in the set?"* (which fields, which rows, which
+  columns) — so it belongs in lists of things, and several in a row
+  read as one multi-select. `<Switch>` ([`ui/switch.tsx`](src/components/ui/switch.tsx))
+  answers *"is this BEHAVIOUR on?"* — a mode, a setting, a capability.
+  Never mix the two shapes in one vertical run: the pivot panel stacked
+  a zone setting directly above its field rows using the same checkbox,
+  so five identical boxes in one column meant two unrelated things and
+  every label had to be read to tell them apart. If a binary is a
+  behaviour but must sit in a toolbar or header where a switch won't
+  fit, use a **pressed icon-button** (`aria-pressed` + filled `variant`
+  on) — that is the third legal shape, not a checkbox.
 - **Mine-vs-shared = always "My X" / "Shared".** Any feature with an
   account-owned side and a cross-account side (Vendors, Parts, Service
   Tasks, assemblies next) labels the split with those two words —

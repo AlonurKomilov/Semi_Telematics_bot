@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import {
   Search, X, Check, Plus, GripVertical, MoreVertical,
   ChevronDown, ChevronUp, ArrowUp, ArrowDown,
-  ChevronsUp, ChevronsDown,
+  ChevronsUp, ChevronsDown, ListTree,
 } from 'lucide-react';
 import {
   DndContext, DragOverlay, pointerWithin, closestCorners, PointerSensor,
@@ -20,7 +20,7 @@ import { Input } from '../../ui/input';
 import { Button } from '../../ui/button';
 import { Switch } from '../../ui/switch';
 import { ActionMenu, type MenuAction } from '../../ui/context-menu';
-import { InfoTip } from '../../tooltip';
+import { InfoTip, Tip } from '../../tooltip';
 import { toneClasses } from '../../../lib/status';
 import { AGG_FN_LABELS } from '../../../types';
 import type { AnyColumn, AggFn } from '../../../types';
@@ -152,6 +152,9 @@ export default function PivotPanel({
   // No column dimension means no Total column to freeze, so the control
   // that governs it would be a dead end.
   const hasColumnDim = model.columns.some((k) => !(model.disabled ?? []).includes(k));
+  // Report-wide, not zone-scoped: drilling governs every figure in the
+  // matrix, so its control sits in the header rather than in VALUES.
+  const drillOn = model.drillDown ?? false;
 
   // ── Model edits ────────────────────────────────────────────────────
 
@@ -482,11 +485,34 @@ export default function PivotPanel({
             // behind it."  Drilling now defaults off, so for every new
             // report that sentence was false — the user clicked, nothing
             // happened, and the only help on the surface was what misled
-            // them.  It points at the switch instead, which also carries
-            // the discoverability that a default-off feature otherwise
-            // loses.
-            label="Summarise the rows currently in view. Filters, search and tabs still apply — pivot reports on what they left. Turn on “Open the rows behind a figure” in Values to click into any number."
+            // them.  It names the control instead, which also carries the
+            // discoverability that a default-off feature otherwise loses.
+            label="Summarise the rows currently in view. Filters, search and tabs still apply — pivot reports on what they left. Use “Open the rows behind a figure” above to click into any number."
           />
+          {/* Report-wide, so it sits with the pivot switch rather than in
+              a zone: drilling governs every figure in the matrix — leaf
+              cells, the Total column and the footer alike.
+              A pressed BUTTON, not a switch, by owner decision.  It is
+              still a binary, so it carries ``aria-pressed`` and paints
+              its on-state with fill — the same active-button convention
+              the toolbar's own Pivot icon uses. */}
+          <Tip label={enabled
+            ? (drillOn
+                ? 'Figures are clickable — turn off to make the report read-only'
+                : 'Open the rows behind a figure — make every figure clickable')
+            : 'Turn pivot on first — there is no report to drill into yet'}
+          >
+            <Button
+              variant={drillOn ? 'default' : 'ghost'}
+              size="icon-sm"
+              disabled={!enabled}
+              aria-pressed={drillOn}
+              aria-label="Open the rows behind a figure"
+              onClick={() => onChange({ ...model, drillDown: !drillOn })}
+            >
+              <ListTree size={16} />
+            </Button>
+          </Tip>
         </h3>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close pivot panel">
           <X size={16} />
@@ -681,22 +707,13 @@ export default function PivotPanel({
                       label="Keep Total column in view"
                     />
                   )}
-                  {/* Only figures drill, so the switch lives with the
-                      values that produce them.  Named for what it does
-                      to the REPORT, in the imperative — the same voice
-                      as its three siblings ("Keep…", "Hide…").  An
-                      earlier draft read "Click a figure to see its
-                      rows", which instructed the user instead: four
-                      identical checkboxes, one written as a tutorial
-                      line.  "Drill-down" stays out of it — that is our
-                      word, not the reader's. */}
-                  {axis === 'values' && keys.length > 0 && (
-                    <ZoneSetting
-                      checked={model.drillDown ?? false}
-                      onChange={(v) => onChange({ ...model, drillDown: v })}
-                      label="Open the rows behind a figure"
-                    />
-                  )}
+                  {/* Drilling is NOT a zone setting and no longer lives
+                      here.  It started in VALUES because only value
+                      cells drilled — then the Total column and the whole
+                      footer became drillable too, which made it a
+                      REPORT-WIDE behaviour sitting inside one zone.  It
+                      is now a control in the panel header, beside the
+                      pivot switch it belongs with. */}
                   {axis === 'columns' && keys.length > 0 && (
                     <ZoneSetting
                       checked={!!model.hideEmptyColumns}
@@ -780,27 +797,36 @@ function DropZone({ zone, active, className, children }: {
 }
 
 /** A zone-level setting: governs the whole zone's rendered output, not a
- *  field.  One shell so the four of them can't drift apart — "Hide
- *  columns with no values" was a hand-rolled copy of this markup and had
- *  already started to. */
+ *  field.  One shell so they can't drift apart — "Hide columns with no
+ *  values" was a hand-rolled copy of this markup and had already started
+ *  to.
+ *
+ *  ⚠️ A SWITCH, deliberately, because a checkbox here meant two things.
+ *  Every zone stacks its setting directly above its field rows, and
+ *  those rows carry checkboxes too — so COLUMNS showed five identical
+ *  boxes in one vertical run where one governed the ZONE and four
+ *  governed field MEMBERSHIP.  Same shape, same size, same x, two
+ *  unrelated meanings; you had to read every label to tell them apart.
+ *
+ *  The rule (now in design.md): **checkbox answers "is this item in the
+ *  set?", switch answers "is this behaviour on?"**  The pivot master
+ *  control is already a Switch, so the panel reads top-to-bottom as
+ *  switch (pivot on) → switches (behaviours) → checkboxes (which
+ *  fields). */
 function ZoneSetting({ checked, onChange, label }: {
   checked: boolean;
   onChange: (next: boolean) => void;
   label: string;
 }) {
   return (
-    <label className="flex items-center gap-2 px-3 pb-2 text-2xs text-muted-foreground cursor-pointer">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        // ``accent-primary`` or the tick paints the OS accent — a literal
-        // colour from outside the token set, which also ignores the
-        // theme picker.
-        className="shrink-0 cursor-pointer accent-primary"
-      />
-      {label}
-    </label>
+    // NOT a <label> wrapper: Switch is a <button role="switch"> and takes
+    // its accessible name from aria-label, so nesting it in a label would
+    // announce the text twice and give the row a second click target that
+    // toggles the same thing.
+    <div className="flex items-center gap-2 px-3 pb-2 text-2xs text-muted-foreground">
+      <Switch size="sm" checked={checked} onCheckedChange={onChange} aria-label={label} />
+      <span className="cursor-default">{label}</span>
+    </div>
   );
 }
 
