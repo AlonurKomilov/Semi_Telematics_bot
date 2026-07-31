@@ -797,9 +797,16 @@ class SamsaraClient:
         ``faultCodes`` through ``_safe_stats`` also gains the per-type
         fallback + unsupported-type caching it lacked before.
 
-        Returns ``(faults_by_id, loc_by_id, fuel_by_id, def_by_id)``.
+        Returns ``(faults_by_id, loc_by_id, fuel_by_id, def_by_id,
+        engine_state_by_id)``.
         """
-        stats = await self._safe_stats("faultCodes,fuelPercents,defLevelMilliPercent")
+        # Four types is Samsara's per-call cap, so engineStates rides
+        # along for free rather than costing its own request every
+        # minute.  It also inherits _safe_stats's per-type fallback and
+        # unsupported-type caching, which a bare call would not have.
+        stats = await self._safe_stats(
+            "faultCodes,fuelPercents,defLevelMilliPercent,engineStates",
+        )
         stats_data = stats.get("data", [])
         location_raw = await self.get_locations()
 
@@ -822,7 +829,17 @@ class SamsaraClient:
                     "value": round(val / 1000, 1),
                     "time": d.get("time", ""),
                 }
-        return faults_by_id, loc_by_id, fuel_by_id, def_by_id
+        # Raw provider words ("On"/"Idle"/"Off").  What they MEAN is the
+        # caller's call — a running engine only counts as movement once
+        # road speed agrees.
+        engine_state_by_id: dict[str, str] = {}
+        for sv in stats_data:
+            block = sv.get("engineStates") or {}
+            value = block.get("value") if isinstance(block, dict) else block
+            if value:
+                engine_state_by_id[sv["id"]] = str(value)
+        return (faults_by_id, loc_by_id, fuel_by_id, def_by_id,
+                engine_state_by_id)
 
     async def get_vehicles_overview(self) -> list[dict]:
         """
@@ -836,7 +853,8 @@ class SamsaraClient:
         # One batched stats call (faults + fuel + DEF) + locations, instead
         # of three separate round-trips — see _fetch_enrichment_maps.
         vehicles = {v["id"]: v for v in vehicles_raw}
-        faults_by_id, loc_by_id, fuel_by_id, def_by_id = await self._fetch_enrichment_maps()
+        (faults_by_id, loc_by_id, fuel_by_id, def_by_id,
+         engine_state_by_id) = await self._fetch_enrichment_maps()
 
         enriched = []
         skipped = 0
@@ -879,6 +897,7 @@ class SamsaraClient:
                 "location": loc,
                 "fuel": fuel_by_id.get(vid, {}),
                 "def_level": def_by_id.get(vid, {}),
+                "engine_state_raw": engine_state_by_id.get(vid, ""),
             }
 
             # Pre-parse fault data so downstream code can use
@@ -915,7 +934,9 @@ class SamsaraClient:
         vehicles_raw = await self.get_vehicles()
         # Same batched fetch as the overview (faults + fuel + DEF in one
         # stats call + locations) — see _fetch_enrichment_maps.
-        faults_by_id, loc_by_id, fuel_by_id, def_by_id = await self._fetch_enrichment_maps()
+        faults_by_id, loc_by_id, fuel_by_id, def_by_id, _ = (
+            await self._fetch_enrichment_maps()
+        )
 
         truck_name_lower = vehicle_name.strip().lower()
         candidates = [

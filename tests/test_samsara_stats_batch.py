@@ -31,6 +31,7 @@ async def test_fetch_enrichment_maps_batches_stats_into_one_call():
                 "faultCodes": {"j1939": {"checkEngineLights": {"protect": True}}},
                 "fuelPercents": {"value": 80},
                 "defLevelMilliPercent": {"value": 55000, "time": "t1"},
+                "engineStates": {"value": "On", "time": "t1"},
             },
             {"id": "v2", "faultCodes": {}},  # no fuel / no DEF sensor
         ]}
@@ -41,10 +42,14 @@ async def test_fetch_enrichment_maps_batches_stats_into_one_call():
     client._safe_stats = fake_safe_stats   # type: ignore[assignment]
     client.get_locations = fake_locations  # type: ignore[assignment]
 
-    faults, locs, fuel, deff = await client._fetch_enrichment_maps()
+    faults, locs, fuel, deff, engine = await client._fetch_enrichment_maps()
 
-    # ONE batched stats call, all three types folded in.
-    assert calls == ["faultCodes,fuelPercents,defLevelMilliPercent"]
+    # ONE batched stats call, all four types folded in.  Engine state
+    # rides this request rather than paying for its own every minute —
+    # four types is the provider's per-call cap, so it fits exactly.
+    assert calls == [
+        "faultCodes,fuelPercents,defLevelMilliPercent,engineStates",
+    ]
 
     # Split back out identically to the old per-type maps.
     assert faults["v1"] == {"j1939": {"checkEngineLights": {"protect": True}}}
@@ -54,6 +59,10 @@ async def test_fetch_enrichment_maps_batches_stats_into_one_call():
     assert deff["v1"] == {"value": 55.0, "time": "t1"}  # milli-percent / 1000
     assert "v2" not in deff                              # no DEF sensor → absent
     assert locs["v1"] == {"latitude": 1.0}
+    # The provider's own word is carried through unresolved — what it
+    # means depends on road speed, which this layer does not know.
+    assert engine["v1"] == "On"
+    assert "v2" not in engine                            # no engine feed
 
 
 @pytest.mark.asyncio

@@ -25,7 +25,7 @@ def _client() -> SamsaraClient:
 def _wire(client: SamsaraClient, vehicles: list[dict], loc_by_id: dict) -> None:
     client.get_vehicles = AsyncMock(return_value=vehicles)
     client._fetch_enrichment_maps = AsyncMock(
-        return_value=({}, loc_by_id, {}, {}),
+        return_value=({}, loc_by_id, {}, {}, {}),
     )
 
 

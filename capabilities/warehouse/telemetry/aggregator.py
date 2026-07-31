@@ -178,10 +178,8 @@ async def _aggregate_hour_window(
     # values.  Steps beyond ``IMPLAUSIBLE_STEP_MILES`` are dropped, not
     # clamped: they are an artefact of the device, not distance the
     # truck covered.  Negative steps are resets and contribute nothing.
-    snap_cols = [
+    dist_cols = [
         "vehicle_id", "miles_in_window", "reset_steps", "jump_steps",
-        "max_speed", "avg_fuel_pct",
-        "drive_samples", "idle_samples",
         "odometer_eoh", "engine_hours_eoh",
     ]
     cur = await tenant._db.execute(
@@ -191,15 +189,10 @@ async def _aggregate_hour_window(
                                                    AS miles_in_window,
                SUM(CASE WHEN step < 0 THEN 1 ELSE 0 END) AS reset_steps,
                SUM(CASE WHEN step > ? THEN 1 ELSE 0 END) AS jump_steps,
-               MAX(COALESCE(speed_mph, 0))         AS max_speed,
-               AVG(fuel_pct)                       AS avg_fuel_pct,
-               SUM(CASE WHEN engine_state = 'moving' THEN 1 ELSE 0 END) AS drive_samples,
-               SUM(CASE WHEN engine_state = 'idle'   THEN 1 ELSE 0 END) AS idle_samples,
                MAX(odometer_mi)                    AS odometer_eoh,
                MAX(engine_hours)                   AS engine_hours_eoh
           FROM (
-              SELECT vehicle_id, odometer_mi, speed_mph, fuel_pct,
-                     engine_state, engine_hours,
+              SELECT vehicle_id, odometer_mi, engine_hours,
                      odometer_mi - LAG(odometer_mi) OVER (
                          PARTITION BY vehicle_id ORDER BY captured_at
                      ) AS step
@@ -216,7 +209,49 @@ async def _aggregate_hour_window(
         (IMPLAUSIBLE_STEP_MILES, IMPLAUSIBLE_STEP_MILES,
          account_id, hour_start.isoformat(), hour_end.isoformat()),
     )
-    snap_rows = [dict(zip(snap_cols, r)) for r in await cur.fetchall()]
+    dist_by_vid = {
+        str(d["vehicle_id"]): d
+        for d in (dict(zip(dist_cols, r)) for r in await cur.fetchall())
+        if d.get("vehicle_id")
+    }
+
+    # Duty time, speed and fuel come from EVERY snapshot in the window,
+    # not just the ones carrying an odometer.  Sharing the query above
+    # would have made a working odometer a precondition for counting
+    # drive minutes — and a truck whose CAN bus reports engine state but
+    # no mileage is common enough that it would leave a real chunk of the
+    # fleet at zero duty forever.
+    duty_cols = [
+        "vehicle_id", "max_speed", "avg_fuel_pct",
+        "drive_samples", "idle_samples",
+    ]
+    cur = await tenant._db.execute(
+        """
+        SELECT vehicle_id,
+               MAX(COALESCE(speed_mph, 0))         AS max_speed,
+               AVG(fuel_pct)                       AS avg_fuel_pct,
+               SUM(CASE WHEN engine_state = 'moving' THEN 1 ELSE 0 END) AS drive_samples,
+               SUM(CASE WHEN engine_state = 'idle'   THEN 1 ELSE 0 END) AS idle_samples
+          FROM vehicle_state_snapshot
+         WHERE account_id = ?
+           AND captured_at >= ?
+           AND captured_at <  ?
+         GROUP BY vehicle_id
+        """,
+        (account_id, hour_start.isoformat(), hour_end.isoformat()),
+    )
+    snap_rows = []
+    for r in await cur.fetchall():
+        d = dict(zip(duty_cols, r))
+        vid = str(d.get("vehicle_id") or "")
+        if not vid:
+            continue
+        d.update({k: v for k, v in dist_by_vid.pop(vid, {}).items()
+                  if k != "vehicle_id"})
+        snap_rows.append(d)
+    # A vehicle can report an odometer in a window it reported nothing
+    # else in; its distance still counts.
+    snap_rows.extend(dist_by_vid.values())
 
     # 5-minute snapshot cadence: each sample represents 5 minutes of
     # duty time.  drive_min / idle_min derive from sample counts.

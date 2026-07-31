@@ -466,6 +466,41 @@ async def test_daily_run_re_rolls_a_day_that_is_present_but_wrong(tenant, monkey
 
 
 @pytest.mark.asyncio
+async def test_duty_time_counts_without_a_working_odometer(tenant):
+    """Drive minutes must not depend on the odometer feed.
+
+    Counting duty inside the same query that computes distance made a
+    working odometer a precondition for having driven at all — so a
+    truck whose CAN bus reports engine state but no mileage sat at zero
+    hours forever, however much it moved.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+    from capabilities.warehouse.telemetry import aggregator as agg
+
+    await tenant.upsert_vehicle_state(1, [
+        {"vehicle_id": "v1", "vehicle_name": "301", "company_code": "A"},
+    ])
+    hour = _dt(2026, 7, 21, 9, tzinfo=_tz.utc)
+    await tenant.upsert_vehicle_state_snapshots(1, [
+        {"vehicle_id": "v1", "captured_at": hour.replace(minute=m).isoformat(),
+         "odometer_mi": None, "engine_state": state, "speed_mph": speed}
+        for m, state, speed in (
+            (0, "moving", 60), (5, "moving", 58), (10, "idle", 0),
+        )
+    ])
+    await agg._aggregate_hour_window(tenant, 1, hour)
+
+    cur = await tenant._db.execute(
+        "SELECT miles, drive_min, idle_min FROM vehicle_telemetry "
+        "WHERE account_id = ? AND granularity = 'hourly' AND bucket_start = ?",
+        (1, "2026-07-21T09:00:00"))
+    row = dict(await cur.fetchone())
+    assert float(row["drive_min"]) == pytest.approx(10.0)   # 2 samples x 5 min
+    assert float(row["idle_min"]) == pytest.approx(5.0)
+    assert float(row["miles"]) == pytest.approx(0.0)        # honestly unknown
+
+
+@pytest.mark.asyncio
 async def test_odometer_re_baseline_does_not_become_miles(tenant):
     """A gateway swap must not read as distance driven.
 
