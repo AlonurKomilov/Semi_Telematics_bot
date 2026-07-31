@@ -55,6 +55,26 @@ _VALID_TYPES = ("truck", "trailer", "other")
 # Spec fields an integration sync may fill on an existing (matched) row.
 _SPEC_FILL = ("vin", "plate_number", "make", "model", "year")
 
+
+def _model_year(value: Any) -> int | None:
+    """A model year we can safely bind to an INTEGER column.
+
+    Providers are casual about this one: the same roster carries 2024,
+    "2024", "" and "N/A" depending on how each record was entered.
+    asyncpg refuses a str for an int4 parameter, and because the whole
+    roster upserts inside ONE transaction, a single such row used to
+    roll back every other vehicle with it — silently, on every tick.
+    Anything that is not plausibly a year becomes None, which the
+    merge treats as "no opinion" rather than as a value to write.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        year = int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+    return year if 1900 <= year <= 2100 else None
+
 # ── Source precedence + reconciliation (Layer 1) ──────────────────────
 #
 # The merge / precedence / conflict MECHANISM lives in the shared, integration-
@@ -647,7 +667,7 @@ class VehiclesRegistryMixin(_MixinBase):
                             str(r.get("plate_number") or ""),
                             str(r.get("make") or ""),
                             str(r.get("model") or ""),
-                            r.get("year"),
+                            _model_year(r.get("year")),
                             str(r.get("status") or "active"),
                             source,
                             str(r.get("telematics_ref") or ""),
@@ -673,8 +693,13 @@ class VehiclesRegistryMixin(_MixinBase):
                 params: list[Any] = []
                 for f in _SPEC_FILL:
                     if f in updates:
+                        value = updates[f]
+                        if f == "year":
+                            value = _model_year(value)
+                            if value is None:
+                                continue
                         sets.append(f"{f} = ?")
-                        params.append(updates[f])
+                        params.append(value)
                 # telematics_ref is the live link (Samsara's id) — fill-don't-wipe.
                 tref = str(r.get("telematics_ref") or "")
                 if tref:

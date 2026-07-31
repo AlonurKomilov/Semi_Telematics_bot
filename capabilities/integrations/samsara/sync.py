@@ -300,11 +300,26 @@ async def ingest_vehicle_state(account_id: int) -> int:
             }
             for v in fleet
         ]
-        await tenant.upsert_from_integration(
+        written = await tenant.upsert_from_integration(
             account_id, registry_rows, source="samsara",
         )
-    except Exception as e:
-        logger.debug("registry upsert from ingest skipped acct=%d: %s", account_id, e)
+        if registry_rows and not written:
+            logger.warning(
+                "registry upsert wrote NOTHING acct=%d despite %d vehicles "
+                "in the payload — the registry is the identity SSOT, so it "
+                "is now drifting from what the provider reports",
+                account_id, len(registry_rows),
+            )
+    except Exception:
+        # ERROR, not debug.  The roster upserts as one transaction, so a
+        # single unusable value rolls back every vehicle with it — and at
+        # debug level that failure stayed invisible for 47 days while the
+        # registry silently froze.  Still swallowed: a registry hiccup
+        # must not poison live-state ingest.
+        logger.exception(
+            "registry upsert from ingest FAILED acct=%d (%d vehicles) — "
+            "registry now stale", account_id, len(registry_rows),
+        )
     # Reconcile billing quantity with the freshly-ingested activity.
     # The provider only PATCHes Stripe when the active-vehicle count
     # actually changed, so most ingests are no-ops; failures here must

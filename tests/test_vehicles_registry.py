@@ -92,6 +92,38 @@ async def test_tenant_isolation(db):
 
 
 @pytest.mark.asyncio
+async def test_one_unusable_year_cannot_take_the_whole_roster_down(db):
+    """A provider's sloppy value must cost its own field, not the fleet.
+
+    Samsara sends model year as a STRING ('2026') and asyncpg refuses a
+    str for an INTEGER column.  The roster upserts inside ONE
+    transaction, so that single bad bind rolled back every other vehicle
+    with it — and the caller logged it at debug, so the registry sat
+    frozen for 47 days while the ingest reported success every minute.
+    """
+    rows = [
+        {"company_code": "PTG", "unit_number": "301",
+         "telematics_ref": "sam_301", "year": "2026"},        # provider string
+        {"company_code": "PTG", "unit_number": "302",
+         "telematics_ref": "sam_302", "year": 2024},          # honest int
+        {"company_code": "PTG", "unit_number": "303",
+         "telematics_ref": "sam_303", "year": "N/A"},         # not a year
+        {"company_code": "PTG", "unit_number": "304",
+         "telematics_ref": "sam_304", "year": "garbled"},     # nor this
+    ]
+    n = await db.upsert_from_integration(42, rows, source="samsara")
+    assert n == 4, "every vehicle lands, however the provider spelled the year"
+
+    by_unit = {v.unit_number: v for v in await db.list_vehicles(42)}
+    assert set(by_unit) >= {"301", "302", "303", "304"}
+    # A year we can read is kept, whichever type it arrived as.
+    assert by_unit["301"].year == 2026
+    assert by_unit["302"].year == 2024
+    # One we cannot read is simply absent — never a guess, never a crash.
+    assert by_unit["303"].year in (None, 0)
+    assert by_unit["304"].year in (None, 0)
+
+
 async def test_upsert_from_integration_idempotent_and_preserves_operator_fields(db):
     # Operator adds a unit by hand and reclassifies + annotates it.
     await db.add_vehicle(
