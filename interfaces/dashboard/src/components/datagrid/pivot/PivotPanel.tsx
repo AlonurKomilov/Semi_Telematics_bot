@@ -378,46 +378,31 @@ export default function PivotPanel({
    *
    *  In a zone ⋮ rather than an inline switch so the panel matches list
    *  mode, where Pin and Hide are exactly this: a column's ⋮ actions. */
-  const zoneMenu = (axis: Axis): MenuAction[] => {
-    const keys = keysOn(axis);
-    if (keys.length === 0) return [];
-    // Only COLUMNS keeps a zone menu.  ``hideEmptyColumns`` is about
-    // BUCKETS the data produced, not about any field you assigned, so
-    // there is no field row it could hang off — unlike the two pins,
-    // which moved onto the fields themselves (see pinItem).
-    //
-    // NOT shortened to list mode's "Hide": that removes ONE column the
-    // operator picked, this prunes every bucket that came out empty.
-    // Same word, different act — sharing it would be a false friend.
-    if (axis !== 'columns') return [];
-    const on = !!model.hideEmptyColumns;
-    return [{
-      key: 'hide-empty', label: 'Hide columns with no values', icon: check(on),
-      onSelect: () => toggle({ hideEmptyColumns: !on }),
-    }];
-  };
-
   const toggle = (patch: Partial<PivotModel>) => onChange({ ...model, ...patch });
 
-  /** The Pin item for a field's own ⋮ — owner's call, and it matches
-   *  where list mode keeps Pin: on the column menu, not on some
-   *  container's.
+  /** Settings on a field's own ⋮ — owner's call, and it matches where
+   *  list mode keeps Pin and Hide: on the COLUMN menu, not on some
+   *  container's.  With these here, no zone has a menu of its own.
    *
-   *  ⚠️ It reads "Pin ROW LABELS", not "Pin Company", and that wording is
-   *  load-bearing.  The renderer draws ONE merged label column for every
-   *  row field (`rowFieldLabel` joins them with " / " and the body is a
-   *  tree inside that single cell), so this freezes Company AND Customer
-   *  together — there is no Company column to pin by itself.  The item
-   *  therefore appears on EVERY row field with the same state: whichever
-   *  one you open, you are looking at the same column's pin.  Naming the
-   *  field instead would promise a per-field freeze the matrix cannot
-   *  do.  (Per-field pinning would need a flat/tabular row layout —
-   *  a separate piece of work, noted in this folder's CLAUDE.md.)
+   *  ⚠️ Every one of them governs what the ZONE renders, not the field
+   *  you opened — so the labels name the OUTPUT, never the field, and
+   *  the item appears on every field of that zone showing the SAME
+   *  state.  Whichever you open, it is the same setting.
    *
-   *  Values is the same shape from the other side: the Total column is
-   *  GENERATED from the measures, one per measure, so pinning from
-   *  Rate's menu freezes every Total column, and the label counts them. */
-  const pinItem = (axis: Axis): MenuAction[] => {
+   *  - ROWS: the renderer draws ONE merged label column for every row
+   *    field (`rowFieldLabel` joins them with " / " and the body is a
+   *    tree inside that single cell), so this freezes Company AND
+   *    Customer together.  "Pin Company" would promise a per-field
+   *    freeze the matrix cannot do — that needs a flat/tabular row
+   *    layout, noted as its own piece of work in this folder's
+   *    CLAUDE.md.
+   *  - VALUES: the Total column is GENERATED from the measures, one per
+   *    measure, so pinning freezes every Total column — and the label
+   *    counts them.
+   *  - COLUMNS: the buckets being pruned are the combinations the column
+   *    fields jointly produce (`colPaths` is built from all of them), so
+   *    pruning from one field's menu prunes the shared result. */
+  const fieldSettings = (axis: Axis): MenuAction[] => {
     if (axis === 'rows') {
       const on = model.pinRowLabels ?? false;
       return [{
@@ -426,9 +411,20 @@ export default function PivotPanel({
         onSelect: () => toggle({ pinRowLabels: !on }),
       }];
     }
+    if (axis === 'columns') {
+      // NOT shortened to list mode's "Hide": that removes ONE column the
+      // operator picked, this prunes every bucket that came out empty.
+      // Same word, different act — sharing it would be a false friend.
+      const on = !!model.hideEmptyColumns;
+      return [{
+        key: 'hide-empty', label: 'Hide columns with no values', icon: check(on),
+        separatorBefore: true,
+        onSelect: () => toggle({ hideEmptyColumns: !on }),
+      }];
+    }
     // No column dimension means no Total column exists to freeze, so the
     // item would be a dead end — offered and then unable to do anything.
-    if (axis !== 'values' || !hasColumnDim) return [];
+    if (!hasColumnDim) return [];
     const on = model.pinTotals ?? false;
     const nTotals = model.values.filter(
       (v) => !(model.disabled ?? []).includes(v.key),
@@ -464,10 +460,10 @@ export default function PivotPanel({
         key: 'bottom', label: 'Move to bottom', icon: <ChevronsDown size={14} />,
         disabled: at >= last, onSelect: () => moveTo(axis, key, last),
       },
-      // Freezing sits between PLACEMENT (the moves above) and
-      // DESTINATION (the axis list below) — it changes how the field's
+      // Rendering settings sit between PLACEMENT (the moves above) and
+      // DESTINATION (the axis list below) — they change how the zone's
       // column is drawn, not where the field lives.
-      ...pinItem(axis),
+      ...fieldSettings(axis),
       // Where else this field can go.  A check marks where it IS, so the
       // menu doubles as "which axis am I on?" without closing it.
       // Verb-first and explicit.  Bare "Rows" / "Columns" sat among
@@ -717,23 +713,19 @@ export default function PivotPanel({
                   (and a hairline under it while open) puts the control
                   that governs the zone on a different plane than the
                   rows it governs — the S1 region-anatomy rule. */}
-              {/* A ROW, not a button — the band now carries a fold
-                  control AND a settings menu, and a <button> may not
-                  contain another button.  The fold target keeps the
-                  whole remaining width so the band still reads as one
-                  click surface. */}
-              <div
-                className={cn(
-                  'flex items-stretch bg-muted/70 transition-colors',
-                  open && 'border-b border-border',
-                )}
-              >
+              {/* The whole band is the fold control again.  It briefly
+                  had to be a <div> hosting a settings ⋮ beside the fold
+                  button (a <button> may not contain another button) —
+                  every one of those settings now lives on the FIELD
+                  menus, so the wrapper has nothing left to host. */}
               <button
                 type="button"
                 onClick={() => toggleFold(axis)}
                 aria-expanded={open}
-                aria-label={`${AXIS_LABEL[axis]} — ${open ? 'collapse' : 'expand'}`}
-                className="flex-1 min-w-0 flex items-center justify-between gap-2 px-3 py-2 hover:bg-muted transition-colors"
+                className={cn(
+                  'w-full flex items-center justify-between gap-2 px-3 py-2 bg-muted/70 hover:bg-muted transition-colors',
+                  open && 'border-b border-border',
+                )}
               >
                 <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   {AXIS_LABEL[axis]}
@@ -763,25 +755,6 @@ export default function PivotPanel({
                     : <ChevronDown size={14} className="text-muted-foreground" />}
                 </span>
               </button>
-              {/* The zone's own settings, in the zone's own menu — the
-                  same place list mode keeps Pin and Hide (a column's ⋮).
-                  They govern the COLUMN the zone renders, which is why
-                  they cannot hang off a field: ROWS draws ONE merged
-                  label column, so a per-field pin would silently govern
-                  its neighbours, and it would hop to another field's
-                  menu the moment you reordered the zone. */}
-              {zoneMenu(axis).length > 0 && (
-                <ActionMenu items={zoneMenu(axis)}>
-                  <button
-                    type="button"
-                    aria-label={`${AXIS_LABEL[axis]} settings`}
-                    className="shrink-0 px-2 flex items-center text-muted-foreground/70 hover:text-foreground hover:bg-muted transition-colors"
-                  >
-                    <MoreVertical size={14} />
-                  </button>
-                </ActionMenu>
-              )}
-              </div>
               {open && (
                 <>
                   {keys.length === 0 && (
@@ -797,11 +770,12 @@ export default function PivotPanel({
                       </p>
                     </div>
                   )}
-                  {/* Zone SETTINGS used to sit here as inline
-                      switches, directly above the field rows.  They are
-                      in the zone's ⋮ now (see zoneMenu): they govern the
-                      column the zone renders, which is what list mode
-                      puts on a column's ⋮ as Pin / Hide. */}
+                  {/* Zone settings used to sit here as inline controls,
+                      directly above the field rows — five near-identical
+                      checkboxes in one run, one governing the zone and
+                      four governing membership.  Every one of them is on
+                      the FIELD menus now (see fieldSettings), which is
+                      where list mode keeps Pin and Hide. */}
                   <SortableContext
                     items={keys.map((k) => itemId(axis, k))}
                     strategy={verticalListSortingStrategy}

@@ -151,33 +151,45 @@ not a summary. `z-30` on both: it clears every sticky cell in the body
 (max `z-20`), so the frozen Total column cannot paint over the header it
 belongs under.
 
-## Pin is on the FIELD's ⋮; only `hideEmptyColumns` is on a zone's
+## Every setting is on a FIELD's ⋮ — no zone has a menu
 
-**Pin sits where list mode keeps it — on the field's own ⋮** (owner
-decision, asked for three times; earlier drafts had it inline in the zone
-and then on the zone's ⋮). `pinItem(axis)` adds it to every ROW field and
-every VALUE field, between the move block and the axis list: it changes
-how the field's column is DRAWN, not where the field lives.
+`fieldSettings(axis)` adds the zone's setting to **every field in that
+zone**, between the move block and the axis list: it changes how the
+zone's column is DRAWN, not where the field lives.
 
-`zoneMenu` now returns items for COLUMNS only. `hideEmptyColumns` is
-about BUCKETS the data produced rather than any field you assigned, so
-there is no field row it could hang off. The other two zones render no ⋮
-at all rather than an empty menu.
+| Zone | Item on each field's ⋮ |
+|---|---|
+| ROWS | Pin row labels |
+| COLUMNS | Hide columns with no values |
+| VALUES | Pin Total column *(counted when >1 measure)* |
 
-⚠️ **The label names the COLUMN, never the field** — "Pin row labels",
-not "Pin Company". The renderer draws ONE merged label column for every
-row field (`rowFieldLabel` joins them with `" / "`, and the body is a
-tree inside that single cell), so this freezes Company AND Customer
-together. The item therefore appears on **every** row field showing the
-**same** state: whichever you open, it is the same column's pin. Naming
-the field would promise a per-field freeze the matrix cannot perform.
-A test pins the shared state.
+This is where list mode keeps Pin and Hide — on the **column** menu —
+and it is the owner's decision, reached after two worse drafts: inline
+controls stacked above the field rows (five near-identical checkboxes in
+one run, one governing the zone and four governing membership), then a
+settings ⋮ on each zone's header band. With nothing left to host, that
+band went back to being the fold control alone, and **no zone renders a
+⋮ at all**. A test asserts that.
 
-Values is the same shape from the other side: the Total column is
-GENERATED from the measures, **one per measure**, so pinning from Rate's
-menu freezes every Total column — and the label counts them ("Pin 2
-Total columns"). A hard-coded singular under-described it the moment a
-second measure was assigned.
+⚠️ **Every label names the OUTPUT, never the field you opened** — "Pin
+row labels", not "Pin Company" — and each item appears on every field of
+its zone showing the **same** state. Whichever you open, it is the same
+setting. The reason is the same in all three zones: they govern what the
+fields *jointly* produce.
+
+- **ROWS** — the renderer draws ONE merged label column for every row
+  field (`rowFieldLabel` joins them with `" / "`, and the body is a tree
+  inside that single cell), so this freezes Company AND Customer
+  together.
+- **COLUMNS** — `colPaths` is built from all the column fields, so the
+  buckets pruned are the combinations they jointly produce.
+- **VALUES** — the Total column is GENERATED from the measures, **one per
+  measure**, so pinning from Rate's menu freezes every Total column. The
+  label counts them ("Pin 2 Total columns"); a hard-coded singular
+  under-described it the moment a second measure was assigned.
+
+Naming the field instead would promise a per-field effect the matrix
+cannot perform.
 
 **Per-field pinning would need a flat/tabular row layout** — row fields
 rendered as separate columns (Excel's "Tabular" vs "Compact") instead of

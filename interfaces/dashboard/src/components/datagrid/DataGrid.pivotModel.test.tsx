@@ -96,16 +96,6 @@ async function openPanel() {
   await act(async () => { btn.click(); });
 }
 
-/** ``hideEmptyColumns`` is about BUCKETS, not any assigned field, so it
- *  is the one setting still on a zone's ⋮. */
-async function zoneSetting(zone: string, label: string) {
-  const trigger = screen.getByRole('button', { name: `${zone} settings` });
-  await act(async () => { trigger.click(); });
-  const item = screen.getByRole('menuitem', { name: new RegExp(label) });
-  const checked = !!item.querySelector('svg');
-  return { checked, item };
-}
-
 /** Pin lives on the FIELD's ⋮, where list mode keeps it too.
  *
  *  Closes any menu already open first: these menus portal into the body
@@ -138,7 +128,7 @@ describe('stored pivot settings survive the model rebuild', () => {
   it('carries hideEmptyColumns', async () => {
     stored = { enabled: true, model: { ...FULL, hideEmptyColumns: true } };
     await openPanel();
-    expect((await zoneSetting('Columns', 'Hide columns with no values')).checked).toBe(true);
+    expect((await fieldSetting('Driver', 'Hide columns with no values')).checked).toBe(true);
   });
 
   it('carries pinRowLabels', async () => {
@@ -189,6 +179,17 @@ describe('the panel says what each control governs', () => {
     stored = { enabled: false, model: FULL };
     await openPanel();
     expect((drillBtn() as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('gives no zone its own ⋮ — every setting is on a field menu', async () => {
+    // The panel briefly had a settings ⋮ on each zone header band.  With
+    // all three settings on the field menus there is nothing left for it
+    // to hold, and the band went back to being the fold control alone.
+    stored = { enabled: true, model: FULL };
+    await openPanel();
+    for (const zone of ['Rows', 'Columns', 'Values']) {
+      expect(screen.queryByRole('button', { name: `${zone} settings` })).toBeNull();
+    }
   });
 
   it('keeps settings out of the inline field list entirely', async () => {

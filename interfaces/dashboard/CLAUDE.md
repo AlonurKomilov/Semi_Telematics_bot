@@ -64,10 +64,13 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   panel stacked a zone setting directly above its field rows as the
   same checkbox, so five identical boxes in one column meant two
   unrelated things and every label had to be read to tell them apart.
-  **A setting that governs a whole COLUMN or region belongs on that
-  region's `⋮`** — the same place a DataGrid column keeps Pin and Hide —
-  not inline among the items it governs, and not on one item's menu
-  (it would misattribute, and it would move when the items reorder).
+  **A setting that governs a rendered COLUMN belongs on the `⋮` of the
+  field(s) that produce it** — the same place a DataGrid column keeps
+  Pin and Hide — not inline among the items it governs. When several
+  fields jointly produce one column, put the item on each of them
+  showing one shared state, and name it after the OUTPUT ("Pin row
+  labels"), never after the field you opened ("Pin Company") — the
+  latter promises a per-field effect that doesn't exist.
 - **Mine-vs-shared = always "My X" / "Shared".** Any feature with an
   account-owned side and a cross-account side (Vendors, Parts, Service
   Tasks, assemblies next) labels the split with those two words —
