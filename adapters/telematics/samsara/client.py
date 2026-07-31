@@ -496,7 +496,18 @@ class SamsaraClient:
             data = await self._get(
                 "/fleet/vehicles/stats", params={"types": "engineStates"},
             )
-            return data.get("data", [])
+            rows = data.get("data", [])
+            # The type is requested as "engineStates" and comes back as
+            # "engineState" — the same singular/plural drift the fuel
+            # reader hedges against.  Normalising here rather than in each
+            # caller is why the map, parking and the assistant all read
+            # the same shape: every one of them asked for the plural and
+            # had been quietly getting nothing.
+            for r in rows:
+                block = r.get("engineState")
+                if block is not None and "engineStates" not in r:
+                    r["engineStates"] = block
+            return rows
         except aiohttp.ClientResponseError as e:
             if e.status == 400:
                 self._unsupported_stat_types["engineStates"] = True
@@ -834,7 +845,11 @@ class SamsaraClient:
         # road speed agrees.
         engine_state_by_id: dict[str, str] = {}
         for sv in stats_data:
-            block = sv.get("engineStates") or {}
+            # Requested as "engineStates", returned as "engineState" —
+            # the same singular/plural drift the fuel reader above hedges
+            # against.  Read both: the plural cost this column every
+            # engine reading it ever had.
+            block = sv.get("engineState") or sv.get("engineStates") or {}
             value = block.get("value") if isinstance(block, dict) else block
             if value:
                 engine_state_by_id[sv["id"]] = str(value)

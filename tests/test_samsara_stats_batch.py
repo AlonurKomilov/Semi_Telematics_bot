@@ -31,7 +31,10 @@ async def test_fetch_enrichment_maps_batches_stats_into_one_call():
                 "faultCodes": {"j1939": {"checkEngineLights": {"protect": True}}},
                 "fuelPercents": {"value": 80},
                 "defLevelMilliPercent": {"value": 55000, "time": "t1"},
-                "engineStates": {"value": "On", "time": "t1"},
+                # Requested as the plural type, returned SINGULAR — the
+                # real provider shape, and what made this column read
+                # empty for the life of the table.
+                "engineState": {"value": "On", "time": "t1"},
             },
             {"id": "v2", "faultCodes": {}},  # no fuel / no DEF sensor
         ]}
