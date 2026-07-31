@@ -7658,3 +7658,70 @@ async def migrate_application_reviewed_at(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 174: driver_applications.reviewed_at ready")
+
+
+@_register("175_activity_events")
+async def migrate_activity_events(conn) -> None:
+    """The unified activity trail (owner decision 2026-07-31).
+
+    One universal who-did-what store for ALL adopting features; the two
+    shipped rich trails (load_events, vehicle_inventory_events) stay and
+    are unioned at read time.  ``changes`` is the canonical field diff
+    ``{field: {"from": x, "to": y}}`` — a DELETE stores every field with
+    ``to: null``, making the trail double as the recovery record (the
+    2026-07-30 maintenance bulk-delete lesson).  Bulk actions write one
+    event per entity sharing ``group_id`` — never a truncatable id list.
+    People only: machine churn (alert lifecycle, sync) stays out.
+    """
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS activity_events (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id    INTEGER NOT NULL,
+            entity_type   TEXT    NOT NULL,
+            entity_id     TEXT    NOT NULL,
+            action        TEXT    NOT NULL,
+            changes       TEXT    NOT NULL DEFAULT '{}',
+            actor_user_id INTEGER,
+            group_id      TEXT,
+            context       TEXT    NOT NULL DEFAULT '{}',
+            note          TEXT    NOT NULL DEFAULT '',
+            created_at    TEXT    NOT NULL DEFAULT ''
+        )
+        """
+    )
+    # Indexes here, never in schema.py (the known boot-crash gotcha).
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_activity_events_entity "
+        "ON activity_events(account_id, entity_type, entity_id)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_activity_events_time "
+        "ON activity_events(account_id, created_at)"
+    )
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_activity_events_group "
+        "ON activity_events(account_id, group_id)"
+    )
+    await conn.commit()
+    logger.info("Migration 175: activity_events trail ready")
+
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 175: ENABLE_RLS not set; RLS skipped")
+        return
+    try:
+        await conn.execute("ALTER TABLE activity_events ENABLE ROW LEVEL SECURITY")
+        await conn.execute("ALTER TABLE activity_events FORCE ROW LEVEL SECURITY")
+        await conn.execute("DROP POLICY IF EXISTS tenant_isolation ON activity_events")
+        await conn.execute(
+            """
+            CREATE POLICY tenant_isolation ON activity_events
+            USING       (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+            """
+        )
+        await conn.commit()
+        logger.info("Migration 175: RLS enabled on activity_events")
+    except Exception as e:
+        logger.warning("Migration 175: RLS setup failed: %s", e)

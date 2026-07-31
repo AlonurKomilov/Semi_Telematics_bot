@@ -108,6 +108,7 @@ from .datatruck import DatatruckStorageMixin
 from .system_metrics import SystemMetricsMixin
 from .vehicles_registry import VehiclesRegistryMixin, Vehicle  # noqa: F401
 from .loads import LoadsMixin, Load  # noqa: F401
+from .activity_trail import ActivityTrailMixin
 from .platform import PlatformDB
 
 
@@ -177,6 +178,7 @@ class Database(
     SystemMetricsMixin,
     VehiclesRegistryMixin,
     LoadsMixin,
+    ActivityTrailMixin,
     _DatabaseCore,
 ):
     """Async Postgres wrapper with typed helpers.
