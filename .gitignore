@@ -18,6 +18,7 @@ env/
 .bot.pid
 .deps-installed
 .env-applied
+.sudo-owned
 .pid
 .pytest_cache/
 .mypy_cache/
@@ -66,6 +67,10 @@ docs/*
 !docs/grafana/
 # Architecture decision docs — SSOT plans, must travel with the repo.
 !docs/architecture/
+# The two taxonomy SSOTs are maintained docs, not working papers — the
+# docs/* wildcard above had kept them invisible to the repo for months.
+!docs/FEATURES.md
+!docs/SERVICES.md
 # UX psychology audit reports stay LOCAL-ONLY (docs/* already ignores
 # them): they are point-in-time working papers, not source.  The
 # ux-psychology-audit skill still writes them here and aggregates them

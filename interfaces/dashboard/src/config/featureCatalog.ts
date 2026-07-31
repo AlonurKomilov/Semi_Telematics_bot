@@ -207,7 +207,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // ── ACCOUNT ADMIN (always on for owner/admin) ─────────────────────
   // Invites is reached via the Team Management page tab now (navHidden),
   // but stays in the catalog so HR's onboarding entry + the route resolve.
-  { id: 'invites',          labelKey: 'nav.invites',          path: '/invites',         icon: Link,          modules: ['hr', 'account'], tier: 'administration', permission: ['can_invite'], navGroup: 'people', navHidden: true },
+  { id: 'invites',          labelKey: 'nav.invites',          path: '/invites',         icon: Link,          modules: ['account'], tier: 'administration', permission: ['can_invite'], navGroup: 'people', navHidden: true },
   { id: 'team_management',  labelKey: 'nav.team_management',  path: '/team',           icon: Users,         modules: ['account'], tier: 'administration', permission: ['can_manage_users'], navGroup: 'settings' },
   // Billing — accounting owns the relationship; the owner always has it.
   { id: 'billing',          labelKey: 'nav.billing',          path: '/billing',         icon: CreditCard,    modules: ['accounting', 'account'], tier: 'role', permission: ['can_manage_billing'], navGroup: 'account' },

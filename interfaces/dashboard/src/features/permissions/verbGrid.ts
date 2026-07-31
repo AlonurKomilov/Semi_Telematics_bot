@@ -149,7 +149,7 @@ export function driverBands(): DriverBand[] {
     },
     {
       title: 'Own records',
-      note: 'their own documents and history, nobody else\u2019s',
+      note: 'the PERSONAL tier — their own documents and history, nobody else\u2019s',
       rows: DRIVER_RECORDS as TickRow[],
     },
   ];

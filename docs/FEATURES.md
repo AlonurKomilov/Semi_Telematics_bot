@@ -134,6 +134,17 @@ or the explicit exempt list.
 | **Send Invites** | `features/settings/invites/` |
 | **Manage Companies** | `features/settings/companies/` |
 | **Working Hours** | schedules feed the DND gate in `capabilities/alerting/`; `features/settings/work_hours/` |
+| *(components, no flag of their own)* | **Audit Log** rides `can_manage_users` (`features/settings/audit/`) · **forum routing** and bot config ride `can_manage_account` |
+
+**Tier and nav group are independent on purpose.** These eight sit in three
+different sidebar groups — `settings` (Team Management, Companies, Settings,
+Audit Log), `account` (Permissions, Integrations, Storage), `people` (Send
+Invites). That is not drift: `tier` answers *who is this for*, `navGroup`
+answers *where does a user look for it*, and Invites belongs next to People
+even though it governs the account. Only `modules` was aligned (2026-07-30):
+Invites had `['hr','account']`, the one Administration entry that read as
+department-owned — inert in practice, since `account` is not a toggleable
+department, so it was always surfaced anyway.
 
 > These eight were called "Settings components" until 2026-07-30.  The
 > catalog already gave each its own entry, path and permission, and the
