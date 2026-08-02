@@ -593,6 +593,29 @@ class VehiclesRegistryMixin(_MixinBase):
             },
         }
 
+    async def registry_ids_by_telematics_ref(
+        self, account_id: int,
+    ) -> dict[str, int]:
+        """Provider external id → our ``vehicles.id``, for one account.
+
+        The resolution map for stamping ``registry_id`` at ingest.  An
+        empty ``telematics_ref`` never resolves — a blank pointer
+        matching a blank pointer is how phantom identities are born.
+        The roster is small (hundreds of rows), so callers take the
+        whole map per tick rather than caching across ticks and going
+        stale mid-rename.
+        """
+        cur = await self._db.execute(
+            "SELECT telematics_ref, id FROM vehicles "
+            "WHERE account_id = ? AND telematics_ref <> ''",
+            (account_id,),
+        )
+        return {
+            str(row[0]): int(row[1])
+            for row in await cur.fetchall()
+            if row[0]
+        }
+
     async def upsert_from_integration(
         self,
         account_id: int,

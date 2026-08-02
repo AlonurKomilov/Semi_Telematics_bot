@@ -107,6 +107,7 @@ async def snapshot_vehicle_state(account_id: int) -> int:
             "fault_count":        sr.get("fault_count") or 0,
             "dtc_critical_count": sr.get("dtc_critical_count") or 0,
             "last_driver_id":     sr.get("last_driver_id") or "",
+            "registry_id":        sr.get("registry_id"),
             "battery_v":          health.get("battery_v"),
             "oil_psi":            health.get("oil_psi"),
             "coolant_c":          health.get("coolant_c"),

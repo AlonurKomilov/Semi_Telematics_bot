@@ -74,3 +74,57 @@ async def test_live_shaped_dtcs_actually_land_in_the_table(pg_db):
     assert rows[0]["fmi"] == 18
     # The SPN text names the fault; the FMI text merely grades it.
     assert "Exhaust Gas Recirculation" in rows[0]["description"]
+
+
+@pytest.mark.asyncio
+async def test_registry_id_rides_state_snapshot_and_orphans(pg_db):
+    """Contract 3 end to end at the resolution point.
+
+    A vehicle the registry knows gets stamped with OUR id; one it does
+    not know keeps NULL and lands in quarantine — never a guess.
+    """
+    acct = 42
+    await pg_db.add_vehicle(
+        acct, unit_number="301", company_code="PTG",
+    )
+    # Link it the way the integration does.
+    await pg_db.upsert_from_integration(
+        acct,
+        [{"company_code": "PTG", "unit_number": "301",
+          "telematics_ref": "sam_301"}],
+        source="samsara",
+    )
+    ref_map = await pg_db.registry_ids_by_telematics_ref(acct)
+    assert "sam_301" in ref_map
+
+    await pg_db.upsert_vehicle_state(acct, [
+        {"vehicle_id": "sam_301", "vehicle_name": "301",
+         "company_code": "PTG", "registry_id": ref_map["sam_301"]},
+        {"vehicle_id": "sam_999", "vehicle_name": "999",
+         "company_code": "PTG"},   # unknown to the registry
+    ])
+    rows = {r["vehicle_id"]: r for r in await pg_db.get_vehicle_state(acct)}
+    assert rows["sam_301"]["registry_id"] == ref_map["sam_301"]
+    assert rows["sam_999"]["registry_id"] is None
+
+    # A later tick where resolution hiccups must NOT unlink history.
+    await pg_db.upsert_vehicle_state(acct, [
+        {"vehicle_id": "sam_301", "vehicle_name": "301",
+         "company_code": "PTG"},   # no registry_id this time
+    ])
+    rows = {r["vehicle_id"]: r for r in await pg_db.get_vehicle_state(acct)}
+    assert rows["sam_301"]["registry_id"] == ref_map["sam_301"]
+
+    n = await pg_db.record_ingest_orphans(acct, "vehicles.state", [
+        {"external_id": "sam_999", "name": "999", "company_code": "PTG"},
+    ])
+    assert n == 1
+    # Re-sighting bumps the count instead of duplicating.
+    await pg_db.record_ingest_orphans(acct, "vehicles.state", [
+        {"external_id": "sam_999", "name": "999", "company_code": "PTG"},
+    ])
+    cur = await pg_db._db.execute(
+        "SELECT count FROM warehouse_ingest_orphans "
+        "WHERE account_id = ? AND external_id = ?", (acct, "sam_999"))
+    row = await cur.fetchone()
+    assert row is not None and int(row[0]) == 2

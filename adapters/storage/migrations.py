@@ -7725,3 +7725,101 @@ async def migrate_activity_events(conn) -> None:
         logger.info("Migration 175: RLS enabled on activity_events")
     except Exception as e:
         logger.warning("Migration 175: RLS setup failed: %s", e)
+
+
+@_register("177_vehicle_identity_registry_id")
+async def migrate_vehicle_identity_registry_id(conn) -> None:
+    """Warehouse rows learn which REGISTRY vehicle they belong to.
+
+    Until now every warehouse table knew a vehicle only by the provider's
+    external id and by a display name — and the name is provider-editable
+    free text, which is how one truck became "229 Idris Ahmed" and how a
+    renamed unit split its own history in two.  ``registry_id`` points at
+    ``vehicles.id``, the identity WE own.  It is stamped at ingest and
+    materialized per row rather than joined through ``telematics_ref``,
+    because that pointer is mutable: a gateway swap rewrites it, and the
+    history written under the old gateway must keep the identity it had
+    when written.
+
+    Nullable by design.  Rows the resolver cannot place stay NULL and the
+    unmatched identity is recorded in ``warehouse_ingest_orphans`` for
+    the watchdog to surface — a quarantine, not a guess.
+
+    Tables with no vehicle grain (efficiency aggregates, driver
+    efficiency, geofences) are deliberately not touched.
+    """
+    for table in (
+        "vehicle_state",
+        "vehicle_state_snapshot",
+        "vehicle_telemetry",
+        "safety_event_log",
+        "vehicle_health_snapshot",
+        "vehicle_fault_snapshot",
+        "vehicle_fault_detail",
+        "aggregate_weather_snapshot",
+    ):
+        await conn.execute(
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS registry_id INTEGER"
+        )
+
+    # The resolver's lookup path: (account_id, telematics_ref) → id.
+    # The empty-ref exclusion is repeated in the resolver's WHERE clause —
+    # an empty ref must never resolve to anything.
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vehicles_telematics_ref "
+        "ON vehicles(account_id, telematics_ref) WHERE telematics_ref <> ''"
+    )
+
+    # Unmatched identities land here instead of silently minting phantom
+    # vehicles.  One row per (dataset, account, external id); count and
+    # last_seen advance on every re-sighting so the watchdog can rank
+    # by noise.
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS warehouse_ingest_orphans (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id   INTEGER NOT NULL,
+            dataset_key  TEXT    NOT NULL,
+            external_id  TEXT    NOT NULL,
+            name         TEXT    NOT NULL DEFAULT '',
+            company_code TEXT    NOT NULL DEFAULT '',
+            count        INTEGER NOT NULL DEFAULT 1,
+            first_seen   TEXT    NOT NULL,
+            last_seen    TEXT    NOT NULL,
+            UNIQUE(account_id, dataset_key, external_id)
+        )
+        """
+    )
+    # Indexes here, never in schema.py (the known boot-crash gotcha).
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ingest_orphans_account "
+        "ON warehouse_ingest_orphans(account_id, last_seen)"
+    )
+    await conn.commit()
+    logger.info("Migration 177: registry_id columns + orphan quarantine ready")
+
+    import os
+    if os.getenv("ENABLE_RLS", "0").strip() not in ("1", "true", "TRUE", "yes"):
+        logger.info("Migration 177: ENABLE_RLS not set; RLS skipped")
+        return
+    try:
+        await conn.execute(
+            "ALTER TABLE warehouse_ingest_orphans ENABLE ROW LEVEL SECURITY"
+        )
+        await conn.execute(
+            "ALTER TABLE warehouse_ingest_orphans FORCE ROW LEVEL SECURITY"
+        )
+        await conn.execute(
+            "DROP POLICY IF EXISTS tenant_isolation ON warehouse_ingest_orphans"
+        )
+        await conn.execute(
+            """
+            CREATE POLICY tenant_isolation ON warehouse_ingest_orphans
+            USING       (account_id::text = current_setting('app.account_id', true))
+            WITH CHECK  (account_id::text = current_setting('app.account_id', true))
+            """
+        )
+        await conn.commit()
+        logger.info("Migration 177: RLS enabled on warehouse_ingest_orphans")
+    except Exception as e:
+        logger.warning("Migration 177: RLS setup failed: %s", e)

@@ -255,14 +255,54 @@ async def ingest_vehicle_state(account_id: int) -> int:
         )
         row.pop("engine_state_raw", None)
 
+    # Stamp OUR identity onto every row before it becomes history.  The
+    # registry resolves by the provider's stable external id — never by
+    # display name, which is provider-editable free text (a rename is how
+    # one truck spent weeks in the warehouse as "229 Idris Ahmed").  A
+    # vehicle the registry cannot place keeps registry_id NULL and is
+    # quarantined instead of guessed at.
+    orphans: list[dict[str, Any]] = []
+    try:
+        ref_to_id = await tenant.registry_ids_by_telematics_ref(account_id)
+    except Exception:
+        logger.exception(
+            "registry-id resolution unavailable acct=%d — rows keep their "
+            "last known registry link", account_id,
+        )
+        ref_to_id = {}
+    if ref_to_id:
+        for row in rows:
+            vid = str(row.get("vehicle_id") or "")
+            rid = ref_to_id.get(vid)
+            if rid is not None:
+                row["registry_id"] = rid
+            else:
+                orphans.append({
+                    "external_id": vid,
+                    "name": row.get("vehicle_name") or "",
+                    "company_code": row.get("company_code") or "",
+                })
+        if orphans:
+            try:
+                await tenant.record_ingest_orphans(
+                    account_id, "vehicles.state", orphans,
+                )
+            except Exception:
+                logger.exception(
+                    "orphan quarantine write failed acct=%d", account_id,
+                )
+
     n = await tenant.upsert_vehicle_state(account_id, rows)
     logger.info(
         "ingest_vehicle_state acct=%d persisted=%d with_odometer=%d "
-        "with_engine_hours=%d with_engine_state=%d",
+        "with_engine_hours=%d with_engine_state=%d with_registry_id=%d "
+        "orphans=%d",
         account_id, n,
         len(odometer_by_vehicle_id),
         len(engine_hours_by_vehicle_id),
         sum(1 for r in rows if r.get("engine_state")),
+        sum(1 for r in rows if r.get("registry_id") is not None),
+        len(orphans),
     )
     # Surface a whole-fleet odometer stall: we persisted vehicles but got
     # ZERO odometer readings.  Covers both failure modes — the endpoint

@@ -131,6 +131,7 @@ class WarehouseMixin(_MixinBase):
                 int(r.get("dtc_critical_count") or 0),
                 str(r.get("last_driver_id") or ""),
                 str(r.get("last_driver_name") or ""),
+                r.get("registry_id"),
                 # Preserve an empty ``captured_at`` instead of substituting
                 # the upsert timestamp.  Billing's activity-window query
                 # reads this column to decide whether a vehicle has had
@@ -151,8 +152,9 @@ class WarehouseMixin(_MixinBase):
                     engine_hours, engine_hours_time,
                     fault_count, dtc_critical_count,
                     last_driver_id, last_driver_name,
+                    registry_id,
                     captured_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(vehicle_id) DO UPDATE SET
                     account_id=excluded.account_id,
                     vehicle_name=excluded.vehicle_name,
@@ -170,6 +172,10 @@ class WarehouseMixin(_MixinBase):
                     dtc_critical_count=excluded.dtc_critical_count,
                     last_driver_id=excluded.last_driver_id,
                     last_driver_name=excluded.last_driver_name,
+                    -- The identity WE resolved outranks its absence: a
+                    -- tick where the resolver missed keeps the last
+                    -- known registry link rather than unlinking history.
+                    registry_id=COALESCE(excluded.registry_id, vehicle_state.registry_id),
                     -- Keep the most recent non-empty Samsara location
                     -- timestamp.  If Samsara hiccups and returns the
                     -- vehicle without a location ``time``, we shouldn't
@@ -222,6 +228,7 @@ class WarehouseMixin(_MixinBase):
             "engine_hours", "engine_hours_time",
             "fault_count", "dtc_critical_count",
             "last_driver_id", "last_driver_name",
+            "registry_id",
             "captured_at", "updated_at",
         ]
         cur = await self._db.execute(
@@ -775,6 +782,7 @@ class WarehouseMixin(_MixinBase):
                 _opt_float(r.get("coolant_c")),
                 _opt_float(r.get("engine_load_pct")),
                 _opt_float(r.get("rpm")),
+                r.get("registry_id"),
             ))
         if values:
             await self._db.executemany(
@@ -785,12 +793,61 @@ class WarehouseMixin(_MixinBase):
                     fuel_pct, def_pct, odometer_mi, engine_hours,
                     fault_count, dtc_critical_count, last_driver_id,
                     battery_v, oil_psi, coolant_c,
-                    engine_load_pct, rpm
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    engine_load_pct, rpm, registry_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (account_id, vehicle_id, captured_at) DO NOTHING
                 """,
                 values,
             )
+        await self._db.commit()
+        return len(values)
+
+    async def record_ingest_orphans(
+        self,
+        account_id: int,
+        dataset_key: str,
+        orphans: list[dict[str, Any]],
+    ) -> int:
+        """Quarantine provider identities the registry could not place.
+
+        One row per (dataset, account, external id); a re-sighting bumps
+        ``count`` and ``last_seen`` instead of inserting again, so the
+        table stays the size of the PROBLEM, not of time.  Recording is
+        the whole point: an identity that fails to resolve must become
+        visible somewhere, or it becomes a phantom vehicle nobody can
+        explain — that is how "229 Idris Ahmed" lived in the warehouse
+        for weeks.
+        """
+        if not orphans:
+            return 0
+        ts = _now_iso()
+        values = [
+            (
+                account_id, dataset_key,
+                str(o.get("external_id") or ""),
+                str(o.get("name") or ""),
+                str(o.get("company_code") or ""),
+                ts, ts,
+            )
+            for o in orphans
+            if str(o.get("external_id") or "").strip()
+        ]
+        if not values:
+            return 0
+        await self._db.executemany(
+            """
+            INSERT INTO warehouse_ingest_orphans (
+                account_id, dataset_key, external_id,
+                name, company_code, count, first_seen, last_seen
+            ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+            ON CONFLICT (account_id, dataset_key, external_id) DO UPDATE SET
+                name=excluded.name,
+                company_code=excluded.company_code,
+                count=warehouse_ingest_orphans.count + 1,
+                last_seen=excluded.last_seen
+            """,
+            values,
+        )
         await self._db.commit()
         return len(values)
 
