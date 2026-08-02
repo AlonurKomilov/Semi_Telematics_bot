@@ -352,3 +352,77 @@ async def delete_account_orphans(
         deleted_bytes=deleted_bytes,
         sample=[f.relpath for f in candidates[:sample]],
     )
+
+
+# The folder names features write into.  Matched anywhere in the path
+# because the segment DIRECTLY above a file is not always the kind:
+# applications nest one folder PER APPLICATION
+# (``{COMPANY}/applications/APP-4C7A0A/medical.pdf``), so grouping by the
+# parent produced 109 single-file buckets named after reference codes
+# instead of one "applications" row.
+_KNOWN_KINDS = (
+    "parking-maps", "camera-images", "applications", "branding",
+    "work-orders", "inspections", "knowledge", "avatars",
+    "company-banners", "company-logos", "driver-docs", "maintenance",
+)
+
+
+def _classify_kind(relpath: str) -> str:
+    """Which feature's folder does this file live in."""
+    segments = set(relpath.split("/"))
+    for kind in _KNOWN_KINDS:
+        if kind in segments:
+            return kind
+    parts = relpath.split("/")
+    return parts[-2] if len(parts) >= 2 else "other"
+
+
+@dataclass(frozen=True)
+class UsageBucket:
+    kind: str          # "parking-maps", "camera-images", ...
+    files: int
+    bytes: int
+    orphan_files: int
+    orphan_bytes: int
+
+
+async def account_usage(
+    tenant_db, account_id: int, *, grace_days: int = 7, root: str | None = None,
+) -> list[UsageBucket]:
+    """What is this account actually storing, by kind — and how much of it
+    is unreferenced.
+
+    Exists because the storage page had no answer to "what am I storing".
+    ``/storage/health`` reports ``used_bytes`` as the PENDING-SYNC
+    footprint, which is ~0 whenever the queue is drained, and
+    ``/storage/files`` lists queue rows.  So an account with 950 files on
+    disk and an empty queue saw zeroes and an empty table, which reads as
+    "storage is broken" rather than "everything is synced".
+
+    Reuses the orphan walk rather than a second traversal, so the
+    referenced/orphaned split is computed from the SAME declared registry
+    the purge uses — the number a user sees and the number the delete
+    acts on cannot disagree.
+    """
+    files, candidates, _referenced = await _find(
+        tenant_db, account_id, grace_days, root,
+    )
+    orphan_paths = {f.relpath for f in candidates}
+
+    by_kind: dict[str, dict[str, int]] = {}
+    for f in files:
+        kind = _classify_kind(f.relpath)
+        b = by_kind.setdefault(
+            kind, {"files": 0, "bytes": 0, "orphan_files": 0, "orphan_bytes": 0},
+        )
+        b["files"] += 1
+        b["bytes"] += f.size
+        if f.relpath in orphan_paths:
+            b["orphan_files"] += 1
+            b["orphan_bytes"] += f.size
+
+    return sorted(
+        (UsageBucket(k, v["files"], v["bytes"], v["orphan_files"], v["orphan_bytes"])
+         for k, v in by_kind.items()),
+        key=lambda u: u.bytes, reverse=True,
+    )

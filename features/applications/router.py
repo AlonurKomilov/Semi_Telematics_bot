@@ -181,6 +181,33 @@ async def submit_application(
         )
     except Exception:
         logger.exception("create_driver_application failed ref=%s acct=%s", reference, account_id)
+        # THE LEAK, closed.  Documents are stored in steps 3-4, BEFORE the
+        # row that references them exists.  When this create failed, every
+        # uploaded file stayed on disk with nothing pointing at it — and
+        # nothing ever cleaned up, because applications have no delete
+        # path at all.  109 abandoned folders accumulated that way, each
+        # holding a real applicant's CDL scans and medical certificate:
+        # PII we had no consent-backed reason to keep, invisible to every
+        # retention window because no row carried a date.
+        #
+        # Best-effort and never masking the original failure — the
+        # applicant gets the 500 either way; this only decides whether
+        # their documents linger.
+        #
+        # ``store.delete`` reaches the customer's Drive on a gdrive
+        # backend, which the server-local-only rule otherwise forbids.
+        # It is right here and nowhere else: this is compensating OUR
+        # failed write, seconds old, for a file no row references and no
+        # human has seen — not pruning data they own.  Leaving unclaimed
+        # applicant PII in their Drive would be the worse outcome.
+        for slot, stored in (docs or {}).items():
+            try:
+                store.delete(bucket, stored.rsplit("/", 1)[-1])
+            except Exception:
+                logger.warning(
+                    "orphan cleanup failed for %s ref=%s — file left on disk",
+                    slot, reference,
+                )
         raise HTTPException(status_code=500, detail="Could not save your application. Please try again.")
 
     # 5b. Enqueue each stored document for cloud sync (hybrid accounts
@@ -814,6 +841,17 @@ async def upload_company_logo(
         logger.exception("recruiter company logo store failed company=%s", company_id)
         raise HTTPException(status_code=500, detail="Could not store the logo.")
     await platform_db.update_company(company_id, account_id=user["account_id"], logo_object_id=oid)
+    # Enqueue after the column is set, so the worker has a row to repoint
+    # before it frees the local copy.  A repointer for ``company_logo``
+    # was registered before this call existed, which meant the registry
+    # advertised coverage nothing exercised — branding never reached a
+    # hybrid account's Drive.
+    from capabilities.storage.tracking import track_for_sync_if_hybrid
+    await track_for_sync_if_hybrid(
+        store, f"{folder}/branding", f"logo-{company_id}.{_LOGO_MIME_EXT[mime]}", oid,
+        entity_type="company_logo", entity_id=int(company_id),
+        file_size=len(raw),
+    )
     return {"ok": True}
 
 
@@ -878,6 +916,12 @@ async def upload_company_banner(
         logger.exception("recruiter company banner store failed company=%s", company_id)
         raise HTTPException(status_code=500, detail="Could not store the photo.")
     await platform_db.update_company(company_id, account_id=user["account_id"], banner_object_id=oid)
+    from capabilities.storage.tracking import track_for_sync_if_hybrid
+    await track_for_sync_if_hybrid(
+        store, f"{folder}/branding", f"banner-{company_id}.{_LOGO_MIME_EXT[mime]}", oid,
+        entity_type="company_banner", entity_id=int(company_id),
+        file_size=len(raw),
+    )
     return {"ok": True}
 
 

@@ -841,3 +841,111 @@ async def update_storage_quota(
     }
 
 
+
+
+# ── Orphan files (Phase 2: report, then delete on explicit confirm) ──
+
+
+@router.get("/orphans")
+async def scan_orphans(
+    grace_days: int = Query(7, ge=1, le=90),
+    user: dict = Depends(require_permission("can_manage_storage")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """What server-local files does no DB row reference?
+
+    Report only — this endpoint cannot delete anything.  ``grace_days``
+    ignores recent writes, because an upload whose row has not committed
+    yet is not an orphan.
+    """
+    from capabilities.storage.orphans import scan_account_orphans
+
+    report = await scan_account_orphans(
+        tenant_db, user["account_id"], grace_days=grace_days,
+    )
+    return {
+        "scanned_files":   report.scanned_files,
+        "referenced":      report.referenced,
+        "grace_days":      report.grace_days,
+        "candidate_count": report.candidate_count,
+        "candidate_bytes": report.candidate_bytes,
+        "sample":          report.sample,
+    }
+
+
+@router.post("/orphans/purge")
+async def purge_orphans(
+    confirm: bool = Query(False),
+    grace_days: int = Query(7, ge=1, le=90),
+    user: dict = Depends(require_permission("can_manage_storage")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Delete files no DB row references.  DRY RUN unless ``confirm=true``.
+
+    Deliberately operator-triggered rather than scheduled.  The scan that
+    feeds it was catastrophically wrong until recently — it recognised
+    reference columns by NAME, so columns nobody had anticipated
+    contributed nothing and 437 of 601 live files looked orphaned,
+    including FMCSA medical certificates and CDL scans.  That is fixed
+    and drift-tested, but a job that deletes customer files on a timer
+    earns automation by track record, not by argument.  A human reads the
+    list first.
+
+    Re-scans at call time, so a stale report can never drive a delete,
+    and only ever removes files under OUR disk — never the customer's
+    Drive.
+    """
+    from capabilities.storage.orphans import delete_account_orphans
+
+    result = await delete_account_orphans(
+        tenant_db, user["account_id"],
+        grace_days=grace_days, dry_run=not confirm,
+    )
+    return {
+        "dry_run":         result.dry_run,
+        "grace_days":      result.grace_days,
+        "candidate_count": result.candidate_count,
+        "candidate_bytes": result.candidate_bytes,
+        "deleted":         result.deleted,
+        "deleted_bytes":   result.deleted_bytes,
+        "sample":          result.sample,
+    }
+
+
+@router.get("/usage")
+async def storage_usage(
+    grace_days: int = Query(7, ge=1, le=90),
+    user: dict = Depends(require_permission("can_manage_storage")),
+    tenant_db=Depends(get_tenant_db),
+):
+    """What this account is actually storing, by kind.
+
+    Distinct from ``/storage/health``'s ``quota.used_bytes``, which is the
+    PENDING-SYNC footprint — ~0 whenever the queue is drained.  An account
+    with 793 files and an empty queue therefore saw zeroes and an empty
+    file table, which reads as "storage is broken" rather than
+    "everything is synced".
+
+    The referenced/orphaned split comes from the same declared registry
+    the purge acts on, so what a user is shown and what a delete would
+    remove cannot disagree.
+    """
+    from capabilities.storage.orphans import account_usage
+
+    buckets = await account_usage(
+        tenant_db, user["account_id"], grace_days=grace_days,
+    )
+    return {
+        "grace_days": grace_days,
+        "total_files": sum(b.files for b in buckets),
+        "total_bytes": sum(b.bytes for b in buckets),
+        "orphan_files": sum(b.orphan_files for b in buckets),
+        "orphan_bytes": sum(b.orphan_bytes for b in buckets),
+        "buckets": [
+            {
+                "kind": b.kind, "files": b.files, "bytes": b.bytes,
+                "orphan_files": b.orphan_files, "orphan_bytes": b.orphan_bytes,
+            }
+            for b in buckets
+        ],
+    }
