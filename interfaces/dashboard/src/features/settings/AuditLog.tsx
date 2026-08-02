@@ -9,8 +9,9 @@
  */
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
-import { ClipboardList, Layers } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArchiveRestore, ClipboardList, Layers } from 'lucide-react';
+import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';
 import {
@@ -131,6 +132,26 @@ export default function AuditLog() {
   const events = data?.events ?? [];
   const error = queryError instanceof Error ? queryError.message : '';
 
+  const qc = useQueryClient();
+  // Retroactive undo: the same group restore the toast calls, with no
+  // time limit — the trail doesn't expire.
+  const restoreGroup = useMutation({
+    mutationFn: (gid: string) => apiJSON<{
+      restored: number; conflicts: { entity_id: string }[];
+    }>(`/activity/restore-group/${gid}`, { method: 'POST' }),
+    onSuccess: (res) => {
+      const n = res.conflicts?.length ?? 0;
+      toast.success(
+        n > 0
+          ? `${res.restored} restored · ${n} already exist`
+          : `${res.restored} record${res.restored === 1 ? '' : 's'} restored`,
+      );
+      void qc.invalidateQueries();
+    },
+    onError: (e) => toast.error(
+      e instanceof Error ? e.message : 'Could not restore'),
+  });
+
   const groupQuery = useQuery({
     queryKey: ['admin-activity-group', group?.group_id],
     queryFn: () => apiJSON<{ events: ActivityEvent[] }>(
@@ -187,11 +208,43 @@ export default function AuditLog() {
               {group ? `${actionLabel(group.action)} · ${group.count} ${entityLabel(group.entity_type).toLowerCase()}s` : ''}
             </DialogTitle>
           </DialogHeader>
+          {group?.group_id
+            && (groupQuery.data?.events ?? []).some((e) => e.restorable) && (
+            <div className="pb-2 border-b border-border">
+              <Button
+                size="sm" variant="outline"
+                disabled={restoreGroup.isPending}
+                onClick={() => restoreGroup.mutate(group.group_id!)}
+              >
+                <ArchiveRestore size={14} />
+                Restore all {group.count}
+              </Button>
+              <p className="mt-1 text-2xs text-muted-foreground">
+                Brings every record back with its original values. This
+                deletion stays in the history either way.
+              </p>
+            </div>
+          )}
           <div className="max-h-[60vh] overflow-y-auto pr-1">
             {groupQuery.isLoading ? (
               <p className="text-sm text-muted-foreground py-4 text-center">Loading…</p>
             ) : (
-              <HistoryList events={groupQuery.data?.events ?? []} tz={tz} />
+              <HistoryList
+                events={groupQuery.data?.events ?? []}
+                tz={tz}
+                onRestore={(ev) => {
+                  void apiJSON(
+                    `/activity/restore/${ev.event_id ?? String(ev.id).replace('trail:', '')}`,
+                    { method: 'POST' })
+                    .then(() => {
+                      toast.success('Record restored');
+                      void groupQuery.refetch();
+                      void qc.invalidateQueries();
+                    })
+                    .catch((e) => toast.error(
+                      e instanceof Error ? e.message : 'Restore failed'));
+                }}
+              />
             )}
           </div>
         </DialogContent>

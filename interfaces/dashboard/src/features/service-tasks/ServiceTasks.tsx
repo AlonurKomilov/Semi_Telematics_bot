@@ -13,6 +13,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { undoableToast } from '../../lib/undoable';
 import { Check, ClipboardList, Plus } from 'lucide-react';
 import TaskPartsDialog from './TaskPartsDialog';
 import MergeTaskDialog from './MergeTaskDialog';
@@ -108,9 +109,13 @@ export default function ServiceTasks() {
 
   const act = async (label: string, fn: () => Promise<unknown>) => {
     try {
-      await fn();
+      // A call that returns a trail group (deletes) gets an Undo
+      // affordance for free; everything else toasts as before.
+      const res = await fn() as { group_id?: string } | undefined;
       refresh();
-      toast.success(label);
+      undoableToast({
+        message: label, groupId: res?.group_id, onRestored: refresh,
+      });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Action failed');
     }

@@ -33,6 +33,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '.
 import { VehiclePicker, MilesPicker, HoursPicker, DaysPicker, type VehicleSummary } from './pickers';
 import { CalendarMonth } from './CalendarMonth';
 import { toneClasses } from '@/lib/status';
+import { undoableToast } from '../../lib/undoable';
 import { ServiceHistoryModal } from './ServiceHistoryModal';
 import { TaskHistoryDialog } from './TaskHistoryDialog';
 import { TemplatesModal } from './TemplatesModal';
@@ -878,14 +879,20 @@ export default function Tasks() {
       confirm: (n) => `Archive ${n} task${n === 1 ? '' : 's'}? They move to the Archive tab (status "cancelled").`,
       onRun: bulkSetStatus('cancelled') },
     { label: 'Delete', icon: Trash2, tone: 'danger',
-      confirm: (n) => `Delete ${n} task${n === 1 ? '' : 's'}?\n\nThis cannot be undone.`,
+      // Honest copy: deletions ARE recoverable now — from the Undo
+      // toast for 15s, and from each task's History indefinitely.
+      confirm: (n) => `Delete ${n} task${n === 1 ? '' : 's'}?\n\nYou can undo this right after, or restore them later from the task history.`,
       onRun: async (rows) => {
         try {
-          const res = await apiJSON<{ deleted: number }>(
+          const res = await apiJSON<{ deleted: number; group_id?: string }>(
             '/maintenance/tasks/bulk/delete',
             { method: 'POST', body: { task_ids: idsOf(rows) } },
           );
-          toast.success(`Deleted ${res.deleted} task${res.deleted === 1 ? '' : 's'}`);
+          undoableToast({
+            message: `Deleted ${res.deleted} task${res.deleted === 1 ? '' : 's'}`,
+            groupId: res.group_id,
+            onRestored: load,
+          });
           load();
         } catch (e) {
           toast.error(e instanceof Error ? e.message : 'Bulk delete failed');

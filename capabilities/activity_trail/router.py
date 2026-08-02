@@ -114,3 +114,61 @@ async def restore_entity(
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     return {"restored_id": restored_id, "entity_type": event["entity_type"]}
+
+
+@router.post("/restore-group/{group_id}")
+async def restore_group(
+    group_id: str,
+    user: dict = Depends(get_current_user),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Undo a whole bulk action — every record it deleted, back.
+
+    Per-record transactions, deliberately: if two of 33 tasks were
+    recreated by hand since, the other 31 still come back and the
+    response says so.  Silence about the two would be the truncation
+    sin in a new costume.
+
+    Single deletes ride this same path as a group of one, so the UI has
+    exactly one undo call.
+    """
+    ensure_declarations_loaded()
+    events = await tenant_db.list_activity_events(
+        user["account_id"], group_id=group_id, limit=500,
+    )
+    if not events:
+        raise HTTPException(status_code=404, detail="Nothing to restore")
+    actor = await resolve_user_id(user)
+    perms = await get_user_permissions(
+        Role(user["role"]), user["account_id"],
+        is_manager=bool(user.get("is_manager")),
+        is_primary_owner=bool(user.get("is_primary_owner")),
+    )
+    restored: list[int] = []
+    conflicts: list[dict] = []
+    skipped = 0
+    for ev in events:
+        d = entity_descriptor(ev["entity_type"])
+        if not restorable(d, ev):
+            skipped += 1
+            continue
+        if not any(getattr(perms, p, False) for p in d.restore_permissions):
+            raise HTTPException(
+                status_code=403, detail="Insufficient permissions",
+            )
+        try:
+            restored.append(
+                await restore_from_event(
+                    tenant_db, user["account_id"], ev, actor_user_id=actor,
+                ),
+            )
+        except (RestoreConflict, ValueError) as e:
+            conflicts.append({"entity_id": ev["entity_id"], "reason": str(e)})
+    if not restored and not conflicts:
+        raise HTTPException(
+            status_code=422, detail="This action can't be undone",
+        )
+    return {
+        "restored": len(restored), "restored_ids": restored,
+        "conflicts": conflicts, "skipped": skipped,
+    }

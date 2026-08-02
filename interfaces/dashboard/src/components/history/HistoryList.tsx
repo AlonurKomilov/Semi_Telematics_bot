@@ -32,6 +32,9 @@ export interface ActivityEvent {
   created_at: string;
   /** Server-decided: this delete event can be brought back by THIS viewer. */
   restorable?: boolean;
+  /** Raw activity_events id — what the restore endpoint keys on (the
+   *  facade's `id` is prefixed by source). */
+  event_id?: number;
 }
 
 /** Action → sentence fragment. Unknown actions fall through readable. */

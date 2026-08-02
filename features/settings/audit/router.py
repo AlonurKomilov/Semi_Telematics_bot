@@ -116,11 +116,35 @@ async def get_activity_group(
     """Every member event of one bulk action — full changes each (the
     per-entity recovery record; never truncated)."""
     from capabilities.activity_trail.facade import normalize_trail
+    from capabilities.activity_trail.registry import (
+        ensure_declarations_loaded, entity_descriptor,
+    )
+    from capabilities.activity_trail.restore import restorable
     from capabilities.activity_trail.sensitive import mask_changes
+    from capabilities.permissions.roles import Role, get_user_permissions
+    ensure_declarations_loaded()
     rows = await tenant_db.list_activity_events(
         user["account_id"], group_id=group_id, limit=500,
     )
-    events = [normalize_trail(e) for e in rows]
+    perms = await get_user_permissions(
+        Role(user["role"]), user["account_id"],
+        is_manager=bool(user.get("is_manager")),
+        is_primary_owner=bool(user.get("is_primary_owner")),
+    )
+    events = []
+    for raw, e in zip(rows, [normalize_trail(r) for r in rows]):
+        d = entity_descriptor(e["entity_type"])
+        # Restore is offered only when the viewer holds the OWNING
+        # feature's manage permission — the audit page's broad audience
+        # can read history without gaining write power over records.
+        e["restorable"] = bool(
+            d and restorable(d, raw)
+            and any(getattr(perms, p, False) for p in d.restore_permissions)
+        )
+        # The raw trail id — the restore endpoint keys on it, not the
+        # facade's prefixed wire id.
+        e["event_id"] = raw["id"]
+        events.append(e)
     flags = await _viewer_flags(user)
     for e in events:
         e["changes"] = mask_changes(

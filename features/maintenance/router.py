@@ -929,11 +929,14 @@ async def delete_task(
         raise HTTPException(status_code=404, detail="Task not found")
     await _require_company_visible_task(task, user)
 
+    # A "group" of one: single and bulk deletes share ONE undo path.
+    group_id = new_group_id()
     await tenant_db.delete_maintenance_task(
         task_id, account_id=user["account_id"],
         actor_user_id=await resolve_user_id(user),
+        trail_group_id=group_id,
     )
-    return {"ok": True}
+    return {"ok": True, "group_id": group_id}
 
 
 class BulkStatusUpdate(BaseModel):
@@ -1025,12 +1028,15 @@ async def bulk_delete(
     from the audit page alone.  (The 2026-07-30 incident's fix: the old
     thin log truncated the id list to 10 of 33 and kept no values.)
     """
+    group_id = new_group_id()
     deleted = await tenant_db.delete_maintenance_tasks_bulk(
         user["account_id"], body.task_ids,
         actor_user_id=await resolve_user_id(user),
-        trail_group_id=new_group_id(),
+        trail_group_id=group_id,
     )
-    return {"deleted": deleted}
+    # ``group_id`` rides the response so the caller can offer Undo —
+    # which is just a restore of this group (capabilities/activity_trail).
+    return {"deleted": deleted, "group_id": group_id}
 
 
 @router.get("/odometer/{vehicle_name}")

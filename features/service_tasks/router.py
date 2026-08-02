@@ -379,9 +379,10 @@ async def delete_service_task(
     ok = await tenant_db.delete_service_task(task_id, user["account_id"])
     if not ok:
         raise HTTPException(status_code=422, detail="Could not delete that task")
+    group_id = new_group_id()
     await record_simple(
         tenant_db, user["account_id"], await resolve_user_id(user),
         "delete", "service_task", task_id,
-        changes=delete_changes(existing),
+        changes=delete_changes(existing), group_id=group_id,
     )
-    return {"deleted": True}
+    return {"deleted": True, "group_id": group_id}

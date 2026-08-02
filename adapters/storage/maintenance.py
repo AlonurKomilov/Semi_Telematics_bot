@@ -548,6 +548,7 @@ class MaintenanceMixin(_MixinBase):
     async def delete_maintenance_task(
         self, task_id: int, account_id: int = 0,
         actor_user_id: Optional[int] = None,
+        trail_group_id: Optional[str] = None,
     ) -> None:
         """Delete a maintenance task.
 
@@ -576,6 +577,7 @@ class MaintenanceMixin(_MixinBase):
                 await self._trail_task(
                     account_id, task_id, "delete",
                     actor_user_id=actor_user_id,
+                    group_id=trail_group_id,
                     changes=delete_changes(row),
                 )
 

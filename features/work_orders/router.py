@@ -44,7 +44,7 @@ from interfaces.api.deps import (
     get_user_vehicle_nums, require_permission, resolve_user_id,
     get_user_company_codes, filter_by_allowed_companies,
 )
-from capabilities.activity_trail import delete_changes, diff_rows, record_simple
+from capabilities.activity_trail import delete_changes, diff_rows, new_group_id, record_simple
 from capabilities.permissions.roles import can_for_account, Role
 from features.work_orders.storage import (
     resolve_company_folder, safe_attachment_name, work_order_folder,
@@ -493,14 +493,16 @@ async def delete_work_order(
     deleted = await tenant_db.delete_work_order(
         work_order_id, account_id=user["account_id"],
     )
+    group_id = new_group_id()
     if deleted:
         # The recovery record: the whole row body, {from, to: null}.
+        # ``group_id`` (a group of one) gives the UI its undo handle.
         await record_simple(
             tenant_db, user["account_id"], await resolve_user_id(user),
             "delete", "work_order", work_order_id,
-            changes=delete_changes(wo or {}),
+            changes=delete_changes(wo or {}), group_id=group_id,
         )
-    return {"deleted": deleted}
+    return {"deleted": deleted, "group_id": group_id}
 
 
 # ── Parts (line items) ───────────────────────────────────────────────────────

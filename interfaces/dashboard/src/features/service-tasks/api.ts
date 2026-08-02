@@ -71,8 +71,12 @@ export async function updateServiceTask(
   return apiJSON(`/service-tasks/${id}`, { method: 'PUT', body });
 }
 
-export async function deleteServiceTask(id: number): Promise<void> {
-  await apiJSON(`/service-tasks/${id}`, { method: 'DELETE' });
+export async function deleteServiceTask(
+  id: number,
+): Promise<{ deleted: boolean; group_id?: string }> {
+  // Returns the trail group so callers can offer Undo (the delete is
+  // restorable from the task's history regardless).
+  return apiJSON(`/service-tasks/${id}`, { method: 'DELETE' });
 }
 
 export interface LinkedPart {

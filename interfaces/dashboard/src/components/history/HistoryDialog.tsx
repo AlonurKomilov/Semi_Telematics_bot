@@ -38,7 +38,8 @@ export function HistoryDialog({
   // refetch simply shows the new "Restored" event under the delete.
   const restore = useMutation({
     mutationFn: (ev: ActivityEvent) =>
-      apiJSON<{ restored_id: number }>(`/activity/restore/${String(ev.id).replace('trail:', '')}`,
+      apiJSON<{ restored_id: number }>(
+        `/activity/restore/${ev.event_id ?? String(ev.id).replace('trail:', '')}`,
         { method: 'POST' }),
     onSuccess: () => {
       toast.success('Record restored — the deletion stays in its history');
