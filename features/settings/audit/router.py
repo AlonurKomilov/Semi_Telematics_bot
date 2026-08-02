@@ -66,17 +66,22 @@ async def _resolve_actor_names(
 
 
 async def _viewer_flags(user: dict) -> dict:
-    """Which sensitive entity-types THIS viewer may read values for —
-    the trail must not become a side door around per-feature gates."""
+    """Which entity-types THIS viewer may read values for — driven by
+    each feature's own declaration (registry view_permissions), so the
+    trail can't become a side door around per-feature gates."""
+    from capabilities.activity_trail.registry import (
+        _ENTITIES, ensure_declarations_loaded,
+    )
     from capabilities.permissions.roles import Role, get_user_permissions
+    ensure_declarations_loaded()
     perms = await get_user_permissions(
         Role(user["role"]), user["account_id"],
         is_manager=bool(user.get("is_manager")),
         is_primary_owner=bool(user.get("is_primary_owner")),
     )
     return {
-        "driver": bool(getattr(perms, "can_manage_drivers", False)),
-        "user": bool(getattr(perms, "can_manage_users", False)),
+        et: any(getattr(perms, p, False) for p in d.view_permissions)
+        for et, d in _ENTITIES.items()
     }
 
 

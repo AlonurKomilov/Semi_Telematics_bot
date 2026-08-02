@@ -20,8 +20,9 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis,
   Tooltip as ChartTooltip, CartesianGrid,
 } from 'recharts';
-import { ArrowLeft, Check, Cog, Globe, Link2Off, Merge, Pencil, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Check, Cog, Globe, History as HistoryIcon, Link2Off, Merge, Pencil, TriangleAlert } from 'lucide-react';
 import { useAssemblies } from './useAssemblies';
+import { HistoryDialog } from '../../components/history/HistoryDialog';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';
 import { PageHeader, EmptyState, ErrorState, TableSkeleton } from '../../components/shell';
@@ -73,6 +74,7 @@ export default function PartDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', part_number: '', notes: '' });
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [mergeTarget, setMergeTarget] = useState('');
   const [busy, setBusy] = useState(false);
   // Two dedup scopes, two verbs: 'mine' = destructive fold into
@@ -393,6 +395,9 @@ export default function PartDetail() {
             )}
             <Button variant="outline" size="sm" onClick={openEdit}>
               <Pencil size={14} /> Edit
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setHistoryOpen(true)}>
+              <HistoryIcon size={14} /> History
             </Button>
             <Button variant="outline" size="sm" onClick={() => {
               setMergeScope('mine'); setMergeTarget('');
@@ -772,6 +777,13 @@ export default function PartDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <HistoryDialog
+        entityType="part"
+        entityId={part?.id ?? null}
+        title={`${part?.name ?? 'Part'} — change history`}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+      />
     </div>
   );
 }

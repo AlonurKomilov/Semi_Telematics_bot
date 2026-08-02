@@ -11,12 +11,16 @@
  * data function over component-owned closures (testable, no god object).
  */
 import { ArrowUpRight, ExternalLink } from 'lucide-react';
+import { History } from 'lucide-react';
 import type { MenuAction } from '../../components/ui/context-menu';
 import type { WorkOrder } from '../../types';
 
 export function workOrderRowMenu(
   wo: WorkOrder,
-  deps: { navigate: (path: string) => void },
+  deps: {
+    navigate: (path: string) => void;
+    openHistory?: (wo: WorkOrder) => void;
+  },
 ): MenuAction[] {
   const path = `/work-orders/${wo.id}`;
   return [
@@ -32,5 +36,11 @@ export function workOrderRowMenu(
       icon: <ExternalLink size={14} className="text-muted-foreground" />,
       onSelect: () => window.open(path, '_blank', 'noopener'),
     },
+    ...(deps.openHistory ? [{
+      key: 'history',
+      label: 'View change history',
+      icon: <History size={14} className="text-muted-foreground" />,
+      onSelect: () => deps.openHistory!(wo),
+    }] : []),
   ];
 }

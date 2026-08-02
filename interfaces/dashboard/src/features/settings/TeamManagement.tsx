@@ -12,6 +12,7 @@ import { apiJSON, apiFetch } from '../../api/client';
 import { toast } from 'sonner';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import { ActionMenu } from '../../components/ui/context-menu';
+import { HistoryDialog, HistoryTrigger } from '../../components/history/HistoryDialog';
 import { useTeamMembersQuery } from './useTeamMembers';
 import StatusBadge from '../../components/StatusBadge';
 import RoleBadge, { ROLE_LABEL, ASSIGNABLE_ROLES, roleTone } from '../../components/RoleBadge';
@@ -324,6 +325,7 @@ export default function TeamManagement() {
   const [success, setSuccess] = useState('');
   const [selected, setSelected] = useState<AdminUser | null>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
+  const [historyOpen, setHistoryOpen] = useState(false);
   // Page-level tab: the member list vs the Invites panel (folded in from
   // the old standalone /admin/invites page).  The Invites tab only shows
   // for users who can actually invite.
@@ -968,6 +970,18 @@ export default function TeamManagement() {
                           value={(selected as MemberRow).lifecycle === 'pending' ? 'Pending sign-in' : selected.is_active ? 'Active' : 'Inactive'}
                           status={selected.is_active ? 'ok' : 'danger'}
                         />
+                        {/* Role changes, tier flips, company access —
+                            the member's own who-did-what. */}
+                        <div className="pt-2 border-t border-border">
+                          <HistoryTrigger onClick={() => setHistoryOpen(true)} />
+                          <HistoryDialog
+                            entityType="user"
+                            entityId={selected.id}
+                            title={`${nameOrFallback(selected)} — change history`}
+                            open={historyOpen}
+                            onOpenChange={setHistoryOpen}
+                          />
+                        </div>
                       </dl>
                       {/* Vehicle Access summary — one card, scope-aware.
                           Replaces the prior 2×1 grid whose two cells often

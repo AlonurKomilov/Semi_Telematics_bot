@@ -202,3 +202,49 @@ def test_no_fourth_event_table_rule():
         f"new per-feature event table(s) {offenders} — adopt "
         "activity_events instead (capabilities/activity_trail)"
     )
+
+
+# ── the entity registry: feature declarations, hub engine ─────────
+
+def test_registry_loads_and_permissions_are_real_featureset_flags():
+    from dataclasses import fields
+    from capabilities.activity_trail.registry import (
+        _ENTITIES, ensure_declarations_loaded,
+    )
+    from capabilities.permissions.roles import FeatureSet
+    ensure_declarations_loaded()
+    ensure_declarations_loaded()                     # idempotent
+    assert len(_ENTITIES) >= 20
+    real_flags = {f.name for f in fields(FeatureSet)}
+    for et, d in _ENTITIES.items():
+        assert d.view_permissions, f"{et} declares no view permission"
+        for p in d.view_permissions:
+            assert p in real_flags, (
+                f"{et} declares unknown permission {p!r} — "
+                "fix the feature's activity.py"
+            )
+
+
+def test_registry_and_frontend_entity_vocabulary_agree():
+    """The frontend's ENTITY_LABEL map and the backend registry must
+    cover each other — a new entity type needs BOTH its activity.py
+    declaration and its display label, or history renders raw keys /
+    404s."""
+    import pathlib
+    import re
+    from capabilities.activity_trail.registry import (
+        ensure_declarations_loaded, registered_entity_types,
+    )
+    ensure_declarations_loaded()
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "interfaces/dashboard/src/components/history/HistoryList.tsx"
+           ).read_text()
+    block = re.search(r"ENTITY_LABEL[^=]*= \{(.*?)\};", src, re.S).group(1)
+    frontend = set(re.findall(r"^\s*([a-z_]+):", block, re.M))
+    backend = set(registered_entity_types())
+    assert frontend - backend == set(), (
+        f"frontend labels without registry declarations: {frontend - backend}"
+    )
+    assert backend - frontend == set(), (
+        f"registered entity types without frontend labels: {backend - frontend}"
+    )

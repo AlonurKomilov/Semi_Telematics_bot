@@ -23,6 +23,7 @@ import {
   DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
 import type { Vehicle } from '../../types';
+import { HistoryDialog, HistoryTrigger } from '../../components/history/HistoryDialog';
 
 const TYPES = [
   { value: 'truck', label: 'Truck' },
@@ -65,6 +66,7 @@ export default function VehicleManageDialog({
   const [draft, setDraft] = useState<Draft>(EMPTY);
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [error, setError] = useState('');
   // When the operator typing a NEW unit hits one that already exists,
   // they can promote the dialog to edit that row (pre-filled from its
@@ -288,6 +290,12 @@ export default function VehicleManageDialog({
 
           {error && <p className="text-xs text-danger">{error}</p>}
 
+          {isEdit && vehicle && (
+            <div className="pt-1">
+              <HistoryTrigger onClick={() => setHistoryOpen(true)} />
+            </div>
+          )}
+
           <DialogFooter className="flex items-center justify-between gap-2">
             {isEdit ? (
               <Button type="button" variant="ghost" size="sm" onClick={handleRemove} disabled={removing} className="text-danger">
@@ -305,6 +313,13 @@ export default function VehicleManageDialog({
           </DialogFooter>
         </form>
       </DialogContent>
+      <HistoryDialog
+        entityType="vehicle"
+        entityId={editId}
+        title={`Vehicle ${draft.unit_number || ''} — change history`}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+      />
     </Dialog>
   );
 }

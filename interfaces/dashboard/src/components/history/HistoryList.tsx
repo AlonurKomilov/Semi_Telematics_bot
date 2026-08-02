@@ -91,6 +91,8 @@ export const ENTITY_LABEL: Record<string, string> = {
   alert_topic: 'Alert topic',
   coaching: 'Coaching',
   driver_pay_run: 'Driver pay run',
+  driver: 'Driver',
+  integration: 'Integration',
 };
 
 export function entityLabel(entityType: string): string {

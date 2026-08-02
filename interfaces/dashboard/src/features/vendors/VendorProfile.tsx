@@ -8,8 +8,9 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Store, ArrowLeft, Merge, Globe, Link2Off, Pencil, Star, TrendingUp } from 'lucide-react';
+import { Store, ArrowLeft, Merge, Globe, History as HistoryIcon, Link2Off, Pencil, Star, TrendingUp } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { HistoryDialog } from '../../components/history/HistoryDialog';
 import DataGrid from '../../components/datagrid';
 import { PageHeader, ErrorState, TableSkeleton } from '../../components/shell';
 import {
@@ -58,6 +59,7 @@ export default function VendorProfile() {
   // Edit dialog — contact/identity on the registry record (never
   // rewrites work-order snapshots; server enforces that).
   const [editOpen, setEditOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
   const [editForm, setEditForm] = useState({ name: '', phone: '', email: '', address: '', notes: '' });
 
@@ -258,6 +260,14 @@ export default function VendorProfile() {
             >
               <ArrowLeft size={14} />
               All vendors
+            </button>
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-muted hover:bg-muted/80 border border-border rounded-md text-xs font-medium text-foreground transition"
+            >
+              <HistoryIcon size={14} />
+              History
             </button>
             {canWrite && vendor && (
               <button
@@ -646,6 +656,13 @@ export default function VendorProfile() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <HistoryDialog
+        entityType="vendor"
+        entityId={vendor?.id ?? null}
+        title={`${vendor?.name ?? 'Vendor'} — change history`}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+      />
     </div>
   );
 }

@@ -11,7 +11,7 @@ import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import {
+import { History as HistoryIcon,
   ArrowLeft, ClipboardList, Lock, Package, Pencil,
 } from 'lucide-react';
 import TaskPartsDialog from './TaskPartsDialog';
@@ -19,6 +19,7 @@ import MergeTaskDialog from './MergeTaskDialog';
 import EditTaskDialog from './EditTaskDialog';
 import DataGrid from '../../components/datagrid';
 import { EmptyState, ErrorState, PageHeader, TableSkeleton } from '../../components/shell';
+import { HistoryDialog } from '../../components/history/HistoryDialog';
 import { Button } from '../../components/ui/button';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
@@ -66,6 +67,7 @@ export default function ServiceTaskDetail() {
   const canManage = has('can_service_tasks');
 
   const [partsOpen, setPartsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [mergeWinner, setMergeWinner] = useState<number | null>(null);
@@ -249,6 +251,9 @@ export default function ServiceTaskDetail() {
               : 'Archiving hides it from pickers. Merging folds it into another task and moves its history there; deleting is only possible while nothing references it.'}
           </p>
           <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => setHistoryOpen(true)}>
+              <HistoryIcon size={14} /> History
+            </Button>
             {task.status === 'active' ? (
               <Button size="sm" variant="outline" onClick={() => act('Task archived', () => updateServiceTask(task.id, { status: 'archived' }))}>
                 Archive
@@ -328,6 +333,13 @@ export default function ServiceTaskDetail() {
         task={mergeOpen ? task : null}
         presetWinnerId={mergeWinner}
         onClose={() => { setMergeOpen(false); setMergeWinner(null); }}
+      />
+      <HistoryDialog
+        entityType="service_task"
+        entityId={task?.id ?? null}
+        title={`${task?.name ?? 'Service task'} — change history`}
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
       />
     </div>
   );
