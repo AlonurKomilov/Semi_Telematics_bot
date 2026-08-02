@@ -6,7 +6,7 @@ import {
 import { cn } from '../../../lib/utils';
 import {
   ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR, useWheelToHorizontal,
-} from '../scrollbars';
+} from '../../scrolling';
 import { EmptyState } from '../../shell';
 import { Tip } from '../../tooltip';
 import { Button } from '../../ui/button';
