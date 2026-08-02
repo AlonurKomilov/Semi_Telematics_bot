@@ -227,11 +227,12 @@ async def test_stale_cache_entry_is_re_resolved(app_client):
 # ── Issue 3: audit log integration ──────────────────────────────
 
 
-@pytest.mark.skip(reason="audit_log row/details shape drifted after permissions refactor — needs rewrite against current diff format")
 @pytest.mark.asyncio
-async def test_put_writes_audit_log_with_diff(app_client):
-    """PUT writes one audit_log row with action='permissions_update'
-    and details JSON containing the per-flag before/after diff."""
+async def test_put_writes_trail_event_with_diff(app_client):
+    """PUT records one activity-trail event (action='permissions_update')
+    whose changes carry the per-flag before/after in the trail's native
+    {from,to} shape.  (Formerly a skipped audit_log test — the trail IS
+    the current diff format.)"""
     s = app_client
     db = s["db"]
     acct = s["acct_a"]
@@ -242,18 +243,16 @@ async def test_put_writes_audit_log_with_diff(app_client):
         json={"role": "fleet", "permissions": {"can_faults": False}},
     )
 
-    # Audit log query goes through tenant_db.
-    rows = await db.get_audit_log(acct.id, limit=10)
-    perm_rows = [r for r in rows if r["action"] == "permissions_update"]
-    assert len(perm_rows) >= 1, f"expected ≥1 permissions_update row; got {rows}"
-    row = perm_rows[0]
-    assert row["target_type"] == "role"
-    assert row["target_id"] == "fleet"
-    details = json.loads(row["details"])
-    assert details["scope"] == "account-wide"
-    # Diff should include can_faults flipping True → False (Fleet default is True).
-    assert "can_faults" in details["diff"]
-    assert details["diff"]["can_faults"] == [True, False]
+    events = await db.list_activity_events(
+        acct.id, entity_type="role", action="permissions_update",
+    )
+    assert events, "expected a permissions_update trail event"
+    ev = events[0]
+    assert ev["entity_id"] == "fleet"
+    assert ev["context"]["scope"] == "account-wide"
+    # can_faults flips True → False (Fleet default is True).
+    assert ev["changes"]["can_faults"] == {"from": True, "to": False}
+    assert ev["actor_user_id"] is not None
 
 
 @pytest.mark.asyncio
@@ -268,10 +267,11 @@ async def test_reset_writes_audit_log(app_client):
         json={"role": "fleet", "permissions": {}},
     )
 
-    rows = await db.get_audit_log(acct.id, limit=10)
-    reset_rows = [r for r in rows if r["action"] == "permissions_reset"]
-    assert len(reset_rows) >= 1
-    assert reset_rows[0]["target_id"] == "fleet"
+    events = await db.list_activity_events(
+        acct.id, entity_type="role", action="permissions_reset",
+    )
+    assert len(events) >= 1
+    assert events[0]["entity_id"] == "fleet"
 
 
 @pytest.mark.asyncio
@@ -285,10 +285,10 @@ async def test_reset_all_writes_audit_log(app_client):
         headers=_hdr(s["tokens"]["owner_a"]),
     )
 
-    rows = await db.get_audit_log(acct.id, limit=10)
-    assert any(r["action"] == "permissions_reset_all" for r in rows), (
-        f"expected reset-all audit row; got {[r['action'] for r in rows]}"
+    events = await db.list_activity_events(
+        acct.id, action="permissions_reset_all",
     )
+    assert events, "expected a permissions_reset_all trail event"
 
 
 # ── Self-lockout protection (existing — re-tested for regression) ─
