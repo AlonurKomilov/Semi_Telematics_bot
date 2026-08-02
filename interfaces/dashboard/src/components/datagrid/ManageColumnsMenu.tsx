@@ -1,5 +1,6 @@
+import { useMemo, useState } from 'react';
 import { Popover as PopoverPrimitive } from '@base-ui/react/popover';
-import { Check, RotateCcw, Columns3 } from 'lucide-react';
+import { Check, RotateCcw, Columns3, Search } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 /**
@@ -32,6 +33,12 @@ interface ManageColumnsOption {
   /** Hide-disabled options grey out and can't be unchecked (e.g. the
    *  primary key column where hiding it would leave the row useless). */
   alwaysVisible?: boolean;
+  /** Optional bucket heading. A grid whose columns come from a large
+   *  template (a carrier profile has 73 fields) is unusable as one flat
+   *  list — the popover becomes a scroll pit and finding "Pet Policy"
+   *  means reading everything. Options keep their given order within a
+   *  group, and groups appear in first-seen order. */
+  group?: string;
 }
 
 interface ManageColumnsMenuProps {
@@ -48,12 +55,38 @@ interface ManageColumnsMenuProps {
   anchor?: HTMLElement | null;
 }
 
+// Past this many options a flat list stops being scannable and the
+// popover earns a filter box.
+const SEARCH_THRESHOLD = 12;
+
 export default function ManageColumnsMenu({
   options, visibility, onToggle, onReset, open, onOpenChange, anchor,
 }: ManageColumnsMenuProps) {
   const hideableVisibleCount = options.filter(
     (o) => !o.alwaysVisible && visibility[o.id] !== false,
   ).length;
+  const [query, setQuery] = useState('');
+  const showSearch = options.length > SEARCH_THRESHOLD;
+
+  // Filter first, then bucket — so a search inside a grouped list keeps
+  // its headings and you can still see WHERE a match lives.
+  const groups = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const hits = q
+      ? options.filter((o) => o.label.toLowerCase().includes(q)
+        || (o.group ?? '').toLowerCase().includes(q))
+      : options;
+    const out: { name: string; items: ManageColumnsOption[] }[] = [];
+    for (const o of hits) {
+      const name = o.group ?? '';
+      const last = out[out.length - 1];
+      if (last && last.name === name) last.items.push(o);
+      else out.push({ name, items: [o] });
+    }
+    return out;
+  }, [options, query]);
+
+  const visibleCount = options.filter((o) => visibility[o.id] !== false).length;
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={onOpenChange}>
       <PopoverPrimitive.Portal>
@@ -67,9 +100,36 @@ export default function ManageColumnsMenu({
             <div className="px-3 py-2 border-b border-border flex items-center gap-2">
               <Columns3 size={14} className="text-muted-foreground" />
               <span className="text-xs font-medium text-foreground">Columns</span>
+              <span className="ml-auto text-2xs text-muted-foreground tabular-nums">
+                {visibleCount} of {options.length}
+              </span>
             </div>
+            {showSearch && (
+              <div className="px-2 py-1.5 border-b border-border flex items-center gap-1.5">
+                <Search size={12} className="text-muted-foreground shrink-0" aria-hidden="true" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Find a column…"
+                  aria-label="Find a column"
+                  className="w-full bg-transparent text-xs text-foreground placeholder:text-muted-foreground/70 outline-none"
+                />
+              </div>
+            )}
             <div className="max-h-72 overflow-y-auto py-1">
-              {options.map((opt) => {
+              {groups.length === 0 && (
+                <p className="px-3 py-4 text-center text-2xs text-muted-foreground">
+                  No column matches &ldquo;{query}&rdquo;
+                </p>
+              )}
+              {groups.map((g) => (
+                <div key={g.name || '__ungrouped'}>
+                  {g.name && (
+                    <p className="px-3 pt-2 pb-1 text-3xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {g.name}
+                    </p>
+                  )}
+                  {g.items.map((opt) => {
                 const visible = visibility[opt.id] !== false;
                 // Keep at least ONE hideable column on screen — unchecking
                 // the last visible one would blank the table (and strand
@@ -112,7 +172,9 @@ export default function ManageColumnsMenu({
                     <span className="flex-1 truncate text-foreground">{opt.label}</span>
                   </button>
                 );
-              })}
+                  })}
+                </div>
+              ))}
             </div>
             <div className="border-t border-border">
               <button

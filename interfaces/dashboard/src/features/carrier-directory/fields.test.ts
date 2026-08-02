@@ -3,7 +3,7 @@
 // thing standing between a label rename and orphaned values, so the tricky
 // inputs are pinned here rather than left to a manual click-through.
 import { describe, it, expect } from 'vitest';
-import { SECTIONS, PUBLIC_SECTIONS, mergeRows, safeHref } from './fields';
+import { SECTIONS, PUBLIC_SECTIONS, mergeRows, safeHref, valueOf, FIELD_COLUMNS } from './fields';
 import type { FieldDef } from './fields';
 
 const def = (label: string, renamedFrom?: string[]): FieldDef =>
@@ -195,5 +195,66 @@ describe('safeHref', () => {
     expect(safeHref('   ')).toBe('');
     expect(safeHref(null)).toBe('');
     expect(safeHref(undefined)).toBe('');
+  });
+});
+
+describe('valueOf — the directory grid\'s field columns', () => {
+  const presentation = SECTIONS.find((s) => s.key === 'presentation')!;
+  const nyc = presentation.fields!.find((f) => f.label === 'NYC Runs Required')!;
+  const pay = presentation.fields!.find((f) => f.label === 'Solo Pay Rate')!;
+
+  it('reads a value stored under the CURRENT label', () => {
+    const content = { presentation: [{ label: 'Solo Pay Rate', value: '$0.62/mile' }] };
+    expect(valueOf(content, 'presentation', pay)).toBe('$0.62/mile');
+  });
+
+  it('reads a value stored under ANY older label', () => {
+    // Two renames deep. A column that read blank here would look exactly
+    // like "this carrier never told us" — the worst lie for screening.
+    for (const old of ['New York City', 'NYC Runs Required?']) {
+      expect(valueOf({ presentation: [{ label: old, value: 'Yes' }] }, 'presentation', nyc))
+        .toBe('Yes');
+    }
+  });
+
+  it('prefers a non-empty answer over an empty one under another name', () => {
+    const content = {
+      presentation: [
+        { label: 'NYC Runs Required', value: '' },
+        { label: 'New York City', value: 'Yes' },
+      ],
+    };
+    expect(valueOf(content, 'presentation', nyc)).toBe('Yes');
+  });
+
+  it('returns empty for an unanswered field, missing section or junk', () => {
+    expect(valueOf({ presentation: [] }, 'presentation', pay)).toBe('');
+    expect(valueOf({}, 'presentation', pay)).toBe('');
+    expect(valueOf(undefined, 'presentation', pay)).toBe('');
+    // A malformed blob must not throw in the middle of a grid render.
+    expect(valueOf({ presentation: 'nonsense' } as never, 'presentation', pay)).toBe('');
+  });
+});
+
+describe('FIELD_COLUMNS — the grid\'s optional columns', () => {
+  it('covers every template field exactly once', () => {
+    const templated = SECTIONS.reduce((n, s) => n + (s.fields?.length ?? 0), 0);
+    expect(FIELD_COLUMNS).toHaveLength(templated);
+  });
+
+  it('has unique, collision-proof keys', () => {
+    const keys = FIELD_COLUMNS.map((c) => c.key);
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it('derives the key from the OLDEST label, so a rename keeps saved columns', () => {
+    // Keying off the current label would silently reset an operator's
+    // chosen columns the next time we reword a field.
+    const col = FIELD_COLUMNS.find((c) => c.def.label === 'NYC Runs Required')!;
+    expect(col.key).toBe('f:presentation:new_york_city');
+  });
+
+  it('carries the section title so the column manager can bucket them', () => {
+    expect(FIELD_COLUMNS.every((c) => Boolean(c.section.title))).toBe(true);
   });
 });

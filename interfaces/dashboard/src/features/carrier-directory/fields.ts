@@ -269,3 +269,39 @@ export function safeHref(raw: string | undefined | null): string {
   if (/^[a-z][a-z0-9+.-]*:/i.test(t)) return '';
   return `https://${t}`;
 }
+
+/** Read one field's stored value off a carrier's content blob.
+ *
+ *  Matches BY LABEL, walking `renamedFrom` the same way mergeRows does —
+ *  otherwise a grid column would read blank for every carrier who answered
+ *  before the label was last renamed, which looks exactly like "they never
+ *  told us" and is the worst possible lie for a screening view.
+ *  Prefers a non-empty answer over an empty one under any of the names. */
+export function valueOf(
+  content: CarrierContent | undefined,
+  sectionKey: string,
+  def: FieldDef,
+): string {
+  const rows = (content?.[sectionKey] as FieldRow[] | undefined) ?? [];
+  if (!Array.isArray(rows)) return '';
+  const names = [def.label, ...(def.renamedFrom ?? [])];
+  for (const n of names) {
+    const hit = rows.find((r) => r?.label === n && String(r.value ?? '').trim());
+    if (hit) return String(hit.value).trim();
+  }
+  return '';
+}
+
+/** Every carrier-visible field, flattened with the section it belongs to —
+ *  the source for the directory grid's optional columns. */
+export const FIELD_COLUMNS: { key: string; def: FieldDef; section: Section }[] =
+  SECTIONS.flatMap((section) =>
+    (section.fields ?? []).map((def) => ({
+      // Stable, collision-proof key. Deriving it from the LABEL would
+      // change the operator's saved column choices on the next rename.
+      key: `f:${section.key}:${(def.renamedFrom?.[def.renamedFrom.length - 1] ?? def.label)
+        .toLowerCase().replace(/[^a-z0-9]+/g, '_')}`,
+      def,
+      section,
+    })),
+  );

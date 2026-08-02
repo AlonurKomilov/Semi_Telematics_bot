@@ -99,13 +99,19 @@ def _dump_content(content: dict) -> str:
     return raw
 
 
+def _parse_content(raw: object) -> dict:
+    """Stored ``content`` JSON → object, never raising on a bad blob."""
+    try:
+        parsed = json.loads(raw or "{}") if isinstance(raw, str) else (raw or {})
+    except (ValueError, TypeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
 def _hydrate(row: dict) -> dict:
     """Parse the stored ``content`` JSON back into an object for the client."""
     out = dict(row)
-    try:
-        out["content"] = json.loads(row.get("content") or "{}")
-    except (ValueError, TypeError):
-        out["content"] = {}
+    out["content"] = _parse_content(row.get("content"))
     return out
 
 
@@ -144,10 +150,32 @@ def _clean_rows(rows: object, *, max_rows: int = 150) -> list[dict]:
 # ── Read — any recruiter (employee or manager) ──────────────────────
 @router.get("/carriers")
 async def list_carriers(
+    fields: int = 0,
     user: dict = Depends(require_permission("can_carrier_directory")),
     platform_db=Depends(get_platform_db),
 ):
-    items = await platform_db.list_carrier_profiles(user["account_id"])
+    """The directory list.
+
+    ``?fields=1`` includes each carrier's profile ``content`` so the grid
+    can offer every profile field as a column — that is what lets a
+    recruiter screen the whole book against one driver ("pays over $0.60,
+    home weekly, takes pets") instead of opening carriers one at a time.
+    Opt-in because the blob is up to 73 pairs per carrier and the plain
+    list doesn't need it.  ``recruiter_only`` is stripped either way: it
+    is the agency's internal playbook, not profile data, and a read-only
+    recruiter must not receive it in bulk any more than they receive it
+    on the detail page.
+    """
+    items = await platform_db.list_carrier_profiles(
+        user["account_id"], with_content=bool(fields),
+    )
+    if fields:
+        internal = await _can_manage(user)
+        for row in items:
+            content = _parse_content(row.get("content"))
+            if not internal:
+                content.pop("recruiter_only", None)
+            row["content"] = content
     return {"items": items}
 
 

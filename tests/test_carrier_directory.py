@@ -810,3 +810,61 @@ class TestCarrierDirectory:
             assert (await c.get(f"{BASE}/{cid}", headers=hb)).status_code == 404
             assert (await c.patch(f"{BASE}/{cid}", headers=hb, json={"name": "x"})).status_code == 404
             assert (await c.delete(f"{BASE}/{cid}", headers=hb)).status_code == 404
+
+
+class TestFieldColumnsPayload:
+    """?fields=1 backs the directory grid's optional field columns — the
+    thing that lets a recruiter screen the whole book against one driver
+    instead of opening carriers one at a time."""
+
+    async def test_content_is_opt_in(self, api):
+        app, db = api
+        acct = await db.create_account("Recruit Co")
+        mgr = await db.create_user(810110, acct.id, role=Role.RECRUITER)
+        h = _headers(mgr, acct, "recruiter", is_manager=True)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            await c.post(BASE, headers=h, json=_SAMPLE)
+
+            lean = (await c.get(BASE, headers=h)).json()["items"][0]
+            assert "content" not in lean      # default list stays small
+
+            rich = (await c.get(f"{BASE}?fields=1", headers=h)).json()["items"][0]
+            assert rich["content"]["prequal"][0]["value"] == "At least 23 years of age"
+
+    async def test_recruiter_only_never_ships_in_the_bulk_list(self, api):
+        """A read-only recruiter must not receive the agency's internal
+        playbook in bulk any more than they receive it on the detail page."""
+        app, db = api
+        acct = await db.create_account("Recruit Co")
+        mgr = await db.create_user(810111, acct.id, role=Role.RECRUITER)
+        rec = await db.create_user(810112, acct.id, role=Role.RECRUITER)
+        hm = _headers(mgr, acct, "recruiter", is_manager=True)
+        hr = _headers(rec, acct, "recruiter")
+        sample = dict(_SAMPLE)
+        sample["content"] = {
+            **_SAMPLE["content"],
+            "recruiter_only": [{"label": "Application Ownership", "value": "Exclusive 30 days"}],
+        }
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            await c.post(BASE, headers=hm, json=sample)
+
+            plain = await c.get(f"{BASE}?fields=1", headers=hr)
+            assert plain.status_code == 200
+            assert "recruiter_only" not in plain.json()["items"][0]["content"]
+            assert "Exclusive 30 days" not in plain.text
+
+            # A manager still gets it — it's their own playbook.
+            mine = (await c.get(f"{BASE}?fields=1", headers=hm)).json()["items"][0]
+            assert mine["content"]["recruiter_only"][0]["value"] == "Exclusive 30 days"
+
+    async def test_bulk_list_is_account_scoped(self, api):
+        app, db = api
+        acct_a = await db.create_account("A Co")
+        acct_b = await db.create_account("B Co")
+        mgr_a = await db.create_user(810113, acct_a.id, role=Role.RECRUITER)
+        mgr_b = await db.create_user(810114, acct_b.id, role=Role.RECRUITER)
+        ha = _headers(mgr_a, acct_a, "recruiter", is_manager=True)
+        hb = _headers(mgr_b, acct_b, "recruiter", is_manager=True)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            await c.post(BASE, headers=ha, json=_SAMPLE)
+            assert (await c.get(f"{BASE}?fields=1", headers=hb)).json()["items"] == []

@@ -21,6 +21,8 @@ import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
 import { useRoleView } from '../../context/RoleViewContext';
 import { toneClasses } from '../../lib/status';
+import { FIELD_COLUMNS, valueOf } from './fields';
+import type { CarrierContent } from './fields';
 
 interface CarrierRow {
   id: number; name: string; website: string; experience_summary: string;
@@ -32,6 +34,9 @@ interface CarrierRow {
   intake_submitted_at?: string;
   intake_email?: string;
   intake_email_sent_at?: string;
+  /** The carrier's profile answers, requested with ?fields=1 so any field
+   *  can be put on screen as a column. */
+  content?: CarrierContent;
 }
 
 /** One derived self-fill state per carrier — the thing a manager is
@@ -104,7 +109,9 @@ export default function CarrierDirectory() {
     setLoading(true);
     setError(null);
     try {
-      const r = await apiJSON<{ items: CarrierRow[] }>('/carrier-directory/carriers');
+      // ?fields=1 — the grid offers every profile field as an optional
+      // column, so the content blob has to come with the list.
+      const r = await apiJSON<{ items: CarrierRow[] }>('/carrier-directory/carriers?fields=1');
       setRows(r.items || []);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load carriers';
@@ -191,12 +198,45 @@ export default function CarrierDirectory() {
         <span className="text-muted-foreground">{v ? String(v) : '—'}</span>
       ),
     },
+    // Every profile field, available and hidden by default. This is the
+    // whole point: a recruiter screening one driver against the book puts
+    // the four or five fields they care about on screen — "pays over
+    // $0.60, home weekly, takes pets" — and filters them together, which
+    // no per-carrier detail page can do. Manage columns groups them by
+    // section and has a search box, so 73 entries stay findable.
+    ...FIELD_COLUMNS.map<AnyColumn>((fc) => ({
+      key: fc.key,
+      label: fc.def.label,
+      group: fc.section.title,
+      sortable: true,
+      filterable: true,
+      // A Yes/No answer has two values, so a picker beats a text box;
+      // everything else is free prose and stays substring.
+      filterMode: fc.def.type === 'bool' ? 'select' : undefined,
+      // defaultHidden, not hidden: an operator who unhides a field keeps
+      // it, and Reset puts it back. Their column choice is the saved view.
+      defaultHidden: true,
+      render: (v: unknown) => (v
+        ? <span className="text-foreground">{String(v)}</span>
+        : <span className="text-muted-foreground">—</span>),
+    })),
   ], [tz]);
 
   // Precomputed so the column can sort/filter on it and the segments can
-  // count it without re-deriving per cell.
+  // count it without re-deriving per cell. Field answers are flattened
+  // onto the row for the same reason: DataGrid filters, sorts, searches
+  // and exports ROW VALUES, so a render-only field column would display
+  // correctly and filter on nothing.
   const gridRows = useMemo(
-    () => rows.map((r) => ({ ...r, intake_state: INTAKE_LABEL[intakeStateOf(r)] })),
+    () => rows.map((r) => {
+      const flat: Record<string, unknown> = {
+        ...r, intake_state: INTAKE_LABEL[intakeStateOf(r)],
+      };
+      for (const fc of FIELD_COLUMNS) {
+        flat[fc.key] = valueOf(r.content, fc.section.key, fc.def);
+      }
+      return flat;
+    }),
     [rows],
   );
 

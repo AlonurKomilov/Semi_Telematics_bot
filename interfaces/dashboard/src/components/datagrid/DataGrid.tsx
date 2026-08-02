@@ -77,7 +77,7 @@ import { prunePivotModel, pivot, pivotToCsvRows, type PivotModel } from './pivot
 import {
   useOverflow, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR,
   useWheelToHorizontal,
-} from './scrollbars';
+} from '../scrolling';
 import { derivePivotDimensions } from './pivot/derived';
 
 type Density = 'compact' | 'default' | 'roomy';
@@ -3003,6 +3003,9 @@ export default function DataGrid({
         // columns where the header is a checkbox, not a name).
         label: c.label || c.key,
         alwaysVisible: c.locked === true,
+        // Buckets the Manage-columns popover. Grids whose columns come
+        // from a large template set this so 70+ entries stay findable.
+        group: c.group,
       }))
       // Locked columns are structural (a row chevron, a checkbox) and are
       // alwaysVisible anyway, so listing them is noise the operator can't

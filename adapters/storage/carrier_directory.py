@@ -32,16 +32,28 @@ class CarrierDirectoryMixin(_MixinBase):
     Reads return plain dicts for direct JSON serialisation.
     """
 
-    async def list_carrier_profiles(self, account_id: int) -> list[dict]:
-        """Directory rows (no ``content`` — the list view only needs the
-        name + the one-line experience summary), A→Z by name.  Intake state
-        (expiry + review flag) rides along for the list badges; the token
-        itself never leaves through here."""
+    async def list_carrier_profiles(
+        self, account_id: int, *, with_content: bool = False,
+    ) -> list[dict]:
+        """Directory rows, A→Z by name.  Intake state (expiry + review flag)
+        rides along for the list badges; the token itself never leaves
+        through here.
+
+        ``content`` is OPT-IN.  The default list stays lean because the
+        blob holds up to 73 label/value pairs per carrier and most callers
+        only need the name and summary.  The directory grid asks for it so
+        a recruiter can put any profile field on screen as a column and
+        filter across every carrier — screening a driver against the whole
+        book is the job that needs it.  If a directory ever grows past a
+        few hundred carriers this is the seam to paginate or push the
+        filtering server-side.
+        """
+        extra = ", content" if with_content else ""
         cur = await self._db.execute(
             "SELECT id, name, website, video_url, experience_summary, "
             "       intake_expires_at, intake_submitted_at, intake_review_pending, "
             "       intake_email, intake_email_sent_at, "
-            "       created_at, updated_at "
+            f"      created_at, updated_at{extra} "
             "  FROM carrier_profile "
             " WHERE account_id = ? "
             " ORDER BY LOWER(name)",
