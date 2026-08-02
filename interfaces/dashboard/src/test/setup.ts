@@ -19,6 +19,21 @@
  * cleanup is idempotent.
  */
 import { afterEach } from 'vitest';
-import { cleanup } from '@testing-library/react';
+import { cleanup, configure } from '@testing-library/react';
 
 afterEach(cleanup);
+
+/**
+ * Testing Library keeps its OWN async budget, and vitest.config.ts
+ * cannot raise it: ``waitFor`` / ``findBy*`` give up after 1000ms
+ * regardless of ``testTimeout``.  On a contended machine a React
+ * render plus its effects can miss that comfortably, and the test
+ * then fails with "Unable to find element" — which reads like a
+ * broken selector rather than a starved scheduler, so it sends you
+ * hunting through the component.
+ *
+ * 5s here matches the intent of the raised vitest timeouts: long
+ * enough that only a genuinely-never-appearing element fails, short
+ * enough that a real failure doesn't hold the suite for 20s.
+ */
+configure({ asyncUtilTimeout: 5_000 });

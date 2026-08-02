@@ -1,5 +1,21 @@
+import { cpus } from 'node:os';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+
+/**
+ * Worker cap — leave the machine some headroom.
+ *
+ * Vitest defaults to one worker per core.  This repo is developed on a
+ * box that routinely runs several coding agents plus their indexers, so
+ * "one worker per core" means the suite competes with a machine that is
+ * already saturated, and the suite's own workers then starve each other
+ * as well.  Two cores held back is enough to keep the run scheduled.
+ *
+ * Override with VITEST_MAX_WORKERS on a machine that is genuinely idle
+ * (or in CI, where the container is usually the only tenant).
+ */
+const MAX_WORKERS =
+  Number(process.env.VITEST_MAX_WORKERS) || Math.max(1, cpus().length - 2);
 
 /**
  * Test runner config — kept minimal so the smoke harness loads
@@ -33,5 +49,34 @@ export default defineConfig({
       'scripts/**/*.test.{mjs,ts}',
     ],
     css: false,
+
+    // ── Timeouts sized for a CONTENDED machine ──────────────────────
+    //
+    // Vitest's defaults (testTimeout 5s, hookTimeout 10s) assume the
+    // suite has the box to itself.  Measured on this repo when idle:
+    // 49 files, `environment` 102s total — ~2.1s of jsdom construction
+    // per file — plus ~0.4s of setup.  Starve that by 8x (normal here,
+    // where agents hold most cores) and per-file environment setup
+    // alone lands near 17s, past the 10s hook budget.
+    //
+    // That is exactly the reported symptom: spurious failures under
+    // parallel load, a DIFFERENT test each time, always green on a
+    // clean re-run.  Nothing is racy — the work simply doesn't get
+    // scheduled in time.
+    //
+    // Raising these does not hide real hangs; an infinite loop still
+    // fails, just 20s later. Trading a slower red for no false reds is
+    // the right side of that bargain when the false reds are frequent
+    // enough to train people to re-run instead of read.
+    testTimeout: 20_000,
+    hookTimeout: 20_000,
+    teardownTimeout: 20_000,
+
+    // Both pools configured: 2.x defaults to `forks`, but pinning only
+    // the current default would silently stop applying if that changes.
+    poolOptions: {
+      forks: { maxForks: MAX_WORKERS, minForks: 1 },
+      threads: { maxThreads: MAX_WORKERS, minThreads: 1 },
+    },
   },
 });

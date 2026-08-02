@@ -14,17 +14,59 @@ APP_SERVICES_STOP  = $(SERVICE_QUEUE) $(SERVICE) $(SERVICE_API)
 PID_FILE = .bot.pid
 LOG_FILE = bot.log
 
-.PHONY: start stop restart restart-clean restart-dry \
-       restart-api restart-bot restart-queue status logs install \
+# Bare `make` shows help.  Without this it ran the FIRST target in the
+# file — which is `install`, i.e. a privileged systemd installer.  The
+# likeliest accidental keystroke was also the most destructive one.
+.DEFAULT_GOAL := help
+
+.PHONY: help start stop restart restart-clean restart-dry \
+       restart-api restart-bot restart-queue status logs install sudo-preflight prep-banner \
        clean clean-frontend clean-all \
        start-queue stop-queue \
        test test-cov test-fast test-watch \
        docker-build docker-up docker-down docker-logs docker-restart \
        nginx-install nginx-test nginx-status nginx-sync-if-needed ports \
-       redis-start redis-stop redis-create redis-cli \
+       redis-start redis-stop redis-create redis-cli metrics \
        build dashboard-build dashboard-build-if-needed miniapp-build miniapp-build-if-needed \
        system-dashboard-build system-dashboard-build-if-needed \
        deps-install-if-needed
+
+# ── help ─────────────────────────────────────────────
+
+## List the common commands, then every target with its description.
+##
+## This file carries ~150 `##` doc comments in the conventional
+## self-documenting format, and for a long time nothing rendered them —
+## so `make restart-dry` (the safe way to preview a deploy) was
+## undiscoverable unless you read the Makefile.  The first block below
+## is hand-ordered because "what do I run to deploy?" should not require
+## scanning an alphabetical list.
+help:
+	@echo "4truck — common tasks"
+	@echo ""
+	@echo "  make restart          deploy: services stay up, rolled one at a time"
+	@echo "  make restart-clean    same, preceded by a Python bytecode clean"
+	@echo "  make restart-dry      preview a deploy — changes nothing"
+	@echo "  make status           are the services up, and is the API healthy?"
+	@echo "  make metrics          server CPU / memory / disk, and what is using them"
+	@echo "  make logs             follow the bot log"
+	@echo ""
+	@echo "  Cold path (takes the API down for ~90s — prefer 'make restart'):"
+	@echo "    make stop && make clean && make start"
+	@echo ""
+	@echo "All targets:"
+	@awk ' \
+		/^##/ { if (doc == "" && length($$0) > 3) doc = substr($$0, 4); next } \
+		/^[a-zA-Z0-9_.-]+:/ { \
+			if (doc != "") { \
+				split($$0, part, ":"); \
+				printf "  %-26s %s\n", part[1], doc; \
+				doc = ""; \
+			} \
+			next; \
+		} \
+		{ doc = "" } \
+	' $(MAKEFILE_LIST)
 
 # ── systemd-aware targets (preferred) ────────────────
 
@@ -41,21 +83,21 @@ install:
 deps-install-if-needed:
 	@STAMP=.deps-installed; \
 	if [ ! -f "$$STAMP" ] || [ requirements.txt -nt "$$STAMP" ]; then \
-		echo "📦 requirements.txt changed — installing Python deps..."; \
+		echo "   📦 requirements.txt changed — installing Python deps..."; \
 		if pip install -q -r requirements.txt 2>/dev/null \
 			|| pip install -q --break-system-packages -r requirements.txt; then \
 			touch "$$STAMP"; \
-			echo "   ✅ Python deps up to date"; \
+			echo "   ✅ Python deps installed"; \
 		else \
 			echo "   ❌ pip install failed — fix before starting services"; \
 			exit 1; \
 		fi; \
 	else \
-		echo "   ✅ Python deps up to date (requirements.txt unchanged)"; \
+		echo "   📦 Python deps unchanged — nothing to install"; \
 	fi
 
 ## Start all services: Redis + bot/API (systemd or nohup fallback)
-start: deps-install-if-needed dashboard-build-if-needed miniapp-build-if-needed system-dashboard-build-if-needed
+start: prep-banner deps-install-if-needed dashboard-build-if-needed miniapp-build-if-needed system-dashboard-build-if-needed
 	@echo "🚀 Starting 4truck services..."
 	@# ── 0. Clear stale Python bytecode so live source is always used ──
 	@find . -path ./.git -prune -o -name '*.pyc' -delete 2>/dev/null; true
@@ -65,7 +107,7 @@ start: deps-install-if-needed dashboard-build-if-needed miniapp-build-if-needed 
 	@# volume, and the app would come up on a blank Redis without
 	@# complaining.  Failing loudly is the correct behaviour here.
 	@if docker ps --format '{{.Names}}' | grep -qx $(REDIS_CONTAINER); then \
-		echo "   ✅ Redis already running on port 8002"; \
+		echo "   ·  Redis already running on port 8002"; \
 	elif docker ps -a --format '{{.Names}}' | grep -qx $(REDIS_CONTAINER); then \
 		if docker start $(REDIS_CONTAINER) >/dev/null 2>&1; then \
 			echo "   ✅ Redis started on port 8002 (existing container, volume intact)"; \
@@ -121,17 +163,34 @@ start: deps-install-if-needed dashboard-build-if-needed miniapp-build-if-needed 
 		fi; \
 	fi
 	@# ── 3. Health check ──
-	@echo "   🔍 Checking health..."
-	@for i in 1 2 3 4 5; do \
-		if curl -sf http://127.0.0.1:8000/api/health >/dev/null 2>&1; then \
+	@# 180s, not 5.  "Listening at" in api.log means the arbiter bound
+	@# the socket, NOT that anything can answer — a worker only serves
+	@# once it logs "Application startup complete", which has been
+	@# observed 65-87s later on a contended box (the import is ~12s of
+	@# CPU; the rest was waiting for a scheduler slot).  The old
+	@# 5-attempt window expired long before the first worker was ready
+	@# and printed a warning that meant nothing, every single time.
+	@# Progress is printed as it goes: a silent "Checking health..." is
+	@# indistinguishable from a hang, and the endpoint reports db/redis
+	@# separately, which is what tells you WHICH part is slow.
+	@echo "   🔍 Checking health — http://127.0.0.1:8000/api/health (workers need ~60-90s)"
+	@ok=0; \
+	for i in $$(seq 1 180); do \
+		body=$$(curl -sf --max-time 3 http://127.0.0.1:8000/api/health 2>/dev/null); \
+		if [ -n "$$body" ]; then \
+			echo "      → answered after $${i}s: $$body"; \
 			echo "   ✅ All services healthy"; \
+			ok=1; \
 			break; \
 		fi; \
-		if [ $$i -eq 5 ]; then \
-			echo "   ⚠️  Health check not responding yet (services may still be starting)"; \
+		if [ $$(( i % 3 )) -eq 0 ]; then \
+			echo "      → no response yet ($${i}s elapsed) — workers still importing"; \
 		fi; \
 		sleep 1; \
-	done
+	done; \
+	if [ $$ok -eq 0 ]; then \
+		echo "   ⚠️  No health response after 180s — check api.log"; \
+	fi
 	@# ── 4. Nginx — 4truck.us config only ──────────────────────────────────────
 	@$(MAKE) --no-print-directory nginx-sync-if-needed
 
@@ -146,7 +205,7 @@ nginx-sync-if-needed:
 		sudo rm -f /etc/nginx/sites-enabled/semi-telematics-bot /etc/nginx/sites-available/semi-telematics-bot 2>/dev/null; true; \
 		if [ ! -f /etc/nginx/sites-available/$(NGINX_CONF) ] || \
 				! diff -q $(NGINX_SRC) /etc/nginx/sites-available/$(NGINX_CONF) >/dev/null 2>&1; then \
-			echo "   🔄 Nginx config changed — updating 4truck.us..."; \
+			echo "   🌐 Nginx config changed — updating 4truck.us..."; \
 			sudo cp $(NGINX_SRC) /etc/nginx/sites-available/$(NGINX_CONF); \
 			sudo ln -sf /etc/nginx/sites-available/$(NGINX_CONF) /etc/nginx/sites-enabled/$(NGINX_CONF); \
 			if sudo -n nginx -t >/dev/null 2>&1; then \
@@ -157,7 +216,7 @@ nginx-sync-if-needed:
 			fi; \
 		else \
 			sudo ln -sf /etc/nginx/sites-available/$(NGINX_CONF) /etc/nginx/sites-enabled/$(NGINX_CONF) 2>/dev/null; true; \
-			echo "   ✅ Nginx config already up to date"; \
+			echo "   🌐 Nginx config unchanged"; \
 		fi; \
 	else \
 		echo "   ℹ️  Nginx: skipped (no sudo session — run 'sudo -v' then 'make nginx-install' to update)"; \
@@ -166,6 +225,14 @@ nginx-sync-if-needed:
 ## Stop all services: queue + bot + API + Redis
 stop:
 	@echo "🛑 Stopping 4truck services..."
+	@# State the cost before paying it.  Stopping is not symmetric with
+	@# starting: gunicorn binds :8000 within a second but a worker cannot
+	@# answer until it has imported the app, measured at 65-87s.  Someone
+	@# reaching for `make stop` to deploy a code change is buying a
+	@# minute-plus outage they could have avoided entirely.
+	@echo "   ⚠️  This takes the API OFFLINE. After 'make start' it is"
+	@echo "      ~60-90s before it serves again (workers must import)."
+	@echo "      To deploy code with no outage, use: make restart"
 	@# ── 1. App services ──
 	@# Reverse-order from start: queue first so the ARQ worker drains
 	@# in-flight jobs cleanly; bot next so the scheduler tearsdown
@@ -220,7 +287,7 @@ stop:
 	@if docker ps --format '{{.Names}}' | grep -qx $(REDIS_CONTAINER); then \
 		echo "   ℹ️  Redis: still running (state — not stopped by design)"; \
 	else \
-		echo "   ⚠️  Redis: not running — 'make start' will start it"; \
+		echo "   ℹ️  Redis: not running — 'make start' will start it"; \
 	fi
 	@echo "   ✅ App services stopped"
 	@# ── Nginx stays running ─────────────────────────────────────────────────
@@ -264,9 +331,47 @@ stop:
 ##     Rolling the API last is still the safer choice: a frontend skew
 ##     costs one failed request and a refresh, a backend that will not
 ##     boot costs everyone.
-restart: deps-install-if-needed dashboard-build-if-needed miniapp-build-if-needed system-dashboard-build-if-needed
+restart: sudo-preflight prep-banner deps-install-if-needed dashboard-build-if-needed miniapp-build-if-needed system-dashboard-build-if-needed
 	@$(MAKE) --no-print-directory nginx-sync-if-needed
 	@bash scripts/rolling_restart.sh
+
+## Header for the preparation phase, so its lines have a parent.
+##
+## The dependency check and the three build checks are peers, but they
+## printed at three different indents with mixed markers — a bare `·`
+## next to 📦 and 🔨 — and with no heading above them they read as loose
+## fragments before the run rather than as one phase.  The banner also
+## states the fact that matters here: none of this touches the running
+## services, so a three-minute build is not downtime.
+prep-banner:
+	@echo "🔧 Preparing — services keep running throughout this phase"
+
+## Ask for sudo ONCE, before anything else runs.
+##
+## First in the prerequisite list on purpose.  Previously sudo was not
+## requested until the first `systemctl restart`, so the password prompt
+## landed in the middle of the service roll — interleaved with progress
+## output, and it stopped the deploy dead while it waited, which also
+## inflated the timing of whichever service happened to be restarting
+## ("up in 18s" when 15 of those seconds were someone typing).
+##
+## Asking up front also fixes a silent gap: `nginx-sync-if-needed` only
+## acts when sudo is already cached, so on the old ordering it ALWAYS
+## skipped with "no sudo session" and nginx config changes never got
+## applied by `make restart` at all.
+sudo-preflight:
+	@if sudo -n true 2>/dev/null; then \
+		echo "🔑 sudo: already authorised for this terminal"; \
+	else \
+		echo "🔑 This deploy needs sudo (systemctl + nginx)"; \
+		if sudo -v; then \
+			touch .sudo-owned; \
+			echo "   ✅ sudo accepted — released again when the deploy finishes"; \
+		else \
+			echo "   ❌ sudo not granted — stopping before anything was changed."; \
+			exit 1; \
+		fi; \
+	fi
 
 ## Rolling restart preceded by a bytecode clean.  Use after a pull that
 ## moved or deleted Python files.
@@ -352,7 +457,7 @@ clean:
 	@find . \( -name "*.pyc" -o -name "*.pyo" \) -delete 2>/dev/null; true
 	@rm -f .bot.pid .api.pid .pid
 	@rm -f "=0.5.7"
-	@echo "✅  Python cache cleared (DB, source and frontend caches untouched)"
+	@echo "✅ Python cache cleared (DB, source and frontend caches untouched)"
 
 ## Clear the three Vite dependency caches.  Use when a frontend build
 ## misbehaves in a way that smells like a stale cache; the next build
@@ -372,47 +477,61 @@ build: dashboard-build miniapp-build system-dashboard-build
 
 ## Build the dashboard React app (always rebuilds)
 dashboard-build:
-	@echo "🔨 Building dashboard..."
+	@echo "   🔨 Building dashboard (~1-3 min)..."
 	@cd interfaces/dashboard && npm run build
-	@echo "✅  Dashboard built → interfaces/dashboard/dist/"
+	@echo "   ✅ Dashboard built → interfaces/dashboard/dist/"
 
 ## Build the operator-only system console.  Installs deps on first run.
 system-dashboard-build:
-	@echo "🔨 Building system console..."
+	@echo "   🔨 Building system console..."
 	@if [ ! -d interfaces/system_dashboard/node_modules ]; then \
 		echo "   📦 Installing system-dashboard deps (first run)..."; \
 		cd interfaces/system_dashboard && npm install --silent; \
 	fi
 	@cd interfaces/system_dashboard && npm run build
-	@echo "✅  System console built → interfaces/system_dashboard/dist/"
+	@echo "   ✅ System console built → interfaces/system_dashboard/dist/"
+
+# Everything whose change should invalidate a built bundle.
+#
+# The original list was `src/ + index.html + vite.config.*`, which meant
+# a dependency bump, a Tailwind token, a tsconfig path change or anything
+# in public/ silently deployed a STALE dist: the check reported "up to
+# date" and `make restart` shipped the previous bundle.  Emits only paths
+# that exist, so `find` never errors on a frontend that lacks one.
+BUILD_WATCH_SET = sh -c 'd=$$0; s="$$d/src $$d/index.html"; \
+	for p in "$$d"/public "$$d"/vite.config.* "$$d"/package.json \
+	         "$$d"/package-lock.json "$$d"/tailwind.config.* \
+	         "$$d"/postcss.config.* "$$d"/tsconfig*.json; do \
+		[ -e "$$p" ] && s="$$s $$p"; \
+	done; echo "$$s"'
 
 ## Build the miniapp only when sources are newer than the last build output.
 miniapp-build-if-needed:
 	@DIST=interfaces/miniapp/dist/index.html; \
+	SRC=$$($(BUILD_WATCH_SET) interfaces/miniapp); \
 	if [ ! -f "$$DIST" ]; then \
-		echo "📦 Miniapp dist missing — building..."; \
+		echo "   📦 Miniapp dist missing — building"; \
 		$(MAKE) miniapp-build; \
-	elif find interfaces/miniapp/src interfaces/miniapp/index.html interfaces/miniapp/vite.config.* \
-		-newer "$$DIST" -print -quit 2>/dev/null | grep -q .; then \
-		echo "📦 Miniapp sources changed — rebuilding..."; \
+	elif find $$SRC -newer "$$DIST" -print -quit 2>/dev/null | grep -q .; then \
+		echo "   📦 Miniapp sources changed — rebuilding"; \
 		$(MAKE) miniapp-build; \
 	else \
-		echo "   ✅ Miniapp dist up to date (no rebuild needed)"; \
+		echo "   📦 Miniapp unchanged — no rebuild needed"; \
 	fi
 
 ## Build the dashboard only when sources are newer than the last build output.
 ## Called automatically by `make start` so fresh code is always deployed.
 dashboard-build-if-needed:
 	@DIST=interfaces/dashboard/dist/index.html; \
+	SRC=$$($(BUILD_WATCH_SET) interfaces/dashboard); \
 	if [ ! -f "$$DIST" ]; then \
-		echo "📦 Dashboard dist missing — building..."; \
+		echo "   📦 Dashboard dist missing — building"; \
 		$(MAKE) dashboard-build; \
-	elif find interfaces/dashboard/src interfaces/dashboard/index.html interfaces/dashboard/vite.config.* \
-		-newer "$$DIST" -print -quit 2>/dev/null | grep -q .; then \
-		echo "📦 Dashboard sources changed — rebuilding..."; \
+	elif find $$SRC -newer "$$DIST" -print -quit 2>/dev/null | grep -q .; then \
+		echo "   📦 Dashboard sources changed — rebuilding"; \
 		$(MAKE) dashboard-build; \
 	else \
-		echo "   ✅ Dashboard dist up to date (no rebuild needed)"; \
+		echo "   📦 Dashboard unchanged — no rebuild needed"; \
 	fi
 
 ## Build the operator system console only when its sources changed.
@@ -421,15 +540,15 @@ dashboard-build-if-needed:
 ## system-dashboard-build target handles the npm install itself).
 system-dashboard-build-if-needed:
 	@DIST=interfaces/system_dashboard/dist/index.html; \
+	SRC=$$($(BUILD_WATCH_SET) interfaces/system_dashboard); \
 	if [ ! -f "$$DIST" ]; then \
-		echo "📦 System console dist missing — building..."; \
+		echo "   📦 System console dist missing — building"; \
 		$(MAKE) system-dashboard-build; \
-	elif find interfaces/system_dashboard/src interfaces/system_dashboard/index.html interfaces/system_dashboard/vite.config.* \
-		-newer "$$DIST" -print -quit 2>/dev/null | grep -q .; then \
-		echo "📦 System console sources changed — rebuilding..."; \
+	elif find $$SRC -newer "$$DIST" -print -quit 2>/dev/null | grep -q .; then \
+		echo "   📦 System console sources changed — rebuilding"; \
 		$(MAKE) system-dashboard-build; \
 	else \
-		echo "   ✅ System console dist up to date (no rebuild needed)"; \
+		echo "   📦 System console unchanged — no rebuild needed"; \
 	fi
 
 # ── testing targets ──────────────────────────────────
@@ -542,6 +661,19 @@ nginx-status:
 	@ss -tlnp 2>/dev/null | grep -E ":(80|443|8000|8001|8002|8080)" || echo "   (none listening)"
 
 # ── Port overview ────────────────────────────────────
+
+## Host CPU / memory / disk right now, and which commands are using them.
+##
+## Read-only by design: it names heavy processes but never signals them.
+## The big consumers here are development agents, and a make target has
+## no business deciding those should stop.
+##
+## Run it when a deploy feels slow.  The app import is ~12s of CPU, so a
+## restart that takes minutes is almost always contention rather than
+## anything in the code — this is how you tell the difference in one
+## second instead of guessing.
+metrics:
+	@python3 scripts/host_snapshot.py
 
 ## Show port assignments for this project
 ports:
@@ -748,9 +880,9 @@ miniapp-install:
 
 ## Build the Mini App for production (output → interfaces/miniapp/dist/)
 miniapp-build:
-	@echo "🔨 Building Mini App..."
+	@echo "   🔨 Building Mini App..."
 	@cd interfaces/miniapp && npm run build
-	@echo "✅ Mini App built → interfaces/miniapp/dist/"
+	@echo "   ✅ Mini App built → interfaces/miniapp/dist/"
 
 ## Start Mini App dev server (port 8003, API proxied to localhost:8000)
 miniapp-dev:
