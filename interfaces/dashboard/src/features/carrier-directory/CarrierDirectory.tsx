@@ -23,6 +23,7 @@ import { useRoleView } from '../../context/RoleViewContext';
 import { toneClasses } from '../../lib/status';
 import { FIELD_COLUMNS, valueOf } from './fields';
 import type { CarrierContent } from './fields';
+import { intakeStateOf, INTAKE_LABEL, INTAKE_TONE, INTAKE_FILTER } from './intakeState';
 
 interface CarrierRow {
   id: number; name: string; website: string; experience_summary: string;
@@ -39,34 +40,11 @@ interface CarrierRow {
   content?: CarrierContent;
 }
 
-/** One derived self-fill state per carrier — the thing a manager is
- *  actually triaging. Order matters: needs-review outranks everything. */
-type IntakeState = 'review' | 'awaiting' | 'lapsed' | 'done' | 'none';
-
-function intakeStateOf(r: CarrierRow): IntakeState {
-  if (r.intake_review_pending) return 'review';
-  const exp = r.intake_expires_at ? new Date(r.intake_expires_at).getTime() : 0;
-  const submitted = Boolean((r.intake_submitted_at || '').trim());
-  if (submitted) return 'done';
-  if (!exp) return 'none';           // never invited, or revoked (expiry NULLed)
-  return exp > Date.now() ? 'awaiting' : 'lapsed';
-}
-
-// One noun for one object: the shareable URL is a FILL LINK in the column
-// header, every tab, the detail status line and every toast. It had picked
-// up five names ("Self-fill", "Carrier fill link", "invite link", …) and a
-// reader can't tell whether those are one thing or several.
-const INTAKE_LABEL: Record<IntakeState, string> = {
-  review: 'Needs review',
-  awaiting: 'Awaiting carrier',
-  lapsed: 'Lapsed',
-  done: 'Filled in',
-  none: '—',
-};
-
-const INTAKE_TONE: Record<IntakeState, 'info' | 'warn' | 'danger' | 'ok' | 'neutral'> = {
-  review: 'info', awaiting: 'neutral', lapsed: 'danger', done: 'ok', none: 'neutral',
-};
+/** Row fields the search box reaches that are NOT columns.  Every column
+ *  is searched already, so this list stays short.  Module-level for
+ *  stable identity: an inline array is a new one each render, which
+ *  re-runs the grid's faceted filter-option pass over every row. */
+const SEARCH_KEYS = ['name', 'experience_summary'];
 
 /** Module-level for stable array identity across renders (DataGrid asks
  *  for this).  The grid computes the counts itself. */
@@ -166,6 +144,13 @@ export default function CarrierDirectory() {
       // action is required. Named from the reader's point of view now.
       key: 'intake_state', label: 'Fill link', sortable: true, filterable: true,
       filterMode: 'select',
+      // Match on the CODE, display the label.  The row carries the
+      // label (it's what sorts and exports), and without these a saved
+      // tab would persist the literal "Needs review" as its criterion —
+      // so the next time that wording changes, every stored tab scopes
+      // to zero rows with no error.  This label has been reworded once
+      // already (see above), which is exactly how it would happen.
+      ...INTAKE_FILTER,
       render: (_v: unknown, row: Record<string, unknown>) => {
         const st = intakeStateOf(row as unknown as CarrierRow);
         if (st === 'none') return <span className="text-muted-foreground">—</span>;
@@ -335,11 +320,19 @@ export default function CarrierDirectory() {
         <DataGrid
           columns={columns}
           data={gridRows as unknown as Record<string, unknown>[]}
-          searchKey={['name', 'experience_summary']}
+          searchKey={SEARCH_KEYS}
           searchPlaceholder="Search carriers…"
           tableId="carrier-directory"
           segments={SEGMENTS}
-          emptyMessage="No carrier is at this stage right now."
+          // Personal scope tabs on top of the lifecycle ones: the five
+          // built-in stages are the pipeline, but the reason to hold 73
+          // field columns is that a recruiter's own screen ("pays over
+          // $0.60, home weekly, takes pets") is worth keeping. Managed
+          // by right-click, per user.
+          savedTabs
+          // Deliberately not "at this stage" — a personal tab is a scope,
+          // not a stage, and DataGrid shows this for any empty one.
+          emptyMessage="No carrier here right now."
           bulkSelection={canEdit}
           bulkActions={bulkActions}
           // Without this every checkbox announces "Select row"; a screen
