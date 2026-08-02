@@ -227,6 +227,40 @@ class WorkOrdersMixin:
         # Match the WO's carrier MC number to one of the account's
         # Companies (which own the MC/DOT) → the company code.
         company_resolver = await self._wo_company_resolver(account_id)
+        # Telemetry link: the unit's Samsara vehicle id, resolved by
+        # exact company+name (name-unique as fallback).  Every projected
+        # order used to store an empty vehicle_id — 675 rows and
+        # counting — which killed the cost-per-mile join and the
+        # "reading as of" lookup for the whole table.  Ambiguous names
+        # (the account runs two different 103s) stay blank: blank keeps
+        # the old behaviour, a guess would attach money to the wrong
+        # truck.
+        state_by_ck: dict[tuple[str, str], str] = {}
+        state_name_unique: dict[str, str | None] = {}
+        cur = await self._db.execute(
+            "SELECT vehicle_id, vehicle_name, company_code "
+            "FROM vehicle_state WHERE account_id = ?",
+            (account_id,),
+        )
+        for row in await cur.fetchall():
+            svid, snm, scc = (str(row[0] or ""), str(row[1] or "").strip(),
+                              str(row[2] or "").strip())
+            if not svid or not snm:
+                continue
+            state_by_ck[(scc, snm.lower())] = svid
+            if snm.lower() in state_name_unique:
+                state_name_unique[snm.lower()] = None
+            else:
+                state_name_unique[snm.lower()] = svid
+
+        def _telemetry_id(company: str, name: str) -> str:
+            key = (name or "").strip().lower()
+            if not key:
+                return ""
+            vid = state_by_ck.get(((company or "").strip(), key))
+            if vid:
+                return vid
+            return state_name_unique.get(key) or ""
         cur = await self._db.execute(
             "SELECT id, external_id FROM work_orders "
             "WHERE account_id = ? AND source = ? AND external_id <> ''",
@@ -280,6 +314,7 @@ class WorkOrdersMixin:
                 ) if vendor_name else None
                 vendor_id = _vend["id"] if _vend else None
                 payment_method = str(r.get("payment_method") or "")
+                telemetry_vid = _telemetry_id(company_code, vehicle_name)
                 service_date = str(r.get("opened_at") or "") or None
                 odometer = r.get("odometer")
                 odometer = float(odometer) if odometer not in (None, "") else None
@@ -337,6 +372,8 @@ class WorkOrdersMixin:
                     await self._db.execute(
                         "UPDATE work_orders SET vehicle_name = ?, "
                         "vehicle_type = ?, company_code = ?, assigned_to = ?, "
+                        "vehicle_id = CASE WHEN COALESCE(vehicle_id,'') = '' "
+                        "    THEN ? ELSE vehicle_id END, "
                         "invoice_number = ?, external_number = ?, vendor_name = ?, "
                         "vendor_address = ?, vendor_phone = ?, vendor_id = ?, "
                         "payment_method = ?, service_date = ?, "
@@ -351,6 +388,7 @@ class WorkOrdersMixin:
                         "    ELSE status END, "
                         "updated_at = ? WHERE id = ? AND account_id = ?",
                         (vehicle_name, vehicle_type, company_code, assigned_to,
+                         telemetry_vid,
                          invoice_number, external_number, vendor_name,
                          vendor_address, vendor_phone, vendor_id, payment_method,
                          service_date, odometer, labor_cost, parts_cost,
@@ -376,7 +414,7 @@ class WorkOrdersMixin:
                                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT (account_id, source, external_id)
                        WHERE external_id <> '' DO NOTHING""",
-                    (account_id, company_code, "", vehicle_name,
+                    (account_id, company_code, telemetry_vid, vehicle_name,
                      vehicle_type, vendor_name, vendor_address, vendor_phone,
                      vendor_id, service_date, odometer, None,
                      labor_cost, parts_cost, tax, total,
