@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Building2, Pencil, Trash2, Clock3, Minus, Lock } from 'lucide-react';
 import { toast } from 'sonner';
@@ -416,6 +417,21 @@ export default function Applications() {
   );
   // (Bulk selection lives inside DataGrid now — no page-level set.)
   const [openId, setOpenId] = useState<number | null>(null);
+  // ?app=<id> opens that application directly — the target of the
+  // notification deep-link, so a notice lands ON the record it is about
+  // rather than on the list with the reader hunting for it.  Consumed
+  // once: the param is dropped as soon as it's applied, so closing the
+  // panel and re-rendering can't re-open it.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const raw = searchParams.get('app');
+    if (!raw) return;
+    const id = Number(raw);
+    if (Number.isFinite(id) && id > 0) setOpenId(id);
+    const next = new URLSearchParams(searchParams);
+    next.delete('app');
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams]);
   // Shared react-query entry (also feeds the topbar ApplicationsHero,
   // so any mutation here re-renders the hero counts in the same tick).
   const { data: appsData, isLoading: loading, error: appsError } = useApplicationsQuery();

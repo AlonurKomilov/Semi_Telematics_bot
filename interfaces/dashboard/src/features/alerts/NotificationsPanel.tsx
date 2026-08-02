@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Settings, RefreshCw, Check, CheckCheck, ArrowRight, Bell, BellOff,
   Wrench, HeartPulse, Fuel, MapPin, ShieldAlert, Camera, CircleParking,
-  AlertTriangle, Loader2, Users, Server, Bot, ChevronDown, ChevronUp,
+  AlertTriangle, Loader2, Users, Server, Bot, UserPlus, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Alert, AlertSeverity } from '../../types';
@@ -544,6 +544,9 @@ const SOURCE_ICON: Record<string, typeof Users> = {
   team: Users,
   ai: Bot,
   system: Server,
+  // Same icon the Applications page wears, so one object keeps one face
+  // wherever a driver application shows up.
+  applications: UserPlus,
 };
 
 // Bodies longer than roughly one panel line earn the expand chevron.

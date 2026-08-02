@@ -283,14 +283,21 @@ async def notify_new_application(
                     await notify_user(
                         platform_db, account_id, u.id,
                         NotificationContent(
-                            title=title, body=body,
+                            title=title,
+                            # The shared row already renders the reference
+                            # as its object chip (meta.context), so the
+                            # body carries only the person — printing the
+                            # reference twice in one row reads as two
+                            # different facts.
+                            body=f"{applicant_name or 'A driver'} applied",
                             category=APPLICATION_RECEIVED,
                             # Deep-link to the application itself — the
                             # old table had no url column, so its notices
                             # could not link anywhere.
                             url=f"{review_url}?app={application_id}",
                             meta={"application_id": application_id,
-                                  "reference": reference},
+                                  "reference": reference,
+                                  "context": reference},
                         ),
                         channels=["in_app"],
                         correlation_key=f"application:{application_id}:{u.id}",

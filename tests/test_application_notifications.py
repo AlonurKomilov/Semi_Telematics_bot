@@ -125,7 +125,10 @@ class TestFanOut:
         content = call["content"]
         assert call["account_id"] == 42
         assert content.category == APPLICATION_RECEIVED
-        assert "Dana Driver" in content.body and "APP-77" in content.body
+        # The reference rides the object chip (meta.context), not the
+        # body — one row must not state it twice.
+        assert content.body == "Dana Driver applied"
+        assert content.meta["context"] == "APP-77"
         # Deep-link to the row, not just the page.
         assert content.url.endswith("/workforce/applications?app=77")
         assert content.meta["application_id"] == 77
