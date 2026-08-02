@@ -298,6 +298,20 @@ export default function PivotView({
     };
   }, [visibleRows, windowing, bucket, rowH, viewport, insets.top]);
 
+  // Is the report SHORT enough to leave blank space under it?  Only then
+  // does the slack-absorber row have a job (see its comment in <tbody>).
+  //
+  // Built from the container's height, the header's, and a DATA row's —
+  // never from the container's overflow, and never from the absorber's
+  // own height.  Anything that measured the absorber would be circular:
+  // mounting the row could create the overflow that unmounts it.
+  //
+  // A rough estimate is fine in BOTH directions.  Slightly too eager and
+  // the row mounts with no surplus to take, so it is 0 tall; slightly
+  // too shy and the Total sits a few pixels above the bottom edge.
+  // Neither can strand a row or hide a figure.
+  const needsSlack = visibleRows.length * rowH + insets.top < viewport;
+
   if (result.empty) {
     // Only ROWS are required now: without a measure the report still
     // shows the groups and their counts, so the one thing that can't be
@@ -871,9 +885,21 @@ export default function PivotView({
               the last row with a large blank area beneath it, floating
               mid-card.  A row with ``height: 100%`` takes the leftover
               height (tables hand surplus to such a row), which pushes
-              the totals to the bottom edge where a total belongs, and
-              collapses to nothing the moment the rows do overflow. */}
-          {fill && result.bodyRows.length > 0 && (
+              the totals to the bottom edge where a total belongs.
+              ⚠️ It is MOUNTED ONLY WHEN THE REPORT IS SHORT.  It used to
+              render always, on the claim that `height: 100%` collapses
+              to nothing once the rows overflow — but percentage heights
+              on table rows are UNDEFINED in CSS 2.1, so that was a bet on
+              one browser's behaviour, and an owner-reported gap opened
+              between the last row and the Total.  Now it simply is not
+              there when it has no job.
+              The gate reads measurements that do NOT include this row —
+              the container's own height, the header's, and a DATA row's.
+              That is deliberate: keying it off the container's overflow
+              would be circular, because mounting the row could create the
+              very overflow that unmounts it, and the two would
+              flip-flop. */}
+          {fill && result.bodyRows.length > 0 && needsSlack && (
             <tr aria-hidden className="h-full">
               <td colSpan={leafCount + 1 + result.totalLabels.length} />
             </tr>

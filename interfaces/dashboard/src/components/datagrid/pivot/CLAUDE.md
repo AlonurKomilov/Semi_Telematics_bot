@@ -445,9 +445,23 @@ there are four rows or four hundred.
 The fix is a **slack-absorbing row**: an `aria-hidden` `<tr>` with
 `height: 100%` after the data rows, plus `h-full` on the table so the
 percentage resolves. Tables hand surplus height to such a row, which
-pushes the footer to the bottom edge; the moment the rows do overflow it
-collapses to nothing and the sticky behaviour takes over. Both renderers
-do this — the record list's aggregation footer had the identical defect.
+pushes the footer to the bottom edge. Both renderers do this — the
+record list's aggregation footer had the identical defect.
+
+⚠️ **It is MOUNTED ONLY WHEN THE REPORT IS SHORT.** It used to render
+always, on the claim that `height: 100%` collapses to nothing once the
+rows overflow — but **percentage heights on table rows are undefined in
+CSS 2.1**, so that was a bet on one browser's behaviour. It lost: an
+owner-reported gap opened between the last row and the Total. A row with
+no job is now simply absent.
+
+The gate (`needsSlack`) is built from the container's height, the
+header's, and a DATA row's — **never from the container's overflow**.
+That is not fussiness: overflow includes the absorber, so mounting the
+row could create the very overflow that unmounts it, and the two would
+flip-flop. A rough estimate is safe in both directions — too eager and
+the row takes no surplus, too shy and the Total sits a few pixels high;
+neither can strand a row or hide a figure.
 
 ## Hand-rolled cells must restate the primitives' padding
 

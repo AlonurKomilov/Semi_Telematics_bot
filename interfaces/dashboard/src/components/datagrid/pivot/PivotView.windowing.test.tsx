@@ -243,6 +243,41 @@ describe('the frozen columns stay frozen', () => {
   });
 });
 
+describe('the slack absorber is mounted only when it has a job', () => {
+  // It exists to push the Total row to the bottom edge when the report is
+  // too SHORT to fill the card.  It used to render always, relying on
+  // `height: 100%` collapsing to nothing once the rows overflow — but
+  // percentage heights on table rows are UNDEFINED in CSS 2.1, so that
+  // was a bet on one browser's behaviour, and an owner-reported gap
+  // opened between the last row and the Total.
+  const absorber = () => document.querySelector('tbody tr[aria-hidden].h-full');
+
+  it('is absent on a report that overflows', async () => {
+    await act(async () => {
+      render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
+    });
+    expect(absorber()).toBeNull();
+  });
+
+  it('is present on a report that does NOT fill the card', async () => {
+    // 8 rows x 32px sits well inside the 480px viewport, so there is real
+    // slack for it to take.
+    await act(async () => {
+      render(
+        <PivotView rows={ROWS.slice(0, 8)} model={MODEL} columns={COLUMNS} padding="py-3" fill />,
+      );
+    });
+    expect(absorber()).not.toBeNull();
+  });
+
+  it('is absent without fill — nothing owns a viewport to fill', async () => {
+    await act(async () => {
+      render(<PivotView rows={ROWS.slice(0, 8)} model={MODEL} columns={COLUMNS} padding="py-3" />);
+    });
+    expect(absorber()).toBeNull();
+  });
+});
+
 describe('the sticky bands stay opaque with NOTHING pinned', () => {
   // <thead> and <tfoot> float over the body rows whenever `fill` is on —
   // pinning or not.  So every cell in them needs its OWN opaque fill: a
