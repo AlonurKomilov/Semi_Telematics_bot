@@ -156,12 +156,35 @@ async def build_dot_binder(
     # Fleet roster.  vehicle_state is the warehouse truth — drivers'
     # assigned trucks may be stale or unset.
     state_rows = await tenant_db.get_vehicle_state(account_id)
+
+    # Every vehicle answers to its REGISTRY unit number as well as the
+    # provider's display name.  This binder goes in front of an
+    # inspector, and a provider rename used to make records vanish from
+    # it: the state row became "229 Idris Ahmed" while every work order
+    # stayed filed under "229", so the truck printed with an empty
+    # service history.  The registry name is the one WE own — records
+    # are collected under both spellings and the page is titled with
+    # the canonical name.
+    canonical: dict = {}
+    try:
+        for rv in await tenant_db.list_vehicles(account_id):
+            canonical[rv.id] = (rv.unit_number or "").strip()
+    except Exception:
+        canonical = {}
+
+    def _keys(row: dict) -> set[str]:
+        keys = {(row.get("vehicle_name") or "").strip().lower()}
+        canon = canonical.get(row.get("registry_id"))
+        if canon:
+            keys.add(canon.lower())
+        keys.discard("")
+        return keys
+
     if vehicle_name_filter:
+        # Exact match on either spelling — a filter for truck 230 must
+        # not also print 2303's binder.
         needle = vehicle_name_filter.strip().lower()
-        state_rows = [
-            r for r in state_rows
-            if needle in (r.get("vehicle_name") or "").lower()
-        ]
+        state_rows = [r for r in state_rows if needle in _keys(r)]
 
     # Bulk task pull — one query, filter per vehicle in Python.  Avoids
     # N round trips on large fleets.  Includes ALL tasks; we partition
@@ -169,7 +192,7 @@ async def build_dot_binder(
     all_tasks = await tenant_db.get_maintenance_tasks(account_id)
     tasks_by_vehicle: dict[str, list[dict]] = {}
     for t in all_tasks:
-        v = (t.get("vehicle_name") or "").strip()
+        v = (t.get("vehicle_name") or "").strip().lower()
         tasks_by_vehicle.setdefault(v, []).append(t)
 
     # Work orders + parts + attachment counts.  Pull all in-window
@@ -185,7 +208,7 @@ async def build_dot_binder(
     ]
     work_orders_by_vehicle: dict[str, list[dict]] = {}
     for w in in_window:
-        v = (w.get("vehicle_name") or "").strip()
+        v = (w.get("vehicle_name") or "").strip().lower()
         work_orders_by_vehicle.setdefault(v, []).append(w)
 
     in_window_ids = [int(w["id"]) for w in in_window if w.get("id") is not None]
@@ -202,11 +225,18 @@ async def build_dot_binder(
     total_dot = 0
 
     for v in state_rows:
-        vname = (v.get("vehicle_name") or "").strip()
-        if not vname:
+        keys = _keys(v)
+        if not keys:
             continue
-        v_tasks = tasks_by_vehicle.get(vname, [])
-        v_wos = work_orders_by_vehicle.get(vname, [])
+        # Title the page with the registry's unit number when we have
+        # it — the inspector should read "229", not the driver-suffixed
+        # display string the provider invented.
+        vname = (canonical.get(v.get("registry_id"))
+                 or (v.get("vehicle_name") or "").strip())
+        v_tasks = [t for k in sorted(keys)
+                   for t in tasks_by_vehicle.get(k, [])]
+        v_wos = [w for k in sorted(keys)
+                 for w in work_orders_by_vehicle.get(k, [])]
 
         # Partition tasks.  "Open" = still actionable (pending, overdue,
         # in_progress).  "Completed" = closed within the window.  We

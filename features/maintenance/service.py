@@ -8,7 +8,7 @@ Notification delivery stays in the bot interface layer
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import Any, Optional
 
 from capabilities.permissions.roles import can
 from adapters.storage import Role
@@ -181,21 +181,38 @@ async def apply_live_readings(tenant_db, account_id: int, tasks: list[dict]) -> 
         # wrong).
         name_counts: dict[str, int] = {}
         by_name_unique: dict[str, dict] = {}
+        # A state row answers to its REGISTRY unit number as well as to
+        # the provider's display name.  Providers edit display names —
+        # one truck became "229 Idris Ahmed" — and a task filed under
+        # the clean unit number could no longer reach its own vehicle:
+        # that is how a truck sat 2,752 miles past service-due while the
+        # task showed "pending".  The registry name is the one WE own,
+        # so it indexes the same row under both spellings.
+        canonical: dict[Any, str] = {}
+        try:
+            for rv in await tenant_db.list_vehicles(account_id):
+                canonical[rv.id] = (rv.unit_number or "").strip()
+        except Exception:
+            canonical = {}
         for row in state_rows:
             vid = row.get("vehicle_id") or ""
             if vid:
                 by_id[vid] = row
             cc = (row.get("company_code") or "").strip()
-            nm = (row.get("vehicle_name") or "").strip()
-            if cc and nm:
-                by_company_name[(cc, nm)] = row
-            # Legacy rows without company_code can still be reached
-            # via name-only — we accept a single-tenant collision
-            # risk here only when company_code is empty in BOTH the
-            # task and the state row.
-            elif nm:
-                by_company_name[("", nm)] = row
-            if nm:
+            names = {(row.get("vehicle_name") or "").strip()}
+            canon = canonical.get(row.get("registry_id"))
+            if canon:
+                names.add(canon)
+            names.discard("")
+            for nm in names:
+                if cc:
+                    by_company_name[(cc, nm)] = row
+                else:
+                    # Legacy rows without company_code can still be
+                    # reached via name-only — single-tenant collision
+                    # risk accepted only when company_code is empty in
+                    # BOTH the task and the state row.
+                    by_company_name[("", nm)] = row
                 name_counts[nm] = name_counts.get(nm, 0) + 1
                 if name_counts[nm] == 1:
                     by_name_unique[nm] = row
