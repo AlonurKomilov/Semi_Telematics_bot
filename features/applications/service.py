@@ -257,22 +257,11 @@ async def notify_new_application(
             channels = await platform_db.get_application_notify_channels(u.id)
 
             if "dashboard" in channels:
-                # BOTH in-app stores, deliberately (owner decision):
-                #  · application_notifications — the feature's own bell on
-                #    the Applications page, where a reviewer works.
-                #  · notification_inbox — the shared top-bar panel, whose
-                #    Applications tab is how someone NOT on that page
-                #    finds out.  Read-state is per-store; each bell
-                #    clears only its own.
-                page_ok = inbox_ok = False
-                try:
-                    await platform_db.create_application_notification(
-                        account_id, u.id, application_id=application_id,
-                        reference=reference, title=title, body=body,
-                    )
-                    page_ok = True
-                except Exception as e:
-                    logger.debug("page notif for user %s failed: %s", u.id, e)
+                # ONE in-app store: the shared inbox.  Both bells — the
+                # top-bar panel's Applications tab and the Applications
+                # page's own bell — read it, so "read" means read
+                # everywhere instead of clearing one badge and leaving
+                # the other bold.
                 try:
                     from capabilities.notifications import (
                         NotificationContent, notify_user,
@@ -292,8 +281,8 @@ async def notify_new_application(
                             body=f"{applicant_name or 'A driver'} applied",
                             category=APPLICATION_RECEIVED,
                             # Deep-link to the application itself — the
-                            # old table had no url column, so its notices
-                            # could not link anywhere.
+                            # retired table had no url column, so its
+                            # notices could not link anywhere.
                             url=f"{review_url}?app={application_id}",
                             meta={"application_id": application_id,
                                   "reference": reference,
@@ -302,17 +291,14 @@ async def notify_new_application(
                         channels=["in_app"],
                         correlation_key=f"application:{application_id}:{u.id}",
                     )
-                    inbox_ok = True
                 except Exception as e:
-                    logger.debug("in-app notif for user %s failed: %s", u.id, e)
-                if not page_ok and not inbox_ok:
-                    # One store failing is survivable and stays at debug.
-                    # BOTH failing means this person was told nothing
-                    # on-screen — loud enough to notice in production,
-                    # still never raised (the submission already went in).
+                    # There is no second in-app store to fall back on now,
+                    # so this is the whole on-screen notice for this
+                    # person — loud enough to see in production, still
+                    # never raised (the submission already went in).
                     logger.warning(
-                        "application %s: no in-app notice reached user %s",
-                        application_id, u.id)
+                        "application %s: in-app notice failed for user %s: %s",
+                        application_id, u.id, e)
 
             if "email" in channels and getattr(u, "email", None):
                 try:

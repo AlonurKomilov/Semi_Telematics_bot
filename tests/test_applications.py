@@ -483,24 +483,38 @@ class TestNotifications:
                              files=_GOOD_FILES)
             assert r.status_code == 200, r.text
 
-            # The recruiter has an unread in-app notification for it.
-            n = await c.get("/api/applications/notifications", headers=rec_headers)
-            assert n.status_code == 200
-            data = n.json()
-            assert data["unread_count"] == 1
-            assert data["items"][0]["reference"].startswith("APP-")
+            # The notice lands in the SHARED inbox under this feature's
+            # source — one store, so both bells read the same row.
+            n = await c.get("/api/notifications/inbox?source=applications",
+                            headers=rec_headers)
+            assert n.status_code == 200, n.text
+            notices = n.json()["notices"]
+            assert len(notices) == 1
+            notice = notices[0]
+            assert notice["category"] == "applications.received"
+            assert notice["source"] == "applications"
+            assert notice["read"] is False
+            # The object chip carries the reference; the deep link the row.
+            assert notice["context"].startswith("APP-")
+            assert "?app=" in notice["url"]
 
-            # A driver (no can_manage_applications) can't even reach the inbox.
+            # A driver holds no can_manage_applications, so nothing was
+            # addressed to them — the inbox is per-user, so their own
+            # feed is simply empty (no 403 to rely on: everyone has a
+            # notifications door, targeting is what scopes it).
             from interfaces.api.auth import create_jwt
             dtok = create_jwt(driver.telegram_id, acct.id, "driver", user_id=driver.id)
-            denied = await c.get("/api/applications/notifications",
+            theirs = await c.get("/api/notifications/inbox?source=applications",
                                  headers={"Authorization": f"Bearer {dtok}"})
-            assert denied.status_code == 403
+            assert theirs.status_code == 200
+            assert theirs.json()["notices"] == []
 
-            # Mark all read → unread clears.
-            await c.post("/api/applications/notifications/read", headers=rec_headers, json={})
-            cleared = await c.get("/api/applications/notifications", headers=rec_headers)
-            assert cleared.json()["unread_count"] == 0
+            # Mark read → the row clears for BOTH bells at once.
+            await c.post("/api/notifications/inbox/read", headers=rec_headers,
+                         json={"ids": [notice["id"]]})
+            cleared = await c.get("/api/notifications/inbox?source=applications",
+                                  headers=rec_headers)
+            assert cleared.json()["notices"][0]["read"] is True
 
     async def test_channel_prefs_roundtrip_and_optout(self, api):
         app, db = api
@@ -523,8 +537,9 @@ class TestNotifications:
                              data={"link_token": link["token"], "application": _app_payload()},
                              files=_GOOD_FILES)
             assert r.status_code == 200
-            n = await c.get("/api/applications/notifications", headers=headers)
-            assert n.json()["unread_count"] == 0
+            n = await c.get("/api/notifications/inbox?source=applications",
+                            headers=headers)
+            assert n.json()["notices"] == []
 
 
 class TestVettingGate:
@@ -597,7 +612,13 @@ class TestRetention:
                              data={"link_token": link["token"], "application": _app_payload()},
                              files=_GOOD_FILES)
             app_id = r.json()["application_id"]
-        # A notification references the application.
+        # A row in the retired notice table references the application.
+        # Nothing writes it any more (recruiting notices ride the shared
+        # notification_inbox), so seed one here: the FK it declares is
+        # what this test exists to pin, until the table is dropped.
+        await db.create_application_notification(
+            acct.id, rec.id, application_id=app_id,
+            reference="REF", title="New driver application")
         assert len(await db.list_application_notifications(acct.id, rec.id)) == 1
         # Deleting the application must NOT be blocked by that FK (CASCADE),
         # else the account purge would leave applicant PII behind.

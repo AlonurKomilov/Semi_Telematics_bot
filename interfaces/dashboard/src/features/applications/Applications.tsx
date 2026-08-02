@@ -13,6 +13,7 @@ import { statusClasses, toneClasses, toneText } from '../../lib/status';
 import { APEX_DOMAIN } from '../../lib/safeReturnTo';
 import { formatDate } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
+import { useInboxSource, useInboxActions, type InboxNotice } from '../alerts/useInbox';
 import DataGrid, { type DataGridSegment, type BulkAction } from '../../components/datagrid';
 import { ContextMenu, type MenuAction } from '../../components/ui/context-menu';
 import {
@@ -1880,11 +1881,11 @@ function DocThumb({ appId, slot }: { appId: number; slot: string }) {
 }
 
 // ── In-app notifications (bell + dropdown + channel prefs) ──────────
+//
+// The notices come from the ONE shared inbox, filtered to this feature's
+// source — not a second store.  Read-state is therefore shared with the
+// top-bar bell's Applications tab: clearing one clears the other.
 
-interface Notif {
-  id: number; application_id: number | null; reference: string;
-  title: string; body: string; is_read: number; created_at: string;
-}
 const NOTIFY_CHANNELS: { key: string; label: string; icon: typeof Bell }[] = [
   { key: 'telegram', label: 'Bot', icon: MessageSquare },
   { key: 'email', label: 'Email', icon: Mail },
@@ -1894,19 +1895,10 @@ const NOTIFY_CHANNELS: { key: string; label: string; icon: typeof Bell }[] = [
 function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
   const tz = useTimezone();
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<Notif[]>([]);
-  const [unread, setUnread] = useState(0);
   const [channels, setChannels] = useState<string[]>([]);
 
-  const load = useCallback(() => {
-    apiJSON<{ items: Notif[]; unread_count: number }>('/applications/notifications?limit=20')
-      .then((r) => { setItems(r.items); setUnread(r.unread_count); })
-      .catch(() => { /* non-fatal */ });
-  }, []);
-
-  // Initial load + a light 60s poll so the badge stays current.
-  useEffect(() => { load(); }, [load]);
-  useEffect(() => { const t = setInterval(load, 60_000); return () => clearInterval(t); }, [load]);
+  const { notices, unread } = useInboxSource('applications', true);
+  const { markRead, markManyRead } = useInboxActions();
   // Blank is a REAL value here (all channels off), so a failed load must
   // not be allowed to render as "you have everything switched off".
   const [prefsLoaded, setPrefsLoaded] = useState(false);
@@ -1916,19 +1908,15 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
       .catch(() => { /* stays unloaded — the row hides rather than lying */ });
   }, []);
 
-  const markAll = async () => {
-    await apiJSON('/applications/notifications/read', { method: 'POST', body: {} });
-    setItems((xs) => xs.map((x) => ({ ...x, is_read: 1 })));
-    setUnread(0);
-  };
-  const openNotif = (n: Notif) => {
-    if (!n.is_read) {
-      apiJSON('/applications/notifications/read', { method: 'POST', body: { ids: [n.id] } }).catch(() => {});
-      setItems((xs) => xs.map((x) => (x.id === n.id ? { ...x, is_read: 1 } : x)));
-      setUnread((u) => Math.max(0, u - 1));
-    }
+  // Only THIS feature's rows — read-all has no source parameter and
+  // would clear System and Activity notices the reader never saw.
+  const markAll = () => markManyRead(notices.filter((n) => !n.read).map((n) => n.id));
+  const openNotif = (n: InboxNotice) => {
+    if (!n.read) void markRead(n.id);
     setOpen(false);
-    if (n.application_id) onOpen(n.application_id);
+    const appId = Number(new URLSearchParams(
+      (n.url.split('?')[1] || '')).get('app') || 0);
+    if (appId > 0) onOpen(appId);
   };
   const toggleChannel = async (key: string) => {
     const next = channels.includes(key) ? channels.filter((c) => c !== key) : [...channels, key];
@@ -1961,16 +1949,18 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
               )}
             </div>
             <div className="max-h-80 overflow-y-auto">
-              {items.length === 0 ? (
+              {notices.length === 0 ? (
                 <p className="px-3 py-6 text-center text-sm text-muted-foreground">No notifications yet.</p>
-              ) : items.map((n) => (
+              ) : notices.map((n) => (
                 <button key={n.id} onClick={() => openNotif(n)}
-                  className={`flex w-full flex-col items-start gap-0.5 border-b border-border/50 px-3 py-2 text-left hover:bg-muted/50 ${n.is_read ? '' : 'bg-primary/5'}`}>
+                  className={`flex w-full flex-col items-start gap-0.5 border-b border-border/50 px-3 py-2 text-left hover:bg-muted/50 ${n.read ? '' : 'bg-primary/5'}`}>
                   <span className="flex w-full items-center gap-1.5">
-                    {!n.is_read && <span className="size-1.5 shrink-0 rounded-full bg-primary" />}
+                    {!n.read && <span className="size-1.5 shrink-0 rounded-full bg-primary" />}
                     <span className="text-sm font-medium text-foreground">{n.title}</span>
                   </span>
-                  <span className="text-xs text-muted-foreground">{n.body}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {n.body}{n.context ? ` · ${n.context}` : ''}
+                  </span>
                   <span className="text-2xs text-muted-foreground">{formatDate(n.created_at, { timeZone: tz })}</span>
                 </button>
               ))}

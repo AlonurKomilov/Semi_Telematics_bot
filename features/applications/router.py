@@ -1548,7 +1548,13 @@ async def get_application_doc(
     )
 
 
-# ── Recruiter: in-app notifications + channel preferences ───────────
+# ── Recruiter: notification channel preferences ─────────────────────
+#
+# The in-app notice list used to live here too (GET /notifications,
+# POST /notifications/read over the applications-only
+# ``application_notifications`` table).  It moved to the shared inbox
+# (/notifications/inbox?source=applications) so one read-state serves
+# both bells — see features/applications/notifications.py.
 
 
 async def _recipient_id(user: dict, platform_db) -> int:
@@ -1557,38 +1563,6 @@ async def _recipient_id(user: dict, platform_db) -> int:
     if du is None:
         raise HTTPException(status_code=401, detail="User not found")
     return du.id
-
-
-@router.get("/notifications")
-async def list_my_notifications(
-    unread: bool = Query(default=False),
-    limit: int = Query(default=50, ge=1, le=200),
-    user: dict = Depends(require_permission("can_manage_applications")),
-    platform_db=Depends(get_platform_db),
-):
-    uid = await _recipient_id(user, platform_db)
-    acct = user["account_id"]
-    items = await platform_db.list_application_notifications(acct, uid, unread_only=unread, limit=limit)
-    unread_count = await platform_db.count_unread_application_notifications(acct, uid)
-    return {"items": items, "unread_count": unread_count}
-
-
-class MarkReadRequest(BaseModel):
-    # None / omitted → mark ALL of the user's notifications read.
-    ids: list[int] | None = None
-
-
-@router.post("/notifications/read")
-async def mark_my_notifications_read(
-    body: MarkReadRequest,
-    user: dict = Depends(require_permission("can_manage_applications")),
-    platform_db=Depends(get_platform_db),
-):
-    uid = await _recipient_id(user, platform_db)
-    marked = await platform_db.mark_application_notifications_read(
-        user["account_id"], uid, ids=body.ids,
-    )
-    return {"marked": marked}
 
 
 @router.get("/notify-prefs")

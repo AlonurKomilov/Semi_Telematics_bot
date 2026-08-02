@@ -599,6 +599,15 @@ class ApplicationsMixin(_MixinBase):
     # Canonical channel set; a prefs row stores a comma-list subset.
     NOTIFY_CHANNELS = ("telegram", "email", "dashboard")
 
+    # RETIRED STORE.  ``application_notifications`` is no longer written
+    # or read by the product: recruiting notices live in the shared
+    # ``notification_inbox`` so one read-state serves both bells (see
+    # features/applications/notifications.py).  The table and this
+    # writer survive only to keep the ON DELETE CASCADE from
+    # driver_applications pinned by test until the table is dropped in
+    # its own migration — existing rows stay readable in the database,
+    # and the 60-day inbox prune governs the new ones.
+
     async def create_application_notification(
         self, account_id: int, user_id: int, *, application_id: int | None,
         reference: str, title: str, body: str = "",
@@ -630,34 +639,6 @@ class ApplicationsMixin(_MixinBase):
             params,
         )
         return [dict(r) for r in await cur.fetchall()]
-
-    async def count_unread_application_notifications(self, account_id: int, user_id: int) -> int:
-        cur = await self._db.execute(
-            "SELECT COUNT(*) AS n FROM application_notifications "
-            "WHERE account_id = ? AND user_id = ? AND is_read = 0",
-            (account_id, user_id),
-        )
-        row = await cur.fetchone()
-        return int(dict(row)["n"]) if row else 0
-
-    async def mark_application_notifications_read(
-        self, account_id: int, user_id: int, ids: list[int] | None = None,
-    ) -> int:
-        """Mark the user's notifications read.  ``ids=None`` → mark all."""
-        if ids is not None and not ids:
-            return 0
-        if ids:
-            placeholders = ",".join("?" for _ in ids)
-            sql = (f"UPDATE application_notifications SET is_read = 1 "
-                   f"WHERE account_id = ? AND user_id = ? AND id IN ({placeholders})")
-            params = [account_id, user_id, *ids]
-        else:
-            sql = ("UPDATE application_notifications SET is_read = 1 "
-                   "WHERE account_id = ? AND user_id = ? AND is_read = 0")
-            params = [account_id, user_id]
-        cur = await self._db.execute(sql, params)
-        await self._db.commit()
-        return cur.rowcount
 
     async def get_application_notify_channels(self, user_id: int) -> set[str]:
         """A user's chosen channels.  No row → all channels (the default

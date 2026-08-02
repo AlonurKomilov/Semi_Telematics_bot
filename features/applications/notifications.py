@@ -6,11 +6,18 @@ A new driver application now also reaches the ONE shared inbox
 own RECORDS (``driver_applications`` and its pipeline lifecycle) — the
 same split Alerts uses: a feature table plus a shared feed.
 
-BOTH in-app stores are written, by decision: ``application_notifications``
-still feeds the in-page bell a reviewer works next to, while the shared
-inbox is how someone NOT on that page finds out.  The cost is honest and
-accepted — read-state is per-store, so clearing one bell leaves the other
-bold.  Collapsing to one store is a later, separate call.
+ONE in-app store, after a brief period of two.  Both bells read it — the
+top-bar panel's Applications tab and the Applications page's own bell
+(``useInboxSource('applications')``) — so clearing either one clears the
+notice everywhere, which is what two stores could not do.
+``application_notifications`` is retired: not written, not read, its
+endpoints gone; the table waits for its own drop migration.
+
+One property the retired table had and the shared inbox does not: an
+``ON DELETE CASCADE`` from ``driver_applications``.  Nothing deletes a
+single application today (the account purge sweeps every table with an
+``account_id``, and the inbox prunes at 60 days regardless), but a
+per-application delete would need to sweep its notices explicitly.
 
 SCOPE: the IN-APP notice only.  Email and Telegram keep the feature's own
 templated senders — they are good and live, and moving them is a separate,
