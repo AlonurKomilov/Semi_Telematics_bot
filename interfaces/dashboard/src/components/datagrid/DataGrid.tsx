@@ -56,6 +56,7 @@ import ColumnHeaderMenu from './ColumnHeaderMenu';
 import ManageColumnsMenu from './ManageColumnsMenu';
 import {
   type SavedTab, rowPassesColFilter, tabMatch,
+  rowMatchesSearch as matchesSearch,
 } from './tabs/savedTabs';
 import SavedTabDialog from './tabs/SavedTabDialog';
 import { TAB_ICONS } from './tabs/tabIcons';
@@ -935,6 +936,14 @@ export default function DataGrid({
   }, [searchKey]);
   const hasSearch = searchKeys.length > 0;
 
+  // Does this row match the search box?  One rule, defined once in
+  // ``savedTabs`` (pure + tested) and used by the live filter, by a
+  // saved tab's captured search, and by the filter-option counts.
+  const rowMatchesSearch = useCallback((
+    row: Record<string, unknown>, needle: string,
+  ): boolean => matchesSearch(row, searchKeys, needle, columns),
+  [columns, searchKeys]);
+
   // Personal saved tabs — persisted per-user (no-op store when the
   // feature or tableId is off).  Each becomes a SEGMENT whose ``match``
   // is the tab's captured filters, so it flows through the identical
@@ -1795,16 +1804,8 @@ export default function DataGrid({
     ...(enablePagination && !manualPagination
       ? { getPaginationRowModel: getPaginationRowModel() } : {}),
     globalFilterFn: hasSearch
-      ? (row, _colId, filterValue) => {
-          const needle = String(filterValue).toLowerCase();
-          if (!needle) return true;
-          return searchKeys.some(k => {
-            const v = row.original[k];
-            return v
-              ? String(v).toLowerCase().includes(needle)
-              : false;
-          });
-        }
+      ? (row, _colId, filterValue) =>
+          rowMatchesSearch(row.original, String(filterValue).toLowerCase())
       : undefined,
   });
 
@@ -2192,7 +2193,19 @@ export default function DataGrid({
     }> = {};
     const filterByKey = new Map(columnFilters.map(f => [f.id, f.value]));
     const colByKey = new Map(columns.map(c => [c.key, c]));
-    const needle = hasSearch ? globalFilter.trim().toLowerCase() : '';
+    // Withheld under ``manualFiltering`` for the same reason the row
+    // filter withholds it: the rows arrived searched server-side, so
+    // matching the needle again here would count a narrower set than
+    // the one on screen.
+    const needle = (hasSearch && !manualFiltering)
+      ? globalFilter.trim().toLowerCase() : '';
+    // Hoisted OUT of the per-column loop: whether a row matches the
+    // search does not depend on which column's options we're deriving,
+    // and the matcher itself now walks every column — so leaving it
+    // inside re-ran a rows x columns pass once per filterable column.
+    const searchedRows = needle
+      ? data.filter(row => rowMatchesSearch(row, needle))
+      : data;
     for (const col of columns) {
       if (!col.filterable || col.filterMode === 'range' || col.filterMode === 'date-range') continue;
       // A DECLARED option list short-circuits the derivation.  The
@@ -2206,14 +2219,7 @@ export default function DataGrid({
         continue;
       }
       // Rows surviving every filter EXCEPT this column's own.
-      const contextRows = data.filter(row => {
-        if (needle) {
-          const hit = searchKeys.some(k => {
-            const v = row[k];
-            return v ? String(v).toLowerCase().includes(needle) : false;
-          });
-          if (!hit) return false;
-        }
+      const contextRows = searchedRows.filter(row => {
         for (const [key, fv] of filterByKey) {
           if (key === col.key) continue;
           const other = colByKey.get(key);
@@ -2252,7 +2258,7 @@ export default function DataGrid({
       };
     }
     return out;
-  }, [columns, data, columnFilters, globalFilter, hasSearch, searchKeys]);
+  }, [columns, data, columnFilters, globalFilter, hasSearch, manualFiltering, rowMatchesSearch]);
 
   // For each ``filterMode: 'range'`` column, compute the min/max
   // bounds from the data (unless the column config specified them

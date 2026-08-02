@@ -60,6 +60,43 @@ describe('rowMatchesSearch', () => {
   it('an empty needle matches everything', () => {
     expect(rowMatchesSearch({ name: 'x' }, keys, '')).toBe(true);
   });
+
+  // The Carrier Directory bug: a page declared 2 search keys while
+  // rendering 74 field columns, so a value the operator could read on
+  // screen reported "No match".
+  it('matches a COLUMN the page never listed in searchKeys', () => {
+    const cols = [col({ key: 'f:pay:solo_rate', label: 'Solo Pay Rate' })];
+    const row = { name: 'TESTS CARRIER', 'f:pay:solo_rate': '60' };
+    expect(rowMatchesSearch(row, keys, '60', cols)).toBe(true);
+    // …and without the columns it still misses, which is the old bug.
+    expect(rowMatchesSearch(row, keys, '60')).toBe(false);
+  });
+
+  it('matches the word a badge column DISPLAYS, not the code behind it', () => {
+    const cols = [col({
+      key: 'sev',
+      filterValue: (r) => String((r as Row).sev ?? ''),
+      filterLabel: (r) => ((r as Row).sev === 'crit' ? 'Critical' : 'Low'),
+    })];
+    expect(rowMatchesSearch({ sev: 'crit' }, [], 'critical', cols)).toBe(true);
+  });
+
+  it('a falsy-but-real value is searchable', () => {
+    const cols = [col({ key: 'count' })];
+    expect(rowMatchesSearch({ count: 0 }, [], '0', cols)).toBe(true);
+    expect(rowMatchesSearch({ count: 0 }, ['count'], '0')).toBe(true);
+  });
+
+  it('an object cell never matches — "[object Object]" would hit every row', () => {
+    const cols = [col({ key: 'meta' })];
+    expect(rowMatchesSearch({ meta: { a: 1 } }, [], 'object', cols)).toBe(false);
+    expect(rowMatchesSearch({ meta: { a: 1 } }, ['meta'], 'object')).toBe(false);
+  });
+
+  it('an array of primitives is searchable by any element', () => {
+    const cols = [col({ key: 'tags' })];
+    expect(rowMatchesSearch({ tags: ['hazmat', 'tanker'] }, [], 'tanker', cols)).toBe(true);
+  });
 });
 
 describe('tabMatch — the scope predicate (isolation)', () => {

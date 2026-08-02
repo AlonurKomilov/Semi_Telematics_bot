@@ -108,6 +108,42 @@ classic full-width label. (Phases 1+2 shipped: footer + per-group. Custom
 functions = Phase 3.) Pure engine + tests in
 [`datagrid/aggregation.ts`](aggregation.ts).
 
+## Global search covers EVERY column — `searchKey` is for non-columns
+
+The search box matches the needle against **every column**, whether or not
+the page named it, and whether or not it is currently visible. Columns are
+read through **`cellText`** ([`lib/cellText.ts`](../../lib/cellText.ts)) —
+the same accessor CSV export uses (`csvValue` → `filterLabel` →
+`filterValue` → raw) — so a badge column is searched by the word it
+**displays** ("Critical"), not the code behind it, and a column with no
+accessor needs no work at all.
+
+`searchKey` is still required (it's what makes the box appear) but its job
+is now narrow: **row fields that are NOT columns** — a carrier's
+`experience_summary`, an applicant's `reference`. Listing a key that is
+already a column is harmless but redundant.
+
+This was a real defect, not a polish item: pages declared 2–7 keys while
+rendering 20+ columns, so a box captioned "Search carriers…" answered for a
+fraction of the table. Carrier Directory could render `60` in a Solo Pay
+Rate cell and print "No match for 60" in the same frame.
+
+Two deliberate calls:
+
+- **Hidden columns are searched.** On a 74-field directory, "which carrier
+  mentioned hazmat?" must not require knowing which column holds it first.
+  The cost is that a hit can arrive with no visible evidence — reveal the
+  column, or open the row.
+- **Object-valued cells never match.** They stringify to `[object Object]`,
+  so the needle "object" would return every row. Give such a column a
+  `csvValue`/`filterValue` accessor to make it searchable. Arrays of
+  primitives match element-wise and need nothing.
+
+One implementation, pure and tested: `rowMatchesSearch` in
+[`tabs/savedTabs.ts`](tabs/savedTabs.ts) — shared by the live filter, a
+saved tab's captured search, and the filter dropdowns' option counts, so
+those three can't disagree about what a search means.
+
 ## Column `filterable` = by cardinality, not by reflex
 
 Set `filterable: true` on a column when the dropdown will actually help an
@@ -130,8 +166,8 @@ operator narrow the list. Two supported filter modes on the Column config:
   whole day. Bounds auto-compute from live data (earliest / latest).
 - **Skip filterable entirely** for **free-text uniques** (Vehicle name,
   description) — the dropdown becomes a scroll-forever list of every value,
-  slower than typing into the global search box. Extend `searchKey={[…]}`
-  instead so the search field matches those columns. For **address**-style
+  slower than typing into the global search box — which already matches
+  every column (see below), so there is nothing to wire. For **address**-style
   columns where the raw value is unique but the city / state groups many
   rows, opt into `filterMode: 'select'` with a `filterValue: (row) =>
   extractCityState(row.address)` accessor — the same pattern that turns

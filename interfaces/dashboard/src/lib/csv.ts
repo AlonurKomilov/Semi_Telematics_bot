@@ -9,6 +9,7 @@
  */
 
 import type { AnyColumn } from '../types';
+import { cellText } from './cellText';
 
 /** Quote a CSV field if it contains a special character.  Always
  *  quote when in doubt — over-quoting is benign, under-quoting
@@ -23,24 +24,10 @@ function csvField(value: unknown): string {
   return s;
 }
 
-/** Resolve a column's CSV value for a given row.  Preference order:
- *  ``csvValue`` (explicit opt-in) → ``filterLabel`` (display label
- *  for badge columns: "Critical" not the colour code) →
- *  ``filterValue`` (match value) → raw cell value at ``key``.  This
- *  means columns that already opted into filtering get readable
- *  CSV output for free. */
-function cellValue(col: AnyColumn, row: Record<string, unknown>): string {
-  if (col.csvValue) return col.csvValue(row);
-  if (col.filterLabel) return col.filterLabel(row);
-  if (col.filterValue) return col.filterValue(row);
-  const v = row[col.key];
-  if (v == null) return '';
-  // Render dates as ISO so downstream tools (Excel, Sheets) parse
-  // them.  Anything more elaborate (locale formats) should be done
-  // via ``csvValue``.
-  if (v instanceof Date) return v.toISOString();
-  return String(v);
-}
+/** What a cell says, in plain text.  Shared with the grid's global
+ *  search so the two can't disagree about a column — see
+ *  [cellText.ts](./cellText.ts) for the accessor precedence. */
+const cellValue = cellText;
 
 /** Build the CSV body — header row + one data row per ``rows`` entry.
  *  ``columns`` should already be filtered to the visible/ordered
@@ -104,18 +91,9 @@ export function buildTsv(
     if (/[\t"\r\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
     return s;
   };
-  const cellValue = (col: AnyColumn, row: Record<string, unknown>): string => {
-    if (col.csvValue) return col.csvValue(row);
-    if (col.filterLabel) return col.filterLabel(row);
-    if (col.filterValue) return col.filterValue(row);
-    const v = row[col.key];
-    if (v == null) return '';
-    if (v instanceof Date) return v.toISOString();
-    return String(v);
-  };
   const header = columns.map(c => esc(c.label)).join('\t');
   const body = rows
-    .map(row => columns.map(c => esc(cellValue(c, row))).join('\t'))
+    .map(row => columns.map(c => esc(cellText(c, row))).join('\t'))
     .join('\n');
   return header + '\n' + body;
 }
