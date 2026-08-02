@@ -244,3 +244,78 @@ class TestLegacyImport:
         # machine churn stays behind
         assert await db.list_activity_events(
             acct.id, action="alert_auto_resolved") == []
+
+
+class TestRestoreFromTrail:
+    """Owner requirement, pinned: restore APPENDS — it never erases.
+
+    The record's history after a restore must contain the whole chain
+    (create → delete → restore) on the same id; the delete event and
+    everything before it stay untouched forever.
+    """
+
+    @pytest.mark.asyncio
+    async def test_delete_then_restore_keeps_the_whole_chain(self, seeded_db):
+        from capabilities.activity_trail.registry import (
+            ensure_declarations_loaded,
+        )
+        from capabilities.activity_trail.restore import (
+            RestoreConflict, restore_from_event,
+        )
+        ensure_declarations_loaded()
+        db, acct, owner = seeded_db
+        tid = await db.add_maintenance_task(
+            acct.id, "TFC", "224", "oil", "Full PM",
+            due_miles=236772, priority="medium", actor_user_id=owner.id,
+        )
+        await db.delete_maintenance_task(
+            tid, account_id=acct.id, actor_user_id=owner.id,
+        )
+        assert await db.get_maintenance_task(tid, account_id=acct.id) is None
+
+        events = await db.list_activity_events(
+            acct.id, entity_type="maintenance_task", entity_id=str(tid),
+        )
+        delete_ev = next(e for e in events if e["action"] == "delete")
+
+        restored_id = await restore_from_event(
+            db, acct.id, delete_ev, actor_user_id=owner.id,
+        )
+        assert restored_id == tid                       # same id — one story
+
+        back = await db.get_maintenance_task(tid, account_id=acct.id)
+        assert back is not None
+        assert float(back["due_miles"]) == 236772.0
+        assert back["vehicle_name"] == "224"
+
+        # THE requirement: append-only. All three chapters present.
+        chain = await db.list_activity_events(
+            acct.id, entity_type="maintenance_task", entity_id=str(tid),
+        )
+        actions = [e["action"] for e in chain]
+        assert actions == ["restore", "delete", "create"]   # newest first
+        restore_ev = chain[0]
+        assert restore_ev["context"]["restored_from_event"] == delete_ev["id"]
+        assert restore_ev["actor_user_id"] == owner.id
+        # and the delete event still carries its full recovery body
+        assert chain[1]["changes"]["due_miles"]["from"] is not None
+
+        # restoring twice cannot silently overwrite
+        with pytest.raises(RestoreConflict):
+            await restore_from_event(
+                db, acct.id, delete_ev, actor_user_id=owner.id,
+            )
+
+    @pytest.mark.asyncio
+    async def test_undeclared_entities_fail_closed(self, seeded_db):
+        from capabilities.activity_trail.registry import (
+            ensure_declarations_loaded,
+        )
+        from capabilities.activity_trail.restore import restore_from_event
+        ensure_declarations_loaded()
+        db, acct, owner = seeded_db
+        fake = {"id": 1, "entity_type": "setting", "entity_id": "9",
+                "action": "delete", "changes": {"x": {"from": 1, "to": None}},
+                "context": {}}
+        with pytest.raises(ValueError):
+            await restore_from_event(db, acct.id, fake, actor_user_id=owner.id)

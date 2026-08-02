@@ -30,6 +30,8 @@ register_entity(EntityDescriptor(
 register_entity(EntityDescriptor(
     "schedule", "Working hours", "settings",
     view_permissions=('can_manage_work_hours',),
+    restore_permissions=('can_manage_work_hours',),
+    restore_table="work_hours",
 ))
 register_entity(EntityDescriptor(
     "account", "Account", "settings",

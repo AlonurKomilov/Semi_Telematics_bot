@@ -7,8 +7,9 @@
  * exactly like a task's or a team member's.  Features with scoped
  * endpoints of their own (maintenance) keep their dedicated dialogs.
  */
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { History } from 'lucide-react';
+import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
@@ -26,11 +27,25 @@ export function HistoryDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const tz = useTimezone();
-  const { data, isLoading } = useQuery({
+  const qc = useQueryClient();
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['entity-history', entityType, entityId],
     queryFn: () => apiJSON<{ events: ActivityEvent[] }>(
       `/activity/${entityType}/${entityId}`),
     enabled: open && entityId != null && entityId !== '',
+  });
+  // Append-only by design: a restore never rewrites the history — the
+  // refetch simply shows the new "Restored" event under the delete.
+  const restore = useMutation({
+    mutationFn: (ev: ActivityEvent) =>
+      apiJSON<{ restored_id: number }>(`/activity/restore/${String(ev.id).replace('trail:', '')}`,
+        { method: 'POST' }),
+    onSuccess: () => {
+      toast.success('Record restored — the deletion stays in its history');
+      void refetch();
+      void qc.invalidateQueries();      // the record is back in its lists
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Restore failed'),
   });
 
   return (
@@ -47,6 +62,7 @@ export function HistoryDialog({
               events={data?.events ?? []}
               tz={tz}
               emptyText="No recorded changes yet — edits from now on will appear here."
+              onRestore={(ev) => restore.mutate(ev)}
             />
           )}
         </div>

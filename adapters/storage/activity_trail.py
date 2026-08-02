@@ -38,6 +38,12 @@ from typing import TYPE_CHECKING, Any, Optional
 
 logger = logging.getLogger(__name__)
 
+
+class RestoreConflict(Exception):
+    """The restore target id is occupied (or the row vanished) — the
+    caller maps this to a 409, never a silent overwrite."""
+
+
 if TYPE_CHECKING:
     class _MixinBase:
         """Typing stub — provided by the concrete Database at runtime."""
@@ -184,6 +190,132 @@ class ActivityTrailMixin(_MixinBase):
              "note": r[9], "created_at": r[10]}
             for r in await cur.fetchall()
         ]
+
+    async def get_activity_event(
+        self, account_id: int, event_id: int,
+    ) -> Optional[dict[str, Any]]:
+        """One trail row by id, account-scoped (the restore endpoint's
+        lookup — never trust a client-supplied id across tenants)."""
+        cur = await self._db.execute(
+            """SELECT id, entity_type, entity_id, action, changes,
+                      actor_user_id, group_id, context, note, created_at
+               FROM activity_events WHERE id = ? AND account_id = ?""",
+            (event_id, account_id),
+        )
+        r = await cur.fetchone()
+        if not r:
+            return None
+        return {
+            "id": r[0], "entity_type": r[1], "entity_id": r[2],
+            "action": r[3], "changes": _loads(r[4]),
+            "actor_user_id": r[5], "group_id": r[6],
+            "context": _loads(r[7]), "note": r[8], "created_at": r[9],
+        }
+
+    # ── Restore-from-trail: the write side ───────────────────────
+    # A delete event's changes ARE the row body ({field: {from, to:null}}).
+    # Restoring replays the from-values into an INSERT.  The column
+    # ALLOWLIST per table is the safety boundary: the trail's stored
+    # field names are data, and data never chooses SQL identifiers.
+    # Restores keep the ORIGINAL id when free so the record's history
+    # chain stays on one id (created → deleted → restored); an occupied
+    # id raises RestoreConflict rather than guessing.
+
+    RESTORABLE_COLUMNS: dict[str, frozenset[str]] = {
+        "maintenance_tasks": frozenset({
+            "company_code", "vehicle_id", "vehicle_name", "task_type",
+            "service_task_id", "description", "due_date", "due_miles",
+            "due_engine_hours", "priority", "status", "created_by",
+            "created_at", "recur_interval_days", "recur_interval_miles",
+            "recur_interval_engine_hours", "work_order_id",
+            "spawned_from_id", "last_odometer", "last_engine_hours",
+            "completed_at", "cost_cents", "vendor_name",
+            "attachment_path", "attachment_name", "attachment_content_type",
+            "attested_by", "attested_at",
+            # alerted_at / warning_sent_at / snoozed_until deliberately
+            # NOT restorable — a resurrected task re-arms its alerts.
+        }),
+        "work_orders": frozenset({
+            "company_code", "vehicle_id", "vehicle_name", "vendor_name",
+            "vendor_address", "vendor_phone", "service_date",
+            "odometer_at_service", "engine_hours_at_service", "labor_cost",
+            "parts_cost", "tax_amount", "total_cost", "invoice_number",
+            "payment_method", "payment_status", "status", "notes",
+            "created_by", "created_at", "source", "external_id",
+            "vehicle_type", "assignee", "assigned_to", "repair_priority",
+            "complaint", "cause", "correction", "vendor_id",
+            "external_number", "fee_amount", "registry_id",
+        }),
+        "service_tasks": frozenset({
+            "name", "name_key", "canonical_key", "description",
+            "expected_labor_hours", "parent_id", "status", "created_by",
+            "created_at", "vehicle_type", "system_key", "assembly_key",
+        }),
+        "maintenance_templates": frozenset({
+            "name", "task_type", "description", "priority", "due_in_days",
+            "due_in_miles", "due_in_hours", "recur_interval_days",
+            "recur_interval_miles", "recur_interval_engine_hours",
+            "created_by", "created_at",
+        }),
+        "work_hours": frozenset({
+            "label", "start_hour", "end_hour", "target_role",
+            "created_by", "created_at",
+        }),
+        "vendors": frozenset({
+            "name", "name_key", "address", "phone", "email", "notes",
+            "created_at", "global_vendor_id",
+        }),
+    }
+
+    async def restore_trail_row(
+        self, account_id: int, table: str, entity_id: int,
+        row: dict[str, Any],
+    ) -> int:
+        """INSERT a restored row with its original id.  NO commit —
+        the engine wraps this and the 'restore' event in one
+        transaction.  Raises RestoreConflict if the id is occupied."""
+        allowed = self.RESTORABLE_COLUMNS.get(table)
+        if allowed is None:
+            raise ValueError(f"table {table!r} is not restorable")
+        cur = await self._db.execute(
+            f"SELECT 1 FROM {table} WHERE id = ? AND account_id = ?",
+            (entity_id, account_id),
+        )
+        if await cur.fetchone():
+            raise RestoreConflict(
+                f"{table} id {entity_id} already exists — nothing restored",
+            )
+        cols = {k: v for k, v in row.items() if k in allowed and v is not None}
+        if not cols:
+            raise ValueError("restore body carried no restorable fields")
+        # Events recorded before created_at joined the delete body (and
+        # NOT NULL columns generally): default the stamp so old events
+        # stay restorable — the trail must honor its past selves.
+        if "created_at" in allowed and "created_at" not in cols:
+            cols["created_at"] = self._now()
+        names = ["id", "account_id", *cols.keys()]
+        marks = ",".join("?" * len(names))
+        await self._db.execute(
+            f"INSERT INTO {table} ({', '.join(names)}) VALUES ({marks})",
+            (entity_id, account_id, *cols.values()),
+        )
+        return entity_id
+
+    async def reactivate_trail_row(
+        self, account_id: int, table: str, entity_id: int,
+    ) -> int:
+        """Soft-deleted entities (vehicles) restore by flipping back to
+        active.  NO commit — rides the engine's transaction."""
+        if table != "vehicles":
+            raise ValueError(f"table {table!r} has no reactivate path")
+        cur = await self._db.execute(
+            "UPDATE vehicles SET is_active = 1, status = 'active', "
+            "updated_at = ? WHERE id = ? AND account_id = ?",
+            (self._now(), entity_id, account_id),
+        )
+        if not cur.rowcount:
+            raise RestoreConflict(f"vehicle {entity_id} not found")
+        return entity_id
 
     async def prune_activity_events(
         self, account_id: int, days_keep: int,

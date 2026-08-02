@@ -13,6 +13,9 @@ from capabilities.activity_trail.registry import (
 register_entity(EntityDescriptor(
     "vehicle", "Vehicle", "vehicles",
     view_permissions=('can_manage_vehicles',),
+    restore_permissions=('can_manage_vehicles',),
+    restore_table="vehicles",
+    restore_mode="reactivate",
 ))
 register_entity(EntityDescriptor(
     "inventory_item", "Inventory item", "vehicles",

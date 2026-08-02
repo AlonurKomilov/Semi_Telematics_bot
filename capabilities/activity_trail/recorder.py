@@ -48,12 +48,15 @@ def delete_changes(
 
     This is the trail's recovery record — restoring a deleted row is
     replaying these ``from`` values.  Nulls/empties are kept out (they
-    restore to nothing anyway); bookkeeping columns are skipped.
+    restore to nothing anyway).  Unlike edit diffs, ``created_at`` IS
+    kept: a restored record must keep its original birth date, not the
+    restore's.
     """
+    skip = _ALWAYS_SKIP - {"created_at"}
     keys = set(fields) if fields is not None else set(row)
     out: dict[str, dict[str, Any]] = {}
     for k in keys:
-        if k in _ALWAYS_SKIP:
+        if k in skip:
             continue
         v = row.get(k)
         if v is None or v == "":

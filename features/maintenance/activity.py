@@ -13,10 +13,14 @@ from capabilities.activity_trail.registry import (
 register_entity(EntityDescriptor(
     "maintenance_task", "Maintenance task", "maintenance",
     view_permissions=('can_maintenance_all',),
+    restore_permissions=('can_maintenance_all',),
+    restore_table="maintenance_tasks",
 ))
 register_entity(EntityDescriptor(
     "maintenance_template", "Maintenance template", "maintenance",
     view_permissions=('can_maintenance_all',),
+    restore_permissions=('can_maintenance_all',),
+    restore_table="maintenance_templates",
 ))
 register_entity(EntityDescriptor(
     "maintenance", "Maintenance task", "maintenance",

@@ -9,6 +9,7 @@
  * `{field: {from, to}}`, an `actor_name` resolved server-side, and
  * bulk actions pre-collapsed into `is_group` rows.
  */
+import { ArchiveRestore } from 'lucide-react';
 import { formatDate } from '../../utils/datetime';
 
 export interface ActivityChange { from: unknown; to: unknown }
@@ -29,6 +30,8 @@ export interface ActivityEvent {
   context?: Record<string, unknown>;
   note?: string;
   created_at: string;
+  /** Server-decided: this delete event can be brought back by THIS viewer. */
+  restorable?: boolean;
 }
 
 /** Action → sentence fragment. Unknown actions fall through readable. */
@@ -43,6 +46,7 @@ export const ACTION_LABEL: Record<string, string> = {
   snooze: 'Snoozed',
   attachment_add: 'Attachment added',
   attachment_remove: 'Attachment removed',
+  restore: 'Restored',
   deactivate: 'Deactivated',
   merge_away: 'Merged into another record',
   merge_in: 'Absorbed a merged record',
@@ -155,11 +159,13 @@ export function ChangeLines({
  * that changed.
  */
 export function HistoryList({
-  events, tz, emptyText = 'No recorded activity yet.',
+  events, tz, emptyText = 'No recorded activity yet.', onRestore,
 }: {
   events: ActivityEvent[];
   tz: string;
   emptyText?: string;
+  /** When set, server-flagged restorable events show a Restore action. */
+  onRestore?: (event: ActivityEvent) => void;
 }) {
   if (events.length === 0) {
     return <p className="text-sm text-muted-foreground py-4 text-center">{emptyText}</p>;
@@ -184,6 +190,20 @@ export function HistoryList({
           </p>
           <ChangeLines changes={e.changes} max={12} />
           {e.note ? <p className="mt-0.5 text-2xs text-muted-foreground">{e.note}</p> : null}
+          {e.restorable && onRestore && (
+            <button
+              type="button"
+              onClick={() => onRestore(e)}
+              className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+            >
+              <ArchiveRestore size={14} /> Restore this record
+            </button>
+          )}
+          {e.action === 'restore' && e.context?.restored_from_event != null && (
+            <p className="mt-0.5 text-2xs text-muted-foreground">
+              brought back from the deletion above — nothing was erased
+            </p>
+          )}
         </li>
       ))}
     </ol>

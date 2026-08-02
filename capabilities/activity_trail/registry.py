@@ -32,6 +32,16 @@ class EntityDescriptor:
     feature: str                # owning feature, for docs/debugging
     view_permissions: tuple[str, ...]   # ANY-of FeatureSet flags
     sensitive_fields: frozenset[str] = field(default_factory=frozenset)
+    # ── Restore-from-trail (FAIL-CLOSED: all three unset = the entity
+    # cannot be restored, no button, no endpoint path) ──
+    # ANY-of flags gating the restore WRITE (manage-grade, not view).
+    restore_permissions: tuple[str, ...] = ()
+    # The table restore_trail_row inserts into (allowlisted in the
+    # storage mixin — the declaration names it, the mixin owns the SQL).
+    restore_table: str = ""
+    # "insert" (hard-deleted rows come back) | "reactivate" (soft-
+    # deleted rows flip active again).
+    restore_mode: str = "insert"
 
 
 _ENTITIES: dict[str, EntityDescriptor] = {}

@@ -59,6 +59,9 @@ def test_delete_carries_every_meaningful_field_to_null():
     assert body == {
         "vehicle_name": {"from": "224", "to": None},
         "due_miles": {"from": 236772.0, "to": None},
+        # created_at is DATA in a recovery record — a restored row
+        # keeps its original birth date
+        "created_at": {"from": "2026-06-02", "to": None},
     }
     # every "from" is the restore value — replaying them rebuilds the row
     assert all(v["to"] is None for v in body.values())

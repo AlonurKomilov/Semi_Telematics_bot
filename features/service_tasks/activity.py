@@ -13,4 +13,6 @@ from capabilities.activity_trail.registry import (
 register_entity(EntityDescriptor(
     "service_task", "Service task", "service_tasks",
     view_permissions=('can_service_tasks',),
+    restore_permissions=('can_service_tasks',),
+    restore_table="service_tasks",
 ))

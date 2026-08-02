@@ -13,6 +13,8 @@ from capabilities.activity_trail.registry import (
 register_entity(EntityDescriptor(
     "vendor", "Vendor", "vendors",
     view_permissions=('can_work_orders_all',),
+    restore_permissions=('can_work_orders_all',),
+    restore_table="vendors",
 ))
 register_entity(EntityDescriptor(
     "vendor_directory_entry", "Shared vendor entry", "vendors",
