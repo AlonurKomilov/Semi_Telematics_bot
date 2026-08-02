@@ -23,6 +23,7 @@ import { toolDeepLink } from './toolLinks';
 import { useNavigate } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
 import { renderArtifact, type Artifact } from './artifacts';
+import { ScrollRegion } from '../../components/scrolling';
 
 // Extended message type with client-side timestamp
 interface LocalMessage extends AIChatMessage {
@@ -636,7 +637,13 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
   // Auto-scroll on new messages AND as live steps / streamed text grow,
   // so the newest step is always in view while the model works.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // ``smooth`` only when the transcript gains something DISCRETE.
+    // Firing a smooth scroll per streamed token starts an animation the
+    // next token restarts, so the view chases the text and never
+    // settles; ``auto`` keeps the tail pinned exactly while it streams.
+    bottomRef.current?.scrollIntoView({
+      behavior: streamingText ? 'auto' : 'smooth',
+    });
   }, [messages, loading, liveSteps, streamingText]);
 
   /** Live status label: the CURRENT step's identity, not canned filler —
@@ -1397,7 +1404,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
       {variant === 'panel' && headerSlot && createPortal(threadControls, headerSlot)}
 
       {/* Messages area */}
-      <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
+      <ScrollRegion label="Conversation" className="flex-1 space-y-4 pr-1 min-h-0">
         {messages.length === 0 && !loading && (
           <div className="text-center text-muted-foreground mt-16">
             <Bot size={40} className="mx-auto mb-3 text-primary/40" />
@@ -1816,7 +1823,7 @@ export default function Chat({ variant = 'page' }: { variant?: 'page' | 'panel' 
         )}
 
         <div ref={bottomRef} />
-      </div>
+      </ScrollRegion>
 
       {/* Slash-command menu — appears when the input starts with "/" */}
       {slashMatches.length > 0 && !loading && (

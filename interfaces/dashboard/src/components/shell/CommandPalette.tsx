@@ -35,6 +35,17 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState('');
   const [activeIdx, setActiveIdx] = useState(0);
+  // The highlighted row, so arrowing past the fold can scroll it back
+  // into view.  The list is ``max-h-80`` (320px) and a row is ~44px, so
+  // from about the seventh result the highlight simply left the box and
+  // a keyboard-only user was moving a selection they could not see.
+  const activeRef = useRef<HTMLButtonElement>(null);
+  // Which device last moved the selection.  Without this the fix above
+  // creates a NEW bug: scrolling a row under a stationary cursor fires
+  // ``mouseenter``, which would yank the selection back to whatever the
+  // pointer happens to be resting on.  Only a real pointer MOVE hands
+  // control back to the mouse.
+  const keyboardNav = useRef(false);
 
   const visibleEntries = useMemo(() => {
     return ROUTE_ENTRIES.filter((e) => {
@@ -76,15 +87,24 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
     [navigate, onClose]
   );
 
+  useEffect(() => {
+    if (!keyboardNav.current) return;
+    // ``nearest`` scrolls the minimum needed — ``center`` would jump the
+    // list on every keystroke even when the row was already visible.
+    activeRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [activeIdx]);
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault();
       onClose();
     } else if (e.key === 'ArrowDown') {
       e.preventDefault();
+      keyboardNav.current = true;
       setActiveIdx((i) => Math.min(i + 1, matches.length - 1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
+      keyboardNav.current = true;
       setActiveIdx((i) => Math.max(i - 1, 0));
     } else if (e.key === 'Enter') {
       e.preventDefault();
@@ -118,7 +138,10 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
             Esc
           </kbd>
         </div>
-        <div className="max-h-80 overflow-y-auto p-1">
+        <div
+          className="max-h-80 overflow-y-auto overscroll-contain p-1"
+          onMouseMove={() => { keyboardNav.current = false; }}
+        >
           {matches.length === 0 ? (
             <div className="px-4 py-6 text-center text-sm text-muted-foreground">
               No results for "{query}"
@@ -130,8 +153,9 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
               return (
                 <button
                   key={m.path}
+                  ref={active ? activeRef : undefined}
                   onClick={() => go(m)}
-                  onMouseEnter={() => setActiveIdx(i)}
+                  onMouseEnter={() => { if (!keyboardNav.current) setActiveIdx(i); }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-md text-left transition ${
                     active ? 'bg-primary/10 text-foreground' : 'text-muted-foreground'
                   }`}

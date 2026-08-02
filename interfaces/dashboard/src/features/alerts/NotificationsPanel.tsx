@@ -27,6 +27,7 @@ import { stagedAction } from '../../components/banners';
 import { useRecentAlerts, useAckAlerts } from './useRecentAlerts';
 import { addStagedAcks, removeStagedAcks, useStagedAckIds } from './stagedAcks';
 import { useInbox, useInboxActions, type InboxNotice } from './useInbox';
+import { ScrollRegion } from '../../components/scrolling';
 
 const SEVERITY_TONE: Record<AlertSeverity, Tone> = {
   critical: 'danger',
@@ -274,7 +275,7 @@ export function NotificationsPanel(
         <>
           {/* Merged feed — alert rows keep their ack; notice rows their
               read state.  Bulk verbs live on the dedicated tabs. */}
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <ScrollRegion label="Unread notifications" className="flex-1 min-h-0">
             {(isLoading || inboxLoading) && merged.length === 0 ? (
               <div className="flex items-center justify-center py-10 text-muted-foreground">
                 <Loader2 size={18} className="animate-spin" aria-hidden />
@@ -300,7 +301,7 @@ export function NotificationsPanel(
                 ))}
               </ul>
             )}
-          </div>
+          </ScrollRegion>
           <div className="flex items-center justify-between px-3 py-2 border-t border-border">
             <MarkAllReadButton
               unread={inbox?.unread ?? 0}
@@ -327,7 +328,7 @@ export function NotificationsPanel(
           </div>
 
           {/* Feed */}
-          <div className="flex-1 overflow-y-auto min-h-0">
+          <ScrollRegion label="All notifications" className="flex-1 min-h-0">
             {isLoading ? (
               <div className="flex items-center justify-center py-10 text-muted-foreground">
                 <Loader2 size={18} className="animate-spin" aria-hidden />
@@ -342,7 +343,7 @@ export function NotificationsPanel(
                 ))}
               </ul>
             )}
-          </div>
+          </ScrollRegion>
 
           {/* Footer — bulk ack + the board */}
           <div className="flex items-center justify-between px-3 py-2 border-t border-border">
@@ -369,7 +370,7 @@ export function NotificationsPanel(
             : activityNotices;
           return (
             <>
-              <div className="flex-1 overflow-y-auto min-h-0">
+              <ScrollRegion label="Archived notifications" className="flex-1 min-h-0">
                 {inboxLoading ? (
                   <div className="flex items-center justify-center py-10 text-muted-foreground">
                     <Loader2 size={18} className="animate-spin" aria-hidden />
@@ -398,7 +399,7 @@ export function NotificationsPanel(
                     ))}
                   </ul>
                 )}
-              </div>
+              </ScrollRegion>
               <div className="flex items-center justify-between px-3 py-2 border-t border-border">
                 <MarkAllReadButton
                   unread={inbox?.unread ?? 0}

@@ -23,6 +23,7 @@ import { cn } from '../../../lib/utils';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '../../ui/dialog';
+import { ScrollRegion } from '../../scrolling';
 import type { AnyColumn } from '../../../types';
 import type { PivotModel } from './pivot';
 import { pivotCellRows, type DrillTarget } from './drill';
@@ -41,6 +42,11 @@ interface Props {
 
 /** How many of the grid's own columns the dialog shows. */
 const MAX_COLS = 6;
+/** The sticky header's height, for the scrollport padding.  A constant
+ *  rather than a measurement: this header is one line of ``py-1.5``
+ *  text at a fixed size, so measuring it would buy nothing and cost a
+ *  ResizeObserver on every drill. */
+const STICKY_HEAD_PX = 30;
 
 const DrillDialog = forwardRef<DrillHandle, Props>(function DrillDialog(
   { rows, model, columns }, ref,
@@ -104,7 +110,18 @@ const DrillDialog = forwardRef<DrillHandle, Props>(function DrillDialog(
             squeezing cells to the point where every column truncates at
             once. */}
         <div className="relative">
-          <div className="max-h-[60vh] overflow-auto">
+          {/* A real scroll region, not a box that clips: the table has a
+              sticky <thead>, so without ``scrollPaddingTop`` a tabbed-to
+              cell lands BEHIND it (WCAG 2.4.11), and without
+              ``tabIndex`` a keyboard user cannot scroll the rows at all
+              (WCAG 2.1.1).  ``both`` because this table scrolls
+              sideways too — the source rows are real records. */}
+          <ScrollRegion
+            axis="both"
+            label="Rows behind this figure"
+            stickyTop={STICKY_HEAD_PX}
+            className="max-h-[60vh]"
+          >
             <table className="min-w-max w-full text-xs border-collapse">
               <thead className="sticky top-0 bg-muted">
                 <tr>
@@ -130,7 +147,7 @@ const DrillDialog = forwardRef<DrillHandle, Props>(function DrillDialog(
                 ))}
               </tbody>
             </table>
-          </div>
+          </ScrollRegion>
           {/* Marks the cut so a truncated name reads as "there is more to
               the right", not as broken rendering.  pointer-events-none so
               it never blocks the scroll. */}
