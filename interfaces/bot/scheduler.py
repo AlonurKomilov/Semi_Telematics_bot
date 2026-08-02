@@ -93,6 +93,7 @@ _JOB_META = {
     "storage_sync":                   ("Storage & data", "Upload queued media to the customer's cloud (Drive)"),
     "data_retention":                 ("Storage & data", "Prune every retention target to its window"),
     "vehicle_departure_sweep":        ("Telematics", "Retire live-state rows for vehicles gone from the provider"),
+    "ingest_watchdog":                ("Telematics", "Alert when a declared dataset goes silent or stale"),
     # ── Accounts & system ──
     "account_lifecycle_housekeeping": ("Accounts & system", "Hard-purge expired accounts + send deletion warnings"),
     "scheduler_jobs_snapshot":        ("Accounts & system", "Snapshot scheduled jobs for the operator console"),
@@ -426,6 +427,17 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
             run_dataset, trigger, args=[dataset], id=dataset.job_id,
             max_instances=1, coalesce=True,
         )
+
+    # Watchdog: the declarations above plus the run ledger plus each
+    # row's source_ts, turned into operator alerts.  Five datasets died
+    # quietly for want of exactly this; 5-minute cadence matches the
+    # capacity alerts it shares its stateful-dedupe pattern with.
+    from capabilities.data_lifecycle.ingest.watchdog import job_ingest_watchdog
+    scheduler.add_job(
+        job_ingest_watchdog, "interval",
+        minutes=5, args=[app], id="ingest_watchdog",
+        max_instances=1, coalesce=True,
+    )
 
     # ── data retention (cross-cutting hub) ───────────────────
     # One nightly pass that prunes every registered retention target to the
