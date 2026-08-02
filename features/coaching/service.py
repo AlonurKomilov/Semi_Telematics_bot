@@ -47,12 +47,14 @@ async def _audit(
     if tenant is None:
         return
     try:
-        await tenant.add_audit_log(
-            account_id=account_id, user_id=user_id, action=action,
-            target_type="coaching", target_id=target_id,
+        from capabilities.activity_trail import record_simple
+        # ``user_id`` is the platform users.id — the routers resolve it
+        # before calling into the service (trail id space).
+        await record_simple(
+            tenant, account_id, user_id, action, "coaching", target_id,
         )
-    except Exception:  # pragma: no cover — audit must never break a flow
-        log.exception("coaching audit failed")
+    except Exception:  # pragma: no cover — the trail must never break a flow
+        log.exception("coaching trail write failed")
 
 
 # ── Topics ─────────────────────────────────────────────────────────
@@ -188,9 +190,10 @@ async def acknowledge(
     driver_id: str, user_id: int, note: str = "",
 ) -> bool:
     """Driver acknowledges the assignment. Caller must verify driver_id and
-    pass the actual Telegram user_id so the audit row attributes the action
-    to the real human (not the Samsara driver_id, which a bad caller could
-    spoof to dismiss someone else's pending assignments)."""
+    pass the PLATFORM users.id (via resolve_user_id) so the trail row
+    attributes the action to the real human (not the Samsara driver_id,
+    which a bad caller could spoof to dismiss someone else's pending
+    assignments)."""
     await _assert_enabled(account_id)
     tenant = await get_tenant_db(account_id)
     a = await tenant.get_coaching_assignment(account_id, assignment_id)

@@ -29,6 +29,9 @@ from pydantic import BaseModel, Field
 from interfaces.api.deps import (
     get_tenant_db, require_permission, require_permission_any, resolve_user_id,
 )
+from capabilities.activity_trail import (
+    delete_changes, diff_rows, new_group_id, record_simple,
+)
 
 router = APIRouter(prefix="/service-tasks", tags=["service-tasks"])
 
@@ -119,10 +122,13 @@ async def create_service_task(
             detail="A service task with that name already exists "
                    "(or the parent task is invalid).",
         )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]), "service_task_create",
-        target_type="service_task", target_id=str(task["id"]),
-        details=task["name"],
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "create", "service_task", task["id"],
+        changes=diff_rows({}, {
+            "name": task["name"], "system_key": body.system_key,
+            "parent_id": body.parent_id, "vehicle_type": body.vehicle_type,
+        }),
     )
     return task
 
@@ -188,17 +194,21 @@ async def update_service_task(
                        "only one level deep.",
             )
 
+    old = await tenant_db.get_service_task(task_id, user["account_id"]) or {}
+    updates = body.model_dump(exclude_none=True)
     ok = await tenant_db.update_service_task(
-        task_id, user["account_id"], **body.model_dump(exclude_none=True),
+        task_id, user["account_id"], **updates,
     )
     if not ok:
         raise HTTPException(
             status_code=422, detail="Nothing to update.",
         )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]), "service_task_update",
-        target_type="service_task", target_id=str(task_id),
-    )
+    changes = diff_rows(old, updates, fields=updates.keys())
+    if changes:
+        await record_simple(
+            tenant_db, user["account_id"], await resolve_user_id(user),
+            "update", "service_task", task_id, changes=changes,
+        )
     return await tenant_db.get_service_task(task_id, user["account_id"])
 
 
@@ -240,15 +250,27 @@ async def merge_service_tasks(
     account's OWN tasks can be merged away (a standard task's key is
     shared vocabulary; archive it instead).
     """
+    # Capture the loser BEFORE the merge erases it — its body is the
+    # recovery record (same shape as vendor merges).
+    loser = await tenant_db.get_service_task(body.loser_id, user["account_id"]) or {}
     ok, reason = await tenant_db.merge_service_tasks(
         user["account_id"], body.loser_id, body.winner_id,
     )
     if not ok:
         raise HTTPException(status_code=422, detail=reason)
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]), "service_task_merge",
-        target_type="service_task", target_id=str(body.winner_id),
-        details=f"merged #{body.loser_id} into #{body.winner_id}",
+    actor = await resolve_user_id(user)
+    group = new_group_id()
+    await record_simple(
+        tenant_db, user["account_id"], actor,
+        "merge_away", "service_task", body.loser_id,
+        changes=delete_changes(loser), group_id=group,
+        context={"into": body.winner_id},
+    )
+    await record_simple(
+        tenant_db, user["account_id"], actor,
+        "merge_in", "service_task", body.winner_id,
+        group_id=group, context={"absorbed": body.loser_id},
+        note=f"absorbed “{loser.get('name', '#' + str(body.loser_id))}”",
     )
     return {"merged": True}
 
@@ -357,9 +379,9 @@ async def delete_service_task(
     ok = await tenant_db.delete_service_task(task_id, user["account_id"])
     if not ok:
         raise HTTPException(status_code=422, detail="Could not delete that task")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]), "service_task_delete",
-        target_type="service_task", target_id=str(task_id),
-        details=existing.get("name", ""),
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "delete", "service_task", task_id,
+        changes=delete_changes(existing),
     )
     return {"deleted": True}

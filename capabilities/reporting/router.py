@@ -10,7 +10,8 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
-from interfaces.api.deps import require_permission, require_permission_any, get_user_company_codes, validate_company_access, filter_by_allowed_companies, filter_by_assigned_trucks
+from interfaces.api.deps import require_permission, require_permission_any, get_user_company_codes, validate_company_access, filter_by_allowed_companies, filter_by_assigned_trucks, resolve_user_id
+from capabilities.activity_trail import record_simple
 from capabilities.permissions.roles import can as _can
 from infra.services import get_client
 from capabilities.warehouse.telemetry.service import (
@@ -322,11 +323,10 @@ async def report_risk_summary(
     # ── Audit log ───────────────────────────────────────────────
     try:
         tenant = await _get_tenant_db(user["account_id"])
-        await tenant.add_audit_log(
-            user["account_id"], int(user["sub"]),
-            "risk_summary_export",
-            target_type=subject_type, target_id=str(subject_id),
-            details=f"audience={audience} fmt={fmt} days={days}",
+        await record_simple(
+            tenant, user["account_id"], await resolve_user_id(user),
+            "risk_summary_export", subject_type, subject_id,
+            context={"audience": audience, "fmt": fmt, "days": days},
         )
     except Exception:
         # Audit failure must not break export delivery.
@@ -396,11 +396,10 @@ async def report_risk_summary_me(
 
     try:
         tenant = await _get_tenant_db(user["account_id"])
-        await tenant.add_audit_log(
-            user["account_id"], int(user["sub"]),
-            "risk_summary_export",
-            target_type="vehicle", target_id=str(subject_id),
-            details=f"audience={audience} via=miniapp_self",
+        await record_simple(
+            tenant, user["account_id"], await resolve_user_id(user),
+            "risk_summary_export", "vehicle", subject_id,
+            context={"audience": audience, "via": "miniapp_self"},
         )
     except Exception:
         pass

@@ -45,6 +45,7 @@ from interfaces.api.deps import (
 )
 from adapters.storage import Role
 from adapters.storage.drivers import VALID_DOC_TYPES
+from capabilities.activity_trail import record_simple
 from capabilities.permissions.roles import can, role_rank
 
 logger = logging.getLogger(__name__)
@@ -961,11 +962,13 @@ async def update_user_samsara_driver_id(
         await tenant_db.link_samsara_driver(user["account_id"], user_id, new_did or "")
     except ValueError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "user_samsara_driver_id_set",
-        target_type="user", target_id=str(user_id),
-        details=f"driver_id={new_did or '(unset)'}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "user_samsara_driver_id_set", "user", user_id,
+        changes={"samsara_driver_id": {
+            "from": getattr(target, "samsara_driver_id", None),
+            "to": new_did,
+        }},
     )
     return {"ok": True, "samsara_driver_id": new_did}
 
@@ -1010,14 +1013,15 @@ async def set_user_vehicles(
     cleaned = [t.strip() for t in body.trucks if t.strip()]
     if len(cleaned) != len(set(cleaned)):
         raise HTTPException(status_code=400, detail="Duplicate vehicle numbers")
+    old_trucks = [t.vehicle_num for t in
+                  await platform_db.get_user_vehicles(user_id)]
     vehicles = await platform_db.set_user_vehicles(
         user_id, target.account_id, cleaned, assigned_by=int(user["sub"]),
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "vehicle_assignment",
-        target_type="user", target_id=str(user_id),
-        details=f"Vehicles: {', '.join(cleaned) or 'none'}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "vehicle_assignment", "user", user_id,
+        changes={"vehicles": {"from": old_trucks, "to": cleaned}},
     )
     return {
         "ok": True,
@@ -1055,11 +1059,11 @@ async def invite_driver(
         hours=body.hours,
         recipient_email=None,                   # link the manager hands over
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "invite_create",
-        target_type="invite", target_id=str(invite.id),
-        details="Role: driver, channel: link (driver roster)",
+    await record_simple(
+        tenant_db, user["account_id"], db_user.id,
+        "invite_create", "invite", invite.id,
+        context={"role": "driver", "channel": "link"},
+        note="Role: driver, channel: link (driver roster)",
     )
     return {
         "id": invite.id,

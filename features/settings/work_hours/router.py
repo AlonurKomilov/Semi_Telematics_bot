@@ -21,6 +21,7 @@ from interfaces.api.deps import (
     get_platform_db, paginate, resolve_user_id,
 )
 from adapters.storage.models import Role
+from capabilities.activity_trail import delete_changes, record_simple
 from capabilities.permissions.roles import validate_role_change, role_rank
 
 logger = logging.getLogger(__name__)
@@ -77,11 +78,12 @@ async def create_schedule(
         created_by=await resolve_user_id(user),
         target_role=body.target_role,
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "schedule_create",
-        target_type="schedule", target_id=str(sched.get("id", "")),
-        details=body.label,
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "schedule_create", "schedule", sched.get("id", ""),
+        changes={"label": {"from": None, "to": body.label},
+                 "start_hour": {"from": None, "to": body.start_hour},
+                 "end_hour": {"from": None, "to": body.end_hour}},
     )
     return sched
 
@@ -118,9 +120,9 @@ async def delete_schedule(
     if not sched:
         raise HTTPException(status_code=404, detail="Schedule not found")
     await tenant_db.delete_work_hour(schedule_id, account_id=user["account_id"])
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "schedule_delete",
-        target_type="schedule", target_id=str(schedule_id),
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "schedule_delete", "schedule", schedule_id,
+        changes=delete_changes(sched),
     )
     return {"ok": True}

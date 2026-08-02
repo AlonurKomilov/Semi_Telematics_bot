@@ -44,7 +44,8 @@ from adapters.storage.object_store import (
     STORAGE_GDRIVE_ROOT_FOLDER_ID, STORAGE_GDRIVE_USER_EMAIL,
 )
 from infra.crypto import encrypt
-from interfaces.api.deps import get_current_user, get_tenant_db, require_permission
+from interfaces.api.deps import get_current_user, get_tenant_db, require_permission, resolve_user_id
+from capabilities.activity_trail import record_simple
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/storage", tags=["storage"])
@@ -225,11 +226,10 @@ async def switch_storage_backend(
             )
 
     await tenant_db.set_account_storage_backend(account_id, backend)
-    await tenant_db.add_audit_log(
-        account_id, int(user["sub"]),
-        "storage_backend_switch",
-        target_type="account", target_id=str(account_id),
-        details=f"backend={backend}",
+    await record_simple(
+        tenant_db, account_id, await resolve_user_id(user),
+        "storage_backend_switch", "account", account_id,
+        changes={"storage_backend": {"from": None, "to": backend}},
     )
     return {"backend": backend}
 
@@ -625,11 +625,14 @@ async def google_oauth_callback(
     await tenant_db.set_account_setting(account_id, STORAGE_BACKEND_KEY, "gdrive")
 
     invalidate_object_store_for_account(account_id)
-    await tenant_db.add_audit_log(
-        account_id, int(pending["user_sub"]),
-        "storage_backend_connect",
-        target_type="account", target_id=str(account_id),
-        details=f"gdrive: {user_email}",
+    # OAuth callback has no request user — resolve the initiator from
+    # the telegram sub stashed in the pending state.
+    await record_simple(
+        tenant_db, account_id,
+        await resolve_user_id({"sub": pending["user_sub"]}),
+        "storage_backend_connect", "account", account_id,
+        changes={"storage_backend": {"from": None, "to": "gdrive"}},
+        note=f"gdrive: {user_email}",
     )
     return _back("gdrive_connected=1")
 
@@ -658,10 +661,10 @@ async def disconnect_google(
     await tenant_db.set_account_setting(user["account_id"], STORAGE_GDRIVE_ROOT_FOLDER_ID, "")
     await tenant_db.set_account_setting(user["account_id"], STORAGE_GDRIVE_USER_EMAIL, "")
     invalidate_object_store_for_account(user["account_id"])
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "storage_backend_disconnect",
-        target_type="account", target_id=str(user["account_id"]),
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "storage_backend_disconnect", "account", user["account_id"],
+        changes={"storage_backend": {"from": "gdrive", "to": "disk"}},
     )
     return {"backend": "disk"}
 
@@ -825,11 +828,10 @@ async def update_storage_quota(
     ok = await tenant_db.set_storage_quota(user["account_id"], body.quota_bytes)
     if not ok:
         raise HTTPException(404, "Account not found")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "storage_quota_update",
-        target_type="account", target_id=str(user["account_id"]),
-        details=f"Set storage quota to {body.quota_bytes} bytes",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "storage_quota_update", "account", user["account_id"],
+        changes={"storage_quota_bytes": {"from": None, "to": body.quota_bytes}},
     )
     used, quota = await tenant_db.get_storage_usage(user["account_id"])
     return {

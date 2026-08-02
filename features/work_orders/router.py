@@ -44,6 +44,7 @@ from interfaces.api.deps import (
     get_user_vehicle_nums, require_permission, resolve_user_id,
     get_user_company_codes, filter_by_allowed_companies,
 )
+from capabilities.activity_trail import delete_changes, diff_rows, record_simple
 from capabilities.permissions.roles import can_for_account, Role
 from features.work_orders.storage import (
     resolve_company_folder, safe_attachment_name, work_order_folder,
@@ -306,11 +307,16 @@ async def create_work_order(
         account_id=user["account_id"], created_by=internal_uid,
         **payload,
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "work_order_create",
-        target_type="work_order", target_id=str(wo_id),
-        details=f"{body.vendor_name}: ${body.total_cost:.2f}",
+    await record_simple(
+        tenant_db, user["account_id"], internal_uid,
+        "create", "work_order", wo_id,
+        changes=diff_rows({}, {
+            "vehicle_name": payload.get("vehicle_name"),
+            "vendor_name": payload.get("vendor_name"),
+            "total_cost": payload.get("total_cost"),
+            "service_date": payload.get("service_date"),
+            "status": payload.get("status"),
+        }),
     )
     return {"id": wo_id, "status": "created"}
 
@@ -421,7 +427,7 @@ async def update_work_order(
     tenant_db=Depends(get_tenant_db),
 ):
     """Update mutable fields on a work order."""
-    await _require_visible_work_order(work_order_id, user, tenant_db)
+    old = await _require_visible_work_order(work_order_id, user, tenant_db)
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     vendor_email = updates.pop("vendor_email", "") or ""
     if not updates:
@@ -441,12 +447,15 @@ async def update_work_order(
         work_order_id, account_id=user["account_id"], **updates,
     )
     if ok:
-        await tenant_db.add_audit_log(
-            user["account_id"], int(user["sub"]),
-            "work_order_update",
-            target_type="work_order", target_id=str(work_order_id),
-            details=str(list(updates.keys())),
-        )
+        # Values, not field names — the old log's str(list(keys)) is
+        # exactly what made the maintenance incident unrecoverable.
+        changes = diff_rows(old or {}, updates, fields=updates.keys())
+        if changes:
+            await record_simple(
+                tenant_db, user["account_id"], await resolve_user_id(user),
+                "update", "work_order", work_order_id,
+                changes=changes,
+            )
     return {"ok": ok}
 
 
@@ -484,11 +493,13 @@ async def delete_work_order(
     deleted = await tenant_db.delete_work_order(
         work_order_id, account_id=user["account_id"],
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "work_order_delete",
-        target_type="work_order", target_id=str(work_order_id),
-    )
+    if deleted:
+        # The recovery record: the whole row body, {from, to: null}.
+        await record_simple(
+            tenant_db, user["account_id"], await resolve_user_id(user),
+            "delete", "work_order", work_order_id,
+            changes=delete_changes(wo or {}),
+        )
     return {"deleted": deleted}
 
 
@@ -590,6 +601,7 @@ async def upload_attachment(
     cost details later.  Managers can upload to any work order.
     """
     from adapters.storage.object_store import get_object_store_for_account
+    from capabilities.storage.tracking import track_for_sync_if_hybrid
     wo = await _require_visible_work_order(work_order_id, user, tenant_db)
 
     # Drivers may upload only while the WO is still ACTIVE (open /
@@ -643,11 +655,18 @@ async def upload_attachment(
         file_size=len(raw), content_type=content_type, kind=kind,
         uploaded_by=await resolve_user_id(user),
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "work_order_attachment_upload",
-        target_type="work_order", target_id=str(work_order_id),
-        details=f"{kind}: {safe_name} ({len(raw)} bytes)",
+    # Enqueue for cloud sync AFTER the row exists — the queue carries the
+    # attachment id so the worker can repoint that row before it frees
+    # the local copy.  No-op unless the account is on the hybrid backend.
+    await track_for_sync_if_hybrid(
+        store, folder, safe_name, file_path,
+        entity_type="work_order_attachment", entity_id=int(aid),
+        file_size=len(raw),
+    )
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "attachment_add", "work_order", work_order_id,
+        note=f"{kind}: {safe_name} ({len(raw)} bytes)",
     )
     return {
         "id": aid, "file_name": safe_name, "size": len(raw),

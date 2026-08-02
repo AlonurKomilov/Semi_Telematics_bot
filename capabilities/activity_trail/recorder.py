@@ -67,6 +67,37 @@ def new_group_id() -> str:
     return uuid.uuid4().hex
 
 
+async def record_simple(
+    db: Any,
+    account_id: int,
+    actor_user_id: Optional[int],
+    action: str,
+    entity_type: str,
+    entity_id: Any,
+    *,
+    changes: Optional[dict] = None,
+    context: Optional[dict] = None,
+    note: str = "",
+    group_id: Optional[str] = None,
+) -> None:
+    """One-call adoption for router-level writers.
+
+    For mutations that flow through shared self-committing storage
+    methods (update_user and friends), the event appends right after
+    the mutation instead of inside it — the same documented deviation
+    as team management; full same-transaction threading arrives when
+    that storage modernizes.  Everything else the contract demands
+    still holds: people-only attribution, values over prose, real
+    action names.
+    """
+    await db.append_activity_events(account_id, [{
+        "entity_type": entity_type, "entity_id": entity_id,
+        "action": action, "changes": changes or {},
+        "actor_user_id": actor_user_id,
+        "context": context or {}, "note": note, "group_id": group_id,
+    }])
+
+
 def _same(a: Any, b: Any) -> bool:
     """Value equality that doesn't invent edits: 35000 == 35000.0, but
     '' vs None IS a change (clearing a field is an action)."""

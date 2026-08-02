@@ -17,8 +17,9 @@ from pydantic import BaseModel, Field
 
 from interfaces.api.deps import (
     require_permission, get_current_user, get_tenant_db,
-    get_platform_db,
+    get_platform_db, resolve_user_id,
 )
+from capabilities.activity_trail import record_simple
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +114,10 @@ async def set_alert_routing_settings(
     ok = await platform_db.set_alert_routing_mode(user["account_id"], body.mode)
     if not ok:
         raise HTTPException(status_code=404, detail="Account not found")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "alert_routing_mode_set", details=body.mode,
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "alert_routing_mode_set", "account", user["account_id"],
+        note=body.mode,
     )
     return {"ok": True, "mode": body.mode}
 
@@ -176,10 +178,10 @@ async def bind_persona_group(
         account_id=user["account_id"], persona=body.persona,
         chat_id=body.chat_id, chat_title=chat_title,
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "alert_persona_group_bound",
-        details=f"{body.persona} → {chat_title or body.chat_id}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "alert_persona_group_bound", "account", user["account_id"],
+        note=f"{body.persona} → {chat_title or body.chat_id}",
     )
     return {
         "ok": True,
@@ -206,9 +208,10 @@ async def unbind_persona_group(
             detail="Only the owner/admin or this role's manager can unbind its group.",
         )
     await platform_db.delete_persona_group(user["account_id"], persona)
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "alert_persona_group_unbound", details=persona,
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "alert_persona_group_unbound", "account", user["account_id"],
+        note=persona,
     )
     return {"ok": True}
 
@@ -320,9 +323,10 @@ async def attach_sub_bot(
         bot_username=bot_username,
         webhook_secret=_secrets.token_urlsafe(24),
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "sub_bot_attached", details=f"{body.persona} → @{bot_username}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "sub_bot_attached", "account", user["account_id"],
+        note=f"{body.persona} → @{bot_username}",
     )
 
     # Hot-start where a registry runs in-process (bot service / dev).
@@ -368,9 +372,10 @@ async def detach_sub_bot(
     except Exception as e:
         logger.warning("Sub bot stop failed %d/%s: %s", user["account_id"], persona, e)
     await platform_db.delete_bot_instance(user["account_id"], persona)
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "sub_bot_detached", details=persona,
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "sub_bot_detached", "account", user["account_id"],
+        note=persona,
     )
     return {"ok": True}
 
@@ -508,11 +513,10 @@ async def toggle_persona_topic(
     await tenant_db.set_account_setting(
         user["account_id"], setting_key, "1" if body.value else "0",
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "persona_topic_toggle",
-        target_type="alert_type", target_id=alert_type,
-        details=f"{body.field}={body.value} ({persona})",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "persona_topic_toggle", "alert_type", alert_type,
+        note=f"{body.field}={body.value} ({persona})",
     )
     return {"persona": persona, "alert_type": alert_type, body.field: body.value}
 
@@ -635,11 +639,10 @@ async def create_custom_topic(
         name=body.name.strip(), alert_type=body.alert_type,
         subtypes=subtypes_csv, thread_id=thread_id,
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "custom_topic_created",
-        target_type="alert_topic", target_id=str(row.id),
-        details=f"{body.persona}/{body.alert_type}: {row.name} "
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "custom_topic_created", "alert_topic", row.id,
+        note=f"{body.persona}/{body.alert_type}: {row.name} "
                 f"({subtypes_csv or 'all'}; thread={'yes' if thread_id else 'no'})",
     )
     return {
@@ -673,11 +676,10 @@ async def delete_custom_topic(
             detail="Only the owner/admin or this role's manager can manage its topics.",
         )
     await platform_db.delete_alert_topic(user["account_id"], topic_id)
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "custom_topic_deleted",
-        target_type="alert_topic", target_id=str(topic_id),
-        details=f"{row.persona}/{row.alert_type}: {row.name}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "custom_topic_deleted", "alert_topic", topic_id,
+        note=f"{row.persona}/{row.alert_type}: {row.name}",
     )
     return {"ok": True}
 
@@ -732,11 +734,10 @@ async def set_persona_topic_subtypes(
     await tenant_db.set_account_setting(
         user["account_id"], f"persona_subtypes.{persona}.{alert_type}", value,
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "persona_topic_subtypes",
-        target_type="alert_type", target_id=alert_type,
-        details=f"{persona}: {value or 'all'}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "persona_topic_subtypes", "alert_type", alert_type,
+        note=f"{persona}: {value or 'all'}",
     )
     return {
         "persona": persona,

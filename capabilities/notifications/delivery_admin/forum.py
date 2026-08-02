@@ -12,8 +12,9 @@ from typing import Optional
 
 from interfaces.api.deps import (
     require_permission, get_tenant_db,
-    get_platform_db,
+    get_platform_db, resolve_user_id,
 )
+from capabilities.activity_trail import record_simple
 
 logger = logging.getLogger(__name__)
 
@@ -177,11 +178,10 @@ async def update_forum_settings(
             changed.append(f"{alert_type}={'on' if enabled else 'off'}")
 
     if changed:
-        await tenant_db.add_audit_log(
-            account_id, int(user["sub"]),
-            "forum_settings_update",
-            target_type="account", target_id=str(account_id),
-            details="ai_per_type: " + ", ".join(changed),
+        await record_simple(
+            tenant_db, account_id, await resolve_user_id(user),
+            "forum_settings_update", "account", account_id,
+            note="ai_per_type: " + ", ".join(changed),
         )
     return {"ok": True, "changed": changed}
 
@@ -222,11 +222,10 @@ async def toggle_forum_route(
     await platform_db.set_alert_route_active(
         account_id, alert_type, body.is_active,
     )
-    await tenant_db.add_audit_log(
-        account_id, int(user["sub"]),
-        "forum_route_toggle",
-        target_type="alert_type", target_id=alert_type,
-        details=f"is_active={body.is_active}",
+    await record_simple(
+        tenant_db, account_id, await resolve_user_id(user),
+        "forum_route_toggle", "alert_type", alert_type,
+        changes={"is_active": {"from": not body.is_active, "to": body.is_active}},
     )
     return {"alert_type": alert_type, "is_active": body.is_active}
 
@@ -270,11 +269,13 @@ async def toggle_forum_route_receipt(
     ok = await platform_db.set_alert_route_send_resolve_receipt(
         account_id, alert_type, body.send_resolve_receipt,
     )
-    await tenant_db.add_audit_log(
-        account_id, int(user["sub"]),
-        "forum_route_receipt_toggle",
-        target_type="alert_type", target_id=alert_type,
-        details=f"send_resolve_receipt={body.send_resolve_receipt}",
+    await record_simple(
+        tenant_db, account_id, await resolve_user_id(user),
+        "forum_route_receipt_toggle", "alert_type", alert_type,
+        changes={"send_resolve_receipt": {
+            "from": not body.send_resolve_receipt,
+            "to": body.send_resolve_receipt,
+        }},
     )
     return {
         "alert_type": alert_type,
@@ -315,11 +316,10 @@ async def set_forum_subtypes(
     sel = set(body.selected)
     csv = "" if (not sel or len(sel) >= len(vocab)) else ",".join(s for s in vocab if s in sel)
     await tenant_db.set_account_setting(user["account_id"], f"forum_subtypes.{alert_type}", csv)
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "forum_subtypes_set",
-        target_type="alert_type", target_id=alert_type,
-        details=f"selected={csv or 'all'}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "forum_subtypes_set", "alert_type", alert_type,
+        note=f"selected={csv or 'all'}",
     )
     return {"alert_type": alert_type, "selected": (csv.split(",") if csv else None)}
 
@@ -405,11 +405,10 @@ async def create_forum_custom_topic(
         name=body.name.strip(), alert_type=body.alert_type,
         subtypes=subtypes_csv, thread_id=thread_id,
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "forum_custom_topic_created",
-        target_type="alert_topic", target_id=str(row.id),
-        details=f"{body.alert_type}: {row.name} ({subtypes_csv or 'all'}; thread={thread_id})",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "forum_custom_topic_created", "alert_topic", row.id,
+        note=f"{body.alert_type}: {row.name} ({subtypes_csv or 'all'}; thread={thread_id})",
     )
     return {
         "id": row.id, "name": row.name, "alert_type": row.alert_type,
@@ -434,11 +433,10 @@ async def delete_forum_custom_topic(
     if row is None or row.persona != FORUM_SENTINEL:
         raise HTTPException(status_code=404, detail="Topic not found")
     await platform_db.delete_alert_topic(user["account_id"], topic_id)
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "forum_custom_topic_deleted",
-        target_type="alert_topic", target_id=str(topic_id),
-        details=f"{row.alert_type}: {row.name}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "forum_custom_topic_deleted", "alert_topic", topic_id,
+        note=f"{row.alert_type}: {row.name}",
     )
     return {"ok": True}
 
@@ -463,10 +461,9 @@ async def disconnect_forum_routing(
         return {"ok": True, "was_connected": False}
 
     await platform_db.delete_forum_group(account_id)
-    await tenant_db.add_audit_log(
-        account_id, int(user["sub"]),
-        "forum_routing_disconnect",
-        target_type="account", target_id=str(account_id),
-        details=f"chat_id={group.chat_id}",
+    await record_simple(
+        tenant_db, account_id, await resolve_user_id(user),
+        "forum_routing_disconnect", "account", account_id,
+        note=f"chat_id={group.chat_id}",
     )
     return {"ok": True, "was_connected": True, "chat_id": group.chat_id}

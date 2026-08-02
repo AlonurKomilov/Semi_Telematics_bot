@@ -12,7 +12,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from interfaces.api.deps import require_permission, get_platform_db, get_tenant_db
+from interfaces.api.deps import require_permission, get_platform_db, get_tenant_db, resolve_user_id
+from capabilities.activity_trail import record_simple
 from adapters.storage.models import Role
 from capabilities.permissions.roles import (
     ROLE_PERMISSIONS,
@@ -309,17 +310,18 @@ async def update_role_perms(
     audit_role = f"{body.role} ({body.tier})" if body.tier else body.role
     target_id = f"{audit_role}:{body.company_id}" if body.company_id else audit_role
     try:
-        await tenant_db.add_audit_log(
-            account_id, updated_by,
-            "permissions_update",
-            target_type="role", target_id=target_id,
-            details=json.dumps({"scope": scope, "diff": diff}),
+        await record_simple(
+            tenant_db, account_id, await resolve_user_id(user),
+            "permissions_update", "role", target_id,
+            # the per-flag old→new diff IS the trail's native shape
+            changes={k: {"from": v[0], "to": v[1]} for k, v in diff.items()},
+            context={"scope": scope},
         )
     except Exception as e:
-        # Audit-log failures must not block the permission write
-        # itself — the write already succeeded and is the
-        # operationally important part.
-        logger.warning("Permissions audit-log write failed: %s", e)
+        # Trail failures must not block the permission write itself —
+        # the write already succeeded and is the operationally
+        # important part.
+        logger.warning("Permissions trail write failed: %s", e)
 
     logger.info(
         "Permissions updated: account=%d role=%s scope=%s by=%d changed=%d",
@@ -355,11 +357,10 @@ async def reset_role_perms(
     scope = f"company={body.company_id}" if body.company_id else "account-wide"
     target_id = f"{body.role}:{body.company_id}" if body.company_id else body.role
     try:
-        await tenant_db.add_audit_log(
-            account_id, updated_by,
-            "permissions_reset",
-            target_type="role", target_id=target_id,
-            details=json.dumps({"scope": scope}),
+        await record_simple(
+            tenant_db, account_id, await resolve_user_id(user),
+            "permissions_reset", "role", target_id,
+            context={"scope": scope},
         )
     except Exception as e:
         logger.warning("Permissions audit-log write failed: %s", e)
@@ -385,11 +386,9 @@ async def reset_all_perms(
     invalidate_permissions_cache(account_id)
 
     try:
-        await tenant_db.add_audit_log(
-            account_id, updated_by,
-            "permissions_reset_all",
-            target_type="account", target_id=str(account_id),
-            details="",
+        await record_simple(
+            tenant_db, account_id, await resolve_user_id(user),
+            "permissions_reset_all", "account", account_id,
         )
     except Exception as e:
         logger.warning("Permissions audit-log write failed: %s", e)
@@ -432,11 +431,11 @@ async def delete_company_override(
     invalidate_permissions_cache(account_id)
 
     try:
-        await tenant_db.add_audit_log(
-            account_id, updated_by,
-            "permissions_override_deleted",
-            target_type="role", target_id=f"{body.role}:{body.company_id}",
-            details=json.dumps({"company_id": body.company_id}),
+        await record_simple(
+            tenant_db, account_id, await resolve_user_id(user),
+            "permissions_override_deleted", "role",
+            f"{body.role}:{body.company_id}",
+            context={"company_id": body.company_id},
         )
     except Exception as e:
         logger.warning("Permissions audit-log write failed: %s", e)

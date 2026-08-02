@@ -23,6 +23,8 @@ Security spine (fable-advisor reviewed):
 from __future__ import annotations
 
 import json
+
+from capabilities.activity_trail import record_simple
 import logging
 
 from fastapi import HTTPException
@@ -136,17 +138,19 @@ async def execute_approved_action(
         json.dumps(result, default=str),
     )
 
-    # ── Audit (tenant-scoped log; actor = the approving user) ──
+    # ── Trail (actor = the APPROVING human, never the model) ──
     try:
-        await tenant_db.add_audit_log(
-            account_id, uid,
-            action=f"ai_write:{tool}",
-            target_type=str(result.get("target_type", "")) if isinstance(result, dict) else "",
-            target_id=str(result.get("target_id", "")) if isinstance(result, dict) else "",
-            details=json.dumps({"proposal_id": proposal_id, "payload": payload}, default=str)[:2000],
+        from interfaces.api.deps import resolve_user_id as _resolve_uid
+        await record_simple(
+            tenant_db, account_id, await _resolve_uid(user),
+            f"ai_write:{tool}",
+            str(result.get("target_type", "")) if isinstance(result, dict) else "",
+            str(result.get("target_id", "")) if isinstance(result, dict) else "",
+            context={"proposal_id": proposal_id},
+            note=json.dumps({"payload": payload}, default=str)[:1500],
         )
     except Exception:
-        logger.exception("Audit write failed for AI action %s (executed anyway)", tool)
+        logger.exception("Trail write failed for AI action %s (executed anyway)", tool)
 
     # ── Inbox record (ai.action_executed → the approver, in-app only) ──
     # A durable "the AI did X under your name" row beside the audit log;
@@ -268,17 +272,18 @@ async def undo_approved_action(
     )
 
     try:
-        await tenant_db.add_audit_log(
-            account_id, uid,
-            action=f"ai_undo:{tool}",
-            target_type=str(result.get("target_type", "")) if isinstance(result, dict) else "",
-            target_id=str(result.get("target_id", "")) if isinstance(result, dict) else "",
-            details=json.dumps(
-                {"proposal_id": proposal_id, "undo": undo_result,
-                 "approved_by": prop.get("user_id")}, default=str)[:2000],
+        from interfaces.api.deps import resolve_user_id as _resolve_uid
+        await record_simple(
+            tenant_db, account_id, await _resolve_uid(user),
+            f"ai_undo:{tool}",
+            str(result.get("target_type", "")) if isinstance(result, dict) else "",
+            str(result.get("target_id", "")) if isinstance(result, dict) else "",
+            context={"proposal_id": proposal_id,
+                     "approved_by": prop.get("user_id")},
+            note=json.dumps({"undo": undo_result}, default=str)[:1500],
         )
     except Exception:
-        logger.exception("Audit write failed for AI undo %s (undone anyway)", tool)
+        logger.exception("Trail write failed for AI undo %s (undone anyway)", tool)
 
     return {"status": "undone", "result": undo_result}
 

@@ -79,6 +79,18 @@ export const ENTITY_LABEL: Record<string, string> = {
   vendor_directory_entry: 'Shared vendor entry',
   sharing_settings: 'Sharing settings',
   user: 'Team member',
+  work_order: 'Work order',
+  service_task: 'Service task',
+  invite: 'Invite',
+  company: 'Company',
+  schedule: 'Working hours',
+  account: 'Account',
+  setting: 'Account setting',
+  role: 'Role permissions',
+  alert_type: 'Alert routing',
+  alert_topic: 'Alert topic',
+  coaching: 'Coaching',
+  driver_pay_run: 'Driver pay run',
 };
 
 export function entityLabel(entityType: string): string {

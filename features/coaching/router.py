@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from features.coaching import service as svc
 from features.coaching.service import CoachingDisabledError
 from interfaces.api.deps import (
+    resolve_user_id,
     require_permission,
     require_permission_any,
     get_platform_db,
@@ -107,7 +108,7 @@ async def create_rule(
 ):
     try:
         rid = await svc.create_rule(
-            user["account_id"], user_id=int(user["sub"]),
+            user["account_id"], user_id=await resolve_user_id(user),
             name=body.name, kind=body.kind, topic_key=body.topic_key,
             period_days=body.period_days, score_max=body.score_max,
             event_type=body.event_type, min_count=body.min_count,
@@ -129,7 +130,7 @@ async def update_rule(
     fields = body.model_dump(exclude_unset=True)
     try:
         ok = await svc.update_rule(
-            user["account_id"], rule_id, user_id=int(user["sub"]), **fields,
+            user["account_id"], rule_id, user_id=await resolve_user_id(user), **fields,
         )
     except CoachingDisabledError as e:
         raise _disabled_to_403(e)
@@ -145,7 +146,7 @@ async def delete_rule(
 ):
     try:
         await svc.delete_rule(
-            user["account_id"], rule_id, user_id=int(user["sub"]),
+            user["account_id"], rule_id, user_id=await resolve_user_id(user),
         )
     except CoachingDisabledError as e:
         raise _disabled_to_403(e)
@@ -210,7 +211,7 @@ async def assign_manual(
 ):
     try:
         aid = await svc.assign_manual(
-            user["account_id"], user_id=int(user["sub"]),
+            user["account_id"], user_id=await resolve_user_id(user),
             driver_id=body.driver_id, topic_key=body.topic_key,
             severity=body.severity, reason=body.reason, due_at=body.due_at,
         )
@@ -238,7 +239,7 @@ async def cancel_assignment(
                 raise HTTPException(404, "assignment not found or not cancellable")
     try:
         ok = await svc.cancel_assignment(
-            user["account_id"], assignment_id, user_id=int(user["sub"]),
+            user["account_id"], assignment_id, user_id=await resolve_user_id(user),
         )
     except CoachingDisabledError as e:
         raise _disabled_to_403(e)
@@ -255,7 +256,7 @@ async def run_now(
     """Manually trigger an evaluation pass (admin-only)."""
     try:
         ids = await svc.run_evaluation(
-            user["account_id"], user_id=int(user["sub"]), days=days,
+            user["account_id"], user_id=await resolve_user_id(user), days=days,
         )
     except CoachingDisabledError as e:
         raise _disabled_to_403(e)
@@ -326,7 +327,7 @@ async def ack_my_assignment(
     try:
         ok = await svc.acknowledge(
             user["account_id"], assignment_id,
-            driver_id=driver_id, user_id=int(user["sub"]), note=body.note,
+            driver_id=driver_id, user_id=await resolve_user_id(user), note=body.note,
         )
     except CoachingDisabledError as e:
         raise _disabled_to_403(e)

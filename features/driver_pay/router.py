@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from features.driver_pay import service as svc
 from features.driver_pay.service import DriverPayDisabledError
 from interfaces.api.deps import (
+    resolve_user_id,
     require_permission,
     require_permission_any,
 )
@@ -96,7 +97,7 @@ async def create_rule(
 ):
     try:
         rule_id = await svc.create_rule(
-            user["account_id"], user_id=int(user["sub"]),
+            user["account_id"], user_id=await resolve_user_id(user),
             name=body.name, kind=body.kind,
             amount_cents=body.amount_cents,
             period_days=body.period_days,
@@ -123,7 +124,7 @@ async def update_rule(
         raise HTTPException(400, "no fields to update")
     try:
         ok = await svc.update_rule(
-            user["account_id"], rule_id, user_id=int(user["sub"]), **fields,
+            user["account_id"], rule_id, user_id=await resolve_user_id(user), **fields,
         )
     except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
@@ -139,7 +140,7 @@ async def delete_rule(
 ):
     try:
         await svc.delete_rule(
-            user["account_id"], rule_id, user_id=int(user["sub"]),
+            user["account_id"], rule_id, user_id=await resolve_user_id(user),
         )
     except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
@@ -168,7 +169,7 @@ async def upsert_settings(
         raise HTTPException(400, "driver_id required")
     try:
         await svc.upsert_driver_settings(
-            user["account_id"], driver_id, user_id=int(user["sub"]),
+            user["account_id"], driver_id, user_id=await resolve_user_id(user),
             base_pay_cents=body.base_pay_cents, opt_in=body.opt_in,
             pay_model=body.pay_model, pay_rate=body.pay_rate,
         )
@@ -201,7 +202,7 @@ async def create_run(
     pe = _parse_iso_date(body.period_end)
     try:
         run_id = await svc.create_run(
-            user["account_id"], user_id=int(user["sub"]),
+            user["account_id"], user_id=await resolve_user_id(user),
             period_start=ps, period_end=pe,
         )
     except DriverPayDisabledError as e:
@@ -229,7 +230,7 @@ async def finalize_run(
 ):
     try:
         ok = await svc.finalize_run(
-            user["account_id"], run_id, user_id=int(user["sub"]),
+            user["account_id"], run_id, user_id=await resolve_user_id(user),
         )
     except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
@@ -249,7 +250,7 @@ async def recompute_run(
     additions/deductions added since it was created.  Finalized runs 400."""
     try:
         ok = await svc.recompute_run(
-            user["account_id"], run_id, user_id=int(user["sub"]),
+            user["account_id"], run_id, user_id=await resolve_user_id(user),
         )
     except DriverPayDisabledError as e:
         raise _disabled_to_403(e)
@@ -267,7 +268,7 @@ async def cancel_run(
 ):
     try:
         ok = await svc.cancel_run(
-            user["account_id"], run_id, user_id=int(user["sub"]),
+            user["account_id"], run_id, user_id=await resolve_user_id(user),
         )
     except DriverPayDisabledError as e:
         raise _disabled_to_403(e)

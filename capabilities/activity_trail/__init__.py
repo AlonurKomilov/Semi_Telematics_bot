@@ -23,13 +23,14 @@ The contract lives in the mixin's docstring: people only, same
 transaction, deletes carry the body, bulk = N events + group_id.
 """
 
-from .recorder import delete_changes, diff_rows, new_group_id
+from .recorder import delete_changes, diff_rows, new_group_id, record_simple
 from .sensitive import SENSITIVE_FIELDS, mask_changes
 
 __all__ = [
     "diff_rows",
     "delete_changes",
     "new_group_id",
+    "record_simple",
     "SENSITIVE_FIELDS",
     "mask_changes",
 ]

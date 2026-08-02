@@ -49,6 +49,11 @@ class _FakeTenantDB:
         self.mutated = True
         return True
 
+    async def append_activity_events(self, account_id, events):
+        # The trail rides every successful mutation; the stub records
+        # that it happened so scope tests can also assert non-leakage.
+        self.trail = getattr(self, "trail", []) + list(events)
+
     async def add_work_order_part(self, work_order_id, **kw):
         self.mutated = True
         return 1
@@ -61,7 +66,10 @@ class _FakeTenantDB:
 
 
 # Restricted, non-owner manager with the account-wide work-order grant.
-_USER = {"role": "fleet", "account_id": 1, "sub": "1"}
+# ``uid`` (the platform users.id claim) rides every real JWT since the
+# user-id rollout — the trail's actor resolution short-circuits on it,
+# so handler-level tests never need a platform DB.
+_USER = {"role": "fleet", "account_id": 1, "sub": "1", "uid": 1}
 
 
 @pytest.fixture

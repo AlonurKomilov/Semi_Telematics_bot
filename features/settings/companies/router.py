@@ -15,8 +15,9 @@ from typing import Optional
 
 from interfaces.api.deps import (
     require_permission, get_tenant_db,
-    get_platform_db,
+    get_platform_db, resolve_user_id,
 )
+from capabilities.activity_trail import record_simple
 
 logger = logging.getLogger(__name__)
 
@@ -109,11 +110,12 @@ async def add_company(
     # the company list clearly shows one, until a process restart.
     from infra.services import invalidate_client
     await invalidate_client(user["account_id"])
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "company_add",
-        target_type="company", target_id=str(company.id),
-        details=f"Code: {body.code}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "company_add", "company", company.id,
+        changes={"code": {"from": None, "to": body.code},
+                 "display_name": {"from": None,
+                                  "to": body.display_name or body.code}},
     )
 
     # Kick off historical backfill on the ARQ worker (4truck-queue
@@ -159,11 +161,12 @@ async def update_company(
     from infra.services import invalidate_client
     await invalidate_client(user["account_id"])
 
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "company_update",
-        target_type="company", target_id=str(company_id),
-        details=str(list(kwargs.keys())),
+    # Field NAMES only — the values here include rotated API keys,
+    # which must never land in the trail (secrets, not PII masking).
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "company_update", "company", company_id,
+        note=f"fields: {', '.join(kwargs.keys())}",
     )
 
     # Re-run backfill on the ARQ worker when the token is rotated —
@@ -219,9 +222,9 @@ async def upload_company_logo(
         logger.exception("company logo store failed company=%s", company_id)
         raise HTTPException(status_code=500, detail="Could not store the logo.")
     await tenant_db.update_company(company_id, account_id=user["account_id"], logo_object_id=oid)
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]), "company_logo_set",
-        target_type="company", target_id=str(company_id), details="",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "company_logo_set", "company", company_id,
     )
     return {"ok": True}
 
@@ -277,9 +280,9 @@ async def deactivate_company(
     from infra.services import invalidate_client
     await invalidate_client(user["account_id"])
 
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "company_deactivate",
-        target_type="company", target_id=str(company_id),
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "company_deactivate", "company", company_id,
+        changes={"is_active": {"from": True, "to": False}},
     )
     return {"ok": True}

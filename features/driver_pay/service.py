@@ -54,15 +54,14 @@ async def _audit(
     if tenant is None:
         return
     try:
-        await tenant.add_audit_log(
-            account_id=account_id,
-            user_id=user_id,
-            action=action,
-            target_type="driver_pay_run",
-            target_id=target_id,
+        from capabilities.activity_trail import record_simple
+        # ``user_id`` is the platform users.id — the routers resolve it
+        # before calling into the service (trail id space).
+        await record_simple(
+            tenant, account_id, user_id, action, "driver_pay_run", target_id,
         )
-    except Exception:  # pragma: no cover — audit must never break a run
-        log.exception("driver-pay audit failed")
+    except Exception:  # pragma: no cover — the trail must never break a run
+        log.exception("driver-pay trail write failed")
 
 
 # ── Rule CRUD ──────────────────────────────────────────────────────

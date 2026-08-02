@@ -19,6 +19,7 @@ from interfaces.api.deps import (
     get_platform_db, paginate, resolve_user_id,
 )
 from adapters.storage.models import Role
+from capabilities.activity_trail import record_simple
 from capabilities.permissions.roles import validate_role_change, role_rank
 from features.carrier_directory.service import MAX_SENDER_NAME, clean_sender_name
 
@@ -83,11 +84,10 @@ async def update_setting(
 ):
     """Update a single account setting."""
     await tenant_db.set_account_setting(user["account_id"], body.key, body.value)
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "setting_update",
-        target_type="setting", target_id=body.key,
-        details=f"Set to: {body.value[:100]}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "setting_update", "setting", body.key,
+        changes={body.key: {"from": None, "to": body.value[:200]}},
     )
     return {"ok": True}
 
@@ -143,10 +143,10 @@ async def update_bot_config(
         bot_username=bot_username,
     )
 
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "bot_config_update",
-        details=f"Bot configured: @{bot_username}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "bot_config_update", "account", user["account_id"],
+        note=f"Bot configured: @{bot_username}",
     )
 
     # Hot-reload: start or restart per-account bot
@@ -189,10 +189,10 @@ async def delete_bot_config(
         webhook_secret="",
     )
 
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "bot_config_delete",
-        details="Bot disconnected",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "bot_config_delete", "account", user["account_id"],
+        note="Bot disconnected",
     )
 
     # Hot-reload: stop per-account bot
@@ -371,11 +371,10 @@ async def set_account_timezone(
     ok = await platform_db.update_account(user["account_id"], timezone=tz_val)
     if not ok:
         raise HTTPException(status_code=404, detail="Account not found")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "timezone_update",
-        target_type="account", target_id=str(user["account_id"]),
-        details=f"Set account timezone to {tz_val}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "timezone_update", "account", user["account_id"],
+        changes={"timezone": {"from": None, "to": tz_val}},
     )
     return {"timezone": tz_val}
 
@@ -432,14 +431,12 @@ async def set_account_public_identity(
     )
     if not ok:
         raise HTTPException(status_code=404, detail="Account not found")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "public_identity_update",
-        target_type="account", target_id=str(user["account_id"]),
-        details=(
-            f"Public display name set to {value!r}" if value
-            else "Public display name cleared (outside surfaces show no company name)"
-        ),
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "public_identity_update", "account", user["account_id"],
+        changes={"public_display_name": {"from": None, "to": value or None}},
+        note=("" if value else
+              "cleared — outside surfaces show no company name"),
     )
     return {"public_display_name": value}
 
@@ -495,10 +492,9 @@ async def set_account_modules(
     if not ok:
         raise HTTPException(status_code=404, detail="Account not found")
     invalidate_permissions_cache(user["account_id"])
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "account_modules_update",
-        target_type="account", target_id=str(user["account_id"]),
-        details=f"Disabled modules: {csv or '(none)'}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "account_modules_update", "account", user["account_id"],
+        changes={"disabled_modules": {"from": None, "to": csv or ""}},
     )
     return {"enabled": enabled_modules(csv)}

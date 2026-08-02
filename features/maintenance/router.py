@@ -756,6 +756,7 @@ async def upload_task_attachment(
     be able to attach evidence to other trucks' tasks.
     """
     from adapters.storage.object_store import get_object_store_for_account
+    from capabilities.storage.tracking import track_for_sync_if_hybrid
     from features.work_orders.storage import (
         resolve_company_folder, safe_attachment_name,
     )
@@ -806,6 +807,14 @@ async def upload_task_attachment(
         attachment_name=safe_name,
         attachment_content_type=content_type,
         actor_user_id=await resolve_user_id(user),
+    )
+    # Cloud sync on a hybrid account.  The task id IS the entity: one
+    # attachment per task (set_task_attachment overwrites), so the
+    # repointer's single-column UPDATE is exact.
+    await track_for_sync_if_hybrid(
+        store, folder, safe_name, file_path,
+        entity_type="maintenance_attachment", entity_id=int(task_id),
+        file_size=len(raw),
     )
     return {
         "ok": True,
@@ -1461,11 +1470,11 @@ async def export_dot_binder(
     loop = asyncio.get_event_loop()
     pdf_bytes = await loop.run_in_executor(None, render_dot_binder_pdf, binder)
 
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "dot_binder_export",
-        target_type="account", target_id=str(user["account_id"]),
-        details=f"days={days} vehicle={vehicle or 'all'} bytes={len(pdf_bytes)}",
+    from capabilities.activity_trail import record_simple
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "dot_binder_export", "account", user["account_id"],
+        note=f"days={days} vehicle={vehicle or 'all'} bytes={len(pdf_bytes)}",
     )
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")

@@ -19,6 +19,7 @@ from interfaces.api.deps import (
     get_platform_db, paginate, resolve_user_id,
 )
 from adapters.storage.models import Role
+from capabilities.activity_trail import record_simple
 from capabilities.permissions.roles import (
     validate_role_change, role_rank, ASSIGNABLE_ROLES_PATTERN,
 )
@@ -268,11 +269,11 @@ async def create_invite(
             f", email_status: {email_status}"
             f"{cross_domain_marker}"
         )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "invite_create",
-        target_type="invite", target_id=str(invite.id),
-        details=(
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "invite_create", "invite", invite.id,
+        context={"role": body.role},
+        note=(
             f"Role: {body.role}{detail_extras}"
         )[:500],  # hard-cap defends against future operator-supplied text
     )
@@ -418,11 +419,11 @@ async def resend_invite_email_endpoint(
     # viewer renders "Invite email resent" (label added below).
     # ``attempt`` counter = the new email_send_count value, useful
     # forensic signal ("they resent this 4 times").
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "invite_email_resent",
-        target_type="invite", target_id=str(invite_id),
-        details=(
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "invite_email_resent", "invite", invite_id,
+        context={"attempt": invite.email_send_count, "outcome": outcome},
+        note=(
             f"Role: {invite.role}, "
             f"attempt: {invite.email_send_count}, outcome: {outcome}"
         )[:500],
@@ -566,11 +567,10 @@ async def revoke_invite_endpoint(
         # operationally useless and confusing in the audit log).
         raise HTTPException(status_code=404, detail="Invite not found")
 
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "invite_revoke",
-        target_type="invite", target_id=str(invite_id),
-        details=f"Role: {revoked.role}, created_by: {revoked.created_by}",
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "invite_revoke", "invite", invite_id,
+        context={"role": str(revoked.role), "created_by": revoked.created_by},
     )
     return {"ok": True, "revoked_at": revoked.revoked_at}
 
@@ -634,13 +634,14 @@ async def extend_invite_endpoint(
         # side-channel for which branch.
         raise HTTPException(status_code=404, detail="Invite not found")
 
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "invite_extend",
-        target_type="invite", target_id=str(invite_id),
-        # created_by mirrors revoke's audit details — keeps the
-        # forensic question "who created this and who keeps extending
-        # it?" answerable from the audit log alone.
-        details=f"Role: {extended.role}, created_by: {extended.created_by}, hours: {body.hours}, new_expires_at: {extended.expires_at}",
+    # created_by mirrors revoke's context — keeps the forensic
+    # question "who created this and who keeps extending it?"
+    # answerable from the trail alone.
+    await record_simple(
+        tenant_db, user["account_id"], await resolve_user_id(user),
+        "invite_extend", "invite", invite_id,
+        changes={"expires_at": {"from": None, "to": extended.expires_at}},
+        context={"role": str(extended.role),
+                 "created_by": extended.created_by, "hours": body.hours},
     )
     return {"ok": True, "expires_at": extended.expires_at}
