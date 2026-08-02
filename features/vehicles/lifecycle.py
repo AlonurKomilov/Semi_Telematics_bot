@@ -170,6 +170,26 @@ def _run_vehicle_state(account_id: int):
     return ingest_vehicle_state(account_id)
 
 
+def _run_vehicle_health(account_id: int):
+    from capabilities.integrations.samsara.sync import ingest_vehicle_health
+    return ingest_vehicle_health(account_id)
+
+
+def _run_vehicle_faults(account_id: int):
+    from capabilities.integrations.samsara.sync import ingest_vehicle_faults
+    return ingest_vehicle_faults(account_id)
+
+
+def _run_fleet_weather(account_id: int):
+    from capabilities.integrations.samsara.sync import ingest_fleet_weather
+    return ingest_fleet_weather(account_id)
+
+
+def _run_fleet_efficiency(account_id: int):
+    from capabilities.integrations.samsara.sync import ingest_fleet_efficiency
+    return ingest_fleet_efficiency(account_id, days=7)
+
+
 register_dataset(IngestDataset(
     key="vehicles.state",
     owner="vehicles",
@@ -180,4 +200,58 @@ register_dataset(IngestDataset(
     tables=("vehicle_state", "vehicle_state_snapshot"),
     freshness_sla_min=15,
     label="Pull live vehicle state from the provider",
+))
+
+register_dataset(IngestDataset(
+    key="vehicles.health",
+    owner="vehicles",
+    job_id="warehouse_vehicle_health",
+    capability="vehicle_health",
+    cadence={"interval_min": 5},
+    run=_run_vehicle_health,
+    tables=("vehicle_health_snapshot",),
+    freshness_sla_min=60,
+    label="Ingest current vehicle health",
+))
+
+register_dataset(IngestDataset(
+    key="vehicles.faults",
+    owner="vehicles",
+    job_id="warehouse_vehicle_faults",
+    capability="vehicle_faults",
+    cadence={"interval_min": 2},
+    run=_run_vehicle_faults,
+    tables=("vehicle_fault_snapshot",),
+    freshness_sla_min=60,
+    # A fleet with nothing broken reports nothing — an honest zero, not
+    # an outage.  This is the dataset the watchdog must never cry over.
+    expect_rows=False,
+    label="Ingest current vehicle faults (DTCs)",
+))
+
+register_dataset(IngestDataset(
+    key="vehicles.weather",
+    owner="vehicles",
+    job_id="warehouse_fleet_weather",
+    capability="fleet_weather",
+    cadence={"interval_min": 10},
+    run=_run_fleet_weather,
+    tables=("aggregate_weather_snapshot",),
+    freshness_sla_min=120,
+    label="Ingest cabin-weather snapshots",
+))
+
+register_dataset(IngestDataset(
+    key="vehicles.efficiency",
+    owner="vehicles",
+    job_id="warehouse_fleet_efficiency",
+    capability="fleet_efficiency",
+    cadence={"interval_min": 30},
+    run=_run_fleet_efficiency,
+    tables=("aggregate_efficiency_snapshot",),
+    # A windowed aggregate carries no per-record world-time, so its
+    # rows are ageless by design; the SLA exists for the declaration's
+    # completeness and the watchdog skips the age question for it.
+    freshness_sla_min=180,
+    label="Ingest fleet-efficiency aggregates",
 ))

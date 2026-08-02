@@ -17,7 +17,10 @@ from .registry import (  # noqa: F401
 
 # Modules that declare ingest datasets.  Each owns what it acquires.
 _CONTRIBUTORS = (
-    "features.vehicles.lifecycle",   # vehicles.state (first; siblings follow as sync.py splits)
+    "features.vehicles.lifecycle",     # state, health, faults, weather, efficiency
+    "features.events.lifecycle",       # safety events (its own feature, not a driver component)
+    "features.drivers.lifecycle",      # per-driver daily efficiency
+    "features.geofencing.lifecycle",   # geofence definitions cache
 )
 
 discover = make_discover(_CONTRIBUTORS)

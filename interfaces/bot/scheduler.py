@@ -348,32 +348,13 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     )
 
     # ── telemetry warehouse ingestion ─────────────────────
-    # Imported lazily so non-warehouse deployments (older installs that
-    # haven't run migrations yet) can still boot the scheduler.
-    from capabilities.integrations.samsara.sync import (
-        job_ingest_safety_events,
-        job_ingest_driver_efficiency_daily,
-        job_ingest_vehicle_health,
-        job_ingest_vehicle_faults,
-        job_ingest_fleet_weather,
-        job_ingest_fleet_efficiency,
-        job_ingest_geofence_definitions,
-    )
-    # vehicle_state now rides the ingest registry (generated below with
-    # the rollup stages) — the declaration lives with its owner in
-    # features/vehicles/lifecycle.py, and every run lands in the
-    # ingest_runs ledger.  Remaining hand-wired ingests migrate one at
-    # a time, ids verbatim, as the provider sync splits into fetchers.
-    scheduler.add_job(
-        job_ingest_safety_events, "interval",
-        minutes=5, args=[app], id="warehouse_safety_events",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        job_ingest_driver_efficiency_daily, "interval",
-        hours=1, args=[app], id="warehouse_driver_efficiency",
-        max_instances=1, coalesce=True,
-    )
+    # Every provider ingest now rides the ingest registry, generated
+    # below beside the roll-up stages.  Each dataset is declared by the
+    # feature that OWNS it (vehicles, events, drivers, geofencing), so
+    # its cadence, capability gate and freshness SLA live next to the
+    # data rather than here — and every run lands in the ingest_runs
+    # ledger where the watchdog can see it stop.  Job ids and cadences
+    # are unchanged from when these were wired by hand.
     # ── telemetry roll-up cascades (Roll-up hub) ─────────────
     # The downsampling tiers — vehicle state → 5-min snapshot → hourly →
     # daily, and any future high-frequency stream — are registered as
@@ -502,31 +483,6 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     scheduler.add_job(
         job_application_link_expiry, "cron",
         hour=9, minute=20, args=[app], id="application_link_expiry",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        job_ingest_vehicle_health, "interval",
-        minutes=5, args=[app], id="warehouse_vehicle_health",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        job_ingest_vehicle_faults, "interval",
-        minutes=2, args=[app], id="warehouse_vehicle_faults",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        job_ingest_fleet_weather, "interval",
-        minutes=10, args=[app], id="warehouse_fleet_weather",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        job_ingest_fleet_efficiency, "interval",
-        minutes=30, args=[app], id="warehouse_fleet_efficiency",
-        max_instances=1, coalesce=True,
-    )
-    scheduler.add_job(
-        job_ingest_geofence_definitions, "interval",
-        hours=1, args=[app], id="warehouse_geofence_definitions",
         max_instances=1, coalesce=True,
     )
 
