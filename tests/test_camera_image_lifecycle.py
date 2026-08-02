@@ -29,6 +29,22 @@ import pytest_asyncio
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from adapters.storage import Database  # noqa: E402
+from adapters.storage.object_store import (  # noqa: E402
+    DiskObjectStore, resolve_disk_path,
+)
+
+
+def _store_image(account_id: int, name: str, data: bytes = b"jpeg") -> str:
+    """Write a real file through the store and return its stored path.
+
+    NOT tmp_path: stored references must resolve inside the data root, and
+    ``_disk_path_candidates`` now refuses anything outside it.  A tmp file
+    is unresolvable, so a prune "kept" it for the wrong reason — the
+    containment guard, not the shared-file guard.  Using the real store
+    means these tests exercise the path production actually takes.
+    """
+    store = DiskObjectStore(account_id=account_id)
+    return store.put("TESTCO/camera-images", name, data)
 
 
 @pytest_asyncio.fixture
@@ -91,26 +107,25 @@ class TestPerCheckKey:
 class TestRetentionSplitsByStatus:
     """Photos age out on two clocks; rows never do."""
 
-    async def _aged_check(self, db, acct, status: str, days_old: int, tmp_path):
+    async def _aged_check(self, db, acct, status: str, days_old: int, _unused=None):
         from datetime import datetime, timedelta, timezone
         cid = await db.save_camera_check(
             account_id=acct, vehicle_id="v1", vehicle_name="103",
             camera_type="forward", status=status, obstruction="none",
             alignment="centered", quality="good", summary="",
         )
-        f = tmp_path / f"shot_{cid}.jpg"
-        f.write_bytes(b"jpegbytes")
-        await db.set_camera_check_image(acct, cid, str(f))
+        path = _store_image(acct, f"TESTCO_103_forward_{cid}.jpg")
+        await db.set_camera_check_image(acct, cid, path)
         old = (datetime.now(timezone.utc) - timedelta(days=days_old)).isoformat()
         await db._db.execute(
             "UPDATE camera_checks SET checked_at = ? WHERE id = ?", (old, cid),
         )
         await db._db.commit()
-        return cid, f
+        return cid, path
 
     async def test_old_ok_photo_is_pruned_but_row_survives(self, cam_acct, tmp_path):
         db, acct = cam_acct["db"], cam_acct["account_id"]
-        cid, f = await self._aged_check(db, acct, "OK", 90, tmp_path)
+        cid, path = await self._aged_check(db, acct, "OK", 90, tmp_path)
 
         await db.prune_camera_images(acct, keep_days=30, ok_only=True)
 
@@ -122,7 +137,7 @@ class TestRetentionSplitsByStatus:
     async def test_problem_photo_survives_the_ok_window(self, cam_acct, tmp_path):
         """A fault photo at 90 days outlives the 30-day OK window."""
         db, acct = cam_acct["db"], cam_acct["account_id"]
-        cid, f = await self._aged_check(db, acct, "PROBLEM", 90, tmp_path)
+        cid, path = await self._aged_check(db, acct, "PROBLEM", 90, tmp_path)
 
         await db.prune_camera_images(acct, keep_days=30, ok_only=True)
 
@@ -134,14 +149,14 @@ class TestRetentionSplitsByStatus:
 
     async def test_recent_photo_is_untouched(self, cam_acct, tmp_path):
         db, acct = cam_acct["db"], cam_acct["account_id"]
-        cid, f = await self._aged_check(db, acct, "OK", 5, tmp_path)
+        cid, path = await self._aged_check(db, acct, "OK", 5, tmp_path)
 
         await db.prune_camera_images(acct, keep_days=30, ok_only=True)
 
         rows = await db.get_camera_check_history(acct, limit=50)
         row = next(r for r in rows if r["id"] == cid)
         assert row["image_path"] != "", "a 5-day-old photo is inside the window"
-        assert f.exists()
+        assert resolve_disk_path(path) is not None
 
     async def test_problem_prune_leaves_ok_alone(self, cam_acct, tmp_path):
         """Symmetry: the problem window must not reap passing checks."""
@@ -156,6 +171,79 @@ class TestRetentionSplitsByStatus:
         assert rows[ok_id]["image_path"] != "", (
             "the problem prune reaped an OK photo — that is the OK window's job"
         )
+
+
+class TestLegacySharedFilesSurvivePrune:
+    """The prune must not delete a file another row still points at.
+
+    Rows written before the per-check key share one image — 17,689 checks
+    over 340 files, up to 367 deep.  An OK check past its 30-day window
+    shares its file with PROBLEM checks well inside their 180-day one, so
+    a naive per-row ``os.remove`` took 287 files that surviving rows
+    needed and blanked 13,073 images: nearly the entire history, from a
+    job that runs nightly.
+
+    The sync worker already refused to delete a shared file.  This path
+    did not, and the omission is the whole reason this test exists.
+    """
+
+    async def test_shared_file_is_kept_while_another_row_needs_it(self, cam_acct):
+        from datetime import datetime, timedelta, timezone
+        db, acct = cam_acct["db"], cam_acct["account_id"]
+
+        # The LEGACY key: no check id, so both rows land on one file.
+        shared = _store_image(acct, "103_forward.jpg", b"one file, two rows")
+
+        ids = {}
+        for status, age in (("OK", 90), ("PROBLEM", 90)):
+            cid = await db.save_camera_check(
+                account_id=acct, vehicle_id="v1", vehicle_name="103",
+                camera_type="forward", status=status, obstruction="none",
+                alignment="centered", quality="good", summary="",
+            )
+            await db.set_camera_check_image(acct, cid, shared)
+            old = (datetime.now(timezone.utc) - timedelta(days=age)).isoformat()
+            await db._db.execute(
+                "UPDATE camera_checks SET checked_at = ? WHERE id = ?", (old, cid),
+            )
+            ids[status] = cid
+        await db._db.commit()
+
+        # Prune OK photos past 30 days.  The PROBLEM row is at 90 days —
+        # inside its 180-day window — and points at the SAME file.
+        await db.prune_camera_images(acct, keep_days=30, ok_only=True)
+
+        assert resolve_disk_path(shared) is not None, (
+            "the OK prune deleted a file the surviving PROBLEM row still "
+            "references — that row's image is now permanently broken"
+        )
+        rows = {r["id"]: r for r in await db.get_camera_check_history(acct, limit=50)}
+        assert rows[ids["OK"]]["image_path"] == "", "the OK row should be blanked"
+        assert rows[ids["PROBLEM"]]["image_path"] != "", (
+            "the PROBLEM row must keep its reference"
+        )
+
+    async def test_unshared_file_is_still_deleted(self, cam_acct):
+        """The guard must not stop the prune doing its job."""
+        from datetime import datetime, timedelta, timezone
+        db, acct = cam_acct["db"], cam_acct["account_id"]
+
+        lone = _store_image(acct, "solo_104_forward_1.jpg", b"only one row here")
+        cid = await db.save_camera_check(
+            account_id=acct, vehicle_id="v2", vehicle_name="104",
+            camera_type="forward", status="OK", obstruction="none",
+            alignment="centered", quality="good", summary="",
+        )
+        await db.set_camera_check_image(acct, cid, lone)
+        old = (datetime.now(timezone.utc) - timedelta(days=90)).isoformat()
+        await db._db.execute(
+            "UPDATE camera_checks SET checked_at = ? WHERE id = ?", (old, cid),
+        )
+        await db._db.commit()
+
+        removed = await db.prune_camera_images(acct, keep_days=30, ok_only=True)
+        assert removed >= 1
+        assert resolve_disk_path(lone) is None, "an exclusively-referenced file should go"
 
 
 class TestRetentionIsRegistered:

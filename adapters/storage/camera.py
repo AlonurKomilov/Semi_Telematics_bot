@@ -93,24 +93,49 @@ class CameraMixin:
         if not rows:
             return 0
 
-        removed = 0
+        # BLANK FIRST, DELETE SECOND — and only delete a file no surviving
+        # row still points at.
+        #
+        # Rows written before the per-check key share one file: 17,689
+        # checks resolved to 340 images, up to 367 rows deep.  Deleting
+        # per-row would have taken 287 files that other rows still needed
+        # and blanked 13,073 images — nearly the whole history — because
+        # an OK check past 30 days shares its file with PROBLEM checks
+        # well inside their 180-day window.  The sync worker already
+        # refuses to delete a shared file; this path must too, and for the
+        # same reason: the row-to-file mapping is many-to-one until the
+        # legacy rows age out.
         for r in rows:
-            path = r.get("image_path") or ""
-            full = resolve_disk_path(path)
-            if full:
-                try:
-                    os.remove(full)
-                    removed += 1
-                except OSError:
-                    # Already gone, or a permissions/mount problem.  The
-                    # row is blanked either way — a path pointing at
-                    # nothing is worse than no path.
-                    logger.debug("camera prune: could not remove %s", full)
             await self._db.execute(
                 "UPDATE camera_checks SET image_path = '' WHERE id = ?",
                 (r["id"],),
             )
         await self._db.commit()
+
+        removed = 0
+        for path in {r.get("image_path") or "" for r in rows}:
+            if not path:
+                continue
+            cur = await self._db.execute(
+                "SELECT 1 FROM camera_checks WHERE account_id = ? "
+                "AND image_path = ? LIMIT 1",
+                (account_id, path),
+            )
+            if await cur.fetchone() is not None:
+                # A surviving row still reads this file — keeping it costs
+                # disk, deleting it costs an image nobody can get back.
+                continue
+            full = resolve_disk_path(path)
+            if not full:
+                continue
+            try:
+                os.remove(full)
+                removed += 1
+            except OSError:
+                # Already gone, or a permissions/mount problem.  The rows
+                # are blanked either way — a path pointing at nothing is
+                # worse than no path.
+                logger.debug("camera prune: could not remove %s", full)
         return removed
 
     async def get_camera_check_history(
