@@ -107,6 +107,7 @@ from .account_integrations import AccountIntegrationsMixin, AccountIntegration  
 from .datatruck import DatatruckStorageMixin
 from .system_metrics import SystemMetricsMixin
 from .vehicles_registry import VehiclesRegistryMixin, Vehicle  # noqa: F401
+from .vehicle_departure import VehicleDepartureMixin
 from .loads import LoadsMixin, Load  # noqa: F401
 from .activity_trail import ActivityTrailMixin
 from .platform import PlatformDB
@@ -177,6 +178,7 @@ class Database(
     DatatruckStorageMixin,
     SystemMetricsMixin,
     VehiclesRegistryMixin,
+    VehicleDepartureMixin,
     LoadsMixin,
     ActivityTrailMixin,
     _DatabaseCore,

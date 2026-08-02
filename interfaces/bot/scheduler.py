@@ -92,6 +92,7 @@ _JOB_META = {
     # ── Storage & data lifecycle ──
     "storage_sync":                   ("Storage & data", "Upload queued media to the customer's cloud (Drive)"),
     "data_retention":                 ("Storage & data", "Prune every retention target to its window"),
+    "vehicle_departure_sweep":        ("Telematics", "Retire live-state rows for vehicles gone from the provider"),
     # ── Accounts & system ──
     "account_lifecycle_housekeeping": ("Accounts & system", "Hard-purge expired accounts + send deletion warnings"),
     "scheduler_jobs_snapshot":        ("Accounts & system", "Snapshot scheduled jobs for the operator console"),
@@ -429,6 +430,17 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         job_run_retention, "cron",
         hour=2, minute=0, timezone="UTC", args=[app], id="data_retention",
         max_instances=1, coalesce=True,
+    )
+    # Departure sweep BEFORE retention (01:40): a badge silent past the
+    # threshold leaves vehicle_state while its history is still inside
+    # the retention windows, so nothing is ever both "current" and
+    # already pruned.  Refuses whole-fleet retirement (ingest outage
+    # guard) — see adapters/storage/vehicle_departure.py.
+    from features.vehicles.lifecycle import job_departure_sweep
+    scheduler.add_job(
+        job_departure_sweep, "cron",
+        hour=1, minute=40, timezone="UTC", args=[app],
+        id="vehicle_departure_sweep", max_instances=1, coalesce=True,
     )
     # Abandoned apply-draft nudges — hourly so each reminder lands roughly
     # the same time of day the applicant was last active (per-link opt-in;

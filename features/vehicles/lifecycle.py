@@ -122,3 +122,33 @@ register_need(RetentionNeed(
 register_need(RetentionNeed(
     "vehicles", "vehicle.faults", 365, "resolved-fault diagnostic history",
 ))
+
+
+async def job_departure_sweep(_app=None) -> None:
+    """Nightly: retire vehicles the provider stopped reporting.
+
+    Runs per active account.  The sweep itself refuses to act when an
+    account's ENTIRE fleet is stale (that is an ingest outage, not a
+    mass departure) — see adapters/storage/vehicle_departure.py for the
+    rules.  History is never touched; only the pretense that a silent
+    badge is a current vehicle ends.
+    """
+    import logging
+
+    from infra.platform import get_platform_db, get_tenant_db
+
+    log = logging.getLogger(__name__)
+    accounts = await get_platform_db().list_accounts(active_only=True)
+    retired = 0
+    for acc in accounts:
+        try:
+            tenant = await get_tenant_db(acc.id)
+            if tenant is None:
+                continue
+            result = await tenant.sweep_departed_vehicles(acc.id)
+            retired += len(result["departed"])
+        except Exception:
+            log.exception("departure sweep failed acct=%d — continuing", acc.id)
+    if retired:
+        log.info("departure sweep: %d badge(s) retired across the platform",
+                 retired)
