@@ -159,7 +159,17 @@ async def main():
             import infra.cache as _rcache
             lock_acquired = await _rcache.acquire_lock("scheduler:global", ttl_secs=90)
             if lock_acquired:
-                scheduler = AsyncIOScheduler()
+                # misfire_grace_time defaults to ONE SECOND: a job whose
+                # moment passes while the loop is busy — a deploy, a GC
+                # pause, an 8-core box under a parallel test run — is
+                # silently dropped rather than run late.  For hourly and
+                # daily roll-ups that is a permanent hole, since a tier
+                # only heals while its source rows survive.  Five minutes
+                # of grace covers a restart; coalesce (set per job) keeps
+                # a backlog from firing the same job repeatedly.
+                scheduler = AsyncIOScheduler(
+                    job_defaults={"misfire_grace_time": 300, "coalesce": True},
+                )
                 _register_jobs(scheduler, tg_app)
                 scheduler.start()
                 logger.info("Scheduler started (distributed lock acquired)")

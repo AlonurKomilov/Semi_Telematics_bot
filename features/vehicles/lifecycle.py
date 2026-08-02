@@ -46,8 +46,14 @@ register_cascade(
                 "Capture the 5-min vehicle-state history",
             ),
             RollupStage(
+                # UTC-pinned like its siblings.  Unpinned, this ran in the
+                # server's local zone, where the autumn DST fall-back
+                # repeats 02:00 and the spring jump skips it — one hourly
+                # bucket lost or doubled every year, permanently, since the
+                # hourly tier has no self-heal that reaches back for a hole
+                # once its 5-min snapshots age out.
                 "warehouse_telemetry_hourly",
-                {"cron": "5 * * * *"},
+                {"cron": "5 * * * *", "tz": "UTC"},
                 aggregate_telemetry_hourly,
                 "Roll 5-min snapshots into the hourly tier",
             ),
@@ -60,8 +66,12 @@ register_cascade(
             RollupStage(
                 # Mondays 00:10 UTC — after the daily roll-up (00:05) has
                 # closed out Sunday, so the just-completed week is whole.
+                # Spelled "mon", not "1": APScheduler's crontab parser
+                # numbers days from Monday=0, so the numeric form fired
+                # every TUESDAY while every comment and the operator
+                # console said Monday.
                 "warehouse_metrics_weekly",
-                {"cron": "10 0 * * 1", "tz": "UTC"},
+                {"cron": "10 0 * * mon", "tz": "UTC"},
                 aggregate_metrics_weekly,
                 "Roll the daily tier into the weekly tier",
             ),
