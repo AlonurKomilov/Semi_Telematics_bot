@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -7,6 +7,8 @@ import {
   ChevronDown, ChevronRight, IdCard,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
+import { Sheet, SheetContent } from '../../components/ui/sheet';
+import { ScrollRegion } from '../../components/scrolling';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toast } from 'sonner';
@@ -1945,48 +1947,27 @@ function UserDrawerShell({
   onClose: () => void;
   children: React.ReactNode;
 }) {
-  // Auto-focus the first focusable inside the drawer on open.  We
-  // ref the dialog panel itself and query its DOM after mount —
-  // simpler than threading refs through the children and avoids the
-  // previous "hidden sr-only button" trick that triggered Chrome's
-  // ``Blocked aria-hidden on an element because its descendant
-  // retained focus`` warning (focus inside an aria-hidden tree).
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    // Focus the first interactive element (the close X button) so
-    // keyboard users land inside the drawer without Tab-hunting.
-    const first = panelRef.current?.querySelector<HTMLElement>(
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    );
-    first?.focus();
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  // Everything this used to hand-roll — an Escape listener on window, a
+  // querySelector for the first focusable, a ref on the panel, and a
+  // comment explaining how to dodge Chrome's ``Blocked aria-hidden``
+  // warning — is what <Sheet> (Base UI Dialog) does properly, including
+  // the two it could never do from here: a real focus TRAP (the old code
+  // only placed initial focus; Tab still walked out into the page) and a
+  // background scroll lock.
   return (
-    // Backdrop intentionally NOT aria-hidden — the dialog inside
-    // owns the semantics via role="dialog" + aria-modal, and
-    // aria-hidden on an ancestor of a focused element trips the
-    // browser ``Blocked aria-hidden`` warning + breaks screen-
-    // reader navigation into the dialog.
-    <div
-      className="fixed inset-0 bg-black/60 z-50 flex justify-end"
-      onClick={onClose}
-    >
-      <div
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
+    <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent
+        side="right"
+        className="p-0 data-[side=right]:sm:max-w-md"
         aria-labelledby="user-drawer-title"
         aria-label={`Details for ${displayName}`}
-        className="w-full sm:max-w-md bg-card border-l border-border overflow-y-auto"
-        onClick={e => e.stopPropagation()}
+        showCloseButton={false}
       >
-        {children}
-      </div>
-    </div>
+        <ScrollRegion label={`Details for ${displayName}`} className="flex-1 min-h-0">
+          {children}
+        </ScrollRegion>
+      </SheetContent>
+    </Sheet>
   );
 }
 

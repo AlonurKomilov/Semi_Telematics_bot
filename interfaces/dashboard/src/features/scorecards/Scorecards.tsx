@@ -10,6 +10,8 @@ import {
 import { apiJSON, apiJSONSlow } from '../../api/client';
 import { toneClasses, toneText, chartColor, type Tone } from '../../lib/status';
 import DataGrid from '../../components/datagrid';
+import { Sheet, SheetContent } from '../../components/ui/sheet';
+import { ScrollRegion } from '../../components/scrolling';
 import DriverInsights from '@/features/scorecards/DriverInsights';
 import {
   PageHeader,
@@ -1019,14 +1021,19 @@ function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
   const delta = card.score - aggregateAvg;
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
+    // This one already declared ``role="dialog"`` and ``aria-modal`` by
+    // hand — honest, and still not a modal: the announcement was true
+    // while the BEHAVIOUR (focus trap, Escape, background scroll lock)
+    // was absent, which is the worse failure of the two.  <Sheet> makes
+    // the announcement earned; <ScrollRegion> makes the body a real
+    // scroll region.
+    <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent
+        side="right"
+        className="p-0 data-[side=right]:sm:max-w-md"
         aria-label={`Scorecard detail for ${card.subject_name || card.driver_name}`}
-        className="w-full max-w-md bg-card border-l border-border p-6 overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
       >
+        <ScrollRegion label="Scorecard detail" className="flex-1 min-h-0 p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-semibold">{card.subject_name || card.driver_name}</h2>
@@ -1195,8 +1202,9 @@ function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
             );
           })()}
         </div>
-      </div>
-    </div>
+        </ScrollRegion>
+      </SheetContent>
+    </Sheet>
   );
 }
 

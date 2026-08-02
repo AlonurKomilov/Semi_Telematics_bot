@@ -267,7 +267,7 @@ export default function Companies() {
           modal semantics; <ScrollRegion> makes the body a real scroll
           region and leaves the header in place. */}
       <Sheet open={!!selected} onOpenChange={(o) => { if (!o) setSelected(null); }}>
-        <SheetContent side="right" className="p-0">
+        <SheetContent side="right" className="p-0 data-[side=right]:sm:max-w-md">
           {selected && (
           <>
             <SheetHeader className="px-6 pt-6">

@@ -8,6 +8,8 @@ import { X, BellRing, MapPin, FileDown } from 'lucide-react';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toneClasses, toneText } from '../../lib/status';
 import { ErrorState } from '../../components/shell';
+import { Sheet, SheetContent } from '../../components/ui/sheet';
+import { ScrollRegion } from '../../components/scrolling';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, formatTime } from '../../utils/datetime';
 import type {
@@ -149,11 +151,18 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
   const alreadyReviewed = ins?.status === 'reviewed' && ins?.review_status;
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={onClose}>
-      <div
-        className="w-full max-w-xl bg-card border-l border-border overflow-y-auto"
-        onClick={e => e.stopPropagation()}
+    <>
+    {/* Was a hand-rolled backdrop + panel: no focus trap, no Escape, no
+        ``aria-modal``, no background scroll lock.  The header keeps its
+        ``sticky top-0`` — it sits INSIDE the scroll region, which is what
+        that positioning is for. */}
+    <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent
+        side="right"
+        className="p-0 data-[side=right]:sm:max-w-xl"
+        showCloseButton={false}
       >
+        <ScrollRegion label="Inspection detail" className="flex-1 min-h-0">
         {/* Header */}
         <div className="sticky top-0 bg-card border-b border-border px-5 py-3 flex items-center justify-between z-10">
           <div className="min-w-0">
@@ -444,10 +453,13 @@ export function InspectionDetail({ inspectionId, onClose, onReviewed, onResent }
             </div>
           </>
         )}
-      </div>
-      {/* Portaled to body by base-ui, so tree placement is cosmetic —
-          the "work order already open" confirm from the bridge. */}
-      {bridgeDialog}
-    </div>
+        </ScrollRegion>
+      </SheetContent>
+    </Sheet>
+    {/* Portaled to body by base-ui, so tree placement is cosmetic — the
+        "work order already open" confirm from the bridge.  Kept OUTSIDE
+        <Sheet>, whose children must be its own parts. */}
+    {bridgeDialog}
+    </>
   );
 }

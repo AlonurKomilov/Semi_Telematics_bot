@@ -248,7 +248,7 @@ export default function Cameras() {
           the body a real scroll region (focusable, named, overscroll
           contained) while the header stays put. */}
       <Sheet open={!!detail} onOpenChange={(o) => { if (!o) setDetail(null); }}>
-        <SheetContent side="right" className="p-0">
+        <SheetContent side="right" className="p-0 data-[side=right]:sm:max-w-lg">
           {detail && (
           <>
             <SheetHeader className="px-6 pt-6">
