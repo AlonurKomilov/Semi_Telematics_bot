@@ -4,7 +4,9 @@ import {
 } from 'lucide-react';
 
 import { cn } from '../../../lib/utils';
-import { ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR } from '../scrollbars';
+import {
+  ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR, useWheelToHorizontal,
+} from '../scrollbars';
 import { EmptyState } from '../../shell';
 import { Tip } from '../../tooltip';
 import { Button } from '../../ui/button';
@@ -176,6 +178,11 @@ export default function PivotView({
   // rows x 61 columns; re-rendering it on every scroll frame is what
   // froze the tab.  The bars watch the element themselves.
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  // Trackpad / shift+wheel horizontal scrolling.  ONCE, here — the
+  // container is ours.  It used to ride inside the scrollbars' metrics
+  // hook, which both bars call on this same element, so every swipe
+  // moved twice as far as it should.
+  useWheelToHorizontal(scrollEl);
   const [insets, setInsets] = useState({ left: 0, right: 0, top: 0 });
   // Windowing geometry, measured from the DOM by the same
   // ResizeObserver — never from a scroll listener.
@@ -186,7 +193,16 @@ export default function PivotView({
     const measure = () => {
       const head = el.querySelector<HTMLElement>('thead');
       const corner = el.querySelector<HTMLElement>('thead [data-pin="left"]');
-      const rights = el.querySelectorAll<HTMLElement>('thead [data-pin="right"]');
+      // ⚠️ LEAF ROW ONLY (`tr:last-child`).  ``data-pin="right"`` is on
+      // BOTH the Total group cell and the leaf cells it spans, so summing
+      // every match counted the frozen width TWICE — the group's own
+      // width is already the sum of its leaves.  The scrollbar track was
+      // then inset by about double, shrinking it and putting the thumb
+      // out of step with the content whenever the Total column was
+      // pinned.
+      const rights = el.querySelectorAll<HTMLElement>(
+        'thead tr:last-child [data-pin="right"]',
+      );
       let right = 0;
       rights.forEach((c) => { right += c.offsetWidth; });
       const next = {

@@ -85,17 +85,6 @@ function useScrollMetrics(el: HTMLElement | null): ScrollMetrics {
       raf = requestAnimationFrame(() => { raf = 0; update(); });
     };
     el.addEventListener('scroll', schedule, { passive: true });
-    // Trackpad horizontal swipe / shift+wheel — the container is
-    // ``overflow-x: hidden`` so the browser would normally ignore these
-    // gestures; convert ``deltaX`` (or shift+deltaY) into a direct
-    // ``scrollLeft`` change so the swipe still feels native.  Passive:
-    // nothing to preventDefault, the browser already won't scroll.
-    const onWheel = (e: WheelEvent) => {
-      const dx = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
-      if (dx === 0) return;
-      el.scrollLeft += dx;
-    };
-    el.addEventListener('wheel', onWheel, { passive: true });
     const ro = new ResizeObserver(update);
     ro.observe(el);
     // Also re-measure when the inner table reflows (rows added, density
@@ -104,11 +93,52 @@ function useScrollMetrics(el: HTMLElement | null): ScrollMetrics {
     return () => {
       if (raf) cancelAnimationFrame(raf);
       el.removeEventListener('scroll', schedule);
-      el.removeEventListener('wheel', onWheel);
       ro.disconnect();
     };
   }, [el]);
   return metrics;
+}
+
+/** `deltaMode` units → CSS pixels.  Chrome and Safari report pixels, but
+ *  **Firefox reports LINES** for a physical mouse wheel, so an
+ *  un-normalised handler moved the grid 3px per notch there. */
+const LINE_PX = 16;
+
+/**
+ * Trackpad horizontal swipe / shift+wheel → `scrollLeft`.
+ *
+ * The container is ``overflow-x: hidden`` (so no native bar reserves a
+ * track at its bottom edge), which also means the browser ignores these
+ * gestures — this hook is what puts them back.
+ *
+ * ⚠️ CALL IT EXACTLY ONCE PER CONTAINER, from whoever owns the scroll
+ * element — never from a scrollbar.  It used to live inside
+ * ``useScrollMetrics``, which BOTH bars call on the same element, so two
+ * handlers each added the same delta and every trackpad swipe scrolled
+ * TWICE AS FAR as it should.  The early ``return null`` in a bar that
+ * isn't needed does not save you: hooks run before it, so even an
+ * invisible bar had its handler installed.
+ *
+ * Sets no state, so calling it from a parent cannot re-render anything at
+ * scroll rate.
+ */
+export function useWheelToHorizontal(el: HTMLElement | null) {
+  useEffect(() => {
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      const raw = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
+      if (raw === 0) return;
+      // DOM_DELTA_LINE = 1, DOM_DELTA_PAGE = 2.
+      const unit = e.deltaMode === 1 ? LINE_PX
+        : e.deltaMode === 2 ? el.clientWidth
+          : 1;
+      el.scrollLeft += raw * unit;
+    };
+    // Passive: there is nothing to preventDefault — the browser already
+    // won't scroll this axis.
+    el.addEventListener('wheel', onWheel, { passive: true });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [el]);
 }
 
 /**
@@ -148,8 +178,50 @@ function geometry(track: number, visible: number, total: number, at: number) {
 }
 
 const TRACK = 'relative bg-muted/40 rounded-full cursor-pointer';
+// ``touch-none`` so a drag on the thumb isn't stolen by the page's own
+// pan gesture — on a touchscreen this bar is the ONLY way to scroll the
+// horizontal axis, so losing the gesture loses the axis.
 const THUMB = 'absolute bg-muted-foreground/50 hover:bg-muted-foreground/70'
-  + ' rounded-full cursor-grab active:cursor-grabbing';
+  + ' rounded-full cursor-grab active:cursor-grabbing touch-none';
+
+/**
+ * Thumb drag, via POINTER CAPTURE.
+ *
+ * Capture routes every later event for this pointer to the thumb itself,
+ * so the drag survives the pointer leaving the window and the listeners
+ * die with the element. The previous version hung `pointermove` /
+ * `pointerup` on `window` with no `pointercancel` branch and no unmount
+ * cleanup: a pointerup the window never saw (a drag ending outside the
+ * viewport, a touch cancelled by the OS, the bar unmounting mid-drag)
+ * left a live `pointermove` handler that scrolled the grid whenever the
+ * mouse moved, forever.
+ *
+ * `onMove` receives the pointer delta along the dragged axis.
+ */
+function makeThumbDrag(onMove: (delta: number) => void, axis: 'x' | 'y') {
+  return (e: React.PointerEvent) => {
+    e.preventDefault();
+    const node = e.currentTarget as HTMLElement;
+    const start = axis === 'x' ? e.clientX : e.clientY;
+    node.setPointerCapture?.(e.pointerId);
+    const move = (mv: PointerEvent) => {
+      if (mv.pointerId !== e.pointerId) return;
+      onMove((axis === 'x' ? mv.clientX : mv.clientY) - start);
+    };
+    const end = (ev: PointerEvent) => {
+      if (ev.pointerId !== e.pointerId) return;
+      node.removeEventListener('pointermove', move);
+      node.removeEventListener('pointerup', end);
+      node.removeEventListener('pointercancel', end);
+      // Throws if the element already lost capture (it unmounted, or the
+      // browser released it) — that is the case we are cleaning up after.
+      try { node.releasePointerCapture?.(e.pointerId); } catch { /* already gone */ }
+    };
+    node.addEventListener('pointermove', move);
+    node.addEventListener('pointerup', end);
+    node.addEventListener('pointercancel', end);
+  };
+}
 
 /**
  * Horizontal scrollbar, spanning only the region that actually scrolls.
@@ -176,22 +248,11 @@ export function ScrollbarH({
     geometry(track, metrics.clientWidth, metrics.scrollWidth, metrics.scrollLeft);
   if (!needed || track <= 0) return null;
 
-  const drag = (e: React.PointerEvent) => {
-    if (thumbMax <= 0) return;
-    e.preventDefault();
-    const startX = e.clientX;
-    const from = metrics.scrollLeft;
-    const move = (mv: PointerEvent) => {
-      const next = Math.max(0, Math.min(max, from + ((mv.clientX - startX) / thumbMax) * max));
-      if (el) el.scrollLeft = next;
-    };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  };
+  const from = metrics.scrollLeft;
+  const drag = makeThumbDrag((delta) => {
+    if (!el || thumbMax <= 0) return;
+    el.scrollLeft = Math.max(0, Math.min(max, from + (delta / thumbMax) * max));
+  }, 'x');
   // Click the empty track to page in that direction — standard bar.
   const page = (e: React.MouseEvent) => {
     if (e.target !== e.currentTarget || thumbMax <= 0 || !el) return;
@@ -238,22 +299,11 @@ export function ScrollbarV({
     geometry(track, metrics.clientHeight, metrics.scrollHeight, metrics.scrollTop);
   if (!needed || track <= 0) return null;
 
-  const drag = (e: React.PointerEvent) => {
-    if (thumbMax <= 0) return;
-    e.preventDefault();
-    const startY = e.clientY;
-    const from = metrics.scrollTop;
-    const move = (mv: PointerEvent) => {
-      const next = Math.max(0, Math.min(max, from + ((mv.clientY - startY) / thumbMax) * max));
-      if (el) el.scrollTop = next;
-    };
-    const up = () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-  };
+  const from = metrics.scrollTop;
+  const drag = makeThumbDrag((delta) => {
+    if (!el || thumbMax <= 0) return;
+    el.scrollTop = Math.max(0, Math.min(max, from + (delta / thumbMax) * max));
+  }, 'y');
   const page = (e: React.MouseEvent) => {
     if (e.target !== e.currentTarget || thumbMax <= 0 || !el) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();

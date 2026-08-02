@@ -316,6 +316,30 @@ A surface that needs "is there overflow" for a layout class uses
 **`useOverflow`**, which is ResizeObserver-driven and never watches
 scrolling. Updates are rAF-coalesced on top of that.
 
+⚠️ **The horizontal wheel bridge is called ONCE, by whoever owns the
+container** — `useWheelToHorizontal(scrollEl)` in `DataGrid` and in
+`PivotView`, never in a scrollbar. It used to live inside
+`useScrollMetrics`, which **both** bars call on the **same** element, so
+two handlers each applied the delta and **every trackpad swipe scrolled
+twice as far as it should**. An unneeded bar's early `return null` does
+not save you: hooks run before it, so even an invisible bar installed its
+handler. `scrollbars.test.tsx` pins the single-handler contract and was
+verified to go red against the old shape (60px instead of 0 with two bars
+mounted). The bridge sets no state, so calling it from a parent cannot
+re-render anything at scroll rate.
+
+Wheel deltas are **normalised by `deltaMode`**: Chrome and Safari report
+pixels, but **Firefox reports LINES** for a physical mouse wheel, so the
+raw value moved the grid 3px per notch.
+
+Thumb drags use **pointer capture**, not `window` listeners. Capture
+routes later events for that pointer to the thumb, so a drag survives the
+pointer leaving the window and the listeners die with the element — the
+old version had no `pointercancel` branch and no unmount cleanup, so a
+`pointerup` the window never saw left a live `pointermove` handler
+scrolling the grid forever. The thumb is `touch-none` because on a
+touchscreen it is currently the ONLY horizontal-scroll affordance.
+
 The seam is deliberate: **track geometry is shared, insets are local.**
 The two renderers freeze different things — the list reads `data-pin` off
 its leaf header row, the matrix measures its corner cell and Total group

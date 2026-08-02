@@ -76,6 +76,7 @@ import PivotPanel from './pivot/PivotPanel';
 import { prunePivotModel, pivot, pivotToCsvRows, type PivotModel } from './pivot/pivot';
 import {
   useOverflow, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR,
+  useWheelToHorizontal,
 } from './scrollbars';
 import { derivePivotDimensions } from './pivot/derived';
 
@@ -2733,6 +2734,14 @@ export default function DataGrid({
   // position re-rendered every row on every frame; only the bars need
   // that, and they subscribe themselves.
   const overflow = useOverflow(scrollEl);
+
+  // Trackpad / shift+wheel horizontal scrolling.  ONCE, here — this
+  // component owns the container.  It used to ride inside the
+  // scrollbars' metrics hook, which BOTH bars call on this same element,
+  // so two handlers each applied the delta and every swipe moved twice
+  // as far as it should.  Installs a listener and sets no state, so it
+  // cannot re-render the grid at scroll rate.
+  useWheelToHorizontal(scrollEl);
 
   // Measure pinned column widths directly from the live DOM after
   // every render.  Reading ``columnSizing`` would also work but lags

@@ -288,6 +288,19 @@ merged class string still contains `sticky` and not `relative`, because
 the merged string is the only part of this that is checkable without a
 layout engine.
 
+## Measuring the frozen edges: LEAF ROW ONLY
+
+The scrollbar insets are measured from `data-pin` markers in `<thead>`,
+and the right-hand one must read **`thead tr:last-child`**, not the whole
+head. `data-pin="right"` sits on BOTH the Total group cell and the leaf
+cells it spans, so summing every match counted the frozen width **twice**
+— the group's own width already IS the sum of its leaves. The track was
+then inset by about double whenever the Total column was pinned,
+shrinking the bar and putting the thumb out of step with the content.
+
+The left-hand query is `querySelector` (singular) on a cell rendered only
+at `levelIdx === 0` with a `rowSpan`, so it has no equivalent hazard.
+
 ## A cell in a sticky BAND must be opaque even when nothing is pinned
 
 `<thead>` and `<tfoot>` are `sticky` whenever `fill` is on — **pinning or
