@@ -281,6 +281,8 @@ class WarehouseMixin(_MixinBase):
                 str(e.get("video_url") or ""),
                 str(e.get("company_code") or ""),
                 json.dumps(e.get("raw") or e, default=str),
+                # The event's own occurrence time IS its world-time.
+                e.get("occurred_at") or None,
                 ts,
             ))
         if not values:
@@ -313,8 +315,8 @@ class WarehouseMixin(_MixinBase):
                     event_type, severity, occurred_at,
                     lat, lon, speed_mph, video_url,
                     company_code,
-                    raw_json, ingested_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    raw_json, source_ts, ingested_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 new_values,
             )
@@ -2558,6 +2560,7 @@ class WarehouseMixin(_MixinBase):
                 int(r.get("alert_count") or 0),
                 json.dumps(r.get("raw") or {}, default=str),
                 str(r.get("captured_at") or ts),
+                r.get("captured_at") or None,
                 ts,
             ))
         if values:
@@ -2565,8 +2568,9 @@ class WarehouseMixin(_MixinBase):
                 """
                 INSERT INTO vehicle_health_snapshot (
                     vehicle_id, account_id, vehicle_name, company_code,
-                    alert_count, raw_json, captured_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    alert_count, raw_json, captured_at, source_ts,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(vehicle_id) DO UPDATE SET
                     account_id=excluded.account_id,
                     vehicle_name=excluded.vehicle_name,
@@ -2574,6 +2578,7 @@ class WarehouseMixin(_MixinBase):
                     alert_count=excluded.alert_count,
                     raw_json=excluded.raw_json,
                     captured_at=excluded.captured_at,
+                    source_ts=COALESCE(excluded.source_ts, source_ts),
                     updated_at=excluded.updated_at
                 """,
                 values,
@@ -2658,6 +2663,7 @@ class WarehouseMixin(_MixinBase):
                 1 if vid in critical_ids else 0,
                 json.dumps(r.get("raw") or {}, default=str),
                 str(r.get("captured_at") or ts),
+                r.get("captured_at") or None,
                 ts,
             ))
         if values:
@@ -2666,8 +2672,8 @@ class WarehouseMixin(_MixinBase):
                 INSERT INTO vehicle_fault_snapshot (
                     vehicle_id, account_id, vehicle_name, company_code,
                     dtc_count, has_critical, raw_json,
-                    captured_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    captured_at, source_ts, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(vehicle_id) DO UPDATE SET
                     account_id=excluded.account_id,
                     vehicle_name=excluded.vehicle_name,
@@ -2676,6 +2682,7 @@ class WarehouseMixin(_MixinBase):
                     has_critical=excluded.has_critical,
                     raw_json=excluded.raw_json,
                     captured_at=excluded.captured_at,
+                    source_ts=COALESCE(excluded.source_ts, source_ts),
                     updated_at=excluded.updated_at
                 """,
                 values,
@@ -2982,6 +2989,7 @@ class WarehouseMixin(_MixinBase):
                 r.get("temp_f"),
                 json.dumps(r.get("raw") or {}, default=str),
                 str(r.get("captured_at") or ts),
+                r.get("captured_at") or None,
                 ts,
             ))
         if values:
@@ -2989,8 +2997,8 @@ class WarehouseMixin(_MixinBase):
                 """
                 INSERT INTO aggregate_weather_snapshot (
                     vehicle_id, account_id, vehicle_name, company_code,
-                    temp_f, raw_json, captured_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    temp_f, raw_json, captured_at, source_ts, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(vehicle_id) DO UPDATE SET
                     account_id=excluded.account_id,
                     vehicle_name=excluded.vehicle_name,
@@ -2998,6 +3006,7 @@ class WarehouseMixin(_MixinBase):
                     temp_f=excluded.temp_f,
                     raw_json=excluded.raw_json,
                     captured_at=excluded.captured_at,
+                    source_ts=COALESCE(excluded.source_ts, source_ts),
                     updated_at=excluded.updated_at
                 """,
                 values,

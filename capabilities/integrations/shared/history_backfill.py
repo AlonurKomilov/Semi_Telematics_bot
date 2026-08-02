@@ -543,6 +543,11 @@ def _resample_to_snapshot_rows(
                     "captured_at": slot_key[1],
                 })
                 row[column] = value
+                # The slot's world-time: the newest RAW sample that
+                # landed in it — provider truth, not the floored label.
+                t_iso = t.isoformat()
+                if t_iso > str(row.get("source_ts") or ""):
+                    row["source_ts"] = t_iso
 
     # Resolve engine state last, when each slot holds both the provider's
     # state and the speed that separates a moving truck from an idling
@@ -597,6 +602,9 @@ def _accumulate_gps(
             "captured_at": slot_key[1],
         })
         row.update(fields)
+        t_iso = t.isoformat()
+        if t_iso > str(row.get("source_ts") or ""):
+            row["source_ts"] = t_iso
 
 
 def _merge_batch(
