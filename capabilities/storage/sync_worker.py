@@ -38,6 +38,7 @@ import os
 from typing import Awaitable, Callable, Optional
 
 from adapters.storage.object_store import DiskObjectStore
+from capabilities.storage.repointers import build_all, other_rows_reference
 from adapters.storage.storage_sync import (
     ERR_FORBIDDEN, ERR_QUOTA_EXCEEDED, ERR_RATE_LIMITED, ERR_TOKEN_EXPIRED,
     ERR_TRANSIENT, ERR_UNKNOWN,
@@ -249,6 +250,49 @@ async def _process_account_batch(
     return summary
 
 
+# ── Repointers: entity_type → "the row now lives in Drive" ─────────
+#
+# The worker deletes the local file after a successful upload, so every
+# synced entity type MUST have a way to update its owning row to the
+# Drive id first.  Registering here is the ONLY thing that makes an
+# entity type eligible for sync; an unregistered type is parked rather
+# than silently broken (see _sync_one_row step 3).
+#
+# Signature: async (db, entity_id, drive_id) -> None.  Raise to abort the
+# delete — the caller keeps the local copy and parks the row.
+
+
+async def _repoint_pti_media(db, *, entity_id: int, drive_id: str, **_ctx) -> None:
+    """PTI inspection media — the original (and long the only) case.
+
+    Hand-written rather than registry-derived because it advances a
+    STATE MACHINE as well as a path: ``storage_state`` drives which read
+    path HybridObjectStore takes, so a generic single-column UPDATE
+    would repoint the file and leave the row claiming it is still local.
+    """
+    await db.set_media_storage_state(
+        entity_id,
+        state=STATE_REMOTE,
+        remote_path=drive_id,
+        file_path=drive_id,
+    )
+
+
+# Registry-derived for every other type — see repointers.py for why
+# these are built from the same declaration the orphan scan reads.
+_REPOINTERS: dict[str, "Callable[..., Awaitable[None]]"] = build_all()
+_REPOINTERS["pti_media"] = _repoint_pti_media
+
+
+def register_repointer(entity_type: str, fn) -> None:
+    """Declare how one entity type's row is updated after upload.
+
+    Exposed so a feature can register its own without this module
+    importing every feature — the same inversion the retention hub uses.
+    """
+    _REPOINTERS[entity_type] = fn
+
+
 # ── Per-row pipeline ───────────────────────────────────────────────
 
 
@@ -302,30 +346,109 @@ async def _sync_one_row(db, disk, drive, row: dict) -> str:
         )
         return OUTCOME_FAILED
 
-    # 3) Success — flip the media row + delete local + remove queue row.
-    if entity_type == "pti_media" and entity_id:
+    # 3) Success — REPOINT the owning row, then delete local, then
+    #    remove the queue row.  Order matters and so does the guard.
+    #
+    #    Deleting the local file is only safe once the DB row points at
+    #    Drive instead.  Until this guard existed the worker repointed
+    #    ``pti_media`` and nothing else, while deleting the local copy
+    #    unconditionally — so any other entity type would have had its
+    #    row left pointing at a path that no longer exists.  Every image
+    #    for that feature 404s, with no error anywhere: the upload
+    #    succeeded, the queue row cleared, the file is safely in Drive,
+    #    and the app simply can't find it.
+    #
+    #    Fail CLOSED for an unregistered entity type: keep the local
+    #    file, park the row, and say why.  A feature that gets wired
+    #    into sync without a repointer is a bug to surface, not a
+    #    silent breakage to discover from user reports.
+    repoint = _REPOINTERS.get(entity_type)
+    if repoint is None:
+        logger.error(
+            "storage sync: no repointer registered for entity_type=%r "
+            "(queue_id=%d) — file is in Drive but the local copy is kept "
+            "and the row is NOT repointed, because deleting it would "
+            "break every read for this feature",
+            entity_type, queue_id,
+        )
+        await db.mark_sync_stuck(
+            queue_id,
+            error=(
+                f"no repointer for entity_type={entity_type!r} — register "
+                f"one in capabilities/storage/sync_worker._REPOINTERS"
+            ),
+            error_code="no_repointer",
+        )
+        return OUTCOME_STUCK
+
+    if entity_id:
         try:
-            await db.set_media_storage_state(
-                entity_id,
-                state=STATE_REMOTE,
-                remote_path=str(drive_id),
-                file_path=str(drive_id),
+            # Full queue-row context: a multi-file entity (an application
+            # holding cdlFront/cdlBack/medical/signature) cannot tell
+            # WHICH file just synced from entity_id alone — it matches on
+            # local_path.
+            await repoint(
+                db,
+                entity_id=entity_id,
+                drive_id=str(drive_id),
+                bucket=bucket,
+                filename=filename,
+                local_path=row.get("local_path") or "",
             )
         except Exception:
+            # The bytes are in Drive but the row still points at disk.
+            # Keep the local file and park the row: retrying the repoint
+            # later is recoverable, deleting the only readable copy is
+            # not.
             logger.exception(
-                "storage sync: media state update failed for media_id=%d "
-                "(file already in Drive)", entity_id,
+                "storage sync: repoint failed for %s id=%d — keeping the "
+                "local copy so reads keep working",
+                entity_type, entity_id,
             )
-    # Local-file delete is best-effort — the Drive upload already
-    # succeeded; if delete fails the file just lives a bit longer
-    # locally and a later sweep cleans it.
+            await db.mark_sync_stuck(
+                queue_id,
+                error="repoint failed after successful upload",
+                error_code="repoint_failed",
+            )
+            return OUTCOME_STUCK
+
+    # NEVER delete a local file another row still points at.  Some
+    # writers keyed their object-store entry by vehicle rather than by
+    # event, so one file backs many rows (cameras 52x, legacy parking
+    # 12x).  Repointing one row and deleting the file would 404 every
+    # other row silently.  Keeping the file costs disk; deleting it
+    # costs images nobody can get back.
+    shared_with = 0
     try:
-        disk.delete(bucket, filename)
-    except Exception:
-        logger.warning(
-            "storage sync: local delete failed for %s/%s (file is in "
-            "Drive, ignoring)", bucket, filename,
+        shared_with = await other_rows_reference(
+            db, entity_type,
+            entity_id=entity_id,
+            local_path=row.get("local_path") or "",
         )
+    except Exception:
+        # Can't prove exclusivity -> assume shared. Fail safe.
+        logger.exception(
+            "storage sync: could not check shared references for %s id=%d "
+            "— keeping the local copy", entity_type, entity_id,
+        )
+        shared_with = 1
+
+    if shared_with:
+        logger.info(
+            "storage sync: keeping local %s/%s — %d other row(s) still "
+            "reference it (shared object-store key)",
+            bucket, filename, shared_with,
+        )
+    else:
+        # The row now points at Drive, so a failed delete only costs
+        # disk, never correctness.
+        try:
+            disk.delete(bucket, filename)
+        except Exception:
+            logger.warning(
+                "storage sync: local delete failed for %s/%s (file is in "
+                "Drive, ignoring)", bucket, filename,
+            )
 
     await db.mark_sync_succeeded(queue_id)
     return OUTCOME_SUCCEEDED

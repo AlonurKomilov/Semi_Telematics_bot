@@ -45,6 +45,41 @@ from infra import config
 logger = logging.getLogger(__name__)
 
 
+def _allowed_disk_roots(project_root: str) -> list[str]:
+    """Directories a stored reference is permitted to resolve inside.
+
+    The DATA root — not the project root.  Containing to the project is
+    not enough: the account-prefix fallback below builds candidates like
+    ``data/userdata/account-N/<stored>``, so a stored value of
+    ``../../../.env`` climbs exactly three levels back to the project
+    root and lands on the secrets file while still being "inside the
+    project".  Nothing legitimate lives outside ``data/``, so that is
+    the boundary.
+
+    ``OBJECT_STORE_ROOT`` is added when absolute — deployments may park
+    the store on a mounted volume outside the checkout — and its
+    project-relative form is already covered by ``<project>/data``.
+    """
+    roots = [os.path.realpath(os.path.join(project_root, "data"))]
+    configured = getattr(config, "OBJECT_STORE_ROOT", "") or ""
+    if configured and os.path.isabs(configured):
+        roots.append(os.path.realpath(configured))
+    return roots
+
+
+def _within_allowed_root(path: str, project_root: str) -> bool:
+    """True when ``path`` resolves inside an allowed root.
+
+    Compared on ``realpath`` with a trailing separator so ``/data-evil``
+    cannot pass as a child of ``/data``.
+    """
+    real = os.path.realpath(path)
+    for root in _allowed_disk_roots(project_root):
+        if real == root or real.startswith(root + os.sep):
+            return True
+    return False
+
+
 def _disk_path_candidates(object_id: str, project_root: str) -> list[str]:
     """Resolve a DB-stored file path to the candidate locations on disk.
 
@@ -65,7 +100,9 @@ def _disk_path_candidates(object_id: str, project_root: str) -> list[str]:
     every time — fallbacks are pure safety nets.
     """
     if os.path.isabs(object_id):
-        return [object_id]
+        # Still containment-checked: an absolute DB value is exactly the
+        # case where returning it verbatim would serve /etc/passwd.
+        return [object_id] if _within_allowed_root(object_id, project_root) else []
 
     candidates: list[str] = []
     # Primary: the path as stored.
@@ -104,7 +141,16 @@ def _disk_path_candidates(object_id: str, project_root: str) -> list[str]:
             # convert a missing-fallback into a 500.
             pass
 
-    return candidates
+    # CONTAINMENT, applied once here so every read path inherits it.
+    # ``os.path.join`` does not neutralise ``..`` and an absolute
+    # object_id is returned verbatim above, so a DB value of
+    # ``../../etc/passwd`` (or an absolute path) would otherwise be read
+    # and served.  Cameras and parking each carried their own realpath
+    # check at the call site; ``get_by_id`` — used by inspections,
+    # drivers, knowledge and applications — had none at all.  Filtering
+    # the candidate list covers both entry points and every current and
+    # future caller, instead of asking each route to remember.
+    return [c for c in candidates if _within_allowed_root(c, project_root)]
 
 
 def resolve_disk_path(object_id: str, project_root: str | None = None) -> str | None:

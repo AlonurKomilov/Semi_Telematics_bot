@@ -138,6 +138,7 @@ async def save_camera_image(
     camera_type: str, image_bytes: bytes,
     tenant_db,
     company_code: str = "",
+    check_id: int = 0,
 ) -> str:
     """Save dashcam screenshot to the account's configured object store.
 
@@ -166,9 +167,34 @@ async def save_camera_image(
             tenant_db, account_id, company_code,
         )
         bucket = f"{company_folder}/camera-images"
-        key = f"{safe_name}_{camera_type}.jpg"
+        # {company}_{truck}_{camera}_{check_id}.jpg
+        #
+        # The check_id is what makes it UNIQUE: the old key was
+        # {truck}_{camera}.jpg, so every check for a truck overwrote the
+        # previous photo — 17,689 checks left 340 files, and history
+        # showed the newest image beside every past row.
+        #
+        # The company is repeated here even though the bucket already
+        # names it: a file downloaded from Drive, mailed to a driver, or
+        # dropped into a claim folder arrives with no folder context, and
+        # a bare "103_forward.jpg" says nothing about whose truck it was.
+        # Redundant on disk, self-describing everywhere else.
+        key = f"{company_folder}_{safe_name}_{camera_type}_{check_id}.jpg" \
+            if check_id else f"{safe_name}_{camera_type}.jpg"
         store = await get_object_store_for_account(account_id, tenant_db)
-        return store.put(bucket, key, image_bytes)
+        saved = store.put(bucket, key, image_bytes)
+        # Cloud sync (hybrid accounts only; no-op elsewhere).  Safe to
+        # enqueue ONLY because the key is per-check now — with the shared
+        # key the worker would have deleted a local file that up to 366
+        # other check rows still pointed at.
+        if saved and check_id:
+            from capabilities.storage.tracking import track_for_sync_if_hybrid
+            await track_for_sync_if_hybrid(
+                store, bucket, key, saved,
+                entity_type="camera_check", entity_id=int(check_id),
+                file_size=len(image_bytes),
+            )
+        return saved
     except Exception as e:
         logger.debug(f"Camera image save failed: {e}")
         return ""
@@ -179,17 +205,11 @@ async def save_camera_results(account_id: int, results: list[dict]):
     tenant = await get_tenant_db(account_id)
     for r in results:
         try:
-            img_path = ""
-            if r.get("image_bytes"):
-                img_path = await save_camera_image(
-                    account_id,
-                    r.get("vehicle", "?"),
-                    r.get("camera_type", "forward"),
-                    r["image_bytes"],
-                    tenant_db=tenant,
-                    company_code=r.get("_org", ""),
-                )
-            await tenant.save_camera_check(
+            # Row FIRST, photo SECOND, path THIRD.  The photo's filename
+            # embeds the check id, which does not exist until the row
+            # does — that id is the whole reason a truck's checks stop
+            # overwriting each other's images.
+            check_id = await tenant.save_camera_check(
                 account_id=account_id,
                 vehicle_id=r.get("vehicle_id", ""),
                 vehicle_name=r.get("vehicle", "?"),
@@ -199,8 +219,22 @@ async def save_camera_results(account_id: int, results: list[dict]):
                 alignment=r.get("alignment", "centered"),
                 quality=r.get("quality", "good"),
                 summary=r.get("summary", ""),
-                image_path=img_path,
+                image_path="",
             )
+            if r.get("image_bytes") and check_id:
+                img_path = await save_camera_image(
+                    account_id,
+                    r.get("vehicle", "?"),
+                    r.get("camera_type", "forward"),
+                    r["image_bytes"],
+                    tenant_db=tenant,
+                    company_code=r.get("_org", ""),
+                    check_id=check_id,
+                )
+                if img_path:
+                    await tenant.set_camera_check_image(
+                        account_id, check_id, img_path,
+                    )
         except Exception as e:
             logger.debug(f"Camera history save failed: {e}")
 

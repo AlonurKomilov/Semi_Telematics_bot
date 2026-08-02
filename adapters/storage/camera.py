@@ -2,6 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+import os
+
+logger = logging.getLogger(__name__)
+
+# Statuses that mean "nothing wrong".  Everything else is a finding worth
+# keeping a photo of for longer — see features/cameras/retention.py.
+OK_STATUSES = ("OK",)
+
 
 class CameraMixin:
 
@@ -10,9 +19,17 @@ class CameraMixin:
         camera_type: str, status: str, obstruction: str,
         alignment: str, quality: str, summary: str,
         image_path: str = "",
-    ):
-        """Insert a single camera check result."""
-        await self._db.execute(
+    ) -> int:
+        """Insert a single camera check result.  Returns the new row id.
+
+        The id is returned because the check's photo is keyed BY it —
+        ``{company}_{truck}_{camera}_{check_id}.jpg``.  The old key had no
+        check id, so every check for a truck+camera overwrote the previous
+        photo: 17,689 checks resolved to 340 files, and history showed the
+        newest image against every past row.  Callers therefore insert
+        first, save the image second, and set the path third.
+        """
+        cur = await self._db.execute(
             "INSERT INTO camera_checks "
             "(account_id, vehicle_id, vehicle_name, camera_type, "
             "status, obstruction, alignment, quality, summary, checked_at, image_path) "
@@ -22,6 +39,79 @@ class CameraMixin:
              image_path),
         )
         await self._db.commit()
+        return int(cur.lastrowid)
+
+    async def set_camera_check_image(
+        self, account_id: int, check_id: int, image_path: str,
+    ) -> bool:
+        """Attach the stored photo path to a check written moments ago."""
+        cur = await self._db.execute(
+            "UPDATE camera_checks SET image_path = ? "
+            "WHERE id = ? AND account_id = ?",
+            (image_path, check_id, account_id),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
+    async def prune_camera_images(
+        self, account_id: int, keep_days: int, *, ok_only: bool,
+    ) -> int:
+        """Delete camera PHOTOS past the window; keep the check ROWS.
+
+        Rows are tiny and are the actual history (when, which truck, what
+        status).  Photos are the bulk — 158 checks/day at ~77 KB, which
+        is ~12.7 GB at the 1095-day default nobody chose deliberately.
+        So this prunes the file and blanks ``image_path``, leaving the
+        row's verdict intact forever.
+
+        SERVER-LOCAL ONLY.  Resolves the stored path through
+        ``resolve_disk_path`` and ``os.remove``s it — it never goes
+        through ``ObjectStore.delete``, because on the hybrid backend
+        that method deletes from the customer's Google Drive too.  Their
+        cloud is theirs; we only reclaim our own disk.
+
+        ``ok_only`` splits the two windows: a passing check's photo is
+        worth days (proof the camera worked this week), a WARNING /
+        ERROR / PROBLEM photo is worth months (the evidence you show a
+        driver, plus trend).
+        """
+        from adapters.storage.object_store import resolve_disk_path
+        from datetime import datetime, timedelta, timezone
+
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=keep_days)
+        ).isoformat()
+        op = "IN" if ok_only else "NOT IN"
+        placeholders = ", ".join("?" for _ in OK_STATUSES)
+        cur = await self._db.execute(
+            f"SELECT id, image_path FROM camera_checks "
+            f"WHERE account_id = ? AND image_path <> '' AND checked_at < ? "
+            f"AND status {op} ({placeholders})",
+            (account_id, cutoff, *OK_STATUSES),
+        )
+        rows = [dict(r) for r in await cur.fetchall()]
+        if not rows:
+            return 0
+
+        removed = 0
+        for r in rows:
+            path = r.get("image_path") or ""
+            full = resolve_disk_path(path)
+            if full:
+                try:
+                    os.remove(full)
+                    removed += 1
+                except OSError:
+                    # Already gone, or a permissions/mount problem.  The
+                    # row is blanked either way — a path pointing at
+                    # nothing is worse than no path.
+                    logger.debug("camera prune: could not remove %s", full)
+            await self._db.execute(
+                "UPDATE camera_checks SET image_path = '' WHERE id = ?",
+                (r["id"],),
+            )
+        await self._db.commit()
+        return removed
 
     async def get_camera_check_history(
         self, account_id: int, limit: int = 30,

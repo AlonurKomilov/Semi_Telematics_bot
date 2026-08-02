@@ -1,0 +1,169 @@
+"""Camera photos: one per check, and they age out.
+
+TWO defects this pins, both measured on live data before the fix:
+
+1. ONE PHOTO PER TRUCK, NOT PER CHECK.  The object-store key was
+   ``{truck}_{camera}.jpg`` and ``put`` overwrites, so every check
+   overwrote the previous photo — 17,689 checks resolved to 340 files,
+   up to 367 rows sharing one image.  History showed the newest photo
+   beside every past row: right date, right verdict, wrong picture.
+   It also made the file unsafe to sync, because deleting it after
+   upload would 404 the other 366 rows.
+
+2. NO RETENTION AT ALL.  ``camera_checks`` was in no retention target,
+   so its photos would grow unbounded — ~12.7 GB steady-state at the
+   1095-day default, for images whose usefulness expires in weeks.
+   Rows are kept forever (they are the history); only photos age out,
+   and passing checks age out sooner than faults.
+"""
+
+from __future__ import annotations
+
+import os
+import sys
+
+os.environ.setdefault("ENCRYPTION_KEY", "")
+
+import pytest_asyncio
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+from adapters.storage import Database  # noqa: E402
+
+
+@pytest_asyncio.fixture
+async def cam_acct(pg_db):
+    db: Database = pg_db
+    acct = await db.create_account("Cam Co")
+    return {"db": db, "account_id": acct.id}
+
+
+class TestPerCheckKey:
+    async def test_save_returns_a_distinct_id_per_check(self, cam_acct):
+        """The id is what makes the filename unique — it must exist."""
+        db, acct = cam_acct["db"], cam_acct["account_id"]
+        ids = []
+        for _ in range(3):
+            ids.append(await db.save_camera_check(
+                account_id=acct, vehicle_id="v1", vehicle_name="103",
+                camera_type="forward", status="OK", obstruction="none",
+                alignment="centered", quality="good", summary="",
+            ))
+        assert all(ids), "save_camera_check must return the new row id"
+        assert len(set(ids)) == 3, "ids must differ or the key still collides"
+
+    async def test_image_path_is_attached_after_insert(self, cam_acct):
+        db, acct = cam_acct["db"], cam_acct["account_id"]
+        cid = await db.save_camera_check(
+            account_id=acct, vehicle_id="v1", vehicle_name="103",
+            camera_type="forward", status="OK", obstruction="none",
+            alignment="centered", quality="good", summary="",
+        )
+        ok = await db.set_camera_check_image(
+            acct, cid, f"data/userdata/account-{acct}/CO/camera-images/CO_103_forward_{cid}.jpg",
+        )
+        assert ok
+        rows = await db.get_camera_check_history(acct, limit=10)
+        row = next(r for r in rows if r["id"] == cid)
+        assert str(cid) in row["image_path"], (
+            "the stored path must carry the check id — without it, the next "
+            "check for this truck overwrites this photo"
+        )
+
+    async def test_two_checks_same_truck_get_different_paths(self, cam_acct):
+        """THE regression: same truck + same camera, different files."""
+        db, acct = cam_acct["db"], cam_acct["account_id"]
+        paths = []
+        for _ in range(2):
+            cid = await db.save_camera_check(
+                account_id=acct, vehicle_id="v1", vehicle_name="103",
+                camera_type="forward", status="OK", obstruction="none",
+                alignment="centered", quality="good", summary="",
+            )
+            p = f"data/userdata/account-{acct}/CO/camera-images/CO_103_forward_{cid}.jpg"
+            await db.set_camera_check_image(acct, cid, p)
+            paths.append(p)
+        assert paths[0] != paths[1], (
+            "both checks resolved to one file — the second overwrote the first"
+        )
+
+
+class TestRetentionSplitsByStatus:
+    """Photos age out on two clocks; rows never do."""
+
+    async def _aged_check(self, db, acct, status: str, days_old: int, tmp_path):
+        from datetime import datetime, timedelta, timezone
+        cid = await db.save_camera_check(
+            account_id=acct, vehicle_id="v1", vehicle_name="103",
+            camera_type="forward", status=status, obstruction="none",
+            alignment="centered", quality="good", summary="",
+        )
+        f = tmp_path / f"shot_{cid}.jpg"
+        f.write_bytes(b"jpegbytes")
+        await db.set_camera_check_image(acct, cid, str(f))
+        old = (datetime.now(timezone.utc) - timedelta(days=days_old)).isoformat()
+        await db._db.execute(
+            "UPDATE camera_checks SET checked_at = ? WHERE id = ?", (old, cid),
+        )
+        await db._db.commit()
+        return cid, f
+
+    async def test_old_ok_photo_is_pruned_but_row_survives(self, cam_acct, tmp_path):
+        db, acct = cam_acct["db"], cam_acct["account_id"]
+        cid, f = await self._aged_check(db, acct, "OK", 90, tmp_path)
+
+        await db.prune_camera_images(acct, keep_days=30, ok_only=True)
+
+        rows = await db.get_camera_check_history(acct, limit=50)
+        row = next((r for r in rows if r["id"] == cid), None)
+        assert row is not None, "the CHECK ROW must survive — it is the history"
+        assert row["image_path"] == "", "image_path must be blanked, not left dangling"
+
+    async def test_problem_photo_survives_the_ok_window(self, cam_acct, tmp_path):
+        """A fault photo at 90 days outlives the 30-day OK window."""
+        db, acct = cam_acct["db"], cam_acct["account_id"]
+        cid, f = await self._aged_check(db, acct, "PROBLEM", 90, tmp_path)
+
+        await db.prune_camera_images(acct, keep_days=30, ok_only=True)
+
+        rows = await db.get_camera_check_history(acct, limit=50)
+        row = next(r for r in rows if r["id"] == cid)
+        assert row["image_path"] != "", (
+            "the OK prune took a PROBLEM photo — the two windows are separate"
+        )
+
+    async def test_recent_photo_is_untouched(self, cam_acct, tmp_path):
+        db, acct = cam_acct["db"], cam_acct["account_id"]
+        cid, f = await self._aged_check(db, acct, "OK", 5, tmp_path)
+
+        await db.prune_camera_images(acct, keep_days=30, ok_only=True)
+
+        rows = await db.get_camera_check_history(acct, limit=50)
+        row = next(r for r in rows if r["id"] == cid)
+        assert row["image_path"] != "", "a 5-day-old photo is inside the window"
+        assert f.exists()
+
+    async def test_problem_prune_leaves_ok_alone(self, cam_acct, tmp_path):
+        """Symmetry: the problem window must not reap passing checks."""
+        db, acct = cam_acct["db"], cam_acct["account_id"]
+        ok_id, _ = await self._aged_check(db, acct, "OK", 300, tmp_path)
+        bad_id, _ = await self._aged_check(db, acct, "ERROR", 300, tmp_path)
+
+        await db.prune_camera_images(acct, keep_days=180, ok_only=False)
+
+        rows = {r["id"]: r for r in await db.get_camera_check_history(acct, limit=50)}
+        assert rows[bad_id]["image_path"] == "", "ERROR photo past 180d should go"
+        assert rows[ok_id]["image_path"] != "", (
+            "the problem prune reaped an OK photo — that is the OK window's job"
+        )
+
+
+class TestRetentionIsRegistered:
+    async def test_camera_targets_resolve(self, cam_acct):
+        """The whole point: these were in NO target before."""
+        from capabilities.data_lifecycle.retention import discover
+        from capabilities.data_lifecycle.retention.registry import resolve
+        discover()
+        got = {r.target.key: r.keep_days for r in resolve()}
+        assert got.get("cameras.images_ok") == 30
+        assert got.get("cameras.images_problem") == 180

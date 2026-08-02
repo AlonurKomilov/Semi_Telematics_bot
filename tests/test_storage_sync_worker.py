@@ -39,6 +39,7 @@ from adapters.storage.storage_sync import (
     STATE_LOCAL, STATE_REMOTE,
 )
 from capabilities.storage import sync_worker
+from capabilities.storage.repointers import ENTITY_REFERENCE
 
 
 # ── Fixtures ───────────────────────────────────────────────────────
@@ -265,6 +266,81 @@ class TestSuccessPath:
 
 
 # ── Permanent failures (circuit breaker + classification) ──────────
+
+
+class TestRepointerGuard:
+    """An entity type with no repointer must NOT lose its local copy.
+
+    The worker deletes the local file after a successful upload, but it
+    only ever knew how to repoint ``pti_media``.  Any other entity type
+    wired into sync would have had its bytes moved to Drive while its DB
+    row kept pointing at the deleted local path — every read for that
+    feature 404s, and nothing anywhere reports an error: the upload
+    succeeded, the queue drained, the file is safe in Drive, and the app
+    simply cannot find it.
+
+    So an unregistered type fails CLOSED: keep the file, park the row,
+    name the missing registration.
+    """
+
+    async def test_unregistered_entity_type_keeps_local_file(
+        self, db, isolated_disk,
+    ):
+        acct, mid, disk = await _make_inspection_with_media(
+            db, telegram_id=70055, bytes_=b"bytes that must survive",
+            bucket="inspections/9/9", filename="keep.jpg",
+            isolated_disk=isolated_disk,
+        )
+        # Re-label the queue row as a type the worker has no repointer
+        # for — exactly what wiring a new feature into sync looks like
+        # if the repointer step is forgotten.  Must be a name that is NOT
+        # in repointers.ENTITY_REFERENCE: this test originally used
+        # 'work_order_attachment', which later became a real registered
+        # type and quietly turned the test green for the wrong reason.
+        assert "not_a_registered_entity" not in ENTITY_REFERENCE
+        await db._db.execute(
+            "UPDATE storage_sync_queue SET entity_type = 'not_a_registered_entity' "
+            "WHERE account_id = ?", (acct.id,),
+        )
+        await db._db.commit()
+
+        stub = StubDrive(success_id="DRIVE_SHOULD_NOT_MATTER")
+
+        async def builder(account_id, _db):
+            return stub
+
+        summary = await sync_worker.sync_pending_storage(
+            db=db, drive_builder=builder, disk=disk,
+        )
+
+        assert summary["stuck"] == 1, "unregistered type must be parked"
+        assert summary["succeeded"] == 0
+
+        # THE POINT: the readable copy still exists.
+        assert disk.get("inspections/9/9", "keep.jpg") is not None, (
+            "local file was deleted for an entity type the worker cannot "
+            "repoint — its DB row now points at nothing"
+        )
+
+    async def test_registered_type_still_completes(self, db, isolated_disk):
+        """The guard must not break the one type that does work."""
+        acct, mid, disk = await _make_inspection_with_media(
+            db, telegram_id=70056, bytes_=b"normal path",
+            bucket="inspections/8/8", filename="ok.jpg",
+            isolated_disk=isolated_disk,
+        )
+        stub = StubDrive(success_id="DRIVE_OK_1")
+
+        async def builder(account_id, _db):
+            return stub
+
+        summary = await sync_worker.sync_pending_storage(
+            db=db, drive_builder=builder, disk=disk,
+        )
+        assert summary["succeeded"] == 1
+        row = await db.get_inspection_media(mid)
+        assert row["file_path"] == "DRIVE_OK_1"
+        assert disk.get("inspections/8/8", "ok.jpg") is None
 
 
 class TestPermanentFailures:

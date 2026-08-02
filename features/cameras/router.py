@@ -5,16 +5,21 @@ router.py is interface-layer code co-located with its feature
 Paths keep the historical ``/safety`` prefix so URLs are unchanged.
 """
 
-import os
-
 from fastapi import APIRouter, Depends, Query, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 
+from adapters.storage.object_store import get_object_store_for_account
 from interfaces.api.deps import require_permission_any, get_tenant_db
 
 router = APIRouter(prefix="/safety", tags=["safety"])
 
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# No ``_PROJECT_ROOT`` here any more.  This router used to resolve stored
+# paths itself and chained FOUR dirname calls where three were needed,
+# landing on the project's PARENT — which 404'd every dashcam image and
+# simultaneously widened the traversal guard to sibling projects.  The
+# image route now reads through the object store, which owns the only
+# project root and enforces containment centrally, so the constant is
+# not merely fixed but gone: there is nothing left to get wrong.
 
 
 # ── Camera Checks ────────────────────────────────────────────
@@ -53,11 +58,18 @@ async def camera_check_image(
     img_path = check.get("image_path", "")
     if not img_path:
         raise HTTPException(status_code=404, detail="No image available")
-    from adapters.storage.object_store import resolve_disk_path
-    full_path = resolve_disk_path(img_path, project_root=_PROJECT_ROOT)
-    if not full_path:
+    # Read THROUGH the object store, not off the filesystem.  This route
+    # used to resolve the stored path to a local file and FileResponse
+    # it, which works only while the account's backend is disk: on
+    # ``gdrive`` there is no local copy at all, and on ``hybrid`` the
+    # sync worker deletes the local copy once the file reaches Drive, so
+    # every dashcam image would 404 the moment either was enabled.
+    # ``get_by_id`` accepts both a stored path and a Drive id, so one
+    # call is correct on all three backends.  Containment against path
+    # traversal now lives inside the store (_disk_path_candidates), which
+    # covers this route and every other get_by_id caller at once.
+    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    data = store.get_by_id(img_path)
+    if data is None:
         raise HTTPException(status_code=404, detail="Image file not found")
-    real = os.path.realpath(full_path)
-    if not real.startswith(os.path.realpath(_PROJECT_ROOT)):
-        raise HTTPException(status_code=403, detail="Access denied")
-    return FileResponse(real, media_type="image/jpeg")
+    return Response(content=data, media_type="image/jpeg")

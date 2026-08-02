@@ -13,12 +13,22 @@ Two hard constraints:
     local copy removed by the sync worker, so they aren't on our disk and
     the scan can't see them — by construction.  See
     ``feedback_prune_server_local_only``.
-  * **No false positives.**  A file counts as referenced if ANY DB column
-    that looks like an object-store reference holds its path.  Reference
-    columns are discovered dynamically by name pattern across
-    ``information_schema`` so a new feature's column is picked up
-    automatically (drift-resistant).  Over-matching is harmless — a value
-    that isn't an account-local path simply never matches a walked file.
+  * **No false positives.**  A file counts as referenced if any DECLARED
+    reference column (``capabilities.storage.references``) holds its
+    path, if the legacy name-pattern net catches it, or if it is sitting
+    in the hybrid sync queue awaiting upload.  Over-matching is harmless
+    — a value that isn't an account-local path simply never matches a
+    walked file.
+
+    This claim was FALSE until the declared registry replaced pure
+    name-matching.  A column nobody had anticipated contributed no
+    references, so every file it pointed at became a deletion candidate:
+    measured on live data, 437 of 601 files (95.5 MB) — driver medical
+    certificates, CDL scans, unsafe-parking evidence — were candidates
+    purely because ``map_image_path`` / ``image_path`` / ``docs_json``
+    didn't match a substring list.  Only the grace window held them
+    back, and grace windows expire.  See references.py for why the fix
+    is a declaration plus a drift test rather than more patterns.
 """
 
 from __future__ import annotations
@@ -28,6 +38,11 @@ import os
 import re
 import time
 from dataclasses import dataclass, field
+
+from capabilities.storage.references import (
+    declared_for_tables,
+    json_leaf_paths,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +130,24 @@ def _walk_account_files(account_id: int, root: str | None = None) -> list[LocalF
 
 async def _collect_referenced(tenant_db, account_id: int) -> set[str]:
     """Normalized tails of every object-store reference an account's rows
-    hold, gathered from all reference-shaped TEXT columns on tenant tables."""
+    hold.
+
+    Sources, unioned — a file counted twice costs nothing, a file counted
+    zero times gets deleted:
+
+      1. THE DECLARED REGISTRY (``capabilities.storage.references``) —
+         authoritative.  Name-matching alone missed
+         ``parking_events.map_image_path`` (4,185 rows),
+         ``camera_checks.image_path`` (17,689 rows) and could never match
+         ``driver_applications.docs_json`` at all, which made 73% of one
+         account's files look orphaned.
+      2. The legacy name-pattern sweep — kept purely as a safety net for
+         a column nobody has registered yet.  It can only ADD refs.
+      3. The hybrid sync queue — a file queued for Drive upload has no
+         feature row pointing at it yet, so without this it reads as an
+         orphan and would be deleted before it ever reached the
+         customer's cloud.
+    """
     cur = await tenant_db._db.execute(
         """
         SELECT table_name, column_name
@@ -132,6 +164,65 @@ async def _collect_referenced(tenant_db, account_id: int) -> set[str]:
     acct_tables = {dict(r)["table_name"] for r in await cur.fetchall()}
 
     refs: set[str] = set()
+
+    # ── 1. declared registry ────────────────────────────────────────
+    existing = {c["table_name"] for c in all_cols}
+    for ref in declared_for_tables(existing):
+        # Some reference tables are scoped through a PARENT rather than
+        # carrying account_id (``work_order_attachments`` via its work
+        # order, ``pti_inspection_media`` via its inspection).  The old
+        # name-matcher skipped every such table outright — a third way it
+        # manufactured orphans.  Reading them unfiltered is safe: paths
+        # are normalized account-relative, so another tenant's value
+        # carries a different ``account-{id}`` prefix and can never match
+        # a file walked under THIS account's subtree.  Costs a wider read,
+        # buys correctness without a join per table.
+        scoped = ref.table in acct_tables
+        try:
+            cur = await tenant_db._db.execute(
+                f"SELECT DISTINCT {ref.column} AS v FROM {ref.table} "
+                f"WHERE {ref.column} IS NOT NULL AND {ref.column} <> ''"
+                + (" AND account_id = ?" if scoped else ""),
+                (account_id,) if scoped else (),
+            )
+            for r in await cur.fetchall():
+                v = dict(r).get("v")
+                if not v:
+                    continue
+                if ref.kind == "json_paths":
+                    for leaf in json_leaf_paths(str(v)):
+                        refs.add(_normalize(leaf, account_id))
+                else:
+                    refs.add(_normalize(str(v), account_id))
+        except Exception:
+            # A DECLARED column that cannot be read is not a shrug — the
+            # referenced set is now incomplete, so deletion must not
+            # proceed on it.  Raised to the caller, which fails the purge
+            # closed rather than reaping files it could not account for.
+            logger.exception(
+                "orphan-scan: DECLARED reference %s.%s failed to read — "
+                "referenced set is incomplete", ref.table, ref.column,
+            )
+            raise
+
+    # ── 3. hybrid sync queue (pending uploads are not orphans) ──────
+    if "storage_sync_queue" in existing:
+        try:
+            cur = await tenant_db._db.execute(
+                "SELECT DISTINCT local_path AS v FROM storage_sync_queue "
+                "WHERE account_id = ? AND local_path IS NOT NULL "
+                "AND local_path <> ''",
+                (account_id,),
+            )
+            for r in await cur.fetchall():
+                v = dict(r).get("v")
+                if v:
+                    refs.add(_normalize(str(v), account_id))
+        except Exception:
+            logger.exception("orphan-scan: sync-queue read failed")
+            raise
+
+    # ── 2. legacy name-pattern net (additive only) ──────────────────
     for c in all_cols:
         table, col = c["table_name"], c["column_name"]
         if table not in acct_tables:

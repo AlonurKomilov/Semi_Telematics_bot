@@ -118,6 +118,7 @@ async def submit_application(
     # use, on disk AND in the customer's Drive.  Generic links (no
     # company) fall back to the account-level ``applications/`` root.
     from adapters.storage.object_store import get_object_store_for_account
+    from capabilities.storage.tracking import track_for_sync_if_hybrid
     from features.work_orders.storage import sanitize_company_folder
     store = await get_object_store_for_account(account_id, platform_db)
     company_folder = ""
@@ -181,6 +182,26 @@ async def submit_application(
     except Exception:
         logger.exception("create_driver_application failed ref=%s acct=%s", reference, account_id)
         raise HTTPException(status_code=500, detail="Could not save your application. Please try again.")
+
+    # 5b. Enqueue each stored document for cloud sync (hybrid accounts
+    #     only; no-op elsewhere).  Deliberately AFTER create: the queue
+    #     row carries the application id, and the repointer rewrites the
+    #     matching slot inside ``docs_json`` — matched by local_path,
+    #     because one application holds cdlFront/cdlBack/medical/
+    #     signature and the id alone cannot say which file just synced.
+    #
+    #     These are FMCSA records (medical certificates, CDL scans).  On
+    #     a hybrid account they land in the customer's own Drive, and per
+    #     the server-local-only rule we never delete from there again.
+    app_id = int((created or {}).get("id") or 0)
+    if app_id:
+        for slot, stored_path in (docs or {}).items():
+            if not stored_path:
+                continue
+            await track_for_sync_if_hybrid(
+                store, bucket, stored_path.rsplit("/", 1)[-1], stored_path,
+                entity_type="application_doc", entity_id=app_id,
+            )
 
     # 6. Audit (best-effort).
     try:

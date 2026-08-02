@@ -549,6 +549,11 @@ async def create_article(
     body: ArticleCreate,
     user: dict = Depends(get_current_user),
     platform_db=Depends(get_platform_db),
+    # Needed only to resolve the account's object-store backend when the
+    # article carries an uploaded file: knowledge uploads and creates in
+    # two separate requests, so this is the first point at which a row
+    # exists for the cloud-sync worker to repoint.
+    tenant_db=Depends(get_tenant_db),
 ):
     """Create a new knowledge base article."""
     role = user.get("role", "")
@@ -613,6 +618,20 @@ async def create_article(
         created_by=internal_uid,
         creator_name=creator_name,
     )
+    # Cloud sync is enqueued HERE, not at upload: knowledge uploads the
+    # file in one request and creates the article in another, so at
+    # upload time there is no row for the worker to repoint.  Only
+    # internal paths qualify — ``media_url`` may equally hold an external
+    # link (YouTube etc.), which is not ours to sync.
+    if body.media_url and _is_internal_kb_path(body.media_url):
+        from adapters.storage.object_store import get_object_store_for_account
+        from capabilities.storage.tracking import track_for_sync_if_hybrid
+        store = await get_object_store_for_account(user["account_id"], tenant_db)
+        await track_for_sync_if_hybrid(
+            store, "knowledge", body.media_url.rsplit("/", 1)[-1], body.media_url,
+            entity_type="knowledge_media", entity_id=int(article_id),
+        )
+
     # Private articles are auto-approved (visible immediately), so the
     # audience-notify fires here.  Public articles wait for the approval
     # flow — see ``approve_article`` for that path.

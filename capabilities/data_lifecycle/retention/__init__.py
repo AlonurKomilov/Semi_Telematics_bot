@@ -25,6 +25,7 @@ _CONTRIBUTORS = (
     "features.applications.retention",    # owns applications.drafts (save & resume)
     "features.loads.retention",           # owns loads.records (load/shipment history)
     "features.parking.retention",         # owns parking.events (unsafe-parking evidence)
+    "features.cameras.retention",         # owns cameras.images_* (photos age out, check rows don't)
     "capabilities.scorecards.retention",  # owns scorecards.score_history
     "capabilities.email.retention",       # owns email.delivery_events
     "capabilities.ai.retention",          # owns ai.chat_history (age-cap)
