@@ -40,6 +40,7 @@ class CarrierDirectoryMixin(_MixinBase):
         cur = await self._db.execute(
             "SELECT id, name, website, video_url, experience_summary, "
             "       intake_expires_at, intake_submitted_at, intake_review_pending, "
+            "       intake_email, intake_email_sent_at, "
             "       created_at, updated_at "
             "  FROM carrier_profile "
             " WHERE account_id = ? "
@@ -112,23 +113,62 @@ class CarrierDirectoryMixin(_MixinBase):
     async def set_carrier_intake(
         self, account_id: int, profile_id: int, *,
         token: str, expires_at: str, email: str = "", invited_by: int = 0,
+        display_name: str = "",
     ) -> bool:
-        """Attach (or rotate) the profile's intake link.  Account-scoped."""
+        """Attach (or rotate) the profile's intake link.  Account-scoped.
+
+        Writes every intake column, so a re-mint never inherits half of
+        the previous link's state — ``display_name`` included."""
         cur = await self._db.execute(
             "UPDATE carrier_profile SET intake_token = ?, intake_expires_at = ?, "
-            "intake_email = ?, intake_invited_by = ?, updated_at = ? "
-            "WHERE account_id = ? AND id = ?",
-            (token, expires_at, email, invited_by, self._now(),
+            "intake_email = ?, intake_invited_by = ?, intake_display_name = ?, "
+            "intake_email_sent_at = '', intake_reminded_at = '', "
+            "intake_expiry_warned_at = '', "
+            "updated_at = ? WHERE account_id = ? AND id = ?",
+            (token, expires_at, email, invited_by, display_name, self._now(),
              account_id, profile_id),
         )
         await self._db.commit()
         return cur.rowcount > 0
 
+    async def update_carrier_intake(
+        self, account_id: int, profile_id: int, **fields,
+    ) -> bool:
+        """Edit a LIVE intake link in place, keeping its token.
+
+        Exists so fixing the sender name (or expiry, or contact) doesn't
+        force a re-mint — rotating the token would break a link the
+        carrier has already been emailed.  Only writable when a token is
+        actually present, so this can never resurrect a revoked link.
+
+        All three columns are ``NOT NULL DEFAULT ''`` / a set expiry, so
+        "not provided" is plain ``None`` and '' is a real clear — no
+        sentinel needed.
+        """
+        allowed = {"intake_display_name", "intake_email", "intake_expires_at"}
+        sets = {k: v for k, v in fields.items() if k in allowed and v is not None}
+        if not sets:
+            return False
+        sets["updated_at"] = self._now()
+        assignments = ", ".join(f"{k} = ?" for k in sets)
+        cur = await self._db.execute(
+            f"UPDATE carrier_profile SET {assignments} "
+            "WHERE account_id = ? AND id = ? AND intake_token != ''",
+            (*sets.values(), account_id, profile_id),
+        )
+        await self._db.commit()
+        return cur.rowcount > 0
+
     async def revoke_carrier_intake(self, account_id: int, profile_id: int) -> None:
-        """Kill the profile's intake link (the public form 404s from now on)."""
+        """Kill the profile's intake link (the public form 404s from now on).
+
+        Clears the per-link sender name too — it described THAT link, and
+        a later re-mint states its own."""
         await self._db.execute(
             "UPDATE carrier_profile SET intake_token = '', intake_expires_at = NULL, "
-            "intake_email = '' WHERE account_id = ? AND id = ?",
+            "intake_email = '', intake_display_name = '', intake_email_sent_at = '', "
+            "intake_reminded_at = '', intake_expiry_warned_at = '' "
+            "WHERE account_id = ? AND id = ?",
             (account_id, profile_id),
         )
         await self._db.commit()
@@ -169,10 +209,88 @@ class CarrierDirectoryMixin(_MixinBase):
     async def clear_carrier_intake_review(
         self, account_id: int, profile_id: int,
     ) -> None:
-        """Drop the review-pending flag — a manager saved the profile."""
+        """Drop the review-pending flag — a manager saved the profile, or
+        explicitly marked it reviewed without changing anything."""
         await self._db.execute(
             "UPDATE carrier_profile SET intake_review_pending = 0 "
             "WHERE account_id = ? AND id = ?",
             (account_id, profile_id),
+        )
+        await self._db.commit()
+
+    async def mark_carrier_intake_emailed(self, profile_id: int) -> None:
+        """Stamp a CONFIRMED relay hand-off.  Called only when the mailer
+        returned True, so the UI can distinguish "we emailed them" from
+        "a manager typed an address and the send failed"."""
+        await self._db.execute(
+            "UPDATE carrier_profile SET intake_email_sent_at = ? WHERE id = ?",
+            (self._now(), profile_id),
+        )
+        await self._db.commit()
+
+    # ── Nightly lifecycle sweep ─────────────────────────────────────
+    #
+    # Cross-account by design: the scheduler runs once for the platform and
+    # fans out per row.  Both queries are one-shot per link — the marker
+    # column is set as the mail goes out, so a retry can never double-send.
+
+    async def list_intakes_needing_reminder(
+        self, *, now_iso: str, older_than_iso: str,
+    ) -> list[dict]:
+        """Live, emailed, still-unfilled links whose invite went out before
+        ``older_than_iso`` and that haven't been reminded yet."""
+        cur = await self._db.execute(
+            "SELECT id, account_id, name, intake_email, intake_expires_at, "
+            "       intake_display_name "
+            "  FROM carrier_profile "
+            " WHERE intake_token != '' "
+            "   AND intake_expires_at > ? "
+            "   AND intake_email != '' "
+            "   AND intake_email_sent_at != '' "
+            "   AND intake_email_sent_at < ? "
+            "   AND intake_submitted_at = '' "
+            "   AND intake_reminded_at = '' "
+            " ORDER BY id",
+            (now_iso, older_than_iso),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def list_intakes_expiring_soon(
+        self, *, now_iso: str, before_iso: str,
+    ) -> list[dict]:
+        """Live, still-unfilled links lapsing inside the warning window that
+        no manager has been warned about yet."""
+        cur = await self._db.execute(
+            "SELECT id, account_id, name, intake_email, intake_expires_at "
+            "  FROM carrier_profile "
+            " WHERE intake_token != '' "
+            "   AND intake_expires_at > ? "
+            "   AND intake_expires_at <= ? "
+            "   AND intake_submitted_at = '' "
+            "   AND intake_expiry_warned_at = '' "
+            " ORDER BY intake_expires_at",
+            (now_iso, before_iso),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def get_carrier_profile_by_id(self, profile_id: int) -> dict | None:
+        """Unscoped fetch — ONLY for the platform-wide nightly sweep, which
+        has no user and no account context.  Every request-path read must
+        use ``get_carrier_profile`` so tenant isolation is enforced."""
+        cur = await self._db.execute(
+            "SELECT * FROM carrier_profile WHERE id = ?", (profile_id,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
+    async def stamp_intake_marker(self, profile_id: int, column: str) -> None:
+        """Set one sweep marker.  ``column`` is checked against a literal
+        allow-list — it is the only part of this SQL that isn't a bound
+        parameter, and it must never come from request data."""
+        if column not in ("intake_reminded_at", "intake_expiry_warned_at"):
+            raise ValueError(f"Not a sweep marker column: {column!r}")
+        await self._db.execute(
+            f"UPDATE carrier_profile SET {column} = ? WHERE id = ?",
+            (self._now(), profile_id),
         )
         await self._db.commit()

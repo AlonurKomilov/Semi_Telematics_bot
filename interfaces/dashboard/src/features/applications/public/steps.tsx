@@ -878,10 +878,31 @@ const CHECK_CONSENTS = [
   { key: 'truthful', label: 'Truthful & complete statements', desc: 'I certify that all statements in this application are true and complete. False or omitted information is grounds for rejection or termination.' },
 ];
 const FINAL_CONSENT_KEYS = ['employment_verification', ...CHECK_CONSENTS.map((x) => x.key)];
-const EMPTY_LEGAL: CarrierLegal = {
-  name: '', dot: '', mc: '', phone: '', legal_address: '',
-  compliance_email: '', cra_name: '', cra_address: '', cra_phone: '', cra_site: '',
-};
+
+
+/** A consent screen may not render without a named counterparty.
+ *
+ *  These are FCRA / PSP / 49 CFR §391.23 authorisations: the applicant is
+ *  authorising a SPECIFIC employer to pull their records. Falling back to
+ *  the literal phrase "the Prospective Employer" produced a signed release
+ *  naming nobody — legally worthless and quietly unfair to the applicant.
+ *  If no identity reached us, stop rather than collect a signature. */
+function UnnamedCarrierNotice() {
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+      <ShieldCheck size={18} className="mt-0.5 shrink-0" />
+      <div>
+        <p className="font-medium">This posting isn&rsquo;t ready for signatures yet</p>
+        <p className="mt-1">
+          These authorisations have to name the employer receiving your
+          records, and this link doesn&rsquo;t carry one. Reply to the email
+          that sent you here so the recruiter can fix the link &mdash; nothing
+          you&rsquo;ve filled in is lost.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 // Renders one disclosure's blocks (read-only legal text).
 function DisclosureBody({ blocks }: { blocks: Block[] }) {
@@ -967,7 +988,8 @@ function disclosureStep(id: 'psp' | 'fcra', title: string, sub: string): StepDef
       return e;
     },
     Render: ({ data, set, errors, carrier }) => {
-      const doc = build(carrier || EMPTY_LEGAL);
+      if (!carrier?.name?.trim()) return <UnnamedCarrierNotice />;
+      const doc = build(carrier);
       const c = data.consents || {};
       return (
         <div className="flex flex-col gap-4">
@@ -1025,10 +1047,11 @@ const Step10: StepDef = {
     return e;
   },
   Render: ({ data, set, errors, carrier }) => {
+    if (!carrier?.name?.trim()) return <UnnamedCarrierNotice />;
     const c = data.consents || {};
     const fullName = `${(data.personal || {}).first || ''} ${(data.personal || {}).last || ''}`.trim();
     const anyConsentErr = FINAL_CONSENT_KEYS.some((key) => errors[`consents.${key}`]);
-    const empDoc = employmentDisclosure(carrier || EMPTY_LEGAL);
+    const empDoc = employmentDisclosure(carrier);
     return (
       <div className="flex flex-col gap-5">
         <div className="flex items-start gap-2 rounded-md border border-info-bd bg-info-bg p-3 text-sm text-info">

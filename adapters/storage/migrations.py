@@ -7641,6 +7641,34 @@ async def migrate_carrier_intake_lifecycle(conn) -> None:
             pass
 
 
+@_register("176_application_link_expiry_warning")
+async def migrate_application_link_expiry_warning(conn) -> None:
+    """One marker so the nightly sweep warns about a lapsing recruiting
+    link exactly once.
+
+    The carrier-directory side already had this; application links did
+    not, so nobody was told before a link died — the recruiter found out
+    when an applicant reported a dead URL, and anyone part-way through
+    the form had already lost their work.
+    """
+    try:
+        cur = await conn.execute("PRAGMA table_info(application_links)")
+        cols = {r[1] for r in await cur.fetchall()}
+        if "expiry_warned_at" not in cols:
+            await conn.execute(
+                "ALTER TABLE application_links "
+                "ADD COLUMN expiry_warned_at TEXT NOT NULL DEFAULT ''"
+            )
+        await conn.commit()
+        logger.info("Migration 176: application_links.expiry_warned_at ready")
+    except Exception as e:
+        logger.error("Migration 176 failed: %s", e)
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+
+
 @_register("174_application_reviewed_at")
 async def migrate_application_reviewed_at(conn) -> None:
     """Stamp WHEN an application's status was last set.

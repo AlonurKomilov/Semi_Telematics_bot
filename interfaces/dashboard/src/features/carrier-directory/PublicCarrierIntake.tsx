@@ -17,23 +17,32 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
 import { formatDay } from '../../utils/datetime';
-import { SECTIONS, mergeRows } from './fields';
+import { PUBLIC_SECTIONS, mergeRows } from './fields';
 import type { CarrierContent, FieldRow } from './fields';
+import FieldValueInput from './FieldValueInput';
+import { toneClasses } from '../../lib/status';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
 
-// Sections the carrier fills — everything except the agency-internal one.
-const PUBLIC_ROW_SECTIONS = SECTIONS.filter(
-  (s) => s.kind === 'rows' && s.key !== 'recruiter_only',
-);
+// Sections the carrier fills.  PUBLIC_SECTIONS is the SSOT for "not
+// internal" (fields.ts), mirroring the backend's _INTAKE_ROW_SECTIONS —
+// so adding an internal section can never accidentally expose it here.
+const PUBLIC_ROW_SECTIONS = PUBLIC_SECTIONS.filter((s) => s.kind === 'rows');
 
 interface IntakePayload {
   carrier: {
     name: string; website: string; video_url: string;
     experience_summary: string; content: CarrierContent;
   };
+  /** Resolved sender name (per-link override → account public name).
+   *  Legitimately '' when the sender chose to stay unnamed — every use
+   *  below has a neutral fallback.  Never the tenant's registered name. */
   agency: string;
   expires_at: string | null;
+  /** Set once the carrier has sent the sheet at least one time, so a
+   *  return visit can acknowledge their earlier work instead of looking
+   *  like a fresh first visit. */
+  submitted_at?: string | null;
 }
 
 interface Draft {
@@ -62,60 +71,102 @@ export default function PublicCarrierIntake() {
   const token = window.location.pathname.split('/').filter(Boolean)[1] || '';
   const storageKey = `carrier-intake-${token}`;
 
-  const [state, setState] = useState<'loading' | 'invalid' | 'ready' | 'done'>('loading');
+  // 'invalid' means the LINK is genuinely dead. 'unreachable' means we
+  // could not ask — a phone losing signal, captive wifi, a 500, a 429.
+  // These were one state, so a subway tunnel told the carrier their link
+  // had expired and to go ask for a new one.
+  const [state, setState] = useState<
+    'loading' | 'invalid' | 'unreachable' | 'ready' | 'done'
+  >('loading');
   const [carrierName, setCarrierName] = useState('');
   const [agency, setAgency] = useState('');
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
+  const [alreadySubmitted, setAlreadySubmitted] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Goal-gradient counter: filled vs total fields, live.  Thanks to the
-  // server prefill this usually starts above zero — the form reads as
-  // "already under way", not a blank mountain.  Purely informational:
-  // every field stays optional and submit is never blocked by it.
+  // Per-section progress, plus an overall count.  Scoped per section on
+  // purpose: one bar over ~74 fields reads "0 of 74" on an empty sheet and
+  // barely moves for the first ten minutes, which is the exact discouraging
+  // shape a goal gradient is supposed to avoid.  A section of 13 visibly
+  // completes.
   const progress = useMemo(() => {
-    if (!draft) return { filled: 0, total: 0 };
-    let filled = 0;
-    let total = 4; // website, video, experience summary, submission process
-    for (const v of [draft.website, draft.video_url, draft.experience_summary, draft.application_process]) {
-      if (v.trim()) filled++;
-    }
+    const basics = [draft?.website, draft?.video_url, draft?.experience_summary]
+      .filter((v) => (v ?? '').trim()).length;
+    const per: Record<string, { filled: number; total: number }> = {
+      basics: { filled: basics, total: 3 },
+      application_process: {
+        filled: (draft?.application_process ?? '').trim() ? 1 : 0, total: 1,
+      },
+    };
     for (const s of PUBLIC_ROW_SECTIONS) {
-      for (const r of draft.rows[s.key]) {
-        total++;
-        if (r.value.trim() && r.label.trim()) filled++;
-      }
+      const rows = draft?.rows[s.key] ?? [];
+      per[s.key] = {
+        filled: rows.filter((r) => r.value.trim() && r.label.trim()).length,
+        total: rows.length,
+      };
     }
-    return { filled, total };
+    const filled = Object.values(per).reduce((n, x) => n + x.filled, 0);
+    const total = Object.values(per).reduce((n, x) => n + x.total, 0);
+    return { per, filled, total };
   }, [draft]);
 
   useEffect(() => {
     (async () => {
       if (!token) { setState('invalid'); return; }
+      setState('loading');
       try {
         const r = await fetch(`${API_BASE}/carrier-directory/intake?token=${encodeURIComponent(token)}`);
-        if (!r.ok) { setState('invalid'); return; }
+        // Only a 404 means the link itself is gone. Anything else is our
+        // problem, not theirs, and must not send them away.
+        if (r.status === 404) { setState('invalid'); return; }
+        if (!r.ok) { setState('unreachable'); return; }
         const data = (await r.json()) as IntakePayload;
         setCarrierName(data.carrier.name);
         setAgency(data.agency);
         setExpiresAt(data.expires_at);
+        setAlreadySubmitted(Boolean(data.submitted_at));
         // A locally saved draft (tab closed mid-fill) wins over the server
         // copy — it is strictly newer.
+        //
+        // Rows are re-matched BY LABEL through mergeRows, never spread in
+        // positionally. A cached draft is a snapshot of whatever template
+        // shipped when it was written; splicing its array over today's
+        // template lines up index N of the old order against index N of
+        // the new one, so a reorder or rename silently re-files answers
+        // under the wrong field — and the carrier submits it without ever
+        // seeing an error. Treating the cache exactly like server-stored
+        // content is what makes the template safe to evolve.
         let d = buildDraft(data.carrier);
         try {
           const saved = localStorage.getItem(storageKey);
-          if (saved) d = { ...d, ...(JSON.parse(saved) as Draft) };
+          if (saved) {
+            const cached = JSON.parse(saved) as Partial<Draft>;
+            d = {
+              website: cached.website ?? d.website,
+              video_url: cached.video_url ?? d.video_url,
+              experience_summary: cached.experience_summary ?? d.experience_summary,
+              application_process: cached.application_process ?? d.application_process,
+              rows: Object.fromEntries(PUBLIC_ROW_SECTIONS.map((s) => [
+                s.key,
+                cached.rows?.[s.key]
+                  ? mergeRows(s.fields, cached.rows[s.key])
+                  : d.rows[s.key],
+              ])),
+            };
+          }
         } catch { /* corrupt local draft — start from server */ }
         setDraft(d);
         setState('ready');
       } catch {
-        setState('invalid');
+        setState('unreachable');
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, [token, reloadKey]);
 
   // Debounced local autosave on every edit.
   const persist = useCallback((d: Draft) => {
@@ -190,9 +241,29 @@ export default function PublicCarrierIntake() {
           <Building2 size={24} className="mx-auto text-muted-foreground" />
           <h1 className="mt-4 text-lg font-semibold text-foreground">This link isn't available</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            The invite link may have expired or been replaced. Please ask your
-            recruiting contact to send you a fresh one.
+            The invite link may have expired or been replaced. Reply to the
+            email that brought you here and the recruiter who sent it will
+            get a fresh one to you.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Our fault, not theirs — never tell someone their link is dead because
+  // a request failed.  Retry in place; their local draft is untouched.
+  if (state === 'unreachable') {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <div className="max-w-md rounded-lg border border-border bg-card p-8 text-center shadow-sm">
+          <Building2 size={24} className="mx-auto text-muted-foreground" />
+          <h1 className="mt-4 text-lg font-semibold text-foreground">Couldn't load the form</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your link is fine — we just couldn't reach the server. Check your
+            connection and try again. Anything you typed earlier is still
+            saved on this device.
+          </p>
+          <Button className="mt-4" onClick={() => setReloadKey((k) => k + 1)}>Try again</Button>
         </div>
       </div>
     );
@@ -219,14 +290,39 @@ export default function PublicCarrierIntake() {
     <div className="mx-auto max-w-3xl px-4 py-10">
       {/* Header */}
       <div className="mb-8">
-        <p className={capsLabel}>{agency || 'Carrier profile'}</p>
+        {/* Always the document type, so this slot means one thing whether
+            or not the sender chose to name themselves. */}
+        <p className={capsLabel}>Carrier profile</p>
         <h1 className="mt-1 text-2xl font-bold text-foreground">{carrierName}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          {agency ? `${agency} recruits drivers for your company.` : 'Your recruiting partner'}{' '}
+          {/* The sender may deliberately stay unnamed.  It still has to
+              say WHY this landed in front of them — an unattributed
+              request for pay data reads as phishing otherwise, and the
+              invite email already carries this same sentence. */}
+          {agency
+            ? `${agency} recruits drivers for your company. `
+            : 'A recruiting partner is presenting your company to driver candidates. '}
           Please fill in your hiring requirements, pay and benefits below so
           recruiters present your company accurately to driver candidates. Any
-          field can be left blank; your answers save on this device as you type.
+          field can be left blank.
         </p>
+        {alreadySubmitted && (
+          <p className={`mt-3 rounded-md border px-3 py-2 text-sm ${toneClasses('ok')}`}>
+            You already sent this sheet. Your answers are below — change
+            anything you like and send it again; the newest version replaces
+            the last one.
+          </p>
+        )}
+        {/* What we can actually promise.  The token is bearer auth with no
+            recipient identity, so "private to your company" was a guarantee
+            we had no way to keep — a forwarded link works for whoever gets
+            it, and the last submit silently wins. */}
+        <ul className="mt-3 flex flex-col gap-1 text-xs text-muted-foreground">
+          <li>· Your answers go only to the recruiting team that sent you this link. They are not published.</li>
+          <li>· Anyone who opens this link can see and change these answers, and the newest submission replaces the previous one — forward it only inside your company.</li>
+          <li>· Your typing is saved on this device as you go, so closing the tab loses nothing. It is not saved on your other devices.</li>
+          <li>· Questions? Reply to the email that brought you here and it reaches the recruiter who sent it.</li>
+        </ul>
       </div>
 
       {/* Basics */}
@@ -256,34 +352,58 @@ export default function PublicCarrierIntake() {
 
       {/* Label→value sheets */}
       {PUBLIC_ROW_SECTIONS.map((s) => {
-        const tplLen = (s.fields ?? []).length;
+        const tpl = s.fields ?? [];
+        const tplLen = tpl.length;
+        const p = progress.per[s.key] ?? { filled: 0, total: 0 };
         return (
           <div key={s.key} className="mb-8 flex flex-col gap-2">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-lg font-semibold text-foreground">{s.title}</p>
-              <Button size="xs" variant="ghost" onClick={() => addRow(s.key)}>
-                <Plus size={14} /> Add field
-              </Button>
+              <div className="flex items-center gap-2">
+                {/* Per-section, so finishing 13 pay fields is a visible win
+                    rather than 13/74 of an unmoving bar. */}
+                <span className="text-xs text-muted-foreground">{p.filled} of {p.total}</span>
+                <Button size="xs" variant="ghost" onClick={() => addRow(s.key)}>
+                  <Plus size={14} /> Add field
+                </Button>
+              </div>
             </div>
+            {s.blurb && <p className="text-xs text-muted-foreground">{s.blurb}</p>}
             <div className="flex flex-col gap-2">
-              {draft.rows[s.key].map((r, i) => (
-                <div key={i} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,14rem)_1fr_auto]">
-                  {i < tplLen ? (
-                    <span className="flex items-center text-sm text-foreground">{r.label}</span>
-                  ) : (
-                    <Input value={r.label} placeholder="Field name"
-                      onChange={(e) => setRow(s.key, i, { label: e.target.value })} />
-                  )}
-                  <Input value={r.value} placeholder="—"
-                    onChange={(e) => setRow(s.key, i, { value: e.target.value })} />
-                  {i >= tplLen ? (
-                    <button type="button" onClick={() => removeRow(s.key, i)}
-                      className="inline-flex items-center justify-center text-muted-foreground hover:text-danger">
-                      <X size={16} />
-                    </button>
-                  ) : <span />}
-                </div>
-              ))}
+              {draft.rows[s.key].map((r, i) => {
+                const def = i < tplLen ? tpl[i] : undefined;
+                const newGroup = def?.group && def.group !== tpl[i - 1]?.group;
+                return (
+                  <div key={i} className="flex flex-col gap-2">
+                    {newGroup && (
+                      <p className="mt-3 text-xs font-medium uppercase tracking-wide text-muted-foreground">{def!.group}</p>
+                    )}
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,14rem)_1fr_auto]">
+                      {def ? (
+                        <span className="flex flex-col justify-center text-sm text-foreground">
+                          {def.label}
+                          {def.hint && <span className="text-xs text-muted-foreground">{def.hint}</span>}
+                        </span>
+                      ) : (
+                        <Input value={r.label} placeholder="Field name" aria-label="Custom field name"
+                          onChange={(e) => setRow(s.key, i, { label: e.target.value })} />
+                      )}
+                      {/* The label is a sibling span, not a wrapping <label>,
+                          so the control carries its own accessible name. */}
+                      <FieldValueInput def={def} value={r.value}
+                        ariaLabel={def?.label ?? r.label ?? 'Value'}
+                        onChange={(v) => setRow(s.key, i, { value: v })} />
+                      {!def ? (
+                        <button type="button" onClick={() => removeRow(s.key, i)}
+                          aria-label={`Remove ${r.label || 'field'}`}
+                          className="inline-flex items-center justify-center text-muted-foreground hover:text-danger">
+                          <X size={16} />
+                        </button>
+                      ) : <span />}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         );
@@ -291,7 +411,6 @@ export default function PublicCarrierIntake() {
 
       {/* Submit */}
       <div className="flex flex-col gap-3 border-t border-border pt-6">
-        {/* Live fill progress — starts above zero when the sheet came prefilled. */}
         <div className="flex items-center gap-3">
           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
             <div
@@ -300,13 +419,27 @@ export default function PublicCarrierIntake() {
             />
           </div>
           <span className="whitespace-nowrap text-xs text-muted-foreground">
-            {progress.filled} of {progress.total} fields filled
+            {progress.filled} of {progress.total} filled
           </span>
         </div>
         <div className="flex flex-col items-end gap-2">
-          {submitErr && <p className="text-sm text-danger">{submitErr}</p>}
+          {submitErr && (
+            <div className="w-full text-right">
+              <p className="text-sm text-danger">{submitErr}</p>
+              {/* The single fact that stops the panic after 15 minutes of
+                  typing: nothing was lost. */}
+              <p className="text-xs text-muted-foreground">
+                Nothing you typed was lost — it is saved on this device. Try
+                sending again, or reopen this link later.
+              </p>
+            </div>
+          )}
           <Button onClick={submit} disabled={submitting}>
-            {submitting ? 'Sending…' : `Send to ${agency || 'the recruiting team'}`}
+            {submitting
+              ? 'Sending…'
+              : alreadySubmitted
+                ? `Send updated sheet to ${agency || 'the recruiting team'}`
+                : `Send to ${agency || 'the recruiting team'}`}
           </Button>
           <p className="text-xs text-muted-foreground">
             {expiresAt

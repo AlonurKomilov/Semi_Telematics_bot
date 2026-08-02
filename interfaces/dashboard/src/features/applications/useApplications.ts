@@ -26,12 +26,22 @@ export interface AppRow {
   duplicate?: boolean;
 }
 
-/** Full application set, one fetch per session (the table filters
- *  client-side and the board groups by status — both need it all). */
+/** The newest APP_PAGE_LIMIT applications, one fetch per session (the
+ *  table filters client-side and the board groups by status — both need
+ *  the set in hand).
+ *
+ *  `total` is the REAL row count from the server. Past the limit the
+ *  loaded slice is not the pipeline, and every count derived from it —
+ *  hero chips, segment badges, board columns — is a count of the slice.
+ *  Callers must disclose that rather than present it as the whole. */
+export const APP_PAGE_LIMIT = 500;
+
 export function useApplicationsQuery() {
   return useQuery({
     queryKey: ['applications'],
-    queryFn: () => apiJSON<{ items: AppRow[] }>('/applications?limit=500'),
+    queryFn: () => apiJSON<{ items: AppRow[]; total?: number }>(
+      `/applications?limit=${APP_PAGE_LIMIT}`,
+    ),
     placeholderData: (prev) => prev,
   });
 }

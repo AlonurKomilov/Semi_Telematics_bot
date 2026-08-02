@@ -87,6 +87,11 @@ async def create_tables(conn) -> None:
             tier                 TEXT    NOT NULL DEFAULT 'free',
             is_active            INTEGER NOT NULL DEFAULT 1,
             timezone             TEXT    NOT NULL DEFAULT 'America/New_York',
+            -- Outward-facing name for surfaces an unauthenticated outsider
+            -- reads (today: the carrier self-fill page + its invite email).
+            -- '' = not set, which means show neutral wording — the tenant's
+            -- registered ``name`` is never the fallback there.
+            public_display_name  TEXT    NOT NULL DEFAULT '',
             suspended_at         TEXT,
             suspended_reason     TEXT,
             suspended_by         BIGINT,
@@ -148,6 +153,17 @@ async def create_tables(conn) -> None:
             intake_invited_by   INTEGER NOT NULL DEFAULT 0,
             intake_submitted_at TEXT    NOT NULL DEFAULT '',
             intake_review_pending INTEGER NOT NULL DEFAULT 0,
+            -- Per-link override of the sender name the carrier sees; ''
+            -- falls back to accounts.public_display_name, then to neutral
+            -- wording.  Belongs to the link: revoking clears it.
+            intake_display_name TEXT    NOT NULL DEFAULT '',
+            -- Stamped only on a CONFIRMED relay hand-off, unlike
+            -- intake_email which merely records what a manager typed.
+            intake_email_sent_at TEXT   NOT NULL DEFAULT '',
+            -- One reminder to the carrier, one pre-expiry warning to the
+            -- managers, per link — these make the nightly sweep idempotent.
+            intake_reminded_at  TEXT    NOT NULL DEFAULT '',
+            intake_expiry_warned_at TEXT NOT NULL DEFAULT '',
             created_at          TEXT    NOT NULL,
             updated_at          TEXT    NOT NULL DEFAULT ''
         );
@@ -482,6 +498,9 @@ async def create_tables(conn) -> None:
             view_count  INTEGER NOT NULL DEFAULT 0,
             company_id  INTEGER REFERENCES companies(id),
             remind_every_hours INTEGER NOT NULL DEFAULT 0,
+            -- Stamped once when the managers are warned this link is about
+            -- to lapse, so a scheduler retry can't re-send.
+            expiry_warned_at TEXT NOT NULL DEFAULT '',
             remind_max         INTEGER NOT NULL DEFAULT 3,
             created_at  TEXT    NOT NULL
         );

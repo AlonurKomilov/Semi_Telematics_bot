@@ -25,12 +25,19 @@ export default function ApplicationsHero() {
     );
   }
   const counts = countAppsByStatus(data.items);
+  // The query loads the newest APP_PAGE_LIMIT rows, so past that these are
+  // counts of the LOADED SLICE, not of the pipeline. Say so in the chip
+  // titles rather than let a partial number read as the whole truth.
+  const partial = (data.total ?? 0) > data.items.length;
+  const note = partial
+    ? ` (newest ${data.items.length} of ${data.total} applications)`
+    : '';
   return (
     <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden scrollbar-thin">
-      <HeroChip label="Submitted" value={counts.submitted ?? 0} tone="info" title="New applications awaiting first review" />
-      <HeroChip label="Screening" value={counts.screening ?? 0} tone="neutral" />
-      <HeroChip label="Interview" value={counts.interview ?? 0} tone="warning" title="Scheduled or in interview stage" />
-      <HeroChip label="Approved" value={counts.approved ?? 0} tone="positive" title="Cleared vetting — ready to hire" />
+      <HeroChip label="Submitted" value={counts.submitted ?? 0} tone="info" title={`New applications awaiting first review${note}`} />
+      <HeroChip label="Screening" value={counts.screening ?? 0} tone="neutral" title={note ? `Screening${note}` : undefined} />
+      <HeroChip label="Interview" value={counts.interview ?? 0} tone="warning" title={`Scheduled or in interview stage${note}`} />
+      <HeroChip label="Approved" value={counts.approved ?? 0} tone="positive" title={`Cleared vetting — ready to hire${note}`} />
     </div>
   );
 }

@@ -1,14 +1,14 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { ReactNode } from 'react';
-import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Building2, Pencil, Trash2, Clock3 } from 'lucide-react';
+import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Building2, Pencil, Trash2, Clock3, Minus, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader } from '../../components/shell';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
-import { statusClasses, toneClasses } from '../../lib/status';
+import { statusClasses, toneClasses, toneText } from '../../lib/status';
 import { APEX_DOMAIN } from '../../lib/safeReturnTo';
 import { formatDate } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
@@ -112,7 +112,11 @@ function LinkCompanyLogo({ id, hasLogo, version = 0, size = 48 }: {
 // the Preview (see ApplyPreview / PreviewThemeBar), so it never drifts from
 // what an applicant sees; this panel owns the form's DATA (contact / pitch /
 // pre-qual requirements / FCRA agency).
-function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onChanged: () => void }) {
+function CompanyBrandPanel({ company, onChanged, onDirtyChange }: {
+  company: PickerCompany; onChanged: () => void;
+  /** Lets a parent that can UNMOUNT this panel refuse to do so silently. */
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
   const [website, setWebsite] = useState(company.website || '');
   const [phone, setPhone] = useState(company.phone || '');
   const [headline, setHeadline] = useState(company.headline || '');
@@ -125,6 +129,10 @@ function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onC
   const [legal, setLegal] = useState<Record<string, string>>(legalOf(company));
   const setL = (k: string, v: string) => setLegal((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = useState(false);
+  // This panel writes the CARRIER record, not the link — every link pointing
+  // at this carrier changes with it. It renders inline under one link's
+  // form, so without a dirty flag a link-save (which unmounts this panel)
+  // silently discarded whatever was typed here and still said "Saved".
   useEffect(() => {
     setWebsite(company.website || ''); setPhone(company.phone || '');
     setHeadline(company.headline || ''); setPerks(company.perks || '');
@@ -138,6 +146,11 @@ function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onC
     || phone !== (company.phone || '') || headline !== (company.headline || '') || perks !== (company.perks || '')
     || reqYears !== (company.req_experience_years ?? 1) || reqAge !== (company.req_min_age ?? 21)
     || reqClass !== (company.req_cdl_class || 'A') || legalDirty;
+
+  // Report upward so a parent that can unmount this panel (LinkEditPanel's
+  // Save) can refuse to discard the work silently.
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   const saveBrand = async () => {
     setBusy(true);
@@ -156,6 +169,15 @@ function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onC
 
   return (
     <div className="mt-3 rounded-md border border-border bg-background/40 p-4">
+      {/* State the scope where the editing happens. This panel is rendered
+          inside ONE link's form, but it writes the carrier record — so the
+          edits apply to every link pointing at this carrier, including ones
+          already out in the world. */}
+      <p className={`mb-3 rounded-md border px-2 py-1.5 text-2xs ${toneClasses('info')}`}>
+        These are <b>{company.display_name || company.code}</b>&rsquo;s own details, shared by
+        every link for this carrier — not settings for this one link.
+        {dirty && <b> You have unsaved carrier changes.</b>}
+      </p>
       <div className="flex items-start gap-4">
         <LinkCompanyLogo id={company.id} hasLogo={company.has_logo} />
         <div className="min-w-0 flex-1">
@@ -232,7 +254,9 @@ function CompanyBrandPanel({ company, onChanged }: { company: PickerCompany; onC
           className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline">
           <ExternalLink size={12} /> Preview application
         </a>
-        <Button size="sm" onClick={saveBrand} disabled={busy || !dirty}>{busy ? '…' : 'Save'}</Button>
+        <Button size="sm" onClick={saveBrand} disabled={busy || !dirty}>
+          {busy ? '…' : 'Save carrier profile'}
+        </Button>
       </div>
     </div>
   );
@@ -279,6 +303,10 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
   const [remindHours, setRemindHours] = useState(link.remind_every_hours ?? 0);
   const [remindMax, setRemindMax] = useState(link.remind_max ?? 3);
   const [busy, setBusy] = useState(false);
+  // Saving the LINK unmounts the nested CompanyBrandPanel, which silently
+  // threw away anything typed there and still reported success. The panel
+  // reports its dirty state up so we can stop instead.
+  const [brandUnsaved, setBrandUnsaved] = useState(false);
   const sel = companyId ? companies.find((c) => String(c.id) === companyId) : null;
   // Item lists for the themed Selects — ``items`` lets SelectValue
   // render the label (carrier name) instead of the raw value (id).
@@ -291,6 +319,11 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
     ...EXPIRY_OPTIONS.map((o) => ({ value: String(o.days), label: `Reset · ${o.label}` })),
   ];
   const save = async () => {
+    if (brandUnsaved && !confirm(
+      'You have unsaved carrier details in the panel below.\n\n'
+      + "Saving the link now closes that panel and those changes are lost. "
+      + 'Save the carrier details first, or continue and discard them?',
+    )) return;
     setBusy(true);
     try {
       const body: Record<string, unknown> = {
@@ -328,8 +361,15 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
             {editExpiryItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Button size="sm" onClick={save} disabled={busy}>{busy ? '…' : 'Save'}</Button>
-        <button type="button" onClick={onCancel} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
+        {/* Named scope: this panel and the carrier panel nested inside it
+            both had a bare "Save", and they write different objects. */}
+        <Button size="sm" onClick={save} disabled={busy}>{busy ? '…' : 'Save link'}</Button>
+        <button type="button" onClick={() => {
+          if (brandUnsaved && !confirm(
+            'Discard the unsaved carrier details in the panel below?',
+          )) return;
+          onCancel();
+        }} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
       </div>
       {/* Auto-remind: nudge applicants who started but didn't submit.  Off by
           default; the cadence + lifetime cap are this link's policy. */}
@@ -356,7 +396,8 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
         )}
       </div>
       {/* Same carrier brand + requirements + preview the create flow shows. */}
-      {sel && <CompanyBrandPanel company={sel} onChanged={onCompaniesChanged} />}
+      {sel && <CompanyBrandPanel company={sel} onChanged={onCompaniesChanged}
+        onDirtyChange={setBrandUnsaved} />}
     </div>
   );
 }
@@ -365,12 +406,30 @@ export default function Applications() {
   const qc = useQueryClient();
   const [links, setLinks] = useState<ApplicationLink[]>([]);
   const [view, setView] = useState<'table' | 'board'>('table');
+  // The board used to render all seven columns of ALL rows regardless of
+  // the table's tab, so switching Table→Board made Withdrawn records
+  // reappear — the same dataset shown as two different populations.
+  const [segment, setSegment] = useState('active');
+  const segmentMatch = useMemo(
+    () => APP_SEGMENTS.find((sg) => sg.key === segment)?.match,
+    [segment],
+  );
   // (Bulk selection lives inside DataGrid now — no page-level set.)
   const [openId, setOpenId] = useState<number | null>(null);
   // Shared react-query entry (also feeds the topbar ApplicationsHero,
   // so any mutation here re-renders the hero counts in the same tick).
   const { data: appsData, isLoading: loading, error: appsError } = useApplicationsQuery();
   const rows = useMemo(() => appsData?.items ?? [], [appsData]);
+  // Past the page limit every count on this page — hero chips, segment
+  // badges, board columns — counts the LOADED slice, not the pipeline.
+  // Say so rather than let "Submitted 12" read as the whole truth.
+  const truncated = (appsData?.total ?? 0) > rows.length;
+  const boardRows = useMemo(
+    () => (segmentMatch
+      ? rows.filter((r) => segmentMatch(r as unknown as Record<string, unknown>))
+      : rows),
+    [rows, segmentMatch],
+  );
   const err = appsError instanceof Error ? appsError.message : '';
   const tz = useTimezone();
   // Link create form
@@ -411,38 +470,80 @@ export default function Applications() {
   // confirm; this just POSTs the ids.  The server enforces the per-app
   // rules (illegal jumps, the vetting gate, hired-only-via-Hire) and
   // tells us what it skipped.
-  const bulkMove = (status: string, label: string) =>
+  // `done` is the real past tense — appending 'd' to a UI label produced
+  // "6 applications rejectd" / "2 applications move to screeningd".
+  const bulkMove = useCallback((status: string, done: string) =>
     async (bulkRows: Record<string, unknown>[]) => {
       const ids = bulkRows.map(r => (r as unknown as AppRow).id);
       if (ids.length === 0) return;
       try {
         const r = await apiJSON<{ updated: number[]; skipped: { id: number; reason: string }[] }>(
           '/applications/bulk-status', { method: 'POST', body: { ids, status } });
-        const skipped = r.skipped?.length ?? 0;
-        if (skipped) toast.warning(`${r.updated.length} updated · ${skipped} skipped (${r.skipped[0].reason})`);
-        else toast.success(`${r.updated.length} application${r.updated.length > 1 ? 's' : ''} ${label.toLowerCase()}d`);
+        const n = r.updated.length;
+        const skipped = r.skipped ?? [];
+        const noun = (k: number) => `${k} application${k === 1 ? '' : 's'}`;
+        if (skipped.length) {
+          // Printing skipped[0].reason as if it covered every skip hid the
+          // fact that rows are skipped for DIFFERENT reasons (illegal
+          // transition vs the vetting gate). List each distinct one.
+          const why = [...new Set(skipped.map((x) => x.reason))].join('; ');
+          toast.warning(`${noun(n)} ${done} · ${skipped.length} skipped — ${why}`);
+        } else {
+          toast.success(`${noun(n)} ${done}`);
+        }
         loadApps();
       } catch (e) {
         toast.error(e instanceof Error ? e.message : 'Bulk action failed');
       }
+    }, [loadApps]);
+
+  // Order matters: the constructive move leads so the eye doesn't land on
+  // the red one first. Confirms name the count and the irreversibility —
+  // NOT a notification, because a status change emails nobody.
+  // Only verbs the CURRENT tab's rows can actually take. Reject and
+  // Withdraw used to be offered on the Closed tab — i.e. on applications
+  // that were already rejected or withdrawn — so the bulk bar advertised
+  // work the server would refuse row by row.
+  const bulkActions: BulkAction[] = useMemo(() => {
+    const reopen: BulkAction = {
+      label: segment === 'closed' ? 'Reopen to screening' : 'Move to screening',
+      icon: ShieldCheck,
+      confirm: (n) => `Move ${n} application${n > 1 ? 's' : ''} to screening?`,
+      onRun: bulkMove('screening', 'moved to screening'),
     };
+    const reject: BulkAction = {
+      label: 'Reject', icon: Ban, tone: 'danger',
+      confirm: (n) => `Reject ${n} application${n > 1 ? 's' : ''}?\n\n`
+        + 'Applicants are not emailed about status changes. Rejected '
+        + 'applications stay on file and can be moved back to screening.',
+      onRun: bulkMove('rejected', 'rejected'),
+    };
+    const withdraw: BulkAction = {
+      label: 'Withdraw', icon: X,
+      confirm: (n) => `Withdraw ${n} application${n > 1 ? 's' : ''}?\n\n`
+        + 'Applicants are not emailed about status changes.',
+      onRun: bulkMove('withdrawn', 'withdrawn'),
+    };
+    // 'hired' is terminal — ALLOWED_MOVES.hired is empty, so nothing here
+    // would succeed and the bar stays out of the way.
+    if (segment === 'hired') return [];
+    if (segment === 'closed') return [reopen];
+    return [reopen, reject, withdraw];
+  }, [segment, bulkMove]);
 
-  const bulkActions: BulkAction[] = [
-    { label: 'Move to screening', icon: ShieldCheck,
-      confirm: (n) => `Move to screening ${n} application${n > 1 ? 's' : ''}?`,
-      onRun: bulkMove('screening', 'Move to screening') },
-    { label: 'Reject', icon: Ban, tone: 'danger',
-      confirm: (n) => `Reject ${n} application${n > 1 ? 's' : ''}?`,
-      onRun: bulkMove('rejected', 'Reject') },
-    { label: 'Withdraw', icon: X,
-      confirm: (n) => `Withdraw ${n} application${n > 1 ? 's' : ''}?`,
-      onRun: bulkMove('withdrawn', 'Withdraw') },
-  ];
-
+  // A failed fetch must never render as "No links yet" — a recruiter who
+  // reads that mints a duplicate link because the real one is invisible.
+  // Loading / error+retry / empty are three distinct renders.
+  const [linksError, setLinksError] = useState<string | null>(null);
+  const [linksLoaded, setLinksLoaded] = useState(false);
   const loadLinks = useCallback(() => {
-    apiJSON<{ items: ApplicationLink[] }>('/applications/links')
-      .then((r) => setLinks(r.items))
-      .catch(() => { /* non-fatal */ });
+    setLinksError(null);
+    return apiJSON<{ items: ApplicationLink[] }>('/applications/links')
+      .then((r) => { setLinks(r.items); setLinksLoaded(true); })
+      .catch((e) => {
+        setLinksError(e instanceof Error ? e.message : 'Could not load application links');
+        setLinksLoaded(true);
+      });
   }, []);
 
   useEffect(() => { loadLinks(); }, [loadLinks]);
@@ -454,7 +555,14 @@ export default function Applications() {
   }, []);
   useEffect(() => { loadCompanies(); }, [loadCompanies]);
 
+  // A link with no label becomes "(no label)" in a list of "(no label)"s
+  // and its provenance is unrecoverable. Cheap to require, impossible to
+  // reconstruct later.
   const createLink = async () => {
+    if (!label.trim()) {
+      toast.error('Give the link a label — it\u2019s how you tell your links apart later.');
+      return;
+    }
     // A branded link whose carrier is missing the §391.23 contact details
     // would generate an incomplete consent document — warn before creating.
     if (companyId) {
@@ -464,12 +572,26 @@ export default function Applications() {
     }
     setCreating(true);
     try {
-      await apiJSON('/applications/links', {
+      const created = await apiJSON<{ token?: string }>('/applications/links', {
         method: 'POST',
         body: { label, source, expires_in_days: expiryDays || null, company_id: companyId ? Number(companyId) : null },
       });
+      // Copy on create: the recruiter's very next act is to paste this
+      // somewhere. Previously the handler just cleared three inputs and
+      // said nothing at all, success or failure.
+      let copiedOk = false;
+      if (created?.token) {
+        try { await navigator.clipboard.writeText(`${APPLY_BASE}/${created.token}`); copiedOk = true; }
+        catch { /* clipboard blocked — the row's Copy button is the fallback */ }
+      }
+      toast.success(copiedOk ? 'Link created and copied' : 'Link created');
       setLabel(''); setSource(''); setCompanyId('');
-      loadLinks();
+      await loadLinks();
+    } catch (e) {
+      // Was a bare try/finally: a 422 "Unknown company", a 403 or a dropped
+      // connection left the inputs full, the list stale and nothing said —
+      // the recruiter concluded it had worked.
+      toast.error(e instanceof Error ? e.message : 'Could not create the link');
     } finally {
       setCreating(false);
     }
@@ -478,15 +600,39 @@ export default function Applications() {
   const [editingLink, setEditingLink] = useState<number | null>(null);
 
   const revokeLink = async (id: number) => {
-    if (!confirm('Revoke this link? Applicants can no longer use it.')) return;
-    await apiJSON(`/applications/links/${id}/revoke`, { method: 'POST' });
-    loadLinks();
+    const l = links.find((x) => x.id === id);
+    // Name every consequence, not the smallest one. Revoke is irreversible
+    // in the product (there is no un-revoke route) and anyone part-way
+    // through the form loses their work when the URL dies.
+    const name = l?.label ? `"${l.label}"` : 'this link';
+    if (!confirm(
+      `Revoke ${name}?\n\n`
+      + 'The URL stops working immediately, and anyone part-way through the '
+      + 'form will lose what they have entered.\n'
+      + 'Applications already submitted are kept.\n\n'
+      + "This can't be undone — you would have to create a new link.",
+    )) return;
+    try {
+      await apiJSON(`/applications/links/${id}/revoke`, { method: 'POST' });
+      toast.success('Link revoked');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not revoke the link');
+    } finally {
+      // Reconcile either way — a 404 means someone else already changed it.
+      await loadLinks();
+    }
   };
 
   const deleteLink = async (id: number) => {
     if (!confirm('Delete this link permanently? Submitted applications are kept; only the link + its stats are removed.')) return;
-    await apiJSON(`/applications/links/${id}`, { method: 'DELETE' });
-    loadLinks();
+    try {
+      await apiJSON(`/applications/links/${id}`, { method: 'DELETE' });
+      toast.success('Link deleted');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not delete the link');
+    } finally {
+      await loadLinks();
+    }
   };
 
   // Item lists for the create-link Selects (label ≠ value).
@@ -499,10 +645,17 @@ export default function Applications() {
     [],
   );
 
-  const copyLink = (l: ApplicationLink) => {
-    navigator.clipboard?.writeText(`${APPLY_BASE}/${l.token}`);
-    setCopied(l.id);
-    setTimeout(() => setCopied(null), 1500);
+  const copyLink = async (l: ApplicationLink) => {
+    // The ✓ used to fire unconditionally behind optional chaining, so a
+    // blocked clipboard (insecure context, denied permission, rejected
+    // promise) showed success and the recruiter pasted nothing.
+    try {
+      await navigator.clipboard.writeText(`${APPLY_BASE}/${l.token}`);
+      setCopied(l.id);
+      setTimeout(() => setCopied(null), 1500);
+    } catch {
+      toast.error('Couldn\u2019t copy — select the URL and copy it manually');
+    }
   };
 
   return (
@@ -537,7 +690,7 @@ export default function Applications() {
               {createExpiryItems.map((it) => <SelectItem key={it.value} value={it.value}>{it.label}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Button onClick={createLink} disabled={creating} size="sm">
+          <Button onClick={createLink} disabled={creating || !label.trim()} size="sm">
             {creating ? '…' : 'Create link'}
           </Button>
         </div>
@@ -550,7 +703,17 @@ export default function Applications() {
             </div>
           ) : null;
         })()}
-        {links.length === 0 ? (
+        {!linksLoaded ? (
+          <p className="text-sm text-muted-foreground">Loading links…</p>
+        ) : linksError ? (
+          /* An error is not an empty state. Without this branch a 500 or a
+             dropped connection rendered "No links yet", and the recruiter
+             created a second link because the first was invisible. */
+          <div className="flex flex-wrap items-center gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <span>{linksError}</span>
+            <Button size="xs" variant="ghost" onClick={() => loadLinks()}>Try again</Button>
+          </div>
+        ) : links.length === 0 ? (
           <p className="text-sm text-muted-foreground">No links yet. Create one to start collecting applications.</p>
         ) : (
           <ul className="space-y-1.5">
@@ -558,6 +721,9 @@ export default function Applications() {
               const expired = !!l.expires_at
                 && new Date(l.expires_at).getTime() < Date.now();
               const live = l.is_active === 1 && !expired;
+              const daysLeft = l.expires_at
+                ? Math.ceil((new Date(l.expires_at).getTime() - Date.now()) / 864e5) : null;
+              const soon = live && daysLeft !== null && daysLeft <= 7;
               // Right-click the link → the same actions as the inline
               // buttons (which stay as the visible affordance).
               const linkMenu: MenuAction[] = [
@@ -569,9 +735,15 @@ export default function Applications() {
               return (
               <ContextMenu key={l.id} items={linkMenu} render={<li className="text-sm" />}>
                 <div className="flex items-center gap-2">
+                  {/* Revoked (deliberate) and expired (passive lapse) used
+                      to share one amber pill — different causes, different
+                      repairs. Colour encodes urgency only; the date is a
+                      fixed secondary slot that survives expiry, so you can
+                      still see when and how long a link ran. */}
                   <span className={`px-2 py-0.5 rounded text-xs ${
-                    l.is_active !== 1 ? statusClasses('disabled')
-                    : expired ? statusClasses('disabled')
+                    l.is_active !== 1 ? toneClasses('danger')
+                    : expired ? toneClasses('neutral')
+                    : soon ? toneClasses('warn')
                     : statusClasses('active')}`}>
                     {l.is_active !== 1 ? 'revoked' : expired ? 'expired' : 'active'}
                   </span>
@@ -588,15 +760,28 @@ export default function Applications() {
                   </code>
                   <span className="text-2xs text-muted-foreground whitespace-nowrap" title="views · applications · hires">
                     · {l.view_count ?? 0} views · {l.submissions ?? 0} applied · {l.hires ?? 0} hired
-                    {(l.submissions ?? 0) > 0 && (
-                      <span className="ml-1 text-foreground">({Math.round(((l.hires ?? 0) / (l.submissions || 1)) * 100)}%)</span>
+                    {/* A percentage off n=1 reads as a statistic and isn't
+                        one. Under five submissions, say the raw ratio. */}
+                    {(l.submissions ?? 0) >= 5 ? (
+                      <span className="ml-1 text-foreground">
+                        ({Math.round(((l.hires ?? 0) / (l.submissions || 1)) * 100)}% hire rate)
+                      </span>
+                    ) : null}
+                    {expired && (l.view_count ?? 0) > (l.submissions ?? 0) && (
+                      <span className="ml-1">· visits since expiry can&rsquo;t submit</span>
                     )}
                   </span>
-                  {live && l.expires_at && (
-                    <span className="text-2xs text-muted-foreground whitespace-nowrap">
-                      · expires {formatDate(l.expires_at, { timeZone: tz, intl: { hour: undefined, minute: undefined } })}
-                    </span>
-                  )}
+                  {/* The window used to be gated on `live`, so the moment a
+                      link lapsed its date vanished and you could no longer
+                      see when or how long it ran. Always render it. */}
+                  <span className="text-2xs text-muted-foreground whitespace-nowrap">
+                    {!l.expires_at ? '· no expiry'
+                      : expired
+                        ? `· expired ${formatDate(l.expires_at, { timeZone: tz, intl: { hour: undefined, minute: undefined } })}`
+                        : soon
+                          ? `· expires in ${Math.max(daysLeft ?? 0, 0)}d`
+                          : `· expires ${formatDate(l.expires_at, { timeZone: tz, intl: { hour: undefined, minute: undefined } })}`}
+                  </span>
                   <div className="ml-auto flex items-center gap-1">
                     {live && (
                       <button onClick={() => copyLink(l)} title="Copy link"
@@ -663,11 +848,25 @@ export default function Applications() {
         </div>
         {/* Bulk-action bar is rendered by DataGrid from ``bulkActions``. */}
         {err && <div className="p-3 text-sm text-destructive">{err}</div>}
-        {view === 'board' ? (
-          <div className="bg-card border border-border rounded-lg overflow-hidden">
-            <ApplicationsBoard rows={rows} loading={loading} onMove={moveApp} onOpen={setOpenId} />
+        {truncated && (
+          <div className={`mx-3 mb-2 rounded-md border px-3 py-2 text-xs ${toneClasses('warn')}`}>
+            Showing the newest {rows.length} of {appsData?.total} applications —
+            every count and filter on this page covers only those. Use search
+            or a status filter to reach older ones.
           </div>
-        ) : loading ? (
+        )}
+        {/* Both views stay MOUNTED and one is hidden. Conditionally
+            rendering the grid unmounted it on every Table→Board→Table
+            round trip, silently discarding the recruiter's search text,
+            column filters, segment tab, sort and page index — their whole
+            working set, with no warning and no way back. */}
+        {view === 'board' && (
+          <div className="bg-card border border-border rounded-lg overflow-hidden">
+            <ApplicationsBoard rows={boardRows} loading={loading} onMove={moveApp} onOpen={setOpenId} />
+          </div>
+        )}
+        <div className={view === 'table' ? '' : 'hidden'}>
+        {loading ? (
           <div className="bg-card border border-border rounded-lg text-center text-muted-foreground py-8">Loading…</div>
         ) : rows.length === 0 ? (
           <div className="bg-card border border-border rounded-lg text-center text-muted-foreground py-8">
@@ -677,6 +876,8 @@ export default function Applications() {
           <DataGrid
             tableId="applications"
             segments={APP_SEGMENTS}
+            segmentKey={segment}
+            onSegmentChange={(k) => setSegment(k)}
             data={rows as unknown as Record<string, unknown>[]}
             searchKey={['first_name', 'last_name', 'email', 'reference']}
             searchPlaceholder="Search name, email, ref…"
@@ -775,6 +976,7 @@ export default function Applications() {
             bulkRowLabel={(r) => (r as unknown as AppRow).reference}
           />
         )}
+        </div>
       </section>
 
       {openId !== null && (
@@ -790,6 +992,10 @@ export default function Applications() {
 // Deliberately shows ONLY name / masked contact / progress — the draft
 // body is pre-consent PII recruiters must not read.  [Remind] re-emails
 // the applicant their resume link (capped server-side to 1/20h).
+// Matches the resume token's idle window (router.py) — a draft that goes
+// untouched this long can no longer be resumed.
+const DRAFT_IDLE_DAYS = 14;
+
 interface DraftRow {
   id: number; first_name: string; last_name: string; email_masked: string;
   step: number; steps_total: number; link_label: string;
@@ -802,12 +1008,18 @@ function InProgressDrafts() {
   const [loaded, setLoaded] = useState(false);
   const [remindBusy, setRemindBusy] = useState<number | null>(null);
 
+  const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
+    setError(null);
     try {
       const r = await apiJSON<{ items: DraftRow[] }>('/applications/drafts');
       setRows(r.items || []);
-    } catch { /* section is optional — stay hidden on failure */ }
-    finally { setLoaded(true); }
+    } catch (e) {
+      // The whole section used to `return null` on failure — visually
+      // identical to "nobody has an open draft". A recruiter would never
+      // learn that live leads existed.
+      setError(e instanceof Error ? e.message : 'Could not load in-progress drafts');
+    } finally { setLoaded(true); }
   }, []);
   useEffect(() => { load(); }, [load]);
 
@@ -822,7 +1034,15 @@ function InProgressDrafts() {
     } finally { setRemindBusy(null); }
   };
 
-  if (!loaded || rows.length === 0) return null;   // no drafts → no section
+  if (!loaded) return null;
+  if (error) {
+    return (
+      <section className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+        {error} <button type="button" className="underline" onClick={() => load()}>Try again</button>
+      </section>
+    );
+  }
+  if (rows.length === 0) return null;   // genuinely no drafts → no section
 
   const columns: AnyColumn[] = [
     {
@@ -855,12 +1075,36 @@ function InProgressDrafts() {
       sortKey: (row) => (row as unknown as DraftRow).step,
     },
     {
-      key: 'link_label', label: 'Link', filterable: true,
-      render: (v) => <span className="text-muted-foreground">{String(v || '—')}</span>,
+      key: 'link_label', label: 'Apply link', filterable: true,
+      // A bare "—" under a column called "Link" told the reader nothing
+      // about what it would ever contain.
+      render: (v) => (
+        <span className="text-muted-foreground">
+          {String(v || '') || <span className="opacity-70">unlabelled link</span>}
+        </span>
+      ),
     },
     {
       key: 'updated_at', label: 'Last active', sortable: true,
-      render: (v) => <span className="text-muted-foreground">{formatDate(String(v), { timeZone: tz })}</span>,
+      // A draft dies 14 days after the last activity (the resume token's
+      // idle window), so "Remind" has a real deadline behind it. Without
+      // it the nudge carried no urgency and no honest reason.
+      render: (v) => {
+        const last = new Date(String(v)).getTime();
+        const daysLeft = Number.isFinite(last)
+          ? Math.ceil((last + DRAFT_IDLE_DAYS * 864e5 - Date.now()) / 864e5)
+          : null;
+        return (
+          <span className="flex flex-col">
+            <span className="text-muted-foreground">{formatDate(String(v), { timeZone: tz })}</span>
+            {daysLeft !== null && (
+              <span className={`text-2xs ${daysLeft <= 3 ? toneText('warn') : 'text-muted-foreground'}`}>
+                {daysLeft <= 0 ? 'draft expired' : `draft expires in ${daysLeft}d`}
+              </span>
+            )}
+          </span>
+        );
+      },
     },
     {
       key: 'id', label: '',
@@ -896,6 +1140,20 @@ function InProgressDrafts() {
 // Pipeline columns.  'hired' is NOT droppable — hiring goes through the
 // Hire action (it mints the driver invite); dropping a card there would
 // 409.  Dropping into 'approved' still hits the vetting gate server-side.
+// Mirrors service.STATUS_TRANSITIONS. The server is authoritative — this
+// copy exists only so a drag can SHOW which columns will accept the card
+// instead of the recruiter learning by being silently reverted.  A stale
+// copy costs a rejected drop with a real message, never a wrong write.
+const ALLOWED_MOVES: Record<string, string[]> = {
+  submitted: ['screening', 'rejected', 'withdrawn'],
+  screening: ['interview', 'approved', 'rejected', 'withdrawn'],
+  interview: ['approved', 'rejected', 'withdrawn'],
+  approved: ['rejected', 'withdrawn'],
+  rejected: ['screening'],
+  withdrawn: ['screening'],
+  hired: [],
+};
+
 const BOARD_COLUMNS: { key: string; droppable: boolean }[] = [
   { key: 'submitted', droppable: true },
   { key: 'screening', droppable: true },
@@ -911,6 +1169,13 @@ function ApplicationsBoard({ rows, loading, onMove, onOpen }: {
 }) {
   const [dragId, setDragId] = useState<number | null>(null);
   const [overCol, setOverCol] = useState<string | null>(null);
+  const dragging = dragId != null ? rows.find((r) => r.id === dragId) : undefined;
+  // Legal for THIS card, not just "is the column droppable at all".
+  const canDropIn = (key: string) => {
+    if (!dragging) return false;
+    if (key === dragging.status) return false;
+    return (ALLOWED_MOVES[dragging.status] ?? []).includes(key);
+  };
 
   if (loading) return <p className="p-8 text-center text-sm text-muted-foreground">Loading…</p>;
 
@@ -918,16 +1183,32 @@ function ApplicationsBoard({ rows, loading, onMove, onOpen }: {
     <div className="flex gap-3 overflow-x-auto p-3">
       {BOARD_COLUMNS.map(({ key, droppable }) => {
         const items = rows.filter((r) => r.status === key);
-        const isOver = overCol === key && droppable && dragId != null;
+        const ok = droppable && canDropIn(key);
+        const isOver = overCol === key && ok;
+        // While dragging, columns that can't take this card dim out — the
+        // rules used to be knowable only by dropping and being reverted.
+        const barred = dragging != null && !ok && key !== dragging.status;
         return (
           <div key={key}
-            onDragOver={(e) => { if (droppable && dragId != null) { e.preventDefault(); setOverCol(key); } }}
+            onDragOver={(e) => { if (ok) { e.preventDefault(); setOverCol(key); } }}
             onDragLeave={() => setOverCol((c) => (c === key ? null : c))}
-            onDrop={(e) => { e.preventDefault(); setOverCol(null); if (droppable && dragId != null) onMove(dragId, key); setDragId(null); }}
-            className={`flex w-56 shrink-0 flex-col rounded-lg border ${isOver ? 'border-primary bg-primary/5' : 'border-border bg-muted/30'}`}>
+            onDrop={(e) => { e.preventDefault(); setOverCol(null); if (ok && dragId != null) onMove(dragId, key); setDragId(null); }}
+            title={
+              key === 'hired'
+                ? 'Hiring happens through the Hire button in the application — it also mints the driver invite.'
+                : barred ? `Can't move a ${dragging?.status} application straight to ${key}.` : undefined
+            }
+            className={`flex w-56 shrink-0 flex-col rounded-lg border transition-opacity ${
+              isOver ? 'border-primary bg-primary/5' : 'border-border bg-muted/30'
+            } ${barred ? 'opacity-40' : ''}`}>
             <div className="flex items-center justify-between border-b border-border px-3 py-2">
               <span className={`rounded-md px-2 py-0.5 text-xs font-medium capitalize ${statusClasses(key)}`}>{key}</span>
-              <span className="text-2xs text-muted-foreground">{items.length}</span>
+              <span className="text-2xs text-muted-foreground">
+                {key === 'hired' && (
+                  <Lock size={12} className="mr-1 inline text-muted-foreground" aria-label="Locked — use the Hire button" />
+                )}
+                {items.length}
+              </span>
             </div>
             <div className="flex min-h-16 flex-col gap-2 p-2">
               {items.map((r) => (
@@ -1052,7 +1333,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
             {app && (
               <button onClick={downloadPacket} title="Download application packet (PDF)"
                 className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground">
-                <Download size={14} /> Packet
+                <Download size={14} /> Download packet (PDF)
               </button>
             )}
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
@@ -1079,14 +1360,43 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
               </div>
             )}
 
-            {/* Status + actions */}
-            <div className="flex flex-wrap items-center gap-2">
-              {STATUSES.map((s) => (
-                <button key={s} onClick={() => setStatus(s)} disabled={busy}
-                  className={`px-2.5 py-1 rounded-md text-xs capitalize disabled:opacity-50 ${app.status === s ? statusClasses(s) : 'text-muted-foreground border border-border hover:bg-muted'}`}>
-                  {s}
-                </button>
-              ))}
+            {/* Stage setter — not a filter row. All seven used to be
+                equally clickable while the server accepts three to five,
+                so the recruiter learned the state machine by collecting
+                409s. Illegal moves are now disabled WITH the reason. */}
+            <div>
+              <p className="mb-1.5 text-xs text-muted-foreground">
+                Stage — currently <b className="text-foreground capitalize">{app.status}</b>
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                {STATUSES.map((s) => {
+                  const current = app.status === s;
+                  const allowed = current || (ALLOWED_MOVES[app.status] ?? []).includes(s);
+                  const needsChecks = s === 'approved' && allowed && (() => {
+                    const req = VETTING_CHECKS.filter((c) => c.required);
+                    return req.some((c) => !app.vetting?.[c.key]?.done);
+                  })();
+                  return (
+                    <button key={s} onClick={() => setStatus(s)}
+                      disabled={busy || !allowed || current || needsChecks}
+                      title={
+                        current ? 'Current stage'
+                          : !allowed ? `Can't move a ${app.status} application straight to ${s}.`
+                            : needsChecks ? 'Complete the required pre-hire checks first.'
+                              : `Move to ${s}`
+                      }
+                      className={`px-2.5 py-1 rounded-md text-xs capitalize disabled:cursor-not-allowed ${
+                        current
+                          ? `${statusClasses(s)} ring-1 ring-ring`
+                          : allowed && !needsChecks
+                            ? 'border border-border text-foreground hover:bg-muted'
+                            : 'border border-border text-muted-foreground opacity-40'
+                      }`}>
+                      {s}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             {app.status === 'approved' && (
@@ -1102,8 +1412,24 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
             )}
 
             <Section title="Pre-hire checks">
+              {/* Five identical empty circles with no tally made the
+                  remaining work uncountable. Required ones lead, because
+                  they are what actually blocks approval. */}
+              {(() => {
+                const req = VETTING_CHECKS.filter((c) => c.required);
+                const doneReq = req.filter((c) => app.vetting?.[c.key]?.done).length;
+                return (
+                  <p className="mb-1.5 text-xs text-muted-foreground">
+                    <b className={doneReq === req.length ? 'text-ok' : 'text-foreground'}>
+                      {doneReq} of {req.length}
+                    </b>{' '}required checks complete
+                    {doneReq < req.length && ' — approval is blocked until they are'}
+                  </p>
+                );
+              })()}
               <div className="space-y-1.5">
-                {VETTING_CHECKS.map(({ key, label, required }) => {
+                {[...VETTING_CHECKS].sort((a, b) => Number(b.required) - Number(a.required))
+                  .map(({ key, label, required }) => {
                   const done = !!app.vetting?.[key]?.done;
                   return (
                     <button key={key} type="button" onClick={() => toggleCheck(key, !done)}
@@ -1129,7 +1455,8 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
             <Section title="Contact">
               <Row k="Email" v={app.email} /><Row k="Phone" v={app.phone} />
               <Row k="Location" v={[app.city, app.state].filter(Boolean).join(', ')} />
-              <Row k="DOB" v={app.dob} /><Row k="SSN" v={app.ssn} mono />
+              <PiiRow label="DOB" value={app.dob} kind="dob" />
+              <PiiRow label="SSN" value={app.ssn} kind="ssn" />
               {(() => {
                 const em = (app.personal?.emergency ?? {}) as Record<string, string>;
                 const v = [em.name, em.phone, em.relationship].filter(Boolean).join(' · ');
@@ -1168,6 +1495,38 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
   );
 }
 
+
+/** Identity PII behind a deliberate reveal.
+ *
+ *  The drawer opens on a row click, often with someone else at the desk, and
+ *  SSN and date of birth were rendered permanently in clear text with
+ *  nothing acknowledging what they are. Together they are the pair that
+ *  makes identity theft easy, so both mask. One click on the rare occasion
+ *  it is genuinely needed; gone from every shoulder-surf, screen-share and
+ *  screenshot the rest of the time. */
+function PiiRow({ label, value, kind }: {
+  label: string; value?: string; kind: 'ssn' | 'dob';
+}) {
+  const [shown, setShown] = useState(false);
+  if (!value) return <Row k={label} v={value} mono />;
+  const masked = kind === 'ssn'
+    ? `•••-••-${value.replace(/\D/g, '').slice(-4) || '••••'}`
+    // Year alone is useless for impersonation but still answers the only
+    // question a recruiter asks of a DOB: is this person old enough?
+    : `••/••/${(value.match(/\d{4}/) || [''])[0] || '••••'}`;
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="w-28 shrink-0 text-xs text-muted-foreground">{label}</span>
+      <span className="font-mono text-sm text-foreground">{shown ? value : masked}</span>
+      <button type="button" onClick={() => setShown((v) => !v)}
+        aria-label={`${shown ? 'Hide' : 'Reveal'} ${label}`}
+        className="text-xs text-muted-foreground underline hover:text-foreground">
+        {shown ? 'Hide' : 'Reveal'}
+      </button>
+    </div>
+  );
+}
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="border-t border-border pt-3">
@@ -1192,7 +1551,14 @@ function humanize(k: string): string {
 function renderVal(v: unknown): string {
   if (v == null || v === '') return '';
   if (typeof v === 'boolean') return v ? 'Yes' : 'No';
-  if (Array.isArray(v)) return v.length ? v.map((x) => String(x)).join(', ') : '';
+  // An array of OBJECTS (accidents, violations) used to stringify to
+  // "[object Object], [object Object]" in front of a recruiter. Recurse.
+  if (Array.isArray(v)) {
+    return v.length
+      ? v.map((x) => (x && typeof x === 'object' ? renderVal(x) : String(x)))
+         .filter(Boolean).join(' — ')
+      : '';
+  }
   if (typeof v === 'object') {
     return Object.entries(v as Record<string, unknown>)
       .filter(([, x]) => x !== '' && x != null && x !== false)
@@ -1246,6 +1612,7 @@ interface VerifRow {
 function VerificationsPanel({ appId }: { appId: number }) {
   const [rows, setRows] = useState<VerifRow[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [emails, setEmails] = useState<Record<number, string>>({});
   const [busyIdx, setBusyIdx] = useState<number | null>(null);
 
@@ -1263,8 +1630,12 @@ function VerificationsPanel({ appId }: { appId: number }) {
         }
         return next;
       });
-    } catch { /* section stays empty on failure */ }
-    finally { setLoaded(true); }
+    } catch (e) {
+      // Critical: the empty branch prints "No FMCSA-regulated employers in
+      // the last 3 years" — a compliance ALL-CLEAR. A fetch failure must
+      // never be able to render that sentence.
+      setError(e instanceof Error ? e.message : 'Could not load employment verifications');
+    } finally { setLoaded(true); }
   }, [appId]);
   useEffect(() => { load(); }, [load]);
 
@@ -1299,6 +1670,13 @@ function VerificationsPanel({ appId }: { appId: number }) {
   };
 
   if (!loaded) return <p className="text-xs text-muted-foreground">Loading…</p>;
+  if (error) {
+    return (
+      <p className="text-xs text-destructive">
+        {error} — this is NOT a clearance; the §391.23 list could not be loaded.
+      </p>
+    );
+  }
   if (rows.length === 0) {
     return <p className="text-xs text-muted-foreground">No FMCSA-regulated employers in the last 3 years — nothing to investigate.</p>;
   }
@@ -1386,17 +1764,36 @@ function Employment({ jobs }: { jobs: EmploymentRow[] }) {
   );
 }
 
+// Must stay in step with service.REQUIRED_CONSENTS — this list was missing
+// `employment_verification`, the 49 CFR §391.23 prior-employer records
+// release, so the one consent that authorises contacting past employers was
+// the one the reviewer never saw.
 const CONSENT_LABELS: [string, string][] = [
   ['psp', 'FMCSA PSP'], ['mvr', 'Motor Vehicle Record'], ['clearinghouse', 'Drug & Alcohol Clearinghouse'],
-  ['fcra', 'Background check (FCRA)'], ['drug', 'Pre-employment drug screen'], ['truthful', 'Truthful & complete certification'],
+  ['fcra', 'Background check (FCRA)'], ['drug', 'Pre-employment drug screen'],
+  ['employment_verification', 'Prior-employer records release (§391.23)'],
+  ['truthful', 'Truthful & complete certification'],
 ];
 function Consents({ c }: { c: Record<string, unknown> }) {
+  // Every consent here is server-required at submit, so a missing key means
+  // the record predates the field — NOT that the applicant refused. A red X
+  // for "we never asked" is an accusation the data doesn't support.
+  const asked = (k: string) => c != null && Object.prototype.hasOwnProperty.call(c, k);
   return (
     <div className="space-y-1">
       {CONSENT_LABELS.map(([k, label]) => (
         <div key={k} className="flex items-center gap-1.5 text-sm">
-          {c?.[k] ? <Check size={14} className="text-ok shrink-0" /> : <X size={14} className="text-destructive shrink-0" />}
-          <span className={c?.[k] ? 'text-foreground' : 'text-muted-foreground'}>{label}</span>
+          {c?.[k]
+            ? <Check size={14} className="text-ok shrink-0" />
+            : asked(k)
+              ? <X size={14} className="text-destructive shrink-0" />
+              : <Minus size={14} className="text-muted-foreground shrink-0" />}
+          <span className={c?.[k] ? 'text-foreground' : 'text-muted-foreground'}>
+            {label}
+            {!c?.[k] && !asked(k) && (
+              <span className="ml-1 text-xs">— not asked on this application</span>
+            )}
+          </span>
         </div>
       ))}
       <p className="mt-1.5 text-xs text-muted-foreground">
@@ -1494,9 +1891,13 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
   // Initial load + a light 60s poll so the badge stays current.
   useEffect(() => { load(); }, [load]);
   useEffect(() => { const t = setInterval(load, 60_000); return () => clearInterval(t); }, [load]);
+  // Blank is a REAL value here (all channels off), so a failed load must
+  // not be allowed to render as "you have everything switched off".
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
   useEffect(() => {
     apiJSON<{ channels: string[] }>('/applications/notify-prefs')
-      .then((r) => setChannels(r.channels)).catch(() => { /* non-fatal */ });
+      .then((r) => { setChannels(r.channels); setPrefsLoaded(true); })
+      .catch(() => { /* stays unloaded — the row hides rather than lying */ });
   }, []);
 
   const markAll = async () => {

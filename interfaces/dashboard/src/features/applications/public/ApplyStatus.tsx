@@ -2,7 +2,7 @@
 // (no auth).  Two-factor lookup: an applicant enters their reference +
 // email and sees their application status — nothing else.
 import { useMemo, useState } from 'react';
-import { Truck, Search, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { Truck, Search, CheckCircle2 } from 'lucide-react';
 import { statusClasses } from '../../../lib/status';
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api';
@@ -13,7 +13,9 @@ const STATUS_VIEW: Record<string, { label: string; msg: string }> = {
   screening: { label: 'Under review', msg: 'Our team is reviewing your application.' },
   interview: { label: 'Under review', msg: 'Your application is progressing; we may reach out to talk.' },
   approved: { label: 'Approved', msg: "Good news — you've been approved. We'll be in touch with next steps." },
-  hired: { label: 'Hired', msg: 'Congratulations! Check your email for your onboarding link.' },
+  // Do NOT promise an email here: the hire path mints an invite and hands
+  // the link to the RECRUITER to pass on — nothing is sent to the applicant.
+  hired: { label: 'Hired', msg: "Congratulations — you've been hired! Your recruiter will send you your onboarding link directly." },
   rejected: { label: 'Not selected', msg: "Thank you for your interest — we won't be moving forward at this time." },
   withdrawn: { label: 'Withdrawn', msg: 'This application has been withdrawn.' },
 };
@@ -44,7 +46,20 @@ export default function ApplyStatus() {
         body: JSON.stringify({ reference: reference.trim(), email: email.trim() }),
       });
       if (res.status === 429) { setErr('Too many attempts — please try again later.'); return; }
-      const json = (await res.json().catch(() => ({}))) as Result;
+      // Anything other than a clean 2xx is OUR problem. Falling through to
+      // `{}` made `found` undefined, which rendered the "we couldn't find
+      // an application matching that reference and email" copy — telling a
+      // legitimate applicant their record doesn't exist because our server
+      // hiccuped.
+      if (!res.ok) {
+        setErr("We couldn't reach the system just now. Your application is unaffected — please try again in a moment.");
+        return;
+      }
+      const json = (await res.json().catch(() => null)) as Result | null;
+      if (!json || typeof json.found !== 'boolean') {
+        setErr("We couldn't read the response. Please try again in a moment.");
+        return;
+      }
       setResult(json);
     } catch {
       setErr('Something went wrong. Please try again.');
@@ -114,9 +129,15 @@ export default function ApplyStatus() {
           )}
         </form>
 
-        <a href="/" className="mt-4 inline-flex items-center gap-1 text-sm text-primary hover:underline">
-          <ArrowLeft size={14} /> Start a new application
-        </a>
+        {/* "/" on apply.<apex> resolves to an EMPTY first path segment, so
+            resolveToken() returns '' and the driver lands on "This
+            application link is invalid" — a dead end presented as the way
+            out. There is no generic apply URL to send them to, so point at
+            the only thing that actually works. */}
+        <p className="mt-4 text-sm text-muted-foreground">
+          Applying somewhere else? Use the application link your recruiter
+          sent you — each posting has its own.
+        </p>
       </main>
     </div>
   );

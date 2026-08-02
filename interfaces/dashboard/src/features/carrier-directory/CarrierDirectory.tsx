@@ -4,22 +4,89 @@
 // opens its profile to fill in.  Info-only (v1) — no links to the apply flow
 // or any other feature.
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Plus, ChevronRight, Building2 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Plus, Building2, Check, Ban } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import PageHeader from '../../components/shell/PageHeader';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import DataGrid from '../../components/datagrid';
+import type { DataGridSegment } from '../../components/datagrid';
 import type { AnyColumn } from '../../types';
+import EmptyState from '../../components/shell/EmptyState';
+import ErrorState from '../../components/shell/ErrorState';
+import { CardSkeleton } from '../../components/shell/LoadingSkeleton';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay } from '../../utils/datetime';
 import { useRoleView } from '../../context/RoleViewContext';
 import { toneClasses } from '../../lib/status';
 
 interface CarrierRow {
   id: number; name: string; website: string; experience_summary: string;
   intake_review_pending?: number | boolean;
+  // The endpoint has always returned these; the list used to fetch and
+  // drop them, so "invited three weeks ago, never replied" looked exactly
+  // like "never invited".
+  intake_expires_at?: string | null;
+  intake_submitted_at?: string;
+  intake_email?: string;
+  intake_email_sent_at?: string;
 }
+
+/** One derived self-fill state per carrier — the thing a manager is
+ *  actually triaging. Order matters: needs-review outranks everything. */
+type IntakeState = 'review' | 'awaiting' | 'lapsed' | 'done' | 'none';
+
+function intakeStateOf(r: CarrierRow): IntakeState {
+  if (r.intake_review_pending) return 'review';
+  const exp = r.intake_expires_at ? new Date(r.intake_expires_at).getTime() : 0;
+  const submitted = Boolean((r.intake_submitted_at || '').trim());
+  if (submitted) return 'done';
+  if (!exp) return 'none';           // never invited, or revoked (expiry NULLed)
+  return exp > Date.now() ? 'awaiting' : 'lapsed';
+}
+
+// One noun for one object: the shareable URL is a FILL LINK in the column
+// header, every tab, the detail status line and every toast. It had picked
+// up five names ("Self-fill", "Carrier fill link", "invite link", …) and a
+// reader can't tell whether those are one thing or several.
+const INTAKE_LABEL: Record<IntakeState, string> = {
+  review: 'Needs review',
+  awaiting: 'Awaiting carrier',
+  lapsed: 'Lapsed',
+  done: 'Filled in',
+  none: '—',
+};
+
+const INTAKE_TONE: Record<IntakeState, 'info' | 'warn' | 'danger' | 'ok' | 'neutral'> = {
+  review: 'info', awaiting: 'neutral', lapsed: 'danger', done: 'ok', none: 'neutral',
+};
+
+/** Module-level for stable array identity across renders (DataGrid asks
+ *  for this).  The grid computes the counts itself. */
+// Ordered as the real pipeline a carrier travels — invited → filling →
+// waiting on us → done — with the exception state last. Ordering them by
+// stage is what makes a pile-up legible at a glance.
+const SEGMENTS: DataGridSegment[] = [
+  { key: 'all', label: 'All', showCount: false },
+  {
+    key: 'awaiting', label: 'Awaiting carrier',
+    match: (r) => intakeStateOf(r as unknown as CarrierRow) === 'awaiting',
+  },
+  {
+    key: 'review', label: 'Needs review',
+    match: (r) => intakeStateOf(r as unknown as CarrierRow) === 'review',
+  },
+  {
+    key: 'done', label: 'Filled in',
+    match: (r) => intakeStateOf(r as unknown as CarrierRow) === 'done',
+  },
+  {
+    key: 'lapsed', label: 'Lapsed',
+    match: (r) => intakeStateOf(r as unknown as CarrierRow) === 'lapsed',
+  },
+];
 
 export default function CarrierDirectory() {
   const { viewHasAny } = useRoleView();
@@ -30,14 +97,22 @@ export default function CarrierDirectory() {
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const tz = useTimezone();
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const r = await apiJSON<{ items: CarrierRow[] }>('/carrier-directory/carriers');
       setRows(r.items || []);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to load carriers');
+      const msg = e instanceof Error ? e.message : 'Failed to load carriers';
+      // Held in state, not just a toast: a toast auto-dismisses and leaves
+      // a failed load looking identical to an empty directory, with no way
+      // back short of reloading the page.
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -64,28 +139,114 @@ export default function CarrierDirectory() {
   const columns: AnyColumn[] = useMemo(() => [
     {
       key: 'name', label: 'Carrier', sortable: true, filterable: true,
+      // A real <Link>, not just onRowClick: row-click alone gives the
+      // primary action no focusable target, so the whole list was
+      // mouse-only. The link is also what signals "this navigates" now
+      // that the chevron is gone.
       render: (v: unknown, row: Record<string, unknown>) => (
-        <span className="inline-flex items-center gap-2">
-          <span className="font-medium text-foreground">{String(v || '')}</span>
-          {Boolean(row.intake_review_pending) && (
-            <span className={`rounded-md border px-2 py-0.5 text-2xs font-medium ${toneClasses('info')}`}>
-              Carrier updated
-            </span>
-          )}
-        </span>
+        <Link
+          to={`/workforce/carrier-directory/${Number(row.id)}`}
+          onClick={(e) => e.stopPropagation()}
+          className="font-medium text-foreground hover:underline"
+        >
+          {String(v || '')}
+        </Link>
       ),
     },
     {
-      key: 'experience_summary', label: 'Accepted Experience Levels',
+      // Was "Carrier updated", which reads as "someone edited this record"
+      // — the ordinary meaning everywhere else — and hid the fact that an
+      // action is required. Named from the reader's point of view now.
+      key: 'intake_state', label: 'Fill link', sortable: true, filterable: true,
+      filterMode: 'select',
+      render: (_v: unknown, row: Record<string, unknown>) => {
+        const st = intakeStateOf(row as unknown as CarrierRow);
+        if (st === 'none') return <span className="text-muted-foreground">—</span>;
+        const expires = row.intake_expires_at ? String(row.intake_expires_at) : '';
+        const soon = st === 'awaiting' && expires
+          && new Date(expires).getTime() - Date.now() < 7 * 864e5;
+        // ALWAYS state first, date second. The chip used to show a date
+        // INSTEAD of the state inside the 7-day window, so two carriers in
+        // the identical state rendered as different kinds of thing and
+        // couldn't be compared down the column. Colour now encodes urgency
+        // only — never identity.
+        return (
+          <span className="inline-flex flex-wrap items-center gap-1.5">
+            <span className={`rounded-md border px-2 py-0.5 text-2xs font-medium ${toneClasses(soon ? 'warn' : INTAKE_TONE[st])}`}>
+              {INTAKE_LABEL[st]}
+            </span>
+            {expires && (st === 'awaiting' || st === 'lapsed') && (
+              <span className="text-2xs text-muted-foreground">
+                {st === 'lapsed' ? 'expired ' : 'expires '}
+                {formatDay(expires, { timeZone: tz })}
+              </span>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'experience_summary', label: 'Accepted Experience Levels', sortable: true,
       render: (v: unknown) => (
         <span className="text-muted-foreground">{v ? String(v) : '—'}</span>
       ),
     },
+  ], [tz]);
+
+  // Precomputed so the column can sort/filter on it and the segments can
+  // count it without re-deriving per cell.
+  const gridRows = useMemo(
+    () => rows.map((r) => ({ ...r, intake_state: INTAKE_LABEL[intakeStateOf(r)] })),
+    [rows],
+  );
+
+  /** One bulk endpoint per action, each enforcing the same per-row rules
+   *  the single-carrier action would — so the result is honestly partial
+   *  ("3 done · 2 skipped") instead of silently pretending everything
+   *  applied. Mirrors the applications bulk pattern. */
+  const runBulk = useCallback(async (
+    path: string, selected: Record<string, unknown>[], verb: string,
+  ) => {
+    const ids = selected.map((r) => Number(r.id)).filter(Boolean);
+    if (!ids.length) return;
+    try {
+      const r = await apiJSON<{ updated: number; skipped: { reason: string }[] }>(
+        `/carrier-directory/carriers/${path}`, { method: 'POST', body: { ids } },
+      );
+      const skipped = r.skipped?.length ?? 0;
+      if (r.updated && skipped) {
+        // Name WHY the rest were skipped — "2 skipped" alone reads as an error.
+        const why = [...new Set(r.skipped.map((s) => s.reason))].join(', ');
+        toast.warning(`${r.updated} ${verb} · ${skipped} skipped (${why})`);
+      } else if (r.updated) {
+        toast.success(`${r.updated} ${verb}`);
+      } else {
+        toast.info(`Nothing to do — ${skipped} skipped`);
+      }
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : `Could not ${verb}`);
+    }
+  }, [load]);
+
+  const bulkActions = useMemo(() => (canEdit ? [
     {
-      key: 'id', label: '', sortable: false,
-      render: () => <ChevronRight size={16} className="text-muted-foreground" />,
+      label: 'Mark reviewed', icon: Check,
+      onRun: (sel: Record<string, unknown>[]) =>
+        runBulk('bulk-mark-reviewed', sel, 'marked reviewed'),
     },
-  ], []);
+    {
+      label: 'Revoke links', icon: Ban, tone: 'danger' as const,
+      // Only questioned at scale — confirming a single revoke twice (the
+      // bar plus a prompt) trains people to click through prompts.
+      confirm: (n: number) => n > 1
+        ? `Revoke ${n} fill links? Any link already sent stops working. Answers carriers already submitted are kept.`
+        : '',
+      onRun: (sel: Record<string, unknown>[]) =>
+        runBulk('bulk-revoke-link', sel, 'links revoked'),
+    },
+  ] : []), [canEdit, runBulk]);
+
 
   return (
     <div>
@@ -108,15 +269,42 @@ export default function CarrierDirectory() {
           <Button size="sm" onClick={() => setAdding(true)}><Plus size={16} /> Add carrier</Button>
         ))}
       />
+      {/* Three distinct non-happy renders. They used to collapse into
+          DataGrid's shared "No data", so a failed request and a brand-new
+          account looked the same and neither explained itself. */}
       {loading ? (
-        <p className="text-sm text-muted-foreground">Loading carriers…</p>
+        <CardSkeleton height="h-64" />
+      ) : error && rows.length === 0 ? (
+        <ErrorState message={error} onRetry={load} />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          icon={Building2}
+          title="No carriers yet"
+          description="A carrier profile is your team's shared sheet on one external carrier you recruit for — who they will hire, what they pay, and how to submit drivers to them."
+          action={canEdit ? (
+            <Button size="sm" onClick={() => setAdding(true)}>
+              <Plus size={16} /> Add your first carrier
+            </Button>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              A recruiting manager adds carriers to this directory.
+            </p>
+          )}
+        />
       ) : (
         <DataGrid
           columns={columns}
-          data={rows as unknown as Record<string, unknown>[]}
+          data={gridRows as unknown as Record<string, unknown>[]}
           searchKey={['name', 'experience_summary']}
           searchPlaceholder="Search carriers…"
           tableId="carrier-directory"
+          segments={SEGMENTS}
+          emptyMessage="No carrier is at this stage right now."
+          bulkSelection={canEdit}
+          bulkActions={bulkActions}
+          // Without this every checkbox announces "Select row"; a screen
+          // reader user picking three carriers out of forty needs the name.
+          bulkRowLabel={(row) => `Select ${String(row.name ?? 'carrier')}`}
           onRowClick={(row) => nav(`/workforce/carrier-directory/${(row as unknown as CarrierRow).id}`)}
         />
       )}

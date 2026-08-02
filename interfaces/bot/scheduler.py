@@ -88,6 +88,7 @@ _JOB_META = {
     # ── Recruiting ──
     "application_draft_reminders":    ("Recruiting", "Nudge abandoned apply drafts (per-link opt-in policy)"),
     "carrier_intake_lifecycle":       ("Recruiting", "Remind carriers about unfilled self-fill links + warn managers before one lapses"),
+    "application_link_expiry":        ("Recruiting", "Warn recruiters before an application link lapses"),
     # ── Storage & data lifecycle ──
     "storage_sync":                   ("Storage & data", "Upload queued media to the customer's cloud (Drive)"),
     "data_retention":                 ("Storage & data", "Prune every retention target to its window"),
@@ -449,6 +450,16 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     scheduler.add_job(
         job_carrier_intake_lifecycle, "cron",
         hour=9, minute=15, args=[app], id="carrier_intake_lifecycle",
+        max_instances=1, coalesce=True,
+    )
+
+    # Same shape, same reason, for recruiting links: one-shot per link, so
+    # daily is enough and 09:20 UTC lands in business hours where a manager
+    # can actually extend it.
+    from features.applications.link_lifecycle import job_application_link_expiry
+    scheduler.add_job(
+        job_application_link_expiry, "cron",
+        hour=9, minute=20, args=[app], id="application_link_expiry",
         max_instances=1, coalesce=True,
     )
     scheduler.add_job(

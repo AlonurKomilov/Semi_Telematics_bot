@@ -20,6 +20,7 @@ from interfaces.api.deps import (
 )
 from adapters.storage.models import Role
 from capabilities.permissions.roles import validate_role_change, role_rank
+from features.carrier_directory.service import MAX_SENDER_NAME, clean_sender_name
 
 logger = logging.getLogger(__name__)
 
@@ -377,6 +378,70 @@ async def set_account_timezone(
         details=f"Set account timezone to {tz_val}",
     )
     return {"timezone": tz_val}
+
+
+# ── Public identity (what outsiders see) ──────────────────────────
+#
+# ``accounts.name`` is the tenant's registered name and the label every
+# INTERNAL surface uses.  Outward, token-gated surfaces read by people
+# with no relationship to this account — today the carrier self-fill
+# page and its invite email — show this instead.  Empty is a real
+# setting meaning "show no company name at all"; those surfaces fall
+# back to neutral wording, never to ``name``.
+#
+# Account-wide, so it sits behind the account-wide permission.  A
+# recruiting manager overrides it per invite link without needing this
+# right (features/carrier_directory/router.py).
+
+
+class PublicIdentityUpdate(BaseModel):
+    # Shares the carrier-directory cap — this value and the per-link
+    # override land in the same header/page slots.
+    public_display_name: str = Field("", max_length=MAX_SENDER_NAME)
+
+
+@router.get("/account/public-identity")
+async def get_account_public_identity(
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+):
+    acct = await platform_db.get_account(user["account_id"])
+    if not acct:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {
+        "public_display_name": getattr(acct, "public_display_name", "") or "",
+        # Shown read-only beside the field so an owner can see exactly
+        # what they are replacing.
+        "registered_name": getattr(acct, "name", "") or "",
+    }
+
+
+@router.put("/account/public-identity")
+async def set_account_public_identity(
+    body: PublicIdentityUpdate,
+    user: dict = Depends(require_permission("can_manage_account")),
+    platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Set (or clear) the outward-facing name.  Clearing is deliberate —
+    it makes public surfaces anonymous rather than reverting to the
+    registered name."""
+    value = clean_sender_name(body.public_display_name)
+    ok = await platform_db.update_account(
+        user["account_id"], public_display_name=value,
+    )
+    if not ok:
+        raise HTTPException(status_code=404, detail="Account not found")
+    await tenant_db.add_audit_log(
+        user["account_id"], int(user["sub"]),
+        "public_identity_update",
+        target_type="account", target_id=str(user["account_id"]),
+        details=(
+            f"Public display name set to {value!r}" if value
+            else "Public display name cleared (outside surfaces show no company name)"
+        ),
+    )
+    return {"public_display_name": value}
 
 
 # ── Department modules (account-level on/off) ─────────────────────

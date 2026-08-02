@@ -24,11 +24,15 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from features.carrier_directory.service import (
+    MAX_SENDER_NAME, PUBLIC_FIELD_COUNT, clean_sender_name, resolve_sender_name,
+)
 from interfaces.api.deps import get_platform_db, require_permission, resolve_user_id
 from interfaces.api.rate_limit import limiter
 
@@ -61,6 +65,30 @@ class CarrierUpdate(BaseModel):
     video_url: str | None = Field(None, max_length=500)
     experience_summary: str | None = Field(None, max_length=500)
     content: dict | None = None
+
+
+def _safe_url(raw: str) -> str:
+    """Accept only http(s) URLs for fields that end up in an ``<a href>``.
+
+    ``website`` and ``video_url`` are writable by an UNAUTHENTICATED external
+    carrier through the public intake endpoint, and the manager dashboard
+    renders both as links — so a ``javascript:`` value would be stored XSS
+    against the authenticated user reviewing the submission.  Anything with
+    a non-http(s) scheme is dropped rather than coerced; a bare host gets
+    ``https://``.  Mirrors ``safeHref`` in the dashboard's fields.ts, which
+    is the second line of the same defence.
+    """
+    t = (raw or "").strip()
+    if not t:
+        return ""
+    if re.match(r"^https?://", t, re.I):
+        return t
+    # A control-char-split payload ("java\tscript:") slips past this regex
+    # by design: the fallback below prepends https://, turning it into a
+    # harmless URL. The allow-list shape is the guarantee, not this regex.
+    if re.match(r"^[a-z][a-z0-9+.-]*:", t, re.I):
+        return ""
+    return f"https://{t}"
 
 
 def _dump_content(content: dict) -> str:
@@ -150,8 +178,8 @@ async def create_carrier(
     row = await platform_db.create_carrier_profile(
         user["account_id"],
         name=body.name.strip(),
-        website=body.website.strip(),
-        video_url=body.video_url.strip(),
+        website=_safe_url(body.website),
+        video_url=_safe_url(body.video_url),
         experience_summary=body.experience_summary.strip(),
         content=_dump_content(body.content),
         created_by=await resolve_user_id(user),
@@ -173,9 +201,9 @@ async def update_carrier(
     if body.name is not None:
         fields["name"] = body.name.strip()
     if body.website is not None:
-        fields["website"] = body.website.strip()
+        fields["website"] = _safe_url(body.website)
     if body.video_url is not None:
-        fields["video_url"] = body.video_url.strip()
+        fields["video_url"] = _safe_url(body.video_url)
     if body.experience_summary is not None:
         fields["experience_summary"] = body.experience_summary.strip()
     if body.content is not None:
@@ -186,6 +214,93 @@ async def update_carrier(
     await platform_db.clear_carrier_intake_review(account_id, carrier_id)
     updated = await platform_db.get_carrier_profile(account_id, carrier_id)
     return _hydrate(updated)  # type: ignore[arg-type]
+
+
+class BulkIds(BaseModel):
+    # Bounded so one request can't walk the whole directory row-by-row.
+    ids: list[int] = Field(..., min_length=1, max_length=200)
+
+
+async def _bulk_over_carriers(platform_db, account_id: int, ids: list[int], *,
+                              precondition, action) -> dict:
+    """Run a per-carrier action over a selection, enforcing the SAME rules
+    the single-carrier endpoint would.
+
+    Bulk must never be a way to do something the individual action refuses,
+    so each row is fetched account-scoped and checked before acting; a row
+    that fails is SKIPPED WITH A REASON rather than failing the batch. The
+    caller reports both halves, matching the applications bulk pattern —
+    a silent partial success is how an operator ends up believing they
+    actioned rows they didn't.
+    """
+    updated: list[int] = []
+    skipped: list[dict] = []
+    for cid in dict.fromkeys(ids):          # de-dupe, preserve order
+        row = await platform_db.get_carrier_profile(account_id, cid)
+        if not row:
+            skipped.append({"id": cid, "reason": "not found"})
+            continue
+        reason = precondition(row)
+        if reason:
+            skipped.append({"id": cid, "reason": reason})
+            continue
+        await action(cid)
+        updated.append(cid)
+    return {"updated": len(updated), "updated_ids": updated, "skipped": skipped}
+
+
+@router.post("/carriers/bulk-mark-reviewed")
+async def bulk_mark_reviewed(
+    body: BulkIds,
+    user: dict = Depends(require_permission("can_manage_carrier_directory")),
+    platform_db=Depends(get_platform_db),
+):
+    """Clear the review flag on several carriers at once."""
+    account_id = user["account_id"]
+    return await _bulk_over_carriers(
+        platform_db, account_id, body.ids,
+        precondition=lambda r: (
+            "" if r.get("intake_review_pending") else "nothing to review"
+        ),
+        action=lambda cid: platform_db.clear_carrier_intake_review(account_id, cid),
+    )
+
+
+@router.post("/carriers/bulk-revoke-link")
+async def bulk_revoke_links(
+    body: BulkIds,
+    user: dict = Depends(require_permission("can_manage_carrier_directory")),
+    platform_db=Depends(get_platform_db),
+):
+    """Revoke several fill links at once.  Anything a carrier already
+    submitted is kept — this only kills the URLs."""
+    account_id = user["account_id"]
+    return await _bulk_over_carriers(
+        platform_db, account_id, body.ids,
+        precondition=lambda r: (
+            "" if (r.get("intake_token") or "") else "no active link"
+        ),
+        action=lambda cid: platform_db.revoke_carrier_intake(account_id, cid),
+    )
+
+
+@router.post("/carriers/{carrier_id:int}/mark-reviewed")
+async def mark_carrier_reviewed(
+    carrier_id: int,
+    user: dict = Depends(require_permission("can_manage_carrier_directory")),
+    platform_db=Depends(get_platform_db),
+):
+    """Clear the review-pending flag without editing anything.
+
+    Reviewing a carrier's submission and finding it correct is the common
+    outcome; before this endpoint the only way to stop the badge was to
+    perform a no-op save, which bumped ``updated_at`` and made the audit
+    trail lie about who changed what."""
+    account_id = user["account_id"]
+    if not await platform_db.get_carrier_profile(account_id, carrier_id):
+        raise HTTPException(status_code=404, detail="Carrier not found")
+    await platform_db.clear_carrier_intake_review(account_id, carrier_id)
+    return {"ok": True}
 
 
 @router.delete("/carriers/{carrier_id:int}")
@@ -207,6 +322,67 @@ async def delete_carrier(
 class IntakeLinkCreate(BaseModel):
     expires_in_days: int = Field(30, ge=1, le=180)
     email: str = Field("", max_length=200)
+    # Sender name this one carrier sees.  Blank falls back to the
+    # account-wide public name, then to neutral wording — never to the
+    # tenant's registered name.  See service.resolve_sender_name.
+    display_name: str = Field("", max_length=MAX_SENDER_NAME)
+
+
+class IntakeLinkUpdate(BaseModel):
+    """Partial edit of a live link.  Every field is optional; '' is a
+    real value (clear the override), so omission is the only "leave
+    alone" signal — read via ``model_fields_set``."""
+    expires_in_days: int | None = Field(None, ge=1, le=180)
+    email: str | None = Field(None, max_length=200)
+    display_name: str | None = Field(None, max_length=MAX_SENDER_NAME)
+
+
+async def _inviter_email(platform_db, user: dict) -> str:
+    """The inviting manager's address, for the invite's Reply-To.
+
+    A carrier asked for pay data by a deliberately unnamed sender still
+    needs a reachable human — withholding the tenant's legal name is a
+    privacy choice, leaving no reply path is just a dead end.  Best-effort:
+    a missing address only costs the Reply-To header."""
+    try:
+        uid = await resolve_user_id(user)
+        if not uid:
+            return ""
+        u = await platform_db.get_user_by_id(uid)
+        return (getattr(u, "email", "") or "").strip()
+    except Exception:
+        return ""
+
+
+async def _sender_name(platform_db, profile_row: dict, account_id: int) -> str:
+    """Resolve the outward sender name for one carrier's link."""
+    acct = None
+    try:
+        acct = await platform_db.get_account(account_id)
+    except Exception:
+        pass
+    return resolve_sender_name(profile_row, acct)
+
+
+@router.get("/sender-identity")
+async def get_sender_identity(
+    user: dict = Depends(require_permission("can_manage_carrier_directory")),
+    platform_db=Depends(get_platform_db),
+):
+    """The account-wide public name a blank per-link override falls back
+    to.  Lets the invite form state plainly what "leave blank" will do,
+    so a manager is never guessing whether blank means anonymous or
+    means the company name leaks.  Read-only — setting it is an
+    account-wide right (Settings · Account)."""
+    try:
+        acct = await platform_db.get_account(user["account_id"])
+    except Exception:
+        # The caller treats this as "unknown" and hides the hint rather
+        # than asserting a wrong one — a 500 here would be worse.
+        raise HTTPException(status_code=503, detail="Could not read the account name")
+    return {
+        "account_display_name": getattr(acct, "public_display_name", "") or "",
+    }
 
 
 @router.post("/carriers/{carrier_id:int}/intake-link")
@@ -219,7 +395,8 @@ async def create_intake_link(
     """Mint (or rotate) the carrier's public fill-it-yourself link and
     optionally email it to the carrier's contact.  Minting again replaces
     the previous token, so an emailed link can always be invalidated by
-    issuing a fresh one (or by DELETE below)."""
+    issuing a fresh one (or by DELETE below).  To change the sender name
+    or expiry WITHOUT killing an already-sent link, PATCH instead."""
     from datetime import datetime, timezone, timedelta
     account_id = user["account_id"]
     row = await platform_db.get_carrier_profile(account_id, carrier_id)
@@ -230,20 +407,21 @@ async def create_intake_link(
         datetime.now(timezone.utc) + timedelta(days=body.expires_in_days)
     ).isoformat()
     email = body.email.strip().lower()
+    display_name = clean_sender_name(body.display_name)
     await platform_db.set_carrier_intake(
         account_id, carrier_id, token=token, expires_at=expires_at,
         email=email, invited_by=await resolve_user_id(user),
+        display_name=display_name,
     )
     from features.applications.service import apply_base_url
     url = f"{apply_base_url()}/carrier/{token}"
     emailed = False
     if email:
-        acct_name = ""
-        try:
-            acct = await platform_db.get_account(account_id)
-            acct_name = getattr(acct, "name", "") or ""
-        except Exception:
-            pass
+        # Same resolver the public page uses, against the row as it now
+        # stands — the email and the page can never name different senders.
+        sender = await _sender_name(
+            platform_db, {**row, "intake_display_name": display_name}, account_id,
+        )
         # Honest effort-lowering line: only claim "partly filled" when the
         # carrier-visible sheet really holds content.
         pub = _public_content(row.get("content"))
@@ -256,11 +434,71 @@ async def create_intake_link(
         from capabilities.email.application_emails import send_carrier_intake_email
         emailed = await asyncio.to_thread(
             send_carrier_intake_email,
-            to=email, carrier_name=row["name"], agency_name=acct_name,
+            to=email, carrier_name=row["name"], agency_name=sender,
             intake_url=url, expires_days=body.expires_in_days,
-            prefilled=prefilled,
+            prefilled=prefilled, reply_to=await _inviter_email(platform_db, user),
+            field_count=PUBLIC_FIELD_COUNT,
         )
-    return {"url": url, "token": token, "expires_at": expires_at, "emailed": emailed}
+        # Stamp only a CONFIRMED hand-off, so the UI can tell "we emailed
+        # them" apart from "a manager typed an address and the send failed".
+        if emailed:
+            await platform_db.mark_carrier_intake_emailed(carrier_id)
+    return {
+        "url": url, "token": token, "expires_at": expires_at,
+        # False here when an address was given but the send failed — the
+        # caller MUST surface that rather than reporting a flat success.
+        "emailed": emailed,
+        "email_requested": bool(email),
+    }
+
+
+@router.patch("/carriers/{carrier_id:int}/intake-link")
+async def update_intake_link(
+    carrier_id: int,
+    body: IntakeLinkUpdate,
+    user: dict = Depends(require_permission("can_manage_carrier_directory")),
+    platform_db=Depends(get_platform_db),
+):
+    """Edit the live link's sender name / contact / expiry, KEEPING its
+    token so a link already in the carrier's inbox keeps working.
+
+    404s when the carrier has no live link — there is nothing to edit,
+    and this must never bring a revoked token back."""
+    from datetime import datetime, timezone, timedelta
+    account_id = user["account_id"]
+    row = await platform_db.get_carrier_profile(account_id, carrier_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="Carrier not found")
+    if not (row.get("intake_token") or ""):
+        raise HTTPException(status_code=404, detail="No active link to edit")
+
+    provided = body.model_fields_set
+    fields: dict = {}
+    if "display_name" in provided:
+        fields["intake_display_name"] = clean_sender_name(body.display_name)
+    if "email" in provided:
+        fields["intake_email"] = (body.email or "").strip().lower()
+    if "expires_in_days" in provided and body.expires_in_days is not None:
+        # Re-bases the window from now, matching what a fresh mint would do.
+        fields["intake_expires_at"] = (
+            datetime.now(timezone.utc) + timedelta(days=body.expires_in_days)
+        ).isoformat()
+    if not fields:
+        raise HTTPException(status_code=422, detail="Nothing to update")
+
+    # Trust the storage guard, not the check above: a concurrent revoke can
+    # land between them, and the UPDATE's ``intake_token != ''`` is what
+    # actually decides.  rowcount 0 means the link died under us — say so
+    # rather than reporting success over a now-revoked row.
+    if not await platform_db.update_carrier_intake(account_id, carrier_id, **fields):
+        raise HTTPException(status_code=404, detail="No active link to edit")
+    updated = await platform_db.get_carrier_profile(account_id, carrier_id)
+    return {
+        "ok": True,
+        "expires_at": (updated or {}).get("intake_expires_at"),
+        "display_name": (updated or {}).get("intake_display_name") or "",
+        "email": (updated or {}).get("intake_email") or "",
+    }
 
 
 @router.delete("/carriers/{carrier_id:int}/intake-link")
@@ -299,16 +537,15 @@ async def public_intake_get(
     request: Request, token: str, platform_db=Depends(get_platform_db),
 ):
     """The carrier's current sheet, prefilled for the public form.  An
-    unknown/revoked/expired token is a uniform 404."""
+    unknown/revoked/expired token is a uniform 404.
+
+    ``agency`` is the RESOLVED sender name and may legitimately be '' —
+    the tenant's registered ``accounts.name`` is never sent here.  The
+    page renders neutral wording when it's blank."""
     row = await platform_db.resolve_carrier_intake(token.strip())
     if not row:
         raise HTTPException(status_code=404, detail="Link not available")
-    agency = ""
-    try:
-        acct = await platform_db.get_account(row["account_id"])
-        agency = getattr(acct, "name", "") or ""
-    except Exception:
-        pass
+    agency = await _sender_name(platform_db, row, row["account_id"])
     return {
         "carrier": {
             "name": row["name"],
@@ -319,6 +556,10 @@ async def public_intake_get(
         },
         "agency": agency,
         "expires_at": row.get("intake_expires_at"),
+        # Lets a returning carrier see that their answers DID land, instead
+        # of a page byte-identical to their first visit.  A timestamp only —
+        # nothing about who reviewed it or what the agency thought.
+        "submitted_at": (row.get("intake_submitted_at") or "") or None,
     }
 
 
@@ -364,20 +605,36 @@ async def public_intake_submit(
 
     await platform_db.submit_carrier_intake(
         row["id"],
-        website=body.website.strip(),
-        video_url=body.video_url.strip(),
+        website=_safe_url(body.website),
+        video_url=_safe_url(body.video_url),
         experience_summary=body.experience_summary.strip(),
         content=_dump_content(content),
+    )
+    # How much of the sheet actually came back, so the manager's mail can
+    # distinguish a substantive submission from a one-field typo fix.
+    filled = sum(
+        1 for key in _INTAKE_ROW_SECTIONS
+        for r in content.get(key, []) if str(r.get("value") or "").strip()
+    ) + sum(
+        1 for v in (
+            body.website, body.video_url, body.experience_summary,
+            content.get(_INTAKE_TEXT_SECTIONS[0], ""),
+        ) if str(v or "").strip()
     )
     # Best-effort manager notification — never blocks the carrier's submit.
     asyncio.create_task(_notify_intake_submitted(
         platform_db, row["account_id"], row["id"], row["name"],
+        filled_count=filled,
+        # A second submit through a still-live link is a REVISION, not a
+        # first fill — the two used to send identical mail.
+        revision=bool((row.get("intake_submitted_at") or "").strip()),
     ))
     return {"ok": True}
 
 
 async def _notify_intake_submitted(
     platform_db, account_id: int, carrier_id: int, carrier_name: str,
+    *, filled_count: int = 0, revision: bool = False,
 ) -> None:
     """Email every user who can manage the directory that a carrier filled
     in their sheet.  Wholly best-effort."""
@@ -405,6 +662,8 @@ async def _notify_intake_submitted(
                 await asyncio.to_thread(
                     send_carrier_intake_submitted_email,
                     to=email, carrier_name=carrier_name, profile_url=profile_url,
+                    filled_count=filled_count, total_count=PUBLIC_FIELD_COUNT,
+                    revision=revision,
                 )
             except Exception as e:
                 logger.debug("intake notify for user failed: %s", e)

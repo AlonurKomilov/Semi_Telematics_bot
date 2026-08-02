@@ -1209,3 +1209,138 @@ class TestConsentDocuments:
             assert r3.status_code == 200, r3.text
             full = await db.get_driver_application(acct.id, r3.json()["application_id"])
             assert full["consents"].get("employment_verification") is True
+
+
+class TestClosedLinkAndLegalIdentity:
+    """The public /brand contract added for two ethics fixes: telling an
+    applicant a posting is closed BEFORE they fill in a DOT file, and never
+    rendering an FCRA/§391.23 authorisation with no named counterparty."""
+
+    async def test_brand_reports_link_state_and_a_legal_name(self, api):
+        app, db = api
+        acct = await db.create_account("Premier Trucking Group Inc")
+        rec = await db.create_user(770001, acct.id, role=Role.RECRUITER)
+        h = _recruiter_headers(rec, acct)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            token = (await c.post("/api/applications/links", headers=h,
+                                  json={"label": "Indeed"})).json()["token"]
+
+            live = await c.get(f"/api/applications/brand?token={token}")
+            assert live.status_code == 200
+            assert live.json()["link_state"] == "ok"
+            # A generic link has no company, but the consent documents still
+            # need a party to name — the account's registered identity.
+            assert live.json()["legal_name"] == "Premier Trucking Group Inc"
+
+    async def test_dead_link_is_closed_not_a_blank_form(self, api):
+        app, db = api
+        acct = await db.create_account("Recruit Co")
+        rec = await db.create_user(770002, acct.id, role=Role.RECRUITER)
+        h = _recruiter_headers(rec, acct)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            created = (await c.post("/api/applications/links", headers=h,
+                                    json={"label": "Indeed"})).json()
+            await c.post(f"/api/applications/links/{created['id']}/revoke", headers=h)
+
+            dead = await c.get(f"/api/applications/brand?token={created['token']}")
+            # Still 200 — no oracle for token existence — but the form now
+            # knows to stop before collecting an SSN it can't submit.
+            assert dead.status_code == 200
+            assert dead.json()["link_state"] == "closed"
+            # Coarse on purpose: unknown tokens look identical to revoked.
+            unknown = await c.get("/api/applications/brand?token=nope-nope")
+            assert unknown.status_code == 200
+            assert unknown.json()["link_state"] == "closed"
+
+    async def test_list_reports_the_real_total_not_the_page(self, api):
+        """Past the page limit every count on the page describes the loaded
+        slice; the UI can only say so if the server tells it the truth."""
+        app, db = api
+        acct = await db.create_account("Recruit Co")
+        rec = await db.create_user(770003, acct.id, role=Role.RECRUITER)
+        h = _recruiter_headers(rec, acct)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            token = (await c.post("/api/applications/links", headers=h,
+                                  json={"label": "x"})).json()["token"]
+            for i in range(3):
+                await c.post("/api/applications/apply", data={
+                    "link_token": token,
+                    "application": _app_payload(personal={
+                        "first": f"A{i}", "last": "Roe", "email": f"a{i}@x.com",
+                        "phone": "555-1212", "city": "Austin", "state": "TX",
+                        "dob": "1992-05-05", "ssn": f"111-22-333{i}",
+                    }),
+                }, files=_GOOD_FILES)
+
+            page = await c.get("/api/applications?limit=2", headers=h)
+            assert page.status_code == 200, page.text
+            assert len(page.json()["items"]) == 2
+            assert page.json()["total"] == 3     # the honest number
+
+
+class TestLinkExpirySweep:
+    """The nightly warning before a recruiting link dies — one-shot per
+    link, so a scheduler retry cannot re-send."""
+
+    async def test_sweep_finds_a_lapsing_link_once(self, api):
+        from datetime import datetime, timedelta, timezone
+        app, db = api
+        acct = await db.create_account("Recruit Co")
+        rec = await db.create_user(770004, acct.id, role=Role.RECRUITER)
+        h = _recruiter_headers(rec, acct)
+        now = datetime.now(timezone.utc)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            soon_id = (await c.post("/api/applications/links", headers=h,
+                                    json={"label": "lapsing", "expires_in_days": 2})).json()["id"]
+            await c.post("/api/applications/links", headers=h,
+                         json={"label": "long", "expires_in_days": 90})
+
+        window = dict(
+            now_iso=now.isoformat(),
+            before_iso=(now + timedelta(days=3)).isoformat(),
+        )
+        due = await db.list_links_expiring_soon(**window)
+        assert [d["id"] for d in due] == [soon_id]   # the 90-day link is not due
+
+        await db.mark_link_expiry_warned(soon_id)
+        assert await db.list_links_expiring_soon(**window) == []
+
+    async def test_revoked_links_are_never_warned_about(self, api):
+        from datetime import datetime, timedelta, timezone
+        app, db = api
+        acct = await db.create_account("Recruit Co")
+        rec = await db.create_user(770005, acct.id, role=Role.RECRUITER)
+        h = _recruiter_headers(rec, acct)
+        now = datetime.now(timezone.utc)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            lid = (await c.post("/api/applications/links", headers=h,
+                                json={"label": "x", "expires_in_days": 1})).json()["id"]
+            await c.post(f"/api/applications/links/{lid}/revoke", headers=h)
+
+        due = await db.list_links_expiring_soon(
+            now_iso=now.isoformat(),
+            before_iso=(now + timedelta(days=3)).isoformat(),
+        )
+        assert all(d["id"] != lid for d in due)
+
+
+class TestApplicantReceipt:
+    """The applicant's own copy of their reference number — without it the
+    self-service status page is unusable by the person it exists for."""
+
+    def test_receipt_names_the_carrier_and_carries_the_reference(self, monkeypatch):
+        sent: dict = {}
+        import capabilities.email.application_emails as mod
+        monkeypatch.setattr(mod, "is_email_configured", lambda: True)
+        monkeypatch.setattr(mod, "send_email", lambda **kw: sent.update(kw) or True)
+
+        assert mod.send_application_received_email(
+            to="jane@x.com", applicant_name="Jane Roe",
+            carrier_name="Premier Trucking", reference="APP-ABC123",
+            status_url="https://apply.example/status/APP-ABC123",
+        )
+        assert "APP-ABC123" in sent["subject"]
+        for field in ("body", "html_body"):
+            assert "APP-ABC123" in sent[field]
+            assert "Premier Trucking" in sent[field]
+            assert "apply.example/status/APP-ABC123" in sent[field]

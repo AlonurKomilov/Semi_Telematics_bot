@@ -75,6 +75,11 @@ class Account:
     # CSV of disabled module ids (Fleet/Dispatch/Safety/HR/Accounting);
     # empty = all modules on.  See capabilities/permissions/modules.py.
     disabled_modules: str = ""
+    # What outsiders are shown instead of ``name`` on unauthenticated
+    # surfaces (the carrier self-fill page + its invite email).  Empty =
+    # not set → those surfaces use neutral wording rather than falling
+    # back to the registered name.
+    public_display_name: str = ""
 
 @dataclass
 class Company:

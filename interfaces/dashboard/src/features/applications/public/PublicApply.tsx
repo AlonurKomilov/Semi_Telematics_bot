@@ -157,13 +157,19 @@ function Header({ compact, brand, token, logoUrl, bannerUrl }: {
                 ))}
               </div>
             )}
+            {/* No wall-clock figure. This form spans ten screens, ten years
+                of employment, three-year address history and three uploads —
+                a minutes number the reader disproves by scrolling costs more
+                trust than it buys. Same rule the carrier invite email
+                follows (application_emails.py). Say the SHAPE instead. */}
             <p className="mt-3 max-w-2xl text-sm text-muted-foreground">
-              Complete your DOT driver file in about 8 minutes — we'll review and reach out shortly.
+              Your DOT driver file, in {STEPS.length} sections. You can save and
+              finish later at any point — we&rsquo;ll review and reach out shortly.
               Have your CDL, DOT medical card, and last 10 years of employer info ready.
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
               {[
-                { icon: Clock, text: '≈8 minutes' },
+                { icon: Clock, text: `${STEPS.length} sections · save any time` },
                 { icon: Lock, text: 'Encrypted · DOT-compliant' },
                 { icon: ShieldCheck, text: 'FMCSA §391.21' },
               ].map(({ icon: I, text }) => (
@@ -297,12 +303,28 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
   useEffect(() => {
     if (preview?.brand) setBrand(preview.brand);
   }, [preview?.brand]);
+  // 'closed' covers expired / revoked / never-existed alike — the server
+  // keeps it coarse so it is no oracle for token existence. 'unknown' means
+  // WE couldn't ask; it must never be treated as closed.
+  const [linkState, setLinkState] = useState<'unknown' | 'ok' | 'closed'>(
+    preview ? 'ok' : 'unknown',
+  );
+  // The party an FCRA / PSP / §391.23 authorisation actually names. Never
+  // let this reach the consent screens empty.
+  const [legalName, setLegalName] = useState('');
   useEffect(() => {
     if (preview || !token) return;
     fetch(`${API_BASE}/applications/brand?token=${encodeURIComponent(token)}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((j) => setBrand(j?.company || null))
-      .catch(() => { /* generic look on failure */ });
+      .then((j) => {
+        setBrand(j?.company || null);
+        setLegalName(j?.legal_name || '');
+        // Absent link_state (older server) → leave 'unknown' and let the
+        // form run: refusing to serve on a field we may not get would be
+        // worse than the status quo.
+        if (j?.link_state === 'closed' || j?.link_state === 'ok') setLinkState(j.link_state);
+      })
+      .catch(() => { /* generic look on failure; stays 'unknown' */ });
   }, [token, preview]);
   // Compose the form's theme from carrier colours, all scoped to the form
   // root: a derived neutral palette from the Surface colour (card / text /
@@ -471,6 +493,17 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
       const res = await fetch(`${API_BASE}/applications/apply`, { method: 'POST', body: fd });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.success === false) throw new Error(json.detail || json.message || `Server returned ${res.status}`);
+      // The honeypot path answers 200 {success:true, application_id:0} on
+      // purpose, so a BOT gets no signal it was caught. A human tripping it
+      // — autofill, a password manager, a screen reader — must not be shown
+      // a success screen and a reference for a record that was never
+      // stored, then be told at /status that it doesn't exist.
+      if (!json.application_id) {
+        throw new Error(
+          "We couldn't process that submission. Please try again — if it keeps "
+          + 'happening, reply to the email that sent you this link.',
+        );
+      }
       setReference(json.reference || 'SUBMITTED');
       setDone(true);
       clearDraft();   // submitted — the saved draft has served its purpose
@@ -547,6 +580,29 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
           <p className="mt-4 text-xs text-muted-foreground">
             Saved applications expire after 14 days of inactivity. Uploaded
             documents will need to be re-attached.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Say the posting is closed BEFORE step 1. Collecting a full DOT file —
+  // SSN, DOB, ten years of employment, three signatures — into a submission
+  // the server will refuse was the sharpest failure in this flow.
+  if (linkState === 'closed' && !preview && !done) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header compact />
+        <div className="mx-auto max-w-lg px-4 py-16 text-center">
+          <h2 className="text-xl font-semibold text-foreground">This posting has closed</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            The application link you opened is no longer accepting
+            applications. Nothing you type here would reach the recruiter, so
+            we've stopped the form rather than let you fill it in.
+          </p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            Reply to the email that sent you this link and the recruiter can
+            send you a current one.
           </p>
         </div>
       </div>
@@ -633,11 +689,22 @@ export default function PublicApply({ preview }: { preview?: ApplyPreviewProps }
               <Render data={data} set={set} errors={visibleErrors}
                 token={token} setIfEmpty={setIfEmpty}
                 req={brand ? { years: brand.req_experience_years, age: brand.req_min_age, cls: brand.req_cdl_class } : undefined}
+                // An FCRA / PSP / §391.23 authorisation names the party being
+                // authorised. On an unbranded link `brand` is null, and the
+                // disclosures used to fall back to the literal phrase "the
+                // Prospective Employer" — a signed records release with no
+                // counterparty. `legal_name` from /brand carries the account's
+                // registered name so there is always a real party named.
                 carrier={brand ? {
-                  name: brand.name, dot: brand.usdot_number, mc: brand.mc_number, phone: brand.phone,
+                  name: brand.name || legalName,
+                  dot: brand.usdot_number, mc: brand.mc_number, phone: brand.phone,
                   legal_address: brand.legal_address, compliance_email: brand.compliance_email,
                   cra_name: brand.cra_name, cra_address: brand.cra_address,
                   cra_phone: brand.cra_phone, cra_site: brand.cra_site,
+                } : legalName ? {
+                  name: legalName, dot: '', mc: '', phone: '',
+                  legal_address: '', compliance_email: '',
+                  cra_name: '', cra_address: '', cra_phone: '', cra_site: '',
                 } : undefined} />
               {submitError && (
                 <p className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">

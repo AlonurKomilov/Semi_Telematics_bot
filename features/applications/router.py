@@ -48,6 +48,7 @@ from interfaces.api.deps import (
 )
 from interfaces.api.rate_limit import limiter
 from infra.file_safety import validate_upload
+from features.applications import notifications as _app_notifications  # noqa: F401  registers applications.received
 from features.applications import service
 
 logger = logging.getLogger("api.applications")
@@ -202,6 +203,17 @@ async def submit_application(
             service.notify_new_application, platform_db, account_id,
             created["id"], reference, applicant_name,
         )
+        # …and a receipt for the APPLICANT. Without it the reference number
+        # lived on one screen and was then unrecoverable, which made the
+        # self-service status page unusable for the person it exists for.
+        if personal.get("email"):
+            from features.applications.applicant_receipt import (
+                notify_applicant_received,
+            )
+            background_tasks.add_task(
+                notify_applicant_received, platform_db, account_id,
+                link, personal["email"], applicant_name, reference,
+            )
 
     # The submitted application supersedes any saved draft — drop it so the
     # recruiter's "In progress" list never shows an already-submitted person.
@@ -262,10 +274,29 @@ async def public_link_brand(
     NEVER the company's Samsara key.  An unknown/expired token or a link
     with no company returns ``{"company": null}`` (the form falls back to
     its generic look); always 200, so it's no oracle for token existence."""
-    _link, co = await _link_company(platform_db, token)
+    link, co = await _link_company(platform_db, token)
+    # ``link_state`` is COARSE on purpose — 'closed' covers expired, revoked
+    # and never-existed alike, so it stays no oracle for token existence
+    # while still letting the form say "this posting has closed" BEFORE it
+    # collects an SSN, a DOB, ten years of employment and three signatures
+    # into a submission the server is going to refuse.
+    state = "ok" if link else "closed"
     if not co:
-        return {"company": None}
-    return {"company": {
+        # The legal fallback: FCRA/PSP/§391.23 authorisations name the party
+        # being authorised, so an unbranded link cannot be allowed to render
+        # them against "the Prospective Employer". The account's registered
+        # name is the correct counterparty here — unlike the carrier-directory
+        # case, the applicant is applying TO this employer and is entitled to
+        # know who they are.
+        legal_name = ""
+        if link:
+            try:
+                acct = await platform_db.get_account(link["account_id"])
+                legal_name = (getattr(acct, "name", "") or "").strip()
+            except Exception:
+                pass
+        return {"company": None, "link_state": state, "legal_name": legal_name}
+    return {"link_state": state, "legal_name": co.display_name or co.code, "company": {
         "name": co.display_name or co.code,
         "brand_color": co.brand_color,
         "website": co.website,
@@ -992,7 +1023,13 @@ async def list_applications(
     items = await platform_db.list_driver_applications(
         user["account_id"], status=status, limit=limit,
     )
-    return {"items": items, "count": len(items)}
+    # ``total`` is the real row count. The page loads the newest N and both
+    # the table and the hero counted only those, so past the cap "Submitted
+    # 12" was a count of the loaded slice, not of the pipeline.
+    total = await platform_db.count_driver_applications(
+        user["account_id"], status=status,
+    )
+    return {"items": items, "count": len(items), "total": total}
 
 
 @router.get("/{app_id:int}")
@@ -1254,6 +1291,19 @@ async def download_application_packet(
 # federal requirement; the signed Employee Verification Consent on the
 # application is the legal authorization.
 
+async def _requesting_user_email(platform_db, user: dict) -> str:
+    """The signed-in recruiter's own address — the reply path of last
+    resort for a §391.23 request sent from a link with no carrier."""
+    try:
+        uid = user.get("user_id") or user.get("id") or user.get("sub")
+        if not uid:
+            return ""
+        u = await platform_db.get_user_by_id(int(uid))
+        return (getattr(u, "email", "") or "").strip()
+    except Exception:
+        return ""
+
+
 async def _carrier_identity(platform_db, account_id: int, app: dict) -> dict:
     """The requesting-carrier block for the request PDF/email."""
     out = {"name": "", "mc": "", "dot": "", "address": "", "phone": "", "email": ""}
@@ -1268,10 +1318,15 @@ async def _carrier_identity(platform_db, account_id: int, app: dict) -> dict:
                 })
         except Exception:
             pass
-    if not out["name"]:
+    if not out["name"] or not out["email"]:
+        # A generic-link application has no company row, so name AND reply
+        # address were both left blank — and the email body instructs the
+        # previous employer to "return it within 30 days by replying to this
+        # email". A §391.23 request with no reply path is undeliverable in
+        # practice; fall back to the requesting user's own address.
         try:
             acct = await platform_db.get_account(account_id)
-            out["name"] = getattr(acct, "name", "") or ""
+            out["name"] = out["name"] or (getattr(acct, "name", "") or "")
         except Exception:
             pass
     return out
@@ -1356,12 +1411,23 @@ async def send_verification(
     p = app.get("personal") or {}
     driver_name = f"{p.get('first', '')} {p.get('last', '')}".strip()
     from capabilities.email.application_emails import send_verification_request_email
+    # The body says "return it by replying to this email", so a Reply-To is
+    # load-bearing, not decorative. Carrier compliance address first; the
+    # requesting user's own address is the fallback for a generic link.
+    reply_to = carrier["email"] or await _requesting_user_email(platform_db, user)
     sent = send_verification_request_email(
         to=email, carrier_name=carrier["name"], driver_name=driver_name,
-        reply_to=carrier["email"], pdf_bytes=pdf.getvalue(),
+        reply_to=reply_to, pdf_bytes=pdf.getvalue(),
     )
     if not sent:
-        raise HTTPException(status_code=503, detail="Email is not configured on this server.")
+        # send_verification_request_email returns False for an unconfigured
+        # relay, an empty recipient AND a raised send — asserting one cause
+        # sends the recruiter to fix the wrong thing.
+        raise HTTPException(
+            status_code=503,
+            detail="The request could not be sent — check the employer's email "
+                   "address, or the mail relay if this keeps happening.",
+        )
     row = await platform_db.record_verification_sent(
         account_id, app_id, body.employer_index,
         employer_name=target["company"], employer_email=email,

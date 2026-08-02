@@ -295,6 +295,11 @@ class _DatabaseCore:
                 else "single_group"
             ),
             disabled_modules=row["disabled_modules"] if "disabled_modules" in row.keys() else "",
+            public_display_name=(
+                row["public_display_name"]
+                if "public_display_name" in row.keys() and row["public_display_name"]
+                else ""
+            ),
         )
 
     def _row_to_company(self, row) -> Company:

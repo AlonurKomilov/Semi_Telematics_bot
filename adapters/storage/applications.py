@@ -114,6 +114,16 @@ class ApplicationsMixin(_MixinBase):
         )
         await self._db.commit()
 
+    async def get_application_link_by_id(self, link_id: int) -> Optional[dict]:
+        """Unscoped fetch — ONLY for the platform-wide nightly sweep, which
+        has no user and no account context. Every request-path read must go
+        through the account-scoped list/update helpers."""
+        cur = await self._db.execute(
+            "SELECT * FROM application_links WHERE id = ?", (link_id,),
+        )
+        row = await cur.fetchone()
+        return dict(row) if row else None
+
     async def resolve_application_link(self, token: str) -> Optional[dict]:
         """Map a public token → its account.  None if unknown/inactive.
 
@@ -290,6 +300,56 @@ class ApplicationsMixin(_MixinBase):
         )
         await self._db.commit()
         return {"id": cur.lastrowid, "reference": reference, "status": "submitted"}
+
+    # ── Nightly link-expiry sweep ───────────────────────────────────
+    #
+    # Cross-account by design: one scheduler pass for the platform, fanned
+    # out per row. One-shot per link — the marker is stamped as the mail
+    # goes out, so a retry can never double-send.
+
+    async def list_links_expiring_soon(
+        self, *, now_iso: str, before_iso: str,
+    ) -> list[dict]:
+        """Live links lapsing inside the warning window that nobody has
+        been warned about yet."""
+        cur = await self._db.execute(
+            "SELECT id, account_id, label, source, expires_at, company_id "
+            "  FROM application_links "
+            " WHERE is_active = 1 "
+            "   AND expires_at IS NOT NULL "
+            "   AND expires_at > ? AND expires_at <= ? "
+            "   AND expiry_warned_at = '' "
+            " ORDER BY expires_at",
+            (now_iso, before_iso),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
+    async def mark_link_expiry_warned(self, link_id: int) -> None:
+        await self._db.execute(
+            "UPDATE application_links SET expiry_warned_at = ? WHERE id = ?",
+            (self._now(), link_id),
+        )
+        await self._db.commit()
+
+    async def count_driver_applications(
+        self, account_id: int, *, status: str = "",
+    ) -> int:
+        """How many applications actually exist, independent of the page
+        limit — so a truncated list can say so instead of presenting the
+        newest N as the whole set."""
+        if status:
+            cur = await self._db.execute(
+                "SELECT COUNT(*) FROM driver_applications "
+                " WHERE account_id = ? AND status = ?",
+                (account_id, status),
+            )
+        else:
+            cur = await self._db.execute(
+                "SELECT COUNT(*) FROM driver_applications WHERE account_id = ?",
+                (account_id,),
+            )
+        row = await cur.fetchone()
+        return int((row[0] if row else 0) or 0)
 
     async def list_driver_applications(
         self, account_id: int, *, status: str = "", limit: int = 100,

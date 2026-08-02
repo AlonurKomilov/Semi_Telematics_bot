@@ -21,6 +21,7 @@ import SubBotRoster from '../notifications/delivery/SubBotRoster';
 import DangerZoneSection from './DangerZoneSection';
 import { toneClasses } from '../../lib/status';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
+import { Input } from '../../components/ui/input';
 
 const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'hr', 'accounting', 'recruiter', 'driver'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -45,6 +46,14 @@ export default function Settings() {
   const [accountTz, setAccountTz] = useState('America/New_York');
   const [accountTzSaving, setAccountTzSaving] = useState(false);
   const [accountTzSuccess, setAccountTzSuccess] = useState('');
+  // The name outsiders see instead of the registered company name.
+  // Blank is a real setting (show nobody), so it can't be conflated
+  // with "not loaded" — hence the separate loaded flag.
+  const [publicName, setPublicName] = useState('');
+  const [registeredName, setRegisteredName] = useState('');
+  const [publicNameLoaded, setPublicNameLoaded] = useState(false);
+  const [publicNameSaving, setPublicNameSaving] = useState(false);
+  const [publicNameSuccess, setPublicNameSuccess] = useState('');
   // VIEW-AWARE permissions (useViewPermissions, not the raw logged-in
   // user): the page must render the PREVIEWED persona's Settings under
   // View-As — an owner previewing "Fleet · Manager" sees the manager's
@@ -203,6 +212,35 @@ export default function Settings() {
     }
   };
 
+  useEffect(() => {
+    if (!canManageAccount) return;
+    apiJSON<{ public_display_name: string; registered_name: string }>(
+      '/admin/account/public-identity',
+    ).then((r) => {
+      setPublicName(r.public_display_name || '');
+      setRegisteredName(r.registered_name || '');
+      setPublicNameLoaded(true);
+    }).catch(() => {});
+  }, [canManageAccount]);
+
+  const handleSavePublicName = async () => {
+    setPublicNameSaving(true); setError(''); setPublicNameSuccess('');
+    try {
+      const value = publicName.trim();
+      await apiJSON('/admin/account/public-identity', {
+        method: 'PUT', body: { public_display_name: value },
+      });
+      setPublicName(value);
+      setPublicNameSuccess(value
+        ? `Outside forms now show "${value}".`
+        : 'Outside forms now show no company name.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to save the public name');
+    } finally {
+      setPublicNameSaving(false);
+    }
+  };
+
 
   const handleSaveSetting = async (key: string) => {
     setSaving(true); setError('');
@@ -293,6 +331,51 @@ export default function Settings() {
               className="bg-primary text-primary-foreground px-3 py-2 rounded text-sm font-medium disabled:opacity-50"
             >
               {accountTzSaving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </section>
+      )}
+
+      {/* Public identity — what an outside business sees on token-gated
+          forms we send them.  Separate from the registered name, which
+          stays the internal label everywhere.  Blank is a real choice:
+          those forms name no one rather than falling back. */}
+      {canManageAccount && publicNameLoaded && (
+        <section className="bg-card border border-border rounded-xl p-5">
+          <h2 className="text-lg font-semibold mb-1">Public Company Name</h2>
+          <p className="text-xs text-muted-foreground mb-3 max-w-xl">
+            Shown to outside companies on forms you send them — today the
+            carrier profile form and its invite email. Your registered name
+            {registeredName ? ` (${registeredName})` : ''} is never shown there.
+            {' '}Leave this blank and those forms name no company at all, while
+            recruiters can still name one per invite link — that combination
+            gives the most per-carrier control.
+            {' '}Set a name here and every link shows it unless a recruiter
+            overrides it, but no single link can then be left anonymous.
+            {' '}Changing it also changes what links you already sent display.
+          </p>
+          {publicNameSuccess && (
+            <p className="text-ok text-sm mb-3">{publicNameSuccess}</p>
+          )}
+          <div className="flex items-end gap-3">
+            <div className="flex-1 max-w-sm">
+              <label className="block text-xs text-muted-foreground mb-1" htmlFor="public-display-name">
+                Public name
+              </label>
+              <Input
+                id="public-display-name"
+                value={publicName}
+                maxLength={120}
+                onChange={(e) => setPublicName(e.target.value)}
+                placeholder="Leave blank to show no company name"
+              />
+            </div>
+            <button
+              onClick={handleSavePublicName}
+              disabled={publicNameSaving}
+              className="bg-primary text-primary-foreground px-3 py-2 rounded text-sm font-medium disabled:opacity-50"
+            >
+              {publicNameSaving ? 'Saving…' : 'Save'}
             </button>
           </div>
         </section>

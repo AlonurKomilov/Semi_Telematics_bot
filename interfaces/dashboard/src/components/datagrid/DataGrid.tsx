@@ -299,6 +299,11 @@ interface DataGridProps {
    *  persisted — see the segment-state comment in the component).
    *  Pass a module-level constant (not an inline literal) so the
    *  array identity is stable across renders. */
+  /** What the body says when there are no rows AND no filter/search is
+   *  active — i.e. the dataset itself is empty. Filtered-to-nothing and
+   *  search-miss render their own copy plus a clear action, so this is
+   *  only ever the genuine starting state. Defaults to "No data". */
+  emptyMessage?: React.ReactNode;
   segments?: DataGridSegment[];
   /** Enable user-managed saved tabs — personal tabs an operator
    *  builds from the current filters (a "+ New tab" affordance beside
@@ -671,7 +676,7 @@ export default function DataGrid({
   pivot: pivotEnabled = false,
   headerToolbar, tableId, firstColumnLeading, rowGroupHeader, defaultRowGroup,
   defaultAggregation,
-  enableToolbar = true, enablePagination = true, segments,
+  enableToolbar = true, enablePagination = true, segments, emptyMessage,
   savedTabs: savedTabsEnabled = false,
   bulkSelection = false, onBulkSelectionChange, bulkActions, bulkRowLabel,
   isRowSelectable, selectedIds: controlledSelectedIds, onSelectedIdsChange,
@@ -2985,7 +2990,12 @@ export default function DataGrid({
         // columns where the header is a checkbox, not a name).
         label: c.label || c.key,
         alwaysVisible: c.locked === true,
-      }));
+      }))
+      // Locked columns are structural (a row chevron, a checkbox) and are
+      // alwaysVisible anyway, so listing them is noise the operator can't
+      // act on — and one with no label renders under its raw key, leaking
+      // an internal id like "_chevron" into a user-facing menu.
+      .filter(c => !c.alwaysVisible);
   }, [columns, columnOrder]);
 
   return (
@@ -3656,7 +3666,27 @@ export default function DataGrid({
                     fillHeight ? 'h-64 align-middle' : 'py-8',
                   )}
                 >
-                  No data
+                  {/* Three different situations used to share one system
+                      word. "No data" is true of an empty dataset, a
+                      filtered-to-nothing view and a search miss — but only
+                      the first is the operator's starting point; the other
+                      two have an obvious next step, and saying nothing
+                      about it strands them. */}
+                  {(globalFilter || columnFilters.length > 0) ? (
+                    <span className="inline-flex flex-col items-center gap-2">
+                      <span>
+                        {globalFilter
+                          ? <>No match for &ldquo;{globalFilter}&rdquo;</>
+                          : 'Nothing matches the current filters'}
+                      </span>
+                      <Button size="xs" variant="ghost" onClick={() => {
+                        setGlobalFilter('');
+                        setColumnFilters([]);
+                      }}>
+                        Clear {globalFilter ? 'search' : 'filters'}
+                      </Button>
+                    </span>
+                  ) : (emptyMessage ?? 'No data')}
                 </TableCell>
               </TableRow>
             ) : (
