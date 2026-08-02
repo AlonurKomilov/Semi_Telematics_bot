@@ -8,6 +8,7 @@ import { PRIORITY_OPTIONS } from './badges';
 import ServiceTaskPicker from '../service-tasks/ServiceTaskPicker';
 import { useViewPermissions } from '../../hooks/useViewPermissions';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
+import { Dialog, DialogContent } from '../../components/ui/dialog';
 
 // Priority options carry lowercase wire values; title-case the display
 // label so the picker reads "Low / Medium / …" (matches the old
@@ -135,14 +136,14 @@ export function TemplatesModal({ onClose, onChange }: Props) {
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/60 z-50 flex justify-center items-start pt-12"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-xl max-h-[80vh] bg-card border border-border rounded-xl p-6 overflow-y-auto shadow-2xl"
-        onClick={e => e.stopPropagation()}
-      >
+    // Was a hand-rolled backdrop + panel: a click-away and nothing else,
+    // so no focus trap, no Escape, no ``aria-modal`` and no background
+    // scroll lock.  <Dialog> brings all four AND the scrolling — its
+    // popup is already capped at the viewport with ``overflow-y-auto``
+    // and (since this pass) ``overscroll-contain``, so the modal no
+    // longer scrolls the page behind it.
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent showCloseButton={false} className="sm:max-w-xl p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
             <h2 className="text-lg font-semibold">Task Templates</h2>
@@ -336,7 +337,7 @@ export function TemplatesModal({ onClose, onChange }: Props) {
             </div>
           </form>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

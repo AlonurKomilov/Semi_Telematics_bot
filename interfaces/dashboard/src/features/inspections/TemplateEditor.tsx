@@ -16,6 +16,7 @@ import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import type { PTITemplate, PTITemplateItem } from '../../types';
+import { Dialog, DialogContent } from '../../components/ui/dialog';
 
 /**
  * Fleet-side template editor for PTI checklists.
@@ -116,14 +117,14 @@ function AddItemDialog({
   };
 
   return (
-    <div
-      className="fixed inset-0 bg-black/60 z-50 flex items-start justify-center pt-24"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-lg bg-card border border-border rounded-xl p-5 shadow-2xl space-y-3"
-        onClick={e => e.stopPropagation()}
-      >
+    // Was a hand-rolled backdrop + panel: a click-away and nothing else,
+    // so no focus trap, no Escape, no ``aria-modal`` and no background
+    // scroll lock.  <Dialog> brings all four AND the scrolling — its
+    // popup is already capped at the viewport with ``overflow-y-auto``
+    // and (since this pass) ``overscroll-contain``, so the modal no
+    // longer scrolls the page behind it.
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent showCloseButton={false} className="sm:max-w-lg p-5">
         <div className="flex items-center justify-between">
           <h3 className="text-base font-semibold">
             {t('inspections.add_item_title', { vehicleType })}
@@ -229,8 +230,8 @@ function AddItemDialog({
             {saving ? t('common.saving') : t('inspections.add_item_btn')}
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -4,6 +4,7 @@ import type { MaintenanceTask } from '../../types';
 import { toneClasses } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
+import { Dialog, DialogContent } from '../../components/ui/dialog';
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -296,15 +297,13 @@ export function CalendarMonth({
         </div>
       )}
 
-      {dayDetail && (
-        <div
-          className="fixed inset-0 bg-black/60 z-50 flex justify-center items-start pt-20"
-          onClick={() => setDayDetail(null)}
-        >
-          <div
-            className="w-full max-w-lg max-h-[70vh] bg-card border border-border rounded-xl p-5 shadow-2xl overflow-y-auto"
-            onClick={e => e.stopPropagation()}
-          >
+      {/* Was a hand-rolled backdrop + panel — click-away only, so no focus
+          trap, no Escape, no ``aria-modal``, no background scroll lock.
+          <Dialog> brings all four and does the scrolling too. */}
+      <Dialog open={!!dayDetail} onOpenChange={(o) => { if (!o) setDayDetail(null); }}>
+        <DialogContent showCloseButton={false} className="sm:max-w-lg p-5">
+          {dayDetail && (
+          <>
             <div className="flex items-start justify-between mb-3">
               <div>
                 <h3 className="text-base font-semibold">
@@ -363,9 +362,10 @@ export function CalendarMonth({
                 );
               })}
             </ul>
-          </div>
-        </div>
-      )}
+          </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

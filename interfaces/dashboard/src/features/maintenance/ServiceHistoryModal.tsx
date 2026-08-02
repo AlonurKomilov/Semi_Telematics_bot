@@ -9,6 +9,7 @@ import { TaskTypeCell } from './badges';
 import { useTaskLabels } from '../service-tasks/useTaskLabels';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, formatDay } from '../../utils/datetime';
+import { Dialog, DialogContent } from '../../components/ui/dialog';
 
 // Build the last-12-months service-count series for the chart.
 // Anchored on TODAY so the rightmost bar is always the current month,
@@ -127,11 +128,14 @@ export function ServiceHistoryModal({
   const spendCents = totalCostCents + standaloneWoCents;
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex justify-center items-start pt-12" onClick={onClose}>
-      <div
-        className="w-full max-w-2xl max-h-[80vh] bg-card border border-border rounded-xl p-6 overflow-y-auto shadow-2xl"
-        onClick={e => e.stopPropagation()}
-      >
+    // Was a hand-rolled backdrop + panel: a click-away and nothing else,
+    // so no focus trap, no Escape, no ``aria-modal`` and no background
+    // scroll lock.  <Dialog> brings all four AND the scrolling — its
+    // popup is already capped at the viewport with ``overflow-y-auto``
+    // and (since this pass) ``overscroll-contain``, so the modal no
+    // longer scrolls the page behind it.
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent showCloseButton={false} className="sm:max-w-2xl p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-semibold">Service History</h2>
@@ -328,7 +332,7 @@ export function ServiceHistoryModal({
             )}
           </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
