@@ -350,7 +350,6 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # Imported lazily so non-warehouse deployments (older installs that
     # haven't run migrations yet) can still boot the scheduler.
     from capabilities.integrations.samsara.sync import (
-        job_ingest_vehicle_state,
         job_ingest_safety_events,
         job_ingest_driver_efficiency_daily,
         job_ingest_vehicle_health,
@@ -359,11 +358,11 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         job_ingest_fleet_efficiency,
         job_ingest_geofence_definitions,
     )
-    scheduler.add_job(
-        job_ingest_vehicle_state, "interval",
-        seconds=60, args=[app], id="warehouse_vehicle_state",
-        max_instances=1, coalesce=True,
-    )
+    # vehicle_state now rides the ingest registry (generated below with
+    # the rollup stages) — the declaration lives with its owner in
+    # features/vehicles/lifecycle.py, and every run lands in the
+    # ingest_runs ledger.  Remaining hand-wired ingests migrate one at
+    # a time, ids verbatim, as the provider sync splits into fetchers.
     scheduler.add_job(
         job_ingest_safety_events, "interval",
         minutes=5, args=[app], id="warehouse_safety_events",
@@ -406,6 +405,25 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
             trigger = IntervalTrigger(minutes=cadence["interval_min"])
         scheduler.add_job(
             run_stage, trigger, args=[stage], id=stage.job_id,
+            max_instances=1, coalesce=True,
+        )
+
+    # ── ingest datasets (ACQUIRE — same registry pattern) ─────
+    from capabilities.data_lifecycle.ingest import (
+        all_datasets,
+        discover as _discover_ingest,
+    )
+    from capabilities.data_lifecycle.ingest.engine import run_dataset
+
+    _discover_ingest()
+    for dataset in all_datasets():
+        cadence = dataset.cadence
+        if "cron" in cadence:
+            trigger = CronTrigger.from_crontab(cadence["cron"], timezone=cadence.get("tz"))
+        else:
+            trigger = IntervalTrigger(minutes=cadence["interval_min"])
+        scheduler.add_job(
+            run_dataset, trigger, args=[dataset], id=dataset.job_id,
             max_instances=1, coalesce=True,
         )
 

@@ -8023,3 +8023,38 @@ async def migrate_source_ts_staleness_contract(conn) -> None:
         )
     await conn.commit()
     logger.info("Migration 180: source_ts staleness contract columns ready")
+
+
+@_register("181_ingest_runs_ledger")
+async def migrate_ingest_runs_ledger(conn) -> None:
+    """The ingest run ledger — one row per dataset, account and day.
+
+    Day-grain on purpose: a 60-second dataset would write fourteen
+    thousand rows a day platform-wide at run-grain, and the question
+    the ledger answers — "has this dataset written anything lately?" —
+    needs counters, not a diary.  Freshness is judged from the data
+    itself (``MAX(source_ts)`` on the dataset's own tables), so the
+    ledger only has to prove the machinery RAN and what it produced.
+    """
+    await conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS ingest_runs (
+            id           INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id   INTEGER NOT NULL,
+            dataset_key  TEXT    NOT NULL,
+            day          TEXT    NOT NULL,
+            runs         INTEGER NOT NULL DEFAULT 0,
+            rows_sum     INTEGER NOT NULL DEFAULT 0,
+            last_rows    INTEGER NOT NULL DEFAULT 0,
+            last_ran_at  TEXT    NOT NULL DEFAULT '',
+            UNIQUE(account_id, dataset_key, day)
+        )
+        """
+    )
+    # Indexes here, never in schema.py (the known boot-crash gotcha).
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ingest_runs_lookup "
+        "ON ingest_runs(account_id, dataset_key, day)"
+    )
+    await conn.commit()
+    logger.info("Migration 181: ingest_runs ledger ready")

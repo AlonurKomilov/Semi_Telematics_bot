@@ -1,4 +1,4 @@
-"""Retiring vehicles the provider stopped reporting — the departure sweep.
+"""Vehicle lifecycle machinery: the departure sweep and the ingest ledger.
 
 ``vehicle_state`` means "the fleet as it reports NOW", but nothing ever
 removed a row once its gateway went silent: a truck that left Samsara in
@@ -120,3 +120,34 @@ class VehicleDepartureMixin:
         )
         return {"departed": departed, "registry_deactivated": deactivated,
                 "skipped_all_stale": False}
+
+
+    async def record_ingest_run(
+        self, account_id: int, dataset_key: str, rows_written: int,
+    ) -> None:
+        """Fold one ingest run into the day-grain ledger.
+
+        The ledger is how "this dataset wrote nothing for three days"
+        becomes one query instead of a forensic project — five datasets
+        died silently for want of exactly this record.
+        """
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        await self._db.execute(
+            """
+            INSERT INTO ingest_runs (
+                account_id, dataset_key, day,
+                runs, rows_sum, last_rows, last_ran_at
+            ) VALUES (?, ?, ?, 1, ?, ?, ?)
+            ON CONFLICT (account_id, dataset_key, day) DO UPDATE SET
+                runs = ingest_runs.runs + 1,
+                rows_sum = ingest_runs.rows_sum + excluded.rows_sum,
+                last_rows = excluded.last_rows,
+                last_ran_at = excluded.last_ran_at
+            """,
+            (account_id, dataset_key, now.strftime("%Y-%m-%d"),
+             int(rows_written), int(rows_written),
+             now.strftime("%Y-%m-%dT%H:%M:%S")),
+        )
+        await self._db.commit()

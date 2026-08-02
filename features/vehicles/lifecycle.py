@@ -152,3 +152,32 @@ async def job_departure_sweep(_app=None) -> None:
     if retired:
         log.info("departure sweep: %d badge(s) retired across the platform",
                  retired)
+
+
+# ── ACQUIRE: ingest datasets ─────────────────────────────────────
+# The vehicles feature declares what it pulls from the provider; the
+# ingest hub runs it, records every run in the day-grain ledger, and
+# the watchdog judges freshness from the declaration — no dataset of
+# this feature can die silently again.  vehicles.state is the first
+# declared dataset; its siblings (health, faults, weather) follow as
+# the provider sync splits into fetchers.
+
+from capabilities.data_lifecycle.ingest import IngestDataset, register_dataset
+
+
+def _run_vehicle_state(account_id: int):
+    from capabilities.integrations.samsara.sync import ingest_vehicle_state
+    return ingest_vehicle_state(account_id)
+
+
+register_dataset(IngestDataset(
+    key="vehicles.state",
+    owner="vehicles",
+    job_id="warehouse_vehicle_state",
+    capability="vehicle_state",
+    cadence={"interval_min": 1},
+    run=_run_vehicle_state,
+    tables=("vehicle_state", "vehicle_state_snapshot"),
+    freshness_sla_min=15,
+    label="Pull live vehicle state from the provider",
+))
