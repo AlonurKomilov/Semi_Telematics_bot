@@ -264,11 +264,13 @@ async def notify_new_application(
                 #    Applications tab is how someone NOT on that page
                 #    finds out.  Read-state is per-store; each bell
                 #    clears only its own.
+                page_ok = inbox_ok = False
                 try:
                     await platform_db.create_application_notification(
                         account_id, u.id, application_id=application_id,
                         reference=reference, title=title, body=body,
                     )
+                    page_ok = True
                 except Exception as e:
                     logger.debug("page notif for user %s failed: %s", u.id, e)
                 try:
@@ -293,8 +295,17 @@ async def notify_new_application(
                         channels=["in_app"],
                         correlation_key=f"application:{application_id}:{u.id}",
                     )
+                    inbox_ok = True
                 except Exception as e:
                     logger.debug("in-app notif for user %s failed: %s", u.id, e)
+                if not page_ok and not inbox_ok:
+                    # One store failing is survivable and stays at debug.
+                    # BOTH failing means this person was told nothing
+                    # on-screen — loud enough to notice in production,
+                    # still never raised (the submission already went in).
+                    logger.warning(
+                        "application %s: no in-app notice reached user %s",
+                        application_id, u.id)
 
             if "email" in channels and getattr(u, "email", None):
                 try:

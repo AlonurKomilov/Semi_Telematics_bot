@@ -132,8 +132,11 @@ class TestFanOut:
         assert content.meta["reference"] == "APP-77"
         # In-app only: email/telegram keep the feature's own senders.
         assert call["channels"] == ["in_app"]
-        # Correlation is per (application, recipient) so a retry can't
-        # double-deliver to one person.
+        # Correlation is per (application, recipient) — delivery
+        # bookkeeping, NOT dedup: the in-app channel records no ledger
+        # handle and the inbox has no uniqueness constraint, so calling
+        # this twice for one application really would write two rows
+        # (same as the page bell, email and telegram already do).
         assert call["correlation_key"] == "application:77:1"
 
     @pytest.mark.asyncio
