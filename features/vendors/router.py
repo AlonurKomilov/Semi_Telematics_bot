@@ -21,7 +21,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from interfaces.api.deps import get_current_user, get_tenant_db, require_permission
+from interfaces.api.deps import get_current_user, get_tenant_db, require_permission, resolve_user_id
 from capabilities.permissions.roles import can_for_account, Role
 
 router = APIRouter(prefix="/vendors", tags=["vendors"])
@@ -125,12 +125,9 @@ async def set_identity_sharing(
     whether shop identities leave the account is an owner call.  OFF
     stops the auto-pipeline's contribution; consuming the public
     directory (browse/map/linking) is unaffected."""
-    await tenant_db.set_identity_sharing(user["account_id"], body.enabled)
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "vendor_identity_sharing",
-        target_type="account", target_id=str(user["account_id"]),
-        details="on" if body.enabled else "off",
+    await tenant_db.set_identity_sharing(
+        user["account_id"], body.enabled,
+        actor_user_id=await resolve_user_id(user),
     )
     return {"ok": True, "enabled": body.enabled}
 
@@ -161,12 +158,9 @@ async def set_market_sharing(
     not a fleet-manager one."""
     if not await tenant_db.market_intel_enabled():
         raise HTTPException(status_code=404, detail="Market intelligence is not enabled")
-    await tenant_db.set_market_sharing(user["account_id"], body.enabled)
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "market_sharing_toggle",
-        target_type="account", target_id=str(user["account_id"]),
-        details="enabled" if body.enabled else "disabled",
+    await tenant_db.set_market_sharing(
+        user["account_id"], body.enabled,
+        actor_user_id=await resolve_user_id(user),
     )
     return {"ok": True, "enabled": body.enabled}
 
@@ -230,15 +224,10 @@ async def create_vendor(
         user["account_id"], body.name,
         address=body.address, phone=body.phone,
         email=body.email, notes=body.notes,
+        actor_user_id=await resolve_user_id(user),
     )
     if not vendor:
         raise HTTPException(status_code=422, detail="Vendor name is empty")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "vendor_create",
-        target_type="vendor", target_id=str(vendor["id"]),
-        details=vendor["name"],
-    )
     return vendor
 
 
@@ -257,7 +246,10 @@ async def update_vendor(
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
     try:
-        ok = await tenant_db.update_vendor(vendor_id, user["account_id"], **updates)
+        ok = await tenant_db.update_vendor(
+            vendor_id, user["account_id"],
+            actor_user_id=await resolve_user_id(user), **updates,
+        )
     except Exception:
         # UNIQUE(account_id, name_key) collision on rename → the right
         # fix is a merge, tell the operator exactly that.
@@ -267,12 +259,6 @@ async def update_vendor(
         )
     if not ok:
         raise HTTPException(status_code=404, detail="Vendor not found")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "vendor_update",
-        target_type="vendor", target_id=str(vendor_id),
-        details=", ".join(sorted(updates)),
-    )
     return {"ok": True}
 
 
@@ -289,15 +275,12 @@ async def merge_vendors(
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     if loser_id == winner_id:
         raise HTTPException(status_code=422, detail="Cannot merge a vendor into itself")
-    ok = await tenant_db.merge_vendors(user["account_id"], loser_id, winner_id)
+    ok = await tenant_db.merge_vendors(
+        user["account_id"], loser_id, winner_id,
+        actor_user_id=await resolve_user_id(user),
+    )
     if not ok:
         raise HTTPException(status_code=404, detail="Vendor not found")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "vendor_merge",
-        target_type="vendor", target_id=str(winner_id),
-        details=f"merged #{loser_id} into #{winner_id}",
-    )
     return {"ok": True}
 
 
@@ -325,15 +308,10 @@ async def link_directory(
         raise HTTPException(status_code=404, detail="Vendor not found")
     ok = await tenant_db.link_vendor_to_directory(
         user["account_id"], vendor_id, entry_id,
+        actor_user_id=await resolve_user_id(user),
     )
     if not ok:
         raise HTTPException(status_code=404, detail="Directory entry not found or not active")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "vendor_directory_link",
-        target_type="vendor", target_id=str(vendor_id),
-        details=f"matched to directory entry #{entry_id}",
-    )
     return {"ok": True}
 
 
@@ -347,6 +325,7 @@ async def unlink_directory(
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     ok = await tenant_db.link_vendor_to_directory(
         user["account_id"], vendor_id, None,
+        actor_user_id=await resolve_user_id(user),
     )
     if not ok:
         raise HTTPException(status_code=404, detail="Vendor not found")
@@ -381,15 +360,10 @@ async def review_directory_entry(
         )
     review = await tenant_db.upsert_vendor_review(
         user["account_id"], entry_id, body.rating, body.comment,
+        actor_user_id=await resolve_user_id(user),
     )
     if not review:
         raise HTTPException(status_code=404, detail="Directory entry not found or not active")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "vendor_review_submit",
-        target_type="vendor_directory", target_id=str(entry_id),
-        details=f"{body.rating}★",
-    )
     return {"status": review["status"]}
 
 

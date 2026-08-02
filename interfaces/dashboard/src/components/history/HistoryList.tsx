@@ -43,6 +43,23 @@ export const ACTION_LABEL: Record<string, string> = {
   snooze: 'Snoozed',
   attachment_add: 'Attachment added',
   attachment_remove: 'Attachment removed',
+  deactivate: 'Deactivated',
+  merge_away: 'Merged into another record',
+  merge_in: 'Absorbed a merged record',
+  link_public: 'Linked to shared entry',
+  unlink_public: 'Unlinked from shared entry',
+  review_submit: 'Review submitted',
+  // Team management (user entity)
+  role_change: 'Role changed',
+  manager_tier_change: 'Manager tier changed',
+  co_owner_added: 'Co-owner added',
+  co_owner_removed: 'Co-owner removed',
+  telegram_invite_issued: 'Telegram sign-in link issued',
+  user_activate: 'Activated',
+  user_deactivate: 'Deactivated',
+  user_quiet_hours_set: 'Personal working hours set',
+  user_assigned_work_hours_set: 'Working-hours schedule assigned',
+  company_assignment: 'Company access changed',
 };
 
 export function actionLabel(action: string): string {
@@ -56,6 +73,12 @@ export const ENTITY_LABEL: Record<string, string> = {
   maintenance: 'Maintenance task',       // frozen-log rows
   load: 'Load',
   inventory_item: 'Inventory item',
+  vehicle: 'Vehicle',
+  part: 'Part',
+  vendor: 'Vendor',
+  vendor_directory_entry: 'Shared vendor entry',
+  sharing_settings: 'Sharing settings',
+  user: 'Team member',
 };
 
 export function entityLabel(entityType: string): string {

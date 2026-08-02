@@ -186,13 +186,26 @@ class VendorDirectoryMixin:
         row = await cur.fetchone()
         return bool(dict(row)["share_vendor_identities"]) if row else True
 
-    async def set_identity_sharing(self, account_id: int, enabled: bool) -> bool:
-        cur = await self._db.execute(
-            "UPDATE accounts SET share_vendor_identities = ? WHERE id = ?",
-            (1 if enabled else 0, account_id),
-        )
-        await self._db.commit()
-        return cur.rowcount > 0
+    async def set_identity_sharing(
+        self, account_id: int, enabled: bool,
+        actor_user_id: Optional[int] = None,
+    ) -> bool:
+        async with self.transaction():
+            old = None
+            if actor_user_id is not None:
+                old = await self.get_identity_sharing(account_id)
+            cur = await self._db.execute(
+                "UPDATE accounts SET share_vendor_identities = ? WHERE id = ?",
+                (1 if enabled else 0, account_id),
+            )
+            if cur.rowcount > 0 and actor_user_id is not None and old != enabled:
+                await self.append_activity_events(account_id, [{
+                    "entity_type": "sharing_settings",
+                    "entity_id": "vendor_identity",
+                    "action": "update", "actor_user_id": actor_user_id,
+                    "changes": {"enabled": {"from": old, "to": enabled}},
+                }])
+            return cur.rowcount > 0
 
     async def autosuggest_vendor(self, account_id: int, vendor: dict) -> None:
         """Feed a vendor's IDENTITY into the directory pipeline.
@@ -367,6 +380,7 @@ class VendorDirectoryMixin:
 
     async def link_vendor_to_directory(
         self, account_id: int, vendor_id: int, entry_id: Optional[int],
+        actor_user_id: Optional[int] = None,
     ) -> bool:
         """Set (or clear, entry_id=None) the account vendor's global
         link.  Only ACTIVE entries are linkable.
@@ -380,12 +394,29 @@ class VendorDirectoryMixin:
             entry = await self.get_directory_entry(entry_id)
             if not entry or entry["status"] != "active":
                 return False
-        cur = await self._db.execute(
-            "UPDATE vendors SET global_vendor_id = ?, updated_at = ? "
-            "WHERE id = ? AND account_id = ?",
-            (entry_id, self._now(), vendor_id, account_id),
-        )
-        await self._db.commit()
+        async with self.transaction():
+            old_gid = None
+            if actor_user_id is not None:
+                gcur = await self._db.execute(
+                    "SELECT global_vendor_id FROM vendors "
+                    "WHERE id = ? AND account_id = ?",
+                    (vendor_id, account_id),
+                )
+                r = await gcur.fetchone()
+                old_gid = r[0] if r else None
+            cur = await self._db.execute(
+                "UPDATE vendors SET global_vendor_id = ?, updated_at = ? "
+                "WHERE id = ? AND account_id = ?",
+                (entry_id, self._now(), vendor_id, account_id),
+            )
+            if cur.rowcount > 0 and actor_user_id is not None and old_gid != entry_id:
+                await self.append_activity_events(account_id, [{
+                    "entity_type": "vendor", "entity_id": vendor_id,
+                    "action": "link_public" if entry_id else "unlink_public",
+                    "actor_user_id": actor_user_id,
+                    "changes": {"global_vendor_id": {"from": old_gid, "to": entry_id}},
+                    "context": ({"entry_name": entry.get("name") or ""} if entry else {}),
+                }])
         if cur.rowcount > 0 and entry:
             vcur = await self._db.execute(
                 "SELECT address, phone, email FROM vendors "
@@ -425,32 +456,55 @@ class VendorDirectoryMixin:
 
     async def upsert_vendor_review(
         self, account_id: int, entry_id: int, rating: int, comment: str = "",
+        actor_user_id: Optional[int] = None,
     ) -> Optional[dict]:
         """One review per (shop, account); resubmitting UPDATES it and
         sends it back through moderation (status resets to pending) so
         an approved review can't be silently edited into something
-        else.  Entry must be active."""
+        else.  Entry must be active.
+
+        Trail: rating only, never the comment text — reviews are
+        anonymous OUTWARD (cross-account) but attributable INWARD (the
+        account's own audit view), same balance the old thin log kept.
+        """
         entry = await self.get_directory_entry(entry_id)
         if not entry or entry.get("status") != "active":
             return None
         rating = max(1, min(5, int(rating)))
         now = self._now()
-        await self._db.execute(
-            "INSERT INTO vendor_reviews (entry_id, account_id, rating, "
-            " comment, status, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, 'pending', ?, ?) "
-            "ON CONFLICT (entry_id, account_id) DO UPDATE SET "
-            " rating = excluded.rating, comment = excluded.comment, "
-            " status = 'pending', updated_at = excluded.updated_at",
-            (entry_id, account_id, rating, comment.strip(), now, now),
-        )
-        await self._db.commit()
-        cur = await self._db.execute(
-            "SELECT * FROM vendor_reviews WHERE entry_id = ? AND account_id = ?",
-            (entry_id, account_id),
-        )
-        row = await cur.fetchone()
-        return dict(row) if row else None
+        async with self.transaction():
+            old_rating = None
+            if actor_user_id is not None:
+                cur = await self._db.execute(
+                    "SELECT rating FROM vendor_reviews "
+                    "WHERE entry_id = ? AND account_id = ?",
+                    (entry_id, account_id),
+                )
+                r = await cur.fetchone()
+                old_rating = r[0] if r else None
+            await self._db.execute(
+                "INSERT INTO vendor_reviews (entry_id, account_id, rating, "
+                " comment, status, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, 'pending', ?, ?) "
+                "ON CONFLICT (entry_id, account_id) DO UPDATE SET "
+                " rating = excluded.rating, comment = excluded.comment, "
+                " status = 'pending', updated_at = excluded.updated_at",
+                (entry_id, account_id, rating, comment.strip(), now, now),
+            )
+            if actor_user_id is not None:
+                await self.append_activity_events(account_id, [{
+                    "entity_type": "vendor_directory_entry",
+                    "entity_id": entry_id,
+                    "action": "review_submit", "actor_user_id": actor_user_id,
+                    "changes": {"rating": {"from": old_rating, "to": rating}},
+                    "context": {"entry_name": entry.get("name") or ""},
+                }])
+            cur = await self._db.execute(
+                "SELECT * FROM vendor_reviews WHERE entry_id = ? AND account_id = ?",
+                (entry_id, account_id),
+            )
+            row = await cur.fetchone()
+            return dict(row) if row else None
 
     async def get_my_vendor_review(
         self, account_id: int, entry_id: int,

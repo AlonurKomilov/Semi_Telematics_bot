@@ -67,13 +67,26 @@ class MarketIntelMixin:
 
     # ── Consent toggle ───────────────────────────────────────────
 
-    async def set_market_sharing(self, account_id: int, enabled: bool) -> bool:
-        cur = await self._db.execute(
-            "UPDATE accounts SET share_market_data = ? WHERE id = ?",
-            (1 if enabled else 0, account_id),
-        )
-        await self._db.commit()
-        return cur.rowcount > 0
+    async def set_market_sharing(
+        self, account_id: int, enabled: bool,
+        actor_user_id: "int | None" = None,
+    ) -> bool:
+        async with self.transaction():
+            old = None
+            if actor_user_id is not None:
+                old = await self.get_market_sharing(account_id)
+            cur = await self._db.execute(
+                "UPDATE accounts SET share_market_data = ? WHERE id = ?",
+                (1 if enabled else 0, account_id),
+            )
+            if cur.rowcount > 0 and actor_user_id is not None and old != enabled:
+                await self.append_activity_events(account_id, [{
+                    "entity_type": "sharing_settings",
+                    "entity_id": "market_prices",
+                    "action": "update", "actor_user_id": actor_user_id,
+                    "changes": {"enabled": {"from": old, "to": enabled}},
+                }])
+            return cur.rowcount > 0
 
     async def get_market_sharing(self, account_id: int) -> bool:
         cur = await self._db.execute(

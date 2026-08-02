@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from capabilities.activity_trail import delete_changes, diff_rows
+
 
 def vendor_name_key(name: str) -> str:
     """Trim, collapse inner whitespace, casefold.  MUST stay in sync
@@ -69,6 +71,7 @@ class VendorsMixin:
         phone: str = "",
         email: str = "",
         notes: str = "",
+        actor_user_id: Optional[int] = None,
     ) -> Optional[dict]:
         """Explicit create (idempotent on the normalized name — returns
         the existing row rather than erroring, same UX contract as
@@ -76,6 +79,7 @@ class VendorsMixin:
         return await self.resolve_or_create_vendor(
             account_id, name,
             address=address, phone=phone, email=email, notes=notes,
+            actor_user_id=actor_user_id,
         )
 
     async def resolve_or_create_vendor(
@@ -85,6 +89,7 @@ class VendorsMixin:
         phone: str = "",
         email: str = "",
         notes: str = "",
+        actor_user_id: Optional[int] = None,
     ) -> Optional[dict]:
         """Exact-normalized-match resolve, else create.  Returns the
         vendor row (never None for a non-empty name).
@@ -107,19 +112,35 @@ class VendorsMixin:
         if arow:
             return await self.get_vendor(dict(arow)["vendor_id"], account_id)
         # 2. Upsert-then-select — safe under concurrent syncs.
-        await self._db.execute(
-            "INSERT INTO vendors (account_id, name, name_key, address, "
-            " phone, email, notes, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT (account_id, name_key) DO NOTHING",
-            (account_id, name.strip(), nkey, address, phone, email, notes, now, now),
-        )
-        await self._db.commit()
-        cur = await self._db.execute(
-            "SELECT * FROM vendors WHERE account_id = ? AND name_key = ?",
-            (account_id, nkey),
-        )
-        row = await cur.fetchone()
+        async with self.transaction():
+            existed = False
+            if actor_user_id is not None:
+                cur = await self._db.execute(
+                    "SELECT 1 FROM vendors WHERE account_id = ? AND name_key = ?",
+                    (account_id, nkey),
+                )
+                existed = (await cur.fetchone()) is not None
+            await self._db.execute(
+                "INSERT INTO vendors (account_id, name, name_key, address, "
+                " phone, email, notes, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (account_id, name_key) DO NOTHING",
+                (account_id, name.strip(), nkey, address, phone, email, notes, now, now),
+            )
+            cur = await self._db.execute(
+                "SELECT * FROM vendors WHERE account_id = ? AND name_key = ?",
+                (account_id, nkey),
+            )
+            row = await cur.fetchone()
+            if row and actor_user_id is not None and not existed:
+                await self.append_activity_events(account_id, [{
+                    "entity_type": "vendor", "entity_id": dict(row)["id"],
+                    "action": "create", "actor_user_id": actor_user_id,
+                    "changes": diff_rows({}, {
+                        "name": name.strip(), "address": address,
+                        "phone": phone, "email": email, "notes": notes,
+                    }),
+                }])
         if not row:
             return None
         vendor = dict(row)
@@ -149,7 +170,8 @@ class VendorsMixin:
         return vendor
 
     async def update_vendor(
-        self, vendor_id: int, account_id: int, **kwargs,
+        self, vendor_id: int, account_id: int,
+        actor_user_id: Optional[int] = None, **kwargs,
     ) -> bool:
         """Update contact/notes/name.  Renaming re-derives ``name_key``;
         a collision with another vendor's key raises (the caller should
@@ -163,13 +185,32 @@ class VendorsMixin:
             updates["name_key"] = vendor_name_key(updates["name"])
             if not updates["name_key"]:
                 return False
-        updates["updated_at"] = self._now()
-        set_clause = ", ".join(f"{k} = ?" for k in updates)
-        cur = await self._db.execute(
-            f"UPDATE vendors SET {set_clause} WHERE id = ? AND account_id = ?",
-            [*updates.values(), vendor_id, account_id],
-        )
-        await self._db.commit()
+        async with self.transaction():
+            old: dict = {}
+            if actor_user_id is not None:
+                cur = await self._db.execute(
+                    "SELECT * FROM vendors WHERE id = ? AND account_id = ?",
+                    (vendor_id, account_id),
+                )
+                r = await cur.fetchone()
+                old = dict(r) if r else {}
+            updates["updated_at"] = self._now()
+            set_clause = ", ".join(f"{k} = ?" for k in updates)
+            cur = await self._db.execute(
+                f"UPDATE vendors SET {set_clause} WHERE id = ? AND account_id = ?",
+                [*updates.values(), vendor_id, account_id],
+            )
+            if cur.rowcount > 0 and old:
+                changes = diff_rows(
+                    old, updates,
+                    fields=set(updates) - {"updated_at", "name_key"},
+                )
+                if changes:
+                    await self.append_activity_events(account_id, [{
+                        "entity_type": "vendor", "entity_id": vendor_id,
+                        "action": "update", "actor_user_id": actor_user_id,
+                        "changes": changes,
+                    }])
         if cur.rowcount > 0:
             # Edits can complete the identity (user adds the address in
             # the Edit dialog) — feed the auto pipeline.  Idempotent.
@@ -180,6 +221,7 @@ class VendorsMixin:
 
     async def merge_vendors(
         self, account_id: int, loser_id: int, winner_id: int,
+        actor_user_id: Optional[int] = None,
     ) -> bool:
         """Fold ``loser`` into ``winner``: repoint work orders, record
         the loser's name_key (and its aliases) as aliases of the
@@ -192,37 +234,54 @@ class VendorsMixin:
         if not loser or not winner:
             return False
         now = self._now()
-        # The directory link survives the merge: if only the loser was
-        # linked, the survivor inherits it (deleting the loser row would
-        # otherwise silently drop enrichment + review eligibility).
-        if loser.get("global_vendor_id") and not winner.get("global_vendor_id"):
+        # One transaction: repoints + aliases + delete + trail commit
+        # together (pool proxy auto-commits bare statements otherwise).
+        async with self.transaction():
+            # The directory link survives the merge: if only the loser was
+            # linked, the survivor inherits it (deleting the loser row would
+            # otherwise silently drop enrichment + review eligibility).
+            if loser.get("global_vendor_id") and not winner.get("global_vendor_id"):
+                await self._db.execute(
+                    "UPDATE vendors SET global_vendor_id = ?, updated_at = ? "
+                    "WHERE id = ? AND account_id = ?",
+                    (loser["global_vendor_id"], now, winner_id, account_id),
+                )
             await self._db.execute(
-                "UPDATE vendors SET global_vendor_id = ?, updated_at = ? "
-                "WHERE id = ? AND account_id = ?",
-                (loser["global_vendor_id"], now, winner_id, account_id),
+                "UPDATE work_orders SET vendor_id = ? "
+                "WHERE account_id = ? AND vendor_id = ?",
+                (winner_id, account_id, loser_id),
             )
-        await self._db.execute(
-            "UPDATE work_orders SET vendor_id = ? "
-            "WHERE account_id = ? AND vendor_id = ?",
-            (winner_id, account_id, loser_id),
-        )
-        # Loser's key + any aliases it had accumulated move to winner.
-        await self._db.execute(
-            "UPDATE vendor_aliases SET vendor_id = ? "
-            "WHERE account_id = ? AND vendor_id = ?",
-            (winner_id, account_id, loser_id),
-        )
-        await self._db.execute(
-            "INSERT INTO vendor_aliases (account_id, name_key, vendor_id, created_at) "
-            "VALUES (?, ?, ?, ?) "
-            "ON CONFLICT (account_id, name_key) DO NOTHING",
-            (account_id, loser["name_key"], winner_id, now),
-        )
-        await self._db.execute(
-            "DELETE FROM vendors WHERE id = ? AND account_id = ?",
-            (loser_id, account_id),
-        )
-        await self._db.commit()
+            # Loser's key + any aliases it had accumulated move to winner.
+            await self._db.execute(
+                "UPDATE vendor_aliases SET vendor_id = ? "
+                "WHERE account_id = ? AND vendor_id = ?",
+                (winner_id, account_id, loser_id),
+            )
+            await self._db.execute(
+                "INSERT INTO vendor_aliases (account_id, name_key, vendor_id, created_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT (account_id, name_key) DO NOTHING",
+                (account_id, loser["name_key"], winner_id, now),
+            )
+            await self._db.execute(
+                "DELETE FROM vendors WHERE id = ? AND account_id = ?",
+                (loser_id, account_id),
+            )
+            # Trail: both sides of the merge under one group — the loser's
+            # full body is the recovery record for the deleted row.
+            if actor_user_id is not None:
+                from capabilities.activity_trail import new_group_id
+                gid = new_group_id()
+                await self.append_activity_events(account_id, [
+                    {"entity_type": "vendor", "entity_id": loser_id,
+                     "action": "merge_away", "actor_user_id": actor_user_id,
+                     "changes": delete_changes(loser), "group_id": gid,
+                     "context": {"into": winner_id, "into_name": winner.get("name")}},
+                    {"entity_type": "vendor", "entity_id": winner_id,
+                     "action": "merge_in", "actor_user_id": actor_user_id,
+                     "changes": {}, "group_id": gid,
+                     "context": {"from": loser_id, "from_name": loser.get("name")}},
+                ])
         return True
 
     # ── Profile detail ───────────────────────────────────────────

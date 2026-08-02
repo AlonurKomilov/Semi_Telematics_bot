@@ -33,7 +33,9 @@ from interfaces.api.deps import (
     get_user_company_codes,
     require_permission,
     require_permission_any,
+    resolve_user_id,
 )
+from capabilities.activity_trail import new_group_id
 
 router = APIRouter(prefix="/parts", tags=["parts"])
 
@@ -85,16 +87,10 @@ async def create_part(
         user["account_id"], body.name,
         part_number=body.part_number.strip(),
         notes=body.notes.strip(),
+        actor_user_id=await resolve_user_id(user),
     )
     if not part:
         raise HTTPException(status_code=422, detail="Part name is empty")
-    if created:
-        await tenant_db.add_audit_log(
-            user["account_id"], int(user["sub"]),
-            "part_catalog_create",
-            target_type="part", target_id=str(part["id"]),
-            details=part["name"],
-        )
     return {"part": part, "created": created}
 
 
@@ -169,6 +165,8 @@ async def apply_assembly_suggestions(
     """
     from adapters.storage.service_assemblies import suggest_assembly_for
     parts = await tenant_db.list_parts_catalog(user["account_id"])
+    actor = await resolve_user_id(user)
+    group = new_group_id()      # one bulk apply, N events, one group
     applied = 0
     for part in parts:
         if part.get("assembly_key"):
@@ -178,15 +176,10 @@ async def apply_assembly_suggestions(
             continue
         ok = await tenant_db.update_catalog_part(
             int(part["id"]), user["account_id"], assembly_key=hint,
+            actor_user_id=actor, trail_group_id=group,
         )
         if ok:
             applied += 1
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "parts_assembly_bulk_apply",
-        target_type="parts_catalog", target_id="bulk",
-        details=f"{applied} suggestions applied",
-    )
     return {"applied": applied}
 
 
@@ -287,15 +280,10 @@ async def link_public(
         raise HTTPException(status_code=404, detail="Catalog part not found")
     ok = await tenant_db.link_part_to_public(
         user["account_id"], part_id, entry_id,
+        actor_user_id=await resolve_user_id(user),
     )
     if not ok:
         raise HTTPException(status_code=404, detail="Public entry not found or not active")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "part_public_link",
-        target_type="part", target_id=str(part_id),
-        details=f"linked to public entry #{entry_id}",
-    )
     return {"ok": True}
 
 
@@ -309,7 +297,10 @@ async def unlink_public(
     re-link this row — the user's call sticks until they re-link."""
     if not await tenant_db.get_catalog_part(part_id, user["account_id"]):
         raise HTTPException(status_code=404, detail="Catalog part not found")
-    await tenant_db.link_part_to_public(user["account_id"], part_id, None)
+    await tenant_db.link_part_to_public(
+        user["account_id"], part_id, None,
+        actor_user_id=await resolve_user_id(user),
+    )
     return {"ok": True}
 
 
@@ -337,7 +328,9 @@ async def update_part(
         raise HTTPException(status_code=422, detail="No fields to update")
     try:
         ok = await tenant_db.update_catalog_part(
-            part_id, user["account_id"], **updates,
+            part_id, user["account_id"],
+            actor_user_id=await resolve_user_id(user),
+            **updates,
         )
     except Exception:
         # UNIQUE(account_id, name_key) collision on rename → the right
@@ -348,12 +341,6 @@ async def update_part(
         )
     if not ok:
         raise HTTPException(status_code=404, detail="Catalog part not found")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "part_catalog_update",
-        target_type="part", target_id=str(part_id),
-        details=", ".join(sorted(updates)),
-    )
     return {"ok": True}
 
 
@@ -369,15 +356,12 @@ async def merge_parts(
     re-syncs resolve to the survivor, delete the loser)."""
     if loser_id == winner_id:
         raise HTTPException(status_code=422, detail="Cannot merge a part into itself")
-    ok = await tenant_db.merge_catalog_parts(user["account_id"], loser_id, winner_id)
+    ok = await tenant_db.merge_catalog_parts(
+        user["account_id"], loser_id, winner_id,
+        actor_user_id=await resolve_user_id(user),
+    )
     if not ok:
         raise HTTPException(status_code=404, detail="Catalog part not found")
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "part_catalog_merge",
-        target_type="part", target_id=str(winner_id),
-        details=f"merged #{loser_id} into #{winner_id}",
-    )
     return {"ok": True}
 
 

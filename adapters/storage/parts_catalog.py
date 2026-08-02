@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Optional
 
+from capabilities.activity_trail import delete_changes, diff_rows
+
 
 def part_name_key(name: str) -> str:
     """Trim, collapse inner whitespace, casefold — MUST match the
@@ -129,6 +131,7 @@ class PartsCatalogMixin:
         *,
         part_number: str = "",
         notes: str = "",
+        actor_user_id: Optional[int] = None,
     ) -> tuple[Optional[dict], bool]:
         """Explicit Add-part: resolve semantics (alias-aware) with an
         honest ``created`` flag.  When the name already resolves, the
@@ -156,23 +159,35 @@ class PartsCatalogMixin:
         if row:
             return dict(row), False
         now = self._now()
-        await self._db.execute(
-            "INSERT INTO parts_catalog (account_id, name, name_key, "
-            " part_number, notes, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?) "
-            "ON CONFLICT (account_id, name_key) DO NOTHING",
-            (account_id, name.strip(), nkey, part_number, notes, now, now),
-        )
-        await self._db.commit()
-        cur = await self._db.execute(
-            "SELECT * FROM parts_catalog WHERE account_id = ? AND name_key = ?",
-            (account_id, nkey),
-        )
-        row = await cur.fetchone()
-        return (dict(row) if row else None), True
+        async with self.transaction():
+            await self._db.execute(
+                "INSERT INTO parts_catalog (account_id, name, name_key, "
+                " part_number, notes, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (account_id, name_key) DO NOTHING",
+                (account_id, name.strip(), nkey, part_number, notes, now, now),
+            )
+            cur = await self._db.execute(
+                "SELECT * FROM parts_catalog WHERE account_id = ? AND name_key = ?",
+                (account_id, nkey),
+            )
+            row = await cur.fetchone()
+            if row and actor_user_id is not None:
+                await self.append_activity_events(account_id, [{
+                    "entity_type": "part", "entity_id": dict(row)["id"],
+                    "action": "create", "actor_user_id": actor_user_id,
+                    "changes": diff_rows({}, {
+                        "name": name.strip(), "part_number": part_number,
+                        "notes": notes,
+                    }),
+                }])
+            return (dict(row) if row else None), True
 
     async def update_catalog_part(
-        self, part_id: int, account_id: int, **kwargs,
+        self, part_id: int, account_id: int,
+        actor_user_id: Optional[int] = None,
+        trail_group_id: Optional[str] = None,
+        **kwargs,
     ) -> bool:
         """Edit name/part_number/notes.  Renaming re-derives
         ``name_key``; a collision with another part's key raises (the
@@ -200,14 +215,36 @@ class PartsCatalogMixin:
                 # (advisor rule — fail closed on vocabulary typos).
                 if (not current or current.get("assembly_key") != ak) and                         not await self.assembly_key_valid_for_assignment(ak):
                     return False
-        updates["updated_at"] = self._now()
-        set_clause = ", ".join(f"{k} = ?" for k in updates)
-        cur = await self._db.execute(
-            f"UPDATE parts_catalog SET {set_clause} WHERE id = ? AND account_id = ?",
-            [*updates.values(), part_id, account_id],
-        )
-        await self._db.commit()
-        return cur.rowcount > 0
+        async with self.transaction():
+            old: dict = {}
+            if actor_user_id is not None:
+                cur = await self._db.execute(
+                    "SELECT * FROM parts_catalog WHERE id = ? AND account_id = ?",
+                    (part_id, account_id),
+                )
+                r = await cur.fetchone()
+                old = dict(r) if r else {}
+            updates["updated_at"] = self._now()
+            set_clause = ", ".join(f"{k} = ?" for k in updates)
+            cur = await self._db.execute(
+                f"UPDATE parts_catalog SET {set_clause} WHERE id = ? AND account_id = ?",
+                [*updates.values(), part_id, account_id],
+            )
+            touched = cur.rowcount > 0
+            if touched and old:
+                # name_key is derived bookkeeping — the rename shows as
+                # the human-visible ``name`` change.
+                changes = diff_rows(
+                    old, updates,
+                    fields=set(updates) - {"updated_at", "name_key"},
+                )
+                if changes:
+                    await self.append_activity_events(account_id, [{
+                        "entity_type": "part", "entity_id": part_id,
+                        "action": "update", "actor_user_id": actor_user_id,
+                        "changes": changes, "group_id": trail_group_id,
+                    }])
+            return touched
 
     # Void invoices never count toward analytics (same rule as every
     # cost report) and drafts (no service_date) don't either.
@@ -470,10 +507,16 @@ class PartsCatalogMixin:
 
     async def merge_catalog_parts(
         self, account_id: int, loser_id: int, winner_id: int,
+        actor_user_id: Optional[int] = None,
     ) -> bool:
         """Fold a duplicate part into the canonical one: repoint line
         rows (scoped through their parent work orders), move aliases,
-        tombstone the loser's key, delete the loser."""
+        tombstone the loser's key, delete the loser.
+
+        The trail records BOTH sides of the merge under one group: the
+        loser's event carries its full body (a merge deletes a row —
+        that body is the recovery record), the winner's records what it
+        absorbed."""
         if loser_id == winner_id:
             return False
         loser = await self.get_catalog_part(loser_id, account_id)
@@ -481,27 +524,40 @@ class PartsCatalogMixin:
         if not loser or not winner:
             return False
         now = self._now()
-        # work_order_parts has no account_id — scope via parent WOs.
-        await self._db.execute(
-            "UPDATE work_order_parts SET part_id = ? "
-            "WHERE part_id = ? AND work_order_id IN "
-            "  (SELECT id FROM work_orders WHERE account_id = ?)",
-            (winner_id, loser_id, account_id),
-        )
-        await self._db.execute(
-            "UPDATE part_aliases SET part_id = ? "
-            "WHERE account_id = ? AND part_id = ?",
-            (winner_id, account_id, loser_id),
-        )
-        await self._db.execute(
-            "INSERT INTO part_aliases (account_id, name_key, part_id, created_at) "
-            "VALUES (?, ?, ?, ?) "
-            "ON CONFLICT (account_id, name_key) DO NOTHING",
-            (account_id, loser["name_key"], winner_id, now),
-        )
-        await self._db.execute(
-            "DELETE FROM parts_catalog WHERE id = ? AND account_id = ?",
-            (loser_id, account_id),
-        )
-        await self._db.commit()
-        return True
+        async with self.transaction():
+            # work_order_parts has no account_id — scope via parent WOs.
+            await self._db.execute(
+                "UPDATE work_order_parts SET part_id = ? "
+                "WHERE part_id = ? AND work_order_id IN "
+                "  (SELECT id FROM work_orders WHERE account_id = ?)",
+                (winner_id, loser_id, account_id),
+            )
+            await self._db.execute(
+                "UPDATE part_aliases SET part_id = ? "
+                "WHERE account_id = ? AND part_id = ?",
+                (winner_id, account_id, loser_id),
+            )
+            await self._db.execute(
+                "INSERT INTO part_aliases (account_id, name_key, part_id, created_at) "
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT (account_id, name_key) DO NOTHING",
+                (account_id, loser["name_key"], winner_id, now),
+            )
+            await self._db.execute(
+                "DELETE FROM parts_catalog WHERE id = ? AND account_id = ?",
+                (loser_id, account_id),
+            )
+            if actor_user_id is not None:
+                from capabilities.activity_trail import new_group_id
+                gid = new_group_id()
+                await self.append_activity_events(account_id, [
+                    {"entity_type": "part", "entity_id": loser_id,
+                     "action": "merge_away", "actor_user_id": actor_user_id,
+                     "changes": delete_changes(loser), "group_id": gid,
+                     "context": {"into": winner_id, "into_name": winner.get("name")}},
+                    {"entity_type": "part", "entity_id": winner_id,
+                     "action": "merge_in", "actor_user_id": actor_user_id,
+                     "changes": {}, "group_id": gid,
+                     "context": {"from": loser_id, "from_name": loser.get("name")}},
+                ])
+            return True

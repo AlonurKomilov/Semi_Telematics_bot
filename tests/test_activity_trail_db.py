@@ -106,6 +106,83 @@ class TestMaintenanceAdoption:
         assert events[0]["changes"]["status"]["to"] == "completed"
 
     @pytest.mark.asyncio
+    async def test_vehicle_registry_round_trip(self, seeded_db):
+        db, acct, owner = seeded_db
+        vid = await db.add_vehicle(
+            acct.id, unit_number="777", vehicle_type="truck",
+            company_code="TFC", make="Kenworth",
+            actor_user_id=owner.id,
+        )
+        await db.update_vehicle(
+            acct.id, vid, actor_user_id=owner.id, make="Peterbilt",
+        )
+        await db.deactivate_vehicle(acct.id, vid, actor_user_id=owner.id)
+        events = await db.list_activity_events(
+            acct.id, entity_type="vehicle", entity_id=str(vid),
+        )
+        assert [e["action"] for e in events] == ["deactivate", "update", "create"]
+        assert events[1]["changes"]["make"] == {"from": "Kenworth", "to": "Peterbilt"}
+        assert events[0]["changes"]["status"]["to"] == "inactive"
+        # machine sync writes (no actor) stay silent
+        await db.update_vehicle(acct.id, vid, notes="sync fill")
+        assert len(await db.list_activity_events(
+            acct.id, entity_type="vehicle", entity_id=str(vid))) == 3
+
+    @pytest.mark.asyncio
+    async def test_vendor_merge_records_both_sides_with_loser_body(self, seeded_db):
+        db, acct, owner = seeded_db
+        a = await db.create_vendor(
+            acct.id, "Bob's Truck Repare", phone="555-1",
+            actor_user_id=owner.id,
+        )
+        b = await db.create_vendor(
+            acct.id, "Bobs Truck Repair", phone="555-2",
+            actor_user_id=owner.id,
+        )
+        ok = await db.merge_vendors(
+            acct.id, a["id"], b["id"], actor_user_id=owner.id,
+        )
+        assert ok
+        loser_ev = await db.list_activity_events(
+            acct.id, entity_type="vendor", entity_id=str(a["id"]),
+            action="merge_away",
+        )
+        assert len(loser_ev) == 1
+        # the loser's body is the recovery record
+        assert loser_ev[0]["changes"]["name"]["from"] == "Bob's Truck Repare"
+        assert loser_ev[0]["context"]["into"] == b["id"]
+        winner_ev = await db.list_activity_events(
+            acct.id, entity_type="vendor", entity_id=str(b["id"]),
+            action="merge_in",
+        )
+        assert winner_ev and winner_ev[0]["group_id"] == loser_ev[0]["group_id"]
+
+    @pytest.mark.asyncio
+    async def test_part_create_then_edit_records_values(self, seeded_db):
+        db, acct, owner = seeded_db
+        part, created = await db.create_catalog_part(
+            acct.id, "Water Pump", part_number="WP-1",
+            actor_user_id=owner.id,
+        )
+        assert created
+        await db.update_catalog_part(
+            part["id"], acct.id, actor_user_id=owner.id,
+            part_number="WP-2",
+        )
+        events = await db.list_activity_events(
+            acct.id, entity_type="part", entity_id=str(part["id"]),
+        )
+        assert [e["action"] for e in events] == ["update", "create"]
+        assert events[0]["changes"]["part_number"] == {"from": "WP-1", "to": "WP-2"}
+        # idempotent re-create of the same name records nothing new
+        _, again = await db.create_catalog_part(
+            acct.id, "Water Pump", actor_user_id=owner.id,
+        )
+        assert not again
+        assert len(await db.list_activity_events(
+            acct.id, entity_type="part", entity_id=str(part["id"]))) == 2
+
+    @pytest.mark.asyncio
     async def test_facade_merges_and_collapses(self, seeded_db):
         from capabilities.activity_trail import new_group_id
         from capabilities.activity_trail.facade import account_activity

@@ -243,6 +243,28 @@ async def get_user_avatar(
         return _Response(status_code=204)
 
 
+async def _trail_user_event(
+    tenant_db, user: dict, target_user_id: int, action: str, *,
+    changes: Optional[dict] = None, context: Optional[dict] = None,
+    note: str = "",
+) -> None:
+    """User-entity trail event (capabilities/activity_trail).
+
+    Appended right AFTER the platform-user mutation commits rather than
+    inside it: ``update_user`` is a shared self-committing method that
+    predates the trail, and threading an actor through every one of its
+    callers belongs to the users-storage adoption wave.  What matters
+    shipped now: unified store, old→new VALUES (the thin log recorded
+    only prose), people-only attribution.
+    """
+    await tenant_db.append_activity_events(user["account_id"], [{
+        "entity_type": "user", "entity_id": target_user_id,
+        "action": action, "changes": changes or {},
+        "actor_user_id": await resolve_user_id(user),
+        "context": context or {}, "note": note,
+    }])
+
+
 class RoleUpdate(BaseModel):
     role: str = Field(..., pattern=ASSIGNABLE_ROLES_PATTERN)
 
@@ -275,11 +297,9 @@ async def update_user_role(
 
     ok = await platform_db.update_user(user_id, role=body.role)
     if ok:
-        await tenant_db.add_audit_log(
-            user["account_id"], int(user["sub"]),
-            "role_change",
-            target_type="user", target_id=str(user_id),
-            details=f"Changed role to {body.role}",
+        await _trail_user_event(
+            tenant_db, user, user_id, "role_change",
+            changes={"role": {"from": target_current_role, "to": body.role}},
         )
     return {"ok": ok}
 
@@ -316,11 +336,13 @@ async def update_user_manager(
 
     ok = await platform_db.update_user(user_id, is_manager=body.is_manager)
     if ok:
-        await tenant_db.add_audit_log(
-            user["account_id"], int(user["sub"]),
-            "manager_tier_change",
-            target_type="user", target_id=str(user_id),
-            details=f"Set manager tier to {body.is_manager} ({target_role})",
+        await _trail_user_event(
+            tenant_db, user, user_id, "manager_tier_change",
+            changes={"is_manager": {
+                "from": bool(getattr(target, "is_manager", False)),
+                "to": body.is_manager,
+            }},
+            context={"role": target_role},
         )
     return {"ok": ok}
 
@@ -393,11 +415,9 @@ async def create_telegram_invite(
         {"status": "pending", "user_id": target.id},
         ttl=TELEGRAM_CLAIM_TTL,
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "user_telegram_invite_issued",
-        target_type="user", target_id=str(user_id),
-        details=f"Sign-in link issued for {target.display_name or user_id}",
+    await _trail_user_event(
+        tenant_db, user, user_id, "telegram_invite_issued",
+        note=f"Sign-in link issued for {target.display_name or user_id}",
     )
     return {
         "deep_link": f"https://t.me/{bot_un}?start=link_{token}",
@@ -490,11 +510,10 @@ async def promote_owner_confirm(
     if ok:
         from capabilities.permissions.roles import invalidate_permissions_cache
         invalidate_permissions_cache(user["account_id"])
-        await tenant_db.add_audit_log(
-            user["account_id"], int(user["sub"]),
-            "co_owner_added",
-            target_type="user", target_id=str(user_id),
-            details=f"Promoted {target.display_name or target.email or user_id} to co-owner",
+        await _trail_user_event(
+            tenant_db, user, user_id, "co_owner_added",
+            changes={"role": {"from": "admin", "to": "owner"}},
+            note=f"Promoted {target.display_name or target.email or user_id} to co-owner (2FA-verified)",
         )
     return {"ok": ok}
 
@@ -533,11 +552,10 @@ async def demote_owner(
     if ok:
         from capabilities.permissions.roles import invalidate_permissions_cache
         invalidate_permissions_cache(user["account_id"])
-        await tenant_db.add_audit_log(
-            user["account_id"], int(user["sub"]),
-            "co_owner_removed",
-            target_type="user", target_id=str(user_id),
-            details=f"Removed co-owner {target.display_name or user_id} (→ admin)",
+        await _trail_user_event(
+            tenant_db, user, user_id, "co_owner_removed",
+            changes={"role": {"from": "owner", "to": "admin"}},
+            note=f"Removed co-owner {target.display_name or user_id} (→ admin)",
         )
     return {"ok": ok}
 
@@ -627,14 +645,17 @@ async def update_user_work_hours_override(
         if cleared
         else f"alerts deliver {body.quiet_start:02d}:00 – {body.quiet_end:02d}:00"
     )
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        # Action name kept ``user_quiet_hours_set`` so existing audit-
-        # log searches / dashboards continue to surface this row.
-        # Renaming would orphan historical rows under the old action.
-        "user_quiet_hours_set",
-        target_type="user", target_id=str(user_id),
-        details=detail,
+    # Action name kept ``user_quiet_hours_set`` so existing searches
+    # keep matching the historical rows in the frozen log.
+    await _trail_user_event(
+        tenant_db, user, user_id, "user_quiet_hours_set",
+        changes={
+            "quiet_start": {"from": getattr(target, "quiet_start", None),
+                            "to": body.quiet_start},
+            "quiet_end": {"from": getattr(target, "quiet_end", None),
+                          "to": body.quiet_end},
+        },
+        note=detail,
     )
     return {
         "ok": True,
@@ -711,11 +732,13 @@ async def update_user_assigned_work_hours(
         assigned_work_hours_id=body.schedule_id,
     )
 
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "user_assigned_work_hours_set",
-        target_type="user", target_id=str(user_id),
-        details=f"assigned schedule: {schedule_label}",
+    await _trail_user_event(
+        tenant_db, user, user_id, "user_assigned_work_hours_set",
+        changes={"assigned_work_hours_id": {
+            "from": getattr(target, "assigned_work_hours_id", None),
+            "to": body.schedule_id,
+        }},
+        note=f"assigned schedule: {schedule_label}",
     )
     return {
         "ok": True,
@@ -750,11 +773,13 @@ async def update_user_status(
 
     ok = await platform_db.update_user(user_id, is_active=body.is_active)
     if ok:
-        action = "user_activate" if body.is_active else "user_deactivate"
-        await tenant_db.add_audit_log(
-            user["account_id"], int(user["sub"]),
-            action,
-            target_type="user", target_id=str(user_id),
+        await _trail_user_event(
+            tenant_db, user, user_id,
+            "user_activate" if body.is_active else "user_deactivate",
+            changes={"is_active": {
+                "from": bool(getattr(target, "is_active", True)),
+                "to": body.is_active,
+            }},
         )
     return {"ok": ok}
 
@@ -845,12 +870,14 @@ async def set_user_companies(
         if invalid:
             raise HTTPException(status_code=400, detail=f"Invalid company IDs: {invalid}")
 
-    # Capture the BEFORE state so we know which companies the driver
-    # is leaving and can archive each one's folder before the
-    # assignment row is rewritten by set_user_companies().
+    # Capture the BEFORE state — the trail records the old list for
+    # every role, and drivers additionally get their departing
+    # companies' folders archived before set_user_companies() rewrites
+    # the assignment rows.
+    old_assignments = await platform_db.get_user_companies(user_id)
+    old_company_ids = sorted(a.company_id for a in old_assignments)
     archived_companies: list[str] = []
     if target_role == "driver":
-        old_assignments = await platform_db.get_user_companies(user_id)
         new_company_ids = set(body.company_ids)
         codes_being_removed = [
             a.company_code for a in old_assignments
@@ -867,14 +894,14 @@ async def set_user_companies(
         assigned_by=int(user["sub"]),
     )
 
-    audit_details = f"Companies: {body.company_ids or 'all (unrestricted)'}"
-    if archived_companies:
-        audit_details += f"; archived from: {archived_companies}"
-    await tenant_db.add_audit_log(
-        user["account_id"], int(user["sub"]),
-        "company_assignment",
-        target_type="user", target_id=str(user_id),
-        details=audit_details,
+    note = "" if not archived_companies else f"archived from: {archived_companies}"
+    await _trail_user_event(
+        tenant_db, user, user_id, "company_assignment",
+        # Empty list = unrestricted (all companies) — recorded as-is;
+        # the reader's fmtValue shows it as 'empty' meaning "all".
+        changes={"company_ids": {"from": old_company_ids,
+                                 "to": sorted(body.company_ids)}},
+        note=note,
     )
 
     return {

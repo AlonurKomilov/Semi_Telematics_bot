@@ -372,32 +372,57 @@ class PartDirectoryMixin:
 
     async def link_part_to_public(
         self, account_id: int, part_id: int, entry_id: Optional[int],
+        actor_user_id: Optional[int] = None,
     ) -> bool:
         """The dedup dialog's Link verb (entry_id set) or Unlink
         (entry_id None).  Link requires an ACTIVE entry, clears the
         suppression marker, and fills an empty part_number.  Unlink
         SETS suppression so the adopt fan-out honors the user's call."""
         if entry_id is None:
-            cur = await self._db.execute(
-                "UPDATE parts_catalog SET global_part_id = NULL, "
-                " public_link_suppressed = TRUE, updated_at = ? "
-                "WHERE id = ? AND account_id = ?",
-                (self._now(), part_id, account_id),
-            )
-            await self._db.commit()
-            return cur.rowcount > 0
+            async with self.transaction():
+                old_gid = None
+                if actor_user_id is not None:
+                    cur = await self._db.execute(
+                        "SELECT global_part_id FROM parts_catalog "
+                        "WHERE id = ? AND account_id = ?",
+                        (part_id, account_id),
+                    )
+                    r = await cur.fetchone()
+                    old_gid = r[0] if r else None
+                cur = await self._db.execute(
+                    "UPDATE parts_catalog SET global_part_id = NULL, "
+                    " public_link_suppressed = TRUE, updated_at = ? "
+                    "WHERE id = ? AND account_id = ?",
+                    (self._now(), part_id, account_id),
+                )
+                if cur.rowcount > 0 and actor_user_id is not None:
+                    await self.append_activity_events(account_id, [{
+                        "entity_type": "part", "entity_id": part_id,
+                        "action": "unlink_public",
+                        "actor_user_id": actor_user_id,
+                        "changes": {"global_part_id": {"from": old_gid, "to": None}},
+                    }])
+                return cur.rowcount > 0
         entry = await self.get_part_directory_entry(entry_id)
         if not entry or entry.get("status") != "active":
             return False
-        cur = await self._db.execute(
-            "UPDATE parts_catalog SET global_part_id = ?, "
-            " public_link_suppressed = FALSE, "
-            " part_number = CASE WHEN TRIM(part_number) = '' THEN ? "
-            "                    ELSE part_number END, "
-            " updated_at = ? "
-            "WHERE id = ? AND account_id = ?",
-            (entry_id, entry.get("part_number") or "", self._now(),
-             part_id, account_id),
-        )
-        await self._db.commit()
-        return cur.rowcount > 0
+        async with self.transaction():
+            cur = await self._db.execute(
+                "UPDATE parts_catalog SET global_part_id = ?, "
+                " public_link_suppressed = FALSE, "
+                " part_number = CASE WHEN TRIM(part_number) = '' THEN ? "
+                "                    ELSE part_number END, "
+                " updated_at = ? "
+                "WHERE id = ? AND account_id = ?",
+                (entry_id, entry.get("part_number") or "", self._now(),
+                 part_id, account_id),
+            )
+            if cur.rowcount > 0 and actor_user_id is not None:
+                await self.append_activity_events(account_id, [{
+                    "entity_type": "part", "entity_id": part_id,
+                    "action": "link_public",
+                    "actor_user_id": actor_user_id,
+                    "changes": {"global_part_id": {"from": None, "to": entry_id}},
+                    "context": {"entry_name": entry.get("name") or ""},
+                }])
+            return cur.rowcount > 0

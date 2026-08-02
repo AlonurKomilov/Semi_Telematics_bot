@@ -26,6 +26,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional
 
+from capabilities.activity_trail import diff_rows
 from capabilities.integrations import reconciliation as recon
 from capabilities.integrations.reconciliation import MANUAL_SOURCE, is_unset
 
@@ -38,6 +39,9 @@ if TYPE_CHECKING:
         def transaction(self) -> Any: ...
         async def read_all(self, sql: str, params: tuple = ()) -> list: ...
         async def read_one(self, sql: str, params: tuple = ()) -> Any: ...
+        async def append_activity_events(
+            self, account_id: int, events: list[dict],
+        ) -> None: ...
         @staticmethod
         def _now() -> str: ...
 else:
@@ -242,6 +246,7 @@ class VehiclesRegistryMixin(_MixinBase):
         source: str = "manual",
         telematics_ref: str = "",
         notes: str = "",
+        actor_user_id: Optional[int] = None,
     ) -> int:
         """Create a vehicle.  Returns the new row id.
 
@@ -256,20 +261,37 @@ class VehiclesRegistryMixin(_MixinBase):
                 f"vehicle_type must be one of {_VALID_TYPES}",
             )
         now = self._now()
-        cur = await self._db.execute(
-            """INSERT INTO vehicles
-               (account_id, company_code, unit_number, vehicle_type, vin,
-                plate_number, make, model, year, status, source,
-                telematics_ref, notes, is_active, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
-            (
-                account_id, company_code, unit_number, vehicle_type, vin,
-                plate_number, make, model, year, status, source,
-                telematics_ref, notes, now, now,
-            ),
-        )
-        await self._db.commit()
-        return cur.lastrowid
+        # One transaction: row + trail commit together (pool proxy
+        # auto-commits bare statements; commit() there is a no-op).
+        async with self.transaction():
+            cur = await self._db.execute(
+                """INSERT INTO vehicles
+                   (account_id, company_code, unit_number, vehicle_type, vin,
+                    plate_number, make, model, year, status, source,
+                    telematics_ref, notes, is_active, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
+                (
+                    account_id, company_code, unit_number, vehicle_type, vin,
+                    plate_number, make, model, year, status, source,
+                    telematics_ref, notes, now, now,
+                ),
+            )
+            vehicle_id = cur.lastrowid
+            # Trail (capabilities/activity_trail): human creations only —
+            # integration upserts ride the project/ingest paths, and any
+            # caller without an actor stays un-evented by contract
+            # (people, not machines).
+            if actor_user_id is not None:
+                await self.append_activity_events(account_id, [{
+                    "entity_type": "vehicle", "entity_id": vehicle_id,
+                    "action": "create", "actor_user_id": actor_user_id,
+                    "changes": diff_rows({}, {
+                        "unit_number": unit_number, "vehicle_type": vehicle_type,
+                        "company_code": company_code, "vin": vin,
+                        "make": make, "model": model, "year": year,
+                    }),
+                }])
+            return vehicle_id
 
     # ── Read ──────────────────────────────────────────────────────
 
@@ -324,7 +346,8 @@ class VehiclesRegistryMixin(_MixinBase):
     # ── Update ────────────────────────────────────────────────────
 
     async def update_vehicle(
-        self, account_id: int, vehicle_id: int, **fields: Any,
+        self, account_id: int, vehicle_id: int,
+        actor_user_id: Optional[int] = None, **fields: Any,
     ) -> bool:
         """Partial update — only the keys present in ``fields`` (and in
         ``_FIELDS``) are written.  Returns True when a row changed.
@@ -347,42 +370,82 @@ class VehiclesRegistryMixin(_MixinBase):
                     edited_spec.append(key)
         if not sets:
             return False
-        if edited_spec:
-            # Pin the edited spec fields so syncs can't undo the correction.
+        async with self.transaction():
+            # Trail: the pre-edit row — values, not field names.
+            old: dict = {}
+            if actor_user_id is not None:
+                cur = await self._db.execute(
+                    "SELECT * FROM vehicles WHERE id = ? AND account_id = ?",
+                    (vehicle_id, account_id),
+                )
+                r = await cur.fetchone()
+                old = dict(r) if r else {}
+            if edited_spec:
+                # Pin the edited spec fields so syncs can't undo the correction.
+                cur = await self._db.execute(
+                    "SELECT field_provenance FROM vehicles "
+                    "WHERE id = ? AND account_id = ?",
+                    (vehicle_id, account_id),
+                )
+                row = await cur.fetchone()
+                prov = _parse_provenance(dict(row).get("field_provenance")) if row else {}
+                for f in edited_spec:
+                    prov[f] = MANUAL_SOURCE
+                sets.append("field_provenance = ?")
+                params.append(json.dumps(prov))
+            sets.append("updated_at = ?")
+            params.extend([self._now(), vehicle_id, account_id])
             cur = await self._db.execute(
-                "SELECT field_provenance FROM vehicles "
+                f"UPDATE vehicles SET {', '.join(sets)} "
                 "WHERE id = ? AND account_id = ?",
-                (vehicle_id, account_id),
+                tuple(params),
             )
-            row = await cur.fetchone()
-            prov = _parse_provenance(dict(row).get("field_provenance")) if row else {}
-            for f in edited_spec:
-                prov[f] = MANUAL_SOURCE
-            sets.append("field_provenance = ?")
-            params.append(json.dumps(prov))
-        sets.append("updated_at = ?")
-        params.extend([self._now(), vehicle_id, account_id])
-        cur = await self._db.execute(
-            f"UPDATE vehicles SET {', '.join(sets)} "
-            "WHERE id = ? AND account_id = ?",
-            tuple(params),
-        )
-        await self._db.commit()
-        return cur.rowcount > 0
+            touched = cur.rowcount > 0
+            if touched and old:
+                written = {k: v for k, v in fields.items()
+                           if k in _FIELDS and v is not None}
+                changes = diff_rows(old, written, fields=written.keys())
+                if changes:
+                    await self.append_activity_events(account_id, [{
+                        "entity_type": "vehicle", "entity_id": vehicle_id,
+                        "action": "update", "actor_user_id": actor_user_id,
+                        "changes": changes,
+                    }])
+            return touched
 
     async def deactivate_vehicle(
         self, account_id: int, vehicle_id: int,
+        actor_user_id: Optional[int] = None,
     ) -> bool:
         """Soft delete — keeps history intact (maintenance, fuel, etc.
         still reference the unit by name).  Returns True if a row
         flipped."""
-        cur = await self._db.execute(
-            "UPDATE vehicles SET is_active = 0, status = 'inactive', "
-            "updated_at = ? WHERE id = ? AND account_id = ?",
-            (self._now(), vehicle_id, account_id),
-        )
-        await self._db.commit()
-        return cur.rowcount > 0
+        async with self.transaction():
+            old_status = None
+            unit = ""
+            if actor_user_id is not None:
+                cur = await self._db.execute(
+                    "SELECT status, unit_number FROM vehicles "
+                    "WHERE id = ? AND account_id = ?",
+                    (vehicle_id, account_id),
+                )
+                r = await cur.fetchone()
+                if r:
+                    old_status, unit = r[0], r[1]
+            cur = await self._db.execute(
+                "UPDATE vehicles SET is_active = 0, status = 'inactive', "
+                "updated_at = ? WHERE id = ? AND account_id = ?",
+                (self._now(), vehicle_id, account_id),
+            )
+            touched = cur.rowcount > 0
+            if touched and actor_user_id is not None:
+                await self.append_activity_events(account_id, [{
+                    "entity_type": "vehicle", "entity_id": vehicle_id,
+                    "action": "deactivate", "actor_user_id": actor_user_id,
+                    "changes": {"status": {"from": old_status, "to": "inactive"}},
+                    "context": {"unit_number": unit},
+                }])
+            return touched
 
     # ── Integration upsert (backfill + ongoing sync) ──────────────
 

@@ -34,6 +34,7 @@ from interfaces.api.deps import (
     filter_by_assigned_trucks,
     require_permission,
     paginate,
+    resolve_user_id,
 )
 from capabilities.integrations import reconciliation
 from features.vehicles.service import (
@@ -1238,6 +1239,7 @@ async def create_vehicle(
             vin=body.vin, plate_number=body.plate_number,
             make=body.make, model=body.model, year=body.year,
             notes=body.notes, source="manual",
+            actor_user_id=await resolve_user_id(user),
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -1261,7 +1263,10 @@ async def update_registry_vehicle(
         raise HTTPException(503, "tenant DB unavailable")
     fields = {k: v for k, v in body.model_dump().items() if v is not None}
     try:
-        ok = await tenant.update_vehicle(account_id, vehicle_id, **fields)
+        ok = await tenant.update_vehicle(
+            account_id, vehicle_id,
+            actor_user_id=await resolve_user_id(user), **fields,
+        )
     except ValueError as e:
         raise HTTPException(400, str(e))
     if not ok:
@@ -1280,7 +1285,10 @@ async def delete_registry_vehicle(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
-    ok = await tenant.deactivate_vehicle(account_id, vehicle_id)
+    ok = await tenant.deactivate_vehicle(
+        account_id, vehicle_id,
+        actor_user_id=await resolve_user_id(user),
+    )
     if not ok:
         raise HTTPException(404, "vehicle not found")
     return {"deactivated": True, "id": vehicle_id}
