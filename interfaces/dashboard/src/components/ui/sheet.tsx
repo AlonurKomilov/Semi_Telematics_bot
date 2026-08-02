@@ -1,6 +1,7 @@
 import * as React from "react"
 import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 
+import { ScrollRegion } from "@/components/scrolling"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
@@ -95,6 +96,31 @@ function SheetContent({
   )
 }
 
+/** The scrolling BODY of a sheet.
+ *
+ *  A sheet is a flex column: header, body, footer.  Without this slot
+ *  every caller put ``overflow-y-auto`` on the panel ITSELF, which scrolls
+ *  the header away with the content — nine drawers in this app did
+ *  exactly that.  The body is what should scroll; the header should not.
+ *
+ *  Built on <ScrollRegion> so it inherits the whole scroll-region
+ *  contract — focusable, overscroll-contained, and padded away from
+ *  sticky chrome — rather than re-deciding it here.  ``label`` names it
+ *  for a screen reader; pass one whenever the sheet holds enough content
+ *  to navigate. */
+function SheetBody({
+  className,
+  ...props
+}: React.ComponentProps<typeof ScrollRegion>) {
+  return (
+    <ScrollRegion
+      data-slot="sheet-body"
+      className={cn("flex-1 min-h-0", className)}
+      {...props}
+    />
+  )
+}
+
 function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -146,6 +172,7 @@ export {
   SheetTrigger,
   SheetClose,
   SheetContent,
+  SheetBody,
   SheetHeader,
   SheetFooter,
   SheetTitle,

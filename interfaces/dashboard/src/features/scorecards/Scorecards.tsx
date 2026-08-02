@@ -10,8 +10,7 @@ import {
 import { apiJSON, apiJSONSlow } from '../../api/client';
 import { toneClasses, toneText, chartColor, type Tone } from '../../lib/status';
 import DataGrid from '../../components/datagrid';
-import { Sheet, SheetContent } from '../../components/ui/sheet';
-import { ScrollRegion } from '../../components/scrolling';
+import { Sheet, SheetContent, SheetBody } from '../../components/ui/sheet';
 import DriverInsights from '@/features/scorecards/DriverInsights';
 import {
   PageHeader,
@@ -1025,15 +1024,16 @@ function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
     // hand — honest, and still not a modal: the announcement was true
     // while the BEHAVIOUR (focus trap, Escape, background scroll lock)
     // was absent, which is the worse failure of the two.  <Sheet> makes
-    // the announcement earned; <ScrollRegion> makes the body a real
+    // the announcement earned; <SheetBody> makes the body a real
     // scroll region.
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
       <SheetContent
         side="right"
-        className="p-0 data-[side=right]:sm:max-w-md"
+        className="p-0"
+        size="lg"
         aria-label={`Scorecard detail for ${card.subject_name || card.driver_name}`}
       >
-        <ScrollRegion label="Scorecard detail" className="flex-1 min-h-0 p-6">
+        <SheetBody label="Scorecard detail" className="p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-semibold">{card.subject_name || card.driver_name}</h2>
@@ -1202,7 +1202,7 @@ function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
             );
           })()}
         </div>
-        </ScrollRegion>
+        </SheetBody>
       </SheetContent>
     </Sheet>
   );

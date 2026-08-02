@@ -7,8 +7,7 @@ import {
   ChevronDown, ChevronRight, IdCard,
 } from 'lucide-react';
 import { Button } from '../../components/ui/button';
-import { Sheet, SheetContent } from '../../components/ui/sheet';
-import { ScrollRegion } from '../../components/scrolling';
+import { Sheet, SheetContent, SheetBody } from '../../components/ui/sheet';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { apiJSON, apiFetch } from '../../api/client';
 import { toast } from 'sonner';
@@ -1958,14 +1957,15 @@ function UserDrawerShell({
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
       <SheetContent
         side="right"
-        className="p-0 data-[side=right]:sm:max-w-md"
+        className="p-0"
+        size="lg"
         aria-labelledby="user-drawer-title"
         aria-label={`Details for ${displayName}`}
         showCloseButton={false}
       >
-        <ScrollRegion label={`Details for ${displayName}`} className="flex-1 min-h-0">
+        <SheetBody label={`Details for ${displayName}`}>
           {children}
-        </ScrollRegion>
+        </SheetBody>
       </SheetContent>
     </Sheet>
   );

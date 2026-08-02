@@ -4,9 +4,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, Plus, KeyRound, Upload, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
+  Sheet, SheetContent, SheetBody, SheetHeader, SheetTitle,
 } from '../../components/ui/sheet';
-import { ScrollRegion } from '../../components/scrolling';
 import { apiJSON, apiFetch } from '../../api/client';
 import DataGrid from '../../components/datagrid';
 import {
@@ -264,16 +263,17 @@ export default function Companies() {
           no ``aria-modal``, and no background scroll lock, so the page
           kept scrolling under the open drawer.  The PANEL scrolled too,
           taking the company name off screen with it.  <Sheet> brings the
-          modal semantics; <ScrollRegion> makes the body a real scroll
+          modal semantics; <SheetBody> makes the body a real scroll
           region and leaves the header in place. */}
       <Sheet open={!!selected} onOpenChange={(o) => { if (!o) setSelected(null); }}>
-        <SheetContent side="right" className="p-0 data-[side=right]:sm:max-w-md">
+        <SheetContent side="right" className="p-0"
+        size="lg">
           {selected && (
           <>
             <SheetHeader className="px-6 pt-6">
               <SheetTitle>{selected.display_name}</SheetTitle>
             </SheetHeader>
-            <ScrollRegion label={`${selected.display_name} details`} className="flex-1 min-h-0 px-6 pb-6">
+            <SheetBody label={`${selected.display_name} details`} className="px-6 pb-6">
             <dl className="space-y-3 text-sm mb-6">
               <div className="flex justify-between"><dt className="text-muted-foreground">Code</dt><dd>{selected.code}</dd></div>
               <div className="flex justify-between">
@@ -354,7 +354,7 @@ export default function Companies() {
                 </button>
               )}
             </div>
-            </ScrollRegion>
+            </SheetBody>
           </>
           )}
         </SheetContent>

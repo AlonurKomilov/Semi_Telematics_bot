@@ -59,7 +59,21 @@ function DialogContent({
           // the viewport minus the 1rem inset on each side and let the
           // dialog scroll itself.  ``dvh`` so mobile browser chrome
           // collapsing doesn't clip it.
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          //
+          // ``overscroll-contain``: a wheel that reaches the end of a
+          // scrolling dialog otherwise CHAINS to the page behind it, so
+          // the background creeps while a modal is open — which reads as
+          // the app coming apart.  It was absent from the entire codebase
+          // (0 occurrences) until components/scrolling; this is the one
+          // place that fixes it for all 26 dialog call sites at once.
+          //
+          // The REST of the scroll-region contract deliberately does NOT
+          // apply here.  ``tabIndex``/``role="region"`` would fight Base
+          // UI: this popup is already a focus-managed ``role="dialog"``,
+          // and a region landmark nested in a dialog is noise, not
+          // navigation.  A primitive takes the parts of a contract that
+          // fit it, not all of them.
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain -translate-x-1/2 -translate-y-1/2 gap-4 rounded-xl bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
           className
         )}
         {...props}

@@ -11,9 +11,8 @@ import {
   TableSkeleton,
 } from '../../components/shell';
 import {
-  Sheet, SheetContent, SheetHeader, SheetTitle,
+  Sheet, SheetContent, SheetBody, SheetHeader, SheetTitle,
 } from '../../components/ui/sheet';
-import { ScrollRegion } from '../../components/scrolling';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import type { CameraCheck, CameraChecksResponse, AnyColumn } from '../../types';
@@ -244,18 +243,19 @@ export default function Cameras() {
           Escape, no ``aria-modal`` and no background scroll lock — the
           page kept scrolling under the open drawer — and because the
           PANEL itself scrolled, the title scrolled away with the content.
-          <Sheet> (Base UI Dialog) brings all four; <ScrollRegion> makes
+          <Sheet> (Base UI Dialog) brings all four; <SheetBody> makes
           the body a real scroll region (focusable, named, overscroll
           contained) while the header stays put. */}
       <Sheet open={!!detail} onOpenChange={(o) => { if (!o) setDetail(null); }}>
-        <SheetContent side="right" className="p-0 data-[side=right]:sm:max-w-lg">
+        <SheetContent side="right" className="p-0"
+        size="lg">
           {detail && (
           <>
             <SheetHeader className="px-6 pt-6">
               <SheetTitle>{detail.vehicle_name}</SheetTitle>
             </SheetHeader>
 
-            <ScrollRegion label={`${detail.vehicle_name} camera check`} className="flex-1 min-h-0 px-6 pb-6">
+            <SheetBody label={`${detail.vehicle_name} camera check`} className="px-6 pb-6">
             {/* Camera screenshot */}
             <div className="mb-4 rounded-lg overflow-hidden bg-muted border border-border">
               {imageLoading ? (
@@ -308,7 +308,7 @@ export default function Cameras() {
                 </div>
               )}
             </dl>
-            </ScrollRegion>
+            </SheetBody>
           </>
           )}
         </SheetContent>

@@ -6,8 +6,7 @@ import {
   AlertTriangle, Calendar, Plus, ClipboardCheck, GraduationCap, Clock,
   Check, Search, Link2, Link2Off, UserPlus, Copy,
 } from 'lucide-react';
-import { Sheet, SheetContent } from '../../components/ui/sheet';
-import { ScrollRegion } from '../../components/scrolling';
+import { Sheet, SheetContent, SheetBody } from '../../components/ui/sheet';
 import { apiJSON, apiFetch } from '../../api/client';
 import { buildSignupInviteUrl, useSignupBase } from '../../lib/inviteUrl';
 import { Button } from '../../components/ui/button';
@@ -388,11 +387,12 @@ export default function Drivers() {
 
       {/* Was a hand-rolled backdrop + panel: no focus trap, no Escape, no
           ``aria-modal``, and no background scroll lock.  <Sheet> (Base UI
-          Dialog) brings all four; <ScrollRegion> makes the body a real
+          Dialog) brings all four; <SheetBody> makes the body a real
           scroll region rather than a div that merely clips. */}
       <Sheet open={selectedId != null} onOpenChange={(o) => { if (!o) close(); }}>
-        <SheetContent side="right" className="p-0 data-[side=right]:sm:max-w-lg">
-          <ScrollRegion label="Driver details" className="flex-1 min-h-0">
+        <SheetContent side="right" className="p-0"
+        size="lg">
+          <SheetBody label="Driver details">
             {detailLoading && !detail ? (
               <div className="p-6"><TableSkeleton rows={6} cols={2} /></div>
             ) : detail ? (
@@ -406,7 +406,7 @@ export default function Drivers() {
                 onError={(m) => setError(m)}
               />
             ) : null}
-          </ScrollRegion>
+          </SheetBody>
         </SheetContent>
       </Sheet>
     </div>
