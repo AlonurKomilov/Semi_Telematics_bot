@@ -177,6 +177,16 @@ function geometry(track: number, visible: number, total: number, at: number) {
   return { max, thumb, thumbMax, offset };
 }
 
+/** A scrollbar is CHROME for the scroll region, so it must never sit
+ *  under the content it scrolls.  Both renderers give their sticky
+ *  <tfoot> a z-index (z-10 in the record list, z-30 in the pivot matrix)
+ *  while the bars carried none at all — leaving the totals row free to
+ *  paint over the bar AND swallow the pointer events meant for it.
+ *  z-30 is the top of the "sticky" tier in the design system's ladder;
+ *  the bars are rendered AFTER the table at both call sites, so an equal
+ *  z resolves in their favour. */
+const BAR_LAYER = 'z-30';
+
 const TRACK = 'relative bg-muted/40 rounded-full cursor-pointer';
 // ``touch-none`` so a drag on the thumb isn't stolen by the page's own
 // pan gesture — on a touchscreen this bar is the ONLY way to scroll the
@@ -263,7 +273,7 @@ export function ScrollbarH({
 
   return (
     <div
-      className={cn('h-2', flow ? 'shrink-0 my-1' : 'absolute bottom-1')}
+      className={cn('h-2', BAR_LAYER, flow ? 'shrink-0 my-1' : 'absolute bottom-1')}
       style={flow
         ? { marginLeft: insetLeft, marginRight: insetRight }
         : { left: insetLeft, right: insetRight }}
@@ -313,7 +323,10 @@ export function ScrollbarV({
 
   return (
     <div
-      className="absolute right-0.5 w-2 opacity-0 group-hover/grid:opacity-100 transition-opacity"
+      className={cn(
+        BAR_LAYER,
+        'absolute right-0.5 w-2 opacity-0 group-hover/grid:opacity-100 transition-opacity',
+      )}
       style={{ top: insetTop, height: track }}
     >
       <div className={cn(TRACK, 'h-full w-full')} onClick={page}>

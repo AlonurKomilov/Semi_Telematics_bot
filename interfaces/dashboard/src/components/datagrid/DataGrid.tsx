@@ -2693,10 +2693,14 @@ export default function DataGrid({
   // happened.  Harmless when the page scrolls instead of the body (the
   // container is then at scrollTop 0 anyway) — no fillHeight gate, so
   // the behaviour can't diverge between the two modes.
+  // ``pageSize`` and ``grouping`` are in here for the same reason as the
+  // rest, and were missing: switching 25 -> 250 rows replaces every row
+  // below the fold, and grouping re-orders the whole list. Both left the
+  // reader parked at an offset that now pointed at different data.
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (el && el.scrollTop !== 0) el.scrollTop = 0;
-  }, [pageIndex, sorting, columnFilters, globalFilter, segmentPref]);
+  }, [pageIndex, pageSize, sorting, columnFilters, globalFilter, segmentPref, grouping]);
 
   // Does the BODY scroll (rather than the page)?  True either way the
   // grid gets its own viewport — a hand-set ``stickyHeader`` height or
@@ -3453,7 +3457,20 @@ export default function DataGrid({
           // (overflow-y stays auto); only the painting moves.
           bodyScrolls && HIDE_NATIVE_SCROLLBAR,
         )}
-        style={stickyHeader ? { maxHeight: stickyHeader } : undefined}
+        // ``scroll-padding`` keeps the browser's own scroll-into-view out
+        // from under the sticky chrome.  Tab to a control in an
+        // off-screen row and the browser scrolls it to the container's
+        // literal edge — which is BEHIND the sticky header, or behind the
+        // frozen columns.  The focused thing was technically "in view"
+        // and invisible (WCAG 2.4.11).  Padding the scrollport by the
+        // measured header height and pinned widths makes the browser
+        // stop short of them instead.
+        style={{
+          ...(stickyHeader ? { maxHeight: stickyHeader } : null),
+          scrollPaddingTop: bodyScrolls ? headerHeight : undefined,
+          scrollPaddingLeft: pinnedWidths.left || undefined,
+          scrollPaddingRight: pinnedWidths.right || undefined,
+        }}
         // Moving the scrolling from the document into this div would
         // otherwise take it away from keyboard users entirely: a plain
         // ``overflow`` div is not focusable, so PageDown / arrows never

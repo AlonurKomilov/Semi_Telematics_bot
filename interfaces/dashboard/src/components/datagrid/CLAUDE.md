@@ -271,10 +271,25 @@ Moving the scrolling off the document takes three things with it, all
 restored here and pinned by `DataGrid.fillHeight.test.tsx`:
 
 - **Scroll position resets when the list changes identity** — page,
-  sort, filter, search, tab. Position only means something relative to
-  the list you were reading; keeping it means "next page" drops you into
-  the middle of page 2, and a sticky header leaves no visual cue that it
-  happened. Applied in BOTH modes so behaviour can't diverge.
+  **page size**, sort, filter, search, tab, **grouping**. Position only
+  means something relative to the list you were reading; keeping it means
+  "next page" drops you into the middle of page 2, and a sticky header
+  leaves no visual cue that it happened. Applied in BOTH modes so
+  behaviour can't diverge.
+  ⚠️ The reset must key on the list's **identity, not on object
+  identity**. Pivot's copy keyed on the `model` OBJECT, which DataGrid
+  rebuilds whenever `columns` gets a new array — and a page that builds
+  its column config inline hands over a fresh array on every parent
+  render, so the report jumped to the top on any unrelated upstream state
+  change. It keys on a serialised `listKey` of the fields that change
+  WHICH ROWS EXIST; the pins and the drill toggle are deliberately
+  excluded, because freezing a column is not a new list.
+- **The scrollport is padded away from the sticky chrome.**
+  `scrollPaddingTop` / `Left` / `Right` are set from the measured header
+  height and pinned widths. Without them the browser's own
+  scroll-into-view puts a tabbed-to control at the container's literal
+  edge — i.e. behind the sticky header or the frozen columns — so the
+  focused element is "in view" and invisible (WCAG 2.4.11).
 - **The scroll container is focusable** (`tabIndex={0}` + `role="region"`
   + a name). A plain `overflow` div is not, so keyboard users lose the
   rows past the first screen entirely — the document used to scroll for

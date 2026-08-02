@@ -282,11 +282,33 @@ export default function PivotView({
   // mid-way through a set of rows that no longer meant the same thing.
   // The bucket resets with it, or the window would be computed for a
   // scroll position that no longer exists.
+  // ⚠️ Keyed by the model's VALUE, not its object identity.
+  //
+  // DataGrid rebuilds ``model`` whenever ``columns`` gets a new array
+  // identity, and a page that builds its column config inline hands over
+  // a fresh array on EVERY parent render — so an identity-keyed effect
+  // threw the report back to the top on any unrelated state change
+  // upstream (a tooltip opening, a poll landing).  The reader lost their
+  // place for no reason they could see.
+  //
+  // Only the fields that change WHICH ROWS EXIST belong in the key.  The
+  // pins and the drill toggle deliberately do not: freezing a column is
+  // not a new list, and scrolling someone to the top for it would be the
+  // same bug wearing a different hat.
+  const listKey = useMemo(() => JSON.stringify([
+    model.rows,
+    model.columns,
+    model.values,
+    model.disabled ?? [],
+    model.sort ?? null,
+    model.hideEmptyColumns ?? false,
+  ]), [model]);
+
   useEffect(() => {
     const el = scrollEl;
     if (el && el.scrollTop !== 0) el.scrollTop = 0;
     setBucket(0);
-  }, [scrollEl, rows, model]);
+  }, [scrollEl, rows, listKey]);
 
   const win = useMemo(() => {
     const all = visibleRows;

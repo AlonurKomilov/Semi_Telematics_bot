@@ -144,6 +144,43 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
     expect(scroll.current()).toBe(0);
   });
 
+  it('returns to the top when the PAGE SIZE changes', async () => {
+    // 25 -> 250 replaces every row below the fold, so the offset the
+    // reader was parked at now points at different data.  This dependency
+    // was missing: the effect listed pageIndex but not pageSize.
+    const { rerender } = render(
+      <DataGrid
+        columns={COLUMNS} data={ROWS} fillHeight
+        pageIndex={0} pageSize={25} onPaginationChange={() => {}}
+      />,
+    );
+    const scroll = trackScroll(region(), 380);
+
+    await act(async () => {
+      rerender(
+        <DataGrid
+          columns={COLUMNS} data={ROWS} fillHeight
+          pageIndex={0} pageSize={50} onPaginationChange={() => {}}
+        />,
+      );
+    });
+
+    expect(scroll.current()).toBe(0);
+  });
+
+  it('keeps the scrollport clear of the sticky header and frozen columns', async () => {
+    // Tab to a control in an off-screen row and the browser scrolls it to
+    // the container's literal edge — which is BEHIND the sticky header.
+    // The focused thing is then "in view" and invisible (WCAG 2.4.11).
+    // scroll-padding is what makes the browser stop short of the chrome.
+    render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
+    const el = region() as HTMLElement;
+    // jsdom reports 0-height chrome, so assert the PROPERTY is wired
+    // rather than a specific pixel value — the number comes from a live
+    // measurement this environment cannot make.
+    expect(el.style.scrollPaddingTop).not.toBe('');
+  });
+
   it('returns to the top when the sort changes', async () => {
     // Driven through the controlled prop rather than a header click, so
     // the test pins the EFFECT's dependency rather than header markup.
