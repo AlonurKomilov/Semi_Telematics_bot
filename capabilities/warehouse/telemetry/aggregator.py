@@ -108,6 +108,7 @@ async def snapshot_vehicle_state(account_id: int) -> int:
             "dtc_critical_count": sr.get("dtc_critical_count") or 0,
             "last_driver_id":     sr.get("last_driver_id") or "",
             "registry_id":        sr.get("registry_id"),
+            "source_ts":          sr.get("source_ts"),
             "battery_v":          health.get("battery_v"),
             "oil_psi":            health.get("oil_psi"),
             "coolant_c":          health.get("coolant_c"),
@@ -224,7 +225,7 @@ async def _aggregate_hour_window(
     # fleet at zero duty forever.
     duty_cols = [
         "vehicle_id", "max_speed", "avg_fuel_pct",
-        "drive_samples", "idle_samples",
+        "drive_samples", "idle_samples", "source_ts",
     ]
     cur = await tenant._db.execute(
         """
@@ -232,7 +233,8 @@ async def _aggregate_hour_window(
                MAX(COALESCE(speed_mph, 0))         AS max_speed,
                AVG(fuel_pct)                       AS avg_fuel_pct,
                SUM(CASE WHEN engine_state = 'moving' THEN 1 ELSE 0 END) AS drive_samples,
-               SUM(CASE WHEN engine_state = 'idle'   THEN 1 ELSE 0 END) AS idle_samples
+               SUM(CASE WHEN engine_state = 'idle'   THEN 1 ELSE 0 END) AS idle_samples,
+               MAX(source_ts)                      AS source_ts
           FROM vehicle_state_snapshot
          WHERE account_id = ?
            AND captured_at >= ?
@@ -297,6 +299,9 @@ async def _aggregate_hour_window(
             # the hourly tier keeps 90 days.
             "odometer_eod":      sr.get("odometer_eoh"),
             "engine_hours_eod":  sr.get("engine_hours_eoh"),
+            # Propagated, never minted: the hour's world-time is the
+            # freshest its samples carried.
+            "source_ts":         sr.get("source_ts"),
         })
 
     # Vehicles that had safety events but no snapshot in the window
@@ -367,6 +372,7 @@ async def _aggregate_day_window(
     cols = [
         "vehicle_id", "miles", "drive_min", "idle_min",
         "max_speed_mph", "avg_fuel_pct", "harsh_event_count",
+        "source_ts",
     ]
     cur = await tenant._db.execute(
         """
@@ -376,7 +382,8 @@ async def _aggregate_day_window(
                SUM(COALESCE(idle_min, 0))          AS idle_min,
                MAX(COALESCE(max_speed_mph, 0))     AS max_speed_mph,
                AVG(avg_fuel_pct)                   AS avg_fuel_pct,
-               SUM(COALESCE(harsh_event_count, 0)) AS harsh_event_count
+               SUM(COALESCE(harsh_event_count, 0)) AS harsh_event_count,
+               MAX(source_ts)                      AS source_ts
           FROM vehicle_telemetry
          WHERE account_id = ?
            AND granularity = 'hourly'
@@ -440,6 +447,7 @@ async def _aggregate_day_window(
             "fault_count_eod":   0,
             "odometer_eod":      eod.get("odometer_eod"),
             "engine_hours_eod":  eod.get("engine_hours_eod"),
+            "source_ts":         d.get("source_ts"),
         })
     if not rows:
         return 0
@@ -540,6 +548,7 @@ async def _aggregate_week_window(
         "vehicle_id", "miles", "drive_min", "idle_min",
         "max_speed_mph", "avg_fuel_pct", "harsh_event_count",
         "fault_count_eod", "odometer_eod", "engine_hours_eod",
+        "source_ts",
     ]
     cur = await tenant._db.execute(
         """
@@ -552,7 +561,8 @@ async def _aggregate_week_window(
                SUM(COALESCE(harsh_event_count, 0)) AS harsh_event_count,
                MAX(COALESCE(fault_count_eod, 0))   AS fault_count_eod,
                MAX(odometer_eod)                   AS odometer_eod,
-               MAX(engine_hours_eod)               AS engine_hours_eod
+               MAX(engine_hours_eod)               AS engine_hours_eod,
+               MAX(source_ts)                      AS source_ts
           FROM vehicle_telemetry
          WHERE account_id = ?
            AND granularity = 'daily'
@@ -580,6 +590,7 @@ async def _aggregate_week_window(
             "fault_count_eod":   int(d.get("fault_count_eod") or 0),
             "odometer_eod":      d.get("odometer_eod"),
             "engine_hours_eod":  d.get("engine_hours_eod"),
+            "source_ts":         d.get("source_ts"),
         })
     if not rows:
         return 0

@@ -25,6 +25,7 @@ from typing import Any
 
 from infra.services import get_tenant_db, get_client
 
+from capabilities.data_lifecycle.staleness import freshest
 from capabilities.integrations.shared.engine_state import resolve_engine_state
 from capabilities.integrations.shared.helpers import (
     _for_each_account_with_capability,
@@ -254,6 +255,15 @@ async def ingest_vehicle_state(account_id: int) -> int:
             row.get("engine_state_raw"), row.get("speed_mph"),
         )
         row.pop("engine_state_raw", None)
+        # The row's world-time: the freshest provider marker it carries.
+        # Never our clock — write times advance every tick whether or
+        # not the world does, which is precisely the confusion this
+        # column ends.
+        row["source_ts"] = freshest(
+            row.get("captured_at"),
+            row.get("odometer_time"),
+            row.get("engine_hours_time"),
+        )
 
     # Stamp OUR identity onto every row before it becomes history.  The
     # registry resolves by the provider's stable external id — never by

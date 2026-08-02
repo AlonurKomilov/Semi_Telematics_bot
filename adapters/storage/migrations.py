@@ -7983,3 +7983,43 @@ async def migrate_work_orders_registry_id(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 179: work_orders.registry_id ready + backfilled")
+
+
+@_register("180_source_ts_staleness_contract")
+async def migrate_source_ts_staleness_contract(conn) -> None:
+    """Every warehouse row learns when its WORLD-STATE was true.
+
+    ``source_ts`` is written only from a provider-supplied time that
+    moves when the world moves — a sensor sample, an event occurrence.
+    Our own write time never feeds it: that is what made a truck parked
+    since May look identical to one reporting this minute, and what let
+    a 43-hour outage read as normal data for weeks.
+
+    Tables whose provider exposes no per-record world time (windowed
+    aggregates, caches) carry the column but keep it NULL — "age
+    unknown" is the honest answer there, and writing a cache-edit time
+    instead would pin those readers to live fallback forever.
+
+    Roll-up tiers PROPAGATE max(source_ts) of their inputs and never
+    mint one.  Safety events forward-fill from their own occurrence
+    time; history stays as-is because ``occurred_at`` already holds
+    that truth for old rows.
+    """
+    for table in (
+        "vehicle_state",
+        "vehicle_state_snapshot",
+        "vehicle_telemetry",
+        "vehicle_health_snapshot",
+        "vehicle_fault_snapshot",
+        "vehicle_fault_detail",
+        "safety_event_log",
+        "driver_efficiency_daily",
+        "geofence_definitions",
+        "aggregate_weather_snapshot",
+        "aggregate_efficiency_snapshot",
+    ):
+        await conn.execute(
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS source_ts TEXT"
+        )
+    await conn.commit()
+    logger.info("Migration 180: source_ts staleness contract columns ready")
