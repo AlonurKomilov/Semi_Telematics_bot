@@ -145,6 +145,54 @@ class ParkingMixin:
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
+    async def resolve_parking_event_by_id(
+        self, account_id: int, event_id: int,
+    ) -> bool:
+        """Resolve exactly ONE parking event, by its own id.
+
+        The vehicle-scoped variant below closes every unresolved row for
+        a vehicle, which is wrong for a per-event button: the UI attaches
+        Resolve to an Event, so it must act on that Event.  Normally a
+        vehicle has one active row, but ``get_active_parking_events_for_
+        vehicles`` explicitly handles "multiple unresolved rows somehow
+        exist" — and in that case the vehicle-scoped call silently closed
+        events the operator never saw.
+
+        Alert cleanup still has to run per VEHICLE: ``alert_history`` and
+        ``alert_acknowledgments`` are keyed by (account, type, vehicle),
+        not by parking-event id, so there is nothing narrower to clear.
+        It only runs once no unresolved rows remain for the vehicle,
+        otherwise closing one of two events would drop the alert that the
+        other one is still raising.
+        """
+        cur = await self._db.execute(
+            "SELECT vehicle_id FROM parking_events "
+            "WHERE id = ? AND account_id = ? AND resolved = 0",
+            (event_id, account_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return False
+        vehicle_id = dict(row).get("vehicle_id")
+
+        await self._db.execute(
+            "UPDATE parking_events SET resolved = 1, last_checked = ? "
+            "WHERE id = ? AND account_id = ? AND resolved = 0",
+            (self._now(), event_id, account_id),
+        )
+        await self._db.commit()
+
+        cur = await self._db.execute(
+            "SELECT COUNT(*) AS n FROM parking_events "
+            "WHERE account_id = ? AND vehicle_id = ? AND resolved = 0",
+            (account_id, vehicle_id),
+        )
+        remaining = dict(await cur.fetchone() or {}).get("n", 0) or 0
+        if not remaining:
+            await self.clear_alert_history(account_id, "parking", vehicle_id)
+            await self.auto_resolve_alerts_by_vehicle(account_id, "parking", vehicle_id)
+        return True
+
     async def resolve_parking_event(
         self, account_id: int, vehicle_id: str,
     ) -> bool:
@@ -245,6 +293,140 @@ class ParkingMixin:
         rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
+    async def prune_parking_events(
+        self, account_id: int, keep_days: int = 1095,
+    ) -> int:
+        """Delete parking events older than *keep_days*.  Returns the count.
+
+        RESOLVED ROWS ONLY.  An unresolved event is the vehicle's current
+        state — the Parking page reads exactly those — and a truck that has
+        genuinely sat in one place for longer than the window would
+        otherwise have its live row deleted out from under the operator.
+
+        The window is measured from ``last_checked`` — which ``resolve_
+        parking_event`` stamps at resolution — NOT from ``first_stopped``.
+        Ageing off the START of the stop would delete a long-running case
+        the same night it closed: an event that began 1095 days ago but was
+        only resolved yesterday is one day old as EVIDENCE, and evidence is
+        what the 1095-day window exists to protect.  ``COALESCE`` falls back
+        to ``first_stopped`` for any legacy row with no stamp, and a row
+        with neither compares NULL and is kept — deletion fails safe.
+
+        Known gap: the companion ``map_image_path`` PNG is NOT removed.
+        Every existing prune in this codebase deletes rows only
+        (``prune_score_events`` and friends), and the object store is
+        per-account and resolved through a different path, so wiring file
+        cleanup in here would be the first of its kind rather than a
+        pattern being followed.  At the current window nothing is eligible
+        for years, so this is recorded rather than rushed — but the images
+        WILL outlive their rows once the window is reached.
+        """
+        from datetime import datetime, timedelta, timezone
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(days=keep_days)
+        ).isoformat()
+        cur = await self._db.execute(
+            "DELETE FROM parking_events "
+            "WHERE account_id = ? AND resolved = 1 "
+            "AND COALESCE(last_checked, first_stopped) < ?",
+            (account_id, cutoff),
+        )
+        await self._db.commit()
+        return cur.rowcount
+
+    async def map_image_overwritten_by_newer(
+        self, account_id: int, event_id: int,
+    ) -> bool:
+        """True when this event's map file has been overwritten since.
+
+        Legacy rows only.  The object-store key used to be
+        ``{vehicle_id}.png`` and ``put`` overwrites, so every stop by a
+        truck clobbered the previous stop's image while each row kept its
+        own ``map_image_path`` pointing at the shared file.  A row is
+        therefore stale exactly when a NEWER event carries the same path:
+        the bytes on disk depict that newer stop, not this one.
+
+        Events written after the per-event key landed have a unique path
+        and can never match, so this returns False for them without any
+        migration or backfill.
+        """
+        cur = await self._db.execute(
+            "SELECT 1 FROM parking_events AS newer "
+            "WHERE newer.account_id = ? "
+            "AND newer.id > ? "
+            "AND newer.map_image_path <> '' "
+            "AND newer.map_image_path = ("
+            "  SELECT map_image_path FROM parking_events "
+            "  WHERE id = ? AND account_id = ?"
+            ") LIMIT 1",
+            (account_id, event_id, event_id, account_id),
+        )
+        return await cur.fetchone() is not None
+
+    async def count_flagged_parking_events_by_vehicle(
+        self, account_id: int, vehicle_ids: list[str],
+    ) -> dict[str, int]:
+        """``{vehicle_id: flagged events}`` for the given vehicles.
+
+        FLAGGED = anything that is not ``safe`` and not ``geofence`` —
+        i.e. unsafe stops plus unverified ones the classifier could not
+        place.  Deliberately not a total: a truck that stopped 120 times
+        in truck stops is doing its job, and a count that treats those
+        the same as 120 shoulder stops sorts the wrong vehicles to the
+        top.  The predicate is the SAME one behind the "Needs attention"
+        segment and ``service.needs_attention``, so the column and the
+        tab cannot disagree about what counts as bad.
+
+        Counted in SQL, not by fetching rows and measuring the list: the
+        grid needs one number per vehicle, and the alternative is pulling
+        every historical event for the whole page just to call len() on
+        the groups.
+
+        Chunked at 500 to stay under SQLite's 999-parameter limit (one
+        slot reserved for account_id), matching
+        ``get_active_parking_events_for_vehicles`` above.
+        """
+        out: dict[str, int] = {}
+        if not vehicle_ids:
+            return out
+        for i in range(0, len(vehicle_ids), 500):
+            chunk = vehicle_ids[i:i + 500]
+            placeholders = ",".join("?" * len(chunk))
+            cur = await self._db.execute(
+                f"SELECT vehicle_id, COUNT(*) AS n FROM parking_events "
+                f"WHERE account_id = ? AND vehicle_id IN ({placeholders}) "
+                f"AND location_class NOT IN ('safe', 'geofence') "
+                f"GROUP BY vehicle_id",
+                (account_id, *chunk),
+            )
+            for row in await cur.fetchall():
+                d = dict(row)
+                if d.get("vehicle_id"):
+                    out[d["vehicle_id"]] = int(d.get("n") or 0)
+        return out
+
+    async def get_parking_events_for_vehicle(
+        self, account_id: int, vehicle_id: str, limit: int = 50,
+    ) -> list[dict]:
+        """Every parking event for ONE vehicle, newest first.
+
+        Backs the detail drawer's history panel.  Queried per-vehicle
+        rather than filtering a whole-account fetch in Python: the answer
+        is a handful of rows and the account may hold tens of thousands,
+        so the filter belongs in the WHERE clause.
+
+        Both resolved and unresolved, because the question the panel
+        answers — "does this truck park badly a lot?" — is about the
+        pattern, not the current state.
+        """
+        cur = await self._db.execute(
+            "SELECT * FROM parking_events "
+            "WHERE account_id = ? AND vehicle_id = ? "
+            "ORDER BY COALESCE(first_stopped, created_at) DESC LIMIT ?",
+            (account_id, vehicle_id, limit),
+        )
+        return [dict(r) for r in await cur.fetchall()]
+
     async def get_parking_points_for_heatmap(
         self, account_id: int, days: int = 30,
     ) -> list[dict]:
@@ -263,8 +445,16 @@ class ParkingMixin:
         just inflate the payload).
         """
         cutoff = (datetime.now(timezone.utc) - timedelta(days=max(days, 1))).isoformat()
+        # ``company_code`` is projected even though the heatmap never
+        # renders it: the caller needs it to apply the per-user company
+        # restriction.  Company scope is a per-USER assignment (Team
+        # Management), independent of role — only ``owner`` is
+        # auto-unrestricted — so a company-restricted holder of
+        # ``can_vehicle_all`` reaches this query and must not receive
+        # another company's parking density.
         cur = await self._db.execute(
-            "SELECT latitude, longitude, duration_hours FROM parking_events "
+            "SELECT latitude, longitude, duration_hours, company_code "
+            "FROM parking_events "
             "WHERE account_id = ? "
             "AND created_at >= ? "
             "AND latitude != 0 AND longitude != 0 "

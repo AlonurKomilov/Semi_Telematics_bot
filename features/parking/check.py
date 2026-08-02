@@ -400,6 +400,10 @@ async def check_unsafe_parking(app: Application):
                 ai_analysis = existing.get("ai_analysis", "") if existing else ""
                 map_image_path = existing.get("map_image_path", "") if existing else ""
                 loc_class = keyword_class  # start with keyword, AI may override
+                # Bound here, not only inside the first-detection branch below:
+                # a stop that already has ai_analysis skips that branch entirely
+                # and would otherwise reach the render check unbound.
+                needs_map = False
 
                 if not ai_analysis:
                     # Run AI vision on first detection for ALL non-safe stops.
@@ -427,17 +431,11 @@ async def check_unsafe_parking(app: Application):
                         else:
                             loc_class = "unknown"
 
-                    # Save map image to the account's configured object
-                    # store (disk by default, the user's Drive when
-                    # they've connected BYO).
-                    if not map_image_path:
-                        saved_path = await _save_parking_map(
-                            account.id, vid, lat, lng,
-                            tenant_db=tenant,
-                            company_code=co,
-                        )
-                        if saved_path:
-                            map_image_path = saved_path
+                    # The map is rendered AFTER the upsert, below — its
+                    # object-store key needs the event id, which does not
+                    # exist until the row does.  Only the decision to render
+                    # one is made here (first detection, no analysis yet).
+                    needs_map = not map_image_path
 
                 # Upsert the parking event (only unsafe/unknown reach here)
                 event = await tenant.upsert_parking_event(
@@ -452,6 +450,21 @@ async def check_unsafe_parking(app: Application):
                     duration_hours=duration_h,
                     location_class=loc_class,
                 )
+
+                # Save the map image now that the event has an id — the
+                # object-store key is per-EVENT, so a truck's stops no longer
+                # overwrite each other's snapshots.  Stored to the account's
+                # configured backend (disk by default; hybrid also queues a
+                # copy to the customer's Drive).
+                if needs_map:
+                    saved_path = await _save_parking_map(
+                        account.id, vid, lat, lng,
+                        tenant_db=tenant,
+                        company_code=co,
+                        event_id=event["id"],
+                    )
+                    if saved_path:
+                        map_image_path = saved_path
 
                 # Determine alert level
                 prev_alert = existing.get("alert_level", "none") if existing else "none"

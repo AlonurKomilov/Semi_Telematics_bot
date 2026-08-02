@@ -90,9 +90,26 @@ async def _save_parking_map(
     account_id: int, vehicle_id: str, lat: float, lng: float,
     tenant_db,
     company_code: str = "",
+    event_id: int = 0,
 ) -> str:
     """Render and save a parking-event map image to the account's
     configured object store.
+
+    KEYED BY EVENT, not by vehicle.  The key was ``{vehicle_id}.png``,
+    and ``put`` overwrites unconditionally, so every stop a truck made
+    wrote over the previous stop's map: on live data 116 events for one
+    vehicle shared 4 files.  Each row still carried its own
+    ``map_image_path``, so the detail drawer happily showed a
+    three-month-old event beside a picture of where that truck parked
+    last night — correct address and AI reason, wrong map.  Harmless
+    while only the current stop was viewable; the per-vehicle history
+    panel made every stale pairing reachable.
+
+    ``event_id`` is required for the per-event key.  It defaults to 0
+    rather than being positional so existing callers fail loudly in
+    review instead of silently reverting to the shared key — a 0 falls
+    back to the legacy vehicle key, which is correct ONLY for a caller
+    that genuinely has no event yet.
 
     Routes through ``get_object_store_for_account`` so when an account
     has connected Google Drive, parking-map screenshots land in their
@@ -112,6 +129,7 @@ async def _save_parking_map(
         return ""
     try:
         from adapters.storage.object_store import get_object_store_for_account
+        from capabilities.storage.tracking import track_for_sync_if_hybrid
         from features.work_orders.storage import resolve_company_folder
         safe_vid = vehicle_id.replace("/", "_").replace("\\", "_")
         # Mirrors the work-orders + camera-images layout so a user
@@ -121,9 +139,20 @@ async def _save_parking_map(
             tenant_db, account_id, company_code,
         )
         bucket = f"{company_folder}/parking-maps"
-        key = f"{safe_vid}.png"
+        key = f"{safe_vid}-{event_id}.png" if event_id else f"{safe_vid}.png"
         store = await get_object_store_for_account(account_id, tenant_db)
-        return store.put(bucket, key, map_bytes)
+        saved = store.put(bucket, key, map_bytes)
+        # Hand the file to the cloud-sync queue on a hybrid account.  A
+        # no-op on disk/gdrive.  Only possible per-event: the repointer
+        # rewrites parking_events.map_image_path for THIS event id, which
+        # is the same reason the key stopped being per-vehicle.
+        if saved and event_id:
+            await track_for_sync_if_hybrid(
+                store, bucket, key, saved,
+                entity_type="parking_map", entity_id=int(event_id),
+                file_size=len(map_bytes),
+            )
+        return saved
     except Exception as e:
         logger.debug("Failed to save parking map: %s", e)
         return ""

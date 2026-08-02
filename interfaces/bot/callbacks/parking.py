@@ -27,19 +27,26 @@ def _own_only(user) -> bool:
 
 
 def _filter_to_own_vehicles(events: list[dict], user) -> list[dict]:
-    """Keep only events whose ``vehicle_name`` matches the user's truck(s).
+    """Keep only events whose ``vehicle_name`` matches the user's truck.
 
-    Mirrors the substring match used by the API layer
-    (``interfaces/api/routes/parking.py``) so the bot and miniapp see the
-    same row-set for the same caller.
+    Delegates to ``features.parking.service.scope_events`` — THE visibility
+    predicate — rather than re-implementing the substring match.  This used
+    to be a third private copy alongside the API's, and its docstring still
+    pointed at ``interfaces/api/routes/parking.py``, a module deleted in the
+    move to feature-centric routers.  Two copies of a scope rule with one
+    stale reference between them is how the API's copies drifted into the
+    leaks that features/parking/service.py documents.
+
+    Behaviour is unchanged: no truck -> ``[]`` (sees nothing, never
+    "everything"), and ``company_codes=[]`` is the service's documented
+    "unrestricted" value, matching what the bot did before.
     """
-    truck = (user.truck_num or "").strip().lower()
-    if not truck:
-        return []
-    return [
-        e for e in events
-        if truck in (e.get("vehicle_name") or "").lower()
-    ]
+    from features.parking import service as parking_service
+
+    truck = (user.truck_num or "").strip()
+    return parking_service.scope_events(
+        events, company_codes=[], truck_names=[truck] if truck else [],
+    )
 
 
 async def _handle_parking_events(update, context, user, show_all: bool = False):
@@ -52,9 +59,20 @@ async def _handle_parking_events(update, context, user, show_all: bool = False):
         return
 
     tenant = await get_tenant_db(user.account_id)
+    # Always fetch unfiltered, then narrow here.  ``attention_only=True``
+    # excludes location_class in ('safe','geofence'), and no such row can
+    # exist — features/parking/check.py returns early for geofence stops,
+    # safe-keyword stops and AI-confirmed-safe stops, so ``parking_events``
+    # only ever holds unsafe/unverified rows.  Passing it made the bot's
+    # "Needs attention" and "Show all" buttons render byte-identical lists.
+    # ``alert_level`` is the axis that actually partitions, and it is the
+    # same verdict that decides whether this bot alerts at all — the
+    # dashboard grid's segment was fixed to match (Parking.tsx).
     events = await tenant.get_active_parking_events(
-        user.account_id, attention_only=not show_all,
+        user.account_id, attention_only=False,
     )
+    if not show_all:
+        events = [e for e in events if (e.get("alert_level") or "none") != "none"]
     own_only = _own_only(user)
     if own_only:
         events = _filter_to_own_vehicles(events, user)
