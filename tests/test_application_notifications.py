@@ -141,10 +141,12 @@ class TestFanOut:
         content = call["content"]
         assert call["account_id"] == 42
         assert content.category == APPLICATION_RECEIVED
-        # The reference rides the object chip (meta.context), not the
-        # body — one row must not state it twice.
-        assert content.body == "Dana Driver applied"
-        assert content.meta["context"] == "APP-77"
+        # The title carries the applicant — it is the email SUBJECT, and
+        # a dozen identical subjects can't be triaged from an inbox list.
+        assert content.title == "New driver application — Dana Driver"
+        # The body carries the reference, so every channel shows it (the
+        # in-app object chip was invisible in mail and chat).
+        assert content.body == "Reference APP-77"
         # Deep-link to the row, not just the page.
         assert content.url.endswith("/workforce/applications?app=77")
         assert content.meta["application_id"] == 77

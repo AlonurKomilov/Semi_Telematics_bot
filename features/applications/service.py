@@ -247,7 +247,11 @@ async def notify_new_application(
         return perm_cache[key]
 
     review_url = f"{review_base_url()}/workforce/applications"
-    title = "New driver application"
+    # The title is also the EMAIL SUBJECT.  Without the applicant in it,
+    # a recruiter's inbox fills with a dozen identical subject lines and
+    # triage has to happen by opening each one.
+    title = f"New driver application — {applicant_name}" if applicant_name \
+        else "New driver application"
 
     for u in users:
         try:
@@ -260,18 +264,17 @@ async def notify_new_application(
             await notify_user(
                 platform_db, account_id, u.id,
                 NotificationContent(
+                    # One semantic body, rendered three ways.  It carries
+                    # the reference because that is the key a recruiter
+                    # searches and an applicant quotes — and only the
+                    # in-app row could show it as an object chip, so a
+                    # chip-only reference was invisible in mail and chat.
                     title=title,
-                    # The shared inbox row renders the reference as its
-                    # object chip (meta.context), so the body carries only
-                    # the person — printing the reference twice in one row
-                    # reads as two different facts.  Email and Telegram
-                    # render the same semantic content their own way.
-                    body=f"{applicant_name or 'A driver'} applied",
+                    body=f"Reference {reference}",
                     category=APPLICATION_RECEIVED,
                     url=f"{review_url}?app={application_id}",
                     meta={"application_id": application_id,
-                          "reference": reference,
-                          "context": reference},
+                          "reference": reference},
                 ),
                 # Every personal channel is offered; the capability
                 # delivers only where this person is connected and hasn't

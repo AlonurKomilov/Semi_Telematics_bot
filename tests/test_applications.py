@@ -494,8 +494,10 @@ class TestNotifications:
             assert notice["category"] == "applications.received"
             assert notice["source"] == "applications"
             assert notice["read"] is False
-            # The object chip carries the reference; the deep link the row.
-            assert notice["context"].startswith("APP-")
+            # The body carries the reference (every channel renders it,
+            # unlike the in-app-only object chip) and the url deep-links.
+            assert notice["body"].startswith("Reference APP-")
+            assert notice["title"].startswith("New driver application")
             assert "?app=" in notice["url"]
 
             # A driver holds no can_manage_applications, so nothing was
