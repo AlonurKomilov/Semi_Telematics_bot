@@ -137,10 +137,10 @@ class ActivityTrailMixin(_MixinBase):
 
     # ── Legacy read arms for the unified facade ───────────────────
     # The two shipped rich trails stay in their own tables (advisor
-    # ruling: exactly three arms, never a fourth); the frozen thin
-    # audit_log remains readable until its human rows migrate in
-    # (Phase 4).  These account-wide reads exist ONLY for the facade —
-    # per-record lenses keep using each feature's own list method.
+    # ruling: exactly three arms, never a fourth).  These account-wide
+    # reads exist ONLY for the facade — per-record lenses keep using
+    # each feature's own list method.  (audit_log's human rows were
+    # imported by migration 178; it is machine-only now and unread.)
 
     async def list_trail_legacy_loads(
         self, account_id: int, *, limit: int = 100,
@@ -182,39 +182,6 @@ class ActivityTrailMixin(_MixinBase):
              "from_vehicle_id": r[5], "to_vehicle_id": r[6],
              "actor_user_id": r[7], "driver_user_id": r[8],
              "note": r[9], "created_at": r[10]}
-            for r in await cur.fetchall()
-        ]
-
-    # Machine churn the frozen audit_log accumulated (alert lifecycle
-    # etc.) — excluded from the people-only reader.
-    MACHINE_AUDIT_ACTIONS: tuple[str, ...] = (
-        "alert_realerted", "alert_max_realerts", "alert_auto_resolved",
-        "alert_expired", "alerts_ttl_close", "alert_escalated",
-        "alert_max_escalation",
-    )
-
-    async def list_trail_legacy_audit(
-        self, account_id: int, *, limit: int = 100,
-        before_ts: Optional[str] = None,
-    ) -> list[dict[str, Any]]:
-        placeholders = ",".join("?" * len(self.MACHINE_AUDIT_ACTIONS))
-        extra = " AND created_at < ?" if before_ts else ""
-        params: list[Any] = [account_id, *self.MACHINE_AUDIT_ACTIONS]
-        if before_ts:
-            params.append(before_ts)
-        params.append(limit)
-        cur = await self._db.execute(
-            f"""SELECT id, user_id, action, target_type, target_id,
-                       details, created_at
-                FROM audit_log
-                WHERE account_id = ? AND action NOT IN ({placeholders}){extra}
-                ORDER BY created_at DESC LIMIT ?""",
-            tuple(params),
-        )
-        return [
-            {"id": r[0], "user_id": r[1], "action": r[2],
-             "target_type": r[3], "target_id": r[4],
-             "details": r[5], "created_at": r[6]}
             for r in await cur.fetchall()
         ]
 

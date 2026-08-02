@@ -204,3 +204,43 @@ class TestMaintenanceAdoption:
             acct.id, entity_type="maintenance_task", entity_id=str(ids[0]),
         )
         assert any(e["action"] == "delete" for e in one)
+
+
+class TestLegacyImport:
+    """Migration 178 — the frozen log's human rows join the trail."""
+
+    @pytest.mark.asyncio
+    async def test_human_rows_import_with_actor_mapping(self, seeded_db):
+        from adapters.storage.migrations import (
+            migrate_activity_trail_legacy_import,
+        )
+        db, acct, owner = seeded_db
+        # One mapped human row, one orphaned human row, one machine row.
+        await db.add_audit_log(
+            acct.id, owner.telegram_id, "role_change",
+            target_type="user", target_id="42", details="Changed role to hr",
+        )
+        await db.add_audit_log(
+            acct.id, 999999999, "company_add",
+            target_type="company", target_id="7", details="Code: ZZZ",
+        )
+        await db.add_audit_log(
+            acct.id, None, "alert_auto_resolved",
+            target_type="alert", target_id="1", details="machine noise",
+        )
+        await migrate_activity_trail_legacy_import(db._db)
+
+        imported = await db.list_activity_events(acct.id, action="role_change")
+        assert len(imported) == 1
+        ev = imported[0]
+        assert ev["actor_user_id"] == owner.id          # telegram → platform
+        assert ev["context"]["source"] == "audit_log"
+        assert ev["note"] == "Changed role to hr"
+
+        orphan = await db.list_activity_events(acct.id, action="company_add")
+        assert orphan and orphan[0]["actor_user_id"] is None
+        assert "system" in orphan[0]["context"]         # people-only contract
+
+        # machine churn stays behind
+        assert await db.list_activity_events(
+            acct.id, action="alert_auto_resolved") == []

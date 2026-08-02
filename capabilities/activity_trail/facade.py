@@ -1,12 +1,13 @@
 """The unified READ over every who-did-what source.
 
-Exactly four arms, by ruling:
-  * ``activity_events``            — the universal trail (all new adopters)
+Exactly three arms, by ruling (never a fourth):
+  * ``activity_events``            — the universal trail (all adopters +
+    the frozen log's human history, imported by migration 178)
   * ``load_events``                — shipped rich trail, stays put
   * ``vehicle_inventory_events``   — shipped rich trail, stays put
-  * ``audit_log``                  — FROZEN thin log, read here minus its
-    machine noise until Phase 4 migrates the human rows in (then this
-    arm is dropped)
+
+``audit_log`` itself is no longer read here: since migration 178 it is
+a machine-only log (alert lifecycle, webhooks) whose rows age out.
 
 Every arm normalizes to one wire shape::
 
@@ -75,18 +76,6 @@ def normalize_inventory(e: dict) -> dict:
         "context": ({"driver_user_id": e["driver_user_id"]}
                     if e.get("driver_user_id") else {}),
         "note": e.get("note") or "", "created_at": e["created_at"],
-    }
-
-
-def normalize_legacy(e: dict) -> dict:
-    return {
-        "source": "legacy", "id": f"legacy:{e['id']}",
-        "entity_type": e.get("target_type") or "",
-        "entity_id": e.get("target_id") or "",
-        "action": e["action"], "changes": {},
-        "actor_user_id": e.get("user_id"), "actor_space": "telegram",
-        "group_id": None, "context": {},
-        "note": e.get("details") or "", "created_at": e["created_at"],
     }
 
 
@@ -164,16 +153,7 @@ async def account_activity(
                    account_id, before_ts=before_ts, limit=fetch)]
     else:
         inv = []
-    if entity_type is None:
-        legacy = [normalize_legacy(e) for e in
-                  await db.list_trail_legacy_audit(
-                      account_id, before_ts=before_ts, limit=fetch)]
-    else:
-        legacy = [normalize_legacy(e) for e in
-                  await db.list_trail_legacy_audit(
-                      account_id, before_ts=before_ts, limit=fetch)
-                  if (e.get("target_type") or "") == entity_type]
-    merged = merge_arms(trail, loads, inv, legacy, limit=limit)
+    merged = merge_arms(trail, loads, inv, limit=limit)
     flags = viewer_can_see or {}
     for ev in merged:
         ev["changes"] = mask_changes(

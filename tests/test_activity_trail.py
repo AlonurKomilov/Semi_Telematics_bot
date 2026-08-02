@@ -93,8 +93,7 @@ def test_mask_never_mutates_at_write_shape():
 
 def test_facade_normalizes_all_arm_shapes_to_one():
     from capabilities.activity_trail.facade import (
-        normalize_inventory, normalize_legacy, normalize_load,
-        normalize_trail,
+        normalize_inventory, normalize_load, normalize_trail,
     )
     trail = normalize_trail({
         "id": 1, "entity_type": "maintenance_task", "entity_id": "64",
@@ -115,20 +114,13 @@ def test_facade_normalizes_all_arm_shapes_to_one():
         "actor_user_id": 7, "driver_user_id": 11, "note": "",
         "created_at": "2026-07-31T08:00:00+00:00",
     })
-    legacy = normalize_legacy({
-        "id": 4, "user_id": 8846901592, "action": "permissions_update",
-        "target_type": "role", "target_id": "fleet", "details": "",
-        "created_at": "2026-07-31T07:00:00+00:00",
-    })
-    for ev in (trail, load, inv, legacy):
+    for ev in (trail, load, inv):
         assert set(ev) >= {"source", "entity_type", "entity_id", "action",
                            "changes", "actor_user_id", "actor_space",
                            "created_at"}
     # every arm's changes speak {from,to} — including loads' pair form
     assert load["changes"] == {"total_rate": {"from": 1500, "to": 1700}}
     assert inv["changes"]["status"] == {"from": "missing", "to": "installed"}
-    # the frozen log's telegram ids are marked so names resolve right
-    assert legacy["actor_space"] == "telegram"
     assert trail["actor_space"] == "platform"
 
 

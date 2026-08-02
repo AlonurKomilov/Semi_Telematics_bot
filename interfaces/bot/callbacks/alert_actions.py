@@ -83,14 +83,14 @@ async def handle_alert_ack(update, context, ack_id: int):
             logger.debug("Failed to edit ack message for alert %d", ack_id)
         await query.answer("✅ Alert acknowledged!", show_alert=False)
 
-        # Audit log
+        # Trail — the ack came from a human tapping the bot button;
+        # ``user.id`` is already the platform users.id.
         if user:
-            await tenant.add_audit_log(
-                account_id=user.account_id,
-                user_id=user.id,
-                action="alert_acknowledged",
-                target_type="alert",
-                target_id=str(ack_id),
+            from capabilities.activity_trail import record_simple
+            await record_simple(
+                tenant, user.account_id, user.id,
+                "alert_acknowledged", "alert", ack_id,
+                context={"via": "telegram"},
             )
     except Exception as e:
         logger.error("ACK alert %d failed: %s", ack_id, e, exc_info=True)

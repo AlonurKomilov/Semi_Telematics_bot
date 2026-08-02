@@ -24,10 +24,12 @@ _CONTRIBUTORS = (
     "features.events.retention",          # owns safety_events
     "features.applications.retention",    # owns applications.drafts (save & resume)
     "features.loads.retention",           # owns loads.records (load/shipment history)
+    "features.parking.retention",         # owns parking.events (unsafe-parking evidence)
     "capabilities.scorecards.retention",  # owns scorecards.score_history
     "capabilities.email.retention",       # owns email.delivery_events
     "capabilities.ai.retention",          # owns ai.chat_history (age-cap)
     "capabilities.notifications.retention",  # owns notifications.digest_queue (undeliverable residue)
+    "capabilities.activity_trail.retention",  # owns activity_trail.events (who-did-what + deletion recovery)
     "infra.scan_retention",               # owns platform.scan_log (AV scan audit)
     "capabilities.platform.capacity.retention",  # owns system.metrics_* + account_usage_daily (capacity monitoring)
 )

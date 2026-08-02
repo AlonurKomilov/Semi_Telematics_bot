@@ -7851,3 +7851,67 @@ async def migrate_vehicle_identity_registry_id(conn) -> None:
         logger.info("Migration 177: RLS enabled on warehouse_ingest_orphans")
     except Exception as e:
         logger.warning("Migration 177: RLS setup failed: %s", e)
+
+
+@_register("178_activity_trail_legacy_import")
+async def migrate_activity_trail_legacy_import(conn) -> None:
+    """Fold the frozen thin log's HUMAN rows into the unified trail.
+
+    Completes the advisor-ruled cutover: ``audit_log`` stays in place
+    as a machine-only log (alert lifecycle, webhooks), the facade stops
+    reading it, and its human history lives in ``activity_events`` like
+    everything written since Phase 2.  Actor ids translate from the old
+    telegram space to platform ``users.id``; rows whose author can't be
+    resolved anymore import actorless with a declared system context
+    (the people-only contract for events without a platform user).
+    Provenance rides ``context.legacy_id`` so any row can be traced
+    back to its original.
+    """
+    # Machine churn stays behind — feature state tables already hold it.
+    machine = (
+        "alert_realerted", "alert_max_realerts", "alert_auto_resolved",
+        "alert_expired", "alerts_ttl_close", "alert_escalated",
+        "alert_max_escalation",
+    )
+    cur = await conn.execute(
+        "SELECT telegram_id, id FROM users WHERE telegram_id IS NOT NULL",
+    )
+    tg_map = {r[0]: r[1] for r in await cur.fetchall()}
+
+    placeholders = ",".join("?" * len(machine))
+    cur = await conn.execute(
+        f"SELECT id, account_id, user_id, action, target_type, target_id, "
+        f"details, created_at FROM audit_log "
+        f"WHERE action NOT IN ({placeholders})",
+        machine,
+    )
+    rows = await cur.fetchall()
+    import json as _json
+    imported = 0
+    for r in rows:
+        legacy_id, account_id, tg, action, ttype, tid, details, created = (
+            r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7],
+        )
+        actor = tg_map.get(tg) if tg is not None else None
+        context: dict = {"source": "audit_log", "legacy_id": legacy_id}
+        if actor is None:
+            context["system"] = (
+                f"legacy import (original user_id={tg})" if tg is not None
+                else "legacy import (no recorded actor)"
+            )
+        await conn.execute(
+            """INSERT INTO activity_events
+               (account_id, entity_type, entity_id, action, changes,
+                actor_user_id, group_id, context, note, created_at)
+               VALUES (?, ?, ?, ?, '{}', ?, NULL, ?, ?, ?)""",
+            (account_id, ttype or "", tid or "", action,
+             actor, _json.dumps(context), (details or "")[:500],
+             created or ""),
+        )
+        imported += 1
+    await conn.commit()
+    logger.info(
+        "Migration 178: %d human audit rows imported into the trail "
+        "(%d total rows scanned, machine rows left behind)",
+        imported, len(rows),
+    )

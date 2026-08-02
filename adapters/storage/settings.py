@@ -199,7 +199,16 @@ class SettingsMixin:
         action: str, target_type: str = "", target_id: str = "",
         details: str = "",
     ) -> int:
-        """Record an action in the audit log."""
+        """Record a MACHINE action in the (frozen) audit log.
+
+        Since migration 178 this table is machine-only: alert lifecycle
+        churn, webhook receipts — rows nothing reads and retention ages
+        out.  HUMAN actions go through ``capabilities/activity_trail``
+        (``append_activity_events`` / ``record_simple``) with field-level
+        old→new values; its human history was imported into
+        ``activity_events`` by that migration.  Do not add new human
+        callers here.
+        """
         now = self._now()
         cur = await self._db.execute(
             """INSERT INTO audit_log

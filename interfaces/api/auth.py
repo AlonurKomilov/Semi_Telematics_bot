@@ -2118,11 +2118,15 @@ async def _decline_invite_impl(request: Request, token: str) -> None:
             f"Role: {invite.role}, "
             f"channel: {invite.channel}, source_ip: {source_ip}"
         )[:500]
-        await tenant.add_audit_log(
-            invite.account_id, None,
-            "invite_declined",
-            target_type="invite", target_id=str(invite.id),
-            details=details,
+        from capabilities.activity_trail import record_simple
+        await record_simple(
+            tenant, invite.account_id, None,
+            "invite_declined", "invite", invite.id,
+            # No platform user exists for the anonymous recipient — the
+            # trail's people-only rule requires actorless events to
+            # declare themselves.
+            context={"system": "public: invite recipient declined"},
+            note=details,
         )
     except Exception as e:
         logging.getLogger("api.auth").warning(

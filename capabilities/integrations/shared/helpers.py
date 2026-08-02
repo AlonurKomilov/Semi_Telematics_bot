@@ -109,19 +109,21 @@ async def audit(
     provider_id: str,
     details: str = "",
 ) -> None:
-    """Best-effort audit log write.  Wraps in try/except so audit
-    failures never block the user-visible action — operators see
-    them in logs but the API still returns success."""
+    """Best-effort trail write (capabilities/activity_trail).
+
+    ``user_id`` is the platform ``users.id`` — routers resolve it via
+    ``resolve_user_id`` before calling.  Wraps in try/except so trail
+    failures never block the user-visible action — operators see them
+    in logs but the API still returns success."""
     try:
         tenant = await get_tenant_db(account_id)
         if tenant is None:
             return
-        await tenant.add_audit_log(
-            account_id, user_id,
-            action=action,
-            target_type="integration",
-            target_id=provider_id,
-            details=details,
+        from capabilities.activity_trail import record_simple
+        await record_simple(
+            tenant, account_id, user_id,
+            action, "integration", provider_id,
+            note=details,
         )
     except Exception as e:
         logger.warning(

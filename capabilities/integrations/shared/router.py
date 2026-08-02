@@ -40,7 +40,7 @@ from capabilities.integrations.shared.history_backfill import (
 )
 from infra.platform import get_platform_db, get_tenant_db
 from infra.services import get_telematics_client, invalidate_client
-from interfaces.api.deps import require_permission
+from interfaces.api.deps import require_permission, resolve_user_id
 
 from .helpers import (
     ConnectRequest,
@@ -251,7 +251,7 @@ async def connect_integration(
         account_id, provider_id, triggered_by, is_first_connect,
     )
     await audit(
-        account_id, triggered_by, "integration.connect", provider_id,
+        account_id, await resolve_user_id(user), "integration.connect", provider_id,
         details=status.message[:200],
     )
 
@@ -326,7 +326,7 @@ async def disconnect_integration(
         account_id, provider_id,
     )
     await audit(
-        account_id, int(user.get("id") or 0),
+        account_id, await resolve_user_id(user),
         "integration.disconnect", provider_id,
     )
     return {"state": "disconnected", "provider_id": provider_id}
@@ -402,7 +402,7 @@ async def update_toggles(
         if old_on != new_on:
             diff.append(f"{cap}: {'on' if old_on else 'off'}→{'on' if new_on else 'off'}")
     await audit(
-        account_id, int(user.get("id") or 0),
+        account_id, await resolve_user_id(user),
         "integration.toggles", provider_id,
         details=", ".join(diff)[:300] or "(no changes)",
     )
