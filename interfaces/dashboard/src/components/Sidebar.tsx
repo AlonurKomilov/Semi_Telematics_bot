@@ -133,7 +133,7 @@ export default function Sidebar() {
           Fleet user's sidebar is just visual noise.  A thin
           separator between groups keeps the implicit structure
           readable in both collapsed and expanded modes. */}
-      <nav className="flex-1 overflow-y-auto py-2 scrollbar-thin">
+      <nav className="flex-1 overflow-y-auto overscroll-contain py-2">
         {navConfig.map((group, gi) => {
           // Collapsed icon rail has no nesting — flatten children so
           // every destination stays one click away.

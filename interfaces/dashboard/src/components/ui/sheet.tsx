@@ -27,6 +27,9 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
     <SheetPrimitive.Backdrop
       data-slot="sheet-overlay"
       className={cn(
+        // THIS is the sanctioned backdrop the ban points callers at;
+        // Sheet's own overlay cannot be written in terms of itself.
+        // eslint-disable-next-line no-restricted-syntax
         "fixed inset-0 z-50 bg-black/10 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0 supports-backdrop-filter:backdrop-blur-xs",
         className
       )}

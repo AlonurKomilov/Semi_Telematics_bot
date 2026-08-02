@@ -31,6 +31,9 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
+        // THIS is the sanctioned backdrop the ban points callers at;
+        // Dialog's own overlay cannot be written in terms of itself.
+        // eslint-disable-next-line no-restricted-syntax
         "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}

@@ -26,6 +26,24 @@ interface HeroChipProps {
   title?: string;
 }
 
+/** The strip a hero's chips sit in.  Six heroes rendered this byte for
+ *  byte, and a seventh written tomorrow would have had to rediscover the
+ *  ``overflow-y-hidden`` — which is NOT cosmetic: see the chip's own note
+ *  below.  ``overflow-x-auto`` alone computes overflow-y to auto as well,
+ *  turning a 48px header into a 66px scroll box whose parent clips ~9px
+ *  off every chip.
+ *
+ *  A class constant rather than a component, deliberately.  Wrapping it
+ *  would invite ``useWheelToHorizontal``, and this strip is already
+ *  ``overflow-x-auto`` — the browser handles the gesture, so adding the
+ *  bridge would DOUBLE every trackpad swipe.  That is the exact bug its
+ *  own docblock warns about.
+ *
+ *  It carried a dead ``scrollbar-thin`` in all six copies: tailwind.config
+ *  has ``plugins: []`` and no rule defines it, so it emitted nothing. */
+export const HERO_STRIP =
+  'flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden';
+
 export default function HeroChip({ label, value, tone = 'neutral', title }: HeroChipProps) {
   const chip = (
     <span

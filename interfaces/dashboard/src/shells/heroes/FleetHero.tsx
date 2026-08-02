@@ -22,7 +22,7 @@
  * shell).
  */
 import { useShellStats } from './useShellStats';
-import HeroChip from './HeroChip';
+import HeroChip, { HERO_STRIP } from './HeroChip';
 
 export default function FleetHero() {
   const { data, isLoading, isError } = useShellStats();
@@ -40,7 +40,7 @@ export default function FleetHero() {
   const trucks = vehicles.trucks;
   const trailers = vehicles.trailers;
   return (
-    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden scrollbar-thin">
+    <div className={HERO_STRIP}>
       {trucks ? (
         <>
           <HeroChip label="Trucks" value={trucks.total} tone="info" />

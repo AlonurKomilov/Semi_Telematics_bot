@@ -11,7 +11,7 @@
  * account, keeping the strip short.  Reads the same react-query cache
  * as the page — counts can't drift.
  */
-import HeroChip from '../../shells/heroes/HeroChip';
+import HeroChip, { HERO_STRIP } from '../../shells/heroes/HeroChip';
 import { ROLE_LABEL } from '../../components/RoleBadge';
 import { useTeamMembersQuery, memberLifecycleOf } from './useTeamMembers';
 
@@ -31,7 +31,7 @@ export default function TeamHero() {
   const roleCounts: Record<string, number> = {};
   for (const u of users) roleCounts[u.role] = (roleCounts[u.role] ?? 0) + 1;
   return (
-    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden scrollbar-thin">
+    <div className={HERO_STRIP}>
       <HeroChip label="Active" value={active} tone="positive" />
       {pending > 0 && (
         <HeroChip

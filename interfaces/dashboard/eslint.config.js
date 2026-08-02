@@ -82,6 +82,16 @@ export default [
         // Same z-ladder rule for template-literal classNames.
         selector: "JSXAttribute[name.name='className'] TemplateElement[value.raw=/z-\\[(?!60\\]|100\\]|400\\]|500\\]|650\\]|1000\\]|2000\\]|2100\\])/]",
         message: 'Arbitrary z-index outside the design.md §7 ladder (0–20/30/40/50, z-[60] above-dialog, z-[100] blocker; Leaflet pane values for maps).',
+      }, {
+        // A hand-rolled modal backdrop.  TWELVE of these existed, and
+        // every one was missing the same four things: focus trap, Escape,
+        // aria-modal, and a background scroll lock — so the page kept
+        // scrolling under the open panel and Tab walked straight out of
+        // it.  They are all gone; this keeps the thirteenth from being
+        // written.  <Sheet> for a side drawer, <Dialog> for a centred
+        // one; both are Base UI dialogs and bring all four.
+        selector: "JSXAttribute[name.name='className'] Literal[value=/fixed inset-0[^\"]*bg-black\\//]",
+        message: 'Hand-rolled modal backdrop — use <Sheet> (side drawer) or <Dialog> (centred) from components/ui. A bare backdrop has no focus trap, no Escape, no aria-modal and no background scroll lock.',
       }],
 
       // tsc owns these:

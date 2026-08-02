@@ -11,7 +11,7 @@
  * segment tabs.  Reads the same react-query cache as the page, so
  * a board drag or bulk move updates these numbers in the same tick.
  */
-import HeroChip from '../../shells/heroes/HeroChip';
+import HeroChip, { HERO_STRIP } from '../../shells/heroes/HeroChip';
 import { useApplicationsQuery, countAppsByStatus } from './useApplications';
 
 export default function ApplicationsHero() {
@@ -33,7 +33,7 @@ export default function ApplicationsHero() {
     ? ` (newest ${data.items.length} of ${data.total} applications)`
     : '';
   return (
-    <div className="flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden scrollbar-thin">
+    <div className={HERO_STRIP}>
       <HeroChip label="Submitted" value={counts.submitted ?? 0} tone="info" title={`New applications awaiting first review${note}`} />
       <HeroChip label="Screening" value={counts.screening ?? 0} tone="neutral" title={note ? `Screening${note}` : undefined} />
       <HeroChip label="Interview" value={counts.interview ?? 0} tone="warning" title={`Scheduled or in interview stage${note}`} />
