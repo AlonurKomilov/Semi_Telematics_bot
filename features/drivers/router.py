@@ -516,7 +516,6 @@ async def upload_driver_document(
       4. Record DB row with object_key + drive_file_id
     """
     from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.storage.tracking import track_for_sync_if_hybrid
 
     await _require_driver_visibility(user_id, user, platform_db)
 
@@ -614,19 +613,6 @@ async def upload_driver_document(
         uploaded_by=caller_id,
         notes=notes,
     )
-    # Cloud sync on a hybrid account.  Enqueued after the row exists so
-    # the worker can write the Drive id into ``drive_file_id`` before it
-    # frees the local copy.  Skipped when the backend is already gdrive —
-    # ``drive_file_id`` is populated above and there is no local copy to
-    # move.  These are FMCSA driver records; once in the customer's Drive
-    # we never delete them.
-    if not drive_file_id:
-        await track_for_sync_if_hybrid(
-            store, folder, object_key,
-            f"{folder}/{object_key}",
-            entity_type="driver_document", entity_id=int(doc.id),
-            file_size=len(raw),
-        )
     return {"status": "uploaded", "document": _document_to_dict(doc)}
 
 
