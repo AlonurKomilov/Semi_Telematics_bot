@@ -2718,9 +2718,13 @@ class WarehouseMixin(_MixinBase):
                 if key not in existing_state:
                     insert_params.append((
                         account_id, vid, did,
-                        dtc.get("spn"),
-                        dtc.get("fmi"),
-                        str(dtc.get("description") or dtc.get("fmiDescription") or ""),
+                        dtc.get("spn") if dtc.get("spn") is not None else dtc.get("spnId"),
+                        dtc.get("fmi") if dtc.get("fmi") is not None else dtc.get("fmiId"),
+                        # spnDescription names the fault ("Engine Exhaust
+                        # Gas Recirculation 1 Mass Flow Rate"); the FMI
+                        # text only grades it ("Low-moderate severity").
+                        str(dtc.get("description") or dtc.get("spnDescription")
+                            or dtc.get("fmiDescription") or ""),
                         str(dtc.get("severity") or ""),
                         ts,
                         json.dumps(dtc, default=str),
@@ -3130,12 +3134,19 @@ class WarehouseMixin(_MixinBase):
 def _dtc_id(dtc: dict[str, Any]) -> str:
     """Stable ID for a Samsara DTC.  Prefer the API's own id when
     present; otherwise hash on (spn, fmi) which uniquely identifies a
-    J1939 trouble code."""
+    J1939 trouble code.
+
+    The live payload spells the pair ``spnId`` / ``fmiId`` (and carries
+    no ``id`` at all) — reading only the bare spellings returned "" for
+    every real DTC, so every one was skipped and the table stayed empty
+    for its whole life.  Both spellings are read, like fuel and engine
+    state before it: the provider's naming has drifted once per field.
+    """
     sid = str(dtc.get("id") or dtc.get("samsara_id") or "").strip()
     if sid:
         return sid
-    spn = dtc.get("spn")
-    fmi = dtc.get("fmi")
+    spn = dtc.get("spn") if dtc.get("spn") is not None else dtc.get("spnId")
+    fmi = dtc.get("fmi") if dtc.get("fmi") is not None else dtc.get("fmiId")
     if spn is not None and fmi is not None:
         return f"spn:{spn}-fmi:{fmi}"
     return ""
