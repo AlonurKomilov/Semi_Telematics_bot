@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Building2, Pencil, Trash2, Clock3, Minus, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader } from '../../components/shell';
+import { Tip } from '../../components/tooltip';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
@@ -14,7 +15,10 @@ import { APEX_DOMAIN } from '../../lib/safeReturnTo';
 import { formatDate } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
 import { useInboxSource, useInboxActions, type InboxNotice } from '../alerts/useInbox';
-import DataGrid, { type DataGridSegment, type BulkAction } from '../../components/datagrid';
+import DataGrid, {
+  TAB_PREFIX, tabMatch, type DataGridSegment, type BulkAction,
+} from '../../components/datagrid';
+import type { ColumnFiltersState } from '@tanstack/react-table';
 import { ContextMenu, type MenuAction } from '../../components/ui/context-menu';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
@@ -404,6 +408,116 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
   );
 }
 
+/** The slice of a saved tab this page needs: enough to REPLAY its scope
+ *  (filters + search, via ``tabMatch``) and to know which lifecycle slice
+ *  it was captured under.  DataGrid hands exactly this through
+ *  ``onSegmentChange``; the id comes from the segment key. */
+interface TabScope {
+  id: string;
+  filters: ColumnFiltersState;
+  search: string;
+  baseSegment?: string;
+}
+
+// Hoisted to module scope for two reasons.  An inline array is a new
+// identity every render, which re-runs the grid's faceted option pass
+// over every row; and a saved TAB's scope predicate needs this exact
+// array to replay its captured filters, which a value trapped inside
+// the component cannot hand over.  Safe to hoist: no render function
+// here closes over component state — they read only the row.
+const APP_COLUMNS: AnyColumn[] = [
+    {
+      key: 'reference', label: 'Ref', sortable: false,
+      render: (v) => <span className="font-mono text-xs">{String(v)}</span>,
+    },
+    {
+      // Sort key is a synthesised last+first name (matches
+      // the pre-migration external sort behaviour).
+      key: 'last_name', label: 'Name', sortable: true,
+      sortKey: (row) => {
+        const r = row as unknown as AppRow;
+        return `${r.last_name} ${r.first_name}`.toLowerCase();
+      },
+      render: (_v, row) => {
+        const r = row as unknown as AppRow;
+        return (
+          <span>
+            {r.first_name} {r.last_name}
+            {r.duplicate && (
+              <Tip label="Another application in this account shares an SSN, email, or phone">
+                <span className={`ml-1.5 rounded-md px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}>
+                  re-applicant
+                </span>
+              </Tip>
+            )}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'email', label: 'Contact', sortable: false,
+      render: (_v, row) => {
+        const r = row as unknown as AppRow;
+        return (
+          <span className="text-muted-foreground text-xs">
+            {r.email}<br />{r.phone}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'city', label: 'Location', sortable: false,
+      render: (_v, row) => {
+        const r = row as unknown as AppRow;
+        return (
+          <span className="text-xs">
+            {[r.city, r.state].filter(Boolean).join(', ') || '—'}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'cdl_class', label: 'CDL', sortable: false,
+      render: (_v, row) => {
+        const r = row as unknown as AppRow;
+        return (
+          <span className="text-xs">
+            {r.cdl_class ? `Class ${r.cdl_class} · ${r.cdl_state}` : '—'}
+          </span>
+        );
+      },
+    },
+    {
+      key: 'status', label: 'Status', sortable: true,
+      // Stage-level slicing (Submitted / Screening / …)
+      // lives here now that the chip row is gone — the
+      // segment tabs only split the lifecycle.
+      filterable: true,
+      filterValue: (row) => String((row as unknown as AppRow).status ?? ''),
+      filterLabel: (row) => {
+        const s = String((row as unknown as AppRow).status ?? '');
+        return s ? s.charAt(0).toUpperCase() + s.slice(1) : '(none)';
+      },
+      render: (v) => (
+        <span className={`px-2 py-0.5 rounded-md text-xs capitalize ${statusClasses(String(v))}`}>
+          {String(v)}
+        </span>
+      ),
+    },
+    {
+      key: 'submitted_at', label: 'Submitted', sortable: true,
+      filterMode: 'date-range', filterable: true,
+      render: (v) => (
+        <span className="text-muted-foreground text-xs tabular-nums">
+          {String(v ?? '').slice(0, 10) || '—'}
+        </span>
+      ),
+    },
+];
+
+/** Row fields the search box reaches that are NOT columns. */
+const APP_SEARCH_KEYS = ['first_name', 'last_name', 'email', 'reference'];
+
 export default function Applications() {
   const qc = useQueryClient();
   const [links, setLinks] = useState<ApplicationLink[]>([]);
@@ -412,10 +526,32 @@ export default function Applications() {
   // the table's tab, so switching Table→Board made Withdrawn records
   // reappear — the same dataset shown as two different populations.
   const [segment, setSegment] = useState('active');
-  const segmentMatch = useMemo(
-    () => APP_SEGMENTS.find((sg) => sg.key === segment)?.match,
-    [segment],
-  );
+  // A saved tab is a scope WITHIN a lifecycle slice, not a fourth slice.
+  // Kept in its own state rather than stuffed into ``segment`` so that
+  // everything below still reads a real lifecycle key: the bulk bar asks
+  // "what can these rows do", and an opaque tab id cannot answer it.
+  const [tab, setTab] = useState<TabScope | null>(null);
+
+  // What the grid is showing, mirrored for the Board.  A tab composes
+  // with the segment it was SAVED under — which is DataGrid's own rule,
+  // so mirroring it any other way makes the two views disagree.  A tab
+  // saved while standing on another tab has no base and is unbounded.
+  // Either a LIVE segment key or null (= unbounded).  A tab can carry a
+  // baseSegment that no longer exists; DataGrid drops a stale one to the
+  // tab's own filters, so resolving it here the same way is what keeps
+  // the bulk bar from reading a dead key as "the active slice".
+  const rawBase = tab ? (tab.baseSegment ?? null) : segment;
+  const scopeBase = rawBase && APP_SEGMENTS.some((sg) => sg.key === rawBase)
+    ? rawBase : null;
+  const segmentMatch = useMemo(() => {
+    const base = APP_SEGMENTS.find((sg) => sg.key === scopeBase)?.match;
+    if (!tab) return base;
+    const inTab = tabMatch(
+      { id: '', name: '', filters: tab.filters, search: tab.search },
+      APP_COLUMNS, APP_SEARCH_KEYS,
+    );
+    return (r: Record<string, unknown>) => (!base || base(r)) && inTab(r);
+  }, [scopeBase, tab]);
   // (Bulk selection lives inside DataGrid now — no page-level set.)
   const [openId, setOpenId] = useState<number | null>(null);
   // ?app=<id> opens that application directly — the target of the
@@ -523,7 +659,7 @@ export default function Applications() {
   // work the server would refuse row by row.
   const bulkActions: BulkAction[] = useMemo(() => {
     const reopen: BulkAction = {
-      label: segment === 'closed' ? 'Reopen to screening' : 'Move to screening',
+      label: scopeBase === 'closed' ? 'Reopen to screening' : 'Move to screening',
       icon: ShieldCheck,
       confirm: (n) => `Move ${n} application${n > 1 ? 's' : ''} to screening?`,
       onRun: bulkMove('screening', 'moved to screening'),
@@ -543,10 +679,15 @@ export default function Applications() {
     };
     // 'hired' is terminal — ALLOWED_MOVES.hired is empty, so nothing here
     // would succeed and the bar stays out of the way.
-    if (segment === 'hired') return [];
-    if (segment === 'closed') return [reopen];
+    // An UNBOUNDED tab (no base) can hold active, hired and closed rows
+    // at once, so no verb is valid for all of them — 'hired' is terminal.
+    // Offering one anyway is the exact thing the note above records as
+    // fixed: a bar advertising work the server refuses row by row.
+    if (scopeBase === null) return [];
+    if (scopeBase === 'hired') return [];
+    if (scopeBase === 'closed') return [reopen];
     return [reopen, reject, withdraw];
-  }, [segment, bulkMove]);
+  }, [scopeBase, bulkMove]);
 
   // A failed fetch must never render as "No links yet" — a recruiter who
   // reads that mints a duplicate link because the real one is invisible.
@@ -893,100 +1034,23 @@ export default function Applications() {
           <DataGrid
             tableId="applications"
             segments={APP_SEGMENTS}
-            segmentKey={segment}
-            onSegmentChange={(k) => setSegment(k)}
+            segmentKey={tab ? TAB_PREFIX + tab.id : segment}
+            onSegmentChange={(k, saved) => {
+              if (!k.startsWith(TAB_PREFIX)) { setTab(null); setSegment(k); return; }
+              const id = k.slice(TAB_PREFIX.length);
+              // ``baseSegment`` is absent for a tab saved while already on
+              // a tab.  Keep the slice we're on rather than defaulting to
+              // one — inventing a base would silently re-widen the scope.
+              setTab({ id, filters: saved?.filters ?? [], search: saved?.search ?? '',
+                       baseSegment: saved?.baseSegment });
+              if (saved?.baseSegment) setSegment(saved.baseSegment);
+            }}
+            savedTabs
             data={rows as unknown as Record<string, unknown>[]}
-            searchKey={['first_name', 'last_name', 'email', 'reference']}
+            searchKey={APP_SEARCH_KEYS}
             searchPlaceholder="Search name, email, ref…"
             onRowClick={(row) => setOpenId((row as unknown as AppRow).id)}
-            columns={[
-              {
-                key: 'reference', label: 'Ref', sortable: false,
-                render: (v) => <span className="font-mono text-xs">{String(v)}</span>,
-              },
-              {
-                // Sort key is a synthesised last+first name (matches
-                // the pre-migration external sort behaviour).
-                key: 'last_name', label: 'Name', sortable: true,
-                sortKey: (row) => {
-                  const r = row as unknown as AppRow;
-                  return `${r.last_name} ${r.first_name}`.toLowerCase();
-                },
-                render: (_v, row) => {
-                  const r = row as unknown as AppRow;
-                  return (
-                    <span>
-                      {r.first_name} {r.last_name}
-                      {r.duplicate && (
-                        <span className={`ml-1.5 rounded-md px-1.5 py-0.5 text-2xs ${toneClasses('warn')}`}
-                          title="Another application in this account shares an SSN, email, or phone">
-                          re-applicant
-                        </span>
-                      )}
-                    </span>
-                  );
-                },
-              },
-              {
-                key: 'email', label: 'Contact', sortable: false,
-                render: (_v, row) => {
-                  const r = row as unknown as AppRow;
-                  return (
-                    <span className="text-muted-foreground text-xs">
-                      {r.email}<br />{r.phone}
-                    </span>
-                  );
-                },
-              },
-              {
-                key: 'city', label: 'Location', sortable: false,
-                render: (_v, row) => {
-                  const r = row as unknown as AppRow;
-                  return (
-                    <span className="text-xs">
-                      {[r.city, r.state].filter(Boolean).join(', ') || '—'}
-                    </span>
-                  );
-                },
-              },
-              {
-                key: 'cdl_class', label: 'CDL', sortable: false,
-                render: (_v, row) => {
-                  const r = row as unknown as AppRow;
-                  return (
-                    <span className="text-xs">
-                      {r.cdl_class ? `Class ${r.cdl_class} · ${r.cdl_state}` : '—'}
-                    </span>
-                  );
-                },
-              },
-              {
-                key: 'status', label: 'Status', sortable: true,
-                // Stage-level slicing (Submitted / Screening / …)
-                // lives here now that the chip row is gone — the
-                // segment tabs only split the lifecycle.
-                filterable: true,
-                filterValue: (row) => String((row as unknown as AppRow).status ?? ''),
-                filterLabel: (row) => {
-                  const s = String((row as unknown as AppRow).status ?? '');
-                  return s ? s.charAt(0).toUpperCase() + s.slice(1) : '(none)';
-                },
-                render: (v) => (
-                  <span className={`px-2 py-0.5 rounded-md text-xs capitalize ${statusClasses(String(v))}`}>
-                    {String(v)}
-                  </span>
-                ),
-              },
-              {
-                key: 'submitted_at', label: 'Submitted', sortable: true,
-                filterMode: 'date-range', filterable: true,
-                render: (v) => (
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {String(v ?? '').slice(0, 10) || '—'}
-                  </span>
-                ),
-              },
-            ]}
+            columns={APP_COLUMNS}
             // Bulk selection + action bar are DataGrid's (the SSOT).
             bulkSelection
             bulkActions={bulkActions}
@@ -1896,6 +1960,9 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
   const tz = useTimezone();
   const [open, setOpen] = useState(false);
   const [channels, setChannels] = useState<string[]>([]);
+  // Channels this person can actually be reached on.  Email and Telegram
+  // need a verified connection; the in-app inbox always delivers.
+  const [connected, setConnected] = useState<string[]>([]);
 
   const { notices, unread } = useInboxSource('applications', true);
   const { markRead, markManyRead } = useInboxActions();
@@ -1903,8 +1970,11 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
   // not be allowed to render as "you have everything switched off".
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   useEffect(() => {
-    apiJSON<{ channels: string[] }>('/applications/notify-prefs')
-      .then((r) => { setChannels(r.channels); setPrefsLoaded(true); })
+    apiJSON<{ channels: string[]; connected: string[] }>('/applications/notify-prefs')
+      .then((r) => {
+        setChannels(r.channels); setConnected(r.connected ?? []);
+        setPrefsLoaded(true);
+      })
       .catch(() => { /* stays unloaded — the row hides rather than lying */ });
   }, []);
 
@@ -1921,8 +1991,10 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
   const toggleChannel = async (key: string) => {
     const next = channels.includes(key) ? channels.filter((c) => c !== key) : [...channels, key];
     setChannels(next);
-    const r = await apiJSON<{ channels: string[] }>('/applications/notify-prefs', { method: 'PUT', body: { channels: next } });
+    const r = await apiJSON<{ channels: string[]; connected: string[] }>(
+      '/applications/notify-prefs', { method: 'PUT', body: { channels: next } });
     setChannels(r.channels);
+    if (r.connected) setConnected(r.connected);
   };
 
   return (
@@ -1967,17 +2039,39 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
             </div>
             <div className="border-t border-border px-3 py-2">
               <p className="mb-1.5 text-2xs font-medium uppercase tracking-wide text-muted-foreground">Notify me via</p>
-              <div className="flex gap-1.5">
+              <div className="flex flex-wrap gap-1.5">
                 {NOTIFY_CHANNELS.map(({ key, label, icon: I }) => {
                   const on = channels.includes(key);
+                  // A channel with nothing connected can't deliver however
+                  // this toggle is set, so say so instead of accepting a
+                  // click that would change nothing the user can see.
+                  const live = !prefsLoaded || connected.includes(key);
                   return (
-                    <button key={key} onClick={() => toggleChannel(key)}
-                      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs ${on ? 'border-primary bg-primary/10 text-foreground' : 'border-border text-muted-foreground hover:bg-muted'}`}>
-                      <I size={12} /> {label}
-                    </button>
+                    <Tip key={key} label={live
+                      ? (on ? `New applications reach you by ${label}`
+                            : `${label} is off for new applications`)
+                      : `Connect ${label} in Notification preferences first`}>
+                      <button
+                        onClick={() => live && toggleChannel(key)}
+                        disabled={!live}
+                        aria-pressed={on}
+                        className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs disabled:opacity-50 ${
+                          !live ? 'border-dashed border-border text-muted-foreground'
+                          : on ? 'border-primary bg-primary/10 text-foreground'
+                          : 'border-border text-muted-foreground hover:bg-muted'}`}
+                      >
+                        <I size={12} /> {label}
+                      </button>
+                    </Tip>
                   );
                 })}
               </div>
+              {prefsLoaded && NOTIFY_CHANNELS.some((c) => !connected.includes(c.key)) && (
+                <Link to="/notifications/preferences"
+                  className="mt-1.5 inline-block text-2xs text-primary hover:underline">
+                  Connect a channel
+                </Link>
+              )}
             </div>
           </div>
         </>

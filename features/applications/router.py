@@ -1609,14 +1609,54 @@ async def _recipient_id(user: dict, platform_db) -> int:
     return du.id
 
 
+# The wire keys stay the feature's own vocabulary (the panel is labelled
+# Bot / Email / Dashboard); the STORE behind them is the notification
+# matrix, so one preference governs every surface.
+_CHANNEL_OF = {"telegram": "telegram_dm", "email": "email",
+               "dashboard": "in_app"}
+
+
 @router.get("/notify-prefs")
 async def get_my_notify_prefs(
     user: dict = Depends(require_permission("can_manage_applications")),
     platform_db=Depends(get_platform_db),
 ):
+    """Which channels this person receives new-application notices on.
+
+    Read from the notification matrix, the same rows /notifications/
+    preferences edits — recruiting used to keep a second, private pref
+    table, so the two panels could disagree about the same event.
+
+    ``connected`` says whether the channel can deliver at all: the in-app
+    inbox always can, email and Telegram need a verified connection.  The
+    UI shows a link to Notification preferences rather than a toggle that
+    would do nothing.
+    """
+    from capabilities.notifications import get_channel
+    from features.applications.notifications import APPLICATION_RECEIVED
+
     uid = await _recipient_id(user, platform_db)
-    channels = await platform_db.get_application_notify_channels(uid)
-    return {"channels": sorted(channels)}
+    acct = user["account_id"]
+    on, connected = [], []
+    for key, channel in _CHANNEL_OF.items():
+        prefs = await platform_db.get_pref_categories(acct, "user", uid, channel)
+        specific = prefs.get(APPLICATION_RECEIVED)
+        # Opt-out, with the '*' blanket deciding where there's no row —
+        # the same precedence notify_user applies.
+        enabled = specific if specific is not None else prefs.get("*", True)
+
+        ch = get_channel(channel)
+        if getattr(ch, "intrinsic", False):
+            live = True
+        else:
+            conn = await platform_db.get_notification_channel(
+                acct, "user", uid, channel)
+            live = bool(conn and conn.get("verified") and conn.get("enabled_master"))
+        if live:
+            connected.append(key)
+        if enabled:
+            on.append(key)
+    return {"channels": sorted(on), "connected": sorted(connected)}
 
 
 class NotifyPrefsRequest(BaseModel):
@@ -1629,8 +1669,20 @@ async def set_my_notify_prefs(
     user: dict = Depends(require_permission("can_manage_applications")),
     platform_db=Depends(get_platform_db),
 ):
+    """Write the same matrix rows the notification-preferences page writes.
+
+    An explicit row per channel, never a blanket: the caller is answering
+    for THIS category only, and a '*' write here would silently decide
+    every other notice type for them.
+    """
+    from features.applications.notifications import APPLICATION_RECEIVED
+
     uid = await _recipient_id(user, platform_db)
-    channels = await platform_db.set_application_notify_channels(
-        user["account_id"], uid, body.channels,
-    )
-    return {"channels": sorted(channels)}
+    acct = user["account_id"]
+    wanted = {c for c in body.channels if c in _CHANNEL_OF}
+    for key, channel in _CHANNEL_OF.items():
+        await platform_db.set_notification_pref(
+            acct, "user", uid, channel, APPLICATION_RECEIVED,
+            enabled=key in wanted,
+        )
+    return {"channels": sorted(wanted)}

@@ -12,7 +12,10 @@ features/applications/notifications.py).  Pins:
   • recipients are resolved by the PERMISSION, never a role list,
   • the retired store is not written any more,
   • the notice deep-links to the application (the legacy table could not),
-  • one channel failing never costs the other, and no failure escapes.
+  • DELIVERY is the capability's: one call names all three personal
+    channels and no feature-side channel gate remains, so connection
+    state and category mutes are what decide,
+  • no failure escapes.
 """
 
 from __future__ import annotations
@@ -33,11 +36,13 @@ class _FakeDB:
         self._users = users
         self._channels = channels or {}
         self.page_notices: list[dict] = []
+        self.channel_pref_reads: list[int] = []
 
     async def list_account_users(self, account_id):
         return self._users
 
     async def get_application_notify_channels(self, user_id):
+        self.channel_pref_reads.append(user_id)
         return self._channels.get(user_id, ["dashboard"])
 
     async def get_account(self, account_id):
@@ -64,8 +69,9 @@ class _RecordingNotify:
         return []
 
 
-def _user(uid, role, email=None):
-    return SimpleNamespace(id=uid, role=role, email=email, telegram_id=None)
+def _user(uid, role, email=None, is_manager=False):
+    return SimpleNamespace(id=uid, role=role, email=email, telegram_id=None,
+                           is_manager=is_manager)
 
 
 @pytest.fixture
@@ -80,15 +86,17 @@ def notify(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _perms(monkeypatch):
-    """can_manage_applications: recruiter yes, driver no — resolved through
-    the account-permission SSOT the service actually calls."""
-    async def fake_get_account_permissions(role, account_id):
+    """can_manage_applications through the USER resolver the service calls:
+    recruiter always, HR only at the senior tier (the real shape — HR's
+    base role lacks the flag and TIER_GRANTS adds it), driver never."""
+    async def fake_get_user_permissions(role, account_id, is_manager=False, **kw):
         key = getattr(role, "value", role)
-        return SimpleNamespace(can_manage_applications=(key == "recruiter"))
+        return SimpleNamespace(can_manage_applications=(
+            key == "recruiter" or (key == "hr" and is_manager)))
 
     import capabilities.permissions.roles as roles
-    monkeypatch.setattr(roles, "get_account_permissions",
-                        fake_get_account_permissions, raising=True)
+    monkeypatch.setattr(roles, "get_user_permissions",
+                        fake_get_user_permissions, raising=True)
 
 
 class TestCategory:
@@ -116,6 +124,16 @@ class TestFanOut:
         assert db.page_notices == [], "the retired store must stay unwritten"
 
     @pytest.mark.asyncio
+    async def test_manager_tier_is_audience_but_the_base_role_is_not(self, notify):
+        """HR holds can_manage_applications only through its senior tier,
+        so the fan-out has to resolve the USER (role + tier).  Resolving
+        the base role alone skipped every HR team lead — the people who
+        actually run the hiring queue."""
+        db = _FakeDB([_user(1, "hr"), _user(2, "hr", is_manager=True)])
+        await svc.notify_new_application(db, 42, 77, "APP-77", "Dana")
+        assert [c["user_id"] for c in notify.calls] == [2]
+
+    @pytest.mark.asyncio
     async def test_notice_content_and_deep_link(self, notify):
         db = _FakeDB([_user(1, "recruiter")])
         await svc.notify_new_application(db, 42, 77, "APP-77", "Dana Driver")
@@ -131,8 +149,9 @@ class TestFanOut:
         assert content.url.endswith("/workforce/applications?app=77")
         assert content.meta["application_id"] == 77
         assert content.meta["reference"] == "APP-77"
-        # In-app only: email/telegram keep the feature's own senders.
-        assert call["channels"] == ["in_app"]
+        # Every personal channel is offered — the capability decides
+        # which of them this person is actually reachable on.
+        assert call["channels"] == ["in_app", "email", "telegram_dm"]
         # Correlation is per (application, recipient) — delivery
         # bookkeeping, NOT dedup: the in-app channel records no ledger
         # handle and the inbox has no uniqueness constraint, so calling
@@ -141,10 +160,14 @@ class TestFanOut:
         assert call["correlation_key"] == "application:77:1"
 
     @pytest.mark.asyncio
-    async def test_dashboard_channel_off_skips_the_in_app_notice(self, notify):
-        db = _FakeDB([_user(1, "recruiter")], channels={1: ["email"]})
+    async def test_no_feature_side_channel_gate_remains(self, notify):
+        """The feature's own 3-way channel pref is gone: muting belongs to
+        the notification matrix, which the capability reads.  A second
+        gate here would mean two stores disagreeing about one event."""
+        db = _FakeDB([_user(1, "recruiter")], channels={1: []})
         await svc.notify_new_application(db, 42, 77, "APP-77", "Dana")
-        assert notify.calls == []
+        assert len(notify.calls) == 1
+        assert db.channel_pref_reads == [], "the feature pref store is not consulted"
 
     @pytest.mark.asyncio
     async def test_inbox_failure_is_swallowed(self, monkeypatch):

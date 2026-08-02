@@ -213,6 +213,9 @@ async def run_all(conn) -> None:
     await migrate_part_directory(conn)
     # Console-managed platform settings + geographic part-price rollups.
     await migrate_platform_settings_and_part_rollups(conn)
+    # Recruiting notices moved onto the notification capability — seed the
+    # connections its existing audience already had reach through.
+    await migrate_seed_application_notification_channels(conn)
 
 
 async def migrate_platform_settings_and_part_rollups(conn) -> None:
@@ -4412,3 +4415,164 @@ async def migrate_service_assembly_library(conn) -> None:
         )
     await conn.commit()
     logger.info("Platform migration: service_assembly_library ready")
+
+
+async def migrate_seed_application_notification_channels(conn) -> None:
+    """Backfill the notification-channel rows recruiting notices need.
+
+    Recruiting used to mail and DM people directly from the feature, so
+    reach never depended on the notification capability's connection
+    rows.  Moving it onto ``notify_user`` would have silently stopped
+    those emails for anyone who had never verified a channel — which is
+    almost everyone, because there was nothing to verify.
+
+    So seed exactly today's audience and nothing more:
+
+      • Only users who hold ``can_manage_applications`` for their account
+        (read from ``role_permissions``, the per-account SSOT, plus the
+        HR manager tier which grants it on top of the base role).
+      • Only the channels that user's OWN recruiting preference already
+        includes — an opt-out here has to survive the move.
+      • Never over an existing row.  A verify, a mute or a master switch
+        someone actually set is theirs, and this must not touch it.
+
+    The consent stays exactly as narrow as it was: each seeded channel
+    also gets a ``'*'`` blanket-OFF pref plus one ON row for
+    ``applications.received``.  So a backfilled address receives THIS
+    notice and nothing else — a future category can't ride in on a
+    connection the user never asked for.  ``provenance`` marks the rows,
+    so an audit can always tell a seeded connection from a verified one.
+    """
+    try:
+        cur = await conn.execute(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_name = 'notification_channel'"
+        )
+        if not (await cur.fetchone()):
+            return
+
+        await conn.execute(
+            "ALTER TABLE notification_channel "
+            "ADD COLUMN IF NOT EXISTS provenance TEXT NOT NULL DEFAULT ''"
+        )
+
+        import json
+        from capabilities.permissions.roles import ROLE_PERMISSIONS, TIER_GRANTS, Role
+
+        # Roles whose senior tier grants the permission the base role
+        # lacks — an HR manager reviews applications, a base HR may not.
+        tier_roles = {
+            role.value for role, tier in TIER_GRANTS.items()
+            if "can_manage_applications" in tier.grants
+        }
+
+        cur = await conn.execute(
+            "SELECT account_id, role, permissions FROM role_permissions "
+            "WHERE company_id IS NULL"
+        )
+        allowed: set[tuple[int, str]] = set()
+        for account_id, role, perms in await cur.fetchall():
+            try:
+                stored = json.loads(perms or "{}")
+            except Exception:
+                continue
+            if "can_manage_applications" in stored:
+                granted = bool(stored["can_manage_applications"])
+            else:
+                # A stored row predating the flag has no opinion about it —
+                # resolve it against the role default, exactly as the
+                # permission resolver merges a partial row.  Reading a
+                # missing key as False would skip real audience.
+                try:
+                    granted = bool(getattr(
+                        ROLE_PERMISSIONS[Role.from_str(str(role))],
+                        "can_manage_applications", False))
+                except Exception:
+                    granted = False
+            if granted:
+                allowed.add((int(account_id), str(role)))
+        if not allowed and not tier_roles:
+            return
+
+        cur = await conn.execute(
+            "SELECT id, account_id, role, email, telegram_id, is_manager "
+            "  FROM users WHERE is_active = 1"
+        )
+        users = await cur.fetchall()
+
+        # The feature's own per-user channel choice (no row = all three).
+        cur = await conn.execute(
+            "SELECT user_id, channels FROM application_notify_prefs")
+        chosen = {int(r[0]): {c.strip() for c in (r[1] or "").split(",") if c.strip()}
+                  for r in await cur.fetchall()}
+
+        now = __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc).isoformat(timespec="seconds")
+        seeded = 0
+        for uid, account_id, role, email, telegram_id, is_manager in users:
+            uid, account_id, role = int(uid), int(account_id), str(role)
+            if (account_id, role) not in allowed and not (
+                    is_manager and role in tier_roles):
+                continue
+            want = chosen.get(uid, {"telegram", "email", "dashboard"})
+            # The in-app channel needs no connection row (it is intrinsic),
+            # so an opt-out there survives only as an explicit mute — write
+            # one, or someone who switched the dashboard notice OFF would
+            # find it switched back on by the move.
+            if "dashboard" not in want:
+                await conn.execute(
+                    """INSERT INTO notification_pref
+                         (account_id, recipient_type, recipient_id, channel,
+                          category, enabled, cadence, updated_at)
+                       VALUES (?, 'user', ?, 'in_app', 'applications.received',
+                               0, 'immediate', ?)
+                       ON CONFLICT (account_id, recipient_type, recipient_id,
+                                    channel, category) DO NOTHING""",
+                    (account_id, str(uid), now),
+                )
+            targets = []
+            if "email" in want and (email or "").strip():
+                targets.append(("email", str(email).strip()))
+            if "telegram" in want and telegram_id:
+                targets.append(("telegram_dm", str(telegram_id)))
+            for channel, address in targets:
+                cur = await conn.execute(
+                    "SELECT 1 FROM notification_channel "
+                    " WHERE account_id = ? AND recipient_type = 'user' "
+                    "   AND recipient_id = ? AND channel = ?",
+                    (account_id, str(uid), channel),
+                )
+                if await cur.fetchone():
+                    continue          # their own state — never overwrite
+                await conn.execute(
+                    """INSERT INTO notification_channel
+                         (account_id, recipient_type, recipient_id, channel,
+                          address, verified_at, enabled_master, updated_at,
+                          provenance)
+                       VALUES (?, 'user', ?, ?, ?, ?, 1, ?, 'backfill_applications')""",
+                    (account_id, str(uid), channel, address, now, now),
+                )
+                for category, enabled in (("*", 0), ("applications.received", 1)):
+                    await conn.execute(
+                        """INSERT INTO notification_pref
+                             (account_id, recipient_type, recipient_id, channel,
+                              category, enabled, cadence, updated_at)
+                           VALUES (?, 'user', ?, ?, ?, ?, 'immediate', ?)
+                           ON CONFLICT (account_id, recipient_type, recipient_id,
+                                        channel, category) DO NOTHING""",
+                        (account_id, str(uid), channel, category, enabled, now),
+                    )
+                seeded += 1
+
+        await conn.commit()
+        if seeded:
+            logger.info("Seeded %d recruiting notification channels", seeded)
+    except Exception as e:
+        # Roll back: this writes many rows before its single commit, and a
+        # half-finished transaction left open would poison the next query
+        # on this pooled connection.
+        try:
+            await conn.rollback()
+        except Exception:
+            pass
+        logger.error("application notification channel backfill failed: %s", e)

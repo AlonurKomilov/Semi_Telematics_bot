@@ -399,6 +399,32 @@ async def test_account_activity_mute_then_reflected(api):
     assert prefs.get("team.invite_accepted") is False
 
 
+async def test_account_activity_blanket_row_decides_where_no_specific_one(api):
+    """A '*' blanket row is what notify_user consults when a category has
+    no row of its own — so the toggles must read it the same way.  This is
+    the shape a category-scoped seed writes ('*' off + one category on):
+    without this precedence the UI showed every other category ON while
+    delivery muted them."""
+    db = api["db"]
+    await db.set_notification_pref(api["acct"], "user", api["uid"], "email",
+                                   "*", enabled=False)
+    await db.set_notification_pref(api["acct"], "user", api["uid"], "email",
+                                   "team.invite_accepted", enabled=True)
+    async with _client(api) as c:
+        body = (await c.get(f"{API}/preferences/account-activity",
+                            headers=_h(api["token"]))).json()
+    cats = {c["key"]: c for c in body["categories"]}
+    # The one category with its own row wins over the blanket...
+    assert cats["team.invite_accepted"]["channels"]["email"] is True
+    # ...every other email toggle reads OFF, matching what would deliver.
+    others = [k for k in cats if k != "team.invite_accepted"
+              and not cats[k]["mandatory"]]
+    assert others, "need another non-mandatory category to prove the blanket"
+    assert all(cats[k]["channels"]["email"] is False for k in others)
+    # Untouched channels are unaffected by an email-only blanket.
+    assert all(cats[k]["channels"]["telegram_dm"] is True for k in others)
+
+
 async def test_account_activity_rejects_broadcast_category(api):
     async with _client(api) as c:
         # alert.faults is BROADCAST — it belongs to the matrix, not here.

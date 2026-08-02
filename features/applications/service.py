@@ -203,126 +203,85 @@ async def notify_new_application(
     platform_db, account_id: int, application_id: int, reference: str,
     applicant_name: str,
 ) -> None:
-    """Alert every account user holding ``can_manage_applications`` that a
-    new application landed — on each recipient's chosen channels.
+    """Tell every account user holding ``can_manage_applications`` that a
+    new application landed.
 
     Targeting is by the PERMISSION (the SSOT, via ``get_account_permissions``
-    so per-account overrides are honoured), never a hardcoded role.  Each
-    recipient's channel set (telegram / email / dashboard) is their own
-    preference; a missing prefs row means all channels.  Runs as a
-    background task — wholly best-effort, one failed channel/recipient
-    never affects another or the applicant's submission.
+    so per-account overrides are honoured), never a hardcoded role.
+
+    DELIVERY is the notifications capability's job, not this feature's: one
+    ``notify_user`` call names the three personal channels and the capability
+    decides what actually goes out — connection state, the category mute, the
+    master switch, quiet hours, the delivery ledger.  Recruiting used to mail
+    and DM people itself, which meant none of that applied to it and its
+    emails carried no unsubscribe.  A one-time backfill
+    (``migrate_seed_application_notification_channels``) seeded the
+    connections its existing audience already had reach through, so the move
+    keeps everyone it was reaching.
+
+    Runs as a background task — wholly best-effort; a notice must never
+    affect the submission that triggered it.
     """
     try:
-        from capabilities.permissions.roles import get_account_permissions
+        from capabilities.permissions.roles import get_user_permissions
         users = await platform_db.list_account_users(account_id)
     except Exception as e:
         logger.debug("notify_new_application: setup failed: %s", e)
         return
 
-    # Resolve effective perms once per distinct role (cached).
+    # Resolve effective perms once per (role, tier) — get_USER_permissions,
+    # not get_account_permissions: HR holds can_manage_applications only
+    # through its senior tier, so resolving the base role alone silently
+    # skipped every HR team lead who reviews applications.
     perm_cache: dict = {}
 
-    async def _can_manage(role) -> bool:
-        key = getattr(role, "value", role)
+    async def _can_manage(role, is_manager: bool) -> bool:
+        key = (getattr(role, "value", role), bool(is_manager))
         if key not in perm_cache:
             try:
-                fs = await get_account_permissions(role, account_id)
+                fs = await get_user_permissions(
+                    role, account_id, is_manager=bool(is_manager))
                 perm_cache[key] = bool(getattr(fs, "can_manage_applications", False))
             except Exception:
                 perm_cache[key] = False
         return perm_cache[key]
 
-    # Bot app (may be absent on an API-only worker).
-    try:
-        from infra.bot_registry import get_app_for_account
-        bot_app = get_app_for_account(account_id)
-    except Exception:
-        bot_app = None
-
-    acct_name = ""
-    try:
-        acct = await platform_db.get_account(account_id)
-        acct_name = getattr(acct, "name", "") or ""
-    except Exception:
-        pass
     review_url = f"{review_base_url()}/workforce/applications"
     title = "New driver application"
-    body = f"{applicant_name or 'A driver'} applied · {reference}"
 
     for u in users:
         try:
-            if not await _can_manage(u.role):
+            if not await _can_manage(u.role, getattr(u, "is_manager", False)):
                 continue
-            channels = await platform_db.get_application_notify_channels(u.id)
-
-            if "dashboard" in channels:
-                # ONE in-app store: the shared inbox.  Both bells — the
-                # top-bar panel's Applications tab and the Applications
-                # page's own bell — read it, so "read" means read
-                # everywhere instead of clearing one badge and leaving
-                # the other bold.
-                try:
-                    from capabilities.notifications import (
-                        NotificationContent, notify_user,
-                    )
-                    from features.applications.notifications import (
-                        APPLICATION_RECEIVED,
-                    )
-                    await notify_user(
-                        platform_db, account_id, u.id,
-                        NotificationContent(
-                            title=title,
-                            # The shared row already renders the reference
-                            # as its object chip (meta.context), so the
-                            # body carries only the person — printing the
-                            # reference twice in one row reads as two
-                            # different facts.
-                            body=f"{applicant_name or 'A driver'} applied",
-                            category=APPLICATION_RECEIVED,
-                            # Deep-link to the application itself — the
-                            # retired table had no url column, so its
-                            # notices could not link anywhere.
-                            url=f"{review_url}?app={application_id}",
-                            meta={"application_id": application_id,
-                                  "reference": reference,
-                                  "context": reference},
-                        ),
-                        channels=["in_app"],
-                        correlation_key=f"application:{application_id}:{u.id}",
-                    )
-                except Exception as e:
-                    # There is no second in-app store to fall back on now,
-                    # so this is the whole on-screen notice for this
-                    # person — loud enough to see in production, still
-                    # never raised (the submission already went in).
-                    logger.warning(
-                        "application %s: in-app notice failed for user %s: %s",
-                        application_id, u.id, e)
-
-            if "email" in channels and getattr(u, "email", None):
-                try:
-                    from capabilities.email.application_emails import send_new_application_email
-                    await asyncio.to_thread(
-                        send_new_application_email,
-                        to=u.email, account_name=acct_name,
-                        applicant_name=applicant_name, reference=reference,
-                        review_url=review_url,
-                    )
-                except Exception as e:
-                    logger.debug("email notif for user %s failed: %s", u.id, e)
-
-            if "telegram" in channels and getattr(u, "telegram_id", None) and bot_app and getattr(bot_app, "bot", None):
-                try:
-                    from telegram.constants import ParseMode
-                    await bot_app.bot.send_message(
-                        chat_id=u.telegram_id,
-                        text=(f"📝 <b>New driver application</b>\n"
-                              f"{applicant_name or 'A driver'} · <code>{reference}</code>\n"
-                              f"<i>Review it on your dashboard → Applications.</i>"),
-                        parse_mode=ParseMode.HTML,
-                    )
-                except Exception as e:
-                    logger.debug("telegram notif for user %s failed: %s", u.id, e)
+            from capabilities.notifications import (
+                NotificationContent, notify_user,
+            )
+            from features.applications.notifications import APPLICATION_RECEIVED
+            await notify_user(
+                platform_db, account_id, u.id,
+                NotificationContent(
+                    title=title,
+                    # The shared inbox row renders the reference as its
+                    # object chip (meta.context), so the body carries only
+                    # the person — printing the reference twice in one row
+                    # reads as two different facts.  Email and Telegram
+                    # render the same semantic content their own way.
+                    body=f"{applicant_name or 'A driver'} applied",
+                    category=APPLICATION_RECEIVED,
+                    url=f"{review_url}?app={application_id}",
+                    meta={"application_id": application_id,
+                          "reference": reference,
+                          "context": reference},
+                ),
+                # Every personal channel is offered; the capability
+                # delivers only where this person is connected and hasn't
+                # muted the category.  There is no feature-side channel
+                # gate any more — that preference lives in the
+                # notification matrix, one store for all of them.
+                channels=["in_app", "email", "telegram_dm"],
+                correlation_key=f"application:{application_id}:{u.id}",
+            )
         except Exception as e:
-            logger.debug("notify recipient %s failed: %s", getattr(u, "id", "?"), e)
+            logger.warning(
+                "application %s: notice failed for user %s: %s",
+                application_id, getattr(u, "id", "?"), e)

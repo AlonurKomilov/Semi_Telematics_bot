@@ -303,9 +303,18 @@ async def get_account_activity_prefs(
     for c in cats:
         per_channel = {}
         for ch in chans:
-            specific = pref_by_channel[ch.key].get(c.key)   # None | True | False
-            # Opt-out: ON by default; mandatory can't be turned off.
-            per_channel[ch.key] = True if c.mandatory else (specific is not False)
+            prefs = pref_by_channel[ch.key]
+            specific = prefs.get(c.key)                      # None | True | False
+            # Opt-out: ON by default; mandatory can't be turned off.  The
+            # '*' blanket row decides where there is no specific one —
+            # the SAME precedence notify_user applies (service.py), so a
+            # toggle can never show ON for a category delivery mutes.
+            if c.mandatory:
+                per_channel[ch.key] = True
+            elif specific is not None:
+                per_channel[ch.key] = specific
+            else:
+                per_channel[ch.key] = prefs.get("*", True)
         out.append({
             "key": c.key, "label": c.label, "source": c.source,
             "mandatory": c.mandatory, "channels": per_channel,
