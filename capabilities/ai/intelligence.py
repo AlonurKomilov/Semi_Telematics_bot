@@ -533,6 +533,14 @@ def _build_agent_user_prompt(
     return "".join(parts)
 
 
+def _scoped_vehicle_ladder(user_context: dict | None) -> dict | None:
+    """The identity rungs resolved at the AI entry point, if any."""
+    if not user_context:
+        return None
+    ladder = user_context.get("scoped_vehicle_ladder")
+    return ladder if isinstance(ladder, dict) else None
+
+
 def _scoped_vehicle_set(user_context: dict | None, user_role: str | None) -> list | None:
     """The caller's effective allowed-vehicle list, or ``None`` if unrestricted.
 
@@ -974,6 +982,7 @@ async def _run_anthropic_agent(
                     tool_name, tool_args, samsara_client,
                     account_id=account_id, db=db,
                     scope_vehicles=_scoped_vehicle_set(user_context, user_role),
+                    scope_ladder=_scoped_vehicle_ladder(user_context),
                     attachment_grids=(user_context or {}).get("_attachment_grids"),
                     attachment_docs=(user_context or {}).get("_attachment_docs"),
                 )
@@ -1558,6 +1567,7 @@ async def _run_openai_compat_agent(
                     tool_name, tool_args, samsara_client,
                     account_id=account_id, db=db,
                     scope_vehicles=_scoped_vehicle_set(user_context, user_role),
+                    scope_ladder=_scoped_vehicle_ladder(user_context),
                     attachment_grids=(user_context or {}).get("_attachment_grids"),
                     attachment_docs=(user_context or {}).get("_attachment_docs"),
                 )
@@ -2023,6 +2033,7 @@ async def ask_agent(question: str, vehicle_context: dict,
                         tool_name, tool_args, samsara_client,
                         account_id=account_id, db=db,
                         scope_vehicles=_scoped_vehicle_set(user_context, user_role),
+                    scope_ladder=_scoped_vehicle_ladder(user_context),
                         attachment_grids=(user_context or {}).get("_attachment_grids"),
                         attachment_docs=(user_context or {}).get("_attachment_docs"),
                     )

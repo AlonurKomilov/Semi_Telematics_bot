@@ -94,10 +94,13 @@ async def _build_user_context(user) -> dict:
     """
     ctx = build_user_ai_context(user)
     try:
-        from capabilities.ai.scope import resolve_vehicle_scope
+        from capabilities.ai.scope import resolve_scope_ladder, resolve_vehicle_scope
         ctx["scoped_vehicle_nums"] = await resolve_vehicle_scope(
             get_platform_db(), user.account_id, user.id,
             getattr(user, "role", None), truck_num=getattr(user, "truck_num", None),
+        )
+        ctx["scoped_vehicle_ladder"] = await resolve_scope_ladder(
+            user.account_id, ctx["scoped_vehicle_nums"],
         )
     except Exception as e:  # pragma: no cover - defensive
         logger.warning("AI scope resolution failed (bot), using fallback: %s", e)

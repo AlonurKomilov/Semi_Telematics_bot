@@ -423,6 +423,7 @@ async def execute_tool(tool_name: str, tool_args: dict,
                        account_id: int | None = None,
                        db=None,
                        scope_vehicles: list | None = None,
+                       scope_ladder: dict | None = None,
                        attachment_grids: dict | None = None,
                        attachment_docs: dict | None = None) -> dict:
     """Execute a registered tool by name. Returns result dict.
@@ -449,10 +450,24 @@ async def execute_tool(tool_name: str, tool_args: dict,
     handler = get_tool_handler(tool_name)
     if not handler:
         return _stamp_ok({"error": f"Unknown tool: {tool_name}"})
+    # Server-injected channels — a model-supplied value is never honored.
+    if "_scope_registry_ids" in tool_args or "_scope_external_ids" in tool_args:
+        tool_args = {k: v for k, v in tool_args.items()
+                     if k not in ("_scope_registry_ids", "_scope_external_ids")}
     if scope_vehicles is not None:
         from capabilities.permissions.roles import SCOPE_AWARE_TOOLS
         if tool_name in SCOPE_AWARE_TOOLS:
             tool_args = {**tool_args, "_scope_vehicles": list(scope_vehicles)}
+            # Identity rungs ride beside the names so the shared filter
+            # can decide by registry/provider id where rows carry one —
+            # exact names miss the caller's own truck after a provider
+            # rename, and cannot split same-number twins across
+            # companies.
+            if scope_ladder:
+                tool_args["_scope_registry_ids"] = list(
+                    scope_ladder.get("registry_ids") or [])
+                tool_args["_scope_external_ids"] = list(
+                    scope_ladder.get("external_ids") or [])
     if "_attachments" in tool_args or "_attachment_docs" in tool_args:
         # Server-injected channels — a model-supplied value is never honored.
         tool_args = {k: v for k, v in tool_args.items()

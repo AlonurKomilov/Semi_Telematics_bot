@@ -222,6 +222,10 @@ async def _get_user_info(user: dict, platform_db) -> tuple[dict | None, list[str
         user_context.get("role"), truck_num=getattr(user_obj, "truck_num", None),
     )
     user_context["scoped_vehicle_nums"] = scope
+    from capabilities.ai.scope import resolve_scope_ladder
+    user_context["scoped_vehicle_ladder"] = await resolve_scope_ladder(
+        user_obj.account_id, scope,
+    )
 
     # Snapshot scoping mirrors the gate.  ``[]`` (restricted-to-none) must
     # still filter the snapshot to empty, so pass a non-matching sentinel
