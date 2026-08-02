@@ -1887,6 +1887,10 @@ export interface ParkingEvent {
 export interface ParkingEventsResponse {
   events: ParkingEvent[];
   count: number;
+  /** Everything parked that this user may see, BEFORE the
+   *  attention-only narrowing — so the list can say what it is hiding.
+   *  Absent on /parking/history, which has no such filter. */
+  total_active?: number;
 }
 
 export interface ParkingStatsResponse {

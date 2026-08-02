@@ -124,9 +124,12 @@ class _FakePlatformDB:
 
 class _FakeTenantDB:
     def __init__(self): self.audits = []
-    async def add_audit_log(self, account_id, user_id, action, target_type="", target_id="", details=""):
-        self.audits.append({"action": action, "target_id": target_id})
-        return 1
+    async def append_activity_events(self, account_id, events):
+        # The trail replaced add_audit_log — capture the same view the
+        # old assertions used (action + target id).
+        for e in events:
+            self.audits.append({"action": e["action"],
+                                "target_id": str(e["entity_id"])})
 
 
 def _prop(**over):
@@ -166,7 +169,10 @@ class TestExecuteOrchestration:
         from capabilities.ai.actions import execute_approved_action
         pdb = _FakePlatformDB(prop)
         tdb = _FakeTenantDB()
-        user = {"account_id": prop["account_id"], "sub": str(prop["user_id"]), "role": role}
+        # ``uid`` rides every real JWT since the user-id rollout — the
+        # trail's actor resolution short-circuits on it (no platform DB).
+        user = {"account_id": prop["account_id"], "sub": str(prop["user_id"]),
+                "uid": prop["user_id"], "role": role}
         res = await execute_approved_action(
             prop["id"], user=user, user_context={"role": role},
             platform_db=pdb, tenant_db=tdb)

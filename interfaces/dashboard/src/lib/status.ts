@@ -91,6 +91,14 @@ const STATUS_TONE: Record<string, Tone> = {
   damaged: 'danger', missing: 'danger', spare: 'neutral',
   // Priority / severity
   low: 'neutral', medium: 'info', high: 'warn', critical: 'danger',
+  // Parking alert levels.  ``breakdown`` fires when a truck has sat in an
+  // unclassifiable spot past the breakdown threshold — a suspected
+  // mechanical failure, not merely bad parking.  It carried a bespoke
+  // purple at its call-site to mark it as a different KIND of event; that
+  // is the job of the label text ("BREAKDOWN" vs "CRITICAL"), while colour
+  // stays a pure severity channel across the whole app.  Both demand
+  // immediate action, so both are danger.
+  breakdown: 'danger',
   // Generic health
   healthy: 'ok', ok: 'ok', warning: 'warn', degraded: 'warn',
   // Telematics integration lifecycle.  Mirrors the

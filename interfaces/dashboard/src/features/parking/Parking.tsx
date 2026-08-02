@@ -1,398 +1,255 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ParkingSquare } from 'lucide-react';
-import { apiJSON, apiFetch } from '../../api/client';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { ParkingSquare, CheckCircle2 } from 'lucide-react';
+
 import DataGrid from '../../components/datagrid';
 import {
-  PageHeader,
-  EmptyState,
-  ErrorState,
-  TableSkeleton,
-  LastUpdated,
-  FilterBar,
-  FilterChips,
-  DateRangePresets,
+  Dialog, DialogContent, DialogDescription, DialogFooter,
+  DialogHeader, DialogTitle,
+} from '../../components/ui/dialog';
+import {
+  PageHeader, EmptyState, ErrorState, TableSkeleton, LastUpdated,
 } from '../../components/shell';
-import type { ParkingEvent, ParkingEventsResponse, AnyColumn } from '../../types';
-import { toneClasses, type Tone } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
+import { usePermissions } from '../../hooks/usePermissions';
 import { formatDate } from '../../utils/datetime';
 
-/* ── Badge helpers ─────────────────────────────────────────── */
+import { listActiveParking, resolveParkingEvent, type ParkingEvent } from './api';
+import { makeParkingColumns } from './columns';
+import { parseAiAnalysis } from './aiAnalysis';
+import { parkingRowMenu } from './contextMenu';
+import ParkingDetailSheet from './ParkingDetailSheet';
 
-// Parking classification → tone: safe/geofence read as good (ok),
-// unsafe is the danger signal, unknown carries no signal (neutral).
-const CLASS_TONE: Record<string, Tone> = {
-  safe:     'ok',
-  geofence: 'ok',
-  unsafe:   'danger',
-  unknown:  'neutral',
-};
-
-function ClassBadge({ cls }: { cls: string }) {
-  const c = toneClasses(CLASS_TONE[cls] ?? 'neutral');
-  return <span className={`px-2 py-0.5 rounded-md text-xs font-medium uppercase ${c}`}>{cls}</span>;
-}
-
-// Alert level → tone.  ``breakdown`` is a distinct categorical state
-// (mechanical failure, not a severity step) so it keeps its own
-// purple hue; the rest map onto the severity tones.
-function AlertBadge({ level }: { level: string }) {
-  if (level === 'breakdown') {
-    return <span className="px-2 py-0.5 rounded-full text-xs font-medium uppercase bg-purple-500/15 text-purple-700 dark:text-purple-400">{level}</span>;
-  }
-  const tone: Tone = level === 'critical' ? 'danger' : level === 'warning' ? 'warn' : 'neutral';
-  return <span className={`px-2 py-0.5 rounded-md text-xs font-medium uppercase ${toneClasses(tone)}`}>{level}</span>;
-}
-
-function formatDuration(hours: number): string {
-  if (hours < 1) return `${Math.round(hours * 60)}m`;
-  if (hours < 24) return `${hours.toFixed(1)}h`;
-  const d = Math.floor(hours / 24);
-  const h = Math.round(hours % 24);
-  return `${d}d ${h}h`;
-}
-
-function mapsUrl(lat: number, lng: number): string {
-  return `https://www.google.com/maps?q=${lat},${lng}`;
-}
-
-/* ── History table columns ─────────────────────────────────── */
-
-const titleCaseCls = (s: string) =>
-  s ? s.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : '(none)';
-
-function makeHistoryColumns(tz: string): AnyColumn[] {
-  return [
-  { key: 'vehicle_name', label: 'Vehicle', sortable: true, filterable: true },
-  { key: 'company_code', label: 'Company', sortable: true, filterable: true },
-  {
-    key: 'location_class',
-    label: 'Classification',
-    sortable: true,
-    filterable: true,
-    filterValue: (row) => String((row as { location_class?: string }).location_class ?? ''),
-    filterLabel: (row) => titleCaseCls(String((row as { location_class?: string }).location_class ?? '')),
-    render: (v) => <ClassBadge cls={v as string} />,
-  },
-  {
-    key: 'alert_level',
-    label: 'Alert Level',
-    sortable: true,
-    filterable: true,
-    filterValue: (row) => String((row as { alert_level?: string }).alert_level ?? ''),
-    filterLabel: (row) => titleCaseCls(String((row as { alert_level?: string }).alert_level ?? '')),
-    render: (v) => <AlertBadge level={v as string} />,
-  },
-  { key: 'address', label: 'Address' },
-  {
-    key: 'duration_hours',
-    label: 'Duration',
-    sortable: true,
-    filterable: true, filterMode: 'range', filterRange: { min: 0, step: 1, unit: 'h' },
-    render: (v) => formatDuration(v as number),
-  },
-  {
-    key: 'first_stopped',
-    label: 'Stopped At',
-    sortable: true,
-    filterable: true, filterMode: 'date-range',
-    render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—',
-  },
-  {
-    key: 'last_checked',
-    label: 'Resolved',
-    render: (v) => v ? formatDate(v as string, { timeZone: tz }) : '—',
-  },
-  ];
-}
-
-/* ── Main Component ────────────────────────────────────────── */
-
+/**
+ * Parking — one row per VEHICLE, current state.
+ *
+ * This page answers "where is every truck parked right now, and is that
+ * OK?".  It does not list past stops.  An earlier revision put active and
+ * resolved events in one grid with a Status column, which looked tidy and
+ * read badly: ``upsert_parking_event`` keeps one unresolved row per
+ * vehicle, so active rows are already a vehicle list, and folding history
+ * in meant one identity column addressed two different kinds of thing —
+ * sorting by Vehicle interleaved a truck's current state with its own
+ * past.  It was also a weaker copy of a view that already exists.
+ *
+ * The three questions now have three homes:
+ *   this page   — which vehicles are parked, and badly?      (per vehicle)
+ *   Alerts      — what parking events fired, when, how many? (per event)
+ *   the drawer  — does THIS truck park badly repeatedly?     (per vehicle,
+ *                 over time)
+ *
+ * Segment order is All → Needs attention: it matches the Loads grid, where
+ * "All rows" leads.  Landing unfiltered and narrowing is the convention.
+ */
 export default function Parking() {
   const { t } = useTranslation();
   const tz = useTimezone();
   const qc = useQueryClient();
-  const [tab, setTab] = useState<'active' | 'history'>('active');
+  const { has } = usePermissions();
+
+  const [detail, setDetail] = useState<ParkingEvent | null>(null);
+  const [confirming, setConfirming] = useState<ParkingEvent | null>(null);
   const [error, setError] = useState('');
-  const [vehicleSearch, setVehicleSearch] = useState('');
-  const [classFilter, setClassFilter] = useState('all');
-  const [showAll, setShowAll] = useState(false);
-  const [days, setDays] = useState(30);
-  const [resolving, setResolving] = useState<number | null>(null);
-  const [expanded, setExpanded] = useState<Set<number>>(new Set());
-  const [mapUrls, setMapUrls] = useState<Record<number, string>>({});
-  const [mapErrors, setMapErrors] = useState<Record<number, string>>({});
 
-  const queryKey = ['parking', tab, vehicleSearch, tab === 'active' ? showAll : null, tab === 'history' ? days : null, tab === 'history' ? classFilter : null] as const;
-  const { data, isLoading: loading, isFetching, error: queryError, refetch, dataUpdatedAt } = useQuery<ParkingEventsResponse>({
-    queryKey,
-    queryFn: () => {
-      const params = new URLSearchParams();
-      if (vehicleSearch) params.set('vehicle', vehicleSearch);
-      if (tab === 'active') {
-        if (showAll) params.set('attention_only', 'false');
-        const qs = params.toString();
-        return apiJSON<ParkingEventsResponse>(`/parking/active${qs ? `?${qs}` : ''}`);
-      }
-      params.set('days', String(days));
-      if (classFilter !== 'all') params.set('location_class', classFilter);
-      const qs = params.toString();
-      return apiJSON<ParkingEventsResponse>(`/parking/history${qs ? `?${qs}` : ''}`);
-    },
-    placeholderData: (prev) => prev,
-  });
-  const events: ParkingEvent[] = data?.events ?? [];
-  const fetchError = queryError instanceof Error ? queryError.message : '';
+  const canResolve = has('can_parking_all') || has('can_parking_vehicle');
 
-  async function resolveEvent(event: ParkingEvent) {
-    setResolving(event.id);
+  const { data, isLoading, isFetching, error: queryError, refetch, dataUpdatedAt } =
+    useQuery({
+      queryKey: ['parking', 'active'],
+      // Unresolved only, safe locations included.  This IS the vehicle
+      // list: one unresolved row per vehicle is the upsert's invariant.
+      queryFn: () => listActiveParking({ attentionOnly: false }),
+      // Keeps the previous page mounted while refetching.  Without it the
+      // DataGrid unmounts on every poll and the operator loses scroll
+      // position, selection, and whichever saved tab they were on.
+      placeholderData: keepPreviousData,
+    });
+
+  // ``ai_confidence`` is derived at the page boundary rather than
+  // server-side: the value already rides inside ai_analysis, and parsing
+  // it once here keeps the column, its filter, and the detail panel all
+  // reading the SAME string instead of three parses that can disagree.
+  const rows = useMemo(
+    () => (data?.events ?? []).map((e) => ({
+      ...e,
+      ai_confidence: parseAiAnalysis(e.ai_analysis ?? '').confidence,
+    })),
+    [data],
+  );
+
+  const columns = useMemo(() => makeParkingColumns(tz), [tz]);
+
+  async function doResolve(events: ParkingEvent[]) {
+    setError('');
     try {
-      await apiJSON(`/parking/${event.id}/resolve`, { method: 'POST' });
+      // Sequential on purpose: the API answers 400 for an already-resolved
+      // event, and firing a whole selection in parallel would turn one
+      // stale row into an unattributable failure.
+      for (const ev of events) await resolveParkingEvent(ev.id);
       qc.invalidateQueries({ queryKey: ['parking'] });
+      setDetail(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Resolve failed');
-    } finally {
-      setResolving(null);
     }
   }
 
-  function toggleExpand(ev: ParkingEvent) {
-    const id = ev.id;
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-    // Fetch map image on first expand (authenticated).
-    //
-    // A failure MUST become visible state.  This used to map a non-OK
-    // response to null and drop it, so the panel sat on "Loading map..."
-    // for good — which is exactly how a 404 on every event went
-    // unnoticed until the browser console was opened.  A spinner that
-    // never resolves reads as "slow", not "broken".
-    if (!mapUrls[id] && !mapErrors[id] && ev.map_image_path) {
-      apiFetch(`/parking/${id}/map-image`)
-        .then(async (res) => {
-          if (!res.ok) {
-            setMapErrors((prev) => ({
-              ...prev,
-              [id]: res.status === 404
-                ? 'Map image unavailable for this event.'
-                : `Could not load map (HTTP ${res.status}).`,
-            }));
-            return;
-          }
-          const blob = await res.blob();
-          setMapUrls((prev) => ({ ...prev, [id]: URL.createObjectURL(blob) }));
-        })
-        .catch(() => {
-          setMapErrors((prev) => ({ ...prev, [id]: 'Could not load map — network error.' }));
-        });
-    }
-  }
-
-  const displayError = error || fetchError;
+  const displayError = error || (queryError instanceof Error ? queryError.message : '');
 
   return (
     <div>
+      {/* The description deliberately does NOT say "every vehicle currently
+          parked" — that was false.  A stop is only recorded when it is
+          unsafe or unverified; trucks at a truck stop, in a yard, or inside
+          a geofence are checked, resolved, and never stored.  Claiming full
+          coverage made an empty page read as "no truck is parked" when the
+          truth is "no truck is parked BADLY". */}
       <PageHeader
         icon={ParkingSquare}
         title={t('pages.parking_title')}
-        description={
-          tab === 'active'
-            ? 'Vehicles currently parked. Resolve events when drivers move on, or open the AI analysis to see why a stop was flagged.'
-            : 'Past parking stops. Filter by classification to find unsafe parking patterns over time.'
-        }
+        description="Vehicles parked somewhere unsafe or unverified. Safe stops — truck stops, yards, your geofences — are checked and not listed. Open a row for the AI's reasoning and that vehicle's parking history; past events across the account live on the Alerts page."
         actions={
-          <LastUpdated
-            fetchedAt={dataUpdatedAt}
-            isFetching={isFetching}
-            onRefresh={refetch}
-          />
+          <LastUpdated fetchedAt={dataUpdatedAt} isFetching={isFetching} onRefresh={refetch} />
         }
       />
 
-      <div className="flex gap-1 mb-4 border-b border-border">
-        {(['active', 'history'] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-4 py-2 text-sm font-medium transition capitalize border-b-2 -mb-px ${
-              tab === t
-                ? 'border-primary text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-
-      <FilterBar>
-        <input
-          type="text"
-          placeholder={t('forms.vehicle_name_placeholder')}
-          value={vehicleSearch}
-          onChange={(e) => setVehicleSearch(e.target.value)}
-          className="bg-background border border-border rounded-md px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:border-ring w-44"
-        />
-        {tab === 'active' && (
-          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
-            <input
-              type="checkbox"
-              checked={showAll}
-              onChange={(e) => setShowAll(e.target.checked)}
-              className="rounded bg-muted border-border"
-            />
-            Show safe locations
-          </label>
-        )}
-        {tab === 'history' && (
-          <>
-            <FilterChips
-              options={['all', 'safe', 'unsafe', 'unknown'] as const}
-              value={classFilter as 'all' | 'safe' | 'unsafe' | 'unknown'}
-              onChange={(v) => setClassFilter(v)}
-            />
-            <DateRangePresets value={days} onChange={setDays} isFetching={isFetching} />
-          </>
-        )}
-      </FilterBar>
-
-      {displayError && events.length === 0 ? (
+      {displayError && rows.length === 0 ? (
         <ErrorState
           title="Couldn't load parking events"
           message={displayError}
           onRetry={() => refetch()}
         />
-      ) : loading && events.length === 0 ? (
-        <TableSkeleton rows={6} cols={5} />
-      ) : tab === 'active' ? (
-        events.length === 0 ? (
-          <EmptyState
-            icon={ParkingSquare}
-            title="No active parking events"
-            description="All vehicles are parked in safe locations or are currently moving."
-          />
-        ) : (
-          <div className="space-y-3">
-            {events.map((ev) => (
-              <div key={ev.id} className="bg-card border border-border rounded-xl p-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3 mb-2">
-                      <span className="font-semibold text-foreground">{ev.vehicle_name}</span>
-                      <span className="text-xs text-muted-foreground">{ev.company_code}</span>
-                      <ClassBadge cls={ev.location_class} />
-                      <AlertBadge level={ev.alert_level} />
-                    </div>
-                    <div className="text-sm text-muted-foreground space-y-1">
-                      <p>
-                        <span className="text-muted-foreground">Address:</span>{' '}
-                        {ev.address ? (
-                          <a
-                            href={mapsUrl(ev.latitude, ev.longitude)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline"
-                          >
-                            {ev.address}
-                          </a>
-                        ) : (
-                          <a
-                            href={mapsUrl(ev.latitude, ev.longitude)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-primary hover:underline"
-                          >
-                            {ev.latitude.toFixed(5)}, {ev.longitude.toFixed(5)}
-                          </a>
-                        )}
-                      </p>
-                      <p>
-                        <span className="text-muted-foreground">Duration:</span>{' '}
-                        <span className={ev.duration_hours >= 8 ? 'text-danger font-medium' : ev.duration_hours >= 2 ? 'text-warn' : ''}>
-                          {formatDuration(ev.duration_hours)}
-                        </span>
-                        <span className="text-muted-foreground ml-2">
-                          (since {formatDate(ev.first_stopped, { timeZone: tz })})
-                        </span>
-                      </p>
-                    </div>
-                    {/* Expandable AI Analysis + Map Image */}
-                    {(ev.ai_analysis || ev.map_image_path) && (
-                      <div className="mt-2">
-                        <button
-                          onClick={() => toggleExpand(ev)}
-                          className="text-xs text-primary hover:text-primary/80 transition"
-                        >
-                          {expanded.has(ev.id) ? '▼ Hide AI Analysis' : '▶ Show AI Analysis'}
-                        </button>
-                        {expanded.has(ev.id) && (
-                          <div className="mt-2 space-y-3">
-                            {ev.map_image_path && (
-                              <div>
-                                <p className="text-xs text-muted-foreground mb-1">Satellite + Road Map (analyzed by AI):</p>
-                                {mapUrls[ev.id] ? (
-                                  <img
-                                    src={mapUrls[ev.id]}
-                                    alt={`Parking map for ${ev.vehicle_name}`}
-                                    className="rounded-lg border border-border max-w-full"
-                                    style={{ maxHeight: '300px' }}
-                                  />
-                                ) : mapErrors[ev.id] ? (
-                                  <p className="text-xs text-destructive">{mapErrors[ev.id]}</p>
-                                ) : (
-                                  <p className="text-xs text-muted-foreground">Loading map...</p>
-                                )}
-                              </div>
-                            )}
-                            {ev.ai_analysis && (
-                              <pre className="text-xs text-muted-foreground bg-muted rounded p-3 whitespace-pre-wrap max-h-40 overflow-y-auto">
-                                {ev.ai_analysis}
-                              </pre>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-col items-end gap-2 ml-4 shrink-0">
-                    <button
-                      onClick={() => resolveEvent(ev)}
-                      disabled={resolving === ev.id}
-                      className="px-3 py-1.5 bg-ok hover:bg-ok/90 disabled:opacity-50 rounded-lg text-xs font-medium text-foreground transition"
-                    >
-                      {resolving === ev.id ? 'Resolving...' : 'Resolve'}
-                    </button>
-                    <a
-                      href={mapsUrl(ev.latitude, ev.longitude)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="px-3 py-1.5 bg-muted hover:bg-muted/80 rounded-lg text-xs font-medium transition"
-                    >
-                      📍 Map
-                    </a>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )
+      ) : isLoading && rows.length === 0 ? (
+        // cols matches makeParkingColumns' length: a narrower skeleton
+        // reflows the table sideways the moment real data lands.
+        <TableSkeleton rows={8} cols={10} />
+      ) : rows.length === 0 ? (
+        // Empty here is GOOD NEWS, and the old copy said the opposite:
+        // "No vehicles currently parked" reads as a data gap, when the
+        // commonest cause is every parked truck being somewhere safe —
+        // those stops are resolved and never stored.
+        <EmptyState
+          icon={ParkingSquare}
+          title="No vehicles parked unsafely"
+          description="Every parked truck is at a truck stop, yard, or inside one of your geofences — or they're all moving. Unsafe and unverified stops appear here within minutes of the next parking check."
+        />
       ) : (
         <DataGrid
-          tableId="parking-history"
-          columns={makeHistoryColumns(tz)}
-          data={events as unknown as Record<string, unknown>[]}
+          tableId="parking"
+          columns={columns}
+          data={rows as unknown as Record<string, unknown>[]}
+          fillHeight
+          savedTabs
           searchKey={['vehicle_name', 'address']}
+          searchPlaceholder="Search vehicle or address…"
+          segments={[
+            { key: 'all', label: 'All', showCount: false },
+            {
+              key: 'attention',
+              label: 'Needs attention',
+              tone: 'danger',
+              // Urgency, NOT location_class.  ``parking_events`` is an
+              // exceptions table: features/parking/check.py returns early
+              // for geofence stops, safe-keyword stops, and AI-confirmed
+              // safe stops, so a row only EXISTS when it is unsafe or
+              // unverified.  A location_class predicate therefore matched
+              // 100% of rows and this tab was a byte-identical copy of
+              // "All" — two tabs implying a distinction the data cannot
+              // express.  ``alert_level`` is the axis that actually
+              // partitions (28 of 38 live rows), and it is the same
+              // verdict that decides whether the bot pages anyone, so the
+              // page and the alert now agree on what "attention" means.
+              match: (row) => String(row.alert_level ?? 'none') !== 'none',
+            },
+          ]}
+          onRowClick={(row) => setDetail(row as unknown as ParkingEvent)}
+          rowActions={(row) => parkingRowMenu(row as unknown as ParkingEvent, {
+            canResolve,
+            openDetail: (e) => setDetail(e),
+            confirmResolve: (e) => setConfirming(e),
+          })}
+          bulkSelection={canResolve}
+          bulkActions={canResolve ? [{
+            label: 'Resolve',
+            icon: CheckCircle2,
+            // DataGrid's own confirm rather than a second hand-rolled
+            // dialog — same reason the grid owns selection and filters.
+            confirm: (n) => `Resolve ${n} event${n !== 1 ? 's' : ''}? `
+              + 'This closes their parking alerts and clears any pending '
+              + 'acknowledgements for those vehicles. It cannot be undone.',
+            onRun: (selected) => {
+              // Unresolved only: resolving a resolved row is a 400, and a
+              // count that includes them would be a lie in the prompt.
+              const evs = (selected as unknown as ParkingEvent[]).filter((e) => !e.resolved);
+              if (evs.length) return doResolve(evs);
+            },
+          }] : undefined}
         />
       )}
 
-      <p className="text-xs text-muted-foreground mt-3">
-        {events.length} event{events.length !== 1 ? 's' : ''}
-      </p>
+      {/* No standalone count line here.  DataGrid already prints one in its
+          pagination footer, and this one sat 12px below it computed on a
+          DIFFERENT denominator — `rows.length` is pre-segment, so on "Needs
+          attention" the grid read 28 and this read 38: two adjacent numbers
+          about one list, disagreeing.  The grid owns counts; the segment tab
+          carries its own badge; "flagged" is stated in the page description. */}
+
+      <ParkingDetailSheet
+        event={detail}
+        onClose={() => setDetail(null)}
+        canResolve={canResolve}
+        onResolve={(e) => setConfirming(e)}
+      />
+
+      {/* Single-row resolve.  Cannot be undone (there is no reopen
+          endpoint) and it clears the vehicle's pending acknowledgements,
+          so the consequence is named before it runs.  The bulk path uses
+          DataGrid's own confirm above. */}
+      <Dialog open={!!confirming} onOpenChange={(o) => { if (!o) setConfirming(null); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Resolve parking event?</DialogTitle>
+            {/* Names the EVENT, not just the vehicle.  The detail sheet
+                repoints to a past stop when a history row is clicked and
+                Resolve acts on whatever is shown — so a vehicle-only prompt
+                was identical whether you were closing the current stop or
+                one from three months ago. */}
+            <DialogDescription>
+              {confirming && (
+                <>
+                  Closes parking event{' '}
+                  <span className="font-mono text-foreground">#{confirming.id}</span>
+                  {confirming.first_stopped
+                    ? ` (${formatDate(confirming.first_stopped, { timeZone: tz })})`
+                    : ''}
+                  {' '}for{' '}
+                  <span className="font-medium text-foreground">{confirming.vehicle_name}</span>
+                  {confirming.company_code ? ` (${confirming.company_code})` : ''} and clears any
+                  pending acknowledgements for it. This cannot be undone.
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <button
+              onClick={() => setConfirming(null)}
+              className="px-3 py-1.5 border border-border bg-background hover:bg-muted rounded-lg text-sm font-medium text-foreground transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                const ev = confirming;
+                setConfirming(null);
+                if (ev) doResolve([ev]);
+              }}
+              className="px-3 py-1.5 bg-primary hover:bg-primary/90 rounded-lg text-sm font-medium text-primary-foreground transition"
+            >
+              Resolve
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
