@@ -288,6 +288,35 @@ merged class string still contains `sticky` and not `relative`, because
 the merged string is the only part of this that is checkable without a
 layout engine.
 
+## A cell in a sticky BAND must be opaque even when nothing is pinned
+
+`<thead>` and `<tfoot>` are `sticky` whenever `fill` is on — **pinning or
+not**. They float over the body rows by design, so every cell in them
+needs its OWN opaque fill; a sticky element with a transparent cell lets
+whatever scrolls underneath show straight through.
+
+`stickyHead` and `stickyTotalHead` used to fold `bg-muted` in with the
+pin classes. That was invisible while pinning defaulted ON, and became a
+real defect the moment it defaulted OFF: the header's and footer's
+rightmost cells lost their fill and body figures bled through the grand
+total (`$1,600.00` over `$1,590,900.60`). Owner-reported.
+
+Both now read `cn(BAND_FILL, pinned && '…position + shadow…')` — the fill
+unconditional, only the freeze conditional — and the `<tfoot>` row
+carries `bg-muted` like `<thead>`'s already did, so a cell added later
+without a fill can't reopen it.
+
+⚠️ **The BODY's equivalents are the exact opposite.** `stickyCol` and
+`stickyTotalCell` must have NO fill when unpinned, or `bg-card` paints
+over the row's own zebra stripe. Same word ("sticky"), opposite rule —
+band cells always paint, body cells only when frozen.
+
+Every sticky test before this asserted the PINNED path, which is why none
+of them saw it. `PivotView.windowing.test.tsx` now checks the unpinned
+one, on the cell's own class rather than its row (accepting the row would
+make it pass trivially), and it was verified to go red against the old
+code.
+
 ## A pinned cell must be fully OPAQUE
 
 The zebra stripe is `bg-muted/30` — 30% alpha. Applied directly to a

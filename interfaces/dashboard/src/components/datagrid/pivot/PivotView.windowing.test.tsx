@@ -243,6 +243,61 @@ describe('the frozen columns stay frozen', () => {
   });
 });
 
+describe('the sticky bands stay opaque with NOTHING pinned', () => {
+  // <thead> and <tfoot> float over the body rows whenever `fill` is on —
+  // pinning or not.  So every cell in them needs its OWN opaque fill: a
+  // sticky element with a transparent cell lets whatever scrolls
+  // underneath show straight through.
+  //
+  // This shipped broken.  `bg-muted` was folded in with the PIN classes,
+  // which was invisible while pinning defaulted ON and became a real
+  // defect the moment it defaulted OFF — the header's and footer's
+  // rightmost cells lost their fill and body figures bled through the
+  // grand total.  Every existing sticky test asserted the PINNED path,
+  // so none of them saw it.
+  //
+  // Asserted on the CELL's own class, deliberately — not on its row.
+  // The row carries a fill too, but accepting that would make this pass
+  // trivially and re-open the exact hole it exists to close.
+  const fills = (sel: string) => {
+    const el = document.querySelector(sel);
+    expect(el, `expected ${sel} to exist`).not.toBeNull();
+    const cls = (el as HTMLElement).className;
+    expect(/\bbg-/.test(cls), `${sel} has no opaque fill of its own: "${cls}"`).toBe(true);
+  };
+
+  it('fills the grand-total corner, the cell the bleed showed through', async () => {
+    await act(async () => {
+      render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
+    });
+    fills('tfoot td:last-child');
+  });
+
+  it('fills the Total column header', async () => {
+    await act(async () => {
+      render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
+    });
+    fills('thead th:last-child');
+  });
+
+  it('backs the footer ROW as well, so a future cell cannot go bare', async () => {
+    await act(async () => {
+      render(<PivotView rows={ROWS} model={MODEL} columns={COLUMNS} padding="py-3" fill />);
+    });
+    expect((document.querySelector('tfoot tr') as HTMLElement).className)
+      .toMatch(/\bbg-/);
+  });
+
+  it('still fills them when the pins ARE on', async () => {
+    const pinned: PivotModel = { ...MODEL, pinRowLabels: true, pinTotals: true };
+    await act(async () => {
+      render(<PivotView rows={ROWS} model={pinned} columns={COLUMNS} padding="py-3" fill />);
+    });
+    fills('tfoot td:last-child');
+    fills('thead th:last-child');
+  });
+});
+
 describe('unpinned means ORDINARY, not just un-shadowed', () => {
   it('drops position, fill and data-pin when the pins are off', async () => {
     await act(async () => {

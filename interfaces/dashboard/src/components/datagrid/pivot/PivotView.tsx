@@ -392,9 +392,28 @@ export default function PivotView({
   const stickyCol = pinRows
     ? 'sticky left-0 z-10 bg-card [box-shadow:inset_-1px_0_0_var(--border),var(--pin-shadow-right)]'
     : '';
-  const stickyHead = pinRows
-    ? 'sticky left-0 z-20 bg-muted [box-shadow:inset_-1px_0_0_var(--border),var(--pin-shadow-right)]'
-    : '';
+  // ⚠️ The BAND fill is unconditional; only the freeze is opt-in.
+  //
+  // <thead> and <tfoot> are sticky whenever ``fill`` is on, pinning or
+  // not — they float over the body rows by design.  So every cell in
+  // them must carry its OWN opaque background: a sticky element with a
+  // transparent cell lets whatever scrolls underneath show straight
+  // through it.
+  //
+  // These two classes used to fold ``bg-muted`` in with the pin, which
+  // was invisible while pinning defaulted ON and became a real defect
+  // the moment it defaulted OFF: the header's and footer's rightmost
+  // cells lost their fill, and body figures bled through the grand
+  // total ("$1,600.00" over "$1,590,900.60").  Owner-reported.
+  //
+  // The BODY's equivalents (stickyCol / stickyTotalCell) are deliberately
+  // the opposite — unpinned they must be fully ordinary, with no fill at
+  // all, or ``bg-card`` would paint over the row's own zebra stripe.
+  const BAND_FILL = 'bg-muted';
+  const stickyHead = cn(
+    BAND_FILL,
+    pinRows && 'sticky left-0 z-20 [box-shadow:inset_-1px_0_0_var(--border),var(--pin-shadow-right)]',
+  );
   // The Total column pins to the RIGHT edge for the same reason the row
   // label pins left: with 60 driver columns the figure you actually came
   // for would otherwise sit past the end of a long horizontal scroll.
@@ -406,9 +425,10 @@ export default function PivotView({
   const stickyTotalCell = pinTotals
     ? 'sticky right-0 z-20 bg-card [box-shadow:inset_1px_0_0_var(--border),var(--pin-shadow-left)]'
     : '';
-  const stickyTotalHead = pinTotals
-    ? 'sticky right-0 z-30 bg-muted [box-shadow:inset_1px_0_0_var(--border),var(--pin-shadow-left)]'
-    : '';
+  const stickyTotalHead = cn(
+    BAND_FILL,
+    pinTotals && 'sticky right-0 z-30 [box-shadow:inset_1px_0_0_var(--border),var(--pin-shadow-left)]',
+  );
 
   return (
     <div className={cn(fill && 'flex h-full flex-col min-h-0')}>
@@ -876,7 +896,12 @@ export default function PivotView({
                 a top rule carry the emphasis" while no rule existed, so
                 the row was separated from a bg-muted/30 zebra stripe by
                 a barely-visible fill step. */}
-            <tr className="border-t-2 border-border">
+            {/* ``bg-muted`` on the ROW as well as on every cell, mirroring
+                <thead>'s own row.  Belt and braces on a sticky band: a
+                cell added here later without a fill would otherwise go
+                transparent and let the body scroll through it, which is
+                exactly how the grand total broke. */}
+            <tr className="border-t-2 border-border bg-muted">
               <th
                 scope="row"
                 // Blue is the INTERACTION colour here — a figure turns
