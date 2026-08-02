@@ -76,7 +76,7 @@ import PivotPanel from './pivot/PivotPanel';
 import { prunePivotModel, pivot, pivotToCsvRows, type PivotModel } from './pivot/pivot';
 import {
   useOverflow, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR,
-  useWheelToHorizontal,
+  useWheelToHorizontal, useScrollRegion,
 } from '../scrolling';
 import { derivePivotDimensions } from './pivot/derived';
 
@@ -2739,6 +2739,7 @@ export default function DataGrid({
   // that, and they subscribe themselves.
   const overflow = useOverflow(scrollEl);
 
+
   // Trackpad / shift+wheel horizontal scrolling.  ONCE, here — this
   // component owns the container.  It used to ride inside the
   // scrollbars' metrics hook, which BOTH bars call on this same element,
@@ -2753,6 +2754,29 @@ export default function DataGrid({
   // custom scrollbar momentarily full-width before settling — direct
   // DOM measurement is one synchronous frame and avoids that flash.
   const [pinnedWidths, setPinnedWidths] = useState({ left: 0, right: 0 });
+
+  // The scroll REGION contract (components/scrolling).  It owns overflow
+  // on both axes, focusability + the landmark name, overscroll
+  // containment, and the scroll-padding that keeps the browser's
+  // scroll-into-view clear of the sticky header and the frozen columns.
+  //
+  // ⚠️ ``allowScrollChaining`` when the grid does NOT own a viewport.
+  // Without ``fillHeight`` or ``stickyHeader`` this container has no
+  // height cap, so it never scrolls vertically — it is a scroll container
+  // with zero scroll range sitting inside the page's own scroller.
+  // Containing the overscroll of a box that cannot scroll can only ever
+  // swallow a wheel the page should have got.  Containment is for panes
+  // that genuinely scroll; this states that rather than relying on how a
+  // given browser latches a gesture to a zero-range box.
+  const region = useScrollRegion({
+    label: 'Table rows',
+    axis: { y: 'auto', x: 'hidden' },
+    allowScrollChaining: !bodyScrolls,
+    stickyTop: bodyScrolls ? headerHeight : undefined,
+    pinnedLeft: pinnedWidths.left,
+    pinnedRight: pinnedWidths.right,
+  });
+
   useLayoutEffect(() => {
     const el = scrollEl;
     if (!el) return;
@@ -3430,59 +3454,48 @@ export default function DataGrid({
          under fillHeight the horizontal scrollbar stops being an overlay
          and becomes the row below the body (see below). */
       <div className={cn('relative group/grid', fillHeight && 'flex flex-1 flex-col min-h-[16rem]')}>
+      {/* The scroll REGION contract comes from components/scrolling: it
+          owns the overflow on both axes, focusability + the landmark
+          name, overscroll containment, and the scroll-padding that keeps
+          the browser's scroll-into-view out from under the sticky header
+          and the frozen columns (WCAG 2.1.1 + 2.4.11).  What stays HERE
+          is what is genuinely the grid's own business — the band the
+          overlay scrollbar occupies, the flex sizing, and hiding the
+          native bar we repaint ourselves. */}
       <div
         ref={setScrollNode}
-        // ``overflow-x: hidden`` + ``overflow-y: auto``: the native
-        // horizontal scrollbar never exists (and therefore never paints
-        // a reserved track at the bottom of the container the way
+        {...region.props}
+        // ``overflow-x: hidden`` (via the region's axis) means the native
+        // horizontal bar never exists, and therefore never paints a
+        // reserved track at the container's bottom the way
         // ``overflow-x: auto`` does even with ``::-webkit-scrollbar
-        // { height: 0 }``).  Horizontal scrolling is driven entirely
-        // by our custom scrollbar (drag) plus the wheel handler below
-        // (trackpad swipe).  Vertical scrollbar is unaffected, so
-        // stickyHeader tables (Scorecards) keep their native bar.
+        // { height: 0 }``.  Horizontal scrolling is driven entirely by
+        // our painted bar (drag) plus the wheel bridge (trackpad swipe).
         //
-        // Border + rounded corners now live on the outer card
-        // wrapper, so this inner scroll container is plain — it just
-        // owns the scrolling behaviour.  When the custom horizontal
-        // scrollbar is shown it paints as an ABSOLUTE overlay in the
-        // bottom ~12px of this container — reserve that band with
-        // padding so the thumb never sits on top of the last row
-        // (most visible in compact density where rows are short).
-        // Under fillHeight the bar moves into normal flow BELOW this
-        // box instead, so there is nothing to reserve.
+        // When that bar is shown it paints as an ABSOLUTE overlay in the
+        // bottom ~12px of this container — reserve that band with padding
+        // so the thumb never sits on top of the last row (most visible in
+        // compact density where rows are short).  Under fillHeight the
+        // bar moves into normal flow BELOW this box, so there is nothing
+        // to reserve.
         className={cn(
-          'overflow-y-auto overflow-x-hidden',
           needsHScroll && !fillHeight && 'pb-3',
           fillHeight && 'flex-1 min-h-0',
-          // Hide the NATIVE vertical bar when we draw our own — it
-          // would otherwise run the container's full height, up beside
-          // the sticky column labels.  Scrolling itself is untouched
-          // (overflow-y stays auto); only the painting moves.
+          // Hide the NATIVE vertical bar when we draw our own — it would
+          // otherwise run the container's full height, up beside the
+          // sticky column labels.  Scrolling itself is untouched; only
+          // the painting moves.
           bodyScrolls && HIDE_NATIVE_SCROLLBAR,
         )}
-        // ``scroll-padding`` keeps the browser's own scroll-into-view out
-        // from under the sticky chrome.  Tab to a control in an
-        // off-screen row and the browser scrolls it to the container's
-        // literal edge — which is BEHIND the sticky header, or behind the
-        // frozen columns.  The focused thing was technically "in view"
-        // and invisible (WCAG 2.4.11).  Padding the scrollport by the
-        // measured header height and pinned widths makes the browser
-        // stop short of them instead.
+        // The region's style goes LAST.  Spreading ``region.props`` and
+        // then setting ``style`` would replace it wholesale — deleting
+        // the overflow, the containment and the scroll-padding — which is
+        // precisely the clobbering the contract moved into inline style
+        // to prevent.  The wrapper component merges in this same order.
         style={{
           ...(stickyHeader ? { maxHeight: stickyHeader } : null),
-          scrollPaddingTop: bodyScrolls ? headerHeight : undefined,
-          scrollPaddingLeft: pinnedWidths.left || undefined,
-          scrollPaddingRight: pinnedWidths.right || undefined,
+          ...region.props.style,
         }}
-        // Moving the scrolling from the document into this div would
-        // otherwise take it away from keyboard users entirely: a plain
-        // ``overflow`` div is not focusable, so PageDown / arrows never
-        // reach it and rows past the first screen become unreachable
-        // without a mouse (WCAG 2.1.1).  Focusable + named makes it a
-        // real region a screen reader can announce and enter.
-        tabIndex={0}
-        role="region"
-        aria-label="Table rows"
       >
         {/* Raw <table> rather than the ui/table.tsx ``<Table>`` primitive
             because that primitive wraps the table in its own

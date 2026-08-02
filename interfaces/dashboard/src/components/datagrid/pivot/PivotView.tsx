@@ -6,6 +6,7 @@ import {
 import { cn } from '../../../lib/utils';
 import {
   ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR, useWheelToHorizontal,
+  useScrollRegion,
 } from '../../scrolling';
 import { EmptyState } from '../../shell';
 import { Tip } from '../../tooltip';
@@ -177,13 +178,65 @@ export default function PivotView({
   // NO scroll subscription here.  The matrix is ~22,000 cells at 360
   // rows x 61 columns; re-rendering it on every scroll frame is what
   // froze the tab.  The bars watch the element themselves.
-  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  // The scroll REGION contract owns the node, the a11y attributes, the
+  // overflow on both axes, the overscroll containment and the
+  // scroll-padding.  ``insets`` are measured below and fed back in, so
+  // the padding tracks the frozen edges as they change.
+  // ⚠️ Keyed by the model's VALUE, not its object identity.
+  //
+  // DataGrid rebuilds ``model`` whenever ``columns`` gets a new array
+  // identity, and a page that builds its column config inline hands over
+  // a fresh array on EVERY parent render — so an identity-keyed effect
+  // threw the report back to the top on any unrelated state change
+  // upstream (a tooltip opening, a poll landing).  The reader lost their
+  // place for no reason they could see.
+  //
+  // Only the fields that change WHICH ROWS EXIST belong in the key.  The
+  // pins and the drill toggle deliberately do not: freezing a column is
+  // not a new list, and scrolling someone to the top for it would be the
+  // same bug wearing a different hat.
+  const listKey = useMemo(() => JSON.stringify([
+    model.rows,
+    model.columns,
+    model.values,
+    model.disabled ?? [],
+    model.sort ?? null,
+    model.hideEmptyColumns ?? false,
+  ]), [model]);
+
+  // What the REGION resets on.  ``rows`` by identity — it is the
+  // post-filter/search array and cannot be serialised at ~22,000 cells —
+  // paired with the model's VALUE key above.  Memoised so the region
+  // sees one stable reference per real change.
+  const listSignal = useMemo(() => [rows, listKey], [rows, listKey]);
+
+  const [insets, setInsets] = useState({ left: 0, right: 0, top: 0 });
+  // What makes the pane a REPORT the reader can navigate, rather than a
+  // box that clips: focusable + named, overscroll contained, and the
+  // scrollport padded away from the frozen edges.  That last one this
+  // view never had — it pins a <thead>, a <tfoot> and both columns, and
+  // already measured all three insets, so a tabbed-to cell landed behind
+  // them (WCAG 2.4.11).  Feeding the measured values straight back keeps
+  // the padding in step as pins are toggled.
+  const region = useScrollRegion({
+    label: 'Pivot report',
+    // y follows ``fill``: with no owned viewport this view does not
+    // scroll vertically at all — the page does.  x is hidden because the
+    // horizontal bar is PAINTED (see scrollbars.tsx), and because
+    // ``useWheelToHorizontal`` below requires exactly that.
+    axis: { y: fill ? 'auto' : 'visible', x: 'hidden' },
+    stickyTop: insets.top,
+    pinnedLeft: insets.left,
+    pinnedRight: insets.right,
+    resetKey: listSignal,
+  });
+  const scrollEl = region.node;
+  const setScrollEl = region.ref;
   // Trackpad / shift+wheel horizontal scrolling.  ONCE, here — the
   // container is ours.  It used to ride inside the scrollbars' metrics
   // hook, which both bars call on this same element, so every swipe
   // moved twice as far as it should.
   useWheelToHorizontal(scrollEl);
-  const [insets, setInsets] = useState({ left: 0, right: 0, top: 0 });
   // Windowing geometry, measured from the DOM by the same
   // ResizeObserver — never from a scroll listener.
   const [box, setBox] = useState({ viewport: 0, rowH: 0 });
@@ -282,33 +335,15 @@ export default function PivotView({
   // mid-way through a set of rows that no longer meant the same thing.
   // The bucket resets with it, or the window would be computed for a
   // scroll position that no longer exists.
-  // ⚠️ Keyed by the model's VALUE, not its object identity.
-  //
-  // DataGrid rebuilds ``model`` whenever ``columns`` gets a new array
-  // identity, and a page that builds its column config inline hands over
-  // a fresh array on EVERY parent render — so an identity-keyed effect
-  // threw the report back to the top on any unrelated state change
-  // upstream (a tooltip opening, a poll landing).  The reader lost their
-  // place for no reason they could see.
-  //
-  // Only the fields that change WHICH ROWS EXIST belong in the key.  The
-  // pins and the drill toggle deliberately do not: freezing a column is
-  // not a new list, and scrolling someone to the top for it would be the
-  // same bug wearing a different hat.
-  const listKey = useMemo(() => JSON.stringify([
-    model.rows,
-    model.columns,
-    model.values,
-    model.disabled ?? [],
-    model.sort ?? null,
-    model.hideEmptyColumns ?? false,
-  ]), [model]);
 
+  // The REGION resets scrollTop (same ``listSignal``); this keeps the
+  // windowing bucket in step with it.  Deliberately a paired local
+  // effect rather than an ``onReset`` option on the hook: one caller does
+  // not clear the module's bar of two real consumers, and that callback
+  // is the first step onto the slope the whole design is guarding.
   useEffect(() => {
-    const el = scrollEl;
-    if (el && el.scrollTop !== 0) el.scrollTop = 0;
     setBucket(0);
-  }, [scrollEl, rows, listKey]);
+  }, [listSignal]);
 
   const win = useMemo(() => {
     const all = visibleRows;
@@ -490,21 +525,22 @@ export default function PivotView({
           already look — so the sentence was a third telling of the same
           fact, costing a row of height on every report. */}
       <div className={cn('relative group/grid', fill && 'flex flex-1 flex-col min-h-0')}>
+      {/* The scroll REGION contract comes from components/scrolling —
+          focusable, named, overscroll-contained, and padded away from the
+          sticky chrome.  That last one this view never had: it pins a
+          <thead>, a <tfoot> AND both edges, and it already measures all
+          three insets, so a tabbed-to cell used to land behind them
+          (WCAG 2.4.11).  The hook hands that back for free.
+          ``axis`` states x:hidden explicitly — the native bar would
+          otherwise reserve a track at the container's bottom, and it is
+          also the precondition ``useWheelToHorizontal`` requires. */}
       <div
         ref={setScrollEl}
+        {...region.props}
         className={cn(
-          'overflow-x-hidden',
-          fill ? 'flex-1 min-h-0 overflow-y-auto' : 'overflow-y-visible',
+          fill && 'flex-1 min-h-0',
           HIDE_NATIVE_SCROLLBAR,
         )}
-        // Same treatment the record list's scroller already had, and
-        // missing here for the same reason it was missing there: a plain
-        // ``overflow`` div is not focusable, so PageDown / arrows never
-        // reach it and every row past the first screen is mouse-only
-        // (WCAG 2.1.1).  Focusable + named makes it a real region.
-        tabIndex={0}
-        role="region"
-        aria-label="Pivot report"
       >
       {/* ``min-w-full``, NOT ``w-full``.  Pinned to the container width
           the table had no choice but to compress: 60 driver columns

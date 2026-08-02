@@ -168,17 +168,28 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
     expect(scroll.current()).toBe(0);
   });
 
-  it('keeps the scrollport clear of the sticky header and frozen columns', async () => {
-    // Tab to a control in an off-screen row and the browser scrolls it to
-    // the container's literal edge — which is BEHIND the sticky header.
-    // The focused thing is then "in view" and invisible (WCAG 2.4.11).
-    // scroll-padding is what makes the browser stop short of the chrome.
+  it('carries the shared scroll-region contract, not its own overflow', async () => {
+    // The container's scrolling comes from components/scrolling now.
+    // Asserted on inline STYLE because that is where the contract lives —
+    // as classes it was clobberable by any layout class the grid added.
     render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
     const el = region() as HTMLElement;
-    // jsdom reports 0-height chrome, so assert the PROPERTY is wired
-    // rather than a specific pixel value — the number comes from a live
-    // measurement this environment cannot make.
-    expect(el.style.scrollPaddingTop).not.toBe('');
+    expect(el.style.overflowY).toBe('auto');
+    // x is hidden so the native bar never reserves a track at the
+    // container's bottom; the horizontal bar is painted by us.
+    expect(el.style.overflowX).toBe('hidden');
+    // fillHeight means the grid owns a viewport, so its overscroll is
+    // contained rather than chaining to the page behind it.
+    expect(el.style.overscrollBehavior).toBe('contain');
+  });
+
+  it('lets a grid that owns NO viewport chain its overscroll to the page', async () => {
+    // Without fillHeight or stickyHeader this container has no height cap
+    // — a scroll container with zero scroll range sitting inside the
+    // page's own scroller.  Containing the overscroll of a box that
+    // cannot scroll could only swallow a wheel the page should have got.
+    render(<DataGrid columns={COLUMNS} data={ROWS} />);
+    expect((region() as HTMLElement).style.overscrollBehavior).toBe('');
   });
 
   it('returns to the top when the sort changes', async () => {
