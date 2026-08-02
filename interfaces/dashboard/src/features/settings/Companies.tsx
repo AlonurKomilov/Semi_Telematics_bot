@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, X, KeyRound, Upload, Trash2 } from 'lucide-react';
+import { Building2, Plus, KeyRound, Upload, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from '../../components/ui/sheet';
+import { ScrollRegion } from '../../components/scrolling';
 import { apiJSON, apiFetch } from '../../api/client';
 import DataGrid from '../../components/datagrid';
 import {
@@ -256,13 +260,20 @@ export default function Companies() {
         }} />
       )}
 
-      {selected && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={() => setSelected(null)}>
-          <div className="w-full max-w-md bg-card border-l border-border p-6 overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">{selected.display_name}</h2>
-              <button onClick={() => setSelected(null)} aria-label="Close" className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
-            </div>
+      {/* Was a hand-rolled backdrop + panel — no focus trap, no Escape,
+          no ``aria-modal``, and no background scroll lock, so the page
+          kept scrolling under the open drawer.  The PANEL scrolled too,
+          taking the company name off screen with it.  <Sheet> brings the
+          modal semantics; <ScrollRegion> makes the body a real scroll
+          region and leaves the header in place. */}
+      <Sheet open={!!selected} onOpenChange={(o) => { if (!o) setSelected(null); }}>
+        <SheetContent side="right" className="p-0">
+          {selected && (
+          <>
+            <SheetHeader className="px-6 pt-6">
+              <SheetTitle>{selected.display_name}</SheetTitle>
+            </SheetHeader>
+            <ScrollRegion label={`${selected.display_name} details`} className="flex-1 min-h-0 px-6 pb-6">
             <dl className="space-y-3 text-sm mb-6">
               <div className="flex justify-between"><dt className="text-muted-foreground">Code</dt><dd>{selected.code}</dd></div>
               <div className="flex justify-between">
@@ -343,9 +354,11 @@ export default function Companies() {
                 </button>
               )}
             </div>
-          </div>
-        </div>
-      )}
+            </ScrollRegion>
+          </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

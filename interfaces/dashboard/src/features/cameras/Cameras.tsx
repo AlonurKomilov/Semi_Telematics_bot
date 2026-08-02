@@ -10,6 +10,10 @@ import {
   ErrorState,
   TableSkeleton,
 } from '../../components/shell';
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle,
+} from '../../components/ui/sheet';
+import { ScrollRegion } from '../../components/scrolling';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import type { CameraCheck, CameraChecksResponse, AnyColumn } from '../../types';
@@ -234,18 +238,24 @@ export default function Cameras() {
         />
       )}
 
-      {/* Detail drawer */}
-      {detail && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex justify-end" onClick={() => setDetail(null)}>
-          <div
-            className="w-full max-w-lg bg-card border-l border-border p-6 overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">{detail.vehicle_name}</h2>
-              <button onClick={() => setDetail(null)} className="text-muted-foreground hover:text-foreground">✕</button>
-            </div>
+      {/* Detail drawer.
+          Was a hand-rolled backdrop + panel: a bare <div> pair with a
+          click-away and nothing else.  That shape has no focus trap, no
+          Escape, no ``aria-modal`` and no background scroll lock — the
+          page kept scrolling under the open drawer — and because the
+          PANEL itself scrolled, the title scrolled away with the content.
+          <Sheet> (Base UI Dialog) brings all four; <ScrollRegion> makes
+          the body a real scroll region (focusable, named, overscroll
+          contained) while the header stays put. */}
+      <Sheet open={!!detail} onOpenChange={(o) => { if (!o) setDetail(null); }}>
+        <SheetContent side="right" className="p-0">
+          {detail && (
+          <>
+            <SheetHeader className="px-6 pt-6">
+              <SheetTitle>{detail.vehicle_name}</SheetTitle>
+            </SheetHeader>
 
+            <ScrollRegion label={`${detail.vehicle_name} camera check`} className="flex-1 min-h-0 px-6 pb-6">
             {/* Camera screenshot */}
             <div className="mb-4 rounded-lg overflow-hidden bg-muted border border-border">
               {imageLoading ? (
@@ -298,9 +308,11 @@ export default function Cameras() {
                 </div>
               )}
             </dl>
-          </div>
-        </div>
-      )}
+            </ScrollRegion>
+          </>
+          )}
+        </SheetContent>
+      </Sheet>
 
       <p className="text-xs text-muted-foreground mt-2">{checks.length} check{checks.length !== 1 ? 's' : ''}</p>
     </div>
