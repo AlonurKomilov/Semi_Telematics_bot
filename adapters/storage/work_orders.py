@@ -261,6 +261,37 @@ class WorkOrdersMixin:
             if vid:
                 return vid
             return state_name_unique.get(key) or ""
+
+        # Registry identity for units the provider has never heard of —
+        # TMS-synced trucks and already-departed vehicles have no
+        # telemetry id at all, so the registry row is the only honest
+        # link.  Unique-match-or-nothing, same as everywhere else.
+        reg_by_ck: dict[tuple[str, str], int] = {}
+        reg_name_unique: dict[str, int | None] = {}
+        cur = await self._db.execute(
+            "SELECT id, unit_number, company_code FROM vehicles "
+            "WHERE account_id = ?",
+            (account_id,),
+        )
+        for row in await cur.fetchall():
+            rid, rnm, rcc = (int(row[0]), str(row[1] or "").strip(),
+                             str(row[2] or "").strip())
+            if not rnm:
+                continue
+            reg_by_ck[(rcc, rnm.lower())] = rid
+            if rnm.lower() in reg_name_unique:
+                reg_name_unique[rnm.lower()] = None
+            else:
+                reg_name_unique[rnm.lower()] = rid
+
+        def _registry_id(company: str, name: str) -> int | None:
+            key = (name or "").strip().lower()
+            if not key:
+                return None
+            rid = reg_by_ck.get(((company or "").strip(), key))
+            if rid is not None:
+                return rid
+            return reg_name_unique.get(key)
         cur = await self._db.execute(
             "SELECT id, external_id FROM work_orders "
             "WHERE account_id = ? AND source = ? AND external_id <> ''",
@@ -315,6 +346,7 @@ class WorkOrdersMixin:
                 vendor_id = _vend["id"] if _vend else None
                 payment_method = str(r.get("payment_method") or "")
                 telemetry_vid = _telemetry_id(company_code, vehicle_name)
+                reg_id = _registry_id(company_code, vehicle_name)
                 service_date = str(r.get("opened_at") or "") or None
                 odometer = r.get("odometer")
                 odometer = float(odometer) if odometer not in (None, "") else None
@@ -374,6 +406,7 @@ class WorkOrdersMixin:
                         "vehicle_type = ?, company_code = ?, assigned_to = ?, "
                         "vehicle_id = CASE WHEN COALESCE(vehicle_id,'') = '' "
                         "    THEN ? ELSE vehicle_id END, "
+                        "registry_id = COALESCE(registry_id, ?), "
                         "invoice_number = ?, external_number = ?, vendor_name = ?, "
                         "vendor_address = ?, vendor_phone = ?, vendor_id = ?, "
                         "payment_method = ?, service_date = ?, "
@@ -388,7 +421,7 @@ class WorkOrdersMixin:
                         "    ELSE status END, "
                         "updated_at = ? WHERE id = ? AND account_id = ?",
                         (vehicle_name, vehicle_type, company_code, assigned_to,
-                         telemetry_vid,
+                         telemetry_vid, reg_id,
                          invoice_number, external_number, vendor_name,
                          vendor_address, vendor_phone, vendor_id, payment_method,
                          service_date, odometer, labor_cost, parts_cost,
@@ -402,7 +435,8 @@ class WorkOrdersMixin:
                 # one batch (the pre-loaded map can't see same-tx inserts).
                 await self._db.execute(
                     """INSERT INTO work_orders
-                       (account_id, company_code, vehicle_id, vehicle_name,
+                       (account_id, company_code, vehicle_id, registry_id,
+                        vehicle_name,
                         vehicle_type, vendor_name, vendor_address, vendor_phone,
                         vendor_id, service_date, odometer_at_service,
                         engine_hours_at_service,
@@ -410,11 +444,12 @@ class WorkOrdersMixin:
                         invoice_number, external_number, payment_method, payment_status,
                         status, notes, assigned_to, source, external_id,
                         created_by, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                        ON CONFLICT (account_id, source, external_id)
                        WHERE external_id <> '' DO NOTHING""",
-                    (account_id, company_code, telemetry_vid, vehicle_name,
+                    (account_id, company_code, telemetry_vid, reg_id,
+                     vehicle_name,
                      vehicle_type, vendor_name, vendor_address, vendor_phone,
                      vendor_id, service_date, odometer, None,
                      labor_cost, parts_cost, tax, total,

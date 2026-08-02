@@ -7915,3 +7915,71 @@ async def migrate_activity_trail_legacy_import(conn) -> None:
         "(%d total rows scanned, machine rows left behind)",
         imported, len(rows),
     )
+
+
+@_register("179_work_orders_registry_id")
+async def migrate_work_orders_registry_id(conn) -> None:
+    """Work orders learn which REGISTRY vehicle they belong to.
+
+    ``work_orders.vehicle_id`` means the provider's external id and always
+    will — but a fifth of all orders name trucks the provider has never
+    heard of: units synced from the TMS, and vehicles already departed
+    when the linking arrived.  Those can only be identified by the
+    registry row, so they get the same ``registry_id`` the warehouse
+    tables gained in migration 177.
+
+    The backfill runs here rather than in an operator script so every
+    account heals on upgrade.  Three set-based passes, all guarded:
+
+      1. rows with a provider id → registry via ``telematics_ref``;
+      2. rows without one → registry by exact company+unit match, only
+         when the match is UNIQUE (an ambiguous name stays unlinked —
+         a guess would attach money to the wrong truck);
+      3. rows whose resolved registry entry carries a provider id →
+         fill the still-empty ``vehicle_id`` from it.
+    """
+    await conn.execute(
+        "ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS registry_id INTEGER"
+    )
+
+    await conn.execute(
+        """
+        UPDATE work_orders w SET registry_id = v.id
+        FROM vehicles v
+        WHERE w.registry_id IS NULL
+          AND COALESCE(w.vehicle_id, '') <> ''
+          AND v.account_id = w.account_id
+          AND v.telematics_ref = w.vehicle_id
+        """
+    )
+    await conn.execute(
+        """
+        UPDATE work_orders w SET registry_id = m.rid
+        FROM (
+            SELECT w2.id AS woid, MIN(v.id) AS rid
+            FROM work_orders w2
+            JOIN vehicles v
+              ON v.account_id = w2.account_id
+             AND lower(v.unit_number) = lower(w2.vehicle_name)
+             AND (w2.company_code = '' OR v.company_code = w2.company_code
+                  OR v.company_code = '')
+            WHERE w2.registry_id IS NULL
+              AND COALESCE(w2.vehicle_name, '') <> ''
+            GROUP BY w2.id
+            HAVING COUNT(DISTINCT v.id) = 1
+        ) m
+        WHERE w.id = m.woid
+        """
+    )
+    await conn.execute(
+        """
+        UPDATE work_orders w SET vehicle_id = v.telematics_ref
+        FROM vehicles v
+        WHERE COALESCE(w.vehicle_id, '') = ''
+          AND w.registry_id = v.id
+          AND v.account_id = w.account_id
+          AND COALESCE(v.telematics_ref, '') <> ''
+        """
+    )
+    await conn.commit()
+    logger.info("Migration 179: work_orders.registry_id ready + backfilled")
