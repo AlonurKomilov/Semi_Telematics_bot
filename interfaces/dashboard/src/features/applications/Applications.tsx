@@ -16,9 +16,9 @@ import { formatDate } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
 import { useInboxSource, useInboxActions, type InboxNotice } from '../alerts/useInbox';
 import DataGrid, {
-  TAB_PREFIX, tabMatch, type DataGridSegment, type BulkAction,
+  TAB_PREFIX, type DataGridSegment, type BulkAction,
 } from '../../components/datagrid';
-import type { ColumnFiltersState } from '@tanstack/react-table';
+import { resolveScopeBase, scopeMatch, type TabScope } from './scope';
 import { ContextMenu, type MenuAction } from '../../components/ui/context-menu';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
@@ -408,17 +408,6 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
   );
 }
 
-/** The slice of a saved tab this page needs: enough to REPLAY its scope
- *  (filters + search, via ``tabMatch``) and to know which lifecycle slice
- *  it was captured under.  DataGrid hands exactly this through
- *  ``onSegmentChange``; the id comes from the segment key. */
-interface TabScope {
-  id: string;
-  filters: ColumnFiltersState;
-  search: string;
-  baseSegment?: string;
-}
-
 // Hoisted to module scope for two reasons.  An inline array is a new
 // identity every render, which re-runs the grid's faceted option pass
 // over every row; and a saved TAB's scope predicate needs this exact
@@ -532,26 +521,13 @@ export default function Applications() {
   // "what can these rows do", and an opaque tab id cannot answer it.
   const [tab, setTab] = useState<TabScope | null>(null);
 
-  // What the grid is showing, mirrored for the Board.  A tab composes
-  // with the segment it was SAVED under — which is DataGrid's own rule,
-  // so mirroring it any other way makes the two views disagree.  A tab
-  // saved while standing on another tab has no base and is unbounded.
-  // Either a LIVE segment key or null (= unbounded).  A tab can carry a
-  // baseSegment that no longer exists; DataGrid drops a stale one to the
-  // tab's own filters, so resolving it here the same way is what keeps
-  // the bulk bar from reading a dead key as "the active slice".
-  const rawBase = tab ? (tab.baseSegment ?? null) : segment;
-  const scopeBase = rawBase && APP_SEGMENTS.some((sg) => sg.key === rawBase)
-    ? rawBase : null;
-  const segmentMatch = useMemo(() => {
-    const base = APP_SEGMENTS.find((sg) => sg.key === scopeBase)?.match;
-    if (!tab) return base;
-    const inTab = tabMatch(
-      { id: '', name: '', filters: tab.filters, search: tab.search },
-      APP_COLUMNS, APP_SEARCH_KEYS,
-    );
-    return (r: Record<string, unknown>) => (!base || base(r)) && inTab(r);
-  }, [scopeBase, tab]);
+  // Mirrored for the Board so the two surfaces can't show different
+  // populations of the same dataset.  Pure + tested in ./scope.
+  const scopeBase = resolveScopeBase(segment, tab, APP_SEGMENTS);
+  const segmentMatch = useMemo(
+    () => scopeMatch(scopeBase, tab, APP_SEGMENTS, APP_COLUMNS, APP_SEARCH_KEYS),
+    [scopeBase, tab],
+  );
   // (Bulk selection lives inside DataGrid now — no page-level set.)
   const [openId, setOpenId] = useState<number | null>(null);
   // ?app=<id> opens that application directly — the target of the
@@ -1043,7 +1019,13 @@ export default function Applications() {
               // one — inventing a base would silently re-widen the scope.
               setTab({ id, filters: saved?.filters ?? [], search: saved?.search ?? '',
                        baseSegment: saved?.baseSegment });
-              if (saved?.baseSegment) setSegment(saved.baseSegment);
+              // Only a LIVE key: a tab persisted before a segment rename
+              // carries a dead one, and `segment` is the slot every
+              // lifecycle reader trusts.
+              if (saved?.baseSegment
+                  && APP_SEGMENTS.some((sg) => sg.key === saved.baseSegment)) {
+                setSegment(saved.baseSegment);
+              }
             }}
             savedTabs
             data={rows as unknown as Record<string, unknown>[]}

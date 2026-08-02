@@ -447,7 +447,12 @@ const defaultTabKey = (id: string | undefined) =>
 // Saved-tab segment keys are prefixed so a saved tab is never confused
 // with a code-defined segment.  ``__all__`` is the implicit "everything"
 // tab shown when a grid has no built-in segments.
-const TAB_PREFIX = 'tab:';
+/** A saved tab's segment key is this + the tab id.  EXPORTED because a
+ *  page that controls its segment has to recognise one coming back
+ *  through ``onSegmentChange`` and hand the same key in as
+ *  ``segmentKey`` — spelling it by hand on both sides of that round
+ *  trip is a silent break waiting for someone to change the prefix. */
+export const TAB_PREFIX = 'tab:';
 const ALL_KEY = '__all__';
 const NO_TABS: SavedTab[] = [];
 const aggregationKey = (id: string | undefined) =>

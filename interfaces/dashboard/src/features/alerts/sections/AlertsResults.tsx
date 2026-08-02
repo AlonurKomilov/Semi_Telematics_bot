@@ -39,7 +39,7 @@ import {
   ErrorState,
   TableSkeleton,
 } from '../../../components/shell';
-import DataGrid, { type BulkAction } from '../../../components/datagrid';
+import DataGrid, { TAB_PREFIX, type BulkAction } from '../../../components/datagrid';
 import type { ColumnFiltersState } from '@tanstack/react-table';
 import { Tip } from '../../../components/tooltip';
 import type {
@@ -647,7 +647,7 @@ export default function AlertsResults() {
         // ONE slot, two kinds of occupant: a lifecycle tab or a saved one.
         // The URL records which, so a saved tab survives a refresh and can
         // be shared like any other view.
-        segmentKey={tab ? `tab:${tab}` : ackState}
+        segmentKey={tab ? TAB_PREFIX + tab : ackState}
         onSegmentChange={(key, savedTab) => {
           clearSelection();
           if (savedTab) {
@@ -659,7 +659,7 @@ export default function AlertsResults() {
             const { typeFilter: type, severityFilter: sev } =
               fromGridFilters(savedTab.filters);
             const captured = savedTab.sort?.[0];
-            applyTab(key.slice('tab:'.length), {
+            applyTab(key.slice(TAB_PREFIX.length), {
               typeFilter: type,
               severityFilter: sev,
               vehicleSearch: savedTab.search,
