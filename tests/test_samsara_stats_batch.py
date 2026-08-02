@@ -105,3 +105,45 @@ async def test_low_fuel_reuses_cached_overview_not_per_company_fanout():
     assert [v["id"] for v in low] == ["v1", "v3"]
     assert low[0]["_fuel_pct"] == 10 and low[0]["_fuel_time"] == "t1"
     assert low[1]["_fuel_pct"] == 25 and low[1]["_org"] == "G1"
+
+
+@pytest.mark.asyncio
+async def test_get_geofences_reads_addresses_and_paginates():
+    """Geofences live on /addresses — /fleet/geofences never existed.
+
+    The wrong URL 404'd hourly for the life of the cache (173k log
+    lines), fed the shared circuit breaker each time, and kept every
+    consumer on live fallback.  Pin the real resource, the
+    geofence-only filter, and the cursor walk.
+    """
+    client = SamsaraClient.__new__(SamsaraClient)  # bypass __init__/network
+
+    calls: list[tuple[str, dict]] = []
+
+    async def fake_get(path: str, params: dict | None = None) -> dict:
+        calls.append((path, dict(params or {})))
+        if not (params or {}).get("after"):
+            return {
+                "data": [
+                    {"id": "a1", "name": "Yard",
+                     "geofence": {"polygon": {"vertices": []}}},
+                    {"id": "a2", "name": "Plain address, no fence"},
+                ],
+                "pagination": {"hasNextPage": True, "endCursor": "c2"},
+            }
+        return {
+            "data": [
+                {"id": "a3", "name": "Dropyard",
+                 "geofence": {"circle": {"radiusMeters": 400}}},
+            ],
+            "pagination": {"hasNextPage": False},
+        }
+
+    client._get = fake_get  # type: ignore[assignment]
+
+    fences = await client.get_geofences()
+
+    assert [p for p, _ in calls] == ["/addresses", "/addresses"]
+    assert calls[1][1]["after"] == "c2"
+    # Only addresses that actually carry a geofence come back.
+    assert [f["id"] for f in fences] == ["a1", "a3"]

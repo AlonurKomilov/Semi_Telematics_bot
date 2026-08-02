@@ -629,9 +629,28 @@ class SamsaraClient:
     # ── Geofences ────────────────────────────────────────────────
 
     async def get_geofences(self) -> list[dict]:
-        """Return all geofences defined in the Samsara dashboard."""
-        data = await self._get("/fleet/geofences")
-        return data.get("data", [])
+        """Return all geofences defined in the Samsara dashboard.
+
+        Geofences live on the ADDRESSES resource — each address may carry
+        a ``geofence`` object (circle or polygon).  ``/fleet/geofences``
+        has never existed on this API: it 404'd on every call for the
+        life of the table (173k log lines), fed the shared circuit
+        breaker on each one, and left the cache empty so every consumer
+        stayed on live fallback.  The storage upsert was already written
+        for the address shape; only this URL was wrong.
+        """
+        fences: list[dict] = []
+        params: dict = {}
+        for _ in range(50):  # safety limit, ~25k addresses
+            data = await self._get("/addresses", params=params)
+            for addr in data.get("data", []):
+                if addr.get("geofence"):
+                    fences.append(addr)
+            pag = data.get("pagination", {})
+            if not pag.get("hasNextPage"):
+                break
+            params["after"] = pag.get("endCursor")
+        return fences
 
     # ── Safety Events ────────────────────────────────────────────
 
