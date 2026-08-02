@@ -29,10 +29,14 @@ export function AlertsLauncher() {
   // gets it (even vehicle-less roles like recruiter/HR who have no alerts,
   // so they can still reach their notification preferences).  Its alert
   // GLANCE stays permission-scoped inside the panel.
-  return <AlertsBell canAlerts={hasAny(...P_ALERTS)} />;
+  return <AlertsBell canAlerts={hasAny(...P_ALERTS)}
+                     canApplications={hasAny('can_manage_applications')} />;
 }
 
-function AlertsBell({ canAlerts }: { canAlerts: boolean }) {
+function AlertsBell(
+  { canAlerts, canApplications }:
+  { canAlerts: boolean; canApplications: boolean },
+) {
   const [open, setOpen] = useState(false);
   // Only fetch the stats when they'd mean something — a no-alerts role's
   // alert count is forced to 0, so don't pay for the query.
@@ -73,7 +77,8 @@ function AlertsBell({ canAlerts }: { canAlerts: boolean }) {
           className="z-50 outline-none"
         >
           <PopoverPrimitive.Popup className="w-80 bg-popover text-popover-foreground border border-border rounded-lg shadow-lg overflow-hidden">
-            <NotificationsPanel onClose={() => setOpen(false)} canAlerts={canAlerts} />
+            <NotificationsPanel onClose={() => setOpen(false)} canAlerts={canAlerts}
+                                canApplications={canApplications} />
           </PopoverPrimitive.Popup>
         </PopoverPrimitive.Positioner>
       </PopoverPrimitive.Portal>

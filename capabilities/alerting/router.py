@@ -50,8 +50,10 @@ async def _filter_own(user: dict, alerts: list[dict]) -> list[dict]:
     """If user has only _own permission, filter alerts to their assigned vehicles."""
     if user.get("_matched_perm") != "can_alerts_vehicle":
         return alerts
+    from interfaces.api.deps import get_user_vehicle_scope
+    scope = await get_user_vehicle_scope(user)
     trucks = await get_user_vehicle_nums(user)
-    return filter_alerts_by_access(alerts, trucks)
+    return filter_alerts_by_access(alerts, trucks, scope=scope)
 
 
 def _canonical_key(alert: dict) -> str:
@@ -412,8 +414,15 @@ async def pending_alerts_by_vehicle(
         v["alerts"] = [_shape_history_for_pending_api(a) for a in v["alerts"]]
 
     if is_driver_scope:
+        from interfaces.api.deps import get_user_vehicle_scope
+        scope = await get_user_vehicle_scope(user)
         trucks = await get_user_vehicle_nums(user)
-        if trucks is not None:
+        if scope is not None:
+            vehicles = [
+                v for v in vehicles
+                if scope.allows_row(v, name_key="vehicle_name")
+            ]
+        elif trucks is not None:
             allowed = {(t or "").lower() for t in trucks}
             vehicles = [
                 v for v in vehicles

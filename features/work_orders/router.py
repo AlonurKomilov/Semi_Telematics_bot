@@ -184,15 +184,26 @@ async def _wo_access(user: dict) -> tuple[bool, bool]:
     return can_all, (can_all or can_own)
 
 
-def _driver_owns_vehicle(can_all: bool, vehicle_name: str, trucks: list[str]) -> bool:
+def _driver_owns_vehicle(
+    can_all: bool, vehicle_name: str, trucks: list[str], scope=None,
+) -> bool:
     """Driver-side ownership check.  ``can_all`` is the account-aware
-    'all trucks' permission, computed once by the caller."""
+    'all trucks' permission, computed once by the caller.
+
+    A ``VehicleScope`` decides by the identity ladder; without one the
+    fallback is exact lowercased equality — never the old substring,
+    which let a driver assigned 230 open work orders for 2303.  This
+    wall answers "may this driver see this record", so an over-match
+    was a disclosure.
+    """
     if can_all:
         return True
+    if scope is not None:
+        return (not scope.empty) and scope.allows(name=vehicle_name)
     if not trucks:
         return False
-    needles = {t.lower() for t in trucks}
-    return any(n in (vehicle_name or "").lower() for n in needles)
+    allowed = {t.strip().lower() for t in trucks if t}
+    return (vehicle_name or "").strip().lower() in allowed
 
 
 async def _require_visible_work_order(
@@ -214,8 +225,12 @@ async def _require_visible_work_order(
     if _allowed and not filter_by_allowed_companies([wo], _allowed, key="company_code"):
         raise HTTPException(status_code=404, detail="Work order not found")
     if not can_all:
+        from interfaces.api.deps import get_user_vehicle_scope
+        scope = await get_user_vehicle_scope(user)
         trucks = await get_user_vehicle_nums(user)
-        if not _driver_owns_vehicle(can_all, wo.get("vehicle_name", ""), trucks or []):
+        if not _driver_owns_vehicle(
+            can_all, wo.get("vehicle_name", ""), trucks or [], scope=scope,
+        ):
             raise HTTPException(status_code=404, detail="Work order not found")
     return wo
 
@@ -250,9 +265,14 @@ async def list_work_orders(
     )
     rows = filter_by_allowed_companies(rows, await get_user_company_codes(user), key="company_code")
     if not can_all:
+        from interfaces.api.deps import get_user_vehicle_scope
+        scope = await get_user_vehicle_scope(user)
         trucks = await get_user_vehicle_nums(user)
         rows = [r for r in rows
-                if _driver_owns_vehicle(can_all, r.get("vehicle_name", ""), trucks or [])]
+                if _driver_owns_vehicle(
+                    can_all, r.get("vehicle_name", ""), trucks or [],
+                    scope=scope,
+                )]
     return {"work_orders": rows, "count": len(rows)}
 
 

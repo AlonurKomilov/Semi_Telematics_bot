@@ -51,7 +51,9 @@ type Tab = 'all' | 'critical';
 // glance (its own store, /alerts/pending) beside the persisted notices
 // (team.*/ai.* → Activity, system.* → System) from /notifications/inbox.
 // 'all' interleaves every source by time — the default landing view.
-type Source = 'all' | 'alerts' | 'activity' | 'system';
+// Applications is permission-gated the way Alerts is: a bucket you can
+// never receive shouldn't cost you a tab.
+type Source = 'all' | 'alerts' | 'applications' | 'activity' | 'system';
 
 // One row of the merged All feed — an alert or a notice, time-sortable.
 type MergedItem =
@@ -59,7 +61,8 @@ type MergedItem =
   | { kind: 'notice'; notice: InboxNotice; ts: number };
 
 export function NotificationsPanel(
-  { onClose, canAlerts }: { onClose: () => void; canAlerts: boolean },
+  { onClose, canAlerts, canApplications }:
+  { onClose: () => void; canAlerts: boolean; canApplications: boolean },
 ) {
   const navigate = useNavigate();
   const [src, setSrc] = useState<Source>('all');
@@ -79,18 +82,26 @@ export function NotificationsPanel(
   const { data: inbox, isLoading: inboxLoading } = useInbox(true);
   const { markRead, markAllRead } = useInboxActions();
   const notices = useMemo(() => inbox?.notices ?? [], [inbox]);
-  // 'system' namespace gets its own tab; every other source (team today,
-  // more later) reads as personal account Activity.
+  // 'system' namespace gets its own tab; 'applications' gets one only for
+  // people who can act on them; every other source (team today, more
+  // later) reads as personal account Activity.
   const systemNotices = useMemo(
     () => notices.filter((n) => n.source === 'system'), [notices]);
+  const applicationNotices = useMemo(
+    () => notices.filter((n) => n.source === 'applications'), [notices]);
+  // Fail OPEN: without the Applications tab, application notices stay in
+  // Activity rather than vanishing — a permission revoked after delivery
+  // must not hide notices the person already holds.
   const activityNotices = useMemo(
-    () => notices.filter((n) => n.source !== 'system'), [notices]);
+    () => notices.filter((n) => n.source !== 'system'
+      && !(canApplications && n.source === 'applications')), [notices, canApplications]);
   // Per-tab counts come from the loaded page (newest 30) — a glance
   // number, deliberately approximate past that window.  The BELL badge
   // reads the server's true total (useInboxUnread), so nothing is lost.
   const unreadOf = (list: InboxNotice[]) => list.filter((n) => !n.read).length;
   // Force a valid tab if permissions shift under us.
   if (src === 'alerts' && !canAlerts) setSrc('all');
+  if (src === 'applications' && !canApplications) setSrc('all');
   // Ids inside a pending "Acknowledge all" window — module-level store, so
   // the hide survives this panel unmounting when the dropdown closes (a
   // reopened panel must NOT resurface rows that are mid-countdown, and
@@ -117,6 +128,7 @@ export function NotificationsPanel(
   const allCount = (canAlerts ? alerts.length : 0) + (inbox?.unread ?? 0);
   const contributingSources =
     [(canAlerts ? alerts.length : 0) > 0,
+     canApplications && applicationNotices.length > 0,
      activityNotices.length > 0,
      systemNotices.length > 0].filter(Boolean).length;
 
@@ -237,6 +249,13 @@ export function NotificationsPanel(
             Alerts{alerts.length ? ` ${alerts.length}` : ''}
           </TabPill>
         )}
+        {canApplications && (
+          <TabPill active={src === 'applications'} onClick={() => setSrc('applications')}
+                   dim={applicationNotices.length === 0}>
+            Applications{unreadOf(applicationNotices)
+              ? ` ${unreadOf(applicationNotices)}` : ''}
+          </TabPill>
+        )}
         <TabPill active={src === 'activity'} onClick={() => setSrc('activity')}
                  dim={activityNotices.length === 0}>
           Activity{unreadOf(activityNotices) ? ` ${unreadOf(activityNotices)}` : ''}
@@ -341,7 +360,9 @@ export function NotificationsPanel(
       ) : (
         /* Inbox tabs — persisted notices, read/unread */
         (() => {
-          const list = src === 'system' ? systemNotices : activityNotices;
+          const list = src === 'system' ? systemNotices
+            : src === 'applications' ? applicationNotices
+            : activityNotices;
           return (
             <>
               <div className="flex-1 overflow-y-auto min-h-0">
@@ -352,6 +373,8 @@ export function NotificationsPanel(
                 ) : list.length === 0 ? (
                   <EmptyState label={src === 'system'
                     ? 'No system notices'
+                    : src === 'applications'
+                    ? 'No new applications'
                     : 'No account activity yet'} />
                 ) : (
                   <ul className="divide-y divide-border/60">

@@ -161,20 +161,35 @@ async def overview_stats(
     overview = filter_by_allowed_companies(overview, allowed)
 
     if role == Role.DRIVER:
+        from interfaces.api.deps import get_user_vehicle_scope
+        scope = await get_user_vehicle_scope(user)
         trucks = await get_user_vehicle_nums(user)
         truck_num = trucks[0] if trucks else None
         my_truck = None
-        if trucks:
-            needles = [t.lower() for t in trucks]
+        if scope is not None and not scope.empty:
             my_truck = next(
-                (v for v in overview if any(n in v.get("name", "").lower() for n in needles)),
+                (v for v in overview if scope.allows_row(v, name_key="name")),
+                None,
+            )
+        elif trucks:
+            allowed = {t.strip().lower() for t in trucks}
+            my_truck = next(
+                (v for v in overview
+                 if v.get("name", "").strip().lower() in allowed),
                 None,
             )
 
         my_alerts = []
-        if trucks and pending_alerts:
-            needles = [t.lower() for t in trucks]
-            my_alerts = [a for a in pending_alerts if any(n in (a.get("vehicle_name") or "").lower() for n in needles)]
+        if pending_alerts:
+            if scope is not None and not scope.empty:
+                my_alerts = [a for a in pending_alerts
+                             if scope.allows_row(a, name_key="vehicle_name")]
+            elif trucks:
+                allowed = {t.strip().lower() for t in trucks}
+                my_alerts = [
+                    a for a in pending_alerts
+                    if (a.get("vehicle_name") or "").strip().lower() in allowed
+                ]
 
         # "vehicles" is the wire key ("fleet" = deprecated alias, same
         # object — remove once no pre-rename SPA bundle is live); see

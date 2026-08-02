@@ -392,6 +392,22 @@ def filter_by_company_map(
     return out
 
 
+async def get_user_vehicle_scope(user: dict) -> "VehicleScope | None":
+    """The identity-aware visibility scope for a restricted user.
+
+    ``None`` means unrestricted (non-driver roles, and — legacy
+    behaviour kept deliberately — a driver with no assignments at all).
+    """
+    from capabilities.permissions.vehicle_scope import build_vehicle_scope
+    if user.get("role") != "driver":
+        return None
+    trucks = await get_user_vehicle_nums(user)
+    if not trucks:
+        return None
+    tenant = await _get_router().get_tenant(user["account_id"])
+    return await build_vehicle_scope(tenant, user["account_id"], trucks)
+
+
 async def filter_by_assigned_trucks(
     data: list[dict],
     user: dict,
@@ -401,14 +417,21 @@ async def filter_by_assigned_trucks(
 
     Non-driver roles get all data unfiltered.
     Drivers with no truck assignments also get all data (legacy behavior).
+
+    Membership is decided by the identity ladder in
+    ``capabilities/permissions/vehicle_scope.py`` — registry id first,
+    provider id next, exact name last.  The old comparison was a
+    SUBSTRING over display names, which over-matched exactly where it
+    mattered: a driver assigned 230 also saw 2303, and 100 saw trailer
+    AK1001.  These are the rows a driver is ALLOWED to see, so an
+    over-match was a disclosure.
     """
-    if user.get("role") != "driver":
+    scope = await get_user_vehicle_scope(user)
+    if scope is None:
         return data
-    trucks = await get_user_vehicle_nums(user)
-    if not trucks:
-        return data
-    needles = {t.lower() for t in trucks}
-    return [d for d in data if any(n in (d.get(name_key) or "").lower() for n in needles)]
+    if scope.empty:
+        return []
+    return [d for d in data if scope.allows_row(d, name_key=name_key)]
 
 
 def require_permission(feature: str):

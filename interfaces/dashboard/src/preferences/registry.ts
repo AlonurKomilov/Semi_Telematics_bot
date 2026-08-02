@@ -231,7 +231,10 @@ export const DEFS = {
   'notifications.center.filter': def<string>({
     default: '',
     scope: 'synced',
-    sanitize: (v) => (typeof v === 'string' ? v : undefined),
+    // Only the centre's own source keys — a stale value from a renamed
+    // tab must fall back to All, not query a source that no longer exists.
+    sanitize: (v) => (typeof v === 'string'
+      && ['', 'applications', 'team,ai', 'system'].includes(v) ? v : undefined),
     note: 'Last filter used in the notification centre.',
   }),
 

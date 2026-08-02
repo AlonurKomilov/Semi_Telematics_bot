@@ -219,6 +219,23 @@ async def test_feed_source_accepts_a_bucket_list(pg_db):
     assert len(await pg_db.list_inbox_notices(acct, uid, source="")) == 3
 
 
+async def test_applications_is_a_filterable_source(pg_db):
+    """The bell's Applications tab filters on this namespace.  A source the
+    allow-list doesn't know matches NOTHING (never the unfiltered feed), so
+    a missing entry here would quietly show every notice in that tab."""
+    acct, uid = await _seed(pg_db, name="Recruiting Co", tg=7317)
+    await pg_db.add_inbox_notice(
+        acct, uid, category="applications.received", title="new app")
+    await pg_db.add_inbox_notice(acct, uid, category="team.a", title="t")
+
+    got = await pg_db.list_inbox_notices(acct, uid, source="applications")
+    assert [r["title"] for r in got] == ["new app"]
+    assert got[0]["source"] == "applications"
+    # Not swept into Activity's bucket.
+    assert [r["title"] for r in
+            await pg_db.list_inbox_notices(acct, uid, source="team,ai")] == ["t"]
+
+
 async def test_prune_drops_old_rows(pg_db):
     acct, uid = await _seed(pg_db, name="Prune Co", tg=7314)
     await pg_db.add_inbox_notice(acct, uid, category="team.t", title="fresh")

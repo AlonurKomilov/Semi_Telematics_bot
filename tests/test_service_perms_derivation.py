@@ -8,8 +8,15 @@ assistant — is always there.  ``capabilities.permissions.roles`` encodes this
 in ``derive_service_perms``, which sets the inbox SCOPE from the role's vehicle
 scope (but never withholds the inbox) and forces the AI assistant on.
 
-These tests pin that contract: every role keeps the inbox, the scope tracks
-vehicle scope, and neither service can be revoked per-role.
+These tests pin that contract: the inbox scope tracks vehicle scope, and
+neither service can be revoked per-role.
+
+ONE role has no inbox: the vehicle-less recruiter (327bf16 removed recruiter
+vehicle visibility — recruiting never looks at trucks).  The Alerts inbox is
+a VEHICLE-alerts surface, so "no vehicles" honestly means "no vehicle
+alerts".  That is not a lost door: the top-bar notifications bell is
+universal (interfaces/dashboard/src/features/alerts/AlertsLauncher.tsx), and
+a recruiter reads their own bucket there — the Applications tab.
 """
 
 import pytest
@@ -25,9 +32,10 @@ from capabilities.permissions.roles import (
 )
 
 
-# Exact derived (can_alerts_all, can_alerts_vehicle) for each role.  Every role
-# HAS the inbox; only the scope differs, and it tracks vehicle scope:
-# account-wide vehicle visibility → account-wide inbox, otherwise own-vehicle.
+# Exact derived (can_alerts_all, can_alerts_vehicle) for each role.  The scope
+# tracks vehicle scope: account-wide vehicle visibility → account-wide inbox,
+# own-vehicle visibility → own-vehicle inbox, NO vehicle visibility → no
+# vehicle-alerts inbox at all (recruiter).
 EXPECTED_INBOX = {
     Role.OWNER:      (True,  False),
     Role.ADMIN:      (True,  False),
@@ -37,7 +45,9 @@ EXPECTED_INBOX = {
     Role.HR:         (True,  False),
     Role.ACCOUNTING: (True,  False),
     Role.DRIVER:     (False, True),
-    Role.RECRUITER:  (False, True),
+    # No vehicle scope at all → no vehicle-alerts inbox.  The universal
+    # notifications bell (and its Applications tab) is a different surface.
+    Role.RECRUITER:  (False, False),
 }
 
 
@@ -52,14 +62,33 @@ class TestPerRoleDerivation:
                 f"{EXPECTED_INBOX[role]}"
             )
 
-    def test_every_role_keeps_the_inbox(self):
-        """The Alerts inbox is a system service — NO role may be without it.
-        Exactly one scope flag is set for every role."""
+    def test_inbox_is_never_withheld_from_a_role_that_sees_vehicles(self):
+        """The Alerts inbox is a system service: any role with vehicle
+        visibility keeps it, whatever its FEATURES are.  It is never
+        withheld as a per-role toggle — only derived from vehicle scope."""
         for role in Role:
             fs = derive_service_perms(ROLE_PERMISSIONS[role])
+            if not (fs.can_vehicle_all or fs.can_vehicle_vehicle):
+                continue                       # covered by the next test
             assert fs.can_alerts_all or fs.can_alerts_vehicle, (
-                f"{role.value} lost the Alerts inbox — it is a system service"
+                f"{role.value} sees vehicles but lost the Alerts inbox"
             )
+
+    def test_only_the_vehicle_less_role_has_no_inbox(self):
+        """A role with NO vehicle visibility gets no vehicle-alerts inbox —
+        and recruiter is the only such role.  Pinned so that giving another
+        role a vehicle-less shape (or giving recruiter vehicles back) is a
+        deliberate edit here, not a silent surface change."""
+        vehicle_less = {
+            role for role in Role
+            if not (ROLE_PERMISSIONS[role].can_vehicle_all
+                    or ROLE_PERMISSIONS[role].can_vehicle_vehicle)
+        }
+        assert vehicle_less == {Role.RECRUITER}, vehicle_less
+        fs = derive_service_perms(ROLE_PERMISSIONS[Role.RECRUITER])
+        assert not fs.can_alerts_all and not fs.can_alerts_vehicle
+        # The services that ARE unconditional stay unconditional for it.
+        assert fs.can_ai_chat is True and fs.can_digest is True
 
     def test_scopes_are_mutually_exclusive(self):
         """A role is never granted BOTH the account-wide and own-vehicle inbox —

@@ -8,16 +8,30 @@ these helpers.
 from __future__ import annotations
 
 
-def filter_alerts_by_access(alerts: list[dict], vehicle_nums: list[str]) -> list[dict]:
-    """Return only alerts whose vehicle_name matches one of *vehicle_nums*.
+def filter_alerts_by_access(
+    alerts: list[dict],
+    vehicle_nums: list[str],
+    scope=None,
+) -> list[dict]:
+    """Return only alerts the assignment actually covers.
 
     Pass an empty *vehicle_nums* list to receive an empty result (the caller
     has confirmed the user has no assigned vehicles).
+
+    With a ``VehicleScope`` the decision rides the identity ladder
+    (registry id → provider id → exact name).  Without one, exact
+    lowercased equality — never the old substring, which let an
+    assignment of 230 read alerts for 2303.  This wall decides what a
+    driver may SEE, so over-matching here was a disclosure.
     """
+    if scope is not None:
+        if scope.empty:
+            return []
+        return [a for a in alerts if scope.allows_row(a, name_key="vehicle_name")]
     if not vehicle_nums:
         return []
-    needles = [t.lower() for t in vehicle_nums]
+    allowed = {t.strip().lower() for t in vehicle_nums if t}
     return [
         a for a in alerts
-        if any(n in (a.get("vehicle_name") or "").lower() for n in needles)
+        if (a.get("vehicle_name") or "").strip().lower() in allowed
     ]

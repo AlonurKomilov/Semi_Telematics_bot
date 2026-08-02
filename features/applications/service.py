@@ -257,10 +257,41 @@ async def notify_new_application(
             channels = await platform_db.get_application_notify_channels(u.id)
 
             if "dashboard" in channels:
+                # BOTH in-app stores, deliberately (owner decision):
+                #  · application_notifications — the feature's own bell on
+                #    the Applications page, where a reviewer works.
+                #  · notification_inbox — the shared top-bar panel, whose
+                #    Applications tab is how someone NOT on that page
+                #    finds out.  Read-state is per-store; each bell
+                #    clears only its own.
                 try:
                     await platform_db.create_application_notification(
                         account_id, u.id, application_id=application_id,
                         reference=reference, title=title, body=body,
+                    )
+                except Exception as e:
+                    logger.debug("page notif for user %s failed: %s", u.id, e)
+                try:
+                    from capabilities.notifications import (
+                        NotificationContent, notify_user,
+                    )
+                    from features.applications.notifications import (
+                        APPLICATION_RECEIVED,
+                    )
+                    await notify_user(
+                        platform_db, account_id, u.id,
+                        NotificationContent(
+                            title=title, body=body,
+                            category=APPLICATION_RECEIVED,
+                            # Deep-link to the application itself — the
+                            # old table had no url column, so its notices
+                            # could not link anywhere.
+                            url=f"{review_url}?app={application_id}",
+                            meta={"application_id": application_id,
+                                  "reference": reference},
+                        ),
+                        channels=["in_app"],
+                        correlation_key=f"application:{application_id}:{u.id}",
                     )
                 except Exception as e:
                     logger.debug("in-app notif for user %s failed: %s", u.id, e)

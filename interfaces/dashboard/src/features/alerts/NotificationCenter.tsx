@@ -31,9 +31,13 @@ const PAGE = 30;
 // Activity spans the team + ai namespaces (the server takes a bucket list);
 // each row's context chip still says which source it came from, so nothing
 // is lost by not filtering namespace-by-namespace.
-type Filter = '' | 'team,ai' | 'system';
-const FILTERS: { key: Filter; label: string }[] = [
+type Filter = '' | 'applications' | 'team,ai' | 'system';
+// Applications is PERMISSION-gated, not shown to everyone: a bucket a
+// role can never receive is a tab that is always empty.  Same reasoning
+// as the Alerts tab, which only appears for alert-capable roles.
+const FILTERS: { key: Filter; label: string; perm?: string }[] = [
   { key: '', label: 'All' },
+  { key: 'applications', label: 'Applications', perm: 'can_manage_applications' },
   { key: 'team,ai', label: 'Activity' },
   { key: 'system', label: 'System' },
 ];
@@ -41,15 +45,21 @@ const FILTERS: { key: Filter; label: string }[] = [
 export default function NotificationCenter() {
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { hasAny } = useViewPermissions();
+  const { hasAny, ready: permsReady } = useViewPermissions();
   const canAlerts = hasAny('can_alerts_all', 'can_alerts_vehicle');
 
   // Remembered per user (server-backed, localStorage fast-paint) — a
   // dispatcher who lives in one bucket shouldn't re-pick it every visit.
   const { value: filterRaw, setValue: setFilterRaw } =
     usePreference('notifications.center.filter');
-  const filter = filterRaw as Filter;
+  const filterPref = filterRaw as Filter;
   const setFilter = setFilterRaw as (v: Filter) => void;
+  // A permission-gated filter the viewer no longer holds reads as All.
+  // Only once permissions have LOADED — "not loaded" is not "denied", and
+  // a false negative here would silently discard their saved filter.
+  const filterPerm = FILTERS.find((f) => f.key === filterPref)?.perm;
+  const filter: Filter =
+    filterPerm && permsReady && !hasAny(filterPerm) ? '' : filterPref;
   const [notices, setNotices] = useState<InboxNotice[]>([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -126,7 +136,7 @@ export default function NotificationCenter() {
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
         <div className="flex items-center gap-1">
-          {FILTERS.map((f) => (
+          {FILTERS.filter((f) => !f.perm || hasAny(f.perm)).map((f) => (
             <button
               key={f.key || 'all'}
               onClick={() => setFilter(f.key)}

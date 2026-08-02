@@ -768,10 +768,12 @@ def derive_service_perms(fs: FeatureSet) -> FeatureSet:
     own-vehicle scope — it never removes the inbox.
 
     The inbox is a *vehicle*-alerts surface, so it requires SOME vehicle
-    visibility — every real role has either account-wide or own-vehicle scope,
-    so every real role gets it.  Only a malformed/unknown role with no vehicle
-    scope at all (the ``ROLE_PERMISSIONS.get(role, FeatureSet())`` fallback)
-    gets no inbox, preserving the "unknown role grants nothing" contract.
+    visibility.  A role with none gets no inbox — today that is RECRUITER
+    (recruiting never looks at trucks) and any malformed/unknown role (the
+    ``ROLE_PERMISSIONS.get(role, FeatureSet())`` fallback), which preserves
+    the "unknown role grants nothing" contract.  A vehicle-less role has not
+    lost a door: the top-bar notifications bell is universal and carries the
+    buckets that DO concern them (Applications, Activity, System).
     """
     from dataclasses import replace
     has_vehicle = bool(fs.can_vehicle_all or fs.can_vehicle_vehicle)

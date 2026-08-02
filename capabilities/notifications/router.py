@@ -366,8 +366,12 @@ async def get_inbox(
     user: dict = Depends(get_current_user),
 ):
     """Newest-first page of the caller's notices + their unread count.
-    ``source`` filters to one namespace tab (team / system); ``before_id``
-    is keyset pagination."""
+    ``source`` filters to one namespace tab, or a comma-separated bucket of
+    them (``team,ai`` = Activity); ``before_id`` is keyset pagination.
+
+    No permission check on ``source``: inbox rows are per-USER, so asking
+    for a bucket you never receive returns your own empty page, never
+    someone else's notices."""
     from infra.platform import get_platform_db
     db = get_platform_db()
     db_user = await get_current_db_user(user, db)

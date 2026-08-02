@@ -27,8 +27,10 @@ else:
 
 # The only real source namespaces (category prefixes).  Filtering is
 # allow-listed rather than free-text: self-documents the buckets and keeps
-# a junk value from ever reaching the query.
-_SOURCES = frozenset({"team", "ai", "system"})
+# a junk value from ever reaching the query.  A namespace MISSING here has
+# no error to show for itself — its tab silently reads as unfiltered — so
+# registering a new category source means adding it here too.
+_SOURCES = frozenset({"team", "ai", "system", "applications"})
 
 
 class NotificationInboxMixin(_MixinBase):
@@ -65,8 +67,14 @@ class NotificationInboxMixin(_MixinBase):
         # BUCKET ("team,ai") — the UI groups sources into buckets (Activity =
         # team + ai) and must filter by the bucket it names, not by an
         # internal namespace the user never sees.
-        wanted = [s.strip() for s in (source or "").split(",")
-                  if s.strip() in _SOURCES]
+        asked = [s.strip() for s in (source or "").split(",") if s.strip()]
+        wanted = [s for s in asked if s in _SOURCES]
+        if asked and not wanted:
+            # Asked to filter, nothing recognised → match NOTHING.  Falling
+            # through would return the unfiltered feed, so a tab naming an
+            # unregistered source would show every notice as if they were
+            # all its own.
+            return []
         if wanted:
             ph = ", ".join("?" for _ in wanted)
             q += f" AND source IN ({ph})"
