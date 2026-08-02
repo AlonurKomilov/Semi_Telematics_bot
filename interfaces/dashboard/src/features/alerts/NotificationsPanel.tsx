@@ -232,11 +232,15 @@ export function NotificationsPanel(
       </div>
 
       {/* Source tabs — All (merged, default) · Alerts (permission-gated) ·
-          Activity · System.  The All pill's inbox half is the SERVER's
-          exact unread total (same field the bell badge reads); the alert
-          half counts the loaded glance rows.  Per-source pills stay
-          page-approximate. */}
-      <div className="flex items-center gap-1 px-3 py-2 border-b border-border">
+          Applications (permission-gated) · Activity · System.  The All
+          pill's inbox half is the SERVER's exact unread total (same field
+          the bell badge reads); the alert half counts the loaded glance
+          rows.  Per-source pills stay page-approximate.
+
+          Wraps: someone holding BOTH gated tabs (an HR manager) has five
+          pills, which exceed the w-80 popup — wrapping keeps every tab
+          reachable instead of clipping the last one off the edge. */}
+      <div className="flex flex-wrap items-center gap-1 px-3 py-2 border-b border-border">
         <TabPill active={src === 'all'} onClick={() => setSrc('all')} dim={allCount === 0}>
           {/* Show All's total ONLY when more than one source contributes —
               otherwise it just repeats that source's own count and reads as
