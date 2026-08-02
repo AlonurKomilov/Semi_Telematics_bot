@@ -64,15 +64,12 @@ export default function FieldValueInput({ def, value, onChange, ariaLabel }: Pro
       // "$0.58/mile" remain sayable — the hint just gets the right keypad
       // up on a phone.
       inputMode={numeric ? 'decimal' : undefined}
-      // Either a real example or nothing. "—" is reserved for "no value"
-      // in READ mode, so using it as a placeholder made an empty input
-      // look like a filled one showing a dash.
-      placeholder={
-        type === 'pct' ? 'e.g. 80%'
-          : type === 'money' ? 'e.g. $1,400'
-            : type === 'count' ? 'e.g. 2'
-              : undefined
-      }
+      // A real example for THIS field, or nothing. Type-derived examples
+      // read as nonsense at field level — one "e.g. 2" served Minimum Age,
+      // Average Miles per Week and Governed Truck Speed alike. And "—" is
+      // reserved for "no value" in READ mode, so it can never be a
+      // placeholder: an empty input would look like a filled one.
+      placeholder={def?.example ? `e.g. ${def.example}` : undefined}
     />
   );
 }

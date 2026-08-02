@@ -29,6 +29,11 @@ export interface FieldDef {
    *  attached across a rename — see the header note. */
   renamedFrom?: string[];
   type?: FieldType;
+  /** A real example for THIS field, shown as the input placeholder.
+   *  Type-derived examples were nonsense at field level — "e.g. 2" landed
+   *  on Minimum Age, Average Miles per Week and Governed Truck Speed
+   *  alike. Omit rather than invent one. */
+  example?: string;
   /** Sub-heading this field sits under, for sections too long to scan. */
   group?: string;
   /** One line of plain-language clarification, shown under the label. */
@@ -61,50 +66,50 @@ const f = (
 export const SECTIONS: Section[] = [
   {
     key: 'presentation',
-    title: 'Pay, Equipment & Benefits',
+    title: 'What Drivers Get',
     kind: 'rows',
-    blurb: 'What recruiters tell drivers about you. The more of this you fill in, the more accurately you are presented.',
+    blurb: 'Pay, routes and home time, equipment, benefits and orientation \u2014 what recruiters tell drivers about you. The more of this you fill in, the more accurately you are presented.',
     fields: [
       // ── Pay ──────────────────────────────────────────────────────
       // The five pay labels used to be mutually indistinguishable
       // ("Type of Driver Pay" vs "How Are Drivers Paid?"); each now names
       // exactly one dimension and says so in its hint.
-      f('Solo Pay Rate', { group: 'Pay', renamedFrom: ['Pay Scale (Solo)'], hint: 'e.g. $0.58/mile, or 27% of line haul' }),
+      f('Solo Pay Rate', { example: '$0.58/mile', group: 'Pay', renamedFrom: ['Pay Scale (Solo)'], hint: 'e.g. $0.58/mile, or 27% of line haul' }),
       f('Pay Structure', { group: 'Pay', renamedFrom: ['Type of Driver Pay'], hint: 'Cents per mile, percentage, hourly, or salary' }),
       f('Payment Method', { group: 'Pay', renamedFrom: ['How Are Drivers Paid?'], hint: 'Direct deposit, pay card, or cheque' }),
       f('Pay Frequency', { group: 'Pay', renamedFrom: ['When Are Drivers Paid?'], hint: 'Weekly, bi-weekly — and which day' }),
-      f('Average Weekly Pay', { group: 'Pay', type: 'money' }),
+      f('Average Weekly Pay', { example: '$1,400', group: 'Pay', type: 'money' }),
       f('Pay Increase', { group: 'Pay', hint: 'How and when raises happen' }),
-      f('Sign-On Bonus', { group: 'Pay', type: 'money' }),
+      f('Sign-On Bonus', { example: '$2,000', group: 'Pay', type: 'money' }),
       f('Safety Bonus', { group: 'Pay' }),
       f('Breakdown Pay', { group: 'Pay' }),
       f('Layover Pay', { group: 'Pay' }),
       f('Dock Detention Pay', { group: 'Pay' }),
       f('Multi-Stop Pay', { group: 'Pay' }),
-      f('Is Per Diem Optional?', { group: 'Pay', type: 'bool' }),
+      f('Per Diem Optional', { renamedFrom: ['Is Per Diem Optional?'], group: 'Pay', type: 'bool' }),
 
       // ── Routes & home time ───────────────────────────────────────
       f('Driver Types', { group: 'Routes & Home Time', hint: 'Solo, team, owner-operator' }),
       f('Types of Runs', { group: 'Routes & Home Time', hint: 'OTR, regional, dedicated, local' }),
       f('Type of Freight', { group: 'Routes & Home Time' }),
-      f('Home Time / Days Out', { group: 'Routes & Home Time' }),
-      f('Average Miles per Week', { group: 'Routes & Home Time', type: 'count' }),
-      f('Average Length of Haul', { group: 'Routes & Home Time' }),
+      f('Home Time / Days Out', { example: '14 days out, 2 home', group: 'Routes & Home Time' }),
+      f('Average Miles per Week', { example: '2,800', group: 'Routes & Home Time', type: 'count' }),
+      f('Average Length of Haul', { example: '900 miles', group: 'Routes & Home Time' }),
       f('Hiring Areas', { group: 'Routes & Home Time', hint: 'States or regions you hire drivers from' }),
       f('Primary Running Areas', { group: 'Routes & Home Time', hint: 'Where the trucks actually run' }),
-      f('% Drop and Hook', { group: 'Routes & Home Time', type: 'pct' }),
-      f('% No Touch', { group: 'Routes & Home Time', type: 'pct' }),
-      f('% Haz-Mat Loads', { group: 'Routes & Home Time', type: 'pct' }),
+      f('% Drop and Hook', { example: '80%', group: 'Routes & Home Time', type: 'pct' }),
+      f('% No Touch', { example: '95%', group: 'Routes & Home Time', type: 'pct' }),
+      f('% Haz-Mat Loads', { example: '10%', group: 'Routes & Home Time', type: 'pct' }),
       // Was the bare place name "New York City", which is not a question.
-      f('NYC Runs Required?', { group: 'Routes & Home Time', type: 'bool', renamedFrom: ['New York City'], hint: 'Do drivers have to run into New York City?' }),
+      f('NYC Runs Required', { group: 'Routes & Home Time', type: 'bool', renamedFrom: ['NYC Runs Required?', 'New York City'], hint: 'Do drivers have to run into New York City?' }),
 
       // ── Equipment ────────────────────────────────────────────────
       f('Type of Equipment', { group: 'Equipment' }),
-      f('Average Age of Tractor', { group: 'Equipment' }),
+      f('Average Age of Tractor', { example: '2 years', group: 'Equipment' }),
       f('Transmission Type', { group: 'Equipment', hint: 'Automatic, manual, or both' }),
-      f('Governed Truck Speed (mph)', { group: 'Equipment', type: 'count', renamedFrom: ['Truck Speed'] }),
-      f('Is Truck Permanently Assigned?', { group: 'Equipment', type: 'bool' }),
-      f('Can Truck Be Taken Home?', { group: 'Equipment', type: 'bool' }),
+      f('Governed Truck Speed (mph)', { example: '68', group: 'Equipment', type: 'count', renamedFrom: ['Truck Speed'] }),
+      f('Truck Permanently Assigned', { renamedFrom: ['Is Truck Permanently Assigned?'], group: 'Equipment', type: 'bool' }),
+      f('Truck Can Be Taken Home', { renamedFrom: ['Can Truck Be Taken Home?'], group: 'Equipment', type: 'bool' }),
       // "Cameras" alone gets answered "yes"; drivers care which way they point.
       f('In-Cab Cameras', { group: 'Equipment', renamedFrom: ['Cameras'], hint: 'Road-facing only, or driver-facing too?' }),
       f('Inverters / APUs', { group: 'Equipment' }),
@@ -115,10 +120,10 @@ export const SECTIONS: Section[] = [
       f('Toll Cards Provided', { group: 'Equipment', type: 'bool' }),
       f('Type of Fuel Card', { group: 'Equipment' }),
       f('Routing / Fuel-Stop Flexibility', { group: 'Equipment' }),
-      f('24-Hour Dispatch?', { group: 'Equipment', type: 'bool' }),
+      f('24-Hour Dispatch', { renamedFrom: ['24-Hour Dispatch?'], group: 'Equipment', type: 'bool' }),
 
       // ── Benefits ─────────────────────────────────────────────────
-      f('Insurance Starts When?', { group: 'Benefits & Policies' }),
+      f('Insurance Starts', { renamedFrom: ['Insurance Starts When?'], group: 'Benefits & Policies' }),
       f('Life Insurance', { group: 'Benefits & Policies' }),
       f('401(k) Retirement Plan', { group: 'Benefits & Policies' }),
       f('Driver Vacation Info', { group: 'Benefits & Policies' }),
@@ -127,8 +132,8 @@ export const SECTIONS: Section[] = [
 
       // ── Orientation ──────────────────────────────────────────────
       f('Paid Orientation', { group: 'Orientation', type: 'bool' }),
-      f('How Long Is Orientation?', { group: 'Orientation' }),
-      f('Orientation Held Where?', { group: 'Orientation' }),
+      f('Orientation Length', { example: '3 days', renamedFrom: ['How Long Is Orientation?'], group: 'Orientation' }),
+      f('Orientation Location', { renamedFrom: ['Orientation Held Where?'], group: 'Orientation' }),
       f('Orientation Start / End Days', { group: 'Orientation' }),
       f('Lodging Provided', { group: 'Orientation', type: 'bool' }),
       f('Meals Provided', { group: 'Orientation', type: 'bool' }),
@@ -141,25 +146,25 @@ export const SECTIONS: Section[] = [
     kind: 'rows',
     blurb: 'Who you will and will not hire. Recruiters screen against this before sending anyone your way.',
     fields: [
-      f('Minimum Age', { type: 'count' }),
+      f('Minimum Age', { example: '23', type: 'count' }),
       f('Minimum Experience (Tractor-Trailer / OTR)', { hint: 'The detailed rule — the one-line version goes in the summary field above' }),
       // These two were near-identical: a plural COUNT and a singular SEVERITY,
       // both "in 3 years", so neither could be answered confidently.
-      f('Max Moving Violations (last 3 years)', { type: 'count', renamedFrom: ['Moving Violations (max in 3-year period)'], hint: 'How many minor violations you tolerate' }),
-      f('Max Serious Violations (last 3 years)', { type: 'count', renamedFrom: ['Maximum Major Moving Violation (last 3 years)'], hint: 'Reckless, excessive speed, and similar majors' }),
+      f('Max Moving Violations (last 3 years)', { example: '2', type: 'count', renamedFrom: ['Moving Violations (max in 3-year period)'], hint: 'How many minor violations you tolerate' }),
+      f('Max Serious Violations (last 3 years)', { example: '0', type: 'count', renamedFrom: ['Maximum Major Moving Violation (last 3 years)'], hint: 'Reckless, excessive speed, and similar majors' }),
       f('DOT Recordable Accidents', { hint: 'How many, and over what period' }),
-      f('Max Jobs (last 3 years)', { type: 'count', renamedFrom: ['Max. Number of Jobs (last 3 years)'], hint: 'Job-hopping limit, if you have one' }),
+      f('Max Jobs (last 3 years)', { example: '4', type: 'count', renamedFrom: ['Max. Number of Jobs (last 3 years)'], hint: 'Job-hopping limit, if you have one' }),
       // Read as a stance on unemployment BENEFITS; it means employment gaps.
       f('Employment Gaps — Policy', { renamedFrom: ['Policy Against Unemployment'], hint: 'How long a gap between jobs you accept, and whether it must be explained' }),
       // A bare noun with no question in it.
-      f('Do You Consider Previously Terminated Drivers?', { renamedFrom: ['Terminated Applicants'] }),
+      f('Previously Terminated Drivers', { renamedFrom: ['Do You Consider Previously Terminated Drivers?', 'Terminated Applicants'] }),
       f('Policy on License Suspensions', {}),
       f('Criminal Convictions', { hint: 'What disqualifies, and any look-back window' }),
       f('DUI / DWI', { hint: 'Ever, or within a window?' }),
-      f('Is Haz-Mat Required?', { type: 'bool' }),
+      f('Haz-Mat Required', { renamedFrom: ['Is Haz-Mat Required?'], type: 'bool' }),
       f('Other Endorsements Required', {}),
       f('DOT Physical Requirements', {}),
-      f('Long-Form Physical Required Up Front?', { type: 'bool' }),
+      f('Long-Form Physical Required Up Front', { renamedFrom: ['Long-Form Physical Required Up Front?'], type: 'bool' }),
       f('Drug Testing', { hint: 'Type and when — pre-hire, random, hair vs urine' }),
       f('Other Automatic Disqualifiers', { renamedFrom: ['Other Automatic DQs'], type: 'longtext' }),
     ],

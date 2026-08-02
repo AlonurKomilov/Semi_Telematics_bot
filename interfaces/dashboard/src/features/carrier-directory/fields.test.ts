@@ -124,7 +124,10 @@ describe('cached draft written under an OLD template', () => {
     const val = (label: string) => out.find((r) => r.label === label)?.value;
 
     expect(val('Sign-On Bonus')).toBe('$1,000');
-    expect(val('NYC Runs Required?')).toBe('Yes');
+    // Two renames deep: 'New York City' -> 'NYC Runs Required?' ->
+    // 'NYC Runs Required'. The alias chain has to carry a value written
+    // under the ORIGINAL name all the way to the current one.
+    expect(val('NYC Runs Required')).toBe('Yes');
     expect(val('In-Cab Cameras')).toBe('Road-facing only');
     expect(val('Governed Truck Speed (mph)')).toBe('68');
     // Nothing stranded at the tail under a dead label.

@@ -86,7 +86,15 @@ export default function PublicCarrierIntake() {
   const [submitting, setSubmitting] = useState(false);
   const [submitErr, setSubmitErr] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
+  // "Your typing is saved on this device" was asserted once at the top and
+  // never confirmed again, on a form that takes an hour.
+  const [savedAt, setSavedAt] = useState<Date | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Focus the row "+ Add field" just created — it was appended below the
+  // fold, unfocused and unscrolled, so nothing appeared to happen and the
+  // obvious response was to click again and make duplicates.
+  const pendingFocus = useRef<string | null>(null);
+  const [urlWarn, setUrlWarn] = useState<Record<string, string>>({});
 
   // Per-section progress, plus an overall count.  Scoped per section on
   // purpose: one bar over ~74 fields reads "0 of 74" on an empty sheet and
@@ -96,7 +104,9 @@ export default function PublicCarrierIntake() {
   const progress = useMemo(() => {
     const basics = [draft?.website, draft?.video_url, draft?.experience_summary]
       .filter((v) => (v ?? '').trim()).length;
-    const per: Record<string, { filled: number; total: number }> = {
+    const per: Record<string, { filled: number; total: number; extra?: number }> = {
+      // The four intro fields belong to no visible section, so 53 + 17
+      // never reconciled with the footer's 74. They get their own counter.
       basics: { filled: basics, total: 3 },
       application_process: {
         filled: (draft?.application_process ?? '').trim() ? 1 : 0, total: 1,
@@ -104,14 +114,21 @@ export default function PublicCarrierIntake() {
     };
     for (const s of PUBLIC_ROW_SECTIONS) {
       const rows = draft?.rows[s.key] ?? [];
+      const tplLen = (s.fields ?? []).length;
+      // Denominator is the STANDARD schema only. Counting user-created rows
+      // meant "+ Add field" moved the total from 74 to 75 — contributing
+      // more made the bar shrink, which is the exact inverse of a goal
+      // gradient. Customs are reported beside the fraction, not inside it.
       per[s.key] = {
-        filled: rows.filter((r) => r.value.trim() && r.label.trim()).length,
-        total: rows.length,
+        filled: rows.slice(0, tplLen).filter((r) => r.value.trim()).length,
+        total: tplLen,
+        extra: rows.slice(tplLen).filter((r) => r.value.trim() && r.label.trim()).length,
       };
     }
     const filled = Object.values(per).reduce((n, x) => n + x.filled, 0);
     const total = Object.values(per).reduce((n, x) => n + x.total, 0);
-    return { per, filled, total };
+    const extra = Object.values(per).reduce((n, x) => n + (x.extra ?? 0), 0);
+    return { per, filled, total, extra };
   }, [draft]);
 
   useEffect(() => {
@@ -172,7 +189,10 @@ export default function PublicCarrierIntake() {
   const persist = useCallback((d: Draft) => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      try { localStorage.setItem(storageKey, JSON.stringify(d)); } catch { /* full/blocked */ }
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(d));
+        setSavedAt(new Date());
+      } catch { /* full/blocked — the indicator simply doesn't advance */ }
     }, 400);
   }, [storageKey]);
 
@@ -184,8 +204,22 @@ export default function PublicCarrierIntake() {
       const next = { ...d, rows: { ...d.rows, [sec]: d.rows[sec].map((r, i) => (i === idx ? { ...r, ...patch } : r)) } };
       persist(next); return next;
     });
-  const addRow = (sec: string) =>
-    setDraft((d) => (d ? { ...d, rows: { ...d.rows, [sec]: [...d.rows[sec], { label: '', value: '' }] } } : d));
+  const addRow = (sec: string) => {
+    setDraft((d) => {
+      if (!d) return d;
+      pendingFocus.current = `${sec}:${d.rows[sec].length}`;
+      return { ...d, rows: { ...d.rows, [sec]: [...d.rows[sec], { label: '', value: '' }] } };
+    });
+  };
+
+  useEffect(() => {
+    const key = pendingFocus.current;
+    if (!key) return;
+    pendingFocus.current = null;
+    const el = document.querySelector<HTMLInputElement>(`[data-newrow="${key}"]`);
+    el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    el?.focus();
+  }, [draft]);
   const removeRow = (sec: string, idx: number) =>
     setDraft((d) => {
       if (!d) return d;
@@ -195,6 +229,19 @@ export default function PublicCarrierIntake() {
 
   const submit = async () => {
     if (!draft) return;
+    // The overwrite consequence is disclosed in the intro bullets and then
+    // never repeated at the moment it applies. Honest disclosure an hour
+    // earlier is not the same as a safe overwrite — and Send was fully
+    // enabled at 0 of 74 with no caution that an empty sheet transmits.
+    const lines = [`You're sending ${progress.filled} of ${progress.total} fields.`];
+    if (progress.filled === 0) {
+      lines.push('', 'Nothing is filled in yet — this would send an empty profile.');
+    }
+    if (alreadySubmitted) {
+      lines.push('', 'This replaces the version you sent earlier.');
+    }
+    lines.push('', 'Continue?');
+    if (!confirm(lines.join('\n'))) return;
     setSubmitting(true);
     setSubmitErr('');
     try {
@@ -228,8 +275,9 @@ export default function PublicCarrierIntake() {
 
   if (state === 'loading') {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3">
         <Loader2 size={24} className="animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Loading your saved answers…</p>
       </div>
     );
   }
@@ -276,7 +324,7 @@ export default function PublicCarrierIntake() {
           <CheckCircle2 size={24} className="mx-auto text-ok" />
           <h1 className="mt-4 text-lg font-semibold text-foreground">Thank you!</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Your carrier profile was sent to {agency || 'the recruiting team'}.
+            Your profile was sent to {agency || 'the recruiting team'}.
             You can reopen this link to revise your answers while it stays active.
           </p>
         </div>
@@ -286,8 +334,32 @@ export default function PublicCarrierIntake() {
 
   if (!draft) return null;
 
+  const pct = progress.total ? Math.round((progress.filled / progress.total) * 100) : 0;
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
+      {/* Sticky rail: the only progress signal used to live at the very
+          bottom of a ~4,000px page, so during the actual work no progress
+          was ever visible and Send was a long scroll away. */}
+      <div className="sticky top-0 z-30 -mx-4 mb-6 border-b border-border bg-background/95 px-4 py-2 backdrop-blur">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="h-1.5 min-w-32 flex-1 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${pct}%` }} />
+          </div>
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
+            {progress.filled} of {progress.total}
+            {progress.extra > 0 && ` · +${progress.extra} of your own`}
+          </span>
+          <span className="whitespace-nowrap text-2xs text-muted-foreground">
+            {savedAt
+              ? `Saved ${savedAt.toLocaleTimeString()} · this browser only`
+              : 'Saves on this device as you type'}
+          </span>
+          <Button size="sm" onClick={submit} disabled={submitting}>
+            {submitting ? 'Sending…' : alreadySubmitted ? 'Send update' : 'Send'}
+          </Button>
+        </div>
+      </div>
       {/* Header */}
       <div className="mb-8">
         {/* Always the document type, so this slot means one thing whether
@@ -306,6 +378,12 @@ export default function PublicCarrierIntake() {
           recruiters present your company accurately to driver candidates. Any
           field can be left blank.
         </p>
+        {!alreadySubmitted && progress.filled > 0 && (
+          <p className={`mt-3 rounded-md border px-3 py-2 text-sm ${toneClasses('info')}`}>
+            Welcome back — your {progress.filled} saved answer{progress.filled === 1 ? '' : 's'}
+            {' '}are still here on this device. You haven&rsquo;t sent the profile yet.
+          </p>
+        )}
         {alreadySubmitted && (
           <p className={`mt-3 rounded-md border px-3 py-2 text-sm ${toneClasses('ok')}`}>
             You already sent this sheet. Your answers are below — change
@@ -318,28 +396,60 @@ export default function PublicCarrierIntake() {
             we had no way to keep — a forwarded link works for whoever gets
             it, and the last submit silently wins. */}
         <ul className="mt-3 flex flex-col gap-1 text-xs text-muted-foreground">
-          <li>· Your answers go only to the recruiting team that sent you this link. They are not published.</li>
-          <li>· Anyone who opens this link can see and change these answers, and the newest submission replaces the previous one — forward it only inside your company.</li>
+          <li>· Your profile goes only to the recruiting team that sent you this link. It is not published.</li>
+          <li>· Anyone who opens this link can see and change this profile, and the newest send replaces the previous one — forward it only inside your company.</li>
           <li>· Your typing is saved on this device as you go, so closing the tab loses nothing. It is not saved on your other devices.</li>
           <li>· Questions? Reply to the email that brought you here and it reaches the recruiter who sent it.</li>
         </ul>
       </div>
 
-      {/* Basics */}
-      <div className="mb-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <label className="flex flex-col gap-1">
-          <span className={capsLabel}>Website</span>
-          <Input value={draft.website} onChange={(e) => update({ website: e.target.value })} placeholder="https://…" />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className={capsLabel}>Company video URL</span>
-          <Input value={draft.video_url} onChange={(e) => update({ video_url: e.target.value })} placeholder="https://…" />
-        </label>
-        <label className="flex flex-col gap-1 sm:col-span-2">
-          <span className={capsLabel}>Accepted experience levels</span>
-          <Input value={draft.experience_summary} onChange={(e) => update({ experience_summary: e.target.value })}
-            placeholder="e.g. 2 years verifiable OTR in the past 3 years" />
-        </label>
+      {/* Basics — the SAME label-left / control-right row template every
+          other field uses. This block used to stack label-above-input in
+          grey ALL-CAPS, giving the page a third layout grammar and making
+          field labels visually identical to group headers 300px later. */}
+      <div className="mb-8 flex flex-col gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-lg font-semibold text-foreground">About your company</p>
+          <span className="text-xs text-muted-foreground">
+            {progress.per.basics.filled} of {progress.per.basics.total}
+          </span>
+        </div>
+        {([
+          ['website', 'Website', 'https://…'],
+          ['video_url', 'Company video URL', 'https://…'],
+          ['experience_summary', 'Accepted experience levels',
+            'e.g. 2 years verifiable OTR in the past 3 years'],
+        ] as const).map(([key, label, ph]) => (
+          <div key={key} className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(0,14rem)_1fr_auto]">
+            <span className="flex flex-col justify-center text-sm text-foreground">
+              {label}
+              {key !== 'experience_summary' && urlWarn[key] && (
+                <span className="text-xs text-danger">{urlWarn[key]}</span>
+              )}
+            </span>
+            <Input
+              value={draft[key]}
+              placeholder={ph}
+              onChange={(e) => {
+                update({ [key]: e.target.value } as Partial<Draft>);
+                if (urlWarn[key]) setUrlWarn((w) => ({ ...w, [key]: '' }));
+              }}
+              onBlur={(e) => {
+                if (key === 'experience_summary') return;
+                const v = e.target.value.trim();
+                // Soft, never blocking: a typo'd URL used to sail through
+                // and get stored as "https://not a url".
+                setUrlWarn((w) => ({
+                  ...w,
+                  [key]: v && !/^(https?:\/\/)?[^\s.]+\.[^\s]{2,}$/.test(v)
+                    ? "That doesn't look like a web address — check it before sending."
+                    : '',
+                }));
+              }}
+            />
+            <span />
+          </div>
+        ))}
       </div>
 
       {/* How to submit drivers */}
@@ -362,8 +472,11 @@ export default function PublicCarrierIntake() {
               <div className="flex items-center gap-2">
                 {/* Per-section, so finishing 13 pay fields is a visible win
                     rather than 13/74 of an unmoving bar. */}
-                <span className="text-xs text-muted-foreground">{p.filled} of {p.total}</span>
-                <Button size="xs" variant="ghost" onClick={() => addRow(s.key)}>
+                <span className="text-xs text-muted-foreground">
+                  {p.filled} of {p.total}
+                  {(p.extra ?? 0) > 0 && ` · +${p.extra} of your own`}
+                </span>
+                <Button size="xs" variant="outline" onClick={() => addRow(s.key)}>
                   <Plus size={14} /> Add field
                 </Button>
               </div>
@@ -386,6 +499,7 @@ export default function PublicCarrierIntake() {
                         </span>
                       ) : (
                         <Input value={r.label} placeholder="Field name" aria-label="Custom field name"
+                          data-newrow={`${s.key}:${i}`}
                           onChange={(e) => setRow(s.key, i, { label: e.target.value })} />
                       )}
                       {/* The label is a sibling span, not a wrapping <label>,
@@ -419,7 +533,7 @@ export default function PublicCarrierIntake() {
             />
           </div>
           <span className="whitespace-nowrap text-xs text-muted-foreground">
-            {progress.filled} of {progress.total} filled
+            {progress.filled} of {progress.total} profile fields
           </span>
         </div>
         <div className="flex flex-col items-end gap-2">
