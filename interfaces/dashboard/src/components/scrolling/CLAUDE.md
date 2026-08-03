@@ -121,6 +121,50 @@ native bar spans the whole container, implying the frozen columns scroll
 too. **No pinned columns → use a plain scroll region and the browser's
 own bar**, which `index.css` already themes.
 
+### A painted bar needs a lane — reserve `V_BAR_GUTTER`
+
+`ScrollbarV` is an absolute overlay (`right-0.5 w-2`). Painting is all
+it does — it does **not** take layout space the way a native bar does,
+so with nothing reserved it lands on top of whatever sits at the
+scrollport's right edge. On a table wide enough to need the bar, that is
+a column of real values: the Loads grid showed the Source column already
+clipped by the viewport, with a scrollbar drawn down the middle of what
+was left. Two things eating the same column read as one broken
+component.
+
+So a surface that renders `ScrollbarV` must keep `V_BAR_GUTTER` (12px =
+`w-2` + `right-0.5` + air) clear on its right:
+
+```tsx
+const vGutter = bodyScrolls && overflow.y ? V_BAR_GUTTER : 0;
+<div className="relative group/grid" style={vGutter ? { paddingRight: vGutter } : undefined}>
+```
+
+**Padding on the WRAPPER, not the scroller** — one line that gets three
+things right at once: the scrollport shrinks (nothing renders under the
+bar), an in-flow `ScrollbarH` shrinks with it (the two bars stay flush),
+and the absolutely-positioned `ScrollbarV` is placed against the padding
+box, so it lands *inside* the gutter without being told about it.
+
+Gate it on overflow actually existing. `ScrollbarV` returns `null` with
+nothing to scroll, so an ungated gutter bills every short grid 12 blank
+pixels for a bar it never draws.
+
+An **overlay** `ScrollbarH` still needs `gutterRight={vGutter}` — it is
+placed against that same padding box, so it must shift left to end where
+the scrollport ends. Position only: the track is measured from
+`clientWidth`, which the reservation already shrank, so subtracting the
+gutter there too would count it twice. A `flow` bar ignores it, being
+inside the padded content box already.
+
+**No fade at the clipped edge.** A right-edge gradient was tried on the
+record grid to mark the cut and removed the same week: it veils real
+data whenever the table overflows, *including* when you are already
+scrolled to the end and there is nothing more to promise. The horizontal
+bar below the rows already says "this scrolls sideways" — a clean hard
+clip plus a visible bar is what MUI does and what reads as deliberate.
+The fade stays in `DrillDialog`, which shows no bar at all.
+
 ### Hide the native bar; do NOT switch the axis off
 
 Both grids ran `overflow-x: hidden` on the reasoning that `overflow-x:

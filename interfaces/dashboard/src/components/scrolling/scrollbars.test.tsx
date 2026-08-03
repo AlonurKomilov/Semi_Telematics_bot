@@ -22,7 +22,9 @@ globalThis.ResizeObserver = class {
   observe() {} unobserve() {} disconnect() {}
 } as unknown as typeof ResizeObserver;
 
-import { ScrollbarH, ScrollbarV, useWheelToHorizontal } from './scrollbars';
+import {
+  ScrollbarH, ScrollbarV, useWheelToHorizontal, V_BAR_GUTTER,
+} from './scrollbars';
 
 /** A container that overflows on both axes and records scrollLeft. */
 function makeScroller() {
@@ -173,5 +175,47 @@ describe('the thumb drag uses pointer capture', () => {
     render(<><Bridge el={el} /><ScrollbarH el={el} /></>);
     const thumb = document.querySelector('[style*="width"]') as HTMLElement;
     expect(thumb.className).toContain('touch-none');
+  });
+});
+
+describe('the vertical bar has a lane of its own', () => {
+  // The bar is an absolute overlay, so without a reserved gutter it is
+  // painted over whatever is at the scrollport's right edge — on a
+  // table wide enough to need a bar, a column of real values.  Loads
+  // showed it: the Source column clipped by the viewport, with a
+  // scrollbar down the middle of what was left.
+  it('is narrower than the space a caller must reserve for it', () => {
+    const el = makeScroller();
+    const { container } = render(<ScrollbarV el={el} />);
+    const bar = container.firstElementChild as HTMLElement;
+    // w-2 (8px) at right-0.5 (2px) — the reservation must cover both,
+    // or the bar hangs back over the content it was moved off.
+    expect(bar.className).toContain('w-2');
+    expect(bar.className).toContain('right-0.5');
+    expect(V_BAR_GUTTER).toBeGreaterThanOrEqual(8 + 2);
+  });
+
+  // An OVERLAY horizontal bar is placed against the wrapper's padding
+  // box, which still contains the gutter — so it has to shift left by
+  // it to end where the scrollport ends, or the two bars cross.
+  it('shifts an overlay horizontal bar clear of the reserved lane', () => {
+    const el = makeScroller();
+    const { container } = render(
+      <ScrollbarH el={el} insetRight={20} gutterRight={V_BAR_GUTTER} />,
+    );
+    const bar = container.firstElementChild as HTMLElement;
+    expect(bar.style.right).toBe(`${20 + V_BAR_GUTTER}px`);
+  });
+
+  // A flow bar is already inside the padded content box.  Shifting it
+  // again would inset it twice and leave it short of the scrollport.
+  it('leaves a flow horizontal bar alone — it is already inside the padding', () => {
+    const el = makeScroller();
+    const { container } = render(
+      <ScrollbarH el={el} insetRight={20} gutterRight={V_BAR_GUTTER} flow />,
+    );
+    const bar = container.firstElementChild as HTMLElement;
+    expect(bar.style.marginRight).toBe('20px');
+    expect(bar.style.right).toBe('');
   });
 });

@@ -76,7 +76,7 @@ import PivotView from './pivot/PivotView';
 import PivotPanel from './pivot/PivotPanel';
 import { prunePivotModel, pivot, pivotToCsvRows, type PivotModel } from './pivot/pivot';
 import {
-  useOverflow, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR,
+  useOverflow, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR, V_BAR_GUTTER,
   useScrollRegion,
 } from '../scrolling';
 import { derivePivotDimensions } from './pivot/derived';
@@ -2894,6 +2894,15 @@ export default function DataGrid({
   // track spans the centre region; thumb width is proportional to
   // the visible-to-total ratio, with a floor so it stays grabbable.
   const needsHScroll = overflow.x;
+  // Keep the vertical bar off the data.  It is an absolute overlay, so
+  // with nothing reserved it paints down the middle of whatever sits at
+  // the scrollport's right edge — on a table wide enough to need it,
+  // that is a column of real values (the Loads grid's Source column,
+  // already clipped by the viewport, with a bar drawn through what was
+  // left).  Reserved only when the bar actually renders: ScrollbarV
+  // returns null without vertical overflow, and a short grid should not
+  // pay 12 blank pixels for a bar it never draws.
+  const vGutter = bodyScrolls && overflow.y ? V_BAR_GUTTER : 0;
 
   // CSV export — visible columns in current display order, filtered
   // + sorted rows.  Filename uses ``tableId`` + today's local date so
@@ -3616,7 +3625,10 @@ export default function DataGrid({
          page's own scroll region takes over instead.  A COLUMN, because
          under fillHeight the horizontal scrollbar stops being an overlay
          and becomes the row below the body (see below). */
-      <div className={cn('relative group/grid', fillHeight && 'flex flex-1 flex-col min-h-[16rem]')}>
+      <div
+        className={cn('relative group/grid', fillHeight && 'flex flex-1 flex-col min-h-[16rem]')}
+        style={vGutter ? { paddingRight: vGutter } : undefined}
+      >
       {/* The scroll REGION contract comes from components/scrolling: it
           owns the overflow on both axes, focusability + the landmark
           name, overscroll containment, and the scroll-padding that keeps
@@ -4173,33 +4185,6 @@ export default function DataGrid({
           )}
         </table>
       </div>
-      {/* Right-edge fade — the AFFORDANCE, not the scrolling.
-          A table wider than the card clips at its rounded edge, so the
-          last column arrives as a header truncated to "S…" and cells cut
-          mid-word through "Datatru".  That reads as a RENDERING FAULT
-          rather than as content continuing, and the complaint it
-          produces is "the last column is half hidden" — which it is, but
-          not because anything is broken.  A fade says "there is more
-          this way" in the one place the eye already is.
-          Same fix, same reasoning as the pivot's DrillDialog, which
-          solved it for a 6-column dialog and never carried it to the
-          grid, where the tables are far wider.
-          Driven by ``useOverflow`` — booleans from a ResizeObserver,
-          never scroll position: subscribing the grid to scroll would
-          re-render every row on every frame, which is the thing that
-          froze the tab.  So the fade is shown whenever the table
-          overflows, not only when scroll REMAINS; at the far right it
-          veils the last column's final few pixels through a gradient to
-          transparent, which costs less than a per-frame re-render.
-          Its own inset is the pinned-right width: a frozen column does
-          not scroll, so fading it would be a lie. */}
-      {overflow.x && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-y-0 z-20 w-8 bg-gradient-to-l from-card to-transparent"
-          style={{ right: pinnedRightWidth || 0 }}
-        />
-      )}
       {/* Scrollbars — one shared implementation for the record list and
           the pivot matrix (./scrollbars.tsx), which is where the reasons
           live: a bar over only the scrollable region so pinned columns
@@ -4212,6 +4197,7 @@ export default function DataGrid({
         el={scrollEl}
         insetLeft={pinnedLeftWidth}
         insetRight={pinnedRightWidth}
+        gutterRight={vGutter}
         flow={!!fillHeight}
       />
       {bodyScrolls && (

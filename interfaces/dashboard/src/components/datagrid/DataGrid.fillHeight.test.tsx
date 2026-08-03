@@ -65,6 +65,7 @@ vi.mock('../../preferences', async () => {
   };
 });
 
+import { V_BAR_GUTTER } from '../scrolling';
 import DataGrid from './DataGrid';
 
 interface Row extends Record<string, unknown> { id: number; type: string; name: string }
@@ -316,5 +317,49 @@ describe('measurement survives the pivot round-trip', () => {
     expect(before.isConnected).toBe(false);
     // ...and the grid is measuring THAT one, not the corpse.
     expect(observed).toContain(after);
+  });
+});
+
+/** jsdom reports 0 for every dimension, so ``useOverflow`` can never see
+ *  overflow on its own.  Stub the two properties it reads, for the life
+ *  of one test. */
+function withVerticalOverflow(run: () => void) {
+  const proto = HTMLElement.prototype;
+  const keep = {
+    scrollHeight: Object.getOwnPropertyDescriptor(proto, 'scrollHeight'),
+    clientHeight: Object.getOwnPropertyDescriptor(proto, 'clientHeight'),
+  };
+  Object.defineProperty(proto, 'scrollHeight', { value: 500, configurable: true });
+  Object.defineProperty(proto, 'clientHeight', { value: 100, configurable: true });
+  try { run(); } finally {
+    // These live on Element.prototype, so there is no OWN descriptor to
+    // put back — the stub has to be deleted or it shadows the real one
+    // for every later test in the file.
+    for (const k of ['scrollHeight', 'clientHeight'] as const) {
+      if (keep[k]) Object.defineProperty(proto, k, keep[k]!);
+      else delete (proto as unknown as Record<string, unknown>)[k];
+    }
+  }
+}
+
+describe('the vertical bar gets a lane, instead of sitting on the data', () => {
+  // It is an absolute overlay, so with nothing reserved it is painted
+  // over whatever is at the scrollport's right edge — and on a table
+  // wide enough to need the bar, that is a column of real values.  The
+  // Loads grid showed it exactly: the Source column, already clipped by
+  // the viewport, with a scrollbar drawn through what was left.
+  it('reserves the gutter once the body actually overflows', () => {
+    withVerticalOverflow(() => {
+      render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
+      const wrapper = region().parentElement as HTMLElement;
+      expect(wrapper.style.paddingRight).toBe(`${V_BAR_GUTTER}px`);
+    });
+  });
+
+  // ScrollbarV returns null with nothing to scroll, so a short grid must
+  // not pay 12 blank pixels for a bar that never draws.
+  it('reserves nothing when there is no vertical overflow', () => {
+    render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
+    expect((region().parentElement as HTMLElement).style.paddingRight).toBe('');
   });
 });
