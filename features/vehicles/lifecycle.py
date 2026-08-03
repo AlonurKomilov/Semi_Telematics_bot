@@ -246,7 +246,9 @@ register_dataset(IngestDataset(
     capability="vehicle_faults",
     cadence={"interval_min": 2},
     run=_run_vehicle_faults,
-    tables=("vehicle_fault_snapshot",),
+    # Both tables this run writes.  fault_snapshot stays FIRST — the
+    # watchdog's freshness probe reads tables[0].
+    tables=("vehicle_fault_snapshot", "vehicle_fault_detail"),
     freshness_sla_min=60,
     # A fleet with nothing broken reports nothing — an honest zero, not
     # an outage.  This is the dataset the watchdog must never cry over.

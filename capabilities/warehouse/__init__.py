@@ -7,8 +7,8 @@ facade); the generic build/delete machinery lives in
 registers with.  This umbrella holds no shared code yet — the aggregation is
 always domain-specific — so it's just the home for the warehouses themselves.
 
-  * ``telemetry`` — the vehicle telemetry warehouse (live state → 5-min →
-    hourly → daily tiers; health, faults, weather, efficiency facade).
+  * ``telemetry`` — the vehicle telemetry warehouse (live → minute →
+    hour → day → week tiers; health, faults, weather, efficiency facade).
 
 A second analytical domain (e.g. scorecards) becomes a sibling sub-package and
 reuses the same ``data_lifecycle`` engines.
