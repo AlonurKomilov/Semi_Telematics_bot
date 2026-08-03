@@ -86,6 +86,7 @@ DECLARATION_MODULES: tuple[str, ...] = (
     "features.settings.activity",       # user/invite/role/company/schedule/account
     "features.coaching.activity",
     "features.driver_pay.activity",
+    "features.applications.activity",   # hiring decisions (FMCSA audit trail)
     "capabilities.integrations.activity",
     "capabilities.notifications.activity",   # alert_type + alert_topic
 )

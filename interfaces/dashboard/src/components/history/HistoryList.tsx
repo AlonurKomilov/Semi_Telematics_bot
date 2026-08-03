@@ -67,6 +67,11 @@ export const ACTION_LABEL: Record<string, string> = {
   user_quiet_hours_set: 'Personal working hours set',
   user_assigned_work_hours_set: 'Working-hours schedule assigned',
   company_assignment: 'Company access changed',
+  // Driver applications (hiring decisions — FMCSA audit surface)
+  application_status_changed: 'Stage changed',
+  application_check_completed: 'Pre-hire check completed',
+  application_check_cleared: 'Pre-hire check un-ticked',
+  application_notes_updated: 'Recruiter notes edited',
 };
 
 export function actionLabel(action: string): string {
@@ -99,6 +104,7 @@ export const ENTITY_LABEL: Record<string, string> = {
   coaching: 'Coaching',
   driver_pay_run: 'Driver pay run',
   driver: 'Driver',
+  driver_application: 'Driver application',
   integration: 'Integration',
 };
 

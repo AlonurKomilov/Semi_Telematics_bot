@@ -43,8 +43,12 @@ from fastapi import (
 )
 from pydantic import BaseModel, Field
 
+from capabilities.activity_trail import new_group_id, record_simple
+from features.applications import dqf
+from features.applications.sidecar import refresh_sidecar
 from interfaces.api.deps import (
-    get_platform_db, require_permission, get_current_db_user,
+    get_platform_db, get_tenant_db, require_permission,
+    require_permission_any, get_current_db_user,
 )
 from interfaces.api.rate_limit import limiter
 from infra.file_safety import validate_upload
@@ -68,6 +72,41 @@ def _client_ip(request: Request) -> str:
 
 
 # ── Public: submit an application ───────────────────────────────────
+
+
+def _discard_docs(store, bucket: str, docs: dict, reference: str) -> None:
+    """Delete documents stored for an application that will not exist.
+
+    THE LEAK, closed.  Documents are stored BEFORE the row that
+    references them.  When the write that follows failed, every uploaded
+    file stayed on disk with nothing pointing at it — and nothing ever
+    cleaned up, because applications have no delete path at all.  109
+    abandoned folders accumulated that way, each holding a real
+    applicant's CDL scans and medical certificate: PII we had no
+    consent-backed reason to keep, invisible to every retention window
+    because no row carried a date.
+
+    Best-effort and never masking the original failure — the applicant
+    gets the error either way; this only decides whether their documents
+    linger.
+
+    ``store.delete`` reaches the customer's Drive on a gdrive backend,
+    which the server-local-only rule otherwise forbids.  It is right on
+    this path and nowhere else: this compensates OUR failed write,
+    seconds old, for a file no row references and no human has seen —
+    not pruning data they own.  Leaving unclaimed applicant PII in their
+    Drive would be the worse outcome.
+    """
+    for slot, stored in (docs or {}).items():
+        if not stored:
+            continue
+        try:
+            store.delete(bucket, stored.rsplit("/", 1)[-1])
+        except Exception:
+            logger.warning(
+                "orphan cleanup failed for %s ref=%s — file left on disk",
+                slot, reference,
+            )
 
 
 @router.post("/apply")
@@ -104,9 +143,15 @@ async def submit_application(
         data = json.loads(application)
     except (ValueError, TypeError):
         raise HTTPException(status_code=422, detail="Malformed application payload")
+    # Detached BEFORE the text caps: a base64 signature is far longer
+    # than MAX_TEXTAREA and capping it chopped it into invalid base64.
+    sig_data_url = service.pop_signature_data_url(data)
     data = service.cap_strings(data)
     try:
         service.validate_application(data)
+        # Decoded HERE, before step 3 stores anything, so rejecting a
+        # bad signature cannot orphan the documents that step writes.
+        sig_bytes = service.signature_bytes(data.get("consents") or {}, sig_data_url)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 
@@ -160,17 +205,20 @@ async def submit_application(
             logger.exception("application doc store failed slot=%s ref=%s", slot, reference)
             raise HTTPException(status_code=500, detail="Could not store uploaded document.")
 
-    # 4. Signature canvas (draw mode) — validate it's a real PNG, store it.
-    consents = data.get("consents") or {}
-    sig_data_url = consents.get("sigDataUrl")
-    if consents.get("sigMode") == "draw" and sig_data_url:
-        sig_bytes = service.decode_data_url(sig_data_url)
-        ok, mime, _ = validate_upload(sig_bytes or b"", max_bytes=2 * 1024 * 1024)
-        if ok and mime == "image/png" and sig_bytes:
-            try:
-                docs["signature"] = store.put(bucket, "signature.png", sig_bytes)
-            except Exception:
-                logger.exception("signature store failed ref=%s", reference)
+    # 4. Signature canvas (draw mode) — already decoded + validated above.
+    #    A store failure is NOT swallowed: an application recorded as
+    #    signed whose signature never landed is the defect this whole
+    #    path exists to prevent, and it is invisible afterwards.
+    if sig_bytes:
+        try:
+            docs["signature"] = store.put(bucket, "signature.png", sig_bytes)
+        except Exception:
+            logger.exception("signature store failed ref=%s", reference)
+            _discard_docs(store, bucket, docs, reference)
+            raise HTTPException(
+                status_code=500,
+                detail="Could not save your signature. Please try again.",
+            )
 
     # 5. Persist (storage layer encrypts DOB/SSN).
     try:
@@ -181,33 +229,7 @@ async def submit_application(
         )
     except Exception:
         logger.exception("create_driver_application failed ref=%s acct=%s", reference, account_id)
-        # THE LEAK, closed.  Documents are stored in steps 3-4, BEFORE the
-        # row that references them exists.  When this create failed, every
-        # uploaded file stayed on disk with nothing pointing at it — and
-        # nothing ever cleaned up, because applications have no delete
-        # path at all.  109 abandoned folders accumulated that way, each
-        # holding a real applicant's CDL scans and medical certificate:
-        # PII we had no consent-backed reason to keep, invisible to every
-        # retention window because no row carried a date.
-        #
-        # Best-effort and never masking the original failure — the
-        # applicant gets the 500 either way; this only decides whether
-        # their documents linger.
-        #
-        # ``store.delete`` reaches the customer's Drive on a gdrive
-        # backend, which the server-local-only rule otherwise forbids.
-        # It is right here and nowhere else: this is compensating OUR
-        # failed write, seconds old, for a file no row references and no
-        # human has seen — not pruning data they own.  Leaving unclaimed
-        # applicant PII in their Drive would be the worse outcome.
-        for slot, stored in (docs or {}).items():
-            try:
-                store.delete(bucket, stored.rsplit("/", 1)[-1])
-            except Exception:
-                logger.warning(
-                    "orphan cleanup failed for %s ref=%s — file left on disk",
-                    slot, reference,
-                )
+        _discard_docs(store, bucket, docs, reference)
         raise HTTPException(status_code=500, detail="Could not save your application. Please try again.")
 
     # 5b. Enqueue each stored document for cloud sync (hybrid accounts
@@ -1129,6 +1151,7 @@ async def set_status(
     body: StatusRequest,
     user: dict = Depends(require_permission("can_manage_applications")),
     platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
 ):
     if body.status not in service.VALID_STATUSES:
         raise HTTPException(status_code=422, detail="Invalid status")
@@ -1176,6 +1199,19 @@ async def set_status(
     )
     if not ok:
         raise HTTPException(status_code=404, detail="Application not found")
+    # The row keeps only its LATEST transition — status, reviewed_by and
+    # reviewed_at are overwritten in place — so without this the answer to
+    # "when was this driver approved, by whom, and was anything reversed"
+    # was unrecoverable.  That is a question FMCSA audits ask after the
+    # fact, and it is what lets the DQF sidecar show how an application
+    # reached its stage rather than only asserting the stage.
+    await record_simple(
+        platform_db, user["account_id"], reviewer,
+        "application_status_changed", "driver_application", app_id,
+        changes={"status": {"old": current, "new": body.status}},
+    )
+    # The DQF in the carrier's own storage must not contradict the row.
+    await refresh_sidecar(tenant_db, platform_db, user["account_id"], app_id)
     return {"status": body.status}
 
 
@@ -1208,6 +1244,7 @@ async def bulk_set_status(
         pass
 
     acct = user["account_id"]
+    group = new_group_id()
     updated: list[int] = []
     skipped: list[dict] = []
     for app_id in body.ids[:200]:   # bounded
@@ -1226,6 +1263,15 @@ async def bulk_set_status(
             skipped.append({"id": app_id, "reason": "needs vetting checks"})
             continue
         await platform_db.update_application_status(acct, app_id, body.status, reviewed_by=reviewer)
+        # One group_id for the whole bulk action, so the trail can show
+        # "these nine were approved together" rather than nine unrelated
+        # decisions that happen to share a timestamp.
+        await record_simple(
+            platform_db, acct, reviewer,
+            "application_status_changed", "driver_application", app_id,
+            changes={"status": {"old": current, "new": body.status}},
+            group_id=group,
+        )
         updated.append(app_id)
     return {"updated": updated, "skipped": skipped}
 
@@ -1240,10 +1286,26 @@ async def set_notes(
     body: NotesRequest,
     user: dict = Depends(require_permission("can_manage_applications")),
     platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
 ):
     ok = await platform_db.set_application_notes(user["account_id"], app_id, body.notes)
     if not ok:
         raise HTTPException(status_code=404, detail="Application not found")
+    reviewer = None
+    try:
+        du = await get_current_db_user(user, platform_db)
+        reviewer = du.id if du else None
+    except Exception:
+        pass
+    # THAT the notes changed and who changed them — never the text.
+    # ``recruiter_notes`` is a declared sensitive field, and a recruiter's
+    # candid assessment of an applicant is the last thing that should be
+    # copied into a second, longer-lived store.
+    await record_simple(
+        platform_db, user["account_id"], reviewer,
+        "application_notes_updated", "driver_application", app_id,
+    )
+    await refresh_sidecar(tenant_db, platform_db, user["account_id"], app_id)
     return {"status": "saved"}
 
 
@@ -1258,6 +1320,7 @@ async def set_vetting(
     body: VettingRequest,
     user: dict = Depends(require_permission("can_manage_applications")),
     platform_db=Depends(get_platform_db),
+    tenant_db=Depends(get_tenant_db),
 ):
     """Tick (or untick) one pre-hire check — PSP / MVR / Clearinghouse /
     drug / background.  Stamps who ran it + when.  Required checks gate
@@ -1275,6 +1338,19 @@ async def set_vetting(
     )
     if vetting is None:
         raise HTTPException(status_code=404, detail="Application not found")
+    # Pre-hire checks are the evidence behind an approval — PSP, MVR and
+    # Clearinghouse are FMCSA-mandated queries.  Recording who ticked
+    # which one and when is the difference between "3 of 3 complete" and
+    # a defensible record of who attests to that.  Un-ticking is recorded
+    # too: a check that was marked done and later withdrawn is exactly
+    # what an audit wants visible.
+    await record_simple(
+        platform_db, user["account_id"], reviewer,
+        "application_check_completed" if body.done else "application_check_cleared",
+        "driver_application", app_id,
+        changes={body.check: {"old": not body.done, "new": body.done}},
+    )
+    await refresh_sidecar(tenant_db, platform_db, user["account_id"], app_id)
     return {"vetting": vetting, "required": list(service.REQUIRED_VETTING)}
 
 
@@ -1686,3 +1762,93 @@ async def set_my_notify_prefs(
             enabled=key in wanted,
         )
     return {"channels": sorted(wanted)}
+
+
+# ── DQF export passphrase (config family, ACCOUNT scope) ─────────────
+#
+# Account scope, not role scope, by the blast-radius rule: this is not
+# how a page is arranged, it decides what gets written into shared
+# storage, and two roles disagreeing about it would produce some DQFs
+# with a protected SSN file and some without.  Follows the account-scope
+# recipe exactly — feature-owned account_settings key, gated on
+# can_manage_config_all, ZERO new permissions and ZERO new tables.
+# SSOT: docs/architecture/config.md.
+
+
+class DqfPassphraseRequest(BaseModel):
+    # Long enough to be worth encrypting with.  Not a password field on a
+    # login form — it is typed once and stored by the carrier somewhere
+    # they will still have it if we are gone.
+    passphrase: str = Field(..., min_length=8, max_length=200)
+
+
+@router.get("/dqf-config")
+async def get_dqf_config(
+    user: dict = Depends(require_permission_any(
+        "can_manage_applications", "can_manage_config_all",
+    )),
+    tenant_db=Depends(get_tenant_db),
+):
+    """Whether a DQF export passphrase is set — NEVER the passphrase.
+
+    Deliberately unreadable through the API, even by an authorized
+    caller.  Two reasons, and the second is the important one:
+
+      * a passphrase that can be fetched over the wire is one API bug
+        away from making every protected SSN file readable; and
+      * the carrier is supposed to KNOW it.  If they need us to tell them
+        what it is, then it is effectively our secret, and the protected
+        file becomes unopenable the day our server is gone — which is the
+        exact scenario the whole sidecar exists for.
+
+    Forgetting it means setting a new one and regenerating; that is the
+    correct outcome, not a gap.
+    """
+    raw = await tenant_db.get_account_setting(
+        user["account_id"], dqf.DQF_PASSPHRASE_KEY, "",
+    )
+    return {
+        "configured": bool(raw),
+        # What the carrier gets in their Drive right now, stated plainly
+        # so the consequence of not setting one is visible.
+        "ssn_included": bool(raw),
+    }
+
+
+@router.put("/dqf-config")
+async def set_dqf_config(
+    body: DqfPassphraseRequest,
+    user: dict = Depends(require_permission("can_manage_config_all")),
+    tenant_db=Depends(get_tenant_db),
+    platform_db=Depends(get_platform_db),
+):
+    """Set the passphrase that protects the SSN file in exported DQFs.
+
+    Encrypted at rest the same way the Drive refresh token is.  We keep a
+    copy only so a later regeneration can reuse the same passphrase — the
+    carrier holds it independently, and that independence is what makes
+    the file survive us.
+
+    Existing applications are NOT rewritten here.  A bulk re-render would
+    be a long, failure-prone loop inside a settings save; each application
+    picks the new passphrase up on its next change, and a deliberate
+    re-export can be added if it turns out to be wanted.
+    """
+    from infra.crypto import encrypt
+
+    await tenant_db.set_account_setting(
+        user["account_id"], dqf.DQF_PASSPHRASE_KEY, encrypt(body.passphrase),
+    )
+    reviewer = None
+    try:
+        du = await get_current_db_user(user, platform_db)
+        reviewer = du.id if du else None
+    except Exception:
+        pass
+    # THAT it was set, never the value — the trail must not become the
+    # second place the passphrase lives.
+    await record_simple(
+        platform_db, user["account_id"], reviewer,
+        "dqf_passphrase_set", "setting", "dqf.export_passphrase",
+    )
+    return {"configured": True, "ssn_included": True}
