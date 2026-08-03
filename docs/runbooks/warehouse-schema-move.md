@@ -99,6 +99,17 @@ live map + billing page load. Then re-run
 uses `pg_dump -n public`, add `-n warehouse` — otherwise the warehouse
 silently stops being backed up.
 
+## If you restarted without the window
+
+Migration 183 is convergent and auto-runs at boot: a routine restart
+on the new code performs the move itself (advisor-reviewed decision —
+auto-run fails safe, a gate would fail broken). What happens: old-code
+workers still draining error on the 13 tables for ≤60 s, then exit;
+ingest self-heals next tick. The boot log shows a WARNING
+("physically moved N warehouse objects"). What did NOT happen by
+itself: the pg_dump snapshot, step 4 (verify), step 6 (watch +
+backfill), and step 7 (backup coverage) — run those now.
+
 ## Rollback
 
 Reverse the SQL (same statements, schemas/names swapped) and restart
@@ -107,8 +118,8 @@ copied in either direction.
 
 ## Do NOT
 
-- Run the sweep/deploy and the SQL in the other order (old code +
-  moved tables = every warehouse query fails).
+- Use a routine `systemctl restart` as the cutover — it works (183
+  converges at boot) but skips the snapshot and the backup check.
 - Edit migrations 177–182 (they legitimately create the OLD names on
   fresh installs; 183 converges them).
 - Move anything else (Datatruck ELT, parking, inventory stay public).

@@ -318,6 +318,10 @@ async def main() -> int:
         return 2
 
     conn = await asyncpg.connect(db_url)
+    # Raw connection bypasses the app pool's server_settings — set the
+    # same search_path so vehicle_state resolves on either side of the
+    # warehouse schema move.
+    await conn.execute("SET search_path TO public, warehouse")
     log: list[str] = []
     try:
         a = await relocate_branding(conn, args.apply, log)

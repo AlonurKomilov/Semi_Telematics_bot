@@ -282,6 +282,14 @@ async def _for_each_account_with_capability(
                                 skipped_paused += 1
                             return
                         cap_cfg = ai.feature_toggles.get(capability) or {}
+                        if not cap_cfg and capability == "driver_efficiency":
+                            # Deprecated same-object alias: rows written
+                            # before the warehouse schema move stored the
+                            # toggle under the old wire key.  Without this
+                            # fallback an explicit OFF would silently
+                            # revert to on after the rename.
+                            cap_cfg = ai.feature_toggles.get(
+                                "driver_efficiency_daily") or {}
                         # Default-on for accounts that exist but
                         # whose toggle map predates this capability
                         # (e.g. a new capability the catalog adds

@@ -8150,39 +8150,66 @@ async def migrate_warehouse_schema(conn) -> None:
         "warehouse_ingest_orphans": "ingest_orphans",
     }
 
-    await conn.execute("SELECT pg_advisory_lock(478183)")
-    try:
-        await conn.execute("CREATE SCHEMA IF NOT EXISTS warehouse")
-        for table in moves:
-            cur = await conn.execute(
-                "SELECT to_regclass(?), to_regclass(?)",
-                (f"public.{table}", f"warehouse.{table}"),
-            )
-            in_public, in_warehouse = await cur.fetchone()
-            if in_public is not None and in_warehouse is None:
-                await conn.execute(
-                    f"ALTER TABLE public.{table} SET SCHEMA warehouse"
-                )
-        cur = await conn.execute(
-            "SELECT to_regclass('public.vehicle_timeline'), "
-            "to_regclass('warehouse.vehicle_timeline')"
+    # One RAW connection for the whole critical section: the runner's
+    # ``conn`` is a pool-proxy where every execute() may ride a
+    # different backend session, and a session-scoped advisory lock
+    # released on the wrong session stays held forever — the next
+    # booting process then hangs on it.  Same reasoning (and pattern)
+    # as platform migration 076.
+    pool = getattr(getattr(conn, "_pool", None), "_pool", None)
+    if pool is None:
+        raise RuntimeError(
+            "Migration 183: asyncpg pool reference unavailable; this "
+            "migration must run on Postgres with the pool initialised."
         )
-        view_public, view_warehouse = await cur.fetchone()
-        if view_public is not None and view_warehouse is None:
-            await conn.execute(
-                "ALTER VIEW public.vehicle_timeline SET SCHEMA warehouse"
-            )
-        for old, new in renames.items():
-            cur = await conn.execute(
-                "SELECT to_regclass(?), to_regclass(?)",
-                (f"warehouse.{old}", f"warehouse.{new}"),
-            )
-            has_old, has_new = await cur.fetchone()
-            if has_old is not None and has_new is None:
-                await conn.execute(
-                    f"ALTER TABLE warehouse.{old} RENAME TO {new}"
+    moved = 0
+    async with pool.acquire() as raw:
+        await raw.execute("SELECT pg_advisory_lock(478183)")
+        try:
+            await raw.execute("CREATE SCHEMA IF NOT EXISTS warehouse")
+            for table in moves:
+                row = await raw.fetchrow(
+                    "SELECT to_regclass($1) AS a, to_regclass($2) AS b",
+                    f"public.{table}", f"warehouse.{table}",
                 )
-    finally:
-        await conn.execute("SELECT pg_advisory_unlock(478183)")
-    await conn.commit()
-    logger.info("Migration 183: warehouse schema ready (13 tables + view)")
+                if row["a"] is not None and row["b"] is None:
+                    await raw.execute(
+                        f"ALTER TABLE public.{table} SET SCHEMA warehouse"
+                    )
+                    moved += 1
+            row = await raw.fetchrow(
+                "SELECT to_regclass('public.vehicle_timeline') AS a, "
+                "to_regclass('warehouse.vehicle_timeline') AS b"
+            )
+            if row["a"] is not None and row["b"] is None:
+                await raw.execute(
+                    "ALTER VIEW public.vehicle_timeline SET SCHEMA warehouse"
+                )
+                moved += 1
+            for old, new in renames.items():
+                row = await raw.fetchrow(
+                    "SELECT to_regclass($1) AS a, to_regclass($2) AS b",
+                    f"warehouse.{old}", f"warehouse.{new}",
+                )
+                if row["a"] is not None and row["b"] is None:
+                    await raw.execute(
+                        f"ALTER TABLE warehouse.{old} RENAME TO {new}"
+                    )
+                    moved += 1
+        finally:
+            await raw.execute("SELECT pg_advisory_unlock(478183)")
+    if moved:
+        # Expected exactly once on a fresh install.  On PRODUCTION the
+        # operator window script performs the move (runbook: snapshot +
+        # zero-connection check + backup coverage) and this migration
+        # then no-ops — seeing this warning on a prod boot means the
+        # window was bypassed and those safety steps were SKIPPED: run
+        # the runbook's verify/backup steps now.
+        logger.warning(
+            "Migration 183: physically moved %d warehouse objects at "
+            "boot — if this is production, the maintenance window was "
+            "bypassed; run the verify + backup steps in "
+            "docs/runbooks/warehouse-schema-move.md", moved,
+        )
+    else:
+        logger.info("Migration 183: warehouse schema already converged")

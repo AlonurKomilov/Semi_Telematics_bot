@@ -14,6 +14,9 @@ export const CAPABILITY_LABELS: Record<string, string> = {
   safety_events:            'Safety events',
   vehicle_health:           'Vehicle health',
   vehicle_faults:           'Fault codes',
+  driver_efficiency:        'Driver efficiency (daily)',
+  // Deprecated alias: the wire value before the warehouse schema move
+  // (2026-08) — kept so any cached/stored payload still labels.
   driver_efficiency_daily:  'Driver efficiency (daily)',
   fleet_weather:            'Weather overlay',
   fleet_efficiency:         'Fleet efficiency',
