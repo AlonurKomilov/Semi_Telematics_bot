@@ -29,15 +29,25 @@ def test_vehicle_cascade_registered_with_stable_ids_and_cadences():
         "warehouse_state_snapshot",
         "warehouse_telemetry_hourly",
         "warehouse_metrics_daily",
+        "warehouse_metrics_weekly",
     } <= set(stages)
 
-    # Cadences unchanged from the hand-wired scheduler (5 min · :05 hourly ·
-    # 00:05 UTC — the UTC pin keeps "yesterday UTC" from resolving 2 days back).
-    assert stages["warehouse_state_snapshot"].cadence == {"interval_min": 5}
-    assert stages["warehouse_telemetry_hourly"].cadence == {"cron": "5 * * * *"}
+    # The full cadence contract: every stage wall-aligned cron, UTC-pinned
+    # (the pin keeps "yesterday UTC" from resolving 2 days back at 00:05,
+    # and DST from eating an hourly bucket).  The minute snapshot rides
+    # cron too — an interval fires from process boot and mints a new
+    # second-offset in the minute grid at every restart.
+    assert stages["warehouse_state_snapshot"].cadence == {
+        "cron": "* * * * *", "tz": "UTC",
+    }
+    assert stages["warehouse_telemetry_hourly"].cadence == {
+        "cron": "5 * * * *", "tz": "UTC",
+    }
     assert stages["warehouse_metrics_daily"].cadence == {
-        "cron": "5 0 * * *",
-        "tz": "UTC",
+        "cron": "5 0 * * *", "tz": "UTC",
+    }
+    assert stages["warehouse_metrics_weekly"].cadence == {
+        "cron": "10 0 * * mon", "tz": "UTC",
     }
 
     # Every stage carries a runnable aggregation.
