@@ -111,3 +111,39 @@ def test_platform_subfamily_exists_and_holds_billing():
         "capabilities/billing/ reappeared at top level — platform domains "
         "live under capabilities/platform/ (docs/FEATURES.md)"
     )
+
+
+def test_physical_warehouse_tables_stay_inside_the_machinery():
+    """Physical warehouse table names (vehicle_state, vehicle_state_snapshot,
+    vehicle_telemetry) are the ENGINE ROOM — SQL against them may exist only
+    in the storage layer, the warehouse machinery, migrations, and operator
+    scripts.  Everyone else reads the grain surfaces (vehicle_state_live/
+    minute/hour/day/week, vehicle_health_*, vehicle_timeline — migration 185)
+    so the physical layer stays free to change without moving a consumer.
+    """
+    import re
+
+    allowed = (
+        "adapters/storage/warehouse.py",
+        "adapters/storage/migrations.py",
+        "adapters/storage/vehicle_departure.py",
+        "capabilities/warehouse/",
+        "capabilities/integrations/",     # ingest writers
+        "scripts/",
+        "tests/",
+    )
+    verb = re.compile(
+        r"(FROM|INTO|UPDATE|JOIN)\s+(?!warehouse\.\w+_(live|minute|hour|day|week))"
+        r"(warehouse\.)?vehicle_(state|telemetry)\b"
+    )
+    offenders = []
+    for path in REPO.rglob("*.py"):
+        rel = path.relative_to(REPO).as_posix()
+        if rel.startswith(allowed) or "__pycache__" in rel:
+            continue
+        if verb.search(path.read_text(errors="ignore")):
+            offenders.append(rel)
+    assert not offenders, (
+        "SQL against PHYSICAL warehouse tables outside the machinery — "
+        "read through the grain surfaces instead:\n  " + "\n  ".join(offenders)
+    )

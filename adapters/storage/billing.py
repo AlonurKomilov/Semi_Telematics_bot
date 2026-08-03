@@ -701,7 +701,7 @@ class BillingMixin:
         days = self.DEFAULT_ACTIVITY_DAYS if days is None else days
         cutoff = self._activity_cutoff_iso(days)
         cur = await self._db.execute(
-            "SELECT COUNT(*) FROM vehicle_state "
+            "SELECT COUNT(*) FROM warehouse.vehicle_state_live "
             "WHERE account_id = ? AND captured_at > ?",
             (account_id, cutoff),
         )
@@ -721,7 +721,7 @@ class BillingMixin:
         days = self.DEFAULT_ACTIVITY_DAYS if days is None else days
         cutoff = self._activity_cutoff_iso(days)
         cur = await self._db.execute(
-            "SELECT COUNT(*) FROM vehicle_state "
+            "SELECT COUNT(*) FROM warehouse.vehicle_state_live "
             "WHERE account_id = ? "
             "  AND (captured_at IS NULL OR captured_at = '' OR captured_at <= ?)",
             (account_id, cutoff),
@@ -746,7 +746,7 @@ class BillingMixin:
         cur = await self._db.execute(
             """
             SELECT vehicle_id, vehicle_name, captured_at
-            FROM vehicle_state
+            FROM warehouse.vehicle_state_live
             WHERE account_id = ?
               AND (captured_at IS NULL OR captured_at = '' OR captured_at <= ?)
             ORDER BY vehicle_name

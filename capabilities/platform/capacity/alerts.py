@@ -203,7 +203,7 @@ async def check_and_alert(db, app) -> list[str]:
     ingest_age: float | None = None
     try:
         cur = await db._db.execute(
-            "SELECT MAX(captured_at) FROM vehicle_state WHERE captured_at <> ''"
+            "SELECT MAX(captured_at) FROM warehouse.vehicle_state_live WHERE captured_at <> ''"
         )
         r = await cur.fetchone()
         ingest_age = _minutes_ago(r[0] if r else None)

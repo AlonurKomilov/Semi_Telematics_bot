@@ -1265,7 +1265,7 @@ async def system_health(
     # Samsara ingest freshness — newest captured_at across vehicle_state.
     try:
         cur = await platform_db._db.execute(
-            "SELECT MAX(captured_at) FROM vehicle_state WHERE captured_at <> ''"
+            "SELECT MAX(captured_at) FROM warehouse.vehicle_state_live WHERE captured_at <> ''"
         )
         row = await cur.fetchone()
         latest = row[0] if row else None

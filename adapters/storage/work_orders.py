@@ -239,7 +239,7 @@ class WorkOrdersMixin:
         state_name_unique: dict[str, str | None] = {}
         cur = await self._db.execute(
             "SELECT vehicle_id, vehicle_name, company_code "
-            "FROM vehicle_state WHERE account_id = ?",
+            "FROM warehouse.vehicle_state_live WHERE account_id = ?",
             (account_id,),
         )
         for row in await cur.fetchall():
