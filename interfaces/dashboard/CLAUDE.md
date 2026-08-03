@@ -108,6 +108,24 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   merely happen to be day counts (link expiry, rule periods). Variants,
   the `end=`/fail-closed rule, and props:
   [components/shell/CLAUDE.md](src/components/shell/CLAUDE.md).
+- **Scrolling panes = `components/scrolling`.** A `overflow-y-auto` div
+  is not a scroll region; it is a box that clips. `<ScrollRegion>` (or
+  `useScrollRegion()` when you own the div) adds the four things missing
+  by default: `tabIndex` — a plain overflow div is NOT focusable, so a
+  keyboard user cannot scroll it at all (**WCAG 2.1.1**); a named
+  `role="region"` when you pass a label; `overscroll-contain`; and
+  `scroll-padding` so the browser's scroll-into-view stops short of a
+  sticky header instead of parking focus behind it (**WCAG 2.4.11**).
+  The app had 57 scrolling surfaces and 2 that got this right.
+  ⚠️ **Not everything that scrolls is a region** — a short menu,
+  dropdown or picker list is correctly a plain overflow div, and
+  wrapping one in a landmark makes the page noisier, not clearer.
+  **Modals are never hand-rolled**: `<Sheet>` for a side drawer,
+  `<Dialog>` for a centred one — a bare `fixed inset-0 bg-black/…`
+  backdrop has no focus trap, no Escape, no `aria-modal` and no
+  background scroll lock, and is an ESLint error. Full rules, the
+  refusal list, and what the module deliberately does NOT absorb:
+  [components/scrolling/CLAUDE.md](src/components/scrolling/CLAUDE.md).
 - **Tables = DataGrid, always.** Any tabular list of records — even a
   5-row read-only summary — uses
   [`components/datagrid`](src/components/datagrid/DataGrid.tsx); **never** a

@@ -130,11 +130,34 @@ it. Call it **once**, from whoever owns the container.
 
 ## Enforcement
 
-A folder people *can* use is a suggestion. This is an SSOT the same way
-`components/tooltip` is: `eslint.config.js` bans the alternative (there,
-native `title=`). The equivalent rule for raw `overflow-*` classes lands
-once the migration is done — turning it on first would blow the
-`--max-warnings` budget across 57 files.
+A folder people *can* use is a suggestion. This codebase makes a thing an
+SSOT by banning the alternative, the way `title=` is banned in favour of
+`<Tip>`.
 
-Legitimate exceptions carry an `eslint-disable` **with a reason**, the
-same convention the z-index ladder uses for Leaflet panes.
+**What shipped:** `eslint.config.js` bans the **hand-rolled modal
+backdrop** — `className` matching `fixed inset-0 … bg-black/`. That
+pattern is never correct: 12 existed, every one missing the same four
+things (focus trap, Escape, `aria-modal`, background scroll lock). Use
+`<Sheet>` for a side drawer, `<Dialog>` for a centred one.
+
+The rule earned its place immediately: a `bg-black/60` grep found the 12
+I converted; the rule found **16 more** at other opacities. A grep finds
+what you thought to look for.
+
+**What was REJECTED, and why it matters more than what shipped:** a ban
+on raw `overflow-*` classes, routing every scroller through this module.
+It would flag ~50 sites of which **~45 are correct** — menus, pickers,
+dialog bodies — because the refusal rule above says a plain overflow div
+is right for those. A rule that cries wolf 45 times to catch 5 gets
+disabled wholesale.
+
+⚠️ The `title=` analogy does not carry, and that is the general lesson:
+**native `title=` is never correct; a plain scroller often is.** Ban the
+pattern that is always wrong, never the primitive that is usually right.
+
+The two primitives (`ui/dialog.tsx`, `ui/sheet.tsx`) are exempted inline
+with the reason — their own overlays cannot be written in terms of
+themselves. Legitimate exceptions carry an `eslint-disable` **with a
+reason**, the same convention the z-index ladder uses for Leaflet panes.
+Put the directive on the line ADJACENT to the code: on the first line of
+a multi-line comment it disables the comment, not the code.
