@@ -34,6 +34,7 @@ from features.applications.dqf import (
     build_manifest,
     render_pdf,
     render_protected_ssn,
+    render_readme,
 )
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,13 @@ async def write_sidecar(
             json.dumps(manifest, indent=2, default=str).encode("utf-8"),
         )
         wrote = True
+
+        # Legible at a glance in the Drive preview, with no software and
+        # no login.  Whoever eventually needs this folder may be an
+        # auditor or whoever inherited the account, and a password prompt
+        # with no explanation is where a compliance document stops being
+        # useful.
+        store.put(bucket, "README.txt", render_readme(manifest))
 
         # The protected file only exists once the carrier has set a
         # passphrase.  Until then the SSN is simply absent from their

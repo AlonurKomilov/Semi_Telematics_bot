@@ -1815,6 +1815,49 @@ async def get_dqf_config(
     }
 
 
+@router.post("/dqf-config/reveal")
+async def reveal_dqf_passphrase(
+    user: dict = Depends(require_permission("can_manage_config_all")),
+    tenant_db=Depends(get_tenant_db),
+    platform_db=Depends(get_platform_db),
+):
+    """Show the passphrase to an administrator who asks for it.
+
+    I first built this UNREADABLE, reasoning that a passphrase reachable
+    over the wire is one API bug from disclosure.  That was wrong, and the
+    failure mode it creates is worse than the one it avoids: setting a NEW
+    passphrase does not re-protect files already exported, so a lost
+    passphrase permanently orphans every DQF written before it.  The SSN
+    records in those files become unopenable by anyone, forever.
+
+    An administrator holding can_manage_config_all can already set a new
+    passphrase and re-export, so they effectively control this secret
+    either way — reading it grants them no power they lacked, and it is
+    the only way to open an older export.
+
+    Not on page load, though: a deliberate POST, and RECORDED in the
+    activity trail, so a reveal is something the account can see happened.
+    """
+    from infra.crypto import decrypt
+
+    raw = await tenant_db.get_account_setting(
+        user["account_id"], dqf.DQF_PASSPHRASE_KEY, "",
+    )
+    if not raw:
+        raise HTTPException(status_code=404, detail="No passphrase is set.")
+    reviewer = None
+    try:
+        du = await get_current_db_user(user, platform_db)
+        reviewer = du.id if du else None
+    except Exception:
+        pass
+    await record_simple(
+        platform_db, user["account_id"], reviewer,
+        "dqf_passphrase_revealed", "setting", "dqf.export_passphrase",
+    )
+    return {"passphrase": decrypt(raw)}
+
+
 @router.put("/dqf-config")
 async def set_dqf_config(
     body: DqfPassphraseRequest,

@@ -275,9 +275,47 @@ def render_pdf(manifest: dict) -> bytes:
             ))
 
         story.append(Spacer(1, 14))
+        story.append(Paragraph("Uploaded documents", h2))
         story.append(Paragraph(
-            "Uploaded documents accompany this file in the <b>documents/</b> "
-            "folder. Full SSN is not reproduced here.", small,
+            "The documents supplied with this application are in the "
+            "<b>documents</b> folder alongside this file.", styles["Normal"],
+        ))
+
+        # The instructions matter as much as the file.  Whoever opens this
+        # in three years will not be whoever set the passphrase, and a
+        # password prompt with no explanation is where a compliance
+        # document stops being useful.  The PDF reader shows its own bare
+        # prompt and we cannot change it — so the explanation has to be
+        # here, and in README.txt, before they ever reach it.
+        story.append(Spacer(1, 8))
+        story.append(Paragraph("Opening the protected file", h2))
+        story.append(Paragraph(
+            "This applicant's Social Security Number is required on the "
+            "employment application by 49 CFR 391.21(b)(2) and must be kept "
+            "in this file under 49 CFR 391.51. It is stored separately, as "
+            "<b>documents/ssn-protected.pdf</b>, and protected with a "
+            "password so that the rest of this file can be shared without "
+            "exposing it. Everywhere else, including above, it appears only "
+            "as its last four digits.",
+            styles["Normal"],
+        ))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(
+            "The password is your organisation's DQF export passphrase, "
+            "chosen by one of your administrators. To look it up, sign in to "
+            "4truck, open <b>Workforce &rarr; Applications</b>, and select "
+            "<b>DQF export</b> in the settings panel. An administrator with "
+            "the account-wide Config permission can reveal it there.",
+            styles["Normal"],
+        ))
+        story.append(Spacer(1, 6))
+        story.append(Paragraph(
+            "<b>Keep a copy of that passphrase somewhere outside 4truck.</b> "
+            "It is stored encrypted and cannot be recovered from the "
+            "protected file itself. If 4truck is ever unavailable, a "
+            "passphrase you have not kept elsewhere cannot be retrieved, and "
+            "files protected with it cannot be opened.",
+            styles["Normal"],
         ))
 
         doc.build(story)
@@ -373,3 +411,70 @@ def render_protected_ssn(app: dict, passphrase: str) -> bytes:
     except Exception:
         logger.exception("protected-SSN render failed for %s", app.get("reference"))
         return b""
+
+
+README_TEMPLATE = """DRIVER QUALIFICATION FILE
+{name} — {reference}
+
+WHAT IS IN THIS FOLDER
+
+  application.pdf    The driver qualification file: identity, licence,
+                     employment history, consents and signature, the
+                     pre-hire checks that were run, and the stage this
+                     application reached. This is the document to print
+                     or hand to an auditor.
+
+  application.json   The same information in machine-readable form, so
+                     the record can be imported into another system.
+
+  documents/         The files the applicant supplied — commercial
+                     driver's licence, medical examiner's certificate,
+                     signature — together with the protected file below.
+
+OPENING documents/ssn-protected.pdf
+
+  This applicant's Social Security Number is required on the employment
+  application by 49 CFR 391.21(b)(2) and must be retained in this file
+  under 49 CFR 391.51. It is kept in its own password-protected file so
+  that everything else here can be shared without exposing it.
+
+  The password is your organisation's DQF export passphrase, chosen by
+  one of your administrators. To look it up:
+
+    1. Sign in to 4truck.
+    2. Open Workforce -> Applications.
+    3. Select DQF export in the settings panel.
+
+  An administrator with the account-wide Config permission can reveal
+  the passphrase there.
+
+  KEEP A COPY OF THAT PASSPHRASE SOMEWHERE OUTSIDE 4TRUCK. It is stored
+  encrypted and cannot be recovered from the protected file itself. If
+  4truck is ever unavailable, a passphrase you have not kept elsewhere
+  cannot be retrieved, and files protected with it cannot be opened.
+
+  Nothing else in this folder needs a password.
+
+Generated {generated_at} by 4truck.
+"""
+
+
+def render_readme(manifest: dict) -> bytes:
+    """A plain-text guide, readable in the Drive preview without opening
+    anything.
+
+    The PDF explains itself, but only once you open it — and the person
+    who eventually needs this folder may be an auditor, a new office
+    manager, or whoever inherits the account. A .txt sitting at the top
+    of the folder is the one thing that is legible at a glance, in any
+    client, with no software and no login.
+    """
+    a = manifest.get("applicant") or {}
+    name = " ".join(
+        p for p in (a.get("first_name"), a.get("last_name")) if p
+    ) or "Applicant"
+    return README_TEMPLATE.format(
+        name=name,
+        reference=manifest.get("reference", ""),
+        generated_at=manifest.get("generated_at", ""),
+    ).encode("utf-8")

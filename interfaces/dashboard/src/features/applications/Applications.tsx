@@ -6,6 +6,8 @@ import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink
 import { toast } from 'sonner';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader } from '../../components/shell';
+import { usePermissions } from '../../hooks/usePermissions';
+import DqfExportCard from './DqfExportCard';
 import { Tip } from '../../components/tooltip';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -509,6 +511,7 @@ const APP_SEARCH_KEYS = ['first_name', 'last_name', 'email', 'reference'];
 
 export default function Applications() {
   const qc = useQueryClient();
+  const { has } = usePermissions();
   const [links, setLinks] = useState<ApplicationLink[]>([]);
   const [view, setView] = useState<'table' | 'board'>('table');
   // The board used to render all seven columns of ALL rows regardless of
@@ -797,6 +800,12 @@ export default function Applications() {
       <PageHeader title="Driver Applications" icon={UserPlus}
         description="Application links + submitted driver applications."
         actions={<NotificationsBell onOpen={(id) => setOpenId(id)} />} />
+
+      {/* Configuration first: what the export contains is a property of
+          the whole feature, and a recruiter who has not set the DQF
+          passphrase is exporting incomplete qualification files without
+          knowing it. */}
+      <DqfExportCard canManage={has('can_manage_config_all')} />
 
       {/* ── Application links ──────────────────────────────────── */}
       <section className="bg-card border border-border rounded-lg p-4">
