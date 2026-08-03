@@ -26,7 +26,7 @@ import type { ColumnFiltersState, SortingState } from '@tanstack/react-table';
 import type { AnyColumn } from '../../../types';
 import type { PivotModel } from '../pivot/pivot';
 import type { Tone } from '../../../lib/status';
-import { cellText } from '../../../lib/cellText';
+import { rowMatchesSearch } from '../search';
 
 export interface SavedTab {
   /** Stable id (also the segment key, prefixed) — kept out of the label
@@ -103,47 +103,12 @@ export function rowPassesColFilter(
   return selected.includes(hay);
 }
 
-/** Global-search match on a raw row — THE rule, used by the grid's live
- *  global filter, by a saved tab's captured search, and by the filter
- *  dropdowns' option counts.  ``needle`` must be pre-lowercased +
- *  trimmed.
- *
- *  A row matches when the needle appears in any ``searchKeys`` field OR
- *  in any COLUMN's text.  Both halves earn their place:
- *
- *   * ``columns`` is what makes the box mean "search this table".  A
- *     page that declared 2 keys while rendering 20 columns answered for
- *     a tenth of what the operator could see — Carrier Directory showed
- *     "60" in a Solo Pay Rate cell and "No match for 60" in the same
- *     frame.  Columns are read through ``cellText``, the accessor CSV
- *     export uses, so a badge column matches the word it displays
- *     ("Critical") rather than the code behind it.
- *   * ``searchKeys`` reaches row fields that are NOT columns (a
- *     carrier's ``experience_summary``) — data the operator can't see
- *     but does expect to find.
- *
- *  Hidden columns are searched too: on a 74-field directory, "which
- *  carrier mentioned hazmat?" must not require knowing which column
- *  holds it first. */
-export function rowMatchesSearch(
-  row: Record<string, unknown>,
-  searchKeys: string[],
-  needle: string,
-  columns: AnyColumn[] = [],
-): boolean {
-  if (!needle) return true;
-  for (const k of searchKeys) {
-    const v = row[k];
-    // Not `v ? …` — that drops a legitimate 0 or false.
-    if (v == null || typeof v === 'object') continue;
-    if (String(v).toLowerCase().includes(needle)) return true;
-  }
-  for (const col of columns) {
-    const text = cellText(col, row);
-    if (text && text.toLowerCase().includes(needle)) return true;
-  }
-  return false;
-}
+// The global-search rule moved to ``../search.ts``, where it sits beside
+// the provenance analysis that explains its results — the two must read
+// a cell's text identically or the grid shows rows it can't account for.
+// Re-exported because a saved tab captures a search, so this module's
+// consumers (and its tests) legitimately ask for it here.
+export { rowMatchesSearch } from '../search';
 
 /**
  * Build the scope predicate for a tab — the ``match`` a segment uses.

@@ -25,7 +25,7 @@ import {
 import {
   ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Rows3, Rows2, Rows4,
   Search, X, Columns3, Download, Copy, Filter as FilterIcon, ArrowUpDown,
-  CornerUpRight, ListTree, Plus, Pencil, Trash2, Star, Table2,
+  CornerUpRight, ListTree, Plus, Pencil, Trash2, Star, Table2, EyeOff,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { Menu as MenuPrimitive } from '@base-ui/react/menu';
@@ -56,8 +56,8 @@ import ColumnHeaderMenu from './ColumnHeaderMenu';
 import ManageColumnsMenu from './ManageColumnsMenu';
 import {
   type SavedTab, rowPassesColFilter, tabMatch,
-  rowMatchesSearch as matchesSearch,
 } from './tabs/savedTabs';
+import { rowMatchesSearch as matchesSearch, searchProvenance } from './search';
 import SavedTabDialog from './tabs/SavedTabDialog';
 import { TAB_ICONS } from './tabs/tabIcons';
 import { toneClasses, type Tone } from '../../lib/status';
@@ -2473,6 +2473,52 @@ export default function DataGrid({
     </>
   );
 
+  // ── "Why is this row here?" — search hits in hidden columns ───────
+  //
+  // Searching hidden columns is the right call (see ``search.ts``), but
+  // on a 76-column directory it hands back rows whose every visible cell
+  // reads "—".  That reads as a broken search, and the only recovery is
+  // to guess which of 76 columns to reveal.  So name the column that
+  // matched, and offer to reveal it.
+  //
+  // Scoped to the rows ON THIS PAGE: the cost is bounded by the page
+  // size rather than the dataset, and the note explains the rows the
+  // operator is looking at instead of making a claim about rows they
+  // can't see.  Skipped under ``manualFiltering`` — there the SERVER
+  // matched, so we don't know what it matched on and would be guessing.
+  const pageRows = table.getRowModel().rows;
+  // Keyed on row IDENTITY, not on the array: tanstack returns a fresh
+  // array every render, which would defeat the memo and re-run a
+  // 250-row x 76-column scan on every unrelated state change.  ``data``
+  // rides along because ids survive a refetch that changes contents.
+  const pageRowKey = pageRows.map(r => r.id).join('\u0000');
+  const searchNote = useMemo(() => {
+    if (!trimmedGlobal || manualFiltering) return null;
+    const rows = pageRows.filter(r => !r.getIsGrouped()).map(r => r.original);
+    const p = searchProvenance(
+      rows, columns, (key) => effectiveVisibility[key] !== false,
+      trimmedGlobal.toLowerCase(),
+    );
+    if (p.unexplained === 0) return null;
+    // Rows a column can actually account for — the count the "Show"
+    // button is promising to fix.  The rest matched a ``searchKey`` row
+    // field with no column, which revealing nothing can help.
+    const byColumn = p.unexplained - p.fieldOnly;
+    return { ...p, byColumn };
+    // ``pageRowKey`` stands in for ``pageRows`` (see above); listing the
+    // array itself would bust the memo on every render and make it
+    // useless.  The disable must sit on the line ABOVE the deps — on the
+    // first line of a multi-line comment it disables the COMMENT.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trimmedGlobal, manualFiltering, pageRowKey, data, columns, effectiveVisibility]);
+
+  // "Show column" is only half an action: on a 76-column grid the column
+  // lands at its ordinal position among the visible ones, which can be
+  // far off the right edge — so the click would complete with nothing
+  // visibly different, which reads as a dead button.  The effect that
+  // scrolls it into view lives further down, where ``scrollEl`` exists.
+  const [revealedCol, setRevealedCol] = useState<string | null>(null);
+
   const visibleHeaderGroups = table.getHeaderGroups();
   // Sortable context needs the list of column ids currently rendered
   // (after visibility filter) so drag swaps reorder the right slice.
@@ -2690,6 +2736,30 @@ export default function DataGrid({
     scrollContainerRef.current = el;
     setScrollEl(el);
   }, []);
+
+  // Land the reveal in the viewport (see ``revealedCol`` above).  An
+  // EFFECT rather than a rAF after the click, because the visibility
+  // write goes through a persisted preference and the <th> does not
+  // exist yet when the handler returns.  Keyed on ``effectiveVisibility``
+  // so it re-runs the moment the column actually renders; a reveal that
+  // never lands simply leaves the key set and does nothing.
+  useEffect(() => {
+    if (!revealedCol || !scrollEl) return;
+    // Matched via dataset rather than an attribute selector: a column
+    // key is page-supplied and can carry anything (Carrier Directory's
+    // are ``f:pay:solo_rate``), so it has no business inside a selector
+    // string.
+    const th = [...scrollEl.querySelectorAll<HTMLElement>('thead th[data-col]')]
+      .find(el => el.dataset.col === revealedCol);
+    if (!th) return;
+    // ``inline: 'nearest'`` moves the least that works and respects the
+    // region's scroll-padding, so the column stops clear of the frozen
+    // ones instead of under them.  ``block: 'nearest'`` keeps the reveal
+    // from also scrolling the rows.
+    th.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+    setRevealedCol(null);
+  }, [revealedCol, scrollEl, effectiveVisibility]);
+
   const [theadEl, setTheadEl] = useState<HTMLTableSectionElement | null>(null);
   const setTheadNode = useCallback((el: HTMLTableSectionElement | null) => {
     theadRef.current = el;
@@ -3442,6 +3512,80 @@ export default function DataGrid({
           pivoting ON.  The two bodies then swap inside the left column
           without the panel unmounting. */}
       <div className={cn('flex flex-col', fillHeight && 'flex-1 min-h-0')}>
+      {/* Search hits the operator cannot see.  The live region is
+          mounted whenever the row list is, and only its CONTENTS are
+          conditional — a region that appears at the same moment as its
+          text is frequently not announced at all, so a screen-reader
+          user would get the unexplained rows and none of the
+          explanation.  Empty, it costs no height. */}
+      {!pivotOn && (
+      <div aria-live="polite">
+        {searchNote && (() => {
+          // Two names, then a count: the point is "which column do I
+          // reveal", and a five-name list stops being readable.
+          const named = searchNote.sources.slice(0, 2).map(s => s.label).join(', ');
+          const more = searchNote.sources.length - 2;
+          const many = searchNote.sources.length > 1;
+          // "on this page" only when there IS another page — otherwise
+          // it is a caveat about a distinction that doesn't exist.
+          const paged = enablePagination && table.getPageCount() > 1;
+          return (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-3 py-1.5 border-b border-border bg-card text-2xs text-muted-foreground">
+              <EyeOff size={12} aria-hidden className="shrink-0" />
+              {searchNote.byColumn > 0 ? (
+                <>
+                  <span>
+                    {searchNote.byColumn === 1 ? '1 row' : `${searchNote.byColumn} rows`}
+                    {paged ? ' on this page match ' : ' match '}
+                    &ldquo;{trimmedGlobal}&rdquo;
+                    {many ? ' only in hidden columns: ' : ' only in a hidden column: '}
+                    <span className="font-medium text-foreground">{named}</span>
+                    {more > 0 && ` +${more} more`}
+                  </span>
+                  <Button
+                    variant="link" size="xs" className="px-0"
+                    onClick={() => {
+                      // The layout is the operator's own work and this
+                      // write is PERSISTED per-user across devices — a
+                      // one-click link must not permanently edit a
+                      // curated view with no way back.  Same Undo shape
+                      // as deleting a saved tab.
+                      const before = columnVisibility;
+                      setColumnVisibility((prev) => {
+                        const next = { ...prev };
+                        for (const src of searchNote.sources) next[src.key] = true;
+                        return next;
+                      });
+                      setRevealedCol(searchNote.sources[0].key);
+                      toast(
+                        many
+                          ? `Showing ${searchNote.sources.length} columns`
+                          : `Showing “${searchNote.sources[0].label}”`,
+                        { action: { label: 'Undo', onClick: () => setColumnVisibility(before) } },
+                      );
+                    }}
+                  >
+                    {many ? 'Show columns' : 'Show column'}
+                  </Button>
+                </>
+              ) : (
+                // Nothing to reveal: these rows matched a ``searchKey``
+                // row field that is not a column anywhere.  Say so
+                // rather than offering a button that would do nothing.
+                <span>
+                  {searchNote.unexplained === 1 ? '1 row' : `${searchNote.unexplained} rows`}
+                  {paged ? ' on this page match ' : ' match '}
+                  &ldquo;{trimmedGlobal}&rdquo; in data that isn&rsquo;t shown as a column
+                  {/* No column to reveal — but if the page opens a row,
+                      that IS the recovery, so don't leave a dead end. */}
+                  {onRowClick ? '. Open the row to see it.' : '.'}
+                </span>
+              )}
+            </div>
+          );
+        })()}
+      </div>
+      )}
       {pivotOn ? (
         // PIVOT MODE — a report, not a record list.  Fed the SAME
         // post-segment/filter/search rows the footer aggregation reduces,

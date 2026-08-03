@@ -132,17 +132,77 @@ Two deliberate calls:
 
 - **Hidden columns are searched.** On a 74-field directory, "which carrier
   mentioned hazmat?" must not require knowing which column holds it first.
-  The cost is that a hit can arrive with no visible evidence — reveal the
-  column, or open the row.
+  The cost is paid by the search note below, not by the operator.
 - **Object-valued cells never match.** They stringify to `[object Object]`,
   so the needle "object" would return every row. Give such a column a
   `csvValue`/`filterValue` accessor to make it searchable. Arrays of
   primitives match element-wise and need nothing.
 
 One implementation, pure and tested: `rowMatchesSearch` in
-[`tabs/savedTabs.ts`](tabs/savedTabs.ts) — shared by the live filter, a
-saved tab's captured search, and the filter dropdowns' option counts, so
-those three can't disagree about what a search means.
+[`search.ts`](search.ts) — shared by the live filter, a saved tab's
+captured search, and the filter dropdowns' option counts, so those three
+can't disagree about what a search means. (It is re-exported from
+[`tabs/savedTabs.ts`](tabs/savedTabs.ts), its original home, so that
+import keeps working.)
+
+### A hit you can't see explains itself — the search note
+
+Searching hidden columns has a failure mode, and it looked like a bug in
+the search: type `60` into Carrier Directory and get back one row whose
+every visible cell reads `—`. Nothing on screen contains what you typed,
+and the only recovery was to guess which of 76 columns to reveal.
+
+So the grid now says which one. A quiet band between the toolbar and the
+rows names the hidden column(s) that account for the rows nothing visible
+accounts for, and offers to reveal them:
+
+> 👁 1 row matches "60" only in a hidden column: **Solo Pay Rate** · Show column
+
+Nothing to wire — it is driven by the grid's own state. What governs it:
+
+- **It only speaks when the operator is actually stuck.** The trigger is a
+  row that NO VISIBLE column explains, not merely a hit that also exists
+  in a hidden column. A note on every search is a nag, and a nag is
+  ignored on the one search where it mattered.
+- **Scoped to the rows on THIS page**, so the cost is bounded by the page
+  size instead of the dataset, and it explains the rows in front of the
+  operator rather than making a claim about rows they can't see. It says
+  "on this page" only when there IS another page.
+- **It never offers a button that would do nothing.** Rows that matched a
+  `searchKey` ROW FIELD (a carrier's `experience_summary`) have no column
+  to reveal, so those get a plain sentence and no action — plus "Open the
+  row to see it" when the page passes `onRowClick`, because that IS the
+  recovery there. The count beside "Show column" is the rows that button
+  will actually explain.
+- **Revealing SCROLLS the column into view.** Setting visibility is only
+  half the action: on a 76-column grid the column appears at its ordinal
+  position among the visible ones, which can be far off the right edge —
+  so the click would complete with nothing visibly different, which reads
+  as a dead button. Done in an effect keyed on `effectiveVisibility`, not
+  a rAF after the click: the write goes through a persisted preference,
+  so the `<th>` does not exist yet when the handler returns.
+- **Revealing is undoable.** The column layout is the operator's own work
+  and the write is persisted per-user ACROSS DEVICES, so a one-click link
+  must not permanently edit a curated view — an Undo toast restores the
+  visibility map, the same shape as deleting a saved tab.
+- **Silent under `manualFiltering`** — there the SERVER matched, so the
+  grid doesn't know what it matched on and would be naming a column by
+  guesswork.
+- **This is not the hidden-columns chip that was deliberately rejected.**
+  That one would have announced hidden columns as active view state on
+  every visit, reading as an unresolved notification to clear. This
+  speaks only when a SEARCH RESULT is unexplainable from what's on
+  screen — a specific, momentary, actionable problem the operator is
+  looking at right now. Hiding a column stays a silent layout act.
+- **The live region stays mounted while empty.** A region that appears at
+  the same moment as its text is frequently not announced at all, which
+  would hand a screen-reader user the unexplained rows and none of the
+  explanation.
+
+The analysis is `searchProvenance` in [`search.ts`](search.ts), deliberately
+in the same file as `rowMatchesSearch`: both read a cell through `cellText`,
+and if they ever disagreed about what a cell says the grid would show rows
+it can't account for and account for rows it doesn't show.
 
 ## Column `filterable` = by cardinality, not by reflex
 
