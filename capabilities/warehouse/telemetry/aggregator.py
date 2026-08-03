@@ -19,6 +19,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from capabilities.data_lifecycle.timegrid import floor_to_slot
 from infra.services import get_tenant_db
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,9 @@ DUTY_GAP_CAP_MIN = 10.0
 
 async def snapshot_vehicle_state(account_id: int) -> int:
     """Copy the current ``vehicle_state`` row for every active vehicle
-    into ``vehicle_state_snapshot`` with the current timestamp.
+    into ``vehicle_state_snapshot``, labeled with the current minute
+    slot (the moment the provider saw each value rides separately in
+    ``source_ts`` — see timegrid.py for the label-vs-truth rule).
 
     Forms the raw history layer that other features build on:
       * Maintenance - odometer deltas drive the calendar projection.
@@ -67,7 +70,7 @@ async def snapshot_vehicle_state(account_id: int) -> int:
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return 0
-    captured_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    captured_at = floor_to_slot(datetime.now(timezone.utc))
 
     state_rows = await tenant.get_vehicle_state(account_id)
     if not state_rows:

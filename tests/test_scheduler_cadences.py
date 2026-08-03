@@ -80,3 +80,14 @@ def test_vehicle_stream_declares_stream_and_grain():
     for s in stages.values():
         assert s.stream, f"{s.job_id} declares no stream"
         assert s.grain, f"{s.job_id} declares no grain"
+
+
+def test_minute_snapshot_rides_a_wall_aligned_cron():
+    """An interval trigger fires N seconds from process BOOT, so every
+    restart mints a new second-offset and writes the deploy history
+    into the minute grid (production accumulated :06/:36/:38/:16/:52
+    offsets, one per restart).  Wall-clock cron pins the fire — and
+    therefore the slot label — to the top of the minute."""
+    stage = _stages()["warehouse_state_snapshot"]
+    assert stage.cadence.get("cron") == "* * * * *", stage.cadence
+    assert stage.cadence.get("tz") == "UTC"

@@ -233,7 +233,7 @@ class WarehouseMixin(_MixinBase):
             "engine_hours", "engine_hours_time",
             "fault_count", "dtc_critical_count",
             "last_driver_id", "last_driver_name",
-            "registry_id",
+            "registry_id", "source_ts",
             "captured_at", "updated_at",
         ]
         cur = await self._db.execute(

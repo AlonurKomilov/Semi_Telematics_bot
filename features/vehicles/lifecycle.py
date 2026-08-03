@@ -30,7 +30,7 @@ from capabilities.warehouse.telemetry.aggregator import (
 )
 
 # Cadences match exactly what the scheduler ran before this was hub-driven:
-#   snapshot — every 5 min (interval, tz-agnostic)
+#   snapshot — on the minute (wall-aligned cron; see timegrid.py)
 #   hourly   — :05 every hour
 #   daily    — 00:05 UTC.  The ``tz`` is REQUIRED: a bare local 00:05 fires
 #     before UTC midnight and the aggregator's "yesterday UTC" then resolves
@@ -46,8 +46,11 @@ register_cascade(
                 # every 5, for the life of the table.  Duty math is
                 # gap-based (cadence-independent), so the 5-minute
                 # history and 1-minute samples coexist correctly.
+                # Wall-aligned cron, not an interval: an interval fires
+                # N seconds from process BOOT, so every restart minted a
+                # new second-offset in the minute grid.
                 "warehouse_state_snapshot",
-                {"interval_min": 1},
+                {"cron": "* * * * *", "tz": "UTC"},
                 snapshot_vehicle_state,
                 "Capture the minute-grain vehicle-state history",
                 stream="vehicle.timeline", grain="minute",
@@ -58,7 +61,7 @@ register_cascade(
                 # repeats 02:00 and the spring jump skips it — one hourly
                 # bucket lost or doubled every year, permanently, since the
                 # hourly tier has no self-heal that reaches back for a hole
-                # once its 5-min snapshots age out.
+                # once its minute snapshots age out.
                 "warehouse_telemetry_hourly",
                 {"cron": "5 * * * *", "tz": "UTC"},
                 aggregate_telemetry_hourly,
@@ -100,13 +103,15 @@ from capabilities.data_lifecycle.retention.registry import (  # noqa: E402
 
 # Target names are the feature-component identity (``vehicle.<component>``),
 # decoupled from the physical table the executor prunes:
-#   vehicle.timeline_5min   -> vehicle_state_snapshot      (5-min raw state)
+#   vehicle.timeline_5min   -> vehicle_state_snapshot      (minute-grain state;
+#                              the name predates the cadence change and is a
+#                              stored ledger key — renaming needs the alias recipe)
 #   vehicle.timeline_hourly -> vehicle_telemetry (hourly)  (hourly roll-up)
 #   vehicle.metrics_daily   -> vehicle_telemetry (daily)   (daily roll-up + EOD odometer)
 #   vehicle.timeline_weekly -> vehicle_telemetry (weekly)  (weekly roll-up, long horizon)
 #   vehicle.faults          -> vehicle_fault_detail        (CLEARED DTC history only)
 register_target(RetentionTarget(
-    "vehicle.timeline_5min", "Vehicle timeline (5-min state history)", "tenant",
+    "vehicle.timeline_5min", "Vehicle timeline (minute state history)", "tenant",
     lambda db, acct, days: db.prune_vehicle_state_snapshots(acct, days_keep=days),
 ))
 register_target(RetentionTarget(

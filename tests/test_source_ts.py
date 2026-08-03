@@ -48,6 +48,24 @@ class TestHelpers:
         assert freshest(None, "") is None
 
 
+class TestTimeGrid:
+    """Sample labels sit ON the grid; the honest moment rides in
+    source_ts.  Both minute-tier writers must share ONE flooring rule —
+    two local rules is how the grid forked into :00 backfill rows and
+    :13 live rows in the first place."""
+
+    def test_label_floors_to_the_minute(self):
+        from capabilities.data_lifecycle.timegrid import floor_to_slot
+        ts = datetime(2026, 8, 3, 7, 26, 13, tzinfo=timezone.utc)
+        assert floor_to_slot(ts) == "2026-08-03T07:26:00+00:00"
+
+    def test_both_minute_writers_agree(self):
+        from capabilities.data_lifecycle.timegrid import floor_to_slot
+        from capabilities.integrations.shared import history_backfill as hb
+        ts = datetime(2026, 8, 3, 7, 59, 59, tzinfo=timezone.utc)
+        assert hb._floor_to_slot(ts) == floor_to_slot(ts, hb.SLOT_SECONDS)
+
+
 @pytest.mark.asyncio
 async def test_source_ts_propagates_snapshot_to_hourly_to_daily(pg_db):
     """The cascade carries the freshest sample time upward, minting
@@ -115,6 +133,22 @@ async def test_replay_without_sources_keeps_the_banked_world_time(pg_db):
         "AND granularity = 'hourly' AND bucket_start = ?",
         (acct, "2026-07-20T09:00:00"))
     assert (await cur.fetchone())[0] == "2026-07-20T08:42:00Z"
+
+
+@pytest.mark.asyncio
+async def test_live_reader_carries_source_ts_to_the_snapshot_copy(pg_db):
+    """The minute tier's source_ts arrives from the live row THROUGH
+    ``get_vehicle_state`` — a reader that omits the column starves the
+    whole cascade silently (12,160 NULL minute rows in one day before
+    this was caught)."""
+    acct = 50
+    await pg_db.upsert_vehicle_state(acct, [
+        {"vehicle_id": "v1", "vehicle_name": "401", "company_code": "PTG",
+         "speed_mph": 10.0, "captured_at": "2026-08-03T10:00:05Z",
+         "source_ts": "2026-08-03T09:59:58Z"},
+    ])
+    rows = await pg_db.get_vehicle_state(acct)
+    assert rows and rows[0].get("source_ts") == "2026-08-03T09:59:58Z"
 
 
 @pytest.mark.asyncio

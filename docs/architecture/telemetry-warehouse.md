@@ -69,6 +69,20 @@ the view maps them; new declarations use the grain vocabulary.  Every
 NEW dataset adopts this scheme from day one: stream named after the
 domain, grain declared separately.
 
+**Time-keeping rule** (`capabilities/data_lifecycle/timegrid.py`):
+a row's time label and its observation truth are two different
+questions with two different columns.  The label sits ON the grain's
+grid — sample tiers floor `captured_at` to the slot via the shared
+`floor_to_slot` (minute rows say `07:26:00`, never `07:26:13`);
+aggregate tiers label the bucket start (hour `:00:00`, day
+`YYYY-MM-DD`, week its ISO Monday).  The moment the provider's sensor
+actually sampled rides in `source_ts` (Contract 2) and is never
+rounded.  Writers of time-series rows ride wall-aligned **cron**
+triggers, not intervals — an interval fires N seconds from process
+boot, so every restart mints a new second-offset and writes the
+deploy history into the data.  The `live` grain is exempt: it is one
+current row per vehicle carrying provider time, not a series.
+
 ## Contract 1 — Ingest registration
 
 ```python

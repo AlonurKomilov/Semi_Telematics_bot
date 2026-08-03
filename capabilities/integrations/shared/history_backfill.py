@@ -80,6 +80,7 @@ from adapters.telematics.samsara.throttle import (
     backfill_account_lock,
     samsara_backfill_throttle,
 )
+from capabilities.data_lifecycle.timegrid import floor_to_slot
 from capabilities.integrations.shared.engine_state import resolve_engine_state
 from infra import cache as _redis
 from infra import observability as _obs
@@ -470,16 +471,13 @@ def _floor_to_slot(ts: datetime) -> str:
     """Snap a timestamp down to its UTC slot boundary (``SLOT_SECONDS``),
     returned as the canonical ISO string used as ``captured_at``.
 
-    Derived from the constant rather than hardcoded — the previous
-    ``minute // 5 * 5`` quietly ignored ``SLOT_SECONDS``, which is
-    exactly how a cadence change becomes a lie in one place and the
-    truth in another.
+    Delegates to the shared grid rule so this writer and the live
+    snapshot can never disagree about what a slot label looks like —
+    the previous local ``minute // 5 * 5`` quietly ignored
+    ``SLOT_SECONDS``, which is exactly how a cadence change becomes a
+    lie in one place and the truth in another.
     """
-    slot_min = max(1, SLOT_SECONDS // 60)
-    aligned = ts.replace(
-        minute=(ts.minute // slot_min) * slot_min, second=0, microsecond=0,
-    )
-    return aligned.astimezone(timezone.utc).isoformat(timespec="seconds")
+    return floor_to_slot(ts, SLOT_SECONDS)
 
 
 def _parse_sample_time(t: str) -> datetime | None:
