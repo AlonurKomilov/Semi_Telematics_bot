@@ -2,7 +2,7 @@
 
 Covers:
 
-  * The 5-minute slot floor (``_floor_to_slot``).
+  * The minute-grain slot floor (``_floor_to_slot``).
   * The resampler (``_resample_to_snapshot_rows``) — single sample,
     multiple samples in one slot collapse to last-value, GPS fans
     out into lat/lon/speed_mph columns.
@@ -40,9 +40,9 @@ from capabilities.integrations.shared.history_backfill import (
 # ── Slot floor ───────────────────────────────────────────────────
 
 
-def test_floor_to_slot_snaps_down_to_5min_boundary():
+def test_floor_to_slot_snaps_down_to_minute_boundary():
     t = datetime(2026, 5, 15, 14, 23, 45, tzinfo=timezone.utc)
-    assert _floor_to_slot(t) == "2026-05-15T14:20:00+00:00"
+    assert _floor_to_slot(t) == "2026-05-15T14:23:00+00:00"
 
 
 def test_floor_to_slot_exact_slot_preserved():
@@ -52,7 +52,7 @@ def test_floor_to_slot_exact_slot_preserved():
 
 def test_floor_to_slot_seconds_microseconds_zeroed():
     t = datetime(2026, 5, 15, 14, 27, 59, 999_999, tzinfo=timezone.utc)
-    assert _floor_to_slot(t) == "2026-05-15T14:25:00+00:00"
+    assert _floor_to_slot(t) == "2026-05-15T14:27:00+00:00"
 
 
 # ── Resampler ────────────────────────────────────────────────────
@@ -69,18 +69,21 @@ def test_resample_single_sample_produces_one_row():
     rows = _resample_to_snapshot_rows(samples)
     assert len(rows) == 1
     assert rows[0]["vehicle_id"] == "vid-1"
-    assert rows[0]["captured_at"] == "2026-05-15T14:20:00+00:00"
+    assert rows[0]["captured_at"] == "2026-05-15T14:23:00+00:00"
     # Conversion meters → miles
     assert rows[0]["odometer_mi"] == pytest.approx(1000.0, rel=1e-6)
 
 
 def test_resample_multiple_samples_in_one_slot_collapse_to_last():
+    # Three readings inside the SAME minute-grain slot: one row, last
+    # value wins.  (Readings a minute apart now land in separate slots —
+    # that is the cadence change working, not a regression.)
     samples = {
         "vid-1": {
             "fuelPercents": [
-                {"time": "2026-05-15T14:21:00Z", "value": 50},
-                {"time": "2026-05-15T14:23:00Z", "value": 45},
-                {"time": "2026-05-15T14:24:30Z", "value": 40},
+                {"time": "2026-05-15T14:23:05Z", "value": 50},
+                {"time": "2026-05-15T14:23:20Z", "value": 45},
+                {"time": "2026-05-15T14:23:50Z", "value": 40},
             ],
         },
     }
@@ -88,6 +91,23 @@ def test_resample_multiple_samples_in_one_slot_collapse_to_last():
     assert len(rows) == 1
     # Last-write-wins within the slot.
     assert rows[0]["fuel_pct"] == 40.0
+
+
+def test_resample_minute_grain_keeps_readings_a_minute_apart():
+    """The reason for the finer slots: readings one minute apart used
+    to collapse into one 5-minute row, discarding 4 of 5 readings the
+    provider had already delivered."""
+    samples = {
+        "vid-1": {
+            "fuelPercents": [
+                {"time": "2026-05-15T14:21:00Z", "value": 50},
+                {"time": "2026-05-15T14:22:00Z", "value": 45},
+                {"time": "2026-05-15T14:23:00Z", "value": 40},
+            ],
+        },
+    }
+    rows = _resample_to_snapshot_rows(samples)
+    assert len(rows) == 3
 
 
 def test_resample_engine_state_maps_on_to_moving():

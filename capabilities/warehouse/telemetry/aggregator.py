@@ -34,6 +34,15 @@ logger = logging.getLogger(__name__)
 # clamped value would look like miles somebody drove.
 IMPLAUSIBLE_STEP_MILES = 10_000.0
 
+# A sample's state persists until the NEXT sample — that gap is the
+# duty time it earns.  Capped, because a gap is only believable while
+# the feed is alive: when a truck goes silent mid-hour, its last known
+# state may claim at most this much, not the rest of the hour.  The
+# cap also makes duty math CADENCE-INDEPENDENT — history sampled every
+# 5 minutes and new data sampled every minute compute correctly in the
+# same query, because nothing multiplies by an assumed interval.
+DUTY_GAP_CAP_MIN = 10.0
+
 
 async def snapshot_vehicle_state(account_id: int) -> int:
     """Copy the current ``vehicle_state`` row for every active vehicle
@@ -225,23 +234,46 @@ async def _aggregate_hour_window(
     # fleet at zero duty forever.
     duty_cols = [
         "vehicle_id", "max_speed", "avg_fuel_pct",
-        "drive_samples", "idle_samples", "source_ts",
+        "drive_min", "idle_min", "source_ts",
     ]
     cur = await tenant._db.execute(
         """
         SELECT vehicle_id,
                MAX(COALESCE(speed_mph, 0))         AS max_speed,
                AVG(fuel_pct)                       AS avg_fuel_pct,
-               SUM(CASE WHEN engine_state = 'moving' THEN 1 ELSE 0 END) AS drive_samples,
-               SUM(CASE WHEN engine_state = 'idle'   THEN 1 ELSE 0 END) AS idle_samples,
+               SUM(CASE WHEN engine_state = 'moving' THEN duty_min ELSE 0 END)
+                                                   AS drive_min,
+               SUM(CASE WHEN engine_state = 'idle'   THEN duty_min ELSE 0 END)
+                                                   AS idle_min,
                MAX(source_ts)                      AS source_ts
-          FROM vehicle_state_snapshot
-         WHERE account_id = ?
-           AND captured_at >= ?
-           AND captured_at <  ?
+          FROM (
+              SELECT vehicle_id, speed_mph, fuel_pct, engine_state,
+                     source_ts,
+                     LEAST(
+                         EXTRACT(EPOCH FROM (
+                             COALESCE(
+                                 LEAD(captured_at::timestamptz) OVER (
+                                     PARTITION BY vehicle_id
+                                     ORDER BY captured_at
+                                 ),
+                                 ?::timestamptz
+                             ) - captured_at::timestamptz
+                         )) / 60.0,
+                         ?
+                     ) AS duty_min
+                FROM vehicle_state_snapshot
+               WHERE account_id = ?
+                 AND captured_at >= ?
+                 AND captured_at <  ?
+          ) samples
          GROUP BY vehicle_id
         """,
-        (account_id, hour_start.isoformat(), hour_end.isoformat()),
+        # Placeholder order follows the SQL text: the window-end bound
+        # and the gap cap sit in the derived table's select list, ahead
+        # of its filters.  The bound is passed as a real datetime — the
+        # ::timestamptz cast makes the driver expect one.
+        (hour_end, DUTY_GAP_CAP_MIN,
+         account_id, hour_start.isoformat(), hour_end.isoformat()),
     )
     snap_rows = []
     for r in await cur.fetchall():
@@ -255,10 +287,6 @@ async def _aggregate_hour_window(
     # A vehicle can report an odometer in a window it reported nothing
     # else in; its distance still counts.
     snap_rows.extend(dist_by_vid.values())
-
-    # 5-minute snapshot cadence: each sample represents 5 minutes of
-    # duty time.  drive_min / idle_min derive from sample counts.
-    SAMPLE_INTERVAL_MIN = 5
 
     rows: list[dict[str, Any]] = []
     seen_vids: set[str] = set()
@@ -279,8 +307,8 @@ async def _aggregate_hour_window(
         max_speed = float(sr.get("max_speed") or 0)
         raw_fuel = sr.get("avg_fuel_pct")
         avg_fuel = float(raw_fuel) if raw_fuel is not None else None
-        drive_min = int(sr.get("drive_samples") or 0) * SAMPLE_INTERVAL_MIN
-        idle_min = int(sr.get("idle_samples") or 0) * SAMPLE_INTERVAL_MIN
+        drive_min = round(float(sr.get("drive_min") or 0), 1)
+        idle_min = round(float(sr.get("idle_min") or 0), 1)
         evt = event_by_vid.get(vid, {})
         if not max_speed and evt:
             max_speed = float(evt.get("max_speed_mph") or 0)

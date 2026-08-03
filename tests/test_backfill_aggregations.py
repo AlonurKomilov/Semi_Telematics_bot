@@ -495,9 +495,57 @@ async def test_duty_time_counts_without_a_working_odometer(tenant):
         "WHERE account_id = ? AND granularity = 'hourly' AND bucket_start = ?",
         (1, "2026-07-21T09:00:00"))
     row = dict(await cur.fetchone())
-    assert float(row["drive_min"]) == pytest.approx(10.0)   # 2 samples x 5 min
-    assert float(row["idle_min"]) == pytest.approx(5.0)
+    # Gap-based: each sample's state lasts until the next sample.
+    # moving@:00 -> :05 (5), moving@:05 -> :10 (5) = 10 drive minutes.
+    assert float(row["drive_min"]) == pytest.approx(10.0)
+    # idle@:10 is the LAST sample — the feed then goes quiet, so its
+    # state may claim at most the gap cap, never the rest of the hour.
+    assert float(row["idle_min"]) == pytest.approx(10.0)
     assert float(row["miles"]) == pytest.approx(0.0)        # honestly unknown
+
+
+@pytest.mark.asyncio
+async def test_duty_time_is_cadence_independent(tenant):
+    """One hour holding 5-minute history AND 1-minute samples.
+
+    The old math multiplied sample counts by an assumed interval, so
+    the hour in which the sampling cadence changed — and every mixed
+    replay after it — would have been wrong by up to 5x.  Gap-based
+    duty asks each sample how long its state actually lasted.
+    """
+    from datetime import datetime as _dt, timezone as _tz
+    from capabilities.warehouse.telemetry import aggregator as agg
+
+    await tenant.upsert_vehicle_state(1, [
+        {"vehicle_id": "v1", "vehicle_name": "310", "company_code": "A"},
+    ])
+    hour = _dt(2026, 8, 3, 9, tzinfo=_tz.utc)
+    rows = []
+    # First half: legacy 5-minute spacing, moving (:00 :05 ... :25).
+    for m in range(0, 30, 5):
+        rows.append({"vehicle_id": "v1",
+                     "captured_at": hour.replace(minute=m).isoformat(),
+                     "odometer_mi": 5000 + m, "engine_state": "moving",
+                     "speed_mph": 55})
+    # Second half: new 1-minute spacing, idle (:30 :31 ... :59).
+    for m in range(30, 60):
+        rows.append({"vehicle_id": "v1",
+                     "captured_at": hour.replace(minute=m).isoformat(),
+                     "odometer_mi": 5030, "engine_state": "idle",
+                     "speed_mph": 0})
+    await tenant.upsert_vehicle_state_snapshots(1, rows)
+    await agg._aggregate_hour_window(tenant, 1, hour)
+
+    cur = await tenant._db.execute(
+        "SELECT drive_min, idle_min FROM vehicle_telemetry "
+        "WHERE account_id = ? AND granularity = 'hourly' AND bucket_start = ?",
+        (1, "2026-08-03T09:00:00"))
+    row = dict(await cur.fetchone())
+    # Moving: 5+5+5+5+5 (to :25) + 5 (:25 -> :30) = 30 minutes.
+    assert float(row["drive_min"]) == pytest.approx(30.0)
+    # Idle: 29 one-minute gaps + the last sample's gap to the window
+    # end (1 min) = 30 minutes.  Count-based math would have said 150.
+    assert float(row["idle_min"]) == pytest.approx(30.0)
 
 
 @pytest.mark.asyncio

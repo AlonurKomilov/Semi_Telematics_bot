@@ -12,7 +12,7 @@ the existing event logs.  Each ingestor reaches back its own window
 This module is different: it populates ``vehicle_state_snapshot``
 (the per-vehicle time-series introduced by M1) by fetching genuine
 historical samples from Samsara's ``/fleet/vehicles/stats/history``
-endpoint and resampling them to the same 5-minute slot cadence the
+endpoint and resampling them to the same minute-grain slot cadence the
 live snapshot job uses going forward.
 
 The maintenance calendar projection, cost-per-mile, utilisation
@@ -36,7 +36,7 @@ A backfill is one long-running async task that:
      b. Acquires a throttle token before EACH call so the sustained
         rate never exceeds the configured ``SAMSARA_BACKFILL_RPS``.
      c. Resamples the event-driven Samsara samples to one row per
-        5-minute slot per vehicle (matches live snapshot cadence).
+        minute-grain slot per vehicle (matches live snapshot cadence).
      d. Bulk-inserts via ``upsert_vehicle_state_snapshots`` —
         idempotent at the row level via ``ON CONFLICT DO NOTHING``.
      e. Sleeps ``SAMSARA_BACKFILL_DAY_CHUNK_SEC`` between days.
@@ -118,9 +118,10 @@ STAT_BATCHES: tuple[list[str], ...] = (
     ],
 )
 
-# 5-minute resampling slot — matches the live snapshot cadence so
+# 1-minute resampling slot — matches the live snapshot cadence so
 # backfilled rows align cleanly with rows written by the live job.
-SLOT_SECONDS = 300
+# (Was 300s; finer slots keep more of the provider's raw samples.)
+SLOT_SECONDS = 60
 
 # Per-Samsara-stat-type, the ``vehicle_state_snapshot`` column +
 # optional unit-converter.  Stat types that map to multiple columns
@@ -466,11 +467,17 @@ async def mark_running_states_failed_on_shutdown() -> int:
 # ── Resampling ───────────────────────────────────────────────────
 
 def _floor_to_slot(ts: datetime) -> str:
-    """Snap a timestamp down to the nearest 5-minute UTC slot
-    boundary, returned as the canonical ISO string used as
-    ``captured_at``."""
+    """Snap a timestamp down to its UTC slot boundary (``SLOT_SECONDS``),
+    returned as the canonical ISO string used as ``captured_at``.
+
+    Derived from the constant rather than hardcoded — the previous
+    ``minute // 5 * 5`` quietly ignored ``SLOT_SECONDS``, which is
+    exactly how a cadence change becomes a lie in one place and the
+    truth in another.
+    """
+    slot_min = max(1, SLOT_SECONDS // 60)
     aligned = ts.replace(
-        minute=(ts.minute // 5) * 5, second=0, microsecond=0,
+        minute=(ts.minute // slot_min) * slot_min, second=0, microsecond=0,
     )
     return aligned.astimezone(timezone.utc).isoformat(timespec="seconds")
 

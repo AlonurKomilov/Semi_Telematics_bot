@@ -40,10 +40,16 @@ register_cascade(
         "vehicle",
         (
             RollupStage(
+                # Every minute, matching the live ingest: the provider is
+                # already asked at 60s cadence, so sampling any slower
+                # threw away readings we had already paid for — 4 of
+                # every 5, for the life of the table.  Duty math is
+                # gap-based (cadence-independent), so the 5-minute
+                # history and 1-minute samples coexist correctly.
                 "warehouse_state_snapshot",
-                {"interval_min": 5},
+                {"interval_min": 1},
                 snapshot_vehicle_state,
-                "Capture the 5-min vehicle-state history",
+                "Capture the minute-grain vehicle-state history",
             ),
             RollupStage(
                 # UTC-pinned like its siblings.  Unpinned, this ran in the

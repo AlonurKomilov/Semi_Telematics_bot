@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 _JOB_META = {
     # ── Telematics (warehouse ingest + rollup) ──
     "warehouse_vehicle_state":        ("Telematics", "Pull live vehicle state from Samsara"),
-    "warehouse_state_snapshot":       ("Telematics", "Capture the 5-min vehicle-state history"),
+    "warehouse_state_snapshot":       ("Telematics", "Capture the minute-grain vehicle-state history"),
     "warehouse_telemetry_hourly":     ("Telematics", "Roll 5-min snapshots into the hourly tier"),
     "warehouse_metrics_daily":        ("Telematics", "Roll the hourly tier into the daily tier"),
     "warehouse_metrics_weekly":       ("Telematics", "Roll the daily tier into the weekly tier"),
