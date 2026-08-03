@@ -319,3 +319,85 @@ class TestRestoreFromTrail:
                 "context": {}}
         with pytest.raises(ValueError):
             await restore_from_event(db, acct.id, fake, actor_user_id=owner.id)
+
+
+class TestHistoryCompanyWall:
+    """Security review 2026-08-02: the generic history lens served
+    company-scoped entities without the company wall its siblings
+    enforce, so a company-restricted manager could read another
+    company's work-order and task history by walking ids."""
+
+    @pytest.mark.asyncio
+    async def test_history_scope_resolves_company_from_the_live_row(self, seeded_db):
+        from capabilities.activity_trail import router as trail_router
+        from capabilities.activity_trail.registry import (
+            ensure_declarations_loaded, entity_descriptor,
+        )
+        ensure_declarations_loaded()
+        db, acct, owner = seeded_db
+        d = entity_descriptor("maintenance_task")
+        assert d.company_scoped, "maintenance must declare the wall"
+
+        # A task belonging to company COMPB.
+        tid = await db.add_maintenance_task(
+            acct.id, "COMPB", "224", "oil", "Full PM",
+            due_miles=1000, actor_user_id=owner.id,
+        )
+        events = await db.list_activity_events(
+            acct.id, entity_type="maintenance_task", entity_id=str(tid),
+        )
+        # The create event carries NO company_code — this is exactly why
+        # the read path must consult the row, not the event body.
+        assert "company_code" not in (events[0]["changes"] or {})
+
+        async def as_user(assigned):
+            async def _codes(_u):
+                return assigned
+            orig = trail_router.get_user_company_codes
+            trail_router.get_user_company_codes = _codes
+            try:
+                return await trail_router._history_in_company_scope(
+                    d, str(tid), events, {"role": "fleet"}, db, acct.id,
+                )
+            finally:
+                trail_router.get_user_company_codes = orig
+
+        assert await as_user(["COMPB"]) is True     # own company
+        assert await as_user(["COMPA"]) is False    # another company → 404
+        assert await as_user([]) is True            # unrestricted / owner
+
+    @pytest.mark.asyncio
+    async def test_history_scope_of_a_deleted_record_uses_its_delete_body(self, seeded_db):
+        from capabilities.activity_trail import router as trail_router
+        from capabilities.activity_trail.registry import (
+            ensure_declarations_loaded, entity_descriptor,
+        )
+        ensure_declarations_loaded()
+        db, acct, owner = seeded_db
+        d = entity_descriptor("maintenance_task")
+        tid = await db.add_maintenance_task(
+            acct.id, "COMPB", "225", "oil", "Full PM",
+            due_miles=1000, actor_user_id=owner.id,
+        )
+        await db.delete_maintenance_task(
+            tid, account_id=acct.id, actor_user_id=owner.id,
+        )
+        events = await db.list_activity_events(
+            acct.id, entity_type="maintenance_task", entity_id=str(tid),
+        )
+
+        async def as_user(assigned):
+            async def _codes(_u):
+                return assigned
+            orig = trail_router.get_user_company_codes
+            trail_router.get_user_company_codes = _codes
+            try:
+                return await trail_router._history_in_company_scope(
+                    d, str(tid), events, {"role": "fleet"}, db, acct.id,
+                )
+            finally:
+                trail_router.get_user_company_codes = orig
+
+        # The row is gone; the wall still holds via the delete body.
+        assert await as_user(["COMPA"]) is False
+        assert await as_user(["COMPB"]) is True

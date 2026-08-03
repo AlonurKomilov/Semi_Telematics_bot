@@ -267,6 +267,28 @@ class ActivityTrailMixin(_MixinBase):
         }),
     }
 
+    async def get_row_company_code(
+        self, account_id: int, table: str, entity_id: int,
+    ) -> Optional[str]:
+        """The LIVE row's company_code, or None when the row is gone.
+
+        The company wall on history can't be read off the events: only
+        delete bodies carry ``company_code`` (create/update diffs record
+        what changed, and the company rarely does).  So the owning row
+        is the source of truth, with the delete body as the fallback for
+        records that no longer exist.  Same allowlist discipline as the
+        restore writer — the table name is never caller-supplied.
+        """
+        allowed = self.RESTORABLE_COLUMNS.get(table)
+        if allowed is None or "company_code" not in allowed:
+            raise ValueError(f"table {table!r} carries no company scope")
+        cur = await self._db.execute(
+            f"SELECT company_code FROM {table} WHERE id = ? AND account_id = ?",
+            (entity_id, account_id),
+        )
+        r = await cur.fetchone()
+        return (r[0] or "") if r else None
+
     async def restore_trail_row(
         self, account_id: int, table: str, entity_id: int,
         row: dict[str, Any],

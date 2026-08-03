@@ -9,9 +9,12 @@ viewer may see the feature's data, values are returned unmasked here;
 the account-wide /admin/activity feed (a different, broader audience)
 stays the masking surface.
 
-Features with scoped visibility subtleties (maintenance's per-company
-task access) keep their own richer endpoints; this one is the shared
-manager-grade lens.
+Company-scoped features (maintenance, work orders) are served here
+too, and their entities declare ``company_scoped`` so this endpoint
+applies the SAME per-user company wall their own by-id routes apply —
+an earlier version of this docstring claimed they kept to their own
+endpoints while the registry served them here anyway, which left the
+wall off the history lens.
 """
 import logging
 
@@ -34,29 +37,65 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/activity", tags=["activity"])
 
 
+async def _company_allows(user: dict, company: str) -> bool:
+    """One company-matching rule, shared by the read and write paths.
+
+    Semantics match ``_require_company_visible_task`` exactly, blank
+    company included: an unrestricted caller (empty assignment, and
+    always the owner) passes everything; a restricted one passes only
+    its own codes, and a blank/unknown company fails closed.
+    """
+    allowed = await get_user_company_codes(user)
+    if not allowed:
+        return True
+    return bool(filter_by_allowed_companies(
+        [{"company_code": company or ""}], allowed, key="company_code",
+    ))
+
+
 async def _in_company_scope(
     d: EntityDescriptor, event: dict, user: dict,
 ) -> bool:
-    """Does the caller's company assignment cover the record this event
-    describes?
+    """WRITE path (restore): the deleted row's ``company_code`` rides in
+    the event body — the recovery record carries it — so no table read
+    is needed to decide whether the caller may resurrect this record."""
+    if not d.company_scoped:
+        return True
+    return await _company_allows(user, row_from_event(event).get("company_code"))
 
-    Restore is a WRITE, so it must clear the same boundary the feature's
-    own by-id routes clear — otherwise it is the single write path that
-    ignores company assignment.  The deleted row's ``company_code`` is
-    in the event body (the recovery record), so no table read is needed.
-    Semantics match ``_require_company_visible_task`` exactly, blank
-    company included: an unrestricted caller passes everything, a
-    restricted one passes only its own codes.
+
+async def _history_in_company_scope(
+    d: EntityDescriptor, entity_id: str, events: list[dict],
+    user: dict, tenant_db, account_id: int,
+) -> bool:
+    """READ path (history): resolve the record's company from the OWNING
+    ROW, because create/update events record only what changed and the
+    company almost never does — the body alone would wave everything
+    through.  A record that no longer exists falls back to its delete
+    event, which does carry the body; if neither answers, a restricted
+    caller is refused (fail closed).
     """
     if not d.company_scoped:
         return True
     allowed = await get_user_company_codes(user)
     if not allowed:
-        return True                     # unrestricted caller (incl. owner)
-    company = row_from_event(event).get("company_code") or ""
-    return bool(filter_by_allowed_companies(
-        [{"company_code": company}], allowed, key="company_code",
-    ))
+        return True
+    try:
+        row_id = int(entity_id)
+    except (TypeError, ValueError):
+        return False
+    company = await tenant_db.get_row_company_code(
+        account_id, d.restore_table, row_id,
+    )
+    if company is None:
+        # Deleted record — its delete event holds the row body.
+        for e in events:
+            if e.get("action") in ("delete", "merge_away", "deactivate"):
+                body_company = row_from_event(e).get("company_code")
+                if body_company is not None:
+                    company = body_company
+                    break
+    return await _company_allows(user, company or "")
 
 
 @router.get("/{entity_type}/{entity_id}")
@@ -82,6 +121,14 @@ async def entity_history(
         user["account_id"],
         entity_type=entity_type, entity_id=str(entity_id),
     )
+    # The company wall.  The feature permission is not the whole gate
+    # for company-scoped entities: their own by-id routes 404 a
+    # restricted caller, and a history lens that didn't would re-open
+    # the id-guessing path those guards exist to close.
+    if not await _history_in_company_scope(
+        d, str(entity_id), events, user, tenant_db, user["account_id"],
+    ):
+        raise HTTPException(status_code=404, detail="Not found")
     # Restore affordance: server decides, UI just renders the flag.
     can_restore = any(getattr(perms, p, False) for p in d.restore_permissions)
     for e in events:
