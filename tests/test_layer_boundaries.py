@@ -134,7 +134,7 @@ def test_physical_warehouse_tables_stay_inside_the_machinery():
     )
     verb = re.compile(
         r"(FROM|INTO|UPDATE|JOIN)\s+(?!warehouse\.\w+_(live|minute|hour|day|week))"
-        r"(warehouse\.)?vehicle_(state|telemetry)\b"
+        r"(warehouse\.)?vehicle_(state_snapshot|state|telemetry)\b"
     )
     offenders = []
     for path in REPO.rglob("*.py"):
