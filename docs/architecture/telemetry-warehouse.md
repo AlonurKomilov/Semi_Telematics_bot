@@ -42,6 +42,33 @@ adapters/storage/
   ops_runs.py                   # OpsRunsMixin: scheduler_jobs, retention_runs, ingest_runs
 ```
 
+## Naming: stream + grain (the two words, kept separate)
+
+One dataset = one STREAM name; resolution is a GRAIN label, never part
+of the name.  The rule that decides physical tables: **shape decides
+the table, grain is a label** — rows with identical columns share one
+table with a grain column; rows of different kinds (a *sample* is a
+moment, an *aggregate* is a period) get their own table.  Physical
+table names are frozen (wire contract); the clean vocabulary lives in
+the declarations and in the `vehicle_timeline` VIEW (migration 182),
+which presents all five grains as one queryable surface.
+
+| Stream | Grain | Kind | Physical table | Kept |
+|---|---|---|---|---|
+| vehicle.timeline | live | sample | `vehicle_state` | until departed |
+| vehicle.timeline | minute | sample | `vehicle_state_snapshot` | 7 d |
+| vehicle.timeline | hour | aggregate | `vehicle_telemetry` (`granularity='hourly'`) | 90 d |
+| vehicle.timeline | day | aggregate | `vehicle_telemetry` (`granularity='daily'`) | 730 d |
+| vehicle.timeline | week | aggregate | `vehicle_telemetry` (`granularity='weekly'`) | 1825 d |
+
+The minute grain samples at the live ingest's own 60-second cadence
+(pre-2026-08 history is 5-minute spaced; duty math is gap-based and
+cadence-independent, so both spacings compute correctly).  Stored
+`granularity` values (`hourly/daily/weekly`) are legacy wire values —
+the view maps them; new declarations use the grain vocabulary.  Every
+NEW dataset adopts this scheme from day one: stream named after the
+domain, grain declared separately.
+
 ## Contract 1 — Ingest registration
 
 ```python

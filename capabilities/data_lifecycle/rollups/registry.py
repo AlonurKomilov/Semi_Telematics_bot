@@ -49,6 +49,14 @@ class RollupStage:
     cadence: dict
     run: RollupRun
     label: str = ""
+    # WHAT this stage builds and at WHICH resolution — the two words
+    # kept separate on purpose.  "vehicle.timeline" names the stream;
+    # the grain vocabulary is live / minute / hour / day / week.  The
+    # physical table an implementation writes to is a detail; these two
+    # fields are how the watchdog, the operator console and the docs
+    # speak about a stage without knowing the room layout.
+    stream: str = ""
+    grain: str = ""
 
 
 @dataclass(frozen=True)

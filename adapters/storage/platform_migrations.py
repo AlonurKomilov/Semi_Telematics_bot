@@ -2463,11 +2463,21 @@ async def migrate_account_id_base_renumber(conn) -> None:
                     r RECORD;
                 BEGIN
                     FOR r IN
-                        SELECT table_schema, table_name
-                          FROM information_schema.columns
-                         WHERE column_name = 'account_id'
-                           AND table_schema = 'public'
-                           AND table_name <> 'accounts'
+                        SELECT c.table_schema, c.table_name
+                          FROM information_schema.columns c
+                          JOIN information_schema.tables t
+                            ON t.table_schema = c.table_schema
+                           AND t.table_name  = c.table_name
+                         WHERE c.column_name = 'account_id'
+                           AND c.table_schema = 'public'
+                           AND c.table_name <> 'accounts'
+                           -- Base tables only: information_schema.columns
+                           -- also lists VIEWS, and a UNION view (e.g.
+                           -- vehicle_timeline) is not updatable — the
+                           -- sweep would abort the whole renumber.  A
+                           -- view's rows are renumbered through its base
+                           -- tables anyway.
+                           AND t.table_type = 'BASE TABLE'
                     LOOP
                         EXECUTE format(
                             'UPDATE %I.%I SET account_id = account_id + {ACCOUNT_ID_OFFSET} '

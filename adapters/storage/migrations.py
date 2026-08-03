@@ -8058,3 +8058,60 @@ async def migrate_ingest_runs_ledger(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 181: ingest_runs ledger ready")
+
+
+@_register("182_vehicle_timeline_view")
+async def migrate_vehicle_timeline_view(conn) -> None:
+    """One clean name over the whole vehicle stream — grain as a column.
+
+    ``vehicle_timeline`` is a VIEW: a saved query, holding no rows of
+    its own.  It presents the five grains — live, minute, hour, day,
+    week — as one queryable surface, so nobody needs the room layout
+    (three physical tables, three naming styles) to ask a question.
+    The physical tables keep their frozen names underneath; dropping
+    the view costs nothing and loses nothing.
+
+    ``kind`` keeps the two paper-types honest: a *sample* is a moment
+    (position, speed, fuel level), an *aggregate* is a period (miles,
+    drive minutes).  Columns that do not apply to a row's kind are NULL
+    rather than pretending.
+    """
+    await conn.execute("DROP VIEW IF EXISTS vehicle_timeline")
+    await conn.execute(
+        """
+        CREATE VIEW vehicle_timeline AS
+        SELECT account_id, registry_id, vehicle_id, vehicle_name,
+               'live'::text  AS grain, 'sample'::text AS kind,
+               captured_at   AS ts, source_ts,
+               lat, lon, speed_mph, fuel_pct, odometer_mi, engine_hours,
+               engine_state,
+               NULL::real AS miles, NULL::real AS drive_min,
+               NULL::real AS idle_min, NULL::real AS avg_fuel_pct,
+               NULL::real AS odometer_eod, NULL::real AS engine_hours_eod
+          FROM vehicle_state
+        UNION ALL
+        SELECT account_id, registry_id, vehicle_id, NULL::text,
+               'minute', 'sample',
+               captured_at, source_ts,
+               lat, lon, speed_mph, fuel_pct, odometer_mi, engine_hours,
+               engine_state,
+               NULL, NULL, NULL, NULL, NULL, NULL
+          FROM vehicle_state_snapshot
+        UNION ALL
+        SELECT account_id, registry_id, vehicle_id, vehicle_name,
+               CASE granularity
+                   WHEN 'hourly' THEN 'hour'
+                   WHEN 'daily'  THEN 'day'
+                   WHEN 'weekly' THEN 'week'
+                   ELSE granularity
+               END,
+               'aggregate',
+               bucket_start, source_ts,
+               NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+               miles, drive_min, idle_min, avg_fuel_pct,
+               odometer_eod, engine_hours_eod
+          FROM vehicle_telemetry
+        """
+    )
+    await conn.commit()
+    logger.info("Migration 182: vehicle_timeline view ready")

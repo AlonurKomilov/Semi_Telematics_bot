@@ -50,6 +50,7 @@ register_cascade(
                 {"interval_min": 1},
                 snapshot_vehicle_state,
                 "Capture the minute-grain vehicle-state history",
+                stream="vehicle.timeline", grain="minute",
             ),
             RollupStage(
                 # UTC-pinned like its siblings.  Unpinned, this ran in the
@@ -61,13 +62,15 @@ register_cascade(
                 "warehouse_telemetry_hourly",
                 {"cron": "5 * * * *", "tz": "UTC"},
                 aggregate_telemetry_hourly,
-                "Roll 5-min snapshots into the hourly tier",
+                "Roll minute samples into the hour tier",
+                stream="vehicle.timeline", grain="hour",
             ),
             RollupStage(
                 "warehouse_metrics_daily",
                 {"cron": "5 0 * * *", "tz": "UTC"},
                 aggregate_metrics_daily,
-                "Roll the hourly tier into the daily tier",
+                "Roll the hour tier into the day tier",
+                stream="vehicle.timeline", grain="day",
             ),
             RollupStage(
                 # Mondays 00:10 UTC — after the daily roll-up (00:05) has
@@ -79,7 +82,8 @@ register_cascade(
                 "warehouse_metrics_weekly",
                 {"cron": "10 0 * * mon", "tz": "UTC"},
                 aggregate_metrics_weekly,
-                "Roll the daily tier into the weekly tier",
+                "Roll the day tier into the week tier",
+                stream="vehicle.timeline", grain="week",
             ),
         ),
     )

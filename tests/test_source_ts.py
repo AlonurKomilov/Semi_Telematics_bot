@@ -116,3 +116,46 @@ async def test_every_contract_table_carries_the_column(pg_db):
     }
     missing = required - have
     assert not missing, f"tables missing source_ts: {sorted(missing)}"
+
+
+@pytest.mark.asyncio
+async def test_vehicle_timeline_view_agrees_with_its_tables(pg_db):
+    """The view is a catalog, not a copy — it must never disagree with
+    the tables underneath, and its grain vocabulary must be the clean
+    one (live/minute/hour/day/week) even though storage keeps legacy
+    values."""
+    acct = 49
+    await pg_db.upsert_vehicle_state(acct, [
+        {"vehicle_id": "v1", "vehicle_name": "401", "company_code": "PTG",
+         "speed_mph": 55.0, "captured_at": "2026-08-03T10:00:00Z"},
+    ])
+    await pg_db.upsert_vehicle_state_snapshots(acct, [
+        {"vehicle_id": "v1", "captured_at": "2026-08-03T10:01:00+00:00",
+         "odometer_mi": 900.0, "engine_state": "moving", "speed_mph": 55.0},
+    ])
+    await pg_db.upsert_vehicle_metrics_daily(acct, [
+        {"vehicle_id": "v1", "day_utc": "2026-08-02", "miles": 123.0},
+    ])
+
+    cur = await pg_db._db.execute(
+        "SELECT grain, kind, COUNT(*) FROM vehicle_timeline "
+        "WHERE account_id = ? GROUP BY grain, kind ORDER BY grain",
+        (acct,))
+    got = {(r[0], r[1]): r[2] for r in await cur.fetchall()}
+    assert got == {
+        ("day", "aggregate"): 1,
+        ("live", "sample"): 1,
+        ("minute", "sample"): 1,
+    }
+
+    # The aggregate row's numbers ride through unchanged.
+    cur = await pg_db._db.execute(
+        "SELECT miles FROM vehicle_timeline "
+        "WHERE account_id = ? AND grain = 'day'", (acct,))
+    assert float((await cur.fetchone())[0]) == 123.0
+    # Sample columns stay honest on aggregate rows: no fake position.
+    cur = await pg_db._db.execute(
+        "SELECT lat, speed_mph FROM vehicle_timeline "
+        "WHERE account_id = ? AND grain = 'day'", (acct,))
+    lat, speed = await cur.fetchone()
+    assert lat is None and speed is None

@@ -69,3 +69,14 @@ def test_scheduler_grants_a_real_misfire_grace():
     assert match, "no misfire grace configured — jobs are dropped, not delayed"
     grace = int(match.group(1))
     assert grace >= 60, f"misfire grace {grace}s is too tight for a restart"
+
+
+def test_vehicle_stream_declares_stream_and_grain():
+    """The two words stay separate: one stream name, grain as a label —
+    the naming rule that stops interval-in-the-name from coming back."""
+    stages = _stages()
+    grains = {s.grain for s in stages.values() if s.stream == "vehicle.timeline"}
+    assert grains == {"minute", "hour", "day", "week"}
+    for s in stages.values():
+        assert s.stream, f"{s.job_id} declares no stream"
+        assert s.grain, f"{s.job_id} declares no grain"
