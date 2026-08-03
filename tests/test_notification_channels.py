@@ -301,6 +301,45 @@ def test_email_render_builds_subject_html_and_unsubscribe(monkeypatch):
     assert p.extra["list_unsubscribe"].startswith("<https://x.test")
 
 
+def test_email_render_draws_a_labelled_button_for_a_declared_action(monkeypatch):
+    """``meta["action"]`` is the source's call-to-action, declared once and
+    drawn by every channel that can: the inbox row as an inline button,
+    email as a real one.  Email is the renderer that has to absolutise the
+    relative url, since a mail client has no origin to resolve against."""
+    monkeypatch.setenv("AUTH_BASE_URL", "https://x.test")
+    content = NotificationContent(
+        title="New driver application — Dana", body="Reference APP-77",
+        url="https://x.test/workforce/applications?app=77",
+        meta={"action": {"label": "Review application",
+                         "url": "/workforce/applications?app=77"}})
+    p = EmailChannel().render(_rcpt(address="me@x.com"), content)
+
+    html = p.extra["html"]
+    assert "https://x.test/workforce/applications?app=77" in html
+    assert "Review application" in html
+    # A button, not a naked address printed as its own link text.
+    assert ">https://x.test/workforce" not in html
+    # text/plain has no buttons, but it still names the destination.
+    assert "Review application: https://x.test/workforce/applications?app=77" in p.text
+
+
+def test_email_render_refuses_an_offsite_action(monkeypatch):
+    """Same rule the inbox row applies: a stored notice must never become
+    an off-site redirect.  A non-relative action is dropped, and the plain
+    url falls back in — never linked under a friendly label."""
+    monkeypatch.setenv("AUTH_BASE_URL", "https://x.test")
+    for bad in ("https://evil.test/steal", "//evil.test", "/\\evil.test"):
+        p = EmailChannel().render(
+            _rcpt(address="me@x.com"),
+            NotificationContent(title="T", url="https://x.test/ok",
+                                meta={"action": {"label": "Click", "url": bad}}))
+        assert "Click" not in p.extra["html"], bad
+        assert "evil.test" not in p.extra["html"], bad
+        # ...and the plain url still renders, so rejecting an action
+        # never costs the reader their way in.
+        assert "https://x.test/ok" in p.extra["html"], bad
+
+
 def test_email_render_critical_prefix():
     p = EmailChannel().render(
         _rcpt(address="a@b.com"),

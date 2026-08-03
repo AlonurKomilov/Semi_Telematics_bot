@@ -274,7 +274,16 @@ async def notify_new_application(
                     category=APPLICATION_RECEIVED,
                     url=f"{review_url}?app={application_id}",
                     meta={"application_id": application_id,
-                          "reference": reference},
+                          "reference": reference,
+                          # The call-to-action, declared once: the inbox
+                          # row draws it as an inline button, email as a
+                          # real button.  Relative by contract — the
+                          # renderers absolutise it, and a stored notice
+                          # must never carry an off-site redirect.
+                          "action": {
+                              "label": "Review application",
+                              "url": f"/workforce/applications?app={application_id}",
+                          }},
                 ),
                 # Every personal channel is offered; the capability
                 # delivers only where this person is connected and hasn't

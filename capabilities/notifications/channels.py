@@ -114,6 +114,32 @@ class NotificationContent:
         self.alert_type = self.category
 
 
+def parse_action(meta: dict) -> tuple[str, str] | None:
+    """``meta["action"]`` → ``(label, relative_url)``, or None if unusable.
+
+    The CALL-TO-ACTION a source declares once — the in-app inbox row draws
+    it as an inline button, the email channel as a real one.  This is the
+    single definition of what makes one valid, because it is a security
+    rule and a rule enforced in two places drifts: the url must be a
+    same-origin RELATIVE path, so a stored notice can never become an
+    off-site redirect, and never a ``javascript:`` href.
+
+    ``//host`` is rejected (scheme-relative) and so is any backslash —
+    browsers normalise a leading ``/\\`` to ``//`` in real navigations,
+    which would defeat the relative-only rule.  The label is capped so a
+    long one can't blow out a row or a subject line.
+    """
+    raw = meta.get("action") if isinstance(meta, dict) else None
+    if not isinstance(raw, dict):
+        return None
+    label = str(raw.get("label", "") or "").strip()
+    url = str(raw.get("url", "") or "")
+    if (not label or not url.startswith("/")
+            or url.startswith("//") or "\\" in url):
+        return None
+    return label[:40], url
+
+
 @dataclass
 class Payload:
     """A transport-level message — the OUTPUT of a channel's ``render``.

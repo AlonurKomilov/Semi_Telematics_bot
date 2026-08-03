@@ -25,6 +25,7 @@ from interfaces.api.deps import get_current_db_user, get_current_user
 from interfaces.api.rate_limit import limiter
 
 from capabilities.notifications.categories import categories_for_source
+from capabilities.notifications.channels import parse_action
 from capabilities.notifications.lifecycle import (
     apply_unsubscribe,
     confirm_channel_verification,
@@ -404,20 +405,12 @@ async def get_inbox(
             return {}
 
     def _action(meta: dict) -> dict | None:
-        """The row's inline action button ({label, url}) — only honoured
-        when the url is a same-origin RELATIVE path (matches the web-push
-        rule: a stored notice must never become an off-site redirect)."""
-        raw = meta.get("action")
-        if not isinstance(raw, dict):
-            return None
-        label = str(raw.get("label", "") or "").strip()
-        url = str(raw.get("url", "") or "")
-        # "\\" rejected too: browsers normalize a leading "/\\" to "//"
-        # in real navigations, which would defeat the relative-only rule.
-        if (not label or not url.startswith("/")
-                or url.startswith("//") or "\\" in url):
-            return None
-        return {"label": label[:40], "url": url}
+        """The row's inline action button ({label, url}).  Validity is
+        ``channels.parse_action`` — the ONE definition of the
+        relative-only rule, shared with the email renderer, because a
+        security rule enforced in two places drifts."""
+        parsed = parse_action(meta)
+        return None if parsed is None else {"label": parsed[0], "url": parsed[1]}
 
     out = []
     for n in notices:

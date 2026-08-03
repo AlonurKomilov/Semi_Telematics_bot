@@ -2048,12 +2048,15 @@ function NotificationsBell({ onOpen }: { onOpen: (appId: number) => void }) {
                   );
                 })}
               </div>
-              {prefsLoaded && NOTIFY_CHANNELS.some((c) => !connected.includes(c.key)) && (
-                <Link to="/notifications/preferences"
-                  className="mt-1.5 inline-block text-2xs text-primary hover:underline">
-                  Connect a channel
-                </Link>
-              )}
+              {/* Always shown, not only when something is disconnected:
+                  these chips edit the SAME rows as Notification
+                  preferences, and two panels for one setting that never
+                  mention each other read as two independent settings. */}
+              <Link to="/notifications/preferences"
+                className="mt-1.5 inline-block text-2xs text-primary hover:underline">
+                {prefsLoaded && NOTIFY_CHANNELS.some((c) => !connected.includes(c.key))
+                  ? 'Connect a channel' : 'Manage in Notification preferences'}
+              </Link>
             </div>
           </div>
         </>

@@ -23,7 +23,9 @@ from __future__ import annotations
 import logging
 import os
 
-from .channels import DeliveryResult, NotificationContent, Payload, Recipient
+from .channels import (
+    DeliveryResult, NotificationContent, Payload, Recipient, parse_action,
+)
 
 logger = logging.getLogger("bot.notifications")
 
@@ -54,6 +56,21 @@ def _brand() -> str:
     return os.getenv("EMAIL_BRAND_NAME") or "4truck"
 
 
+def _action(content: NotificationContent) -> tuple[str, str] | None:
+    """The declared call-to-action as ``(label, ABSOLUTE url)``.
+
+    Validity is ``channels.parse_action`` — one definition of the
+    relative-only rule for every renderer.  Email is the one that has to
+    absolutise the result, because a mail client has no origin to resolve
+    a relative path against.
+    """
+    parsed = parse_action(content.meta)
+    if parsed is None:
+        return None
+    label, url = parsed
+    return label, f"{_base_url()}{url}"
+
+
 class EmailChannel:
     """Personal email delivery.  ``recipient.address`` is the verified
     email address (verification is 4b)."""
@@ -67,7 +84,11 @@ class EmailChannel:
         """Build subject + text/plain + text/html from RAW content.  HTML
         escaping happens HERE, exactly once (``html.escape``), so the same
         content that becomes Telegram HTML elsewhere becomes a safe email
-        body here with no double-escaping."""
+        body here with no double-escaping.
+
+        A source that declares ``meta["action"]`` gets a labelled button
+        instead of a naked link — the one thing a feature's own template
+        used to do that the generic renderer could not."""
         import html as _html
 
         prefix = _SEV_SUBJECT_PREFIX.get(content.severity, "")
@@ -76,11 +97,17 @@ class EmailChannel:
         unsub = _unsubscribe_url(recipient)
         brand = _brand()
 
-        # text/plain — the required part; every client can show it.
+        action = _action(content)
+
+        # text/plain — the required part; every client can show it.  The
+        # action becomes "Label: <url>" here; text/plain has no buttons,
+        # but naming the destination still beats a bare address.
         text_lines = [content.title]
         if content.body:
             text_lines += ["", content.body]
-        if content.url:
+        if action:
+            text_lines += ["", f"{action[0]}: {action[1]}"]
+        elif content.url:
             text_lines += ["", content.url]
         text_lines += [
             "", "—",
@@ -93,10 +120,24 @@ class EmailChannel:
         # text/html — escape raw fields, keep newlines as <br>.
         safe_title = _html.escape(content.title)
         safe_body = _html.escape(content.body).replace("\n", "<br>")
-        link_html = (
-            f'<p><a href="{_html.escape(content.url)}">{_html.escape(content.url)}</a></p>'
-            if content.url else ""
-        )
+        if action:
+            # A labelled button: what the old hand-rolled recruiting
+            # template had and a bare URL doesn't — you read what the
+            # click DOES instead of parsing an address.  Inline styles
+            # only; mail clients strip <style> blocks.
+            link_html = (
+                f'<p style="margin:16px 0"><a href="{_html.escape(action[1])}" '
+                f'style="background:#2563eb;color:#ffffff;text-decoration:none;'
+                f'padding:10px 18px;border-radius:8px;display:inline-block;'
+                f'font-size:14px;font-weight:600">{_html.escape(action[0])}</a></p>'
+            )
+        elif content.url:
+            link_html = (
+                f'<p><a href="{_html.escape(content.url)}">'
+                f'{_html.escape(content.url)}</a></p>'
+            )
+        else:
+            link_html = ""
         html_body = (
             f'<div style="font-family:system-ui,Arial,sans-serif;font-size:14px;'
             f'color:#111827;line-height:1.5">'

@@ -147,8 +147,14 @@ class TestFanOut:
         # The body carries the reference, so every channel shows it (the
         # in-app object chip was invisible in mail and chat).
         assert content.body == "Reference APP-77"
-        # Deep-link to the row, not just the page.
+        # Deep-link to the row, not just the page — and the same target
+        # declared as an ACTION, which the inbox row and the email both
+        # render as a labelled button ("Review application").
         assert content.url.endswith("/workforce/applications?app=77")
+        assert content.meta["action"] == {
+            "label": "Review application",
+            "url": "/workforce/applications?app=77",
+        }
         assert content.meta["application_id"] == 77
         assert content.meta["reference"] == "APP-77"
         # Every personal channel is offered — the capability decides
