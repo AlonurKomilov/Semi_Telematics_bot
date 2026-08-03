@@ -46,7 +46,7 @@ _TABLES = (
     "vehicle_health_snapshot",
     "vehicle_fault_snapshot",
     "vehicle_fault_detail",
-    "aggregate_weather_snapshot",
+    "weather_snapshot",
 )
 
 

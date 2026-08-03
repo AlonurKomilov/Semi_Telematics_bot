@@ -25,10 +25,10 @@ _WAREHOUSE_TABLES: list[tuple[str, str | None]] = [
     ("vehicle_state",             "fetched_at"),
     ("vehicle_health_snapshot",   "fetched_at"),
     ("vehicle_fault_snapshot",    "fetched_at"),
-    ("aggregate_weather_snapshot",    "fetched_at"),
-    ("aggregate_efficiency_snapshot", "fetched_at"),
+    ("weather_snapshot",    "fetched_at"),
+    ("efficiency_snapshot", "fetched_at"),
     ("safety_event_log",          "occurred_at"),
-    ("driver_efficiency_daily",   "snapshot_date"),
+    ("driver_efficiency",   "snapshot_date"),
     ("vehicle_telemetry",         "ingested_at"),
     ("geofence_definitions",      "fetched_at"),
 ]

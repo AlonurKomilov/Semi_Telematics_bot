@@ -5,7 +5,7 @@ Read + upsert helpers for the four warehouse tables created in
 
   - vehicle_state          (one row per vehicle, overwritten)
   - safety_event_log       (append-only, idempotent on samsara_event_id)
-  - driver_efficiency_daily (one row per driver per day)
+  - driver_efficiency (one row per driver per day)
   - vehicle_telemetry_hourly (hourly roll-up)
 
 Pure SQL — no Samsara client calls happen here.  The ingestor
@@ -363,7 +363,7 @@ class WarehouseMixin(_MixinBase):
             datetime.now(timezone.utc) - timedelta(days=days)
         ).strftime("%Y-%m-%d")
         cur = await self._db.execute(
-            "SELECT COUNT(*) AS c FROM driver_efficiency_daily "
+            "SELECT COUNT(*) AS c FROM driver_efficiency "
             "WHERE account_id = ? AND day >= ?",
             (account_id, since),
         )
@@ -495,7 +495,7 @@ class WarehouseMixin(_MixinBase):
             out[(did, et)] = int(row[2] or 0)
         return out
 
-    # ── driver_efficiency_daily ──────────────────────────────────────
+    # ── driver_efficiency ──────────────────────────────────────
 
     async def upsert_driver_efficiency_daily(
         self,
@@ -532,7 +532,7 @@ class WarehouseMixin(_MixinBase):
         if values:
             await self._db.executemany(
                 """
-                INSERT INTO driver_efficiency_daily (
+                INSERT INTO driver_efficiency (
                     account_id, driver_id, driver_name, day,
                     miles, drive_h, idle_h, mpg, antic_pct, green_pct,
                     harsh_brake, harsh_turn, harsh_accel,
@@ -594,7 +594,7 @@ class WarehouseMixin(_MixinBase):
                    SUM(harsh_turn)             AS harsh_turn,
                    SUM(harsh_accel)            AS harsh_accel,
                    SUM(overspeed_min)          AS overspeed_min
-            FROM driver_efficiency_daily
+            FROM driver_efficiency
             WHERE {' AND '.join(where)}
             GROUP BY driver_id
             ORDER BY miles DESC
@@ -849,14 +849,14 @@ class WarehouseMixin(_MixinBase):
             return 0
         await self._db.executemany(
             """
-            INSERT INTO warehouse_ingest_orphans (
+            INSERT INTO ingest_orphans (
                 account_id, dataset_key, external_id,
                 name, company_code, count, first_seen, last_seen
             ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
             ON CONFLICT (account_id, dataset_key, external_id) DO UPDATE SET
                 name=excluded.name,
                 company_code=excluded.company_code,
-                count=warehouse_ingest_orphans.count + 1,
+                count=ingest_orphans.count + 1,
                 last_seen=excluded.last_seen
             """,
             values,
@@ -2143,7 +2143,7 @@ class WarehouseMixin(_MixinBase):
         from datetime import timedelta
         cutoff_day = (datetime.now(timezone.utc) - timedelta(days=days_keep)).date().isoformat()
         cur = await self._db.execute(
-            "DELETE FROM driver_efficiency_daily "
+            "DELETE FROM driver_efficiency "
             "WHERE account_id = ? AND day < ?",
             (account_id, cutoff_day),
         )
@@ -2976,7 +2976,7 @@ class WarehouseMixin(_MixinBase):
         )
         return {row[0] for row in await cur.fetchall()}
 
-    # ── aggregate_weather_snapshot ─────────────────────────────
+    # ── weather_snapshot ─────────────────────────────
 
     async def upsert_aggregate_weather_snapshots(
         self,
@@ -3004,7 +3004,7 @@ class WarehouseMixin(_MixinBase):
         if values:
             await self._db.executemany(
                 """
-                INSERT INTO aggregate_weather_snapshot (
+                INSERT INTO weather_snapshot (
                     vehicle_id, account_id, vehicle_name, company_code,
                     temp_f, raw_json, captured_at, source_ts, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -3025,7 +3025,7 @@ class WarehouseMixin(_MixinBase):
         if seen:
             placeholders = ",".join("?" * len(seen))
             await self._db.execute(
-                f"DELETE FROM aggregate_weather_snapshot "
+                f"DELETE FROM weather_snapshot "
                 f"WHERE account_id = ? AND vehicle_id NOT IN ({placeholders})",
                 (account_id, *seen),
             )
@@ -3046,7 +3046,7 @@ class WarehouseMixin(_MixinBase):
         cur = await self._db.execute(
             f"""
             SELECT raw_json, vehicle_name, company_code, temp_f
-            FROM aggregate_weather_snapshot
+            FROM weather_snapshot
             WHERE {' AND '.join(where)}
             ORDER BY temp_f ASC
             """,
@@ -3064,7 +3064,7 @@ class WarehouseMixin(_MixinBase):
             out.append(d)
         return out
 
-    # ── aggregate_efficiency_snapshot ──────────────────────────
+    # ── efficiency_snapshot ──────────────────────────
 
     async def upsert_aggregate_efficiency_snapshot(
         self,
@@ -3077,7 +3077,7 @@ class WarehouseMixin(_MixinBase):
         ts = _now_iso()
         await self._db.execute(
             """
-            INSERT INTO aggregate_efficiency_snapshot (
+            INSERT INTO efficiency_snapshot (
                 account_id, window_days, company_code,
                 payload_json, captured_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?)
@@ -3103,7 +3103,7 @@ class WarehouseMixin(_MixinBase):
     ) -> list[dict[str, Any]]:
         cur = await self._db.execute(
             """
-            SELECT payload_json FROM aggregate_efficiency_snapshot
+            SELECT payload_json FROM efficiency_snapshot
             WHERE account_id = ? AND window_days = ? AND company_code = ?
             """,
             (account_id, int(window_days), str(company_code or "")),

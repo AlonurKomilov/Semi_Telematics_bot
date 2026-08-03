@@ -152,6 +152,37 @@ async def test_live_reader_carries_source_ts_to_the_snapshot_copy(pg_db):
 
 
 @pytest.mark.asyncio
+async def test_no_warehouse_table_shadows_in_public(pg_db):
+    """The pool search_path is ``public,warehouse`` — public FIRST, so
+    unqualified CREATEs keep landing in public.  The price of that
+    order: a stray unqualified ``CREATE TABLE IF NOT EXISTS`` of a
+    warehouse name would recreate it in public and silently hijack
+    every read.  A fresh install must end with the family living in
+    the warehouse schema and NOTHING shadowing it in public."""
+    old_and_new = [
+        "vehicle_state", "vehicle_state_snapshot", "vehicle_telemetry",
+        "vehicle_health_snapshot", "vehicle_fault_snapshot",
+        "vehicle_fault_detail", "safety_event_log", "geofence_definitions",
+        "ingest_runs", "driver_efficiency", "weather_snapshot",
+        "efficiency_snapshot", "ingest_orphans", "vehicle_timeline",
+        "driver_efficiency_daily", "aggregate_weather_snapshot",
+        "aggregate_efficiency_snapshot", "warehouse_ingest_orphans",
+    ]
+    for name in old_and_new:
+        cur = await pg_db._db.execute(
+            "SELECT to_regclass(?)", (f"public.{name}",))
+        assert (await cur.fetchone())[0] is None, (
+            f"public.{name} exists — it shadows the warehouse schema"
+        )
+    for name in ["vehicle_state", "vehicle_telemetry", "driver_efficiency",
+                 "weather_snapshot", "efficiency_snapshot", "ingest_orphans",
+                 "vehicle_timeline"]:
+        cur = await pg_db._db.execute(
+            "SELECT to_regclass(?)", (f"warehouse.{name}",))
+        assert (await cur.fetchone())[0] is not None, f"warehouse.{name} missing"
+
+
+@pytest.mark.asyncio
 async def test_catalog_comments_describe_the_family(pg_db):
     """The DB itself says which tables are warehouse and who owns them
     — names accreted across eras and can't (renames are wire surgery).
@@ -179,15 +210,15 @@ async def test_every_contract_table_carries_the_column(pg_db):
     """Guard: a table registered to the contract cannot silently lack it."""
     cur = await pg_db._db.execute(
         "SELECT table_name FROM information_schema.columns "
-        "WHERE column_name = 'source_ts' AND table_schema = 'public'"
+        "WHERE column_name = 'source_ts' AND table_schema IN ('public', 'warehouse')"
     )
     have = {r[0] for r in await cur.fetchall()}
     required = {
         "vehicle_state", "vehicle_state_snapshot", "vehicle_telemetry",
         "vehicle_health_snapshot", "vehicle_fault_snapshot",
         "vehicle_fault_detail", "safety_event_log",
-        "driver_efficiency_daily", "geofence_definitions",
-        "aggregate_weather_snapshot", "aggregate_efficiency_snapshot",
+        "driver_efficiency", "geofence_definitions",
+        "weather_snapshot", "efficiency_snapshot",
     }
     missing = required - have
     assert not missing, f"tables missing source_ts: {sorted(missing)}"

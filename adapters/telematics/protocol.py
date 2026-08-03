@@ -57,7 +57,7 @@ class Capability:
     SAFETY_EVENTS           = "safety_events"
     VEHICLE_HEALTH          = "vehicle_health"
     VEHICLE_FAULTS          = "vehicle_faults"
-    DRIVER_EFFICIENCY_DAILY = "driver_efficiency_daily"
+    DRIVER_EFFICIENCY_DAILY = "driver_efficiency"
     FLEET_WEATHER           = "fleet_weather"
     FLEET_EFFICIENCY        = "fleet_efficiency"
     GEOFENCE_DEFINITIONS    = "geofence_definitions"

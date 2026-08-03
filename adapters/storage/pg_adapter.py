@@ -767,6 +767,12 @@ class _PgPool:
             min_size=self._min_size,
             max_size=self._max_size,
             command_timeout=60,
+            # The telemetry warehouse lives in its own schema; unqualified
+            # table names in the ~900 existing queries resolve through the
+            # search_path.  ``public`` stays FIRST so unqualified CREATEs
+            # keep landing in public — the shadow-orphan guard test asserts
+            # no warehouse table ever reappears there.
+            server_settings={"search_path": "public,warehouse"},
         )
         logger.info("asyncpg pool connected to PostgreSQL (min=%d max=%d)",
                     self._min_size, self._max_size)

@@ -9,11 +9,11 @@ windows aren't empty out of the gate.
 Idempotency / dedup guarantees:
     * ``safety_event_log`` has ``UNIQUE(samsara_event_id)`` and the
       writer uses ``INSERT OR IGNORE`` — re-running skips duplicates.
-    * ``driver_efficiency_daily`` is keyed on ``(account, driver, day)``
+    * ``driver_efficiency`` is keyed on ``(account, driver, day)``
       and the writer uses ``ON CONFLICT … DO UPDATE`` — re-running
       refreshes the row, never creates a second one.
     * ``vehicle_state`` / ``vehicle_health_snapshot`` /
-      ``vehicle_fault_snapshot`` / ``aggregate_weather_snapshot`` are
+      ``vehicle_fault_snapshot`` / ``weather_snapshot`` are
       keyed on ``vehicle_id`` and ``ON CONFLICT DO UPDATE`` —
       snapshot-style, latest value wins.
 

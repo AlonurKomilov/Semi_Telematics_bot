@@ -3,7 +3,7 @@
 Covers:
 
   * ``WarehouseMixin`` upserts + reads (vehicle_state, safety_event_log,
-    driver_efficiency_daily, vehicle_telemetry_hourly).
+    driver_efficiency, vehicle_telemetry_hourly).
   * Idempotency (re-ingesting the same Samsara payload doesn't dupe).
   * Filter contracts on the readers (company, vehicle_nums, days window).
   * ``warehouse_reader`` flag gating + Samsara fallback.
@@ -166,7 +166,7 @@ class TestSafetyEventLog:
         assert rows[0]["raw"] == {"foo": "bar", "n": 42}
 
 
-# ── driver_efficiency_daily ──────────────────────────────────────────
+# ── driver_efficiency ──────────────────────────────────────────
 
 
 class TestDriverEfficiency:

@@ -1,6 +1,6 @@
 """Driver retention — the Driver feature owns its per-driver daily metrics.
 
-``driver.efficiency_daily`` -> physical table ``driver_efficiency_daily``
+``driver.efficiency_daily`` -> physical table ``driver_efficiency``
 (one row per driver per day).  The Driver-side analogue of
 ``vehicle.metrics_daily``; kept for the same 730-day year-over-year window
 so scorecard history lines up with the vehicle daily tier.

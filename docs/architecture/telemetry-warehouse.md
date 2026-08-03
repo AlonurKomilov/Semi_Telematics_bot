@@ -34,7 +34,7 @@ features/
     warehouse/aggregator.py     # tier aggregation (feature-owned)
     warehouse/readers.py        # warehouse-first reads + staleness fallback
   events/lifecycle.py           # safety_event_log dataset
-  drivers/lifecycle.py          # driver_efficiency_daily dataset
+  drivers/lifecycle.py          # driver_efficiency dataset
   geofencing/lifecycle.py       # geofence-definitions cache dataset
 adapters/storage/
   warehouse_vehicles.py  warehouse_safety.py  warehouse_drivers.py
@@ -48,10 +48,27 @@ One dataset = one STREAM name; resolution is a GRAIN label, never part
 of the name.  The rule that decides physical tables: **shape decides
 the table, grain is a label** — rows with identical columns share one
 table with a grain column; rows of different kinds (a *sample* is a
-moment, an *aggregate* is a period) get their own table.  Physical
-table names are frozen (wire contract); the clean vocabulary lives in
-the declarations and in the `vehicle_timeline` VIEW (migration 182),
-which presents all five grains as one queryable surface.
+moment, an *aggregate* is a period) get their own table.  The clean
+vocabulary lives in the declarations and in the `vehicle_timeline`
+VIEW (migration 182), which presents all five grains as one queryable
+surface.
+
+**The `warehouse` schema (decided 2026-08-03, pre-customer window):**
+the whole family — 13 tables + the view — lives in a dedicated
+Postgres schema, moved by the operator window script
+(docs/runbooks/warehouse-schema-move.md) and mirrored by idempotent
+migration 183 for fresh installs.  Four names were normalized in the
+same move: `driver_efficiency_daily → driver_efficiency` (grain out
+of the name), `aggregate_weather_snapshot → weather_snapshot`,
+`aggregate_efficiency_snapshot → efficiency_snapshot`, and
+`warehouse_ingest_orphans → ingest_orphans` (the schema IS the
+prefix).  `safety_event_log` keeps its name — "safety event" is the
+industry's own noun here, not a role word.  Unqualified queries
+resolve via the pool search_path `public,warehouse` (public FIRST so
+unqualified CREATEs land in public; the shadow-orphan guard test in
+tests/test_source_ts.py asserts no warehouse name ever reappears
+there).  Explicit `warehouse.` qualification of the ~900 code
+references is a later, CI-guarded follow-up — never part of cutover.
 
 | Stream | Grain | Kind | Physical table | Kept |
 |---|---|---|---|---|
@@ -69,11 +86,12 @@ the view maps them; new declarations use the grain vocabulary.  Every
 NEW dataset adopts this scheme from day one: stream named after the
 domain, grain declared separately.
 
-**Table-name template (every FUTURE warehouse table):**
+**Table-name template (every warehouse table):**
 `<domain-noun>_<subtask>[_<kind>]` — `vehicle_fault_snapshot` is the
 model citizen.  Never a grain in the name (grain is a label/column),
-never a role word (PERSONA.md).  Existing names are frozen wire
-contracts and stay; what a name can't say, the database says instead:
+never a role word (PERSONA.md), never a `warehouse_` prefix (the
+schema is the prefix).  New tables are born in the `warehouse`
+schema.  What a name still can't say, the database says:
 `capabilities/data_lifecycle/catalog.py` stamps every registered
 table with a `COMMENT` (family · dataset key · owner · grain note),
 generated from the ingest registry at boot so it cannot drift.
@@ -121,9 +139,9 @@ vs `freshness_sla_min`. A dataset can no longer die silently.
 | dataset | tables | owner |
 |---|---|---|
 | vehicles.state / health / faults | vehicle_state, vehicle_health_snapshot, vehicle_fault_snapshot, vehicle_fault_detail | features/vehicles |
-| vehicles.weather / efficiency | aggregate_weather_snapshot, aggregate_efficiency_snapshot | features/vehicles (account-wide *vehicle* aggregates — previously unowned) |
+| vehicles.weather / efficiency | weather_snapshot, efficiency_snapshot | features/vehicles (account-wide *vehicle* aggregates — previously unowned) |
 | events.safety | safety_event_log | features/events (docs/FEATURES.md "that's platform" line is superseded) |
-| drivers.efficiency | driver_efficiency_daily | features/drivers |
+| drivers.efficiency | driver_efficiency | features/drivers |
 | geofencing.definitions | geofence_definitions | features/geofencing |
 
 **Billing side-effect (settled):** `ingest_vehicle_state` today ends by
@@ -159,13 +177,13 @@ That wire name never changes. The registry identity gets a NEW column
 **`registry_id`** (BIGINT, nullable, = Postgres `vehicles.id`; the vehicles
 API already exposes this name). Resolution happens at ingest by
 `(account_id, samsara external id)` — never by name. Name is a display
-label only. Unmatched identities land in `warehouse_ingest_orphans`
+label only. Unmatched identities land in `ingest_orphans`
 (dataset_key, account_id, external_id, name, count, first/last_seen),
 surfaced by the watchdog. Consumers join on `(account_id, registry_id)`.
 
 Tenancy repair rides this contract: the five tables keyed without
 `account_id` (vehicle_state, vehicle_health_snapshot,
-vehicle_fault_snapshot, aggregate_weather_snapshot, geofence_definitions —
+vehicle_fault_snapshot, weather_snapshot, geofence_definitions —
 plus safety_event_log's global `UNIQUE(samsara_event_id)`) get
 account-scoped keys via CONCURRENTLY-built unique indexes + constraint swap,
 and their upserts stop overwriting `account_id` on conflict.

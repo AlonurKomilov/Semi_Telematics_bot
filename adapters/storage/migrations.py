@@ -8115,3 +8115,74 @@ async def migrate_vehicle_timeline_view(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 182: vehicle_timeline view ready")
+
+
+@_register("183_warehouse_schema")
+async def migrate_warehouse_schema(conn) -> None:
+    """The warehouse becomes a schema — the family visible in the tree.
+
+    Moves the 13 warehouse tables + the ``vehicle_timeline`` view into
+    a dedicated ``warehouse`` schema and normalizes the four names that
+    predated the naming template (grain out of ``driver_efficiency``,
+    the say-nothing ``aggregate_`` prefix off the two account
+    snapshots, the now-redundant ``warehouse_`` prefix off the orphan
+    ledger).  Unqualified queries keep resolving through the pool
+    search_path (``public,warehouse``).
+
+    Every step is guarded by ``to_regclass`` so the migration converges
+    from any state: fresh installs (tables born in public by earlier
+    migrations, moved here), production (moved by the operator window
+    script first — this then no-ops), and re-runs.  Postgres moves
+    indexes, sequences, and RLS policies WITH each table.  An advisory
+    lock serializes the unlocked migration runners.
+    """
+    moves = [
+        "vehicle_state", "vehicle_state_snapshot", "vehicle_telemetry",
+        "vehicle_health_snapshot", "vehicle_fault_snapshot",
+        "vehicle_fault_detail", "safety_event_log", "geofence_definitions",
+        "ingest_runs", "driver_efficiency_daily", "aggregate_weather_snapshot",
+        "aggregate_efficiency_snapshot", "warehouse_ingest_orphans",
+    ]
+    renames = {
+        "driver_efficiency_daily": "driver_efficiency",
+        "aggregate_weather_snapshot": "weather_snapshot",
+        "aggregate_efficiency_snapshot": "efficiency_snapshot",
+        "warehouse_ingest_orphans": "ingest_orphans",
+    }
+
+    await conn.execute("SELECT pg_advisory_lock(478183)")
+    try:
+        await conn.execute("CREATE SCHEMA IF NOT EXISTS warehouse")
+        for table in moves:
+            cur = await conn.execute(
+                "SELECT to_regclass(?), to_regclass(?)",
+                (f"public.{table}", f"warehouse.{table}"),
+            )
+            in_public, in_warehouse = await cur.fetchone()
+            if in_public is not None and in_warehouse is None:
+                await conn.execute(
+                    f"ALTER TABLE public.{table} SET SCHEMA warehouse"
+                )
+        cur = await conn.execute(
+            "SELECT to_regclass('public.vehicle_timeline'), "
+            "to_regclass('warehouse.vehicle_timeline')"
+        )
+        view_public, view_warehouse = await cur.fetchone()
+        if view_public is not None and view_warehouse is None:
+            await conn.execute(
+                "ALTER VIEW public.vehicle_timeline SET SCHEMA warehouse"
+            )
+        for old, new in renames.items():
+            cur = await conn.execute(
+                "SELECT to_regclass(?), to_regclass(?)",
+                (f"warehouse.{old}", f"warehouse.{new}"),
+            )
+            has_old, has_new = await cur.fetchone()
+            if has_old is not None and has_new is None:
+                await conn.execute(
+                    f"ALTER TABLE warehouse.{old} RENAME TO {new}"
+                )
+    finally:
+        await conn.execute("SELECT pg_advisory_unlock(478183)")
+    await conn.commit()
+    logger.info("Migration 183: warehouse schema ready (13 tables + view)")

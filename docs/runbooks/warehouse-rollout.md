@@ -48,7 +48,7 @@ Healthy response (every table populated, recent timestamps):
     {"table": "fleet_weather_snapshot",    "rows": 84, "last_seen": "2026-05-07T11:25:00Z"},
     {"table": "fleet_efficiency_snapshot", "rows": 84, "last_seen": "2026-05-07T11:00:00Z"},
     {"table": "safety_event_log",          "rows": 273,"last_seen": "2026-05-07T11:33:40Z"},
-    {"table": "driver_efficiency_daily",   "rows":  6, "last_seen": "2026-05-06"},
+    {"table": "driver_efficiency",   "rows":  6, "last_seen": "2026-05-06"},
     {"table": "vehicle_telemetry_hourly",  "rows":210, "last_seen": "2026-05-07T11:00:00Z"},
     {"table": "geofence_definitions",      "rows": 12, "last_seen": "2026-05-07T11:00:00Z"}
   ],

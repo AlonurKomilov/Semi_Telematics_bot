@@ -124,7 +124,7 @@ async def test_registry_id_rides_state_snapshot_and_orphans(pg_db):
         {"external_id": "sam_999", "name": "999", "company_code": "PTG"},
     ])
     cur = await pg_db._db.execute(
-        "SELECT count FROM warehouse_ingest_orphans "
+        "SELECT count FROM ingest_orphans "
         "WHERE account_id = ? AND external_id = ?", (acct, "sam_999"))
     row = await cur.fetchone()
     assert row is not None and int(row[0]) == 2

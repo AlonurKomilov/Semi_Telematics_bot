@@ -2,7 +2,7 @@
 
 Pulls Samsara's feeds on a schedule and persists them into the per-tenant
 warehouse tables (``vehicle_state``, ``safety_event_log``,
-``driver_efficiency_daily``, ``vehicle_health_snapshot``, ``vehicle_fault_*``,
+``driver_efficiency``, ``vehicle_health_snapshot``, ``vehicle_fault_*``,
 ``aggregate_weather/efficiency_snapshot``, ``geofence_definitions``).  Each
 ingest is a *pure function* keyed on ``account_id`` so it runs from APScheduler,
 the backfill script, or a test fixture without surprises.
@@ -133,7 +133,7 @@ def _safety_event_to_log_row(e: dict[str, Any]) -> dict[str, Any]:
 
 def _driver_eff_to_daily_row(rec: dict[str, Any], day: str) -> dict[str, Any]:
     """Reshape a single ``client.get_driver_efficiency()`` entry into a
-    ``driver_efficiency_daily`` row.
+    ``driver_efficiency`` row.
 
     Note: Samsara's efficiency endpoint returns *windowed* totals, not
     per-day buckets.  We treat each ingest as the bucket for ``day``

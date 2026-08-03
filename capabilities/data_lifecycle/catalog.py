@@ -1,12 +1,15 @@
 """DB self-description — the registry, stamped onto the tables.
 
-Warehouse table names accreted across eras (``safety_event_log``
-predates the family; ``driver_efficiency_daily`` bakes a grain into
-its name) and renaming them is wire surgery the naming decision
-rejected.  So the DATABASE says what the names can't: every table a
-registered dataset writes carries a ``COMMENT`` — visible in psql
-``\\dt+`` and in the tree of every DB GUI — generated from the ingest
-registry at boot, so it cannot drift from the code that owns it.
+Every table a registered dataset writes carries a ``COMMENT`` —
+visible in psql ``\\dt+`` and in the tree of every DB GUI — generated
+from the ingest registry at boot, so it cannot drift from the code
+that owns it.  The ``warehouse`` schema groups the family physically
+(migration 183); the comments say what a name alone still can't:
+which dataset feeds it, who owns it, what grain it holds.
+
+Table names here are UNQUALIFIED on purpose: the pool search_path
+(public,warehouse) resolves them on either side of the schema-move
+window, so this job is safe to run before and after it.
 
 Comments are metadata only: no reader, writer, or query plan depends
 on them.  Re-running the sync is idempotent (COMMENT overwrites).
@@ -35,7 +38,7 @@ _EXTRA_COMMENTS = {
         f"grains hour|day|week via granularity column · built by rollup stages, never ingested · {_SSOT}",
     "ingest_runs":
         f"warehouse machinery: day-grain ACQUIRE ledger (dataset_key × account × day) · {_SSOT}",
-    "warehouse_ingest_orphans":
+    "ingest_orphans":
         f"warehouse machinery: identities the registry could not resolve at ingest · {_SSOT}",
 }
 

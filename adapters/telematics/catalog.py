@@ -203,9 +203,9 @@ _SAMSARA_FEED_SPECS: tuple[FeedSpec, ...] = (
     FeedSpec(Capability.VEHICLE_HEALTH,          "vehicle_health_snapshot",  "updated_at",               feature="Vehicles",   component="Health"),
     FeedSpec(Capability.VEHICLE_FAULTS,          "vehicle_fault_snapshot",   "updated_at",               feature="Vehicles",   component="Faults"),
     FeedSpec(Capability.SAFETY_EVENTS,           "safety_event_log",         "ingested_at",              feature="Safety",     component="Events"),
-    FeedSpec(Capability.DRIVER_EFFICIENCY_DAILY, "driver_efficiency_daily",  "ingested_at",              feature="Scorecards", component="Efficiency"),
-    FeedSpec(Capability.FLEET_WEATHER,           "aggregate_weather_snapshot",    "updated_at",          feature="Live Map",   component="Weather"),
-    FeedSpec(Capability.FLEET_EFFICIENCY,        "aggregate_efficiency_snapshot", "updated_at",          feature="Costs",      component="Efficiency"),
+    FeedSpec(Capability.DRIVER_EFFICIENCY_DAILY, "driver_efficiency",  "ingested_at",              feature="Scorecards", component="Efficiency"),
+    FeedSpec(Capability.FLEET_WEATHER,           "weather_snapshot",    "updated_at",          feature="Live Map",   component="Weather"),
+    FeedSpec(Capability.FLEET_EFFICIENCY,        "efficiency_snapshot", "updated_at",          feature="Costs",      component="Efficiency"),
     FeedSpec(Capability.GEOFENCE_DEFINITIONS,    "geofence_definitions",     "updated_at",               feature="Geofences",  component="Definitions"),
 )
 

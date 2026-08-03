@@ -21,10 +21,10 @@ register_dataset(IngestDataset(
     key="drivers.efficiency",
     owner="drivers",
     job_id="warehouse_driver_efficiency",
-    capability="driver_efficiency_daily",
+    capability="driver_efficiency",
     cadence={"interval_min": 60},
     run=_run_driver_efficiency,
-    tables=("driver_efficiency_daily",),
+    tables=("driver_efficiency",),
     # Windowed provider totals with no per-record world-time: the rows
     # are ageless by nature, so the watchdog judges this one on whether
     # it writes at all, not on how old it looks.

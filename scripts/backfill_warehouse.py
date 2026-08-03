@@ -73,20 +73,20 @@ async def _run_for(account_id: int, *, skip_events: bool, skip_efficiency: bool)
     except Exception:
         logger.exception("  vehicle_fault_snapshot   FAILED \u2014 continuing")
 
-    # Weather (10min in prod) \u2014 aggregate_weather_snapshot powers Weather page.
+    # Weather (10min in prod) \u2014 weather_snapshot powers Weather page.
     try:
         n = await ingest_fleet_weather(account_id)
-        logger.info("  aggregate_weather_snapshot   %d rows", n)
+        logger.info("  weather_snapshot   %d rows", n)
     except Exception:
-        logger.exception("  aggregate_weather_snapshot   FAILED \u2014 continuing")
+        logger.exception("  weather_snapshot   FAILED \u2014 continuing")
 
-    # Fleet efficiency (30min in prod) \u2014 aggregate_efficiency_snapshot
+    # Fleet efficiency (30min in prod) \u2014 efficiency_snapshot
     # powers Cost-per-Mile + Scorecards.
     try:
         n = await ingest_fleet_efficiency(account_id, days=7)
-        logger.info("  aggregate_efficiency_snapshot %d rows", n)
+        logger.info("  efficiency_snapshot %d rows", n)
     except Exception:
-        logger.exception("  aggregate_efficiency_snapshot FAILED \u2014 continuing")
+        logger.exception("  efficiency_snapshot FAILED \u2014 continuing")
 
     # Geofences (1h in prod) \u2014 geofence_definitions powers map overlays.
     try:
@@ -101,7 +101,7 @@ async def _run_for(account_id: int, *, skip_events: bool, skip_efficiency: bool)
 
     if not skip_efficiency:
         n = await ingest_driver_efficiency_daily(account_id, days=7)
-        logger.info("  driver_efficiency_daily  %d rows", n)
+        logger.info("  driver_efficiency  %d rows", n)
 
     n = await aggregate_telemetry_hourly(account_id)
     logger.info("  vehicle_telemetry (hourly) %d rows", n)
@@ -113,7 +113,7 @@ async def main(argv: list[str]) -> int:
     p.add_argument("--skip-events", action="store_true",
                    help="Skip safety_event_log (slow on first run).")
     p.add_argument("--skip-efficiency", action="store_true",
-                   help="Skip driver_efficiency_daily (slow on first run).")
+                   help="Skip driver_efficiency (slow on first run).")
     args = p.parse_args(argv)
 
     logging.basicConfig(

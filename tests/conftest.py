@@ -158,6 +158,10 @@ async def pg_db(_pg_container_url, monkeypatch) -> AsyncIterator[Database]:
     conn = await asyncpg.connect(_pg_container_url)
     try:
         await conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        # The telemetry warehouse lives in its own schema (migration
+        # 183) — reset it too, or the previous test's warehouse tables
+        # survive into this test's fresh migration run.
+        await conn.execute("DROP SCHEMA IF EXISTS warehouse CASCADE")
         await conn.execute("CREATE SCHEMA public")
     finally:
         await conn.close()

@@ -263,7 +263,7 @@ register_dataset(IngestDataset(
     capability="fleet_weather",
     cadence={"interval_min": 10},
     run=_run_fleet_weather,
-    tables=("aggregate_weather_snapshot",),
+    tables=("weather_snapshot",),
     freshness_sla_min=120,
     label="Ingest cabin-weather snapshots",
 ))
@@ -275,7 +275,7 @@ register_dataset(IngestDataset(
     capability="fleet_efficiency",
     cadence={"interval_min": 30},
     run=_run_fleet_efficiency,
-    tables=("aggregate_efficiency_snapshot",),
+    tables=("efficiency_snapshot",),
     # A windowed aggregate carries no per-record world-time, so its
     # rows are ageless by design; the SLA exists for the declaration's
     # completeness and the watchdog skips the age question for it.
