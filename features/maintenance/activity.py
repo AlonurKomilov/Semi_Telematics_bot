@@ -26,5 +26,12 @@ register_entity(EntityDescriptor(
 register_entity(EntityDescriptor(
     "maintenance", "Maintenance task", "maintenance",
     view_permissions=('can_maintenance_all',),
+    # The frozen audit_log's imported rows (migration 178) — their
+    # entity_id is a real maintenance_tasks id, so naming the owning
+    # table lets the company wall resolve for them too.  Restore stays
+    # OFF: that needs restore_permissions, which these never get (a
+    # legacy row carries no field values to replay).
+    restore_table="maintenance_tasks",
+    company_scoped=True,
 ))
 # "maintenance" = the frozen-log import alias (pre-trail rows).

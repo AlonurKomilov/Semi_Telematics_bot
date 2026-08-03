@@ -84,9 +84,14 @@ async def _history_in_company_scope(
         row_id = int(entity_id)
     except (TypeError, ValueError):
         return False
-    company = await tenant_db.get_row_company_code(
-        account_id, d.restore_table, row_id,
-    )
+    company = None
+    if d.restore_table:
+        company = await tenant_db.get_row_company_code(
+            account_id, d.restore_table, row_id,
+        )
+    # No owning table declared (an entity that scopes by company but
+    # isn't restorable): the event body is the only source, and no
+    # answer means no access for a restricted caller.
     if company is None:
         # Deleted record — its delete event holds the row body.
         for e in events:

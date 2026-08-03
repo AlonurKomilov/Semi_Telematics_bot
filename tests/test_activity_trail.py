@@ -304,11 +304,90 @@ async def test_restore_scope_matches_the_sibling_routes(monkeypatch):
 
 
 def test_company_scoped_entities_match_the_features_that_enforce_it():
-    """maintenance_task and work_order are the entity types whose own
-    by-id routes company-filter; their declarations must say so."""
+    """The entity types whose own by-id routes company-filter must say
+    so: maintenance tasks, work orders, and the legacy maintenance
+    alias whose imported rows point at the same task ids."""
     from capabilities.activity_trail.registry import (
         _ENTITIES, ensure_declarations_loaded,
     )
     ensure_declarations_loaded()
     scoped = {et for et, d in _ENTITIES.items() if d.company_scoped}
-    assert scoped == {"maintenance_task", "work_order"}
+    assert scoped == {"maintenance_task", "work_order", "maintenance"}
+
+
+# ── the company wall must be a DECIDED question, not a default ─────
+
+# Features whose by-id routes enforce the per-user company assignment.
+# An entity owned by one of these either declares company_scoped, or
+# appears below with the reason its records aren't company-owned.
+COMPANY_WALL_FEATURES = frozenset({
+    "maintenance", "work_orders", "vehicles", "parts", "coaching",
+    "drivers", "loads",
+})
+
+# Documented exemptions — each is a decision, not an oversight.
+SCOPE_EXEMPT: dict[str, str] = {
+    # The part RECORD is account-wide shared vocabulary (name, number).
+    # features/parts/router.py company-filters the price ANALYTICS, which
+    # the trail never records.
+    "part": "part rows are account-wide; only price analytics are scoped",
+    # Templates carry no company column — they are account-wide recipes.
+    "maintenance_template": "templates are account-wide, no company column",
+    # The vehicle registry's by-id routes apply no company wall (only the
+    # list/overview do), so history matches its own feature.
+    "vehicle": "vehicles' by-id routes are not company-walled",
+    # Written to vehicle_inventory_events (a legacy arm), never to
+    # activity_events, so this endpoint serves nothing for it today.
+    # Revisit the moment inventory adopts activity_events.
+    "inventory_item": "writes to vehicle_inventory_events, not this store",
+    # Scoped through a driver→company MAP, not a company_code column —
+    # needs its own resolver before it can declare the wall.  No events
+    # are written for these types today.
+    "coaching": "scopes via driver→company map; no events written yet",
+    "driver": "scopes via driver→company map; no events written yet",
+    # Loads live in load_events (legacy arm) with their own own-scope
+    # rules; the generic endpoint reads activity_events only.
+    "load": "writes to load_events, not this store",
+}
+
+
+def test_company_scope_is_declared_or_explicitly_exempt():
+    """Every entity owned by a company-walled feature must either
+    declare the wall or carry a written reason it doesn't need one.
+
+    This is the guard for the class of bug found twice on 2026-08-02:
+    the trail served a company-scoped feature's records without the
+    wall that feature's own routes enforce.  A new declaration cannot
+    default its way past this — the test names the file to edit.
+    """
+    from capabilities.activity_trail.registry import (
+        _ENTITIES, ensure_declarations_loaded,
+    )
+    ensure_declarations_loaded()
+    undecided = [
+        f"{et} (features/{d.feature}/activity.py)"
+        for et, d in _ENTITIES.items()
+        if d.feature in COMPANY_WALL_FEATURES
+        and not d.company_scoped
+        and et not in SCOPE_EXEMPT
+    ]
+    assert not undecided, (
+        "these entity types are owned by a company-walled feature but "
+        f"neither declare company_scoped nor document an exemption: {undecided}"
+    )
+
+
+def test_scope_exemptions_stay_honest():
+    """An exemption for an entity that LATER declares the wall is stale
+    bookkeeping — and an exemption for an entity nobody registers is
+    dead weight."""
+    from capabilities.activity_trail.registry import (
+        _ENTITIES, ensure_declarations_loaded,
+    )
+    ensure_declarations_loaded()
+    for et in SCOPE_EXEMPT:
+        d = _ENTITIES.get(et)
+        assert d is not None, f"exemption for unregistered entity {et!r}"
+        assert not d.company_scoped, (
+            f"{et} now declares the wall — drop its exemption"
+        )
