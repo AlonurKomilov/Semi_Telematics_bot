@@ -17,18 +17,46 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from interfaces.api.deps import get_current_user, get_tenant_db, resolve_user_id
+from interfaces.api.deps import (
+    filter_by_allowed_companies, get_current_user, get_tenant_db,
+    get_user_company_codes, resolve_user_id,
+)
 from capabilities.activity_trail.registry import (
-    ensure_declarations_loaded, entity_descriptor,
+    EntityDescriptor, ensure_declarations_loaded, entity_descriptor,
 )
 from capabilities.activity_trail.restore import (
-    RestoreConflict, restorable, restore_from_event,
+    RestoreConflict, restorable, restore_from_event, row_from_event,
 )
 from capabilities.permissions.roles import Role, get_user_permissions
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/activity", tags=["activity"])
+
+
+async def _in_company_scope(
+    d: EntityDescriptor, event: dict, user: dict,
+) -> bool:
+    """Does the caller's company assignment cover the record this event
+    describes?
+
+    Restore is a WRITE, so it must clear the same boundary the feature's
+    own by-id routes clear — otherwise it is the single write path that
+    ignores company assignment.  The deleted row's ``company_code`` is
+    in the event body (the recovery record), so no table read is needed.
+    Semantics match ``_require_company_visible_task`` exactly, blank
+    company included: an unrestricted caller passes everything, a
+    restricted one passes only its own codes.
+    """
+    if not d.company_scoped:
+        return True
+    allowed = await get_user_company_codes(user)
+    if not allowed:
+        return True                     # unrestricted caller (incl. owner)
+    company = row_from_event(event).get("company_code") or ""
+    return bool(filter_by_allowed_companies(
+        [{"company_code": company}], allowed, key="company_code",
+    ))
 
 
 @router.get("/{entity_type}/{entity_id}")
@@ -104,6 +132,10 @@ async def restore_entity(
     )
     if not any(getattr(perms, p, False) for p in d.restore_permissions):
         raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if not await _in_company_scope(d, event, user):
+        # 404, not 403 — the sibling routes hide existence from callers
+        # outside the company, and so must this one.
+        raise HTTPException(status_code=404, detail="Event not found")
     try:
         restored_id = await restore_from_event(
             tenant_db, user["account_id"], event,
@@ -156,6 +188,11 @@ async def restore_group(
             raise HTTPException(
                 status_code=403, detail="Insufficient permissions",
             )
+        if not await _in_company_scope(d, ev, user):
+            # Counted as skipped, not denied: the count stays honest
+            # without telling the caller what sits outside its scope.
+            skipped += 1
+            continue
         try:
             restored.append(
                 await restore_from_event(

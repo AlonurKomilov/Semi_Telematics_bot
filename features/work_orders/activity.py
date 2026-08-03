@@ -15,4 +15,5 @@ register_entity(EntityDescriptor(
     view_permissions=('can_work_orders_all',),
     restore_permissions=('can_work_orders_all',),
     restore_table="work_orders",
+    company_scoped=True,
 ))

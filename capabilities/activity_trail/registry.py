@@ -42,6 +42,12 @@ class EntityDescriptor:
     # "insert" (hard-deleted rows come back) | "reactivate" (soft-
     # deleted rows flip active again).
     restore_mode: str = "insert"
+    # True when the feature's own by-id routes enforce the per-user
+    # company assignment (maintenance's _require_company_visible_task,
+    # work orders' _require_visible_work_order).  Restore must honor the
+    # SAME boundary or it becomes the one write path around it — the
+    # permission flag alone is not the whole gate for these entities.
+    company_scoped: bool = False
 
 
 _ENTITIES: dict[str, EntityDescriptor] = {}

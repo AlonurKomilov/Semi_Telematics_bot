@@ -251,3 +251,64 @@ def test_registry_and_frontend_entity_vocabulary_agree():
     assert backend - frontend == set(), (
         f"registered entity types without frontend labels: {backend - frontend}"
     )
+
+
+# ── restore honors the company boundary (security review, 2026-08-02) ──
+
+class _Desc:
+    """Minimal descriptor stand-in for the scope helper."""
+    def __init__(self, company_scoped): self.company_scoped = company_scoped
+
+
+def _delete_event(company_code):
+    changes = {"vehicle_name": {"from": "224", "to": None}}
+    if company_code is not None:
+        changes["company_code"] = {"from": company_code, "to": None}
+    return {"id": 1, "entity_type": "maintenance_task", "entity_id": "64",
+            "action": "delete", "changes": changes, "context": {}}
+
+
+@pytest.mark.asyncio
+async def test_restore_scope_matches_the_sibling_routes(monkeypatch):
+    """Restore is a WRITE into a company-scoped feature: it must clear
+    the same boundary ``_require_company_visible_task`` clears, or it
+    becomes the one write path around company assignment."""
+    from capabilities.activity_trail import router as trail_router
+
+    async def codes_for(assigned):
+        async def _codes(_user):
+            return assigned
+        return _codes
+
+    async def scope(assigned, company_code, company_scoped=True):
+        monkeypatch.setattr(
+            trail_router, "get_user_company_codes", await codes_for(assigned),
+        )
+        return await trail_router._in_company_scope(
+            _Desc(company_scoped), _delete_event(company_code), {"role": "fleet"},
+        )
+
+    # restricted caller: own company yes, another company NO
+    assert await scope(["COMPA"], "COMPA") is True
+    assert await scope(["COMPA"], "COMPB") is False
+    # case-insensitive, like filter_by_allowed_companies
+    assert await scope(["compa"], "COMPA") is True
+    # blank / absent company is NOT visible to a restricted caller —
+    # exactly what _require_company_visible_task does
+    assert await scope(["COMPA"], "") is False
+    assert await scope(["COMPA"], None) is False
+    # unrestricted caller (empty assignment, incl. owner) passes all
+    assert await scope([], "COMPB") is True
+    # entities whose routes aren't company-scoped are unaffected
+    assert await scope(["COMPA"], "COMPB", company_scoped=False) is True
+
+
+def test_company_scoped_entities_match_the_features_that_enforce_it():
+    """maintenance_task and work_order are the entity types whose own
+    by-id routes company-filter; their declarations must say so."""
+    from capabilities.activity_trail.registry import (
+        _ENTITIES, ensure_declarations_loaded,
+    )
+    ensure_declarations_loaded()
+    scoped = {et for et, d in _ENTITIES.items() if d.company_scoped}
+    assert scoped == {"maintenance_task", "work_order"}

@@ -15,6 +15,7 @@ register_entity(EntityDescriptor(
     view_permissions=('can_maintenance_all',),
     restore_permissions=('can_maintenance_all',),
     restore_table="maintenance_tasks",
+    company_scoped=True,
 ))
 register_entity(EntityDescriptor(
     "maintenance_template", "Maintenance template", "maintenance",
