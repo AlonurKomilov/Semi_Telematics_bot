@@ -254,6 +254,31 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
   });
 });
 
+describe('a table wider than the card SAYS so', () => {
+  // The complaint this answers: "the last column is half hidden".  It is
+  // — a wide table clips at the card's rounded edge — but a header
+  // truncated to "S…" and cells cut mid-word read as a rendering fault
+  // rather than as content continuing.  The fade is the affordance.
+  const fade = () =>
+    document.querySelector('[aria-hidden].bg-gradient-to-l');
+
+  it('shows no fade when the table fits', () => {
+    // jsdom reports 0 for every measurement, so useOverflow sees no
+    // overflow — which is exactly the "it fits" case.
+    render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
+    expect(fade()).toBeNull();
+  });
+
+  // NOT TESTED HERE, and deliberately not faked into looking tested:
+  // that the fade is ``aria-hidden`` and ``pointer-events-none`` (it sits
+  // over the rows, so taking pointer events would swallow clicks on the
+  // last column — worse than the problem it solves).  jsdom reports 0 for
+  // every measurement, so ``useOverflow`` never sees overflow and the
+  // element never mounts.  A test wrapping those assertions in
+  // ``if (el)`` would pass by never running them, which is worse than no
+  // test at all.
+});
+
 describe('measurement survives the pivot round-trip', () => {
   // Switching pivot ON unmounts the table branch entirely; switching it
   // OFF mounts a BRAND NEW element. The three measurement observers

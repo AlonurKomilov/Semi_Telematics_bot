@@ -4017,6 +4017,33 @@ export default function DataGrid({
           )}
         </table>
       </div>
+      {/* Right-edge fade — the AFFORDANCE, not the scrolling.
+          A table wider than the card clips at its rounded edge, so the
+          last column arrives as a header truncated to "S…" and cells cut
+          mid-word through "Datatru".  That reads as a RENDERING FAULT
+          rather than as content continuing, and the complaint it
+          produces is "the last column is half hidden" — which it is, but
+          not because anything is broken.  A fade says "there is more
+          this way" in the one place the eye already is.
+          Same fix, same reasoning as the pivot's DrillDialog, which
+          solved it for a 6-column dialog and never carried it to the
+          grid, where the tables are far wider.
+          Driven by ``useOverflow`` — booleans from a ResizeObserver,
+          never scroll position: subscribing the grid to scroll would
+          re-render every row on every frame, which is the thing that
+          froze the tab.  So the fade is shown whenever the table
+          overflows, not only when scroll REMAINS; at the far right it
+          veils the last column's final few pixels through a gradient to
+          transparent, which costs less than a per-frame re-render.
+          Its own inset is the pinned-right width: a frozen column does
+          not scroll, so fading it would be a lie. */}
+      {overflow.x && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 z-20 w-8 bg-gradient-to-l from-card to-transparent"
+          style={{ right: pinnedRightWidth || 0 }}
+        />
+      )}
       {/* Scrollbars — one shared implementation for the record list and
           the pivot matrix (./scrollbars.tsx), which is where the reasons
           live: a bar over only the scrollable region so pinned columns
