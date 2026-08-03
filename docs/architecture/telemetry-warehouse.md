@@ -97,6 +97,23 @@ table with a `COMMENT` (family · dataset key · owner · grain note),
 generated from the ingest registry at boot so it cannot drift.
 Developers see it in psql `\dt+` and in every DB GUI's table tree.
 
+**Three categories of warehouse data (decided 2026-08-03) — only
+assets earn the grain ladder:**
+
+- **Asset** — continuous gauges whose history is irreplaceable (the
+  provider cannot hand it back): position, speed, fuel, odometer,
+  health gauges.  Assets get the full grain cascade.
+- **Log** — events at full fidelity (`safety_event_log`,
+  `vehicle_fault_detail`); never resampled, their COUNTS ride the
+  aggregate tiers (`harsh_event_count`, `fault_count_eod`).
+- **Cache** — re-fetchable convenience kept for speed
+  (`weather_snapshot`, `geofence_definitions`, the current-state
+  fault/health/efficiency snapshots); one current row, no history
+  pretensions, no ladder.
+
+A new dataset declares which it is by how it's stored; "should this
+have hour/day/week?" is answered by the category, not by taste.
+
 **Time-keeping rule** (`capabilities/data_lifecycle/timegrid.py`):
 a row's time label and its observation truth are two different
 questions with two different columns.  The label sits ON the grain's
