@@ -152,6 +152,29 @@ async def test_live_reader_carries_source_ts_to_the_snapshot_copy(pg_db):
 
 
 @pytest.mark.asyncio
+async def test_catalog_comments_describe_the_family(pg_db):
+    """The DB itself says which tables are warehouse and who owns them
+    — names accreted across eras and can't (renames are wire surgery).
+    The sync is registry-driven, so a new dataset self-describes."""
+    from capabilities.data_lifecycle.catalog import sync_table_comments
+
+    synced = await sync_table_comments(pg_db)
+    assert synced >= 10   # 9 datasets' tables + build output + ledgers
+
+    async def comment_of(table: str) -> str:
+        cur = await pg_db._db.execute(
+            "SELECT obj_description(?::regclass, 'pg_class')", (table,))
+        return (await cur.fetchone())[0] or ""
+
+    assert "vehicles.state (owner: vehicles)" in await comment_of("vehicle_state")
+    assert "grain minute" in await comment_of("vehicle_state_snapshot")
+    assert "hour|day|week" in await comment_of("vehicle_telemetry")
+    assert "events.safety (owner: events)" in await comment_of("safety_event_log")
+    # Operational feature tables are NOT the warehouse — no family tag.
+    assert "warehouse" not in await comment_of("vehicles")
+
+
+@pytest.mark.asyncio
 async def test_every_contract_table_carries_the_column(pg_db):
     """Guard: a table registered to the contract cannot silently lack it."""
     cur = await pg_db._db.execute(

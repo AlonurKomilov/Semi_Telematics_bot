@@ -69,6 +69,16 @@ the view maps them; new declarations use the grain vocabulary.  Every
 NEW dataset adopts this scheme from day one: stream named after the
 domain, grain declared separately.
 
+**Table-name template (every FUTURE warehouse table):**
+`<domain-noun>_<subtask>[_<kind>]` — `vehicle_fault_snapshot` is the
+model citizen.  Never a grain in the name (grain is a label/column),
+never a role word (PERSONA.md).  Existing names are frozen wire
+contracts and stay; what a name can't say, the database says instead:
+`capabilities/data_lifecycle/catalog.py` stamps every registered
+table with a `COMMENT` (family · dataset key · owner · grain note),
+generated from the ingest registry at boot so it cannot drift.
+Developers see it in psql `\dt+` and in every DB GUI's table tree.
+
 **Time-keeping rule** (`capabilities/data_lifecycle/timegrid.py`):
 a row's time label and its observation truth are two different
 questions with two different columns.  The label sits ON the grain's

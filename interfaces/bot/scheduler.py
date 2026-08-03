@@ -409,6 +409,16 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
             max_instances=1, coalesce=True,
         )
 
+    # Catalog: stamp every registered table with its family COMMENT so
+    # the database itself says which tables are warehouse and who owns
+    # them (the names can't — they predate the family).  One-shot at
+    # boot; idempotent.
+    from capabilities.data_lifecycle.catalog import job_sync_table_comments
+    scheduler.add_job(
+        job_sync_table_comments, "date",
+        id="warehouse_catalog_comments", misfire_grace_time=3600,
+    )
+
     # Watchdog: the declarations above plus the run ledger plus each
     # row's source_ts, turned into operator alerts.  Five datasets died
     # quietly for want of exactly this; 5-minute cadence matches the
