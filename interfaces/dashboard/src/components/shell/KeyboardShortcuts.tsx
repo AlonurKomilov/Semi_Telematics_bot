@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { shortcut } from '../../utils/platform';
+import { Dialog, DialogContent } from '../ui/dialog';
 
 interface ShortcutDef {
   keys: string;
@@ -106,16 +107,14 @@ export default function KeyboardShortcuts({ onOpenSearch }: KeyboardShortcutsPro
   if (!helpOpen) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm"
-      onClick={() => setHelpOpen(false)}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
+    // Declared ``role="dialog"`` + ``aria-modal`` by hand and had neither
+    // the focus trap nor the scroll lock behind them — the announcement
+    // was true, the behaviour was not.  <Dialog> earns it.
+    <Dialog open onOpenChange={(o) => { if (!o) setHelpOpen(false); }}>
+      <DialogContent
         aria-label="Keyboard shortcuts"
-        className="w-full max-w-md bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+        showCloseButton={false}
+        className="sm:max-w-md p-0 overflow-hidden"
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <p className="text-sm font-semibold text-foreground">Keyboard shortcuts</p>
@@ -147,7 +146,7 @@ export default function KeyboardShortcuts({ onOpenSearch }: KeyboardShortcutsPro
             </li>
           ))}
         </ul>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

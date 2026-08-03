@@ -32,6 +32,7 @@ import {
   GROUP_MODULE, OWNER_PROTECTED, contextLabel, isHeader, isScoped,
 } from './permRows';
 import type { ModulesData, PermFlag } from './permRows';
+import { Dialog, DialogContent } from '../../components/ui/dialog';
 
 
 interface PermsData {
@@ -345,9 +346,16 @@ export default function Permissions() {
       )}
 
       {/* Confirmation — every change spelled out before it powers on. */}
-      {confirmOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" onClick={() => !saving && setConfirmOpen(false)}>
-          <div className="bg-card rounded-xl border border-border w-full max-w-md max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+      {/* The click-away guarded on ``!saving``; <Dialog>'s onOpenChange
+          does the same job, and brings the focus trap, Escape and the
+          background scroll lock the hand-rolled version never had. */}
+      <Dialog
+        open={confirmOpen}
+        onOpenChange={(o) => { if (!o && !saving) setConfirmOpen(false); }}
+      >
+        <DialogContent showCloseButton={false} className="sm:max-w-md p-0 max-h-[80vh] flex flex-col">
+          {confirmOpen && (
+          <>
             <div className="px-5 py-4 border-b border-border">
               <h2 className="text-lg font-semibold">Confirm permission changes</h2>
               <p className="text-sm text-muted-foreground mt-0.5">{totalPending} change{totalPending === 1 ? '' : 's'} will take effect immediately.</p>
@@ -387,9 +395,10 @@ export default function Permissions() {
                 {saving ? 'Saving…' : 'Confirm & apply'}
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
