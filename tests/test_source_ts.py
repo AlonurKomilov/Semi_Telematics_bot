@@ -152,6 +152,36 @@ async def test_live_reader_carries_source_ts_to_the_snapshot_copy(pg_db):
 
 
 @pytest.mark.asyncio
+async def test_secondary_writers_survive_their_conflict_path(pg_db):
+    """health / faults / weather upserts, run twice so the second pass
+    takes ON CONFLICT DO UPDATE.  These three shipped with an ambiguous
+    unqualified ``source_ts`` in that branch — Postgres rejects the
+    whole statement at parse time, and with no test on this path all
+    three feeds silently froze for a day (found 2026-08-03)."""
+    acct = 51
+    for ts in ("2026-08-03T09:00:00Z", "2026-08-03T09:05:00Z"):
+        await pg_db.upsert_vehicle_health_snapshots(acct, [
+            {"vehicle_id": "v1", "vehicle_name": "401", "company_code": "PTG",
+             "alert_count": 1, "raw": {"battery_v": 13.2},
+             "captured_at": ts, "source_ts": ts},
+        ])
+        await pg_db.upsert_vehicle_fault_snapshot(acct, [
+            {"vehicle_id": "v1", "vehicle_name": "401", "company_code": "PTG",
+             "dtc_count": 2, "raw": {}, "captured_at": ts, "source_ts": ts},
+        ])
+        await pg_db.upsert_aggregate_weather_snapshots(acct, [
+            {"vehicle_id": "v1", "vehicle_name": "401", "company_code": "PTG",
+             "temp_f": 88.0, "raw": {}, "captured_at": ts, "source_ts": ts},
+        ])
+    for table in ("vehicle_health_snapshot", "vehicle_fault_snapshot",
+                  "weather_snapshot"):
+        cur = await pg_db._db.execute(
+            f"SELECT source_ts FROM {table} WHERE account_id = ?", (acct,))
+        row = await cur.fetchone()
+        assert row and row[0] == "2026-08-03T09:05:00Z", table
+
+
+@pytest.mark.asyncio
 async def test_no_warehouse_table_shadows_in_public(pg_db):
     """The pool search_path is ``public,warehouse`` — public FIRST, so
     unqualified CREATEs keep landing in public.  The price of that

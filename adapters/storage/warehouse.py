@@ -2587,7 +2587,7 @@ class WarehouseMixin(_MixinBase):
                     alert_count=excluded.alert_count,
                     raw_json=excluded.raw_json,
                     captured_at=excluded.captured_at,
-                    source_ts=COALESCE(excluded.source_ts, source_ts),
+                    source_ts=COALESCE(excluded.source_ts, vehicle_health_snapshot.source_ts),
                     updated_at=excluded.updated_at
                 """,
                 values,
@@ -2691,7 +2691,7 @@ class WarehouseMixin(_MixinBase):
                     has_critical=excluded.has_critical,
                     raw_json=excluded.raw_json,
                     captured_at=excluded.captured_at,
-                    source_ts=COALESCE(excluded.source_ts, source_ts),
+                    source_ts=COALESCE(excluded.source_ts, vehicle_fault_snapshot.source_ts),
                     updated_at=excluded.updated_at
                 """,
                 values,
@@ -3015,7 +3015,7 @@ class WarehouseMixin(_MixinBase):
                     temp_f=excluded.temp_f,
                     raw_json=excluded.raw_json,
                     captured_at=excluded.captured_at,
-                    source_ts=COALESCE(excluded.source_ts, source_ts),
+                    source_ts=COALESCE(excluded.source_ts, weather_snapshot.source_ts),
                     updated_at=excluded.updated_at
                 """,
                 values,
