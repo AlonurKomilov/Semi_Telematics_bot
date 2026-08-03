@@ -44,6 +44,20 @@ IMPLAUSIBLE_STEP_MILES = 10_000.0
 # same query, because nothing multiplies by an assumed interval.
 DUTY_GAP_CAP_MIN = 10.0
 
+# The eight health-gauge aggregate columns every aggregate tier carries
+# (the asset half of the minute samples; see the SSOT's three-category
+# rule — gauges are irreplaceable history, so they climb the ladder).
+_GAUGE_COLS = (
+    "battery_min_v", "battery_avg_v", "oil_min_psi", "oil_avg_psi",
+    "coolant_max_c", "coolant_avg_c", "rpm_avg", "engine_load_avg_pct",
+)
+
+
+def _opt(v):
+    """None-preserving float — gauge columns are honest NULLs when a
+    window carried no reading, never fake zeros."""
+    return float(v) if v is not None else None
+
 
 async def snapshot_vehicle_state(account_id: int) -> int:
     """Copy the current ``vehicle_state`` row for every active vehicle
@@ -239,6 +253,8 @@ async def _aggregate_hour_window(
     duty_cols = [
         "vehicle_id", "max_speed", "avg_fuel_pct",
         "drive_min", "idle_min", "source_ts", "registry_id",
+        "battery_min_v", "battery_avg_v", "oil_min_psi", "oil_avg_psi",
+        "coolant_max_c", "coolant_avg_c", "rpm_avg", "engine_load_avg_pct",
     ]
     cur = await tenant._db.execute(
         """
@@ -250,11 +266,20 @@ async def _aggregate_hour_window(
                SUM(CASE WHEN engine_state = 'idle'   THEN duty_min ELSE 0 END)
                                                    AS idle_min,
                MAX(source_ts)                      AS source_ts,
-               MAX(registry_id)                    AS registry_id
+               MAX(registry_id)                    AS registry_id,
+               MIN(battery_v)                      AS battery_min_v,
+               AVG(battery_v)                      AS battery_avg_v,
+               MIN(oil_psi)                        AS oil_min_psi,
+               AVG(oil_psi)                        AS oil_avg_psi,
+               MAX(coolant_c)                      AS coolant_max_c,
+               AVG(coolant_c)                      AS coolant_avg_c,
+               AVG(rpm)                            AS rpm_avg,
+               AVG(engine_load_pct)                AS engine_load_avg_pct
           FROM (
               SELECT vehicle_id, speed_mph, fuel_pct, engine_state,
                      source_ts,
                      registry_id,
+                     battery_v, oil_psi, coolant_c, rpm, engine_load_pct,
                      LEAST(
                          EXTRACT(EPOCH FROM (
                              COALESCE(
@@ -338,6 +363,18 @@ async def _aggregate_hour_window(
             # the samples already resolved.
             "source_ts":         sr.get("source_ts"),
             "registry_id":       sr.get("registry_id"),
+            # Health-gauge aggregates — the asset half of the minute rows
+            # this query already scans.  MIN/MAX for the failure edges
+            # (a dying battery shows in its lows, an overheat in its
+            # highs), AVG for the trend line.
+            "battery_min_v":       _opt(sr.get("battery_min_v")),
+            "battery_avg_v":       _opt(sr.get("battery_avg_v")),
+            "oil_min_psi":         _opt(sr.get("oil_min_psi")),
+            "oil_avg_psi":         _opt(sr.get("oil_avg_psi")),
+            "coolant_max_c":       _opt(sr.get("coolant_max_c")),
+            "coolant_avg_c":       _opt(sr.get("coolant_avg_c")),
+            "rpm_avg":             _opt(sr.get("rpm_avg")),
+            "engine_load_avg_pct": _opt(sr.get("engine_load_avg_pct")),
         })
 
     # Vehicles that had safety events but no snapshot in the window
@@ -410,6 +447,8 @@ async def _aggregate_day_window(
         "vehicle_id", "miles", "drive_min", "idle_min",
         "max_speed_mph", "avg_fuel_pct", "harsh_event_count",
         "source_ts", "registry_id",
+        "battery_min_v", "battery_avg_v", "oil_min_psi", "oil_avg_psi",
+        "coolant_max_c", "coolant_avg_c", "rpm_avg", "engine_load_avg_pct",
     ]
     cur = await tenant._db.execute(
         """
@@ -421,7 +460,15 @@ async def _aggregate_day_window(
                AVG(avg_fuel_pct)                   AS avg_fuel_pct,
                SUM(COALESCE(harsh_event_count, 0)) AS harsh_event_count,
                MAX(source_ts)                      AS source_ts,
-               MAX(registry_id)                    AS registry_id
+               MAX(registry_id)                    AS registry_id,
+               MIN(battery_min_v)                  AS battery_min_v,
+               AVG(battery_avg_v)                  AS battery_avg_v,
+               MIN(oil_min_psi)                    AS oil_min_psi,
+               AVG(oil_avg_psi)                    AS oil_avg_psi,
+               MAX(coolant_max_c)                  AS coolant_max_c,
+               AVG(coolant_avg_c)                  AS coolant_avg_c,
+               AVG(rpm_avg)                        AS rpm_avg,
+               AVG(engine_load_avg_pct)            AS engine_load_avg_pct
           FROM vehicle_telemetry
          WHERE account_id = ?
            AND granularity = 'hourly'
@@ -487,6 +534,7 @@ async def _aggregate_day_window(
             "engine_hours_eod":  eod.get("engine_hours_eod"),
             "source_ts":         d.get("source_ts"),
             "registry_id":       d.get("registry_id"),
+            **{k: _opt(d.get(k)) for k in _GAUGE_COLS},
         })
     if not rows:
         return 0
@@ -588,6 +636,8 @@ async def _aggregate_week_window(
         "max_speed_mph", "avg_fuel_pct", "harsh_event_count",
         "fault_count_eod", "odometer_eod", "engine_hours_eod",
         "source_ts", "registry_id",
+        "battery_min_v", "battery_avg_v", "oil_min_psi", "oil_avg_psi",
+        "coolant_max_c", "coolant_avg_c", "rpm_avg", "engine_load_avg_pct",
     ]
     cur = await tenant._db.execute(
         """
@@ -602,7 +652,15 @@ async def _aggregate_week_window(
                MAX(odometer_eod)                   AS odometer_eod,
                MAX(engine_hours_eod)               AS engine_hours_eod,
                MAX(source_ts)                      AS source_ts,
-               MAX(registry_id)                    AS registry_id
+               MAX(registry_id)                    AS registry_id,
+               MIN(battery_min_v)                  AS battery_min_v,
+               AVG(battery_avg_v)                  AS battery_avg_v,
+               MIN(oil_min_psi)                    AS oil_min_psi,
+               AVG(oil_avg_psi)                    AS oil_avg_psi,
+               MAX(coolant_max_c)                  AS coolant_max_c,
+               AVG(coolant_avg_c)                  AS coolant_avg_c,
+               AVG(rpm_avg)                        AS rpm_avg,
+               AVG(engine_load_avg_pct)            AS engine_load_avg_pct
           FROM vehicle_telemetry
          WHERE account_id = ?
            AND granularity = 'daily'
@@ -632,6 +690,7 @@ async def _aggregate_week_window(
             "engine_hours_eod":  d.get("engine_hours_eod"),
             "source_ts":         d.get("source_ts"),
             "registry_id":       d.get("registry_id"),
+            **{k: _opt(d.get(k)) for k in _GAUGE_COLS},
         })
     if not rows:
         return 0

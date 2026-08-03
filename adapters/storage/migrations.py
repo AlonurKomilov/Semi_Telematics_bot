@@ -8213,3 +8213,81 @@ async def migrate_warehouse_schema(conn) -> None:
         )
     else:
         logger.info("Migration 183: warehouse schema already converged")
+
+
+@_register("184_health_gauge_tiers")
+async def migrate_health_gauge_tiers(conn) -> None:
+    """The health gauges climb the ladder — assets get all five grains.
+
+    Battery voltage, oil pressure, coolant temperature, RPM, and engine
+    load were sampled every minute and then thrown away after the
+    7-day minute retention: an ASSET stored like a cache (see the
+    SSOT's three-category rule).  Eight aggregate columns on the
+    existing tier rows fix that — same key, same builder pass, no new
+    tables.  MIN/MAX capture the failure edges (a dying battery shows
+    in its lows, an overheat in its highs); AVG carries the trend.
+
+    The view is rebuilt with honest kind-split gauge columns: minute
+    samples expose the instantaneous reading, aggregates expose the
+    period statistics, and each side is NULL on the other.  Everything
+    is schema-qualified: migration 183 always precedes this one, and an
+    unqualified CREATE VIEW would land in public (search_path order).
+    """
+    for col in ("battery_min_v", "battery_avg_v", "oil_min_psi",
+                "oil_avg_psi", "coolant_max_c", "coolant_avg_c",
+                "rpm_avg", "engine_load_avg_pct"):
+        await conn.execute(
+            f"ALTER TABLE warehouse.vehicle_telemetry "
+            f"ADD COLUMN IF NOT EXISTS {col} REAL"
+        )
+    await conn.execute("DROP VIEW IF EXISTS public.vehicle_timeline")
+    await conn.execute("DROP VIEW IF EXISTS warehouse.vehicle_timeline")
+    await conn.execute(
+        """
+        CREATE VIEW warehouse.vehicle_timeline AS
+        SELECT account_id, registry_id, vehicle_id, vehicle_name,
+               'live'::text  AS grain, 'sample'::text AS kind,
+               captured_at   AS ts, source_ts,
+               lat, lon, speed_mph, fuel_pct, odometer_mi, engine_hours,
+               engine_state,
+               NULL::real AS battery_v, NULL::real AS oil_psi,
+               NULL::real AS coolant_c, NULL::real AS rpm,
+               NULL::real AS miles, NULL::real AS drive_min,
+               NULL::real AS idle_min, NULL::real AS avg_fuel_pct,
+               NULL::real AS odometer_eod, NULL::real AS engine_hours_eod,
+               NULL::real AS battery_min_v, NULL::real AS battery_avg_v,
+               NULL::real AS oil_min_psi, NULL::real AS oil_avg_psi,
+               NULL::real AS coolant_max_c, NULL::real AS coolant_avg_c,
+               NULL::real AS rpm_avg, NULL::real AS engine_load_avg_pct
+          FROM warehouse.vehicle_state
+        UNION ALL
+        SELECT account_id, registry_id, vehicle_id, NULL::text,
+               'minute', 'sample',
+               captured_at, source_ts,
+               lat, lon, speed_mph, fuel_pct, odometer_mi, engine_hours,
+               engine_state,
+               battery_v, oil_psi, coolant_c, rpm,
+               NULL, NULL, NULL, NULL, NULL, NULL,
+               NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+          FROM warehouse.vehicle_state_snapshot
+        UNION ALL
+        SELECT account_id, registry_id, vehicle_id, vehicle_name,
+               CASE granularity
+                   WHEN 'hourly' THEN 'hour'
+                   WHEN 'daily'  THEN 'day'
+                   WHEN 'weekly' THEN 'week'
+                   ELSE granularity
+               END,
+               'aggregate',
+               bucket_start, source_ts,
+               NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+               NULL, NULL, NULL, NULL,
+               miles, drive_min, idle_min, avg_fuel_pct,
+               odometer_eod, engine_hours_eod,
+               battery_min_v, battery_avg_v, oil_min_psi, oil_avg_psi,
+               coolant_max_c, coolant_avg_c, rpm_avg, engine_load_avg_pct
+          FROM warehouse.vehicle_telemetry
+        """
+    )
+    await conn.commit()
+    logger.info("Migration 184: health gauges ride hour/day/week tiers")

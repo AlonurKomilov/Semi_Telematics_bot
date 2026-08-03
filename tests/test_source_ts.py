@@ -77,42 +77,47 @@ async def test_source_ts_propagates_snapshot_to_hourly_to_daily(pg_db):
 
     acct = 46
     hour = datetime(2026, 7, 20, 9, tzinfo=timezone.utc)
+    gauges = {0: (12.9, 92.0), 5: (13.4, 85.0), 10: (13.1, 88.0)}
     await pg_db.upsert_vehicle_state_snapshots(acct, [
         {"vehicle_id": "v1",
          "captured_at": hour.replace(minute=m).isoformat(),
          "odometer_mi": 1000 + m, "engine_state": "moving", "speed_mph": 55,
          "source_ts": f"2026-07-20T08:{40 + m // 5}:00Z",
-         "registry_id": 37}
+         "registry_id": 37,
+         "battery_v": gauges[m][0], "coolant_c": gauges[m][1]}
         for m in (0, 5, 10)
     ])
     await agg._aggregate_hour_window(pg_db, acct, hour)
 
-    cur = await pg_db._db.execute(
-        "SELECT source_ts, registry_id FROM vehicle_telemetry WHERE account_id = ? "
-        "AND granularity = 'hourly' AND bucket_start = ?",
-        (acct, "2026-07-20T09:00:00"))
-    hourly_ts, hourly_rid = await cur.fetchone()
+    tier_cols = ("SELECT source_ts, registry_id, battery_min_v, "
+                 "coolant_max_c, oil_min_psi FROM vehicle_telemetry "
+                 "WHERE account_id = ? AND granularity = ? AND bucket_start = ?")
+    cur = await pg_db._db.execute(tier_cols, (acct, "hourly", "2026-07-20T09:00:00"))
+    hourly_ts, hourly_rid, batt_min, cool_max, oil_min = await cur.fetchone()
     assert hourly_ts == "2026-07-20T08:42:00Z"   # the freshest sample, verbatim
     assert hourly_rid == 37
+    # Gauges climb the ladder: MIN catches the battery's low, MAX the
+    # coolant's peak, and a gauge that never reported stays NULL.
+    assert batt_min == pytest.approx(12.9)
+    assert cool_max == pytest.approx(92.0)
+    assert oil_min is None
 
     await agg._aggregate_day_window(pg_db, acct, hour.replace(hour=0))
-    cur = await pg_db._db.execute(
-        "SELECT source_ts, registry_id FROM vehicle_telemetry WHERE account_id = ? "
-        "AND granularity = 'daily' AND bucket_start = ?",
-        (acct, "2026-07-20"))
-    daily_ts, daily_rid = await cur.fetchone()
+    cur = await pg_db._db.execute(tier_cols, (acct, "daily", "2026-07-20"))
+    daily_ts, daily_rid, batt_min, cool_max, oil_min = await cur.fetchone()
     assert daily_ts == "2026-07-20T08:42:00Z"
     assert daily_rid == 37
+    assert batt_min == pytest.approx(12.9)
+    assert cool_max == pytest.approx(92.0)
 
     # 2026-07-20 is a Monday — roll the same day into its week bucket.
     await agg._aggregate_week_window(pg_db, acct, hour.replace(hour=0))
-    cur = await pg_db._db.execute(
-        "SELECT source_ts, registry_id FROM vehicle_telemetry WHERE account_id = ? "
-        "AND granularity = 'weekly' AND bucket_start = ?",
-        (acct, "2026-07-20"))
-    weekly_ts, weekly_rid = await cur.fetchone()
+    cur = await pg_db._db.execute(tier_cols, (acct, "weekly", "2026-07-20"))
+    weekly_ts, weekly_rid, batt_min, cool_max, oil_min = await cur.fetchone()
     assert weekly_ts == "2026-07-20T08:42:00Z"
     assert weekly_rid == 37
+    assert batt_min == pytest.approx(12.9)
+    assert cool_max == pytest.approx(92.0)
 
 
 @pytest.mark.asyncio
@@ -267,7 +272,8 @@ async def test_vehicle_timeline_view_agrees_with_its_tables(pg_db):
     ])
     await pg_db.upsert_vehicle_state_snapshots(acct, [
         {"vehicle_id": "v1", "captured_at": "2026-08-03T10:01:00+00:00",
-         "odometer_mi": 900.0, "engine_state": "moving", "speed_mph": 55.0},
+         "odometer_mi": 900.0, "engine_state": "moving", "speed_mph": 55.0,
+         "battery_v": 13.2},
     ])
     await pg_db.upsert_vehicle_metrics_daily(acct, [
         {"vehicle_id": "v1", "day_utc": "2026-08-02", "miles": 123.0},
@@ -295,3 +301,10 @@ async def test_vehicle_timeline_view_agrees_with_its_tables(pg_db):
         "WHERE account_id = ? AND grain = 'day'", (acct,))
     lat, speed = await cur.fetchone()
     assert lat is None and speed is None
+    # Gauge columns are kind-split the same way: the minute sample
+    # exposes the instantaneous reading, never the aggregate stats.
+    cur = await pg_db._db.execute(
+        "SELECT battery_v, battery_min_v FROM vehicle_timeline "
+        "WHERE account_id = ? AND grain = 'minute'", (acct,))
+    batt_v, batt_min = await cur.fetchone()
+    assert batt_v == pytest.approx(13.2) and batt_min is None
