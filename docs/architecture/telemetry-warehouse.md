@@ -78,6 +78,27 @@ references is a later, CI-guarded follow-up — never part of cutover.
 | vehicle.timeline | day | aggregate | `vehicle_telemetry` (`granularity='daily'`) | 730 d |
 | vehicle.timeline | week | aggregate | `vehicle_telemetry` (`granularity='weekly'`) | 1825 d |
 
+**Asset grain surfaces (migration 185, owner decision 2026-08-03):**
+each ASSET stream exposes one READ view per grain, named
+`<stream>_<grain>` — the warehouse's official addressing surface:
+
+| grain | state stream | health stream |
+|---|---|---|
+| live | `warehouse.vehicle_state_live` | `warehouse.vehicle_health_live` |
+| minute | `warehouse.vehicle_state_minute` | `warehouse.vehicle_health_minute` |
+| hour | `warehouse.vehicle_state_hour` | `warehouse.vehicle_health_hour` |
+| day | `warehouse.vehicle_state_day` | `warehouse.vehicle_health_day` |
+| week | `warehouse.vehicle_state_week` | `warehouse.vehicle_health_week` |
+
+Two naming layers, both deliberate: PHYSICAL tables follow the
+template (never a grain in the name — shape decides the table);
+SURFACE views are named by grain because grain-addressing is their
+entire job.  Readers use the surfaces; writers use the physical
+tables (upserts cannot ride views).  This is interface-first: if the
+physical layer is ever restructured (e.g. per-grain tables), only the
+view bodies change — no consumer moves.  `vehicle_timeline` remains
+the cross-grain surface (all five grains, one query).
+
 The minute grain samples at the live ingest's own 60-second cadence
 (pre-2026-08 history is 5-minute spaced; duty math is gap-based and
 cadence-independent, so both spacings compute correctly).  Stored

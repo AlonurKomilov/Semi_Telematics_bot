@@ -8291,3 +8291,76 @@ async def migrate_health_gauge_tiers(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 184: health gauges ride hour/day/week tiers")
+
+
+@_register("185_asset_grain_surfaces")
+async def migrate_asset_grain_surfaces(conn) -> None:
+    """The owner's five-grain names become the warehouse's read surface.
+
+    Ten views — ``vehicle_state_live/minute/hour/day/week`` and
+    ``vehicle_health_live/minute/hour/day/week`` — one per asset stream
+    per grain, each a thin slice over the physical tables.  This is the
+    interface-first migration strategy: readers address the clean
+    per-grain names from now on, so the physical layer underneath
+    (today: shape-ruled tables; someday, if ever: per-grain tables)
+    can change without touching a single consumer.
+
+    Two naming layers, both deliberate: PHYSICAL tables follow the
+    template (never a grain in the name — shape decides); SURFACE views
+    are named ``<stream>_<grain>`` because grain-addressing is their
+    entire job.  Writers keep using the physical tables (ON CONFLICT
+    upserts cannot ride views); these are for reading.
+    """
+    surfaces = {
+        # vehicle_state — position/motion stream
+        "vehicle_state_live": (
+            "SELECT * FROM warehouse.vehicle_state"),
+        "vehicle_state_minute": (
+            "SELECT account_id, registry_id, vehicle_id, captured_at,"
+            " source_ts, lat, lon, speed_mph, engine_state, fuel_pct,"
+            " def_pct, odometer_mi, engine_hours, fault_count,"
+            " dtc_critical_count, last_driver_id"
+            " FROM warehouse.vehicle_state_snapshot"),
+        # vehicle_health — gauge stream (live = the current cache row;
+        # minute = the gauge half of the same minute sample)
+        "vehicle_health_live": (
+            "SELECT * FROM warehouse.vehicle_health_snapshot"),
+        "vehicle_health_minute": (
+            "SELECT account_id, registry_id, vehicle_id, captured_at,"
+            " source_ts, battery_v, oil_psi, coolant_c,"
+            " engine_load_pct, rpm"
+            " FROM warehouse.vehicle_state_snapshot"),
+    }
+    state_cols = (
+        "account_id, registry_id, vehicle_id, vehicle_name,"
+        " bucket_start, source_ts, miles, drive_min, idle_min,"
+        " max_speed_mph, avg_fuel_pct, harsh_event_count,"
+        " odometer_eod, engine_hours_eod"
+    )
+    health_cols = (
+        "account_id, registry_id, vehicle_id, vehicle_name,"
+        " bucket_start, source_ts, battery_min_v, battery_avg_v,"
+        " oil_min_psi, oil_avg_psi, coolant_max_c, coolant_avg_c,"
+        " rpm_avg, engine_load_avg_pct"
+    )
+    for grain, granularity in (("hour", "hourly"), ("day", "daily"),
+                               ("week", "weekly")):
+        surfaces[f"vehicle_state_{grain}"] = (
+            f"SELECT {state_cols} FROM warehouse.vehicle_telemetry"
+            f" WHERE granularity = '{granularity}'")
+        surfaces[f"vehicle_health_{grain}"] = (
+            f"SELECT {health_cols} FROM warehouse.vehicle_telemetry"
+            f" WHERE granularity = '{granularity}'")
+
+    for name, body in surfaces.items():
+        await conn.execute(f"DROP VIEW IF EXISTS warehouse.{name}")
+        await conn.execute(f"CREATE VIEW warehouse.{name} AS {body}")
+        stream, grain = name.rsplit("_", 1)
+        await conn.execute(
+            f"COMMENT ON VIEW warehouse.{name} IS "
+            f"'warehouse surface: {stream} · grain {grain} — read here; "
+            f"writers use the physical tables. "
+            f"SSOT docs/architecture/telemetry-warehouse.md'"
+        )
+    await conn.commit()
+    logger.info("Migration 185: 10 asset grain surfaces ready")

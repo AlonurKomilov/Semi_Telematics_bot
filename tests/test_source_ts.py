@@ -157,6 +157,50 @@ async def test_live_reader_carries_source_ts_to_the_snapshot_copy(pg_db):
 
 
 @pytest.mark.asyncio
+async def test_asset_grain_surfaces_agree_with_storage(pg_db):
+    """The ten ``<stream>_<grain>`` views are the warehouse's official
+    read surface (migration 185): readers address clean per-grain
+    names; the physical layer stays free to change behind them.  One
+    minute sample must feed BOTH streams' minute surface; one tier row
+    must split by stream (miles on state, gauges on health)."""
+    acct = 52
+    await pg_db.upsert_vehicle_state_snapshots(acct, [
+        {"vehicle_id": "v1", "captured_at": "2026-08-03T10:01:00+00:00",
+         "odometer_mi": 900.0, "engine_state": "moving", "speed_mph": 55.0,
+         "battery_v": 13.2, "coolant_c": 88.0},
+    ])
+    await pg_db.upsert_vehicle_metrics_daily(acct, [
+        {"vehicle_id": "v1", "day_utc": "2026-08-02", "miles": 123.0,
+         "battery_min_v": 12.8, "coolant_max_c": 93.0},
+    ])
+
+    for stream in ("vehicle_state", "vehicle_health"):
+        for grain in ("live", "minute", "hour", "day", "week"):
+            cur = await pg_db._db.execute(
+                "SELECT to_regclass(?)", (f"warehouse.{stream}_{grain}",))
+            assert (await cur.fetchone())[0] is not None, f"{stream}_{grain}"
+
+    cur = await pg_db._db.execute(
+        "SELECT speed_mph FROM warehouse.vehicle_state_minute "
+        "WHERE account_id = ?", (acct,))
+    assert float((await cur.fetchone())[0]) == 55.0
+    cur = await pg_db._db.execute(
+        "SELECT battery_v FROM warehouse.vehicle_health_minute "
+        "WHERE account_id = ?", (acct,))
+    assert float((await cur.fetchone())[0]) == pytest.approx(13.2)
+    cur = await pg_db._db.execute(
+        "SELECT miles FROM warehouse.vehicle_state_day "
+        "WHERE account_id = ?", (acct,))
+    assert float((await cur.fetchone())[0]) == 123.0
+    cur = await pg_db._db.execute(
+        "SELECT battery_min_v, coolant_max_c FROM warehouse.vehicle_health_day "
+        "WHERE account_id = ?", (acct,))
+    batt_min, cool_max = await cur.fetchone()
+    assert batt_min == pytest.approx(12.8)
+    assert cool_max == pytest.approx(93.0)
+
+
+@pytest.mark.asyncio
 async def test_secondary_writers_survive_their_conflict_path(pg_db):
     """health / faults / weather upserts, run twice so the second pass
     takes ON CONFLICT DO UPDATE.  These three shipped with an ambiguous
