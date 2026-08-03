@@ -16,8 +16,8 @@ from telegram.ext import Application
 from features.parking.ai_vision import _get_ai_parking_analysis
 from features.parking.classifier import (
     _is_inside_any_geofence,
+    classify_from_ai,
     classify_parking_location,
-    parse_ai_confidence,
 )
 from features.parking.formatting import (
     _format_parking_alert,
@@ -405,6 +405,31 @@ async def check_unsafe_parking(app: Application):
                 # and would otherwise reach the render check unbound.
                 needs_map = False
 
+                if ai_analysis:
+                    # RE-CHECK.  The AI already ruled on this stop, and its
+                    # verdict is right here in the row — re-derive it rather
+                    # than letting loc_class stay at keyword_class.
+                    #
+                    # This branch did not exist, and its absence was the
+                    # bug: the loop runs every 30 minutes, so on every pass
+                    # after the first the AI block below was skipped, the
+                    # class fell back to keywords, and the upsert overwrote
+                    # a confident verdict with "unknown".  1,973 rows were
+                    # sitting on CLASSIFICATION: UNSAFE / HIGH while stored
+                    # as unknown — and since alert_level derives from the
+                    # class, none of them ever escalated on duration.
+                    #
+                    # No backfill needed: each affected row re-derives its
+                    # own stored verdict on its next poll.
+                    verdict, _conf = classify_from_ai(ai_analysis)
+                    if verdict == "safe":
+                        # The AI's stored answer says this is fine after
+                        # all — same outcome as first detection.
+                        if existing:
+                            await tenant.resolve_parking_event(account.id, vid)
+                        return
+                    loc_class = verdict or "unknown"
+
                 if not ai_analysis:
                     # Run AI vision on first detection for ALL non-safe stops.
                     # Throttled by ai_sem so a 50-vehicle burst doesn't fan out
@@ -414,22 +439,16 @@ async def check_unsafe_parking(app: Application):
                     )
                     if ai_result:
                         ai_analysis = ai_result
-                        ai_lower = ai_analysis.lower()
-                        confidence = parse_ai_confidence(ai_analysis)
-
-                        if "unsafe" not in ai_lower and "safe" in ai_lower:
-                            # AI says SAFE — trust it over keyword regex
-                            if confidence in ("HIGH", "MEDIUM"):
-                                # Resolve and skip — it's a truck stop/yard
-                                if existing:
-                                    await tenant.resolve_parking_event(account.id, vid)
-                                return
-                            # LOW confidence safe → keep as unknown for monitoring
-                            loc_class = "unknown"
-                        elif "unsafe" in ai_lower:
-                            loc_class = "unsafe"
-                        else:
-                            loc_class = "unknown"
+                        verdict, _conf = classify_from_ai(ai_analysis)
+                        if verdict == "safe":
+                            # Confident SAFE — resolve and stop tracking.
+                            if existing:
+                                await tenant.resolve_parking_event(account.id, vid)
+                            return
+                        # "" means the AI answered but said nothing usable;
+                        # that is inconclusive, NOT a reason to fall back to
+                        # address keywords the AI was called to overrule.
+                        loc_class = verdict or "unknown"
 
                     # The map is rendered AFTER the upsert, below — its
                     # object-store key needs the event id, which does not

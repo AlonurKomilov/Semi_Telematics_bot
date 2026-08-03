@@ -147,3 +147,43 @@ def parse_ai_confidence(ai_text: str) -> str:
                     if level in val:
                         return level
     return ""
+
+
+def classify_from_ai(ai_text: str) -> tuple[str, str]:
+    """``(location_class, confidence)`` derived from a stored AI analysis.
+
+    Extracted from ``features/parking/check.py``, where it lived inline
+    inside the "first detection" branch — and that placement was the bug.
+    The check loop runs every 30 minutes; on every pass after the first,
+    ``ai_analysis`` already exists, so the branch was skipped, the class
+    fell back to address keywords, and the upsert OVERWROTE the AI's
+    verdict.  Measured before the fix: 1,973 rows stored ``unknown`` while
+    carrying ``CLASSIFICATION: UNSAFE / CONFIDENCE: HIGH`` in the same
+    row.  Because ``alert_level`` derives from the class, those stops were
+    correctly identified as unsafe and then silently downgraded half an
+    hour later, so they never escalated on duration.
+
+    Being a pure function of the stored text is what makes the fix
+    self-healing: a re-check re-derives the same verdict the AI already
+    gave, with no backfill.
+
+    Returns ``("", confidence)`` when the text carries no usable verdict —
+    the caller decides whether that means keyword fallback (no analysis at
+    all) or ``unknown`` (analysis present but inconclusive).  Those are
+    different situations and only the caller knows which one it is in.
+    """
+    if not ai_text:
+        return "", ""
+    confidence = parse_ai_confidence(ai_text)
+    low = ai_text.lower()
+
+    # ORDER MATTERS: "unsafe" CONTAINS "safe", so the safe test must
+    # exclude it explicitly.  Reversing these two branches silently
+    # classifies every unsafe stop as safe.
+    if "unsafe" not in low and "safe" in low:
+        # Confident SAFE is the caller's cue to resolve and stop tracking;
+        # a LOW-confidence safe stays under observation as unknown.
+        return ("safe" if confidence in ("HIGH", "MEDIUM") else "unknown"), confidence
+    if "unsafe" in low:
+        return "unsafe", confidence
+    return "", confidence
