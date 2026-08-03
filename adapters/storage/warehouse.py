@@ -633,6 +633,7 @@ class WarehouseMixin(_MixinBase):
                 (float(r["engine_hours_eod"])
                  if r.get("engine_hours_eod") is not None else None),
                 r.get("source_ts"),
+                r.get("registry_id"),
                 ts,
             ))
         if values:
@@ -644,8 +645,9 @@ class WarehouseMixin(_MixinBase):
                     account_id, vehicle_id, granularity, bucket_start,
                     miles, drive_min, idle_min,
                     max_speed_mph, avg_fuel_pct, harsh_event_count,
-                    odometer_eod, engine_hours_eod, source_ts, ingested_at
-                ) VALUES (?, ?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    odometer_eod, engine_hours_eod, source_ts, registry_id,
+                    ingested_at
+                ) VALUES (?, ?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(account_id, vehicle_id, granularity, bucket_start) DO UPDATE SET
                     miles=excluded.miles,
                     drive_min=excluded.drive_min,
@@ -660,6 +662,7 @@ class WarehouseMixin(_MixinBase):
                     odometer_eod=COALESCE(excluded.odometer_eod, vehicle_telemetry.odometer_eod),
                     engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_telemetry.engine_hours_eod),
                     source_ts=COALESCE(excluded.source_ts, vehicle_telemetry.source_ts),
+                    registry_id=COALESCE(excluded.registry_id, vehicle_telemetry.registry_id),
                     ingested_at=excluded.ingested_at
                 """,
                 values,
@@ -2003,6 +2006,7 @@ class WarehouseMixin(_MixinBase):
                 _opt_float(r.get("odometer_eod")),
                 _opt_float(r.get("engine_hours_eod")),
                 r.get("source_ts"),
+                r.get("registry_id"),
                 ts,
             ))
         if values:
@@ -2015,8 +2019,9 @@ class WarehouseMixin(_MixinBase):
                     miles, drive_min, idle_min,
                     max_speed_mph, avg_fuel_pct,
                     harsh_event_count, fault_count_eod,
-                    odometer_eod, engine_hours_eod, source_ts, ingested_at
-                ) VALUES (?, ?, 'daily', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    odometer_eod, engine_hours_eod, source_ts, registry_id,
+                    ingested_at
+                ) VALUES (?, ?, 'daily', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (account_id, vehicle_id, granularity, bucket_start) DO UPDATE SET
                     miles=excluded.miles,
                     drive_min=excluded.drive_min,
@@ -2030,6 +2035,7 @@ class WarehouseMixin(_MixinBase):
                     odometer_eod=COALESCE(excluded.odometer_eod, vehicle_telemetry.odometer_eod),
                     engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_telemetry.engine_hours_eod),
                     source_ts=COALESCE(excluded.source_ts, vehicle_telemetry.source_ts),
+                    registry_id=COALESCE(excluded.registry_id, vehicle_telemetry.registry_id),
                     ingested_at=excluded.ingested_at
                 """,
                 values,
@@ -2080,6 +2086,7 @@ class WarehouseMixin(_MixinBase):
                 _opt_float(r.get("odometer_eod")),
                 _opt_float(r.get("engine_hours_eod")),
                 r.get("source_ts"),
+                r.get("registry_id"),
                 ts,
             ))
         if values:
@@ -2090,8 +2097,9 @@ class WarehouseMixin(_MixinBase):
                     miles, drive_min, idle_min,
                     max_speed_mph, avg_fuel_pct,
                     harsh_event_count, fault_count_eod,
-                    odometer_eod, engine_hours_eod, source_ts, ingested_at
-                ) VALUES (?, ?, 'weekly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    odometer_eod, engine_hours_eod, source_ts, registry_id,
+                    ingested_at
+                ) VALUES (?, ?, 'weekly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (account_id, vehicle_id, granularity, bucket_start) DO UPDATE SET
                     miles=excluded.miles,
                     drive_min=excluded.drive_min,
@@ -2103,6 +2111,7 @@ class WarehouseMixin(_MixinBase):
                     odometer_eod=COALESCE(excluded.odometer_eod, vehicle_telemetry.odometer_eod),
                     engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_telemetry.engine_hours_eod),
                     source_ts=COALESCE(excluded.source_ts, vehicle_telemetry.source_ts),
+                    registry_id=COALESCE(excluded.registry_id, vehicle_telemetry.registry_id),
                     ingested_at=excluded.ingested_at
                 """,
                 values,

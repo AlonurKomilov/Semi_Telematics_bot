@@ -50,7 +50,11 @@ class TestHelpers:
 
 @pytest.mark.asyncio
 async def test_source_ts_propagates_snapshot_to_hourly_to_daily(pg_db):
-    """The cascade carries the freshest sample time upward, minting nothing."""
+    """The cascade carries the freshest sample time upward, minting
+    nothing — and the samples' resolved identity (``registry_id``)
+    rides the exact same path.  A tier row without identity is
+    invisible to every registry-joined consumer, which is how a
+    perfectly current warehouse once *looked* two weeks stale."""
     from capabilities.warehouse.telemetry import aggregator as agg
 
     acct = 46
@@ -59,24 +63,38 @@ async def test_source_ts_propagates_snapshot_to_hourly_to_daily(pg_db):
         {"vehicle_id": "v1",
          "captured_at": hour.replace(minute=m).isoformat(),
          "odometer_mi": 1000 + m, "engine_state": "moving", "speed_mph": 55,
-         "source_ts": f"2026-07-20T08:{40 + m // 5}:00Z"}
+         "source_ts": f"2026-07-20T08:{40 + m // 5}:00Z",
+         "registry_id": 37}
         for m in (0, 5, 10)
     ])
     await agg._aggregate_hour_window(pg_db, acct, hour)
 
     cur = await pg_db._db.execute(
-        "SELECT source_ts FROM vehicle_telemetry WHERE account_id = ? "
+        "SELECT source_ts, registry_id FROM vehicle_telemetry WHERE account_id = ? "
         "AND granularity = 'hourly' AND bucket_start = ?",
         (acct, "2026-07-20T09:00:00"))
-    hourly_ts = (await cur.fetchone())[0]
+    hourly_ts, hourly_rid = await cur.fetchone()
     assert hourly_ts == "2026-07-20T08:42:00Z"   # the freshest sample, verbatim
+    assert hourly_rid == 37
 
     await agg._aggregate_day_window(pg_db, acct, hour.replace(hour=0))
     cur = await pg_db._db.execute(
-        "SELECT source_ts FROM vehicle_telemetry WHERE account_id = ? "
+        "SELECT source_ts, registry_id FROM vehicle_telemetry WHERE account_id = ? "
         "AND granularity = 'daily' AND bucket_start = ?",
         (acct, "2026-07-20"))
-    assert (await cur.fetchone())[0] == "2026-07-20T08:42:00Z"
+    daily_ts, daily_rid = await cur.fetchone()
+    assert daily_ts == "2026-07-20T08:42:00Z"
+    assert daily_rid == 37
+
+    # 2026-07-20 is a Monday — roll the same day into its week bucket.
+    await agg._aggregate_week_window(pg_db, acct, hour.replace(hour=0))
+    cur = await pg_db._db.execute(
+        "SELECT source_ts, registry_id FROM vehicle_telemetry WHERE account_id = ? "
+        "AND granularity = 'weekly' AND bucket_start = ?",
+        (acct, "2026-07-20"))
+    weekly_ts, weekly_rid = await cur.fetchone()
+    assert weekly_ts == "2026-07-20T08:42:00Z"
+    assert weekly_rid == 37
 
 
 @pytest.mark.asyncio

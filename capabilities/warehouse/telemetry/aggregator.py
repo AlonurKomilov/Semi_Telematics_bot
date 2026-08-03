@@ -155,12 +155,13 @@ async def _aggregate_hour_window(
     # Hard-coded column list - asyncpg cursors don't expose .description,
     # see adapters/storage/warehouse.py:get_current_vehicles for the
     # original incident.
-    cols = ["vehicle_id", "harsh_event_count", "max_speed_mph"]
+    cols = ["vehicle_id", "harsh_event_count", "max_speed_mph", "registry_id"]
     cur = await tenant._db.execute(
         """
         SELECT vehicle_id,
                COUNT(*) AS harsh_event_count,
-               MAX(COALESCE(speed_mph, 0)) AS max_speed_mph
+               MAX(COALESCE(speed_mph, 0)) AS max_speed_mph,
+               MAX(registry_id) AS registry_id
         FROM safety_event_log
         WHERE account_id = ?
           AND occurred_at >= ?
@@ -234,7 +235,7 @@ async def _aggregate_hour_window(
     # fleet at zero duty forever.
     duty_cols = [
         "vehicle_id", "max_speed", "avg_fuel_pct",
-        "drive_min", "idle_min", "source_ts",
+        "drive_min", "idle_min", "source_ts", "registry_id",
     ]
     cur = await tenant._db.execute(
         """
@@ -245,10 +246,12 @@ async def _aggregate_hour_window(
                                                    AS drive_min,
                SUM(CASE WHEN engine_state = 'idle'   THEN duty_min ELSE 0 END)
                                                    AS idle_min,
-               MAX(source_ts)                      AS source_ts
+               MAX(source_ts)                      AS source_ts,
+               MAX(registry_id)                    AS registry_id
           FROM (
               SELECT vehicle_id, speed_mph, fuel_pct, engine_state,
                      source_ts,
+                     registry_id,
                      LEAST(
                          EXTRACT(EPOCH FROM (
                              COALESCE(
@@ -328,8 +331,10 @@ async def _aggregate_hour_window(
             "odometer_eod":      sr.get("odometer_eoh"),
             "engine_hours_eod":  sr.get("engine_hours_eoh"),
             # Propagated, never minted: the hour's world-time is the
-            # freshest its samples carried.
+            # freshest its samples carried — and its identity is the one
+            # the samples already resolved.
             "source_ts":         sr.get("source_ts"),
+            "registry_id":       sr.get("registry_id"),
         })
 
     # Vehicles that had safety events but no snapshot in the window
@@ -347,6 +352,7 @@ async def _aggregate_hour_window(
             "max_speed_mph":     float(evt.get("max_speed_mph") or 0),
             "avg_fuel_pct":      None,
             "harsh_event_count": int(evt.get("harsh_event_count") or 0),
+            "registry_id":       evt.get("registry_id"),
         })
 
     if not rows:
@@ -400,7 +406,7 @@ async def _aggregate_day_window(
     cols = [
         "vehicle_id", "miles", "drive_min", "idle_min",
         "max_speed_mph", "avg_fuel_pct", "harsh_event_count",
-        "source_ts",
+        "source_ts", "registry_id",
     ]
     cur = await tenant._db.execute(
         """
@@ -411,7 +417,8 @@ async def _aggregate_day_window(
                MAX(COALESCE(max_speed_mph, 0))     AS max_speed_mph,
                AVG(avg_fuel_pct)                   AS avg_fuel_pct,
                SUM(COALESCE(harsh_event_count, 0)) AS harsh_event_count,
-               MAX(source_ts)                      AS source_ts
+               MAX(source_ts)                      AS source_ts,
+               MAX(registry_id)                    AS registry_id
           FROM vehicle_telemetry
          WHERE account_id = ?
            AND granularity = 'hourly'
@@ -476,6 +483,7 @@ async def _aggregate_day_window(
             "odometer_eod":      eod.get("odometer_eod"),
             "engine_hours_eod":  eod.get("engine_hours_eod"),
             "source_ts":         d.get("source_ts"),
+            "registry_id":       d.get("registry_id"),
         })
     if not rows:
         return 0
@@ -576,7 +584,7 @@ async def _aggregate_week_window(
         "vehicle_id", "miles", "drive_min", "idle_min",
         "max_speed_mph", "avg_fuel_pct", "harsh_event_count",
         "fault_count_eod", "odometer_eod", "engine_hours_eod",
-        "source_ts",
+        "source_ts", "registry_id",
     ]
     cur = await tenant._db.execute(
         """
@@ -590,7 +598,8 @@ async def _aggregate_week_window(
                MAX(COALESCE(fault_count_eod, 0))   AS fault_count_eod,
                MAX(odometer_eod)                   AS odometer_eod,
                MAX(engine_hours_eod)               AS engine_hours_eod,
-               MAX(source_ts)                      AS source_ts
+               MAX(source_ts)                      AS source_ts,
+               MAX(registry_id)                    AS registry_id
           FROM vehicle_telemetry
          WHERE account_id = ?
            AND granularity = 'daily'
@@ -619,6 +628,7 @@ async def _aggregate_week_window(
             "odometer_eod":      d.get("odometer_eod"),
             "engine_hours_eod":  d.get("engine_hours_eod"),
             "source_ts":         d.get("source_ts"),
+            "registry_id":       d.get("registry_id"),
         })
     if not rows:
         return 0
