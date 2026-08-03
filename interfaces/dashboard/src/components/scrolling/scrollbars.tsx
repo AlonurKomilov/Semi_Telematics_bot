@@ -107,9 +107,18 @@ const LINE_PX = 16;
 /**
  * Trackpad horizontal swipe / shift+wheel → `scrollLeft`.
  *
- * The container is ``overflow-x: hidden`` (so no native bar reserves a
- * track at its bottom edge), which also means the browser ignores these
- * gestures — this hook is what puts them back.
+ * ⚠️ CURRENTLY UNUSED — kept only until the `overflow-x: auto` switch is
+ * confirmed in a real browser, then delete it.  The module's own bar is
+ * two real consumers; this has zero.
+ *
+ * It exists for one shape: a container whose horizontal axis is
+ * `overflow-x: hidden`, where the browser ignores the gesture entirely.
+ * Both grids ran that way until it turned out the reason was stale — the
+ * track-reservation problem is real for `::-webkit-scrollbar { height: 0 }`
+ * but not for `display: none`, which is what HIDE_NATIVE_SCROLLBAR uses
+ * and what the VERTICAL axis had been doing all along.  With `auto` the
+ * browser applies `deltaX` itself, so calling this as well moves the
+ * container TWICE per swipe.
  *
  * ⚠️ CALL IT EXACTLY ONCE PER CONTAINER, from whoever owns the scroll
  * element — never from a scrollbar.  It used to live inside

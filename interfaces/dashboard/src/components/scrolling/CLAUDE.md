@@ -121,12 +121,34 @@ native bar spans the whole container, implying the frozen columns scroll
 too. **No pinned columns → use a plain scroll region and the browser's
 own bar**, which `index.css` already themes.
 
-⚠️ `useWheelToHorizontal` has a **precondition**: the container must be
-`overflow-x: hidden`. It exists to put back a gesture the browser is
-ignoring. Called on a container that is already `overflow-x: auto` it
-**doubles every trackpad swipe** — which is precisely the bug that
-shipped when it lived inside `useScrollMetrics` and both bars installed
-it. Call it **once**, from whoever owns the container.
+### Hide the native bar; do NOT switch the axis off
+
+Both grids ran `overflow-x: hidden` on the reasoning that `overflow-x:
+auto` reserves a scrollbar track at the container's bottom *"even with
+`::-webkit-scrollbar { height: 0 }`"*. That is true of `height: 0` — and
+it is **not** what `HIDE_NATIVE_SCROLLBAR` does. It sets
+`scrollbar-width: none` + `::-webkit-scrollbar { display: none }`, which
+removes the bar rather than shrinking it, and reserves nothing.
+
+The cost of getting that wrong was large and invisible: `hidden` leaves
+the browser with **no horizontal scrolling mechanism at all** — no touch
+pan, no keyboard, no autoscroll — so a 61-column matrix was reachable
+only by dragging an 8px painted thumb (**WCAG 2.1.1**). Meanwhile the
+VERTICAL axis had been running `auto` + `HIDE_NATIVE_SCROLLBAR` the whole
+time, with its own comment saying *"scrolling itself is untouched; only
+the painting moves."* One axis was right for months while the other was
+switched off on stale grounds.
+
+**So: both axes `auto`, native bars hidden, painted bars on top.**
+
+⚠️ `useWheelToHorizontal` exists only for the `overflow-x: hidden` shape,
+and therefore has **zero consumers** — it is kept until the switch is
+confirmed in a browser, then deleted (the bar for an export here is two
+real consumers). Do not reach for it: with `auto` the browser applies
+`deltaX` itself, so calling it as well moves the container **twice per
+swipe**. That is not hypothetical — it is the exact bug that shipped when
+the bridge lived inside `useScrollMetrics` and both scrollbars installed
+it.
 
 ## Enforcement
 

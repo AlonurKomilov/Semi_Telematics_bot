@@ -175,9 +175,13 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
     render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
     const el = region() as HTMLElement;
     expect(el.style.overflowY).toBe('auto');
-    // x is hidden so the native bar never reserves a track at the
-    // container's bottom; the horizontal bar is painted by us.
-    expect(el.style.overflowX).toBe('hidden');
+    // x is AUTO, and that is the point: ``hidden`` left the browser with
+    // no horizontal scrolling mechanism at all, so touch pan and keyboard
+    // were both dead and a wide table was reachable only by dragging an
+    // 8px painted thumb (WCAG 2.1.1).  The native bar is removed by
+    // HIDE_NATIVE_SCROLLBAR's ``display: none`` rather than by switching
+    // the axis off — exactly what the VERTICAL axis has always done.
+    expect(el.style.overflowX).toBe('auto');
     // fillHeight means the grid owns a viewport, so its overscroll is
     // contained rather than chaining to the page behind it.
     expect(el.style.overscrollBehavior).toBe('contain');

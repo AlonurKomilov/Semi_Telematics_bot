@@ -77,7 +77,7 @@ import PivotPanel from './pivot/PivotPanel';
 import { prunePivotModel, pivot, pivotToCsvRows, type PivotModel } from './pivot/pivot';
 import {
   useOverflow, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR,
-  useWheelToHorizontal, useScrollRegion,
+  useScrollRegion,
 } from '../scrolling';
 import { derivePivotDimensions } from './pivot/derived';
 
@@ -2751,13 +2751,11 @@ export default function DataGrid({
   const overflow = useOverflow(scrollEl);
 
 
-  // Trackpad / shift+wheel horizontal scrolling.  ONCE, here — this
-  // component owns the container.  It used to ride inside the
-  // scrollbars' metrics hook, which BOTH bars call on this same element,
-  // so two handlers each applied the delta and every swipe moved twice
-  // as far as it should.  Installs a listener and sets no state, so it
-  // cannot re-render the grid at scroll rate.
-  useWheelToHorizontal(scrollEl);
+  // NO wheel bridge here any more.  It existed to put back a gesture
+  // ``overflow-x: hidden`` had switched off; with ``auto`` the browser
+  // applies ``deltaX`` itself, so keeping it would apply the delta a
+  // SECOND time — the exact 2x-scroll bug that shipped when both
+  // scrollbars installed it.
 
   // Measure pinned column widths directly from the live DOM after
   // every render.  Reading ``columnSizing`` would also work but lags
@@ -2781,7 +2779,17 @@ export default function DataGrid({
   // given browser latches a gesture to a zero-range box.
   const region = useScrollRegion({
     label: 'Table rows',
-    axis: { y: 'auto', x: 'hidden' },
+    // x is ``auto``, NOT ``hidden``.  ``hidden`` left the browser with no
+    // horizontal scrolling mechanism at all — no touch pan, no keyboard,
+    // no autoscroll — so a wide table was reachable only by dragging an
+    // 8px painted thumb.  It was chosen because ``overflow-x: auto``
+    // reserves a scrollbar track at the container's bottom "even with
+    // ::-webkit-scrollbar { height: 0 }" — true of ``height: 0``, but
+    // HIDE_NATIVE_SCROLLBAR uses ``display: none`` + ``scrollbar-width:
+    // none``, which removes the bar outright.  The VERTICAL axis has run
+    // exactly that combination all along; this is the same treatment, one
+    // axis later.
+    axis: { y: 'auto', x: 'auto' },
     allowScrollChaining: !bodyScrolls,
     stickyTop: bodyScrolls ? headerHeight : undefined,
     pinnedLeft: pinnedWidths.left,
@@ -3492,11 +3500,15 @@ export default function DataGrid({
         className={cn(
           needsHScroll && !fillHeight && 'pb-3',
           fillHeight && 'flex-1 min-h-0',
-          // Hide the NATIVE vertical bar when we draw our own — it would
-          // otherwise run the container's full height, up beside the
-          // sticky column labels.  Scrolling itself is untouched; only
-          // the painting moves.
-          bodyScrolls && HIDE_NATIVE_SCROLLBAR,
+          // Hide the NATIVE bars when we draw our own — a vertical one
+          // would run the container's full height, up beside the sticky
+          // column labels, and a horizontal one would span the pinned
+          // columns as though they scrolled.  Scrolling itself is
+          // untouched; only the painting moves.
+          // ``|| needsHScroll`` because x is ``auto`` now: a grid that
+          // scrolls sideways but not vertically would otherwise show a
+          // real native bar under the rows.
+          (bodyScrolls || needsHScroll) && HIDE_NATIVE_SCROLLBAR,
         )}
         // The region's style goes LAST.  Spreading ``region.props`` and
         // then setting ``style`` would replace it wholesale — deleting

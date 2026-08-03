@@ -5,8 +5,7 @@ import {
 
 import { cn } from '../../../lib/utils';
 import {
-  ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR, useWheelToHorizontal,
-  useScrollRegion,
+  ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR, useScrollRegion,
 } from '../../scrolling';
 import { EmptyState } from '../../shell';
 import { Tip } from '../../tooltip';
@@ -221,10 +220,12 @@ export default function PivotView({
   const region = useScrollRegion({
     label: 'Pivot report',
     // y follows ``fill``: with no owned viewport this view does not
-    // scroll vertically at all — the page does.  x is hidden because the
-    // horizontal bar is PAINTED (see scrollbars.tsx), and because
-    // ``useWheelToHorizontal`` below requires exactly that.
-    axis: { y: fill ? 'auto' : 'visible', x: 'hidden' },
+    // scroll vertically at all — the page does.  x is ``auto`` so the
+    // browser still owns the gesture: touch pan and keyboard both work,
+    // which ``hidden`` had switched off on a 61-column matrix reachable
+    // only by dragging an 8px thumb.  The painted bar stays; it simply
+    // stops being the only way.
+    axis: { y: fill ? 'auto' : 'visible', x: 'auto' },
     stickyTop: insets.top,
     pinnedLeft: insets.left,
     pinnedRight: insets.right,
@@ -232,11 +233,8 @@ export default function PivotView({
   });
   const scrollEl = region.node;
   const setScrollEl = region.ref;
-  // Trackpad / shift+wheel horizontal scrolling.  ONCE, here — the
-  // container is ours.  It used to ride inside the scrollbars' metrics
-  // hook, which both bars call on this same element, so every swipe
-  // moved twice as far as it should.
-  useWheelToHorizontal(scrollEl);
+  // NO wheel bridge: with x ``auto`` the browser applies ``deltaX``
+  // itself, so adding one would move the matrix twice per swipe.
   // Windowing geometry, measured from the DOM by the same
   // ResizeObserver — never from a scroll listener.
   const [box, setBox] = useState({ viewport: 0, rowH: 0 });
@@ -531,9 +529,10 @@ export default function PivotView({
           <thead>, a <tfoot> AND both edges, and it already measures all
           three insets, so a tabbed-to cell used to land behind them
           (WCAG 2.4.11).  The hook hands that back for free.
-          ``axis`` states x:hidden explicitly — the native bar would
-          otherwise reserve a track at the container's bottom, and it is
-          also the precondition ``useWheelToHorizontal`` requires. */}
+          Both axes are ``auto``; HIDE_NATIVE_SCROLLBAR removes the
+          browser's own bars (``display: none``, so no track is reserved)
+          while leaving the SCROLLING intact — wheel, touch and keyboard
+          all keep working, and the painted bars do the drawing. */}
       <div
         ref={setScrollEl}
         {...region.props}
