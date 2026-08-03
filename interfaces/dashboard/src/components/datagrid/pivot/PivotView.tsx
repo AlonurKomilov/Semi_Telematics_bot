@@ -531,7 +531,15 @@ export default function PivotView({
           already look — so the sentence was a third telling of the same
           fact, costing a row of height on every report. */}
       <div
-        className={cn('relative group/grid', fill && 'flex flex-1 flex-col min-h-0')}
+        className={cn(
+          'relative group/grid',
+          fill && 'flex flex-1 flex-col min-h-0',
+          // Same reason as the record grid: the reserved lane shows the
+          // wrapper, so it has to wear ``BAND_FILL`` — the surface the
+          // sticky header and Total bands wear — or it reads as a pale
+          // notch running up the side of the column headers.
+          vGutter > 0 && BAND_FILL,
+        )}
         style={vGutter ? { paddingRight: vGutter } : undefined}
       >
       {/* The scroll REGION contract comes from components/scrolling —

@@ -358,8 +358,23 @@ describe('the vertical bar gets a lane, instead of sitting on the data', () => {
 
   // ScrollbarV returns null with nothing to scroll, so a short grid must
   // not pay 12 blank pixels for a bar that never draws.
+  // The lane shows the WRAPPER.  On the card surface it read as a pale
+  // notch cutting up the side of the column headers — the scrollbar's
+  // territory intruding on the header, which is the one thing the custom
+  // bar exists to avoid.  It has to wear the same surface the sticky
+  // header and footer cells wear.
+  it('wears the chrome surface, so the lane vanishes beside the header', () => {
+    withVerticalOverflow(() => {
+      render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
+      expect((region().parentElement as HTMLElement).className).toContain('bg-muted');
+    });
+  });
+
   it('reserves nothing when there is no vertical overflow', () => {
     render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
-    expect((region().parentElement as HTMLElement).style.paddingRight).toBe('');
+    const wrapper = region().parentElement as HTMLElement;
+    expect(wrapper.style.paddingRight).toBe('');
+    // …and no lane means no surface change either.
+    expect(wrapper.className).not.toContain('bg-muted');
   });
 });

@@ -150,6 +150,18 @@ Gate it on overflow actually existing. `ScrollbarV` returns `null` with
 nothing to scroll, so an ungated gutter bills every short grid 12 blank
 pixels for a bar it never draws.
 
+⚠️ **The lane must wear the chrome surface** (`bg-muted` — whatever the
+sticky `<thead>`/`<tfoot>` cells wear), not the card. The lane shows the
+WRAPPER, and the wrapper sits behind the header band too: left on the
+card surface it renders as a pale notch cutting up the side of the
+column headers, which is the scrollbar's territory intruding on the
+header — the one thing this custom bar exists to avoid. Matching the
+band makes the lane disappear beside the header and the footer and exist
+only alongside the rows, where the bar actually runs. One class; the
+alternative was measuring the header AND the footer to paint two
+fillers, and the footer's offset would have depended on whether the
+horizontal bar was in flow.
+
 An **overlay** `ScrollbarH` still needs `gutterRight={vGutter}` — it is
 placed against that same padding box, so it must shift left to end where
 the scrollport ends. Position only: the track is measured from

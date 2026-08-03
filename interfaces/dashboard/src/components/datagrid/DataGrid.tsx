@@ -3626,7 +3626,19 @@ export default function DataGrid({
          under fillHeight the horizontal scrollbar stops being an overlay
          and becomes the row below the body (see below). */
       <div
-        className={cn('relative group/grid', fillHeight && 'flex flex-1 flex-col min-h-[16rem]')}
+        className={cn(
+          'relative group/grid',
+          fillHeight && 'flex flex-1 flex-col min-h-[16rem]',
+          // The reserved lane shows the WRAPPER, and the wrapper must
+          // wear the chrome surface the sticky <thead> and <tfoot> cells
+          // wear (``bg-muted``).  On the card surface the lane read as a
+          // pale notch cutting up the side of the column headers — the
+          // scrollbar's territory intruding on the header, which is the
+          // one thing the custom bar exists to avoid.  Matching the band
+          // makes the lane vanish beside the header and the footer, and
+          // exist only alongside the rows, where the bar actually runs.
+          vGutter > 0 && 'bg-muted',
+        )}
         style={vGutter ? { paddingRight: vGutter } : undefined}
       >
       {/* The scroll REGION contract comes from components/scrolling: it
