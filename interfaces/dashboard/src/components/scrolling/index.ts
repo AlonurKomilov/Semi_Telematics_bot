@@ -17,7 +17,6 @@ export type { ScrollRegionOptions } from './region';
 export {
   ScrollbarH,
   ScrollbarV,
-  V_BAR_GUTTER,
   useOverflow,
   useWheelToHorizontal,
   HIDE_NATIVE_SCROLLBAR,

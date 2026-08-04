@@ -121,61 +121,38 @@ native bar spans the whole container, implying the frozen columns scroll
 too. **No pinned columns → use a plain scroll region and the browser's
 own bar**, which `index.css` already themes.
 
-### A painted bar needs a lane — reserve `V_BAR_GUTTER`
+### The bar must never reach the header — and a lane is NOT the fix
 
-`ScrollbarV` is an absolute overlay (`right-0.5 w-2`). Painting is all
-it does — it does **not** take layout space the way a native bar does,
-so with nothing reserved it lands on top of whatever sits at the
-scrollport's right edge. On a table wide enough to need the bar, that is
-a column of real values: the Loads grid showed the Source column already
-clipped by the viewport, with a scrollbar drawn down the middle of what
-was left. Two things eating the same column read as one broken
-component.
+`ScrollbarV` is offset below the sticky header (`insetTop`) for the
+reason it is custom at all: a native bar spans the container's full
+height, up alongside the column labels and their ⋮ menus, which reads as
+the rows scrolling *into* the header. That offset IS the measured header
+height, so **the bar must not render until the measurement lands** — a
+full-height bar against the header for one frame is exactly the thing
+being prevented. Guard on `headerHeight > 0`, not just on `bodyScrolls`.
 
-So a surface that renders `ScrollbarV` must keep `V_BAR_GUTTER` (12px =
-`w-2` + `right-0.5` + air) clear on its right:
+⚠️ **Do not "reserve a lane" for it.** A 12px gutter (wrapper padding)
+was tried and reverted the same day. It is wrong twice over:
 
-```tsx
-const vGutter = bodyScrolls && overflow.y ? V_BAR_GUTTER : 0;
-<div className="relative group/grid" style={vGutter ? { paddingRight: vGutter } : undefined}>
-```
+- The lane runs the full height, so it exists beside the HEADER too —
+  putting the scrollbar's territory in the one place the bar is
+  forbidden from. Matching its background to the band only hides that
+  in one theme's worth of luck.
+- It moves the last column away from the grid's edge. A table's final
+  column ending 12px short reads as a rendering fault, and the reports
+  say so: *"the last column is not staying at the last of the datagrid."*
 
-**Padding on the WRAPPER, not the scroller** — one line that gets three
-things right at once: the scrollport shrinks (nothing renders under the
-bar), an in-flow `ScrollbarH` shrinks with it (the two bars stay flush),
-and the absolutely-positioned `ScrollbarV` is placed against the padding
-box, so it lands *inside* the gutter without being told about it.
+The bar is an overlay, invisible until hover, 8px at the extreme edge —
+the macOS/iOS convention. If content under it is genuinely unreadable,
+the answer is the column's width or the page's column config, not a
+gutter carved out of the table.
 
-Gate it on overflow actually existing. `ScrollbarV` returns `null` with
-nothing to scroll, so an ungated gutter bills every short grid 12 blank
-pixels for a bar it never draws.
-
-⚠️ **The lane must wear the chrome surface** (`bg-muted` — whatever the
-sticky `<thead>`/`<tfoot>` cells wear), not the card. The lane shows the
-WRAPPER, and the wrapper sits behind the header band too: left on the
-card surface it renders as a pale notch cutting up the side of the
-column headers, which is the scrollbar's territory intruding on the
-header — the one thing this custom bar exists to avoid. Matching the
-band makes the lane disappear beside the header and the footer and exist
-only alongside the rows, where the bar actually runs. One class; the
-alternative was measuring the header AND the footer to paint two
-fillers, and the footer's offset would have depended on whether the
-horizontal bar was in flow.
-
-An **overlay** `ScrollbarH` still needs `gutterRight={vGutter}` — it is
-placed against that same padding box, so it must shift left to end where
-the scrollport ends. Position only: the track is measured from
-`clientWidth`, which the reservation already shrank, so subtracting the
-gutter there too would count it twice. A `flow` bar ignores it, being
-inside the padded content box already.
-
-**No fade at the clipped edge.** A right-edge gradient was tried on the
-record grid to mark the cut and removed the same week: it veils real
-data whenever the table overflows, *including* when you are already
-scrolled to the end and there is nothing more to promise. The horizontal
-bar below the rows already says "this scrolls sideways" — a clean hard
-clip plus a visible bar is what MUI does and what reads as deliberate.
-The fade stays in `DrillDialog`, which shows no bar at all.
+**No fade at the clipped edge either.** A right-edge gradient was tried
+on the record grid and removed: it veils real data whenever the table
+overflows, *including* when you are already scrolled to the end and
+there is nothing more to promise. The horizontal bar below the rows
+already says "this scrolls sideways". The fade stays in `DrillDialog`,
+which shows no bar at all.
 
 ### Hide the native bar; do NOT switch the axis off
 

@@ -407,15 +407,17 @@ touch, keyboard and scroll-into-view are untouched. (MUI gets this for
 free because its headers are a separate element outside the scroller;
 ours share one `<table>` so the columns can't drift out of alignment.)
 
-**The vertical bar gets a lane of its own.** It is an absolute overlay,
-so unlike a native bar it takes no layout space — and with nothing
-reserved it is painted over whatever sits at the scrollport's right
-edge, which on a table wide enough to need it is a column of real data.
-Both renderers reserve `V_BAR_GUTTER` as `padding-right` on the
-`group/grid` wrapper when (and only when) the bar actually draws. There
-is deliberately **no fade** at the clipped right edge: one was tried and
-removed, because it veils data even when you are scrolled to the end and
-there is nothing more to point at. Full rule:
+**Nothing may stand between the last column and the grid's edge.** Two
+attempts to improve that edge both made it worse and were reverted: a
+right-edge fade (veils data even when scrolled to the end) and a 12px
+reserved lane for the vertical scrollbar (moves the final column away
+from the edge, and puts the bar's territory beside the column headers —
+the one place it is forbidden). The bar stays an overlay, offset below
+the header, and is not rendered at all until that offset is measured.
+Related: the last column's **resize handle** is pulled inside
+(`right-0 justify-end`) instead of straddling a boundary that doesn't
+exist — hanging 4px past the table made its hairline read as a stray
+line floating after the final column. Full rules:
 [components/scrolling/CLAUDE.md](../scrolling/CLAUDE.md).
 
 **Scrollbars are shared, not per-renderer.** [`scrollbars.tsx`](scrollbars.tsx)

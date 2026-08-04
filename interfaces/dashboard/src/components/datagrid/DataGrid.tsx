@@ -76,7 +76,7 @@ import PivotView from './pivot/PivotView';
 import PivotPanel from './pivot/PivotPanel';
 import { prunePivotModel, pivot, pivotToCsvRows, type PivotModel } from './pivot/pivot';
 import {
-  useOverflow, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR, V_BAR_GUTTER,
+  useOverflow, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR,
   useScrollRegion,
 } from '../scrolling';
 import { derivePivotDimensions } from './pivot/derived';
@@ -2894,15 +2894,6 @@ export default function DataGrid({
   // track spans the centre region; thumb width is proportional to
   // the visible-to-total ratio, with a floor so it stays grabbable.
   const needsHScroll = overflow.x;
-  // Keep the vertical bar off the data.  It is an absolute overlay, so
-  // with nothing reserved it paints down the middle of whatever sits at
-  // the scrollport's right edge — on a table wide enough to need it,
-  // that is a column of real values (the Loads grid's Source column,
-  // already clipped by the viewport, with a bar drawn through what was
-  // left).  Reserved only when the bar actually renders: ScrollbarV
-  // returns null without vertical overflow, and a short grid should not
-  // pay 12 blank pixels for a bar it never draws.
-  const vGutter = bodyScrolls && overflow.y ? V_BAR_GUTTER : 0;
 
   // CSV export — visible columns in current display order, filtered
   // + sorted rows.  Filename uses ``tableId`` + today's local date so
@@ -3625,22 +3616,7 @@ export default function DataGrid({
          page's own scroll region takes over instead.  A COLUMN, because
          under fillHeight the horizontal scrollbar stops being an overlay
          and becomes the row below the body (see below). */
-      <div
-        className={cn(
-          'relative group/grid',
-          fillHeight && 'flex flex-1 flex-col min-h-[16rem]',
-          // The reserved lane shows the WRAPPER, and the wrapper must
-          // wear the chrome surface the sticky <thead> and <tfoot> cells
-          // wear (``bg-muted``).  On the card surface the lane read as a
-          // pale notch cutting up the side of the column headers — the
-          // scrollbar's territory intruding on the header, which is the
-          // one thing the custom bar exists to avoid.  Matching the band
-          // makes the lane vanish beside the header and the footer, and
-          // exist only alongside the rows, where the bar actually runs.
-          vGutter > 0 && 'bg-muted',
-        )}
-        style={vGutter ? { paddingRight: vGutter } : undefined}
-      >
+      <div className={cn('relative group/grid', fillHeight && 'flex flex-1 flex-col min-h-[16rem]')}>
       {/* The scroll REGION contract comes from components/scrolling: it
           owns the overflow on both axes, focusability + the landmark
           name, overscroll containment, and the scroll-padding that keeps
@@ -4209,10 +4185,16 @@ export default function DataGrid({
         el={scrollEl}
         insetLeft={pinnedLeftWidth}
         insetRight={pinnedRightWidth}
-        gutterRight={vGutter}
         flow={!!fillHeight}
       />
-      {bodyScrolls && (
+      {/* ``headerHeight > 0`` is not an optimisation — it is the whole
+          contract.  The bar is offset below the sticky header so it
+          never runs up beside the column labels and their ⋮ menus (the
+          reason it is custom at all), and that offset IS the measured
+          height.  Rendering before the measurement lands would put a
+          full-height bar against the header for a frame, which is the
+          one thing it exists to avoid. */}
+      {bodyScrolls && headerHeight > 0 && (
         <ScrollbarV el={scrollEl} insetTop={headerHeight} />
       )}
       </div>
@@ -4854,7 +4836,18 @@ function ColumnHeaderCell({
           onTouchStart={(e) => { e.stopPropagation(); header.getResizeHandler()(e); }}
           onDoubleClick={(e) => { e.stopPropagation(); onAutosize(); }}
           onClick={(e) => e.stopPropagation()}
-          className="group/resize absolute -right-1 top-0 z-10 flex h-full w-2 cursor-col-resize justify-center select-none touch-none"
+          className={cn(
+            'group/resize absolute top-0 z-10 flex h-full w-2 cursor-col-resize select-none touch-none',
+            // Between two columns the strip STRADDLES the boundary
+            // (-right-1) with its hairline centred, so the line lands
+            // exactly on the edge and both sides are easy to grab.
+            // The last column has no neighbour, so straddling hangs 4px
+            // of grab-strip past the table — and the hairline reads as a
+            // stray vertical line floating after the final column
+            // rather than as that column's edge.  Same line, same
+            // place, nothing outside.
+            isLastVisible ? 'right-0 justify-end' : '-right-1 justify-center',
+          )}
         >
           <span
             aria-hidden="true"

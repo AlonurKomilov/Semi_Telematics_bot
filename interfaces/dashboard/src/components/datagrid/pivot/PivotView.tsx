@@ -5,8 +5,7 @@ import {
 
 import { cn } from '../../../lib/utils';
 import {
-  ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR, useScrollRegion, useOverflow,
-  V_BAR_GUTTER,
+  ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR, useScrollRegion,
 } from '../../scrolling';
 import { EmptyState } from '../../shell';
 import { Tip } from '../../tooltip';
@@ -233,13 +232,6 @@ export default function PivotView({
     resetKey: listSignal,
   });
   const scrollEl = region.node;
-  // Reserve the vertical bar's lane so it is never painted over the
-  // rightmost measure column — the same reservation the record grid
-  // makes, for the same reason (see ``V_BAR_GUTTER``).  ResizeObserver
-  // driven, never scroll position: subscribing this view to scroll
-  // re-renders ~22,000 cells per frame.
-  const overflow = useOverflow(scrollEl);
-  const vGutter = fill && overflow.y ? V_BAR_GUTTER : 0;
   const setScrollEl = region.ref;
   // NO wheel bridge: with x ``auto`` the browser applies ``deltaX``
   // itself, so adding one would move the matrix twice per swipe.
@@ -530,18 +522,7 @@ export default function PivotView({
           500") and the footer ("Total rows: 4") — the two places people
           already look — so the sentence was a third telling of the same
           fact, costing a row of height on every report. */}
-      <div
-        className={cn(
-          'relative group/grid',
-          fill && 'flex flex-1 flex-col min-h-0',
-          // Same reason as the record grid: the reserved lane shows the
-          // wrapper, so it has to wear ``BAND_FILL`` — the surface the
-          // sticky header and Total bands wear — or it reads as a pale
-          // notch running up the side of the column headers.
-          vGutter > 0 && BAND_FILL,
-        )}
-        style={vGutter ? { paddingRight: vGutter } : undefined}
-      >
+      <div className={cn('relative group/grid', fill && 'flex flex-1 flex-col min-h-0')}>
       {/* The scroll REGION contract comes from components/scrolling —
           focusable, named, overscroll-contained, and padded away from the
           sticky chrome.  That last one this view never had: it pins a
@@ -1095,7 +1076,6 @@ export default function PivotView({
         el={scrollEl}
         insetLeft={insets.left}
         insetRight={insets.right}
-        gutterRight={vGutter}
         flow={!!fill}
       />
       {fill && (

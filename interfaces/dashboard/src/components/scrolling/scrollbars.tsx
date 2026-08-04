@@ -196,27 +196,6 @@ function geometry(track: number, visible: number, total: number, at: number) {
  *  z resolves in their favour. */
 const BAR_LAYER = 'z-30';
 
-/**
- * Width a surface must keep clear on its right for ``ScrollbarV``.
- *
- * The vertical bar is an ABSOLUTE overlay (``right-0.5 w-2``), so
- * without a reserved gutter it is painted on top of whatever content
- * sits at the right edge of the scrollport — which, on a table wide
- * enough to need the bar, is a column of real data. The Loads grid
- * showed it exactly: the Source column, already clipped by the
- * viewport, with a scrollbar drawn down the middle of what was left.
- *
- * Reserving it makes the bar behave like a native one — MUI never has
- * this problem because its scrollbars take layout space — while keeping
- * the two things the overlay was chosen FOR: it starts below the sticky
- * header, and it spans only the scrollable region so frozen columns
- * don't appear to scroll.
- *
- * Reserve it only when the bar is actually shown (``ScrollbarV``
- * returns null with no vertical overflow), or every short grid pays 12
- * blank pixels for a bar it never renders.
- */
-export const V_BAR_GUTTER = 12;
 
 const TRACK = 'relative bg-muted/40 rounded-full cursor-pointer';
 // ``touch-none`` so a drag on the thumb isn't stolen by the page's own
@@ -275,22 +254,11 @@ function makeThumbDrag(onMove: (delta: number) => void, axis: 'x' | 'y') {
  * scrolled to the very end.
  */
 export function ScrollbarH({
-  el, insetLeft = 0, insetRight = 0, gutterRight = 0, flow = false,
+  el, insetLeft = 0, insetRight = 0, flow = false,
 }: {
   el: HTMLElement | null;
   insetLeft?: number;
   insetRight?: number;
-  /** ``V_BAR_GUTTER`` when the caller reserved one, else 0.
-   *
-   *  Position ONLY, never track length. An OVERLAY bar is placed
-   *  against the wrapper's padding box, which still includes the
-   *  gutter, so it must shift left by it to end where the scrollport
-   *  ends. The track is measured from ``clientWidth``, which the
-   *  reservation already shrank — subtracting the gutter there too
-   *  would count it twice and leave the thumb short of the end.
-   *  A ``flow`` bar is inside the padded content box already and needs
-   *  no shift, which is why this is ignored there. */
-  gutterRight?: number;
   flow?: boolean;
 }) {
   const metrics = useScrollMetrics(el);
@@ -318,7 +286,7 @@ export function ScrollbarH({
       className={cn('h-2', BAR_LAYER, flow ? 'shrink-0 my-1' : 'absolute bottom-1')}
       style={flow
         ? { marginLeft: insetLeft, marginRight: insetRight }
-        : { left: insetLeft, right: insetRight + gutterRight }}
+        : { left: insetLeft, right: insetRight }}
     >
       <div className={cn(TRACK, 'h-full w-full')} onClick={page}>
         <div

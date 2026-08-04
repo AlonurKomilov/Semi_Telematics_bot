@@ -65,7 +65,6 @@ vi.mock('../../preferences', async () => {
   };
 });
 
-import { V_BAR_GUTTER } from '../scrolling';
 import DataGrid from './DataGrid';
 
 interface Row extends Record<string, unknown> { id: number; type: string; name: string }
@@ -320,61 +319,41 @@ describe('measurement survives the pivot round-trip', () => {
   });
 });
 
-/** jsdom reports 0 for every dimension, so ``useOverflow`` can never see
- *  overflow on its own.  Stub the two properties it reads, for the life
- *  of one test. */
-function withVerticalOverflow(run: () => void) {
-  const proto = HTMLElement.prototype;
-  const keep = {
-    scrollHeight: Object.getOwnPropertyDescriptor(proto, 'scrollHeight'),
-    clientHeight: Object.getOwnPropertyDescriptor(proto, 'clientHeight'),
-  };
-  Object.defineProperty(proto, 'scrollHeight', { value: 500, configurable: true });
-  Object.defineProperty(proto, 'clientHeight', { value: 100, configurable: true });
-  try { run(); } finally {
-    // These live on Element.prototype, so there is no OWN descriptor to
-    // put back — the stub has to be deleted or it shadows the real one
-    // for every later test in the file.
-    for (const k of ['scrollHeight', 'clientHeight'] as const) {
-      if (keep[k]) Object.defineProperty(proto, k, keep[k]!);
-      else delete (proto as unknown as Record<string, unknown>)[k];
-    }
-  }
-}
-
-describe('the vertical bar gets a lane, instead of sitting on the data', () => {
-  // It is an absolute overlay, so with nothing reserved it is painted
-  // over whatever is at the scrollport's right edge — and on a table
-  // wide enough to need the bar, that is a column of real values.  The
-  // Loads grid showed it exactly: the Source column, already clipped by
-  // the viewport, with a scrollbar drawn through what was left.
-  it('reserves the gutter once the body actually overflows', () => {
-    withVerticalOverflow(() => {
-      render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
-      const wrapper = region().parentElement as HTMLElement;
-      expect(wrapper.style.paddingRight).toBe(`${V_BAR_GUTTER}px`);
-    });
-  });
-
-  // ScrollbarV returns null with nothing to scroll, so a short grid must
-  // not pay 12 blank pixels for a bar that never draws.
-  // The lane shows the WRAPPER.  On the card surface it read as a pale
-  // notch cutting up the side of the column headers — the scrollbar's
-  // territory intruding on the header, which is the one thing the custom
-  // bar exists to avoid.  It has to wear the same surface the sticky
-  // header and footer cells wear.
-  it('wears the chrome surface, so the lane vanishes beside the header', () => {
-    withVerticalOverflow(() => {
-      render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
-      expect((region().parentElement as HTMLElement).className).toContain('bg-muted');
-    });
-  });
-
-  it('reserves nothing when there is no vertical overflow', () => {
+describe('the vertical bar never runs up beside the column headers', () => {
+  // The whole reason this bar is custom rather than native: a native one
+  // spans the container's full height, alongside the column labels and
+  // their ⋮ menus, which reads as the rows scrolling INTO the header.
+  // Ours is offset by the measured header height — and jsdom measures
+  // everything as 0, so the guard below is what keeps a bar from being
+  // painted against the header while that measurement is still pending.
+  it('is not rendered at all until the header height is known', () => {
     render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
-    const wrapper = region().parentElement as HTMLElement;
-    expect(wrapper.style.paddingRight).toBe('');
-    // …and no lane means no surface change either.
-    expect(wrapper.className).not.toContain('bg-muted');
+    // offsetHeight is 0 in jsdom, so the measurement never lands and the
+    // bar must stay away rather than default to the top of the box.
+    const bars = region().parentElement!.querySelectorAll('.z-30');
+    for (const bar of bars) {
+      expect((bar as HTMLElement).style.top).not.toBe('0px');
+    }
+  });
+});
+
+describe('the last column ends where the grid ends', () => {
+  // Every header cell carries a resize strip that STRADDLES its right
+  // boundary (-right-1), so the hairline lands exactly on the edge and
+  // both neighbours are easy to grab.  The last column has no
+  // neighbour, so straddling hangs 4px of it past the table — and the
+  // hairline (bg-primary on hover: near-black in light, bright in dark)
+  // reads as a stray vertical line floating AFTER the final column
+  // instead of as that column's own edge.  Reported twice from the
+  // Loads grid, both times as "the scrollbar goes up to the columns".
+  it('does not hang its resize handle past the final column', () => {
+    render(<DataGrid columns={COLUMNS} data={ROWS} tableId="t" />);
+    const middle = screen.getByRole('separator', { name: 'Resize Vehicle column' });
+    const last = screen.getByRole('separator', { name: 'Resize Type column' });
+    expect(middle.className).toContain('-right-1');
+    expect(last.className).not.toContain('-right-1');
+    // Same line in the same place — pulled inside and pushed to the
+    // edge, rather than centred on a boundary that isn't there.
+    expect(last.className).toContain('justify-end');
   });
 });
