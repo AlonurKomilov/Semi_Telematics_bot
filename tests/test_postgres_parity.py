@@ -77,22 +77,22 @@ class TestAccountSettingsParity:
 
     async def test_drive_oauth_keys_roundtrip(self, pg_db: Database):
         from adapters.storage.object_store import (
-            STORAGE_BACKEND_KEY,
-            STORAGE_GDRIVE_REFRESH_TOKEN,
-            STORAGE_GDRIVE_ROOT_FOLDER_ID,
-            STORAGE_GDRIVE_USER_EMAIL,
+            OBJECT_STORE_BACKEND_KEY,
+            OBJECT_STORE_GDRIVE_REFRESH_TOKEN,
+            OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID,
+            OBJECT_STORE_GDRIVE_USER_EMAIL,
         )
         acct = await pg_db.create_account("OAuth PG")
         a = acct.id
-        await pg_db.set_account_setting(a, STORAGE_BACKEND_KEY, "gdrive")
-        await pg_db.set_account_setting(a, STORAGE_GDRIVE_REFRESH_TOKEN, "tok-blob")
-        await pg_db.set_account_setting(a, STORAGE_GDRIVE_ROOT_FOLDER_ID, "1Folder")
-        await pg_db.set_account_setting(a, STORAGE_GDRIVE_USER_EMAIL, "u@x.com")
+        await pg_db.set_account_setting(a, OBJECT_STORE_BACKEND_KEY, "gdrive")
+        await pg_db.set_account_setting(a, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "tok-blob")
+        await pg_db.set_account_setting(a, OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID, "1Folder")
+        await pg_db.set_account_setting(a, OBJECT_STORE_GDRIVE_USER_EMAIL, "u@x.com")
 
-        assert await pg_db.get_account_setting(a, STORAGE_BACKEND_KEY) == "gdrive"
-        assert await pg_db.get_account_setting(a, STORAGE_GDRIVE_REFRESH_TOKEN) == "tok-blob"
-        assert await pg_db.get_account_setting(a, STORAGE_GDRIVE_ROOT_FOLDER_ID) == "1Folder"
-        assert await pg_db.get_account_setting(a, STORAGE_GDRIVE_USER_EMAIL) == "u@x.com"
+        assert await pg_db.get_account_setting(a, OBJECT_STORE_BACKEND_KEY) == "gdrive"
+        assert await pg_db.get_account_setting(a, OBJECT_STORE_GDRIVE_REFRESH_TOKEN) == "tok-blob"
+        assert await pg_db.get_account_setting(a, OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID) == "1Folder"
+        assert await pg_db.get_account_setting(a, OBJECT_STORE_GDRIVE_USER_EMAIL) == "u@x.com"
 
 
 class TestDriverDocumentBucketParity:

@@ -18,9 +18,9 @@ import pytest
 
 from adapters.storage import Role
 from adapters.storage.object_store import (
-    STORAGE_BACKEND_KEY, STORAGE_GDRIVE_REFRESH_TOKEN, STORAGE_GDRIVE_USER_EMAIL,
+    OBJECT_STORE_BACKEND_KEY, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, OBJECT_STORE_GDRIVE_USER_EMAIL,
 )
-from adapters.storage.storage_sync import (
+from adapters.storage.object_store_sync import (
     STATE_LOCAL, STATE_REMOTE, STATE_STUCK, STATE_SYNCING,
 )
 from capabilities.object_store.router import get_storage_health
@@ -152,7 +152,7 @@ class TestStorageHealth:
                 bucket="b", filename=f"x{i}", local_path="p", file_size=10,
             )
             qids.append(qid)
-        from adapters.storage.storage_sync import ERR_TOKEN_EXPIRED
+        from adapters.storage.object_store_sync import ERR_TOKEN_EXPIRED
         await db.mark_sync_stuck(
             qids[0], error="invalid_grant", error_code=ERR_TOKEN_EXPIRED,
         )
@@ -167,9 +167,9 @@ class TestStorageHealth:
         # Pretend Drive is connected (refresh token + email present).
         # The route reads these settings only — it never actually
         # exchanges the token.
-        await db.set_account_setting(acct.id, STORAGE_BACKEND_KEY, "gdrive")
-        await db.set_account_setting(acct.id, STORAGE_GDRIVE_REFRESH_TOKEN, "encrypted-blob")
-        await db.set_account_setting(acct.id, STORAGE_GDRIVE_USER_EMAIL, "adam@example.com")
+        await db.set_account_setting(acct.id, OBJECT_STORE_BACKEND_KEY, "gdrive")
+        await db.set_account_setting(acct.id, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "encrypted-blob")
+        await db.set_account_setting(acct.id, OBJECT_STORE_GDRIVE_USER_EMAIL, "adam@example.com")
         body = await get_storage_health(
             user={"account_id": acct.id, "sub": 1}, tenant_db=db,
         )
@@ -180,7 +180,7 @@ class TestStorageHealth:
         # An account with a stale email setting but no refresh token
         # is NOT connected — email must not leak through.
         acct = await db.create_account("Acme")
-        await db.set_account_setting(acct.id, STORAGE_GDRIVE_USER_EMAIL, "old@example.com")
+        await db.set_account_setting(acct.id, OBJECT_STORE_GDRIVE_USER_EMAIL, "old@example.com")
         body = await get_storage_health(
             user={"account_id": acct.id, "sub": 1}, tenant_db=db,
         )

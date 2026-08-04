@@ -69,43 +69,43 @@ class TestAccountSettingsRoundtrip:
         round-trip, the Drive OAuth callback can persist + the Drive
         backend factory can read."""
         from adapters.storage.object_store import (
-            STORAGE_BACKEND_KEY,
-            STORAGE_GDRIVE_REFRESH_TOKEN,
-            STORAGE_GDRIVE_ROOT_FOLDER_ID,
-            STORAGE_GDRIVE_USER_EMAIL,
+            OBJECT_STORE_BACKEND_KEY,
+            OBJECT_STORE_GDRIVE_REFRESH_TOKEN,
+            OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID,
+            OBJECT_STORE_GDRIVE_USER_EMAIL,
         )
         d = seeded
         a = d["account"].id
         # Simulate a successful OAuth callback writing the four keys
-        await d["db"].set_account_setting(a, STORAGE_BACKEND_KEY, "gdrive")
-        await d["db"].set_account_setting(a, STORAGE_GDRIVE_REFRESH_TOKEN, "encrypted_blob_xyz")
-        await d["db"].set_account_setting(a, STORAGE_GDRIVE_ROOT_FOLDER_ID, "1AbCdEfGh")
-        await d["db"].set_account_setting(a, STORAGE_GDRIVE_USER_EMAIL, "user@example.com")
+        await d["db"].set_account_setting(a, OBJECT_STORE_BACKEND_KEY, "gdrive")
+        await d["db"].set_account_setting(a, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "encrypted_blob_xyz")
+        await d["db"].set_account_setting(a, OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID, "1AbCdEfGh")
+        await d["db"].set_account_setting(a, OBJECT_STORE_GDRIVE_USER_EMAIL, "user@example.com")
 
-        assert await d["db"].get_account_setting(a, STORAGE_BACKEND_KEY) == "gdrive"
-        assert await d["db"].get_account_setting(a, STORAGE_GDRIVE_REFRESH_TOKEN) == "encrypted_blob_xyz"
-        assert await d["db"].get_account_setting(a, STORAGE_GDRIVE_ROOT_FOLDER_ID) == "1AbCdEfGh"
-        assert await d["db"].get_account_setting(a, STORAGE_GDRIVE_USER_EMAIL) == "user@example.com"
+        assert await d["db"].get_account_setting(a, OBJECT_STORE_BACKEND_KEY) == "gdrive"
+        assert await d["db"].get_account_setting(a, OBJECT_STORE_GDRIVE_REFRESH_TOKEN) == "encrypted_blob_xyz"
+        assert await d["db"].get_account_setting(a, OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID) == "1AbCdEfGh"
+        assert await d["db"].get_account_setting(a, OBJECT_STORE_GDRIVE_USER_EMAIL) == "user@example.com"
 
     async def test_disconnect_clears_token(self, seeded):
         """Disconnect overwrites the refresh token with an empty string
         and flips the backend — the get_account_setting reader must
         observe both transitions in a single round trip."""
         from adapters.storage.object_store import (
-            STORAGE_BACKEND_KEY, STORAGE_GDRIVE_REFRESH_TOKEN,
+            OBJECT_STORE_BACKEND_KEY, OBJECT_STORE_GDRIVE_REFRESH_TOKEN,
         )
         d = seeded
         a = d["account"].id
 
-        await d["db"].set_account_setting(a, STORAGE_GDRIVE_REFRESH_TOKEN, "tok")
-        await d["db"].set_account_setting(a, STORAGE_BACKEND_KEY, "gdrive")
+        await d["db"].set_account_setting(a, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "tok")
+        await d["db"].set_account_setting(a, OBJECT_STORE_BACKEND_KEY, "gdrive")
 
         # Disconnect flow
-        await d["db"].set_account_setting(a, STORAGE_GDRIVE_REFRESH_TOKEN, "")
-        await d["db"].set_account_setting(a, STORAGE_BACKEND_KEY, "disk")
+        await d["db"].set_account_setting(a, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "")
+        await d["db"].set_account_setting(a, OBJECT_STORE_BACKEND_KEY, "disk")
 
-        assert await d["db"].get_account_setting(a, STORAGE_GDRIVE_REFRESH_TOKEN) == ""
-        assert await d["db"].get_account_setting(a, STORAGE_BACKEND_KEY) == "disk"
+        assert await d["db"].get_account_setting(a, OBJECT_STORE_GDRIVE_REFRESH_TOKEN) == ""
+        assert await d["db"].get_account_setting(a, OBJECT_STORE_BACKEND_KEY) == "disk"
 
     async def test_unicode_key_and_value(self, seeded):
         """Settings table should tolerate non-ASCII payloads — display

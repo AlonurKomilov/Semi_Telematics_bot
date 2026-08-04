@@ -37,7 +37,7 @@ This rollout shipped as Phases 1–6 (migrations 070, code under
         └─────────────────┬───────────────────────┘
                           │  (returns 200 in <500ms)
                           ▼
-                  storage_sync_queue
+                  object_store_sync_queue
               (DB outbox — survives restarts)
                           │
                           ▼  every 60 s (or kicked)
@@ -90,7 +90,7 @@ psql "$DATABASE_URL" -c "
    ORDER BY key"
 ```
 
-If `storage.gdrive.refresh_token` is empty or the saved token is
+If `object_store.gdrive.refresh_token` is empty or the saved token is
 expired, the queue will just accumulate locally until the operator
 reconnects Drive.  That's a feature, not a bug — files never get
 lost.
@@ -212,8 +212,8 @@ For 10k+ accounts:
    any account's files.  Code unchanged — `DiskObjectStore._root` just
    resolves to a different path.
 2. **DB tier**: pgBouncer in front of Postgres in transaction-pooling
-   mode.  Indexes already in place (`idx_storage_sync_queue_due`,
-   `idx_storage_sync_queue_account_due`).
+   mode.  Indexes already in place (`idx_object_store_sync_queue_due`,
+   `idx_object_store_sync_queue_account_due`).
 3. **Drive quotas**: 1B/day per OAuth project covers 10k accounts ×
    50 uploads/day.  If you grow past that, run multiple OAuth projects
    and round-robin the env var per account / per worker.
@@ -238,7 +238,7 @@ the account remain in the queue — drop them manually if you want to
 abandon pending syncs:
 
 ```sql
-DELETE FROM storage_sync_queue WHERE account_id = <ACCT>;
+DELETE FROM object_store_sync_queue WHERE account_id = <ACCT>;
 ```
 
 Files already in Drive stay in Drive.  Files only on disk stay on
@@ -256,7 +256,7 @@ Migration `070_hybrid_storage_foundation` is **strictly additive**:
   to `pti_inspection_media` with safe defaults (`storage_state` defaults
   to `'remote'` so every legacy row is treated as already-settled —
   the worker ignores them).
-* Creates the `storage_sync_queue` table from scratch.
+* Creates the `object_store_sync_queue` table from scratch.
 * Adds two indexes.
 
 There's no data backfill, no destructive change, no requirement that

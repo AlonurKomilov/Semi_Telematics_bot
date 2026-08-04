@@ -8,8 +8,10 @@ Covers:
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
+import random
 import sys
 
 os.environ.setdefault("ENCRYPTION_KEY", "test-key-32-chars-min-aaaaaaaaaaaaaaaaaaaa")
@@ -20,6 +22,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import pytest
 import pytest_asyncio
+
+from features.applications import service
 from httpx import AsyncClient, ASGITransport
 
 from adapters.storage import Role
@@ -99,6 +103,34 @@ _GOOD_FILES = {
 }
 
 
+
+def _sig_png(w: int = 1200, h: int = 400) -> bytes:
+    """A PNG the size a real signature canvas exports (tens of KB).
+
+    Built incompressible on purpose: a flat or gradient image shrinks to
+    a couple of KB, stays under MAX_TEXTAREA, and the test would pass
+    against the very bug it exists to catch.
+    """
+    import struct
+    import zlib
+    rnd = random.Random(20260630)
+    raw = b"".join(b"\x00" + bytes(rnd.randrange(256) for _ in range(w))
+                   for _ in range(40))
+
+    def chunk(tag: bytes, body: bytes) -> bytes:
+        c = tag + body
+        return struct.pack(">I", len(body)) + c + struct.pack(">I", zlib.crc32(c) & 0xFFFFFFFF)
+
+    return (b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", w, h, 8, 6, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, 6))
+            + chunk(b"IEND", b""))
+
+
+def _sig_data_url() -> str:
+    return "data:image/png;base64," + base64.b64encode(_sig_png()).decode()
+
+
 class TestPublicSubmit:
     async def test_invalid_token_404(self, api):
         app, _ = api
@@ -107,6 +139,89 @@ class TestPublicSubmit:
                              data={"link_token": "BOGUS", "application": _app_payload()},
                              files=_GOOD_FILES)
         assert r.status_code == 404
+
+    # ── The drawn signature ─────────────────────────────────────────
+    #
+    # Every drawn signature was silently discarded.  ``cap_strings``
+    # trims each string to MAX_TEXTAREA, and a signature data URL is
+    # 30-60 KB, so it was chopped mid-base64 — 3,978 characters left
+    # after the prefix, never a multiple of 4, so the decode raised and
+    # returned None.  ``sigMode``/``sigDate`` are short and survived, so
+    # the record still read "signed, draw mode" while the image was gone:
+    # no error to the applicant, no log line, and a §391.51 packet
+    # printing a blank signature rule.  These pin the whole round trip,
+    # not just the decoder, because every individual piece was correct.
+
+    async def test_drawn_signature_survives_the_text_caps(self, api):
+        app, db = api
+        acct = await db.create_account("Apply Sig")
+        link = await db.create_application_link(acct.id)
+        payload = _app_payload(consents={
+            "truthful": True, "psp": True, "mvr": True, "clearinghouse": True,
+            "fcra": True, "drug": True, "employment_verification": True,
+            "sigMode": "draw", "sigDate": "2026-06-30",
+            "sigDataUrl": _sig_data_url(),
+        })
+        assert len(_sig_data_url()) > service.MAX_TEXTAREA, "fixture must exceed the cap"
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            r = await c.post("/api/applications/apply",
+                             data={"link_token": link["token"], "application": payload},
+                             files=_GOOD_FILES)
+        assert r.status_code == 200, r.text
+        apps = await db.list_driver_applications(acct.id)
+        full = await db.get_driver_application(acct.id, apps[0]["id"])
+        # The stored object id is what the packet PDF and the dashboard
+        # thumbnail both read; without it neither can render anything.
+        assert (full.get("docs") or {}).get("signature"), \
+            "drawn signature was not stored — the packet would print a blank rule"
+
+    async def test_unreadable_drawn_signature_is_refused_not_swallowed(self, api):
+        app, db = api
+        acct = await db.create_account("Apply Sig Bad")
+        link = await db.create_application_link(acct.id)
+        payload = _app_payload(consents={
+            "truthful": True, "psp": True, "mvr": True, "clearinghouse": True,
+            "fcra": True, "drug": True, "employment_verification": True,
+            "sigMode": "draw", "sigDataUrl": "data:image/png;base64,!!!not-base64!!!",
+        })
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            r = await c.post("/api/applications/apply",
+                             data={"link_token": link["token"], "application": payload},
+                             files=_GOOD_FILES)
+        # Refused, so the applicant can draw again — rather than filed as
+        # signed with nothing behind it.
+        assert r.status_code == 422
+        assert "signature" in r.json()["detail"].lower()
+
+    async def test_draw_mode_without_any_signature_is_refused(self, api):
+        app, db = api
+        acct = await db.create_account("Apply Sig None")
+        link = await db.create_application_link(acct.id)
+        payload = _app_payload(consents={
+            "truthful": True, "psp": True, "mvr": True, "clearinghouse": True,
+            "fcra": True, "drug": True, "employment_verification": True,
+            "sigMode": "draw",
+        })
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            r = await c.post("/api/applications/apply",
+                             data={"link_token": link["token"], "application": payload},
+                             files=_GOOD_FILES)
+        assert r.status_code == 422
+
+    async def test_typed_signature_still_requires_a_name(self, api):
+        app, db = api
+        acct = await db.create_account("Apply Sig Typed")
+        link = await db.create_application_link(acct.id)
+        payload = _app_payload(consents={
+            "truthful": True, "psp": True, "mvr": True, "clearinghouse": True,
+            "fcra": True, "drug": True, "employment_verification": True,
+            "sigMode": "type", "sigName": "   ",
+        })
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
+            r = await c.post("/api/applications/apply",
+                             data={"link_token": link["token"], "application": payload},
+                             files=_GOOD_FILES)
+        assert r.status_code == 422
 
     async def test_disguised_file_rejected(self, api):
         app, db = api

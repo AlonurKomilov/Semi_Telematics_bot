@@ -1,7 +1,7 @@
 """Phase 4 tests for the per-account local-storage quota gate.
 
 The helper lives in the inspections route, but the data contract is
-``StorageSyncMixin.account_has_quota_for`` from Phase 1.  We exercise
+``ObjectStoreSyncMixin.account_has_quota_for`` from Phase 1.  We exercise
 both via the public surface: the gate's helper, the structured 413
 shape, and the boundary conditions (zero-byte, exact-fit, over-by-one).
 """

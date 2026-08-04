@@ -30,7 +30,7 @@ import pytest
 
 from adapters.storage import Role
 from adapters.storage.object_store_hybrid import HybridObjectStore
-from adapters.storage.storage_sync import (
+from adapters.storage.object_store_sync import (
     STATE_LOCAL, STATE_REMOTE,
 )
 
@@ -166,7 +166,7 @@ class TestTrackForSync:
         )
         # Simulate a prior failure parked the row.
         first = (await db.list_pending_sync(acct.id))[0]
-        from adapters.storage.storage_sync import ERR_TRANSIENT
+        from adapters.storage.object_store_sync import ERR_TRANSIENT
         await db.mark_sync_failed(
             int(first["id"]), error="boom", error_code=ERR_TRANSIENT,
         )
@@ -253,7 +253,7 @@ class TestLegacyAndRemote:
         # so the worker doesn't try to re-sync them.  Lock that in
         # here for visibility — it's the backward-compat contract
         # everything else depends on.
-        from adapters.storage.storage_sync import STATE_REMOTE as _R
+        from adapters.storage.object_store_sync import STATE_REMOTE as _R
         assert _R == "remote"
         # Smoke: the constant the migration relies on hasn't drifted.
 

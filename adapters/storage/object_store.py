@@ -487,7 +487,7 @@ def get_object_store() -> ObjectStore:
 async def get_object_store_for_account(account_id: int, tenant_db) -> ObjectStore:
     """Return the object store configured for one tenant account.
 
-    Reads ``account_settings.storage.backend`` to decide which backend
+    Reads ``account_settings.object_store.backend`` to decide which backend
     to spin up.  Defaults to ``DiskObjectStore`` (the safe platform
     fallback) when no preference is recorded — every account works
     out-of-the-box without configuration.

@@ -11,6 +11,7 @@ Three endpoints:
 * ``POST /storage/google/start`` — kick off the OAuth consent flow,
   returns the URL the dashboard redirects the browser to
 * ``GET  /storage/google/callback`` — Google redirects here with the
+  (path fixed by the Console registration — see the note at the route)
   auth code; we exchange for a refresh token, create the root folder
   on the user's Drive, and flip the account backend to gdrive
 * ``POST /storage/google/disconnect`` — remove stored creds and revert
@@ -513,6 +514,14 @@ async def start_google_oauth(
 # ── GET /storage/google/callback ─────────────────────────────────────────────
 
 
+# ⚠ PERMANENT, not a deprecated alias.  This exact path is registered
+# in Google Cloud Console as the authorized redirect URI (env
+# GDRIVE_OAUTH_REDIRECT_URI = https://api.4truck.us/storage/google/callback).
+# Google will only redirect to a URI on its own allow-list, so removing
+# this route breaks Drive connection for every account.  Changing it is
+# an OPS sequence, not a refactor: register the new URI in the Console,
+# deploy the env change, let in-flight flows drain, then retire the old
+# one.  Keep this route when the other /storage aliases are dropped.
 @deprecated_router.get("/google/callback")
 @router.get("/google/callback")
 async def google_oauth_callback(
@@ -528,7 +537,7 @@ async def google_oauth_callback(
       2. Exchange the auth code for an access + refresh token
       3. Create or find the ``4truck`` root folder on the user's Drive
       4. Encrypt + store the refresh token, root folder ID, and email
-      5. Flip ``account_settings.storage.backend`` to ``gdrive``
+      5. Flip ``account_settings.object_store.backend`` to ``gdrive``
       6. Invalidate the cached ObjectStore so the new backend takes
          effect on the next upload
       7. Redirect back to the dashboard Settings page

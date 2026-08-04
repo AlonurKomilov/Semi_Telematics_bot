@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import pytest
 
 from adapters.storage import Role
-from adapters.storage.storage_sync import (
+from adapters.storage.object_store_sync import (
     DEFAULT_DISK_QUOTA_BYTES,
     ERR_TOKEN_EXPIRED, ERR_TRANSIENT,
     STATE_LOCAL, STATE_REMOTE, STATE_SYNCING,
@@ -298,11 +298,11 @@ class TestMediaState:
 class TestBackendFlip:
     async def test_set_account_storage_backend(self, db):
         acct = await db.create_account("Acme")
-        from adapters.storage.object_store import STORAGE_BACKEND_KEY
+        from adapters.storage.object_store import OBJECT_STORE_BACKEND_KEY
         await db.set_account_storage_backend(acct.id, "disk")
-        assert await db.get_account_setting(acct.id, STORAGE_BACKEND_KEY, "") == "disk"
+        assert await db.get_account_setting(acct.id, OBJECT_STORE_BACKEND_KEY, "") == "disk"
         await db.set_account_storage_backend(acct.id, "gdrive")
-        assert await db.get_account_setting(acct.id, STORAGE_BACKEND_KEY, "") == "gdrive"
+        assert await db.get_account_setting(acct.id, OBJECT_STORE_BACKEND_KEY, "") == "gdrive"
 
     async def test_rejects_unknown_backend(self, db):
         acct = await db.create_account("Acme")

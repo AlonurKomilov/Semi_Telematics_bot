@@ -16,10 +16,10 @@ How it differs from the platform ``adapters/storage/gdrive.py`` module:
 
 State stored per account (under ``account_settings``):
 
-* ``storage.gdrive.refresh_token`` — encrypted OAuth refresh token
-* ``storage.gdrive.root_folder_id`` — Drive folder ID of the
+* ``object_store.gdrive.refresh_token`` — encrypted OAuth refresh token
+* ``object_store.gdrive.root_folder_id`` — Drive folder ID of the
   ``4truck`` root the user authorised us to write to
-* ``storage.gdrive.user_email`` — for display only (Settings page)
+* ``object_store.gdrive.user_email`` — for display only (Settings page)
 
 Folder layout mirrors ``DiskObjectStore`` exactly so a user inspecting
 their Drive sees the same hierarchy as the local-disk fallback.  The
