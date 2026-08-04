@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Pencil, Plus, Truck } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import DataGrid from '../../components/datagrid';
+import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import { vehicleRowMenu } from './contextMenu';
 import StatusBadge from '../../components/StatusBadge';
 import { Freshness, InfoTip, Tip } from '../../components/tooltip';
@@ -18,7 +18,6 @@ import {
   ErrorState,
   TableSkeleton,
   LastUpdated,
-  FilterChips,
   useLoadingStage,
 } from '../../components/shell';
 import { useShellConfig } from '../../hooks/useShellConfig';
@@ -38,8 +37,30 @@ const TYPE_LABEL: Record<string, string> = {
 // about their own vehicle only; dispatch lives in the live view).
 const UTILIZATION_PERSONAS = new Set(['owner', 'admin', 'fleet', 'accounting']);
 
-type StatusFilter = 'all' | 'moving' | 'idle' | 'stopped' | 'no_telemetry';
-const STATUS_OPTIONS: readonly StatusFilter[] = ['all', 'moving', 'idle', 'stopped', 'no_telemetry'] as const;
+// Lifecycle tabs, DECLARED — DataGrid owns the strip, the counts, the
+// scoping and the reset.  This page used to own all four: a useState, a
+// forEach to tally, a visibility rule, and a FilterChips render — plus a
+// ``?status=`` round-trip per click.  That last one made the tallies
+// LIE: the counts were computed from the returned rows, so selecting
+// "Moving" reported Idle 0 / Stopped 0, and the No-telemetry tab (which
+// hides itself at zero) vanished until you went back to All.
+//
+// The server built the whole list and filtered it in Python either way,
+// so dropping the parameter costs nothing and buys exact counts, one
+// cache entry instead of five, and no refetch per tab.
+const STATUS_SEGMENTS: DataGridSegment[] = [
+  { key: 'all', label: 'All', match: () => true },
+  { key: 'moving', label: 'Moving', match: (r) => r.status === 'moving' },
+  { key: 'idle', label: 'Idle', match: (r) => r.status === 'idle' },
+  { key: 'stopped', label: 'Stopped', match: (r) => r.status === 'stopped' },
+  { key: 'no_telemetry', label: 'No telemetry', match: (r) => r.status === 'no_telemetry' },
+];
+// Registry-only rows (trailers, manual trucks) exist only once the
+// registry overlay is live.  Drop the tab entirely for fleets where
+// everything reports, rather than showing a permanent "No telemetry 0"
+// that reads as an outage.  Swapping the ARRAY is the house pattern for
+// this (ServiceTasks does the same) — no DataGrid prop needed.
+const REPORTING_ONLY = STATUS_SEGMENTS.filter((s) => s.key !== 'no_telemetry');
 
 // Parse a full address into street / city / state parts.  The three
 // Location-group columns share this heuristic so they always agree on
@@ -239,7 +260,6 @@ export default function Vehicles() {
   // DataGrid tabs.
   const [pageTab, setPageTab] = useState<'vehicles' | 'mileage'>('vehicles');
   const { t } = useTranslation();
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const navigate = useNavigate();
   // The detail-page path for a vehicle row.  Shared by the row click and
   // the right-click menu so both route identically.
@@ -346,10 +366,11 @@ export default function Vehicles() {
     refetch,
     dataUpdatedAt,
   } = useQuery<VehiclesResponse>({
-    queryKey: ['vehicles', statusFilter],
+    queryKey: ['vehicles'],
     queryFn: () => {
+      // No ``status`` param: the tabs scope the loaded rows, so the
+      // whole registry is fetched once and every tab count is exact.
       const params = new URLSearchParams();
-      if (statusFilter !== 'all') params.set('status', statusFilter);
       // 500 matches the route's le= cap.  The whole registry (trucks +
       // trailers) rides one page; beyond 500 vehicles this fetch must
       // walk total_pages instead (useFleetList already shows the shape).
@@ -360,21 +381,11 @@ export default function Vehicles() {
   });
 
   const vehicles: Vehicle[] = data?.vehicles ?? [];
-  const totalCount =
-    (data as unknown as { count?: number } | undefined)?.count ?? vehicles.length;
   const error =
     queryError instanceof Error ? queryError.message : queryError ? String(queryError) : '';
 
-  const counts: Record<string, number> = { moving: 0, idle: 0, stopped: 0, no_telemetry: 0 };
-  vehicles.forEach((v) => {
-    if (v.status && counts[v.status] !== undefined) counts[v.status]++;
-  });
-  // Registry-only rows (trailers, manual trucks) exist only once the
-  // registry overlay is live — hide the chip entirely for fleets where
-  // everything reports, instead of a permanent "No Telemetry 0".
-  const statusOptions = counts.no_telemetry > 0 || statusFilter === 'no_telemetry'
-    ? STATUS_OPTIONS
-    : STATUS_OPTIONS.filter((s) => s !== 'no_telemetry');
+  const hasNoTelemetry = vehicles.some((v) => v.status === 'no_telemetry');
+  const segments = hasNoTelemetry ? STATUS_SEGMENTS : REPORTING_ONLY;
 
   // Same warehouse-first pattern as the rest of the fleet — when the
   // warehouse is cold the list falls back to live Samsara, which on a
@@ -436,26 +447,12 @@ export default function Vehicles() {
 
       {UTILIZATION_PERSONAS.has(persona) && <UtilizationSummary />}
 
-      <div className="mb-4 flex items-center gap-2">
-        <FilterChips
-          options={statusOptions}
-          value={statusFilter}
-          onChange={setStatusFilter}
-          labelFor={(s) => s.replace(/_/g, ' ')}
-          countFor={(s) =>
-            s === 'all' ? totalCount : counts[s] ?? 0
-          }
-        />
-        {statusOptions.includes('no_telemetry') && (
-          // Learn-once explainer: +86 "no telemetry" rows appearing for
-          // the first time must read as "the whole registry now shows",
-          // not as a telematics outage.
-          <InfoTip
-            size={14}
-            label="Vehicles without a telematics device — trailers and manually added trucks. They're listed so the fleet count is complete; motion status applies only to reporting vehicles."
-          />
-        )}
-      </div>
+      {/* The chip row is gone — the tabs are DataGrid's now.  The
+          explainer stays: "+86 no-telemetry rows" appearing for the
+          first time must read as "the whole registry now shows", not as
+          a telematics outage.  It follows its subject onto the header,
+          beside the title, since the tab it explained lives inside the
+          card. */}
 
       {stage === 'timeout' && vehicles.length === 0 ? (
         <ErrorState
@@ -479,11 +476,7 @@ export default function Vehicles() {
         <EmptyState
           icon={Truck}
           title={t('vehicles.no_matches')}
-          description={
-            statusFilter === 'all'
-              ? t('common.no_data')
-              : t('vehicles.no_matches')
-          }
+          description={t('common.no_data')}
         />
       ) : (
         <DataGrid
@@ -495,6 +488,19 @@ export default function Vehicles() {
           // (typically 50-100+ trucks) and benefits even more from
           // sort/pin/hide.
           tableId="vehicles"
+          segments={segments}
+          // The explainer follows its subject.  It used to sit beside the
+          // chip row; the tabs now live inside the card, so it rides the
+          // toolbar's left slot — the nearest thing to them that a page
+          // can address.  "+86 no-telemetry rows" appearing for the first
+          // time must read as "the whole registry now shows", not as a
+          // telematics outage.
+          headerToolbar={hasNoTelemetry ? (
+            <InfoTip
+              size={14}
+              label="Vehicles without a telematics device — trailers and manually added trucks. They're listed so the fleet count is complete; motion status applies only to reporting vehicles."
+            />
+          ) : undefined}
           columns={columns}
           data={vehicles as unknown as Record<string, unknown>[]}
           // Multi-field search — an operator typing "PTG" or "moving"
