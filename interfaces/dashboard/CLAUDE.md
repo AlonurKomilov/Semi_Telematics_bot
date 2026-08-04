@@ -152,7 +152,15 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   saved tabs** (`savedTabs`, managed by right-click), **right-click row
   menus** (`rowActions`). A grid also self-enforces a floor (can't hide to
   zero columns) and auto-renders active filter/sort/search/grouping as
-  removable chips. Full rules, prop contracts, gotchas, and worked examples:
+  removable chips. **Never hand-roll a tab row, a filter chip strip, or a
+  totals row beside a grid** — `segments` is the SSOT for slicing one
+  grid (`FilterChips` is for surfaces with NO grid). The governing rule
+  is *declare, don't implement*: a feature hands DataGrid column /
+  segment / action DATA and never the mechanism — if a page holds
+  `useState` for a filter, a `forEach` counting rows for a badge, or JSX
+  for a control the grid already has, it is in the wrong place. Full
+  rules, both segment shapes (local `match` vs server-controlled), prop
+  contracts, gotchas, and worked examples:
   [components/datagrid/CLAUDE.md](src/components/datagrid/CLAUDE.md).
 - **Right-click / action menus = the shared `context-menu` primitive.**
   Never hand-roll a menu. Declare actions as `MenuAction[]` data and open

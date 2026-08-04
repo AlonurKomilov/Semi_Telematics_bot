@@ -22,6 +22,91 @@ correct: (a) permission / config **matrices** (form UI, not a list), (b)
 layout tables** used as form scaffolding (Forum routing rows). If it's a
 list of records the operator would want to sort or filter, it's DataGrid.
 
+## Declare, don't implement — the contract that governs everything below
+
+**The feature says WHAT. DataGrid decides HOW.** Every capability on this
+component follows it, and every rule further down is an instance of it.
+
+| The feature declares (data) | DataGrid owns (mechanism) |
+|---|---|
+| `columns: AnyColumn[]` — key, label, `filterable`, `aggregable`, `pivotable` | rendering, sort, pin, resize, hide, the search accessor |
+| `segments: DataGridSegment[]` — `{key, label, match?}` | the tab strip, counts, scoping, reset-to-first |
+| `rowActions: (row) => MenuAction[]` | right-click, long-press, keyboard menu |
+| `bulkActions: [{label, icon, onRun}]` | the selection set, the action bar, clearing after |
+| `savedTabs` · `pivot` · `autoFit` — plain switches | the whole engine behind each |
+
+A feature file should hold **column definitions, segment definitions,
+action definitions, and its data fetch.** No table mechanism.
+
+### Stop signs — you are writing DataGrid's job
+
+If a page contains any of these next to a `<DataGrid>`, the split is
+wrong:
+
+- `useState` for a filter the grid could own
+- a `forEach` tallying rows for a badge
+- JSX for a control the grid already has (tab strip, chip row, totals row)
+- the page filtering its own array before handing rows over
+
+Vehicles had **all four** and it was not merely untidy — it was broken.
+The page sent `?status=` to the server, then computed the counts from
+the rows that came BACK, so selecting "Moving" reported `Idle 0 /
+Stopped 0`, and the no-telemetry tab (which hides itself at zero)
+vanished with no way back. 45 lines out, a 6-entry array in.
+
+### Never hand-roll a tab row
+
+Slicing one grid is what `segments` is for.
+[`components/shell/FilterBar.tsx`](../shell/FilterBar.tsx) (`FilterChips`)
+is for surfaces with **no grid** — `VehicleHealthSummary` is the correct
+use. A page containing `<DataGrid>` that also imports `FilterChips` is
+the smell.
+
+### Two shapes — pick by WHO slices the rows
+
+This is the one real decision, and both conversions are worth reading:
+
+**Local (`match`)** — the page holds the whole set.
+[`features/vehicles/Vehicles.tsx`](../../features/vehicles/Vehicles.tsx).
+Give each segment a `match` predicate; DataGrid scopes and counts. Prefer
+this whenever the server is only filtering a list it already built in
+full — dropping the round-trip costs nothing and buys exact counts, one
+cache entry instead of N, and no refetch per tab.
+
+**Controlled** — the server genuinely slices.
+[`features/loads/Loads.tsx`](../../features/loads/Loads.tsx),
+[`features/alerts/sections/AlertsResults.tsx`](../../features/alerts/sections/AlertsResults.tsx).
+Segments carry **no** `match` (a local predicate would re-filter an
+already-filtered page), and you pass `segmentKey` + `onSegmentChange` +
+`segmentCounts`. The counts MUST come from the server: tallying loaded
+rows reports 0 for every tab except the open one.
+
+⚠️ **Controlled + `savedTabs` has a trap.** One strip then holds two
+kinds of occupant, and only the lifecycle tab may reach the API — send a
+saved tab's id as `?status=` and the query returns nothing. Keep two
+pieces of state (the server slice, and which saved tab is riding the
+strip), branch on `onSegmentChange`'s second argument, and restore the
+saved tab's `baseSegment` as the slice. Its own filters apply locally,
+which is correct as long as the page passes no `manualFiltering`.
+
+### Where declarations live
+
+Segments stay **inline** at the top of the page file — 6–12 lines read
+better next to the grid than in a file of their own. Split out only for
+one of two reasons: another surface consumes the same data
+(`features/<x>/contextMenu.tsx`, whose actions feed the grid AND the ⋮
+button), or the page file has stopped being readable
+(`features/parking/columns.tsx`; `Tasks.tsx` at 2,300 lines is the case
+that needs it next). Column config is the usual candidate — never the
+segments.
+
+### The test for anything new
+
+Before adding a capability here, ask: **can a feature turn it on by
+describing it?** If the feature has to know HOW it works, the split is
+wrong. That is precisely how `fillHeight` failed — it made the page learn
+a CSS recipe, and reached 3 of 40 surfaces.
+
 ## Bulk selection + actions = props, never hand-rolled
 
 DataGrid owns row selection (the checkbox column — header select-all with

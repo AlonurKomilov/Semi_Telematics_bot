@@ -246,6 +246,13 @@ it.
 
 ## The layering chain — and what enforces it
 
+> The sibling rule lives next door: **[datagrid/CLAUDE.md](../datagrid/CLAUDE.md)
+> §"Declare, don't implement"** — a feature hands DataGrid *data*, never
+> mechanism. This module is the same idea one layer down: DataGrid hands
+> `components/scrolling` an element and a few numbers, never a scroll
+> implementation.
+
+
 ```
 components/scrolling   owns HOW a surface scrolls
        ↓
