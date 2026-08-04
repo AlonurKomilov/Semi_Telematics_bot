@@ -145,7 +145,7 @@ class HybridObjectStore:
 
         On the hybrid tier the media row's ``file_path`` becomes a Drive
         ID once the sync worker uploads the file (see
-        ``capabilities/storage/sync_worker._sync_one_row``).  Routes
+        ``capabilities/object_store/sync_worker._sync_one_row``).  Routes
         that pass that ``file_path`` here get the bytes regardless of
         whether the user reorganised folders in Drive's UI — Drive ID
         is the stable handle.

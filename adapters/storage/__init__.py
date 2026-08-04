@@ -1,6 +1,10 @@
 """
 Database layer — async Postgres (asyncpg) with repository-pattern abstractions.
 
+  ⚠ "Storage" here means the DATABASE.  Files (attachments, invoices,
+  driver documents) live in ``capabilities/object_store/`` and its
+  adapter ``adapters/storage/object_store.py``.
+
 Design
   • All SQL lives in this package — callers never see asyncpg directly.
   • Mixins write portable SQLite-style SQL (``?`` placeholders,

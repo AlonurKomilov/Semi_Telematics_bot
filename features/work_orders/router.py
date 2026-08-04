@@ -603,7 +603,7 @@ async def upload_attachment(
     cost details later.  Managers can upload to any work order.
     """
     from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.storage.tracking import track_for_sync_if_hybrid
+    from capabilities.object_store.tracking import track_for_sync_if_hybrid
     wo = await _require_visible_work_order(work_order_id, user, tenant_db)
 
     # Drivers may upload only while the WO is still ACTIVE (open /

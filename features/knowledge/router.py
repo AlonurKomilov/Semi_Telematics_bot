@@ -625,7 +625,7 @@ async def create_article(
     # link (YouTube etc.), which is not ours to sync.
     if body.media_url and _is_internal_kb_path(body.media_url):
         from adapters.storage.object_store import get_object_store_for_account
-        from capabilities.storage.tracking import track_for_sync_if_hybrid
+        from capabilities.object_store.tracking import track_for_sync_if_hybrid
         store = await get_object_store_for_account(user["account_id"], tenant_db)
         await track_for_sync_if_hybrid(
             store, "knowledge", body.media_url.rsplit("/", 1)[-1], body.media_url,

@@ -15,7 +15,7 @@ one stuck account from cascading.
 
 This rollout shipped as Phases 1–6 (migrations 070, code under
 `adapters/storage/storage_sync.py`, `adapters/storage/object_store_hybrid.py`,
-`capabilities/storage/sync_worker.py`, route additions in
+`capabilities/object_store/sync_worker.py`, route additions in
 `interfaces/api/routes/storage.py`, dashboard panels under
 `interfaces/dashboard/src/pages/admin/`).
 
@@ -197,7 +197,7 @@ lease, so adding a second worker process is a one-liner:
 EnvironmentFile=/etc/4truck/env
 Environment=SYNC_WORKER_BATCH_SIZE=16
 Environment=SYNC_WORKER_ACCOUNT_CONCURRENCY=8
-ExecStart=/opt/4truck/venv/bin/python -m capabilities.storage.standalone_worker
+ExecStart=/opt/4truck/venv/bin/python -m capabilities.object_store.standalone_worker
 ```
 
 (The codebase ships the worker inside the bot's APScheduler today

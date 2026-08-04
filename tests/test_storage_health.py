@@ -23,7 +23,7 @@ from adapters.storage.object_store import (
 from adapters.storage.storage_sync import (
     STATE_LOCAL, STATE_REMOTE, STATE_STUCK, STATE_SYNCING,
 )
-from capabilities.storage.router import get_storage_health
+from capabilities.object_store.router import get_storage_health
 
 
 @pytest.fixture

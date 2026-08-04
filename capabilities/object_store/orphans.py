@@ -14,7 +14,7 @@ Two hard constraints:
     the scan can't see them — by construction.  See
     ``feedback_prune_server_local_only``.
   * **No false positives.**  A file counts as referenced if any DECLARED
-    reference column (``capabilities.storage.references``) holds its
+    reference column (``capabilities.object_store.references``) holds its
     path, if the legacy name-pattern net catches it, or if it is sitting
     in the hybrid sync queue awaiting upload.  Over-matching is harmless
     — a value that isn't an account-local path simply never matches a
@@ -39,7 +39,7 @@ import re
 import time
 from dataclasses import dataclass, field
 
-from capabilities.storage.references import (
+from capabilities.object_store.references import (
     declared_for_tables,
     json_leaf_paths,
 )
@@ -135,7 +135,7 @@ async def _collect_referenced(tenant_db, account_id: int) -> set[str]:
     Sources, unioned — a file counted twice costs nothing, a file counted
     zero times gets deleted:
 
-      1. THE DECLARED REGISTRY (``capabilities.storage.references``) —
+      1. THE DECLARED REGISTRY (``capabilities.object_store.references``) —
          authoritative.  Name-matching alone missed
          ``parking_events.map_image_path`` (4,185 rows),
          ``camera_checks.image_path`` (17,689 rows) and could never match

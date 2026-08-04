@@ -38,8 +38,8 @@ from adapters.storage.storage_sync import (
     ERR_TRANSIENT,
     STATE_LOCAL, STATE_REMOTE,
 )
-from capabilities.storage import sync_worker
-from capabilities.storage.repointers import ENTITY_REFERENCE
+from capabilities.object_store import sync_worker
+from capabilities.object_store.repointers import ENTITY_REFERENCE
 
 
 # ── Fixtures ───────────────────────────────────────────────────────

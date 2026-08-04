@@ -712,7 +712,7 @@ async def retention_orphan_report(
     """
     from dataclasses import asdict
 
-    from capabilities.storage.orphans import scan_account_orphans
+    from capabilities.object_store.orphans import scan_account_orphans
     from infra.platform import get_tenant_db
 
     tenant = await get_tenant_db(account_id)
@@ -739,7 +739,7 @@ async def retention_orphan_purge(
     """
     from dataclasses import asdict
 
-    from capabilities.storage.orphans import delete_account_orphans
+    from capabilities.object_store.orphans import delete_account_orphans
     from infra.platform import get_tenant_db
 
     tenant = await get_tenant_db(account_id)

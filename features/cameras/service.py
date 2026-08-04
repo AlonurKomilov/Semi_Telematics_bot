@@ -188,7 +188,7 @@ async def save_camera_image(
         # key the worker would have deleted a local file that up to 366
         # other check rows still pointed at.
         if saved and check_id:
-            from capabilities.storage.tracking import track_for_sync_if_hybrid
+            from capabilities.object_store.tracking import track_for_sync_if_hybrid
             await track_for_sync_if_hybrid(
                 store, bucket, key, saved,
                 entity_type="camera_check", entity_id=int(check_id),

@@ -516,7 +516,7 @@ async def upload_driver_document(
       4. Record DB row with object_key + drive_file_id
     """
     from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.storage.tracking import track_for_sync_if_hybrid
+    from capabilities.object_store.tracking import track_for_sync_if_hybrid
 
     await _require_driver_visibility(user_id, user, platform_db)
 

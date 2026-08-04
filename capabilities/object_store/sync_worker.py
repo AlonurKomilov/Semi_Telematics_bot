@@ -38,7 +38,7 @@ import os
 from typing import Awaitable, Callable, Optional
 
 from adapters.storage.object_store import DiskObjectStore
-from capabilities.storage.repointers import build_all, other_rows_reference
+from capabilities.object_store.repointers import build_all, other_rows_reference
 from adapters.storage.storage_sync import (
     ERR_FORBIDDEN, ERR_QUOTA_EXCEEDED, ERR_RATE_LIMITED, ERR_TOKEN_EXPIRED,
     ERR_TRANSIENT, ERR_UNKNOWN,
@@ -375,7 +375,7 @@ async def _sync_one_row(db, disk, drive, row: dict) -> str:
             queue_id,
             error=(
                 f"no repointer for entity_type={entity_type!r} — register "
-                f"one in capabilities/storage/sync_worker._REPOINTERS"
+                f"one in capabilities/object_store/sync_worker._REPOINTERS"
             ),
             error_code="no_repointer",
         )

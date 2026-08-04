@@ -12,7 +12,7 @@ closed without one (see ``sync_worker._sync_one_row``).
 WHY THESE ARE DERIVED, NOT HAND-WRITTEN
 ---------------------------------------
 The column each feature stores its reference in is ALREADY declared, in
-``capabilities.storage.references`` — that is what stops the orphan scan
+``capabilities.object_store.references`` — that is what stops the orphan scan
 deleting live files.  Writing a second, independent list here would mean
 two declarations of the same fact, free to drift: the scan would protect
 one column while the worker repointed another, and the mismatch would

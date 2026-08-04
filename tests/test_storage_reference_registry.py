@@ -1,6 +1,6 @@
 """The orphan scan may only delete files it can fully account for.
 
-``capabilities/storage/references.py`` declares every DB column that can
+``capabilities/object_store/references.py`` declares every DB column that can
 hold an object-store reference.  If a column is missing from it, every
 file that column points at looks unreferenced — and Phase 2 of the
 orphan purge deletes unreferenced files.
@@ -30,7 +30,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from capabilities.storage.references import (  # noqa: E402
+from capabilities.object_store.references import (  # noqa: E402
     NOT_REFERENCES,
     REFERENCES,
     json_leaf_paths,
@@ -126,7 +126,7 @@ class TestFeatureCoverage:
         missing = writers - declared_features - exempt
         assert not missing, (
             f"features {sorted(missing)} call ObjectStore.put but declare no "
-            f"reference column in capabilities/storage/references.py — every "
+            f"reference column in capabilities/object_store/references.py — every "
             f"file they write would look orphaned to the purge"
         )
 

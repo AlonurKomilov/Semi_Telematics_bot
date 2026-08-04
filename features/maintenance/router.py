@@ -756,7 +756,7 @@ async def upload_task_attachment(
     be able to attach evidence to other trucks' tasks.
     """
     from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.storage.tracking import track_for_sync_if_hybrid
+    from capabilities.object_store.tracking import track_for_sync_if_hybrid
     from features.work_orders.storage import (
         resolve_company_folder, safe_attachment_name,
     )

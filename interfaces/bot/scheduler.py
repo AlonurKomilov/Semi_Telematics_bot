@@ -273,7 +273,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # happy path, and a per-row lease ensures a crashed worker's rows
     # auto-recover.  Env-tunable batch + per-account concurrency:
     # ``SYNC_WORKER_BATCH_SIZE`` / ``SYNC_WORKER_ACCOUNT_CONCURRENCY``.
-    from capabilities.storage.sync_worker import sync_pending_storage
+    from capabilities.object_store.sync_worker import sync_pending_storage
     scheduler.add_job(
         sync_pending_storage, "interval",
         seconds=60, args=[app], id="storage_sync",

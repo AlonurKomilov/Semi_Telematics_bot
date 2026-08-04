@@ -163,7 +163,7 @@ async def submit_application(
     # use, on disk AND in the customer's Drive.  Generic links (no
     # company) fall back to the account-level ``applications/`` root.
     from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.storage.tracking import track_for_sync_if_hybrid
+    from capabilities.object_store.tracking import track_for_sync_if_hybrid
     from features.work_orders.storage import sanitize_company_folder
     store = await get_object_store_for_account(account_id, platform_db)
     company_folder = ""
@@ -868,7 +868,7 @@ async def upload_company_logo(
     # was registered before this call existed, which meant the registry
     # advertised coverage nothing exercised — branding never reached a
     # hybrid account's Drive.
-    from capabilities.storage.tracking import track_for_sync_if_hybrid
+    from capabilities.object_store.tracking import track_for_sync_if_hybrid
     await track_for_sync_if_hybrid(
         store, f"{folder}/branding", f"logo-{company_id}.{_LOGO_MIME_EXT[mime]}", oid,
         entity_type="company_logo", entity_id=int(company_id),
@@ -938,7 +938,7 @@ async def upload_company_banner(
         logger.exception("recruiter company banner store failed company=%s", company_id)
         raise HTTPException(status_code=500, detail="Could not store the photo.")
     await platform_db.update_company(company_id, account_id=user["account_id"], banner_object_id=oid)
-    from capabilities.storage.tracking import track_for_sync_if_hybrid
+    from capabilities.object_store.tracking import track_for_sync_if_hybrid
     await track_for_sync_if_hybrid(
         store, f"{folder}/branding", f"banner-{company_id}.{_LOGO_MIME_EXT[mime]}", oid,
         entity_type="company_banner", entity_id=int(company_id),

@@ -17,7 +17,7 @@ import time
 import pytest
 
 from adapters.storage.object_store import DiskObjectStore
-from capabilities.storage.orphans import (
+from capabilities.object_store.orphans import (
     LocalFile,
     _normalize,
     _select_candidates,

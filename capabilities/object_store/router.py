@@ -858,7 +858,7 @@ async def scan_orphans(
     ignores recent writes, because an upload whose row has not committed
     yet is not an orphan.
     """
-    from capabilities.storage.orphans import scan_account_orphans
+    from capabilities.object_store.orphans import scan_account_orphans
 
     report = await scan_account_orphans(
         tenant_db, user["account_id"], grace_days=grace_days,
@@ -895,7 +895,7 @@ async def purge_orphans(
     and only ever removes files under OUR disk — never the customer's
     Drive.
     """
-    from capabilities.storage.orphans import delete_account_orphans
+    from capabilities.object_store.orphans import delete_account_orphans
 
     result = await delete_account_orphans(
         tenant_db, user["account_id"],
@@ -930,7 +930,7 @@ async def storage_usage(
     the purge acts on, so what a user is shown and what a delete would
     remove cannot disagree.
     """
-    from capabilities.storage.orphans import account_usage
+    from capabilities.object_store.orphans import account_usage
 
     buckets = await account_usage(
         tenant_db, user["account_id"], grace_days=grace_days,
