@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader } from '../../components/shell';
 import { usePermissions } from '../../hooks/usePermissions';
-import DqfExportCard from './DqfExportCard';
+import DqfExportDialog from './DqfExportDialog';
 import { Tip } from '../../components/tooltip';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -512,6 +512,7 @@ const APP_SEARCH_KEYS = ['first_name', 'last_name', 'email', 'reference'];
 export default function Applications() {
   const qc = useQueryClient();
   const { has } = usePermissions();
+  const [dqfOpen, setDqfOpen] = useState(false);
   const [links, setLinks] = useState<ApplicationLink[]>([]);
   const [view, setView] = useState<'table' | 'board'>('table');
   // The board used to render all seven columns of ALL rows regardless of
@@ -799,13 +800,27 @@ export default function Applications() {
     <div className="space-y-6">
       <PageHeader title="Driver Applications" icon={UserPlus}
         description="Application links + submitted driver applications."
-        actions={<NotificationsBell onOpen={(id) => setOpenId(id)} />} />
+        actions={
+          <div className="flex items-center gap-2">
+            {/* Account-scope config lives behind a header action, not a card
+                in the content flow — set once, then out of the way. Same
+                placement as KPI's Thresholds, which is the house precedent
+                for this tier. */}
+            {has('can_manage_config_all') && (
+              <Button variant="outline" size="sm" onClick={() => setDqfOpen(true)}>
+                <ShieldCheck size={16} className="mr-1.5" />
+                DQF export
+              </Button>
+            )}
+            <NotificationsBell onOpen={(id) => setOpenId(id)} />
+          </div>
+        } />
 
-      {/* Configuration first: what the export contains is a property of
-          the whole feature, and a recruiter who has not set the DQF
-          passphrase is exporting incomplete qualification files without
-          knowing it. */}
-      <DqfExportCard canManage={has('can_manage_config_all')} />
+      <DqfExportDialog
+        open={dqfOpen}
+        onOpenChange={setDqfOpen}
+        canManage={has('can_manage_config_all')}
+      />
 
       {/* ── Application links ──────────────────────────────────── */}
       <section className="bg-card border border-border rounded-lg p-4">

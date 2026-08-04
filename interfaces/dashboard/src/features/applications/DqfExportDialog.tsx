@@ -7,7 +7,9 @@ import { toast } from 'sonner';
 import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
-import { InfoTip } from '../../components/tooltip';
+import {
+  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
+} from '../../components/ui/dialog';
 
 /**
  * The DQF export passphrase — account-scope config (docs/architecture/config.md).
@@ -19,7 +21,15 @@ import { InfoTip } from '../../components/tooltip';
  * same folder gets shared with brokers and office staff — so it is split
  * into its own password-protected PDF and everything else stays readable.
  *
- * This card sets that password.  Until an administrator chooses one the
+ * A DIALOG opened from the page header, not a card in the content flow.
+ * This is account-scope config, and the house precedent for that tier is
+ * KPI's Thresholds dialog — set once, then out of the way.  It is NOT the
+ * page-sections gear: that tier arranges what a role SEES
+ * (``page_layouts``, own-role) and its own docstring says it never
+ * touches anything but arrangement.  A passphrase that decides what gets
+ * written into shared storage is the other tier entirely.
+ *
+ * This dialog sets that password.  Until an administrator chooses one the
  * export falls back to a passphrase derived from the carrier's own
  * identifiers (owner decision — see dqf.default_passphrase), so files are
  * complete and recoverable from day one.  That default is weak by
@@ -46,7 +56,13 @@ interface DqfConfig {
   using_default: boolean;
 }
 
-export default function DqfExportCard({ canManage }: { canManage: boolean }) {
+export default function DqfExportDialog({
+  open, onOpenChange, canManage,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  canManage: boolean;
+}) {
   const qc = useQueryClient();
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
@@ -91,16 +107,24 @@ export default function DqfExportCard({ canManage }: { canManage: boolean }) {
     }
   }
 
-  if (isLoading || !data) return null;
-
   return (
-    <section className="bg-card border border-border rounded-lg p-4 space-y-3">
-      <h2 className="text-base font-semibold flex items-center gap-2">
-        <ShieldCheck size={16} className="text-muted-foreground" />
-        DQF export
-        <InfoTip label="Every application is exported to your own cloud storage as a self-contained driver qualification file, so your records still work if 4truck is unavailable. This passphrase protects the one file that holds the applicant's Social Security Number." />
-      </h2>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <ShieldCheck size={16} className="text-muted-foreground" />
+            DQF export
+          </DialogTitle>
+          <DialogDescription>
+            Every application is exported to your own cloud storage as a
+            self-contained driver qualification file, so your records still work
+            if 4truck is unavailable. This passphrase protects the one file that
+            holds the applicant&rsquo;s Social Security Number.
+          </DialogDescription>
+        </DialogHeader>
 
+        {!isLoading && data && (
+        <div className="space-y-3">
       <p className="text-xs text-muted-foreground">
         Exported files include a password-protected{' '}
         <span className="font-mono">ssn-protected.pdf</span>. Everything else in
@@ -191,6 +215,9 @@ export default function DqfExportCard({ canManage }: { canManage: boolean }) {
           </p>
         </>
       )}
-    </section>
+        </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
