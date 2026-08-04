@@ -14,14 +14,14 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 import pytest
 
-import adapters.storage.object_store as ostore
-from adapters.storage.object_store import DiskObjectStore
+import adapters.storage.object_storage as ostore
+from adapters.storage.object_storage import DiskObjectStorage
 
 
 def test_purge_account_removes_only_that_accounts_files(tmp_path):
     root = str(tmp_path)
-    a = DiskObjectStore(root=root, account_id=4242)
-    b = DiskObjectStore(root=root, account_id=9999)
+    a = DiskObjectStorage(root=root, account_id=4242)
+    b = DiskObjectStorage(root=root, account_id=9999)
 
     a.put("ACME/drivers/user-1", "license.pdf", b"a")
     a.put("ACME/work-orders/2026", "photo.jpg", b"b")
@@ -39,13 +39,13 @@ def test_purge_account_removes_only_that_accounts_files(tmp_path):
 
 
 def test_purge_account_on_missing_tree_is_zero(tmp_path):
-    store = DiskObjectStore(root=str(tmp_path), account_id=12345)
+    store = DiskObjectStorage(root=str(tmp_path), account_id=12345)
     assert store.purge_account() == 0  # nothing written yet → no-op
 
 
 def test_platform_store_refuses_to_purge(tmp_path):
     """The account-less platform store must never wipe the shared cache."""
-    store = DiskObjectStore(root=str(tmp_path), account_id=None)
+    store = DiskObjectStorage(root=str(tmp_path), account_id=None)
     store.put("avatars", "u1.png", b"x")
     assert store.purge_account() == 0
     assert store.exists("avatars", "u1.png")
@@ -72,22 +72,22 @@ class _AsyncFakeStore:
 def test_gdrive_purge_account_never_touches_customer_drive():
     """Policy: the customer's own Google Drive is never deleted from, even
     on account purge — purge_account is a no-op that makes no Drive call."""
-    from adapters.storage.object_store_gdrive import GDriveObjectStore
+    from adapters.storage.object_storage_gdrive import GDriveObjectStorage
 
     class _ExplodingService:
         def files(self):  # any Drive API access is a policy violation
             raise AssertionError("purge_account must not call the customer's Drive")
 
-    store = GDriveObjectStore(_ExplodingService(), "root-folder-123", account_id=1)
+    store = GDriveObjectStorage(_ExplodingService(), "root-folder-123", account_id=1)
     assert store.purge_account() == 0  # nothing on our side; Drive untouched
 
 
 def test_hybrid_purge_account_only_touches_local_disk():
     """Policy: hybrid purge reclaims local disk only and never connects to
     the customer's Drive."""
-    from adapters.storage.object_store_hybrid import HybridObjectStore
+    from adapters.storage.object_storage_hybrid import HybridObjectStorage
 
-    h = HybridObjectStore.__new__(HybridObjectStore)  # bypass __init__ (needs tenant_db)
+    h = HybridObjectStorage.__new__(HybridObjectStorage)  # bypass __init__ (needs tenant_db)
 
     class _Disk:
         def purge_account(self):
@@ -110,9 +110,9 @@ async def test_purge_account_files_handles_sync_and_async(monkeypatch, fake, exp
     async def _resolve(account_id, tenant_db):
         return fake
     invalidated: dict[str, int] = {}
-    monkeypatch.setattr(ostore, "get_object_store_for_account", _resolve)
+    monkeypatch.setattr(ostore, "get_object_storage_for_account", _resolve)
     monkeypatch.setattr(
-        ostore, "invalidate_object_store_for_account",
+        ostore, "invalidate_object_storage_for_account",
         lambda aid: invalidated.update(id=aid),
     )
 

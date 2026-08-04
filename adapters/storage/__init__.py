@@ -2,8 +2,8 @@
 Database layer — async Postgres (asyncpg) with repository-pattern abstractions.
 
   ⚠ "Storage" here means the DATABASE.  Files (attachments, invoices,
-  driver documents) live in ``capabilities/object_store/`` and its
-  adapter ``adapters/storage/object_store.py``.
+  driver documents) live in ``capabilities/object_storage/`` and its
+  adapter ``adapters/storage/object_storage.py``.
 
 Design
   • All SQL lives in this package — callers never see asyncpg directly.
@@ -94,7 +94,7 @@ from .scorecard import ScorecardMixin
 from .warehouse import WarehouseMixin
 from .driver_pay import DriverPayMixin
 from .coaching import CoachingMixin
-from .object_store_sync import ObjectStoreSyncMixin
+from .object_storage_sync import ObjectStorageSyncMixin
 from .ai_chat import AIChatHistoryMixin
 from .ai_actions import AIActionProposalsMixin
 from .notification_prefs import NotificationPrefsMixin
@@ -166,7 +166,7 @@ class Database(
     WarehouseMixin,
     DriverPayMixin,
     CoachingMixin,
-    ObjectStoreSyncMixin,
+    ObjectStorageSyncMixin,
     AIChatHistoryMixin,
     AIActionProposalsMixin,
     NotificationPrefsMixin,

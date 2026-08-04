@@ -29,8 +29,8 @@ import pytest_asyncio
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from adapters.storage import Database  # noqa: E402
-from adapters.storage.object_store import (  # noqa: E402
-    DiskObjectStore, resolve_disk_path,
+from adapters.storage.object_storage import (  # noqa: E402
+    DiskObjectStorage, resolve_disk_path,
 )
 
 
@@ -43,7 +43,7 @@ def _store_image(account_id: int, name: str, data: bytes = b"jpeg") -> str:
     containment guard, not the shared-file guard.  Using the real store
     means these tests exercise the path production actually takes.
     """
-    store = DiskObjectStore(account_id=account_id)
+    store = DiskObjectStorage(account_id=account_id)
     return store.put("TESTCO/camera-images", name, data)
 
 

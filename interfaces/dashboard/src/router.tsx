@@ -125,7 +125,7 @@ const Profile          = lazyWithReload(() => import('./pages/Profile'));
 const MyNotifications  = lazyWithReload(() => import('./features/alerts/MyNotifications'));
 const NotificationCenter = lazyWithReload(() => import('./features/alerts/NotificationCenter'));
 const GroupDelivery    = lazyWithReload(() => import('./features/alerts/GroupDelivery'));
-const Storage          = lazyWithReload(() => import('./features/object-store/ObjectStore'));
+const Storage          = lazyWithReload(() => import('./features/object-storage/ObjectStorage'));
 const WorkHours        = lazyWithReload(() => import('./features/settings/WorkHours'));
 const Invites          = lazyWithReload(() => import('./features/settings/Invites'));
 const Permissions      = lazyWithReload(() => import('./features/permissions/Permissions'));

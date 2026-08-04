@@ -14,7 +14,7 @@ Two hard constraints:
     the scan can't see them — by construction.  See
     ``feedback_prune_server_local_only``.
   * **No false positives.**  A file counts as referenced if any DECLARED
-    reference column (``capabilities.object_store.references``) holds its
+    reference column (``capabilities.object_storage.references``) holds its
     path, if the legacy name-pattern net catches it, or if it is sitting
     in the hybrid sync queue awaiting upload.  Over-matching is harmless
     — a value that isn't an account-local path simply never matches a
@@ -39,7 +39,7 @@ import re
 import time
 from dataclasses import dataclass, field
 
-from capabilities.object_store.references import (
+from capabilities.object_storage.references import (
     declared_for_tables,
     json_leaf_paths,
 )
@@ -90,13 +90,13 @@ class OrphanPurgeResult:
 
 def _account_root(account_id: int, root: str | None = None) -> str:
     """Absolute path of the account's local object-store subtree."""
-    from adapters.storage.object_store import DiskObjectStore
+    from adapters.storage.object_storage import DiskObjectStorage
 
-    base = root if root is not None else DiskObjectStore(account_id=account_id)._root
+    base = root if root is not None else DiskObjectStorage(account_id=account_id)._root
     prefix = f"account-{account_id}"
     if os.path.isabs(base):
         return os.path.join(base, prefix)
-    return os.path.join(DiskObjectStore._PROJECT_ROOT, base, prefix)
+    return os.path.join(DiskObjectStorage._PROJECT_ROOT, base, prefix)
 
 
 def _normalize(s: str, account_id: int) -> str:
@@ -135,7 +135,7 @@ async def _collect_referenced(tenant_db, account_id: int) -> set[str]:
     Sources, unioned — a file counted twice costs nothing, a file counted
     zero times gets deleted:
 
-      1. THE DECLARED REGISTRY (``capabilities.object_store.references``) —
+      1. THE DECLARED REGISTRY (``capabilities.object_storage.references``) —
          authoritative.  Name-matching alone missed
          ``parking_events.map_image_path`` (4,185 rows),
          ``camera_checks.image_path`` (17,689 rows) and could never match
@@ -206,10 +206,10 @@ async def _collect_referenced(tenant_db, account_id: int) -> set[str]:
             raise
 
     # ── 3. hybrid sync queue (pending uploads are not orphans) ──────
-    if "object_store_sync_queue" in existing:
+    if "object_storage_sync_queue" in existing:
         try:
             cur = await tenant_db._db.execute(
-                "SELECT DISTINCT local_path AS v FROM object_store_sync_queue "
+                "SELECT DISTINCT local_path AS v FROM object_storage_sync_queue "
                 "WHERE account_id = ? AND local_path IS NOT NULL "
                 "AND local_path <> ''",
                 (account_id,),

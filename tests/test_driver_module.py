@@ -156,7 +156,7 @@ class TestVehicleAssignments:
 
 
 class TestDriverDocuments:
-    """Per-driver document store backed by the existing ``ObjectStore``.
+    """Per-driver document store backed by the existing ``ObjectStorage``.
     Tests use the in-memory DB only — no real file upload here; the
     upload pipeline integration test lives in the next phase."""
 

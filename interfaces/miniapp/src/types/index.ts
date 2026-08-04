@@ -118,7 +118,7 @@ export interface PTIItem {
   completed_at: string | null;
   /** 'check' (status buttons) | 'photo' (guided shot) | 'document' (upload). */
   item_type?: string;
-  /** ObjectStore filename of the reference example photo (null = none). */
+  /** ObjectStorage filename of the reference example photo (null = none). */
   reference_image_url?: string | null;
 }
 

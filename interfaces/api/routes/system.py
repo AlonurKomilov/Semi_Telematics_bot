@@ -621,7 +621,7 @@ async def delete_quarantined(
     """Hard-delete a quarantined article (DB row + stored file).
 
     Uses the existing KB delete path so the same cleanup logic runs
-    (object_store deletion, foreign-key cascades, etc.).  Refuses if
+    (object storage deletion, foreign-key cascades, etc.).  Refuses if
     the article isn't actually quarantined — operator should restore
     + use the normal delete UX for healthy articles.
     """
@@ -712,7 +712,7 @@ async def retention_orphan_report(
     """
     from dataclasses import asdict
 
-    from capabilities.object_store.orphans import scan_account_orphans
+    from capabilities.object_storage.orphans import scan_account_orphans
     from infra.platform import get_tenant_db
 
     tenant = await get_tenant_db(account_id)
@@ -739,7 +739,7 @@ async def retention_orphan_purge(
     """
     from dataclasses import asdict
 
-    from capabilities.object_store.orphans import delete_account_orphans
+    from capabilities.object_storage.orphans import delete_account_orphans
     from infra.platform import get_tenant_db
 
     tenant = await get_tenant_db(account_id)

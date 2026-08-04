@@ -986,9 +986,9 @@ class WorkOrdersMixin:
         uploaded_by: int = 0,
     ) -> int:
         """Record an attachment.  ``file_path`` is whatever the
-        ``ObjectStore`` returned as the locator — for ``DiskObjectStore``
+        ``ObjectStorage`` returned as the locator — for ``DiskObjectStorage``
         that's the relative path under the store root; for
-        ``GDriveObjectStore`` (planned) it's the Drive file ID.  Either
+        ``GDriveObjectStorage`` (planned) it's the Drive file ID.  Either
         way the adapter doesn't care — the route handler hands the right
         store the right thing to retrieve it later.
         """

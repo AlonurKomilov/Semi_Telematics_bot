@@ -5,7 +5,7 @@ backoff math, permanent-error short-circuit, the claim path (with a
 second claimer to verify a single row isn't double-leased in a single
 transaction), quota arithmetic, and the storage-backend flip.
 
-The Phase 3 worker + Phase 2 HybridObjectStore are not exercised here
+The Phase 3 worker + Phase 2 HybridObjectStorage are not exercised here
 — this file locks down the durable contract those layers will sit on.
 """
 
@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import pytest
 
 from adapters.storage import Role
-from adapters.storage.object_store_sync import (
+from adapters.storage.object_storage_sync import (
     DEFAULT_DISK_QUOTA_BYTES,
     ERR_TOKEN_EXPIRED, ERR_TRANSIENT,
     STATE_LOCAL, STATE_REMOTE, STATE_SYNCING,
@@ -241,7 +241,7 @@ class TestMediaState:
         )
 
         # Default for new uploads in Phase 2+ will be 'local' (the
-        # ObjectStore writes it).  Here we drive the transitions
+        # ObjectStorage writes it).  Here we drive the transitions
         # directly to lock down the contract.
         assert await db.set_media_storage_state(
             mid, state=STATE_LOCAL,
@@ -266,7 +266,7 @@ class TestMediaState:
         assert row["storage_state"] == STATE_REMOTE
         assert row["remote_path"] == "DRIVE_FILE_ID_XYZ"
         # local_path is left untouched by the transition; the
-        # ObjectStore is responsible for clearing it after the disk
+        # ObjectStorage is responsible for clearing it after the disk
         # delete in Phase 3.
 
     async def test_legacy_rows_default_to_remote(self, db):
@@ -298,11 +298,11 @@ class TestMediaState:
 class TestBackendFlip:
     async def test_set_account_storage_backend(self, db):
         acct = await db.create_account("Acme")
-        from adapters.storage.object_store import OBJECT_STORE_BACKEND_KEY
+        from adapters.storage.object_storage import OBJECT_STORAGE_BACKEND_KEY
         await db.set_account_storage_backend(acct.id, "disk")
-        assert await db.get_account_setting(acct.id, OBJECT_STORE_BACKEND_KEY, "") == "disk"
+        assert await db.get_account_setting(acct.id, OBJECT_STORAGE_BACKEND_KEY, "") == "disk"
         await db.set_account_storage_backend(acct.id, "gdrive")
-        assert await db.get_account_setting(acct.id, OBJECT_STORE_BACKEND_KEY, "") == "gdrive"
+        assert await db.get_account_setting(acct.id, OBJECT_STORAGE_BACKEND_KEY, "") == "gdrive"
 
     async def test_rejects_unknown_backend(self, db):
         acct = await db.create_account("Acme")

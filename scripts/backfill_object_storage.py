@@ -6,7 +6,7 @@ Why this exists
 ---------------
 Before Phase 5 the codebase wrote blobs to hard-coded paths
 (``data/camera_images/...``, ``data/parking_maps/...``,
-``data/avatars/...``).  The new ``DiskObjectStore`` defaults to the
+``data/avatars/...``).  The new ``DiskObjectStorage`` defaults to the
 same layout, so for the default deployment **no migration is needed**
 — this script is a no-op safety check.
 
@@ -16,8 +16,8 @@ backend so DB rows like ``camera_checks.image_path`` keep resolving.
 
 Usage
 -----
-    python3 -m scripts.backfill_object_store          # report only
-    python3 -m scripts.backfill_object_store --apply  # actually copy
+    python3 -m scripts.backfill_object_storage          # report only
+    python3 -m scripts.backfill_object_storage --apply  # actually copy
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ import sys
 # Allow running directly: ``python3 scripts/backfill_object_store.py``
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from adapters.storage.object_store import get_object_store, DiskObjectStore  # noqa: E402
+from adapters.storage.object_storage import get_object_storage, DiskObjectStorage  # noqa: E402
 from infra import config  # noqa: E402
 
 logger = logging.getLogger("backfill")
@@ -77,12 +77,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    store = get_object_store()
+    store = get_object_storage()
     backend = config.OBJECT_STORE_BACKEND or "disk"
     logger.info("Backend: %s, root: %s", backend, config.OBJECT_STORE_ROOT)
 
     # Disk → same root short-circuit: nothing to do.
-    if isinstance(store, DiskObjectStore) and (config.OBJECT_STORE_ROOT or "data") == LEGACY_ROOT:
+    if isinstance(store, DiskObjectStorage) and (config.OBJECT_STORE_ROOT or "data") == LEGACY_ROOT:
         logger.info(
             "Disk backend with legacy root '%s' — files are already in place. "
             "Nothing to backfill.", LEGACY_ROOT,

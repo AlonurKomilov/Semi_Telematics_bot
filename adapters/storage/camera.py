@@ -66,7 +66,7 @@ class CameraMixin:
 
         SERVER-LOCAL ONLY.  Resolves the stored path through
         ``resolve_disk_path`` and ``os.remove``s it — it never goes
-        through ``ObjectStore.delete``, because on the hybrid backend
+        through ``ObjectStorage.delete``, because on the hybrid backend
         that method deletes from the customer's Google Drive too.  Their
         cloud is theirs; we only reclaim our own disk.
 
@@ -75,7 +75,7 @@ class CameraMixin:
         ERROR / PROBLEM photo is worth months (the evidence you show a
         driver, plus trend).
         """
-        from adapters.storage.object_store import resolve_disk_path
+        from adapters.storage.object_storage import resolve_disk_path
         from datetime import datetime, timedelta, timezone
 
         cutoff = (

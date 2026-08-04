@@ -1,7 +1,7 @@
 """Driver Module API route tests.
 
 Covers profile CRUD, vehicle-assignment lifecycle, document upload
-pipeline (with a stub ObjectStore so we don't touch real Drive /
+pipeline (with a stub ObjectStorage so we don't touch real Drive /
 disk), and storage-quota enforcement.  Permission-gating is verified
 at every route — drivers can only see their own data; admins see
 everyone in their account; cross-account reads always 404.
@@ -24,11 +24,11 @@ from adapters.storage import Database, Role
 from interfaces.api.auth import create_jwt
 
 
-# ── Stub ObjectStore so tests don't touch Drive or disk ────────
+# ── Stub ObjectStorage so tests don't touch Drive or disk ────────
 
 
-class _StubObjectStore:
-    """In-memory ObjectStore mimicking the ``put / get / delete``
+class _StubObjectStorage:
+    """In-memory ObjectStorage mimicking the ``put / get / delete``
     protocol used by the driver-document upload route."""
     def __init__(self) -> None:
         self.data: dict[str, bytes] = {}
@@ -45,10 +45,10 @@ class _StubObjectStore:
         return self.data.pop(f"{bucket}/{key}", None) is not None
 
 
-_STUB = _StubObjectStore()
+_STUB = _StubObjectStorage()
 
 
-async def _fake_object_store(_account_id, _tenant_db):
+async def _fake_object_storage(_account_id, _tenant_db):
     return _STUB
 
 
@@ -75,11 +75,11 @@ async def app_and_db(pg_db, monkeypatch):
     _old_db = _cp._db
     _cp._db = db
 
-    # Patch the ObjectStore factory so uploads don't touch real
+    # Patch the ObjectStorage factory so uploads don't touch real
     # Drive / disk — we just keep bytes in a dict.
     monkeypatch.setattr(
-        "adapters.storage.object_store.get_object_store_for_account",
-        _fake_object_store,
+        "adapters.storage.object_storage.get_object_storage_for_account",
+        _fake_object_storage,
     )
 
     from interfaces.api.app import create_api

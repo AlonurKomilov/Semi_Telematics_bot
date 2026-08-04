@@ -1,13 +1,13 @@
-"""Phase 2 tests for ``HybridObjectStore``.
+"""Phase 2 tests for ``HybridObjectStorage``.
 
 Covers the contract the Phase 3 worker will rely on:
 
   * ``put`` writes locally + ``get`` reads it back (Protocol parity
-    with DiskObjectStore for the happy path).
+    with DiskObjectStorage for the happy path).
   * ``track_for_sync`` materialises a queue row AND flips the media
     row's ``storage_state`` to ``'local'`` in one logical step.
   * The annotate flow's UPSERT re-track resets the queue row.
-  * The factory wires ``backend='hybrid'`` to ``HybridObjectStore``
+  * The factory wires ``backend='hybrid'`` to ``HybridObjectStorage``
     even when Drive isn't connected.
   * ``track_for_sync`` failures don't propagate — the file is already
     on disk; the route must not error after a successful write.
@@ -29,8 +29,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import pytest
 
 from adapters.storage import Role
-from adapters.storage.object_store_hybrid import HybridObjectStore
-from adapters.storage.object_store_sync import (
+from adapters.storage.object_storage_hybrid import HybridObjectStorage
+from adapters.storage.object_storage_sync import (
     STATE_LOCAL, STATE_REMOTE,
 )
 
@@ -42,7 +42,7 @@ async def db(pg_db):
 
 @pytest.fixture
 def isolated_disk_root(monkeypatch):
-    """Point DiskObjectStore at a temp dir so concurrent tests don't
+    """Point DiskObjectStorage at a temp dir so concurrent tests don't
     collide on real data/ paths."""
     tmp = tempfile.mkdtemp(prefix="hybrid_test_")
     monkeypatch.setenv("OBJECT_STORE_ROOT", tmp)
@@ -58,7 +58,7 @@ def isolated_disk_root(monkeypatch):
 
 class TestHybridIO:
     def test_put_then_get_from_disk(self, db, isolated_disk_root):
-        store = HybridObjectStore(account_id=1, tenant_db=db)
+        store = HybridObjectStorage(account_id=1, tenant_db=db)
         url = store.put("inspections/1/1", "a.jpg", b"hello world")
         assert url.endswith("/inspections/1/1/a.jpg")
         assert store.get("inspections/1/1", "a.jpg") == b"hello world"
@@ -66,7 +66,7 @@ class TestHybridIO:
 
     def test_get_miss_without_drive_returns_none(self, db, isolated_disk_root):
         # File never written + no Drive configured = clean miss.
-        store = HybridObjectStore(account_id=1, tenant_db=db)
+        store = HybridObjectStorage(account_id=1, tenant_db=db)
         assert store.get("inspections/1/1", "missing.jpg") is None
         assert store.exists("inspections/1/1", "missing.jpg") is False
 
@@ -85,14 +85,14 @@ class TestHybridIO:
             def delete(self, bucket, key):
                 return True
 
-        store = HybridObjectStore(account_id=1, tenant_db=db)
+        store = HybridObjectStorage(account_id=1, tenant_db=db)
         stub = _StubDrive()
         store._drive = stub   # bypass the lazy build (Drive doesn't exist locally)
         assert store.get("inspections/1/1", "x.jpg") == b"from-drive"
         assert stub.calls == [("get", "inspections/1/1", "x.jpg")]
 
     def test_delete_best_effort_both_tiers(self, db, isolated_disk_root):
-        store = HybridObjectStore(account_id=1, tenant_db=db)
+        store = HybridObjectStorage(account_id=1, tenant_db=db)
         store.put("inspections/1/1", "a.jpg", b"x")
         assert store.exists("inspections/1/1", "a.jpg") is True
         assert store.delete("inspections/1/1", "a.jpg") is True
@@ -124,7 +124,7 @@ class TestTrackForSync:
             uploaded_by=driver.telegram_id,
         )
 
-        store = HybridObjectStore(account_id=acct.id, tenant_db=db)
+        store = HybridObjectStorage(account_id=acct.id, tenant_db=db)
         await store.track_for_sync(
             f"inspections/{acct.id}/{ins_id}", "a.jpg",
             "data/inspections/.../a.jpg",
@@ -158,7 +158,7 @@ class TestTrackForSync:
             file_path="p", file_name="x.jpg", file_size=100,
             uploaded_by=driver.telegram_id,
         )
-        store = HybridObjectStore(account_id=acct.id, tenant_db=db)
+        store = HybridObjectStorage(account_id=acct.id, tenant_db=db)
 
         await store.track_for_sync(
             "b", "x.jpg", "p", entity_type="pti_media",
@@ -166,7 +166,7 @@ class TestTrackForSync:
         )
         # Simulate a prior failure parked the row.
         first = (await db.list_pending_sync(acct.id))[0]
-        from adapters.storage.object_store_sync import ERR_TRANSIENT
+        from adapters.storage.object_storage_sync import ERR_TRANSIENT
         await db.mark_sync_failed(
             int(first["id"]), error="boom", error_code=ERR_TRANSIENT,
         )
@@ -191,7 +191,7 @@ class TestTrackForSync:
                 raise RuntimeError("db down")
             async def set_media_storage_state(self, *a, **kw):
                 raise RuntimeError("db down")
-        store = HybridObjectStore(account_id=1, tenant_db=_PoisonedDB())
+        store = HybridObjectStorage(account_id=1, tenant_db=_PoisonedDB())
         # Should NOT raise.
         await store.track_for_sync(
             "b", "x.jpg", "p", entity_type="pti_media",
@@ -203,7 +203,7 @@ class TestTrackForSync:
         # storage_state column yet, so track_for_sync must enqueue
         # WITHOUT calling set_media_storage_state.
         acct = await db.create_account("Acme")
-        store = HybridObjectStore(account_id=acct.id, tenant_db=db)
+        store = HybridObjectStorage(account_id=acct.id, tenant_db=db)
         # Should succeed even though entity_id=12345 doesn't exist on
         # pti_inspection_media (we never touch that table).
         await store.track_for_sync(
@@ -222,26 +222,26 @@ class TestFactoryWiring:
     async def test_hybrid_backend_returns_hybrid_store(self, db, isolated_disk_root):
         acct = await db.create_account("Acme")
         await db.set_account_storage_backend(acct.id, "hybrid")
-        from adapters.storage.object_store import (
-            get_object_store_for_account, invalidate_object_store_for_account,
+        from adapters.storage.object_storage import (
+            get_object_storage_for_account, invalidate_object_storage_for_account,
         )
         # Clear any stale store from a prior test in this xdist worker —
         # account_id sequences can recycle across tests.
-        invalidate_object_store_for_account(acct.id)
-        store = await get_object_store_for_account(acct.id, db)
-        assert isinstance(store, HybridObjectStore)
+        invalidate_object_storage_for_account(acct.id)
+        store = await get_object_storage_for_account(acct.id, db)
+        assert isinstance(store, HybridObjectStorage)
 
     async def test_disk_backend_unchanged(self, db, isolated_disk_root):
-        # The previous default still returns DiskObjectStore — Phase 2
+        # The previous default still returns DiskObjectStorage — Phase 2
         # is strictly additive.
         acct = await db.create_account("Acme")
-        from adapters.storage.object_store import (
-            DiskObjectStore, get_object_store_for_account,
-            invalidate_object_store_for_account,
+        from adapters.storage.object_storage import (
+            DiskObjectStorage, get_object_storage_for_account,
+            invalidate_object_storage_for_account,
         )
-        invalidate_object_store_for_account(acct.id)
-        store = await get_object_store_for_account(acct.id, db)
-        assert isinstance(store, DiskObjectStore)
+        invalidate_object_storage_for_account(acct.id)
+        store = await get_object_storage_for_account(acct.id, db)
+        assert isinstance(store, DiskObjectStorage)
 
 
 # ── Read fallback: legacy rows + remote-only ───────────────────────
@@ -253,7 +253,7 @@ class TestLegacyAndRemote:
         # so the worker doesn't try to re-sync them.  Lock that in
         # here for visibility — it's the backward-compat contract
         # everything else depends on.
-        from adapters.storage.object_store_sync import STATE_REMOTE as _R
+        from adapters.storage.object_storage_sync import STATE_REMOTE as _R
         assert _R == "remote"
         # Smoke: the constant the migration relies on hasn't drifted.
 
@@ -261,10 +261,10 @@ class TestLegacyAndRemote:
         # If a future refactor drops one of the Protocol methods,
         # callers (work orders, PTI media stream, PDF builder) break
         # silently.  Pin the surface.
-        store = HybridObjectStore(account_id=1, tenant_db=db)
+        store = HybridObjectStorage(account_id=1, tenant_db=db)
         for name in ("put", "get", "exists", "delete", "url",
                      "local_path", "move_folder", "track_for_sync"):
-            assert hasattr(store, name), f"HybridObjectStore missing {name!r}"
+            assert hasattr(store, name), f"HybridObjectStorage missing {name!r}"
         # And the unused-state-constant import isn't dead (locks the
         # contract that the worker phase will read).
         assert STATE_REMOTE  # noqa: B018

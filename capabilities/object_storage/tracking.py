@@ -1,6 +1,6 @@
 """``track_for_sync`` — the one call that makes a written file reach cloud.
 
-``HybridObjectStore.put`` deliberately writes to disk ONLY; enqueueing
+``HybridObjectStorage.put`` deliberately writes to disk ONLY; enqueueing
 the Drive upload is a separate step so a slow, fragile Drive call never
 blocks a user-facing upload.  The consequence is that a feature which
 writes a file and forgets this call gets silent half-behaviour: the

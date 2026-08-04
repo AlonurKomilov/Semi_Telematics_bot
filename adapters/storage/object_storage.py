@@ -6,7 +6,7 @@ of the DB-as-SSOT roadmap separates blobs (camera images,
 parking maps, user avatars) from telemetry data.  Telemetry lives in
 the per-tenant Postgres warehouse tables; blobs live behind this Protocol.
 
-Default backend is ``DiskObjectStore`` writing under
+Default backend is ``DiskObjectStorage`` writing under
 ``OBJECT_STORE_ROOT`` (``data/userdata/`` by default).  The split
 between ``data/userdata/`` (tenant blobs) and ``data/system/``
 (legacy SQLite / backups / anything the platform itself owns) keeps
@@ -27,7 +27,7 @@ Migration path
 Existing rows in ``camera_checks.image_path`` and
 ``parking_events.map_image_path`` already store the
 ``data/<bucket>/<filename>`` form, which is exactly what
-``DiskObjectStore.url()`` returns — so flipping callers over is
+``DiskObjectStorage.url()`` returns — so flipping callers over is
 a straight refactor with **no schema or path changes**.
 
 S3/GCS adapters can be added later behind the same Protocol and
@@ -164,14 +164,14 @@ def resolve_disk_path(object_id: str, project_root: str | None = None) -> str | 
     """
     if not object_id:
         return None
-    root = project_root or DiskObjectStore._PROJECT_ROOT
+    root = project_root or DiskObjectStorage._PROJECT_ROOT
     for candidate in _disk_path_candidates(object_id, root):
         if os.path.isfile(candidate):
             return candidate
     return None
 
 
-class ObjectStore(Protocol):
+class ObjectStorage(Protocol):
     """Pluggable blob storage Protocol.
 
     Implementations must be safe for concurrent calls (the bot and
@@ -201,7 +201,7 @@ class ObjectStore(Protocol):
         the user reorganising their folders in the backend UI — the
         ID is the stable handle, the folder path is not.
 
-        Backends without IDs (DiskObjectStore) treat ``object_id`` as
+        Backends without IDs (DiskObjectStorage) treat ``object_id`` as
         a relative path and try to resolve it under ``<root>``; missing
         files return ``None``.
         """
@@ -249,7 +249,7 @@ class ObjectStore(Protocol):
 
 # ── Disk-backed implementation ──────────────────────────────────────
 
-class DiskObjectStore:
+class DiskObjectStorage:
     """Writes to ``<root>/<account-prefix>/<bucket>/<key>`` and returns
     the project-relative path.
 
@@ -262,9 +262,9 @@ class DiskObjectStore:
     directly under the tenant's own ``4truck/`` root — disk and Drive
     paths stay in lockstep inside the tenant boundary.
 
-    Account-less construction (``DiskObjectStore()``) is reserved for
+    Account-less construction (``DiskObjectStorage()``) is reserved for
     platform-level caches like ``data/system/cache/avatars/`` — the
-    platform ``get_object_store()`` factory uses this form.
+    platform ``get_object_storage()`` factory uses this form.
     """
 
     # Anchor writes to the project root (parent of ``adapters/``) so the
@@ -319,7 +319,7 @@ class DiskObjectStore:
             # warning (not debug) — a failed write is operationally
             # significant (disk full, perms) and must be visible in
             # prod logs, not swallowed.
-            logger.warning("DiskObjectStore.put failed for %s/%s: %s", bucket, key, e)
+            logger.warning("DiskObjectStorage.put failed for %s/%s: %s", bucket, key, e)
             return ""
 
     def get(self, bucket: str, key: str) -> bytes | None:
@@ -329,7 +329,7 @@ class DiskObjectStore:
         except FileNotFoundError:
             return None
         except Exception as e:
-            logger.debug("DiskObjectStore.get failed for %s/%s: %s", bucket, key, e)
+            logger.debug("DiskObjectStorage.get failed for %s/%s: %s", bucket, key, e)
             return None
 
     def get_by_id(self, object_id: str) -> bytes | None:
@@ -352,7 +352,7 @@ class DiskObjectStore:
             except FileNotFoundError:
                 continue
             except Exception as e:
-                logger.debug("DiskObjectStore.get_by_id failed for %s: %s", object_id, e)
+                logger.debug("DiskObjectStorage.get_by_id failed for %s: %s", object_id, e)
                 return None
         return None
 
@@ -366,7 +366,7 @@ class DiskObjectStore:
         except FileNotFoundError:
             return True
         except Exception as e:
-            logger.debug("DiskObjectStore.delete failed for %s/%s: %s", bucket, key, e)
+            logger.debug("DiskObjectStorage.delete failed for %s/%s: %s", bucket, key, e)
             return False
 
     def purge_account(self) -> int:
@@ -390,7 +390,7 @@ class DiskObjectStore:
         n = sum(len(files) for _, _, files in os.walk(acct_root))
         shutil.rmtree(acct_root, ignore_errors=True)
         logger.info(
-            "DiskObjectStore.purge_account: removed %d file(s) under %s", n, acct_root,
+            "DiskObjectStorage.purge_account: removed %d file(s) under %s", n, acct_root,
         )
         return n
 
@@ -435,7 +435,7 @@ class DiskObjectStore:
             return True
         except Exception as e:
             logger.warning(
-                "DiskObjectStore.move_folder failed %s -> %s: %s",
+                "DiskObjectStorage.move_folder failed %s -> %s: %s",
                 src_bucket, dst_bucket, e,
             )
             return False
@@ -443,26 +443,26 @@ class DiskObjectStore:
 
 # ── Module singletons ────────────────────────────────────────────────
 
-_store: ObjectStore | None = None
+_store: ObjectStorage | None = None
 
 # Per-account cache.  Keyed by ``account_id``.  Stays for the process
 # lifetime — backend choice is immutable until the account reconfigures
-# via the Settings page, at which point ``invalidate_object_store_for_account``
+# via the Settings page, at which point ``invalidate_object_storage_for_account``
 # is called to flush the entry.  Disk is cheap to recreate; the GDrive
 # backend caches folder IDs internally so re-creating it loses that
 # cache — invalidate sparingly.
-_per_account_stores: dict[int, ObjectStore] = {}
+_per_account_stores: dict[int, ObjectStorage] = {}
 
 
 # Convention: settings keys under ``account_settings`` for the storage
 # backend choice.  Module-level constants so callers stay typo-safe.
-OBJECT_STORE_BACKEND_KEY = "object_store.backend"           # "disk" | "gdrive"
-OBJECT_STORE_GDRIVE_REFRESH_TOKEN = "object_store.gdrive.refresh_token"  # encrypted
-OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID = "object_store.gdrive.root_folder_id"
-OBJECT_STORE_GDRIVE_USER_EMAIL = "object_store.gdrive.user_email"  # for display only
+OBJECT_STORAGE_BACKEND_KEY = "object_storage.backend"           # "disk" | "gdrive"
+OBJECT_STORAGE_GDRIVE_REFRESH_TOKEN = "object_storage.gdrive.refresh_token"  # encrypted
+OBJECT_STORAGE_GDRIVE_ROOT_FOLDER_ID = "object_storage.gdrive.root_folder_id"
+OBJECT_STORAGE_GDRIVE_USER_EMAIL = "object_storage.gdrive.user_email"  # for display only
 
 
-def get_object_store() -> ObjectStore:
+def get_object_storage() -> ObjectStorage:
     """Return the platform-wide default object store.
 
     Used by callers without an account context — Telegram avatar cache,
@@ -471,7 +471,7 @@ def get_object_store() -> ObjectStore:
     files are visibly separated from tenant blobs.
 
     For per-account uploads (work-orders, maintenance attachments,
-    PTI photos, etc.) use ``get_object_store_for_account`` so each
+    PTI photos, etc.) use ``get_object_storage_for_account`` so each
     tenant lands in their own ``account-{id}/`` subtree and can plug
     in their own Google Drive backend.
     """
@@ -480,21 +480,21 @@ def get_object_store() -> ObjectStore:
         # Platform store: rooted at data/system/cache so platform-shared
         # bytes never mix with tenant blobs under data/userdata/.
         # ``account_id=None`` skips the per-account prefix injection.
-        _store = DiskObjectStore(root="data/system/cache", account_id=None)
+        _store = DiskObjectStorage(root="data/system/cache", account_id=None)
     return _store
 
 
-async def get_object_store_for_account(account_id: int, tenant_db) -> ObjectStore:
+async def get_object_storage_for_account(account_id: int, tenant_db) -> ObjectStorage:
     """Return the object store configured for one tenant account.
 
-    Reads ``account_settings.object_store.backend`` to decide which backend
-    to spin up.  Defaults to ``DiskObjectStore`` (the safe platform
+    Reads ``account_settings.object_storage.backend`` to decide which backend
+    to spin up.  Defaults to ``DiskObjectStorage`` (the safe platform
     fallback) when no preference is recorded — every account works
     out-of-the-box without configuration.
 
     Caches the result for the process lifetime so each account pays
     the connect/credential cost once.  Use
-    ``invalidate_object_store_for_account`` after a Settings change to
+    ``invalidate_object_storage_for_account`` after a Settings change to
     flush the cache.
 
     Args:
@@ -508,54 +508,54 @@ async def get_object_store_for_account(account_id: int, tenant_db) -> ObjectStor
         return cached
 
     backend = (
-        await tenant_db.get_account_setting(account_id, OBJECT_STORE_BACKEND_KEY, "disk")
+        await tenant_db.get_account_setting(account_id, OBJECT_STORAGE_BACKEND_KEY, "disk")
     ) or "disk"
     backend = backend.lower()
 
     if backend == "disk":
-        # Per-account DiskObjectStore: the account_id makes every write
+        # Per-account DiskObjectStorage: the account_id makes every write
         # land under ``data/userdata/account-{id}/{bucket}/...``.  Each
         # account gets its own root, even though all share the same
-        # DiskObjectStore class — the prefix is injected internally.
-        store: ObjectStore = DiskObjectStore(account_id=account_id)
+        # DiskObjectStorage class — the prefix is injected internally.
+        store: ObjectStorage = DiskObjectStorage(account_id=account_id)
     elif backend == "gdrive":
-        # Late import so DiskObjectStore-only setups don't pay the
+        # Late import so DiskObjectStorage-only setups don't pay the
         # google-api-python-client import cost on every startup.
         try:
-            from .object_store_gdrive import GDriveObjectStore
-            store = await GDriveObjectStore.connect(account_id, tenant_db)
+            from .object_storage_gdrive import GDriveObjectStorage
+            store = await GDriveObjectStorage.connect(account_id, tenant_db)
         except Exception as e:
             logger.error(
                 "GDrive backend unavailable for account %d (falling back to disk): %s",
                 account_id, e,
             )
-            store = DiskObjectStore(account_id=account_id)
+            store = DiskObjectStorage(account_id=account_id)
     elif backend == "hybrid":
         # Disk-primary + cloud-async tier.  Always succeeds at
         # construction — Drive is lazy-built on first need so an
         # account that has selected hybrid but not yet connected
         # Drive still gets a working write path (files accumulate
         # locally + in the sync queue, which drains once Drive is
-        # connected).  See ``object_store_hybrid.HybridObjectStore``.
-        from .object_store_hybrid import HybridObjectStore
-        store = HybridObjectStore(account_id, tenant_db)
+        # connected).  See ``object_store_hybrid.HybridObjectStorage``.
+        from .object_storage_hybrid import HybridObjectStorage
+        store = HybridObjectStorage(account_id, tenant_db)
     else:
         logger.warning(
             "Unknown storage backend %r for account %d — using disk",
             backend, account_id,
         )
-        store = DiskObjectStore(account_id=account_id)
+        store = DiskObjectStorage(account_id=account_id)
 
     _per_account_stores[account_id] = store
     return store
 
 
-def invalidate_object_store_for_account(account_id: int) -> None:
-    """Drop the cached ObjectStore for an account.
+def invalidate_object_storage_for_account(account_id: int) -> None:
+    """Drop the cached ObjectStorage for an account.
 
     Called after the user changes their storage backend in Settings or
     refreshes their Google Drive credentials.  The next
-    ``get_object_store_for_account`` call rebuilds from current
+    ``get_object_storage_for_account`` call rebuilds from current
     ``account_settings``.
     """
     _per_account_stores.pop(account_id, None)
@@ -588,7 +588,7 @@ async def purge_account_files(account_id: int, tenant_db) -> int:
     """
     import inspect
     try:
-        store = await get_object_store_for_account(account_id, tenant_db)
+        store = await get_object_storage_for_account(account_id, tenant_db)
     except Exception:
         logger.warning(
             "purge_account_files: could not resolve store for acct=%s",
@@ -609,5 +609,5 @@ async def purge_account_files(account_id: int, tenant_db) -> int:
         )
         n = 0
     # The account is gone — drop any cached backend handle for it.
-    invalidate_object_store_for_account(account_id)
+    invalidate_object_storage_for_account(account_id)
     return n

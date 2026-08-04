@@ -1,7 +1,7 @@
 """A parking snapshot must never be captioned with another stop's data.
 
 The object-store key for a parking map used to be ``{vehicle_id}.png``,
-and ``ObjectStore.put`` overwrites unconditionally — so every stop a truck
+and ``ObjectStorage.put`` overwrites unconditionally — so every stop a truck
 made wrote over the previous stop's image while each row kept its own
 ``map_image_path`` pointing at the now-shared file.  On live data one
 vehicle's 116 events resolved to 4 files.

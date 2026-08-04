@@ -43,7 +43,7 @@ from features.scorecards import router as scorecards_routes
 from features.scorecards import config_router as scorecard_rules_routes
 from capabilities.platform.billing import router as billing_routes
 from capabilities.integrations import router as integrations_routes
-from capabilities.object_store import router as object_store_routes
+from capabilities.object_storage import router as object_storage_routes
 # Feature-owned routers live with their feature (vertical slice):
 # features/<x>/router.py.  Aliases keep the mounting loop stable.
 from features.vehicles import router as vehicles_routes
@@ -489,10 +489,10 @@ def create_api() -> FastAPI:
         app.include_router(market_intel_routes.router, prefix=prefix)
         app.include_router(capacity_routes.router, prefix=prefix)
         app.include_router(inspections_routes.router, prefix=prefix)
-        app.include_router(object_store_routes.router, prefix=prefix)
+        app.include_router(object_storage_routes.router, prefix=prefix)
         # deprecated /storage alias — drop one release after c22b832
-        app.include_router(object_store_routes.deprecated_router, prefix=prefix)
-        app.include_router(object_store_routes.admin_router, prefix=prefix)
+        app.include_router(object_storage_routes.deprecated_router, prefix=prefix)
+        app.include_router(object_storage_routes.admin_router, prefix=prefix)
         app.include_router(ai_routes.router, prefix=prefix)
         app.include_router(knowledge_routes.router, prefix=prefix)
         app.include_router(billing_routes.router, prefix=prefix)

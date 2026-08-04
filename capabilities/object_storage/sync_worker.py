@@ -1,10 +1,10 @@
-"""Background sync worker — drains ``object_store_sync_queue`` to cloud.
+"""Background sync worker — drains ``object_storage_sync_queue`` to cloud.
 
 Runs as an APScheduler interval job (see ``interfaces/bot/scheduler``),
 ticking every ~60 s.  One pass:
 
   1. Claim up to ``SYNC_WORKER_BATCH_SIZE`` due rows using
-     ``ObjectStoreSyncMixin.claim_pending_sync`` — that helper handles the
+     ``ObjectStorageSyncMixin.claim_pending_sync`` — that helper handles the
      ``FOR UPDATE SKIP LOCKED`` + lease push so multiple workers can
      run side-by-side at scale without ever processing the same row.
   2. Group claimed rows by account.  Build the per-account Drive
@@ -23,7 +23,7 @@ ticking every ~60 s.  One pass:
 
 Disk and Drive paths stay in lockstep — the worker uploads each row
 under exactly the bucket the caller originally wrote to on disk.  That
-keeps ``HybridObjectStore.get`` correct on the read-after-sync path
+keeps ``HybridObjectStorage.get`` correct on the read-after-sync path
 (disk miss → fall through to Drive at the SAME folder).
 
 Pluggable ``drive_builder`` callable so tests inject a stub —
@@ -37,9 +37,9 @@ import logging
 import os
 from typing import Awaitable, Callable, Optional
 
-from adapters.storage.object_store import DiskObjectStore
-from capabilities.object_store.repointers import build_all, other_rows_reference
-from adapters.storage.object_store_sync import (
+from adapters.storage.object_storage import DiskObjectStorage
+from capabilities.object_storage.repointers import build_all, other_rows_reference
+from adapters.storage.object_storage_sync import (
     ERR_FORBIDDEN, ERR_QUOTA_EXCEEDED, ERR_RATE_LIMITED, ERR_TOKEN_EXPIRED,
     ERR_TRANSIENT, ERR_UNKNOWN,
     STATE_REMOTE,
@@ -56,7 +56,7 @@ OUTCOME_STUCK     = "stuck"
 
 
 # Type alias for the Drive-client builder.  Production uses
-# ``GDriveObjectStore.connect``; tests inject a stub that fabricates
+# ``GDriveObjectStorage.connect``; tests inject a stub that fabricates
 # put-results from a dict.  The builder is async because Drive
 # requires a DB read (encrypted refresh token).
 DriveBuilder = Callable[[int, object], Awaitable[object]]
@@ -102,8 +102,8 @@ def _is_permanent_outcome(code: str) -> bool:
 
 
 async def _default_drive_builder(account_id: int, tenant_db):
-    from adapters.storage.object_store_gdrive import GDriveObjectStore
-    return await GDriveObjectStore.connect(account_id, tenant_db)
+    from adapters.storage.object_storage_gdrive import GDriveObjectStorage
+    return await GDriveObjectStorage.connect(account_id, tenant_db)
 
 
 # ── Worker entry point ──────────────────────────────────────────────
@@ -114,7 +114,7 @@ async def sync_pending_storage(
     *,
     db=None,
     drive_builder: Optional[DriveBuilder] = None,
-    disk: Optional[DiskObjectStore] = None,
+    disk: Optional[DiskObjectStorage] = None,
 ) -> dict:
     """One pass of the storage-sync worker.
 
@@ -129,9 +129,9 @@ async def sync_pending_storage(
         from infra.platform import get_db
         db = get_db()
     # ``disk`` parameter is preserved for backwards compatibility
-    # (some tests inject a bare DiskObjectStore stub).  When supplied,
+    # (some tests inject a bare DiskObjectStorage stub).  When supplied,
     # we use it directly; when None, each account gets its own
-    # account-aware DiskObjectStore so the per-tenant prefix
+    # account-aware DiskObjectStorage so the per-tenant prefix
     # ``data/userdata/account-{id}/`` resolves correctly.
     explicit_disk = disk
     build_drive: DriveBuilder = drive_builder or _default_drive_builder
@@ -153,11 +153,11 @@ async def sync_pending_storage(
         # Build the account-aware disk store fresh for this batch so
         # ``disk.get(bucket, filename)`` walks under
         # ``data/userdata/account-{id}/...`` — matching where
-        # ``HybridObjectStore`` wrote the bytes.  Without this, the
+        # ``HybridObjectStorage`` wrote the bytes.  Without this, the
         # worker would read the un-prefixed path and miss every
         # newly-synced file.
         per_account_disk = explicit_disk if explicit_disk is not None else (
-            DiskObjectStore(account_id=account_id)
+            DiskObjectStorage(account_id=account_id)
         )
         try:
             account_summary = await _process_account_batch(
@@ -267,7 +267,7 @@ async def _repoint_pti_media(db, *, entity_id: int, drive_id: str, **_ctx) -> No
 
     Hand-written rather than registry-derived because it advances a
     STATE MACHINE as well as a path: ``storage_state`` drives which read
-    path HybridObjectStore takes, so a generic single-column UPDATE
+    path HybridObjectStorage takes, so a generic single-column UPDATE
     would repoint the file and leave the row claiming it is still local.
     """
     await db.set_media_storage_state(
@@ -325,7 +325,7 @@ async def _sync_one_row(db, disk, drive, row: dict) -> str:
 
     # 2) Push to Drive at the SAME bucket the file landed on disk —
     # no path rewriting.  Keeping disk and Drive in lockstep means
-    # ``HybridObjectStore.get`` can fall through from a disk miss to
+    # ``HybridObjectStorage.get`` can fall through from a disk miss to
     # Drive's ``get(bucket, filename)`` and land on the right file.
     last_error_before = getattr(drive, "last_error", None)
     drive_id = await asyncio.to_thread(drive.put, bucket, filename, data)
@@ -375,7 +375,7 @@ async def _sync_one_row(db, disk, drive, row: dict) -> str:
             queue_id,
             error=(
                 f"no repointer for entity_type={entity_type!r} — register "
-                f"one in capabilities/object_store/sync_worker._REPOINTERS"
+                f"one in capabilities/object_storage/sync_worker._REPOINTERS"
             ),
             error_code="no_repointer",
         )

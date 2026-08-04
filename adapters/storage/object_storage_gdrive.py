@@ -1,7 +1,7 @@
-"""``GDriveObjectStore`` — per-account Google Drive backend.
+"""``GDriveObjectStorage`` — per-account Google Drive backend.
 
-Implements the ``ObjectStore`` Protocol so any caller that uses
-``get_object_store_for_account`` works unchanged when the account has
+Implements the ``ObjectStorage`` Protocol so any caller that uses
+``get_object_storage_for_account`` works unchanged when the account has
 opted into BYO Drive.
 
 How it differs from the platform ``adapters/storage/gdrive.py`` module:
@@ -16,12 +16,12 @@ How it differs from the platform ``adapters/storage/gdrive.py`` module:
 
 State stored per account (under ``account_settings``):
 
-* ``object_store.gdrive.refresh_token`` — encrypted OAuth refresh token
-* ``object_store.gdrive.root_folder_id`` — Drive folder ID of the
+* ``object_storage.gdrive.refresh_token`` — encrypted OAuth refresh token
+* ``object_storage.gdrive.root_folder_id`` — Drive folder ID of the
   ``4truck`` root the user authorised us to write to
-* ``object_store.gdrive.user_email`` — for display only (Settings page)
+* ``object_storage.gdrive.user_email`` — for display only (Settings page)
 
-Folder layout mirrors ``DiskObjectStore`` exactly so a user inspecting
+Folder layout mirrors ``DiskObjectStorage`` exactly so a user inspecting
 their Drive sees the same hierarchy as the local-disk fallback.  The
 sub-folder names are intentionally role-neutral (work-orders, camera-
 images, driver-documents, parking-maps) so the same root serves every
@@ -39,7 +39,7 @@ operator role — fleet, driver, safety, dispatch, maintenance::
 
 Folder IDs are CACHED in-memory per backend instance — an account-wide
 upload pass otherwise re-runs the ``find_or_create`` chain dozens of
-times.  The cache survives until ``invalidate_object_store_for_account``
+times.  The cache survives until ``invalidate_object_storage_for_account``
 is called or the process restarts.
 """
 
@@ -63,8 +63,8 @@ logger = logging.getLogger(__name__)
 GDRIVE_SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
 
-class GDriveObjectStore:
-    """Google Drive-backed ``ObjectStore`` for a single tenant account.
+class GDriveObjectStorage:
+    """Google Drive-backed ``ObjectStorage`` for a single tenant account.
 
     Construct via the async ``connect()`` classmethod — it pulls the
     account's stored OAuth refresh token, exchanges it for a short-
@@ -94,22 +94,22 @@ class GDriveObjectStore:
     # ── Construction ─────────────────────────────────────────────────────────
 
     @classmethod
-    async def connect(cls, account_id: int, tenant_db) -> "GDriveObjectStore":
+    async def connect(cls, account_id: int, tenant_db) -> "GDriveObjectStorage":
         """Build a Drive client for an account from stored OAuth creds.
 
         Raises ``RuntimeError`` if the account hasn't completed the
         OAuth setup yet — the factory in ``object_store.py`` catches
-        this and falls back to ``DiskObjectStore`` with a warning.
+        this and falls back to ``DiskObjectStorage`` with a warning.
         """
-        from .object_store import (
-            OBJECT_STORE_GDRIVE_REFRESH_TOKEN, OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID,
+        from .object_storage import (
+            OBJECT_STORAGE_GDRIVE_REFRESH_TOKEN, OBJECT_STORAGE_GDRIVE_ROOT_FOLDER_ID,
         )
 
         encrypted_token = await tenant_db.get_account_setting(
-            account_id, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "",
+            account_id, OBJECT_STORAGE_GDRIVE_REFRESH_TOKEN, "",
         )
         root_folder_id = await tenant_db.get_account_setting(
-            account_id, OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID, "",
+            account_id, OBJECT_STORAGE_GDRIVE_ROOT_FOLDER_ID, "",
         )
         if not encrypted_token or not root_folder_id:
             raise RuntimeError(
@@ -120,7 +120,7 @@ class GDriveObjectStore:
         service = _build_drive_service(refresh_token)
         return cls(service, root_folder_id, account_id)
 
-    # ── ObjectStore protocol ─────────────────────────────────────────────────
+    # ── ObjectStorage protocol ─────────────────────────────────────────────────
 
     def put(self, bucket: str, key: str, data: bytes) -> str:
         """Upload bytes to ``<bucket>/<key>`` on the user's Drive.
@@ -130,7 +130,7 @@ class GDriveObjectStore:
         look up by ID, so a manual rename in Drive doesn't break the
         link.
         """
-        # Defensive sanitation mirrors DiskObjectStore: strip any
+        # Defensive sanitation mirrors DiskObjectStorage: strip any
         # path separators a caller might have left in ``key`` so the
         # filename can't smuggle subdirectory structure into Drive.
         # Every current caller pre-sanitises, but mirroring the disk
@@ -240,8 +240,8 @@ class GDriveObjectStore:
         their cloud, their data.  We never delete from an external,
         client-owned cloud, even on account hard-purge: that data is
         theirs to keep (and isn't ours to erase).  Account purge only
-        reclaims storage on OUR server (see ``DiskObjectStore.purge_account``
-        and ``HybridObjectStore.purge_account``, which touch local disk
+        reclaims storage on OUR server (see ``DiskObjectStorage.purge_account``
+        and ``HybridObjectStorage.purge_account``, which touch local disk
         only).  Returns 0 — nothing on our side to remove.
         """
         return 0
@@ -442,7 +442,7 @@ def _build_drive_service(refresh_token: str):
     The refresh token + client credentials (read from env) get
     exchanged for a short-lived access token at every service
     construction.  We rebuild the service per backend instance, which
-    is fine because the per-account ObjectStore cache keeps the
+    is fine because the per-account ObjectStorage cache keeps the
     instance alive for the process lifetime — one token exchange per
     account per process.
     """

@@ -203,17 +203,6 @@ export const DEFS = {
   // Already server-synced before the service existed (they were on
   // useUserPreference), so the stored keys below are the SAME strings the
   // server rows already use — moving them here must not orphan anything.
-  // Whether the Parking Active list also shows stops that need no
-  // attention.  ``synced`` because it is a working habit, not a property
-  // of this screen — a dispatcher who wants the full picture wants it on
-  // every machine.  Default false keeps the smart default: only what
-  // needs work.
-  'parking.showSafe': def<boolean>({
-    default: false,
-    scope: 'synced',
-    sanitize: asBool,
-    note: 'Show safe/geofence parking stops in the Active list, not just ones needing attention.',
-  }),
   'livemap.overlay.utilheat': def<boolean>({
     default: true,
     scope: 'synced',

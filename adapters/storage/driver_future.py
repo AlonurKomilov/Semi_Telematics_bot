@@ -351,7 +351,7 @@ class DriverInspectionsMixin(_MixinBase):
         uploaded_by: int = 0,
     ) -> int:
         """Record a media row pointing at an already-uploaded
-        ObjectStore locator.  ``media_type`` is ``'photo' | 'video'``."""
+        ObjectStorage locator.  ``media_type`` is ``'photo' | 'video'``."""
         cur = await self._db.execute(
             """INSERT INTO pti_inspection_media
                (inspection_id, item_id, media_type, file_path, file_name,
@@ -415,7 +415,7 @@ class DriverInspectionsMixin(_MixinBase):
         annotator bakes overlays into the canonical blob.
 
         ``file_path`` is intentionally untouched — the service layer
-        keeps the same ObjectStore path so the static mount URL doesn't
+        keeps the same ObjectStorage path so the static mount URL doesn't
         change and any existing dashboard view doesn't 404.  Only the
         metadata that varies with the new bytes (size + MIME) is
         updated.
@@ -761,7 +761,7 @@ class PTITemplateMixin(_MixinBase):
         self, template_id: int, item_key: str, filename: Optional[str],
     ) -> bool:
         """Attach (or clear, with None) the reference-photo filename on
-        a template item.  The filename is an ObjectStore key under the
+        a template item.  The filename is an ObjectStorage key under the
         account's ``template_refs`` folder; the URL is built client-side
         as ``/api/inspections/template-ref/{filename}``."""
         cur = await self._db.execute(

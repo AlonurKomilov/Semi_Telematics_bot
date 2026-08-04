@@ -2,7 +2,7 @@
 
 Lets each tenant pick where their attachments live (work-order invoices,
 maintenance photos, future modules).  Default backend is the platform
-``DiskObjectStore``; the user can opt into Google Drive via OAuth so
+``DiskObjectStorage``; the user can opt into Google Drive via OAuth so
 their bytes live in their own Drive at no platform storage cost.
 
 Three endpoints:
@@ -39,22 +39,22 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 
-from adapters.storage.object_store import (
-    invalidate_object_store_for_account,
-    OBJECT_STORE_BACKEND_KEY, OBJECT_STORE_GDRIVE_REFRESH_TOKEN,
-    OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID, OBJECT_STORE_GDRIVE_USER_EMAIL,
+from adapters.storage.object_storage import (
+    invalidate_object_storage_for_account,
+    OBJECT_STORAGE_BACKEND_KEY, OBJECT_STORAGE_GDRIVE_REFRESH_TOKEN,
+    OBJECT_STORAGE_GDRIVE_ROOT_FOLDER_ID, OBJECT_STORAGE_GDRIVE_USER_EMAIL,
 )
 from infra.crypto import encrypt
 from interfaces.api.deps import get_current_user, get_tenant_db, require_permission, resolve_user_id
 from capabilities.activity_trail import record_simple
 
 logger = logging.getLogger(__name__)
-# Canonical prefix is /object-store; /storage stays mounted as a
+# Canonical prefix is /object-storage; /storage stays mounted as a
 # DEPRECATED ALIAS for one release so a dashboard bundle already in a
 # user's browser keeps working across the deploy (the same courtesy the
 # parts-catalog move got when it graduated out of /work-orders).
 # Remove the alias — and this comment — in the release after.
-router = APIRouter(prefix="/object-store", tags=["object-store"])
+router = APIRouter(prefix="/object-storage", tags=["object-store"])
 deprecated_router = APIRouter(prefix="/storage", tags=["object-store"],
                               include_in_schema=False)
 
@@ -135,16 +135,16 @@ async def get_storage_config(
       erroring out — the rest of the response stays usable.
     """
     backend = await tenant_db.get_account_setting(
-        user["account_id"], OBJECT_STORE_BACKEND_KEY, "disk",
+        user["account_id"], OBJECT_STORAGE_BACKEND_KEY, "disk",
     ) or "disk"
     has_token = bool(await tenant_db.get_account_setting(
-        user["account_id"], OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "",
+        user["account_id"], OBJECT_STORAGE_GDRIVE_REFRESH_TOKEN, "",
     ))
     user_email = await tenant_db.get_account_setting(
-        user["account_id"], OBJECT_STORE_GDRIVE_USER_EMAIL, "",
+        user["account_id"], OBJECT_STORAGE_GDRIVE_USER_EMAIL, "",
     )
     root_folder_id = await tenant_db.get_account_setting(
-        user["account_id"], OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID, "",
+        user["account_id"], OBJECT_STORAGE_GDRIVE_ROOT_FOLDER_ID, "",
     )
 
     # Our own attachment-byte tally — runs for every account because
@@ -162,7 +162,7 @@ async def get_storage_config(
     drive_quota: Optional[dict] = None
     if backend == "gdrive" and has_token:
         encrypted = await tenant_db.get_account_setting(
-            user["account_id"], OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "",
+            user["account_id"], OBJECT_STORAGE_GDRIVE_REFRESH_TOKEN, "",
         )
         if encrypted:
             from infra.crypto import decrypt
@@ -224,7 +224,7 @@ async def switch_storage_backend(
 
     if backend in ("gdrive", "hybrid"):
         has_token = bool(await tenant_db.get_account_setting(
-            account_id, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "",
+            account_id, OBJECT_STORAGE_GDRIVE_REFRESH_TOKEN, "",
         ))
         if not has_token:
             raise HTTPException(
@@ -254,7 +254,7 @@ async def get_storage_health(
 
     Drives the dashboard's storage widget AND is scrape-friendly for
     Prometheus once we add an exporter (Phase 6 / ops).  Reads cheap
-    aggregates from the existing object_store_sync_queue + media tables —
+    aggregates from the existing object_storage_sync_queue + media tables —
     no Google API call here, so safe to hit frequently.
 
     Response shape (stable for the dashboard contract):
@@ -276,13 +276,13 @@ async def get_storage_health(
     """
     account_id = int(user["account_id"])
     backend = (await tenant_db.get_account_setting(
-        account_id, OBJECT_STORE_BACKEND_KEY, "disk",
+        account_id, OBJECT_STORAGE_BACKEND_KEY, "disk",
     )) or "disk"
     has_token = bool(await tenant_db.get_account_setting(
-        account_id, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "",
+        account_id, OBJECT_STORAGE_GDRIVE_REFRESH_TOKEN, "",
     ))
     user_email = await tenant_db.get_account_setting(
-        account_id, OBJECT_STORE_GDRIVE_USER_EMAIL, "",
+        account_id, OBJECT_STORAGE_GDRIVE_USER_EMAIL, "",
     )
 
     used = await tenant_db.get_account_local_bytes(account_id)
@@ -383,7 +383,7 @@ async def retry_storage_file(
     # Verify the row belongs to this account before letting them
     # touch it — defence-in-depth, the helper itself is account-blind.
     cur = await tenant_db._db.execute(
-        "SELECT account_id FROM object_store_sync_queue WHERE id = ?",
+        "SELECT account_id FROM object_storage_sync_queue WHERE id = ?",
         (queue_id,),
     )
     row = await cur.fetchone()
@@ -426,7 +426,7 @@ def _fetch_drive_quota_sync(refresh_token: str) -> Optional[dict]:
     page renders both numbers — "used by us" comes from our DB,
     "user's total Drive" from this endpoint.
     """
-    from adapters.storage.object_store_gdrive import _build_drive_service
+    from adapters.storage.object_storage_gdrive import _build_drive_service
 
     svc = _build_drive_service(refresh_token)
     about = svc.about().get(fields="storageQuota").execute()
@@ -537,8 +537,8 @@ async def google_oauth_callback(
       2. Exchange the auth code for an access + refresh token
       3. Create or find the ``4truck`` root folder on the user's Drive
       4. Encrypt + store the refresh token, root folder ID, and email
-      5. Flip ``account_settings.object_store.backend`` to ``gdrive``
-      6. Invalidate the cached ObjectStore so the new backend takes
+      5. Flip ``account_settings.object_storage.backend`` to ``gdrive``
+      6. Invalidate the cached ObjectStorage so the new backend takes
          effect on the next upload
       7. Redirect back to the dashboard Settings page
 
@@ -643,12 +643,12 @@ async def google_oauth_callback(
         )
 
     encrypted_token = encrypt(creds.refresh_token)
-    await tenant_db.set_account_setting(account_id, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, encrypted_token)
-    await tenant_db.set_account_setting(account_id, OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID, root_folder_id)
-    await tenant_db.set_account_setting(account_id, OBJECT_STORE_GDRIVE_USER_EMAIL, user_email or "")
-    await tenant_db.set_account_setting(account_id, OBJECT_STORE_BACKEND_KEY, "gdrive")
+    await tenant_db.set_account_setting(account_id, OBJECT_STORAGE_GDRIVE_REFRESH_TOKEN, encrypted_token)
+    await tenant_db.set_account_setting(account_id, OBJECT_STORAGE_GDRIVE_ROOT_FOLDER_ID, root_folder_id)
+    await tenant_db.set_account_setting(account_id, OBJECT_STORAGE_GDRIVE_USER_EMAIL, user_email or "")
+    await tenant_db.set_account_setting(account_id, OBJECT_STORAGE_BACKEND_KEY, "gdrive")
 
-    invalidate_object_store_for_account(account_id)
+    invalidate_object_storage_for_account(account_id)
     # OAuth callback has no request user — resolve the initiator from
     # the telegram sub stashed in the pending state.
     await record_simple(
@@ -681,11 +681,11 @@ async def disconnect_google(
     have permission to delete them without ``drive`` scope and even
     then we shouldn't auto-purge).  New uploads go to disk.
     """
-    await tenant_db.set_account_setting(user["account_id"], OBJECT_STORE_BACKEND_KEY, "disk")
-    await tenant_db.set_account_setting(user["account_id"], OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "")
-    await tenant_db.set_account_setting(user["account_id"], OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID, "")
-    await tenant_db.set_account_setting(user["account_id"], OBJECT_STORE_GDRIVE_USER_EMAIL, "")
-    invalidate_object_store_for_account(user["account_id"])
+    await tenant_db.set_account_setting(user["account_id"], OBJECT_STORAGE_BACKEND_KEY, "disk")
+    await tenant_db.set_account_setting(user["account_id"], OBJECT_STORAGE_GDRIVE_REFRESH_TOKEN, "")
+    await tenant_db.set_account_setting(user["account_id"], OBJECT_STORAGE_GDRIVE_ROOT_FOLDER_ID, "")
+    await tenant_db.set_account_setting(user["account_id"], OBJECT_STORAGE_GDRIVE_USER_EMAIL, "")
+    invalidate_object_storage_for_account(user["account_id"])
     await record_simple(
         tenant_db, user["account_id"], await resolve_user_id(user),
         "storage_backend_disconnect", "account", user["account_id"],
@@ -788,7 +788,7 @@ def _prepare_company_folders(creds, root_folder_id: str, companies) -> None:
     Each ``find-or-create`` is idempotent so re-connecting Drive over an
     existing folder tree is a no-op.  Failures are logged but don't
     block the OAuth success path — the lazy fallback in
-    ``GDriveObjectStore._resolve_folder_chain`` still works.
+    ``GDriveObjectStorage._resolve_folder_chain`` still works.
     """
     from googleapiclient.discovery import build
     from features.work_orders.storage import sanitize_company_folder
@@ -829,7 +829,7 @@ class StorageQuotaUpdate(BaseModel):
     quota_bytes: int = Field(..., ge=0)
 
 
-@admin_router.get("/object-store/quota")
+@admin_router.get("/object-storage/quota")
 @admin_router.get("/storage/quota", include_in_schema=False)
 async def get_storage_quota(
     user: dict = Depends(require_permission("can_manage_storage")),
@@ -844,7 +844,7 @@ async def get_storage_quota(
     }
 
 
-@admin_router.put("/object-store/quota")
+@admin_router.put("/object-storage/quota")
 @admin_router.put("/storage/quota", include_in_schema=False)
 async def update_storage_quota(
     body: StorageQuotaUpdate,
@@ -886,7 +886,7 @@ async def scan_orphans(
     ignores recent writes, because an upload whose row has not committed
     yet is not an orphan.
     """
-    from capabilities.object_store.orphans import scan_account_orphans
+    from capabilities.object_storage.orphans import scan_account_orphans
 
     report = await scan_account_orphans(
         tenant_db, user["account_id"], grace_days=grace_days,
@@ -924,7 +924,7 @@ async def purge_orphans(
     and only ever removes files under OUR disk — never the customer's
     Drive.
     """
-    from capabilities.object_store.orphans import delete_account_orphans
+    from capabilities.object_storage.orphans import delete_account_orphans
 
     result = await delete_account_orphans(
         tenant_db, user["account_id"],
@@ -960,7 +960,7 @@ async def storage_usage(
     the purge acts on, so what a user is shown and what a delete would
     remove cannot disagree.
     """
-    from capabilities.object_store.orphans import account_usage
+    from capabilities.object_storage.orphans import account_usage
 
     buckets = await account_usage(
         tenant_db, user["account_id"], grace_days=grace_days,

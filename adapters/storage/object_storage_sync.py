@@ -5,7 +5,7 @@ module owns just the data layer:
 
   * The state machine on ``pti_inspection_media`` rows (advancing
     ``local → syncing → remote`` with ``stuck`` as a side state).
-  * The polymorphic ``object_store_sync_queue`` outbox — durable across
+  * The polymorphic ``object_storage_sync_queue`` outbox — durable across
     process restarts, claimed by workers with ``SELECT … FOR UPDATE
     SKIP LOCKED`` so adding worker #2 (Phase 3) needs no code change.
   * Per-account quota arithmetic — the byte total that currently sits
@@ -98,11 +98,11 @@ def is_permanent_error(code: Optional[str]) -> bool:
     return (code or "") in _PERMANENT_ERROR_CODES
 
 
-class ObjectStoreSyncMixin:
+class ObjectStorageSyncMixin:
     """Database operations for the hybrid storage outbox + media state.
 
     Phase 1 surface only — no disk writes, no Drive calls.  Those plug
-    in at the ObjectStore + worker layers in Phase 2/3.
+    in at the ObjectStorage + worker layers in Phase 2/3.
     """
 
     # ── Queue: enqueue ──────────────────────────────────────────────
@@ -131,7 +131,7 @@ class ObjectStoreSyncMixin:
         """
         now = _iso_now()
         cur = await self._db.execute(
-            """INSERT INTO object_store_sync_queue
+            """INSERT INTO object_storage_sync_queue
                  (account_id, entity_type, entity_id, bucket, filename,
                   local_path, file_size, attempts, next_attempt_at,
                   enqueued_at, updated_at)
@@ -203,7 +203,7 @@ class ObjectStoreSyncMixin:
                        bucket, filename, local_path, file_size,
                        attempts, last_error, error_code,
                        enqueued_at, updated_at
-                FROM object_store_sync_queue
+                FROM object_storage_sync_queue
                 WHERE {where}
                 ORDER BY next_attempt_at ASC
                 LIMIT ?
@@ -216,7 +216,7 @@ class ObjectStoreSyncMixin:
             # other workers' WHERE-clauses skip this row until either
             # we report an outcome or our lease expires.
             await self._db.executemany(
-                "UPDATE object_store_sync_queue "
+                "UPDATE object_storage_sync_queue "
                 "SET attempts = attempts + 1, "
                 "    next_attempt_at = ?, updated_at = ? "
                 "WHERE id = ?",
@@ -232,7 +232,7 @@ class ObjectStoreSyncMixin:
         The companion ``transition_media_to_remote`` call handles the
         media-row state advance + local-file deletion."""
         cur = await self._db.execute(
-            "DELETE FROM object_store_sync_queue WHERE id = ?",
+            "DELETE FROM object_storage_sync_queue WHERE id = ?",
             (queue_id,),
         )
         await self._db.commit()
@@ -255,7 +255,7 @@ class ObjectStoreSyncMixin:
         # The row already had its ``attempts`` incremented at claim
         # time, so we just write the error + recompute the schedule.
         cur = await self._db.execute(
-            "SELECT attempts FROM object_store_sync_queue WHERE id = ?",
+            "SELECT attempts FROM object_storage_sync_queue WHERE id = ?",
             (queue_id,),
         )
         row = await cur.fetchone()
@@ -265,7 +265,7 @@ class ObjectStoreSyncMixin:
         next_at = compute_next_attempt_at(attempts)
         now = _iso_now()
         await self._db.execute(
-            "UPDATE object_store_sync_queue "
+            "UPDATE object_storage_sync_queue "
             "SET last_error = ?, error_code = ?, "
             "    next_attempt_at = ?, updated_at = ? "
             "WHERE id = ?",
@@ -299,7 +299,7 @@ class ObjectStoreSyncMixin:
             datetime.now(timezone.utc) + timedelta(days=30)
         ).isoformat(timespec="seconds")
         cur = await self._db.execute(
-            "UPDATE object_store_sync_queue "
+            "UPDATE object_storage_sync_queue "
             "SET last_error = ?, error_code = ?, "
             "    next_attempt_at = ?, updated_at = ? "
             "WHERE id = ?",
@@ -313,7 +313,7 @@ class ObjectStoreSyncMixin:
         retry.  Wired from the storage dashboard's "Retry now" button."""
         now = _iso_now()
         cur = await self._db.execute(
-            "UPDATE object_store_sync_queue "
+            "UPDATE object_storage_sync_queue "
             "SET next_attempt_at = ?, last_error = NULL, "
             "    error_code = NULL, updated_at = ? "
             "WHERE id = ?",
@@ -334,7 +334,7 @@ class ObjectStoreSyncMixin:
                       file_size, attempts, next_attempt_at,
                       last_error, error_code,
                       enqueued_at, updated_at
-               FROM object_store_sync_queue
+               FROM object_storage_sync_queue
                WHERE account_id = ?
                ORDER BY enqueued_at DESC
                LIMIT ?""",
@@ -396,7 +396,7 @@ class ObjectStoreSyncMixin:
                   m.media_type, m.content_type,
                   m.inspection_id,
                   di.vehicle_name
-                FROM object_store_sync_queue q
+                FROM object_storage_sync_queue q
                 LEFT JOIN pti_inspection_media m
                        ON q.entity_type = 'pti_media' AND q.entity_id = m.id
                 LEFT JOIN driver_inspections di
@@ -415,7 +415,7 @@ class ObjectStoreSyncMixin:
         """
         now = _iso_now()
         cur = await self._db.execute(
-            "UPDATE object_store_sync_queue "
+            "UPDATE object_storage_sync_queue "
             "SET next_attempt_at = ?, last_error = NULL, "
             "    error_code = NULL, updated_at = ? "
             "WHERE account_id = ? "
@@ -429,7 +429,7 @@ class ObjectStoreSyncMixin:
         """Returns ``(pending, stuck)`` for the account.  ``stuck`` is
         the subset whose ``error_code`` is permanent."""
         cur = await self._db.execute(
-            "SELECT error_code FROM object_store_sync_queue WHERE account_id = ?",
+            "SELECT error_code FROM object_storage_sync_queue WHERE account_id = ?",
             (account_id,),
         )
         rows = await cur.fetchall()
@@ -539,7 +539,7 @@ class ObjectStoreSyncMixin:
         """
         cur = await self._db.execute(
             "SELECT COALESCE(SUM(file_size), 0) AS s "
-            "FROM object_store_sync_queue WHERE account_id = ?",
+            "FROM object_storage_sync_queue WHERE account_id = ?",
             (account_id,),
         )
         row = await cur.fetchone()
@@ -575,13 +575,13 @@ class ObjectStoreSyncMixin:
         """
         if backend not in ("disk", "gdrive", "hybrid"):
             raise ValueError(f"unknown storage backend: {backend!r}")
-        from adapters.storage.object_store import (
-            OBJECT_STORE_BACKEND_KEY,
-            invalidate_object_store_for_account,
+        from adapters.storage.object_storage import (
+            OBJECT_STORAGE_BACKEND_KEY,
+            invalidate_object_storage_for_account,
         )
         await self.set_account_setting(  # type: ignore[attr-defined]
-            account_id, OBJECT_STORE_BACKEND_KEY, backend,
+            account_id, OBJECT_STORAGE_BACKEND_KEY, backend,
         )
         # Flush the cached store so the next request rebuilds from the
         # new setting.
-        invalidate_object_store_for_account(account_id)
+        invalidate_object_storage_for_account(account_id)

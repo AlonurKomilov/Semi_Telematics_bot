@@ -103,7 +103,7 @@ export function MediaCapture({ inspectionId, itemKey, onUploaded, disabled }: Pr
       // bitrate and Telegram's WebView lacks WebCodecs for re-encode.
       const blob: Blob = kind === 'photo' ? await resizeImage(file) : file;
       const formData = new FormData();
-      // Set a meaningful filename so the server-side ObjectStore
+      // Set a meaningful filename so the server-side ObjectStorage
       // doesn't store the raw "blob" name iOS sends.
       const ext = kind === 'photo' ? 'jpg' : (file.name.split('.').pop() || 'mp4');
       const ts = Date.now();

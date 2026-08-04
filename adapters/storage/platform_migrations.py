@@ -1733,7 +1733,7 @@ async def migrate_create_driver_documents(conn) -> None:
     """Create driver_documents — per-driver document store with
     expiration tracking.
 
-    Files are stored via the existing ``ObjectStore`` protocol (Google
+    Files are stored via the existing ``ObjectStorage`` protocol (Google
     Drive when the account has it linked, local disk fallback otherwise).
     ``object_key`` is the path inside the bucket; ``drive_file_id`` is
     the Google Drive file id cached for fast re-fetch.  ``status``
@@ -2532,7 +2532,7 @@ async def migrate_account_prefixed_file_paths(conn) -> None:
 
     Each column needs the row's account_id.  Some tables carry it
     directly (camera_checks, parking_events, maintenance_tasks,
-    object_store_sync_queue); others reach it via a join
+    object_storage_sync_queue); others reach it via a join
     (pti_inspection_media → driver_inspections,
     work_order_attachments → work_orders).
 
@@ -2559,7 +2559,7 @@ async def migrate_account_prefixed_file_paths(conn) -> None:
         ("camera_checks",      "image_path"),
         ("parking_events",     "map_image_path"),
         ("maintenance_tasks",  "attachment_path"),
-        ("object_store_sync_queue", "local_path"),
+        ("object_storage_sync_queue", "local_path"),
     ]
     via_join = [
         # (table, column, join_table, on_self, on_parent, parent_account_col)
@@ -2859,7 +2859,7 @@ async def migrate_repair_stale_account_path_ids(conn) -> None:
         ("camera_checks",          "image_path"),
         ("parking_events",         "map_image_path"),
         ("maintenance_tasks",      "attachment_path"),
-        ("object_store_sync_queue",     "local_path"),
+        ("object_storage_sync_queue",     "local_path"),
         ("pti_inspection_media",   "file_path"),
         ("pti_inspection_media",   "local_path"),
         ("work_order_attachments", "file_path"),

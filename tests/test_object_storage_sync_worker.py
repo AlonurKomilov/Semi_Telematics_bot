@@ -1,6 +1,6 @@
 """Phase 3 tests for the storage sync worker.
 
-A stub ``DriveLike`` impersonates ``GDriveObjectStore``'s minimal
+A stub ``DriveLike`` impersonates ``GDriveObjectStorage``'s minimal
 surface (``put(bucket, key, data) -> str``, ``last_error`` attribute).
 Real Google API calls never happen in this file.
 
@@ -32,14 +32,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import pytest
 
 from adapters.storage import Role
-from adapters.storage.object_store import DiskObjectStore
-from adapters.storage.object_store_sync import (
+from adapters.storage.object_storage import DiskObjectStorage
+from adapters.storage.object_storage_sync import (
     ERR_FORBIDDEN, ERR_QUOTA_EXCEEDED, ERR_RATE_LIMITED, ERR_TOKEN_EXPIRED,
     ERR_TRANSIENT,
     STATE_LOCAL, STATE_REMOTE,
 )
-from capabilities.object_store import sync_worker
-from capabilities.object_store.repointers import ENTITY_REFERENCE
+from capabilities.object_storage import sync_worker
+from capabilities.object_storage.repointers import ENTITY_REFERENCE
 
 
 # ── Fixtures ───────────────────────────────────────────────────────
@@ -103,9 +103,9 @@ async def _make_inspection_with_media(db, *, telegram_id: int, bytes_: bytes,
         uploaded_by=driver.telegram_id,
     )
     # Write the bytes to disk.
-    disk = DiskObjectStore()
+    disk = DiskObjectStorage()
     disk.put(bucket, filename, bytes_)
-    # Enqueue + flip media state to 'local' (what HybridObjectStore
+    # Enqueue + flip media state to 'local' (what HybridObjectStorage
     # would do via track_for_sync).
     await db.enqueue_storage_sync(
         account_id=acct.id, entity_type="pti_media", entity_id=mid,
@@ -181,7 +181,7 @@ class TestSuccessPath:
         assert summary["stuck"] == 0
         # Drive saw the SAME bucket the caller wrote on disk — no
         # path rewriting.  Keeps disk and Drive in lockstep so the
-        # ``HybridObjectStore.get`` fallback lands on the right file.
+        # ``HybridObjectStorage.get`` fallback lands on the right file.
         assert len(stub.puts) == 1
         bucket, key, size = stub.puts[0]
         assert bucket == "inspections/1/1"
@@ -202,9 +202,9 @@ class TestSuccessPath:
 
     async def test_auto_constructs_per_account_disk_store(self, db, isolated_disk):
         """Production path regression: when ``disk`` is None, the worker
-        must construct a per-account ``DiskObjectStore(account_id=...)``
+        must construct a per-account ``DiskObjectStorage(account_id=...)``
         so the per-tenant prefix ``account-{id}/`` resolves the same
-        way ``HybridObjectStore`` wrote the file.  Without this fix,
+        way ``HybridObjectStorage`` wrote the file.  Without this fix,
         the worker would read the un-prefixed path and silently mark
         every hybrid row as stuck.
         """
@@ -217,14 +217,14 @@ class TestSuccessPath:
             template_version=int(tpl["version"]),
         )
         # The bucket the caller would pass — no account_id in it.  The
-        # account-aware DiskObjectStore prepends ``account-{id}/``
+        # account-aware DiskObjectStorage prepends ``account-{id}/``
         # internally so the file lands at
         # ``<root>/account-{acct.id}/{bucket}/{filename}``.
         bucket = "PREMIER/inspections/55"
         filename = "front.jpg"
         data = b"production-path bytes"
 
-        per_acct_disk = DiskObjectStore(account_id=acct.id)
+        per_acct_disk = DiskObjectStorage(account_id=acct.id)
         stored_url = per_acct_disk.put(bucket, filename, data)
         assert per_acct_disk.local_path(bucket, filename) is not None, (
             f"file did not land where expected; url={stored_url}"
@@ -299,7 +299,7 @@ class TestRepointerGuard:
         # type and quietly turned the test green for the wrong reason.
         assert "not_a_registered_entity" not in ENTITY_REFERENCE
         await db._db.execute(
-            "UPDATE object_store_sync_queue SET entity_type = 'not_a_registered_entity' "
+            "UPDATE object_storage_sync_queue SET entity_type = 'not_a_registered_entity' "
             "WHERE account_id = ?", (acct.id,),
         )
         await db._db.commit()
@@ -345,7 +345,7 @@ class TestRepointerGuard:
 
 class TestPermanentFailures:
     async def test_drive_build_failure_parks_entire_batch(self, db, isolated_disk):
-        # If GDriveObjectStore.connect raises, every row for that
+        # If GDriveObjectStorage.connect raises, every row for that
         # account in the batch must be stuck immediately — no per-row
         # retry of the same dead Drive.
         acct, mid_a, disk = await _make_inspection_with_media(
@@ -487,7 +487,7 @@ class TestOrphanRow:
         async def builder(_a, _b):
             return StubDrive()  # would succeed, but we never get there
 
-        disk = DiskObjectStore()
+        disk = DiskObjectStorage()
         summary = await sync_worker.sync_pending_storage(
             db=db, drive_builder=builder, disk=disk,
         )
@@ -508,7 +508,7 @@ class TestNoOp:
             called["count"] += 1
             return StubDrive()
 
-        disk = DiskObjectStore()
+        disk = DiskObjectStorage()
         summary = await sync_worker.sync_pending_storage(
             db=db, drive_builder=builder, disk=disk,
         )

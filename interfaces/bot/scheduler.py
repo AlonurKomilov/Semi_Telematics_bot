@@ -267,13 +267,13 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         minute=25, args=[app], id="pti_fleet_digest",
         max_instances=1, coalesce=True,
     )
-    # Hybrid-storage sync: drain ``object_store_sync_queue`` to each
+    # Hybrid-storage sync: drain ``object_storage_sync_queue`` to each
     # account's cloud backend (Drive).  60s interval is the right
     # cadence — files land in cloud within a minute of upload in the
     # happy path, and a per-row lease ensures a crashed worker's rows
     # auto-recover.  Env-tunable batch + per-account concurrency:
     # ``SYNC_WORKER_BATCH_SIZE`` / ``SYNC_WORKER_ACCOUNT_CONCURRENCY``.
-    from capabilities.object_store.sync_worker import sync_pending_storage
+    from capabilities.object_storage.sync_worker import sync_pending_storage
     scheduler.add_job(
         sync_pending_storage, "interval",
         seconds=60, args=[app], id="storage_sync",
@@ -566,7 +566,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
                 # file-cleanup failure must not block the DB purge.
                 files_purged = 0
                 try:
-                    from adapters.storage.object_store import purge_account_files
+                    from adapters.storage.object_storage import purge_account_files
                     from infra.platform import get_tenant_db
                     tdb = await get_tenant_db(acct_id)
                     if tdb is not None:

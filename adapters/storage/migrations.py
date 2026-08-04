@@ -1778,7 +1778,7 @@ async def migrate_create_driver_vehicle_assignments(conn) -> None:
 async def migrate_create_driver_documents(conn) -> None:
     """Create driver_documents — per-driver document store with
     expiration tracking.  Files are addressed via ``object_key`` in
-    the existing ``ObjectStore`` (Google Drive or local disk)."""
+    the existing ``ObjectStorage`` (Google Drive or local disk)."""
     try:
         await conn.executescript("""
             CREATE TABLE IF NOT EXISTS driver_documents (
@@ -2637,7 +2637,7 @@ async def migrate_pti_inspection_full(conn) -> None:
        snapshot, copied from the active template at spawn time so
        template edits don't retroactively change submitted inspections.
     3. Create ``pti_inspection_media`` — photo/video locator rows
-       backed by the existing ``ObjectStore`` (same path the work-orders
+       backed by the existing ``ObjectStorage`` (same path the work-orders
        module uses).
     4. Create ``pti_checklist_templates`` + ``pti_checklist_template_items``
        — fleet-editable per-account checklist, versioned so a new
@@ -2996,7 +2996,7 @@ async def migrate_driver_inspections_signatures(conn) -> None:
         the chain (insurance / FMCSA audits).
 
     Stored as base64-encoded PNG data URLs directly on the row rather
-    than offloaded to ObjectStore: signatures are tiny (5–15 KB), only
+    than offloaded to ObjectStorage: signatures are tiny (5–15 KB), only
     one per role per inspection, and we always read them together with
     the rest of the row.  Embedding avoids a second HTTP round-trip on
     the dashboard detail drawer.
@@ -3249,7 +3249,7 @@ async def migrate_hybrid_storage_foundation(conn) -> None:
     audit in the project notes.  This migration is intentionally
     additive and inert: existing media rows keep working unchanged
     (``storage_state`` defaults to ``'remote'`` for legacy rows, so
-    the eventual ``HybridObjectStore.get`` reads them via the legacy
+    the eventual ``HybridObjectStorage.get`` reads them via the legacy
     ``file_path`` fallback).
 
     Adds:
@@ -3386,7 +3386,7 @@ async def migrate_maintenance_tasks_attachment(conn) -> None:
     Work Order.  Work Orders still own the multi-file invoice/photo
     timeline for shop visits; this is for quick driver-side proof.
 
-    ``attachment_path`` — opaque key returned by ObjectStore.put.
+    ``attachment_path`` — opaque key returned by ObjectStorage.put.
     ``attachment_name`` — original filename (sanitized).
     ``attachment_content_type`` — for the download response.
     """
@@ -8404,3 +8404,40 @@ async def migrate_object_store_naming(conn) -> None:
     moved = cur.rowcount or 0
     await conn.commit()
     logger.info("Migration 186: %d account_settings keys re-prefixed", moved)
+
+
+@_register("187_object_storage_naming")
+async def migrate_object_storage_naming(conn) -> None:
+    """object_store → object_storage: the owner's final vocabulary.
+
+    186 moved these names off "storage"; this settles the last word —
+    ``object storage`` is the industry term for the category (the thing
+    the file/block/object taxonomy names), so the module, the classes
+    and the persisted names all say it.  Done in the same session as
+    186 rather than left half-spelled, and still while the platform is
+    four rows small.
+
+    Idempotent, and tolerant of either predecessor prefix so a database
+    that somehow skipped 186 still lands in the same place.
+    """
+    cur = await conn.execute(
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_name = 'object_store_sync_queue'",
+    )
+    if await cur.fetchone():
+        await conn.execute(
+            "ALTER TABLE object_store_sync_queue "
+            "RENAME TO object_storage_sync_queue",
+        )
+        logger.info("Migration 187: sync queue table → object_storage_sync_queue")
+
+    cur = await conn.execute(
+        "UPDATE account_settings "
+        "SET key = 'object_storage.' || split_part(key, '.', 2) "
+        "         || CASE WHEN split_part(key, '.', 3) <> '' "
+        "                 THEN '.' || split_part(key, '.', 3) ELSE '' END "
+        "WHERE key LIKE 'object_store.%'",
+    )
+    moved = cur.rowcount or 0
+    await conn.commit()
+    logger.info("Migration 187: %d account_settings keys re-prefixed", moved)

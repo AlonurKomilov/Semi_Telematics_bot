@@ -15,7 +15,7 @@ one stuck account from cascading.
 
 This rollout shipped as Phases 1–6 (migrations 070, code under
 `adapters/storage/storage_sync.py`, `adapters/storage/object_store_hybrid.py`,
-`capabilities/object_store/sync_worker.py`, route additions in
+`capabilities/object_storage/sync_worker.py`, route additions in
 `interfaces/api/routes/storage.py`, dashboard panels under
 `interfaces/dashboard/src/pages/admin/`).
 
@@ -30,14 +30,14 @@ This rollout shipped as Phases 1–6 (migrations 070, code under
         ┌─────────────────────────────────────────┐
         │  Upload endpoint                        │
         │  1. quota gate (_check_quota_or_413)    │
-        │  2. store.put → disk (HybridObjectStore)│
+        │  2. store.put → disk (HybridObjectStorage)│
         │  3. attach_inspection_media row         │
         │  4. track_for_sync → queue row + state  │
         │     = 'local'                            │
         └─────────────────┬───────────────────────┘
                           │  (returns 200 in <500ms)
                           ▼
-                  object_store_sync_queue
+                  object_storage_sync_queue
               (DB outbox — survives restarts)
                           │
                           ▼  every 60 s (or kicked)
@@ -57,7 +57,7 @@ This rollout shipped as Phases 1–6 (migrations 070, code under
               inspections/{acct}/{ins_id}/   (same path as on disk)
 ```
 
-Reads (`HybridObjectStore.get`) check disk first, then Drive — the
+Reads (`HybridObjectStorage.get`) check disk first, then Drive — the
 caller never sees the tier transition.  Once the sync worker has
 uploaded a file and removed the local copy, the media row's
 `file_path` is the Drive file ID; the PTI read helper
@@ -90,7 +90,7 @@ psql "$DATABASE_URL" -c "
    ORDER BY key"
 ```
 
-If `object_store.gdrive.refresh_token` is empty or the saved token is
+If `object_storage.gdrive.refresh_token` is empty or the saved token is
 expired, the queue will just accumulate locally until the operator
 reconnects Drive.  That's a feature, not a bug — files never get
 lost.
@@ -107,7 +107,7 @@ await db.close()
 ```
 
 The `set_account_storage_backend` helper also invalidates the per-
-account `ObjectStore` cache, so the next upload immediately uses the
+account `ObjectStorage` cache, so the next upload immediately uses the
 new backend without a service restart.
 
 ### 3. (Optional) set a per-account quota override
@@ -197,7 +197,7 @@ lease, so adding a second worker process is a one-liner:
 EnvironmentFile=/etc/4truck/env
 Environment=SYNC_WORKER_BATCH_SIZE=16
 Environment=SYNC_WORKER_ACCOUNT_CONCURRENCY=8
-ExecStart=/opt/4truck/venv/bin/python -m capabilities.object_store.standalone_worker
+ExecStart=/opt/4truck/venv/bin/python -m capabilities.object_storage.standalone_worker
 ```
 
 (The codebase ships the worker inside the bot's APScheduler today
@@ -209,11 +209,11 @@ loop with `asyncio.sleep(60)`.)
 For 10k+ accounts:
 
 1. **Storage tier**: move `data/` to NFS / EFS so any worker can read
-   any account's files.  Code unchanged — `DiskObjectStore._root` just
+   any account's files.  Code unchanged — `DiskObjectStorage._root` just
    resolves to a different path.
 2. **DB tier**: pgBouncer in front of Postgres in transaction-pooling
-   mode.  Indexes already in place (`idx_object_store_sync_queue_due`,
-   `idx_object_store_sync_queue_account_due`).
+   mode.  Indexes already in place (`idx_object_storage_sync_queue_due`,
+   `idx_object_storage_sync_queue_account_due`).
 3. **Drive quotas**: 1B/day per OAuth project covers 10k accounts ×
    50 uploads/day.  If you grow past that, run multiple OAuth projects
    and round-robin the env var per account / per worker.
@@ -238,7 +238,7 @@ the account remain in the queue — drop them manually if you want to
 abandon pending syncs:
 
 ```sql
-DELETE FROM object_store_sync_queue WHERE account_id = <ACCT>;
+DELETE FROM object_storage_sync_queue WHERE account_id = <ACCT>;
 ```
 
 Files already in Drive stay in Drive.  Files only on disk stay on
@@ -256,7 +256,7 @@ Migration `070_hybrid_storage_foundation` is **strictly additive**:
   to `pti_inspection_media` with safe defaults (`storage_state` defaults
   to `'remote'` so every legacy row is treated as already-settled —
   the worker ignores them).
-* Creates the `object_store_sync_queue` table from scratch.
+* Creates the `object_storage_sync_queue` table from scratch.
 * Adds two indexes.
 
 There's no data backfill, no destructive change, no requirement that

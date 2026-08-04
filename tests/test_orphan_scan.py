@@ -16,8 +16,8 @@ import time
 
 import pytest
 
-from adapters.storage.object_store import DiskObjectStore
-from capabilities.object_store.orphans import (
+from adapters.storage.object_storage import DiskObjectStorage
+from capabilities.object_storage.orphans import (
     LocalFile,
     _normalize,
     _select_candidates,
@@ -31,7 +31,7 @@ async def _seed_account_tree(db, tmp_path, monkeypatch, acct):
     The referenced + orphan files are aged past the 7-day grace; fresh stays."""
     from infra import config as _cfg
     monkeypatch.setattr(_cfg, "OBJECT_STORE_ROOT", str(tmp_path))
-    store = DiskObjectStore(root=str(tmp_path), account_id=acct)
+    store = DiskObjectStorage(root=str(tmp_path), account_id=acct)
     ref_path = store.put("ACME/wo", "ref.jpg", b"r" * 100)
     orphan_path = store.put("ACME/wo", "orphan.jpg", b"o" * 200)
     fresh_path = store.put("ACME/wo", "fresh.jpg", b"f" * 50)
@@ -78,7 +78,7 @@ async def test_scan_account_orphans_end_to_end(pg_db, tmp_path, monkeypatch):
 
     db = pg_db
     acct = 1
-    store = DiskObjectStore(root=str(tmp_path), account_id=acct)
+    store = DiskObjectStorage(root=str(tmp_path), account_id=acct)
     # With an absolute root, put() returns the absolute disk path.
     ref_path = store.put("ACME/wo", "ref.jpg", b"r" * 100)       # referenced
     orphan_path = store.put("ACME/wo", "orphan.jpg", b"o" * 200) # orphan, aged

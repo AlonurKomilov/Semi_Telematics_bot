@@ -1537,7 +1537,7 @@ export interface PTITemplateItem {
   sort_order: number;
   /** 'check' (status buttons) | 'photo' (guided photo) | 'document' (upload). */
   item_type?: string;
-  /** ObjectStore filename of the reference example photo (null = none). */
+  /** ObjectStorage filename of the reference example photo (null = none). */
   reference_image_url?: string | null;
 }
 

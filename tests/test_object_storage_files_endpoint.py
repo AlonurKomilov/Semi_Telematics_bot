@@ -22,8 +22,8 @@ import pytest
 from fastapi import HTTPException
 
 from adapters.storage import Role
-from adapters.storage.object_store_sync import ERR_TOKEN_EXPIRED, ERR_TRANSIENT
-from capabilities.object_store.router import (
+from adapters.storage.object_storage_sync import ERR_TOKEN_EXPIRED, ERR_TRANSIENT
+from capabilities.object_storage.router import (
     list_storage_files, retry_storage_file, retry_all_stuck_files,
 )
 

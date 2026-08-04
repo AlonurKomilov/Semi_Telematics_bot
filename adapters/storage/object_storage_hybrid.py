@@ -1,4 +1,4 @@
-"""``HybridObjectStore`` — disk-primary, cloud-async storage tier.
+"""``HybridObjectStorage`` — disk-primary, cloud-async storage tier.
 
 Phase 2 of the tiered-storage rollout.  The hybrid is the backend an
 account selects when they want the **resilience of local disk** for the
@@ -7,7 +7,7 @@ long-term retention.  Concrete behaviour:
 
   * **Writes** go straight to local disk (always works, fast, never
     blocks the driver on a slow Drive call).  ``track_for_sync`` then
-    drops a row into ``object_store_sync_queue`` — the durable outbox the
+    drops a row into ``object_storage_sync_queue`` — the durable outbox the
     Phase 3 worker drains in the background.
   * **Reads** check disk first (where freshly-written + not-yet-synced
     files live).  After the worker successfully uploads to Drive and
@@ -15,10 +15,10 @@ long-term retention.  Concrete behaviour:
     Drive backend.  The caller never sees the tier transition.
 
 The whole thing is just a composition of the two existing stores plus
-the outbox machinery from ``ObjectStoreSyncMixin``.  No new transport
-code; no new protocol — `HybridObjectStore` satisfies the same
-``ObjectStore`` Protocol that ``DiskObjectStore`` and
-``GDriveObjectStore`` do, so every existing caller (work orders, PTI
+the outbox machinery from ``ObjectStorageSyncMixin``.  No new transport
+code; no new protocol — `HybridObjectStorage` satisfies the same
+``ObjectStorage`` Protocol that ``DiskObjectStorage`` and
+``GDriveObjectStorage`` do, so every existing caller (work orders, PTI
 media, reference photos, annotations, signatures) keeps working
 unchanged.
 
@@ -33,22 +33,22 @@ from __future__ import annotations
 import logging
 from typing import Optional
 
-from .object_store import DiskObjectStore
-from .storage_sync import STATE_LOCAL
+from .object_storage import DiskObjectStorage
+from .object_storage_sync import STATE_LOCAL
 
 logger = logging.getLogger(__name__)
 
 
-class HybridObjectStore:
+class HybridObjectStorage:
     """Per-tenant disk-primary + cloud-async object store.
 
-    Built once per account by ``get_object_store_for_account`` and
+    Built once per account by ``get_object_storage_for_account`` and
     cached for the process lifetime.  Holds:
 
-      * a ``DiskObjectStore`` for the local cache layer (stateless,
+      * a ``DiskObjectStorage`` for the local cache layer (stateless,
         shared safely across tenants by the account-scoped folder
         paths the callers already pass in).
-      * a lazily-built ``GDriveObjectStore`` for the cloud layer — None
+      * a lazily-built ``GDriveObjectStorage`` for the cloud layer — None
         until the first read miss / write that needs it.  An account
         with the hybrid backend selected but Drive not yet connected
         still works perfectly for writes; the queue just accumulates
@@ -67,14 +67,14 @@ class HybridObjectStore:
         # The caller-provided bucket stays "Drive-shaped" — no account
         # segment — so the Drive leg writes to the matching clean path
         # inside the customer's own Drive root.
-        self._disk = DiskObjectStore(account_id=account_id)
+        self._disk = DiskObjectStorage(account_id=account_id)
         # GDrive is lazy — never built unless we actually need it.
         # Reads that hit disk return early; writes only enqueue.  This
         # keeps "hybrid backend selected but Drive not yet connected"
         # a useful state instead of a hard error.
         self._drive = None  # type: ignore[var-annotated]
         # Surface the most-recent failure reason for the route layer's
-        # ``_storage_put_error`` helper, mirroring GDriveObjectStore.
+        # ``_storage_put_error`` helper, mirroring GDriveObjectStorage.
         self.last_error: Optional[str] = None
 
     # ── Lazy drive ──────────────────────────────────────────────────
@@ -86,8 +86,8 @@ class HybridObjectStore:
         if self._drive is not None:
             return self._drive if self._drive is not False else None
         try:
-            from .object_store_gdrive import GDriveObjectStore
-            self._drive = await GDriveObjectStore.connect(
+            from .object_storage_gdrive import GDriveObjectStorage
+            self._drive = await GDriveObjectStorage.connect(
                 self._account_id, self._tenant_db,
             )
             return self._drive
@@ -97,12 +97,12 @@ class HybridObjectStore:
             self.last_error = str(e)
             self._drive = False   # sentinel: tried, not available
             logger.info(
-                "HybridObjectStore: Drive unavailable for account %d (%s) — "
+                "HybridObjectStorage: Drive unavailable for account %d (%s) — "
                 "files will queue locally", self._account_id, e,
             )
             return None
 
-    # ── ObjectStore protocol — writes ───────────────────────────────
+    # ── ObjectStorage protocol — writes ───────────────────────────────
 
     def put(self, bucket: str, key: str, data: bytes) -> str:
         """Disk-only write.  Returns the disk URL immediately.
@@ -117,7 +117,7 @@ class HybridObjectStore:
             self.last_error = "local disk write failed"
         return url
 
-    # ── ObjectStore protocol — reads ────────────────────────────────
+    # ── ObjectStorage protocol — reads ────────────────────────────────
 
     def get(self, bucket: str, key: str) -> Optional[bytes]:
         """Disk-first, drive-fallback.
@@ -145,7 +145,7 @@ class HybridObjectStore:
 
         On the hybrid tier the media row's ``file_path`` becomes a Drive
         ID once the sync worker uploads the file (see
-        ``capabilities/object_store/sync_worker._sync_one_row``).  Routes
+        ``capabilities/object_storage/sync_worker._sync_one_row``).  Routes
         that pass that ``file_path`` here get the bytes regardless of
         whether the user reorganised folders in Drive's UI — Drive ID
         is the stable handle.
@@ -259,7 +259,7 @@ class HybridObjectStore:
             # on disk and we'll log loudly.  The next manual upload
             # (or a future enqueue-sweep job) will pick it up.
             logger.exception(
-                "HybridObjectStore: failed to track %s/%s for account %d "
+                "HybridObjectStorage: failed to track %s/%s for account %d "
                 "(file is on disk; sync will be retried)",
                 bucket, key, self._account_id,
             )

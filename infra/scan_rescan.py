@@ -35,7 +35,7 @@ import asyncio
 import logging
 
 from infra.platform import get_platform_db
-from adapters.storage.object_store import get_object_store_for_account
+from adapters.storage.object_storage import get_object_storage_for_account
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +106,7 @@ async def _run_job(job_id: int, cancel_ev: asyncio.Event) -> None:
         await pdb.update_rescan_progress(job_id, total_files=total)
         logger.info("Rescan job %d: %d files to scan", job_id, total)
 
-        # Per-account object_store handle cache so we don't reopen on
+        # Per-account object storage handle cache so we don't reopen on
         # every target.  Most accounts have multiple KB articles, so
         # this is a real win at fleet scale.
         store_cache: dict[int, object] = {}
@@ -129,7 +129,7 @@ async def _run_job(job_id: int, cancel_ev: asyncio.Event) -> None:
             try:
                 store = store_cache.get(account_id)
                 if store is None:
-                    store = await get_object_store_for_account(account_id, None)
+                    store = await get_object_storage_for_account(account_id, None)
                     store_cache[account_id] = store
                 getter = getattr(store, "get_by_id", None)
                 data = getter(file_path) if getter else None

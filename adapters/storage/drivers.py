@@ -8,7 +8,7 @@ driver-module migrations:
   * ``driver_vehicle_assignments`` — single source of truth for who
     drives what, with history preserved via ``unassigned_at``.
   * ``driver_documents``           — per-driver document store with
-    expiration tracking; files live in the existing ``ObjectStore``
+    expiration tracking; files live in the existing ``ObjectStorage``
     (Google Drive when the account has it linked, local disk
     fallback otherwise).
 
@@ -155,7 +155,7 @@ class VehicleAssignment:
 
 @dataclass
 class DriverDocument:
-    """One row from driver_documents — addresses an object in the ObjectStore."""
+    """One row from driver_documents — addresses an object in the ObjectStorage."""
     id: int
     account_id: int
     user_id: int
@@ -1111,7 +1111,7 @@ class DriverDocumentsMixin(_MixinBase):
     async def delete_document(self, doc_id: int) -> bool:
         """Remove the DB row + decrement the account's storage usage.
         Caller is responsible for deleting the underlying object from
-        the ``ObjectStore`` (so a failure to delete the file doesn't
+        the ``ObjectStorage`` (so a failure to delete the file doesn't
         orphan the DB row, or vice-versa)."""
         async with self.transaction():
             cur = await self._db.execute(
@@ -1143,7 +1143,7 @@ class DriverDocumentsMixin(_MixinBase):
         belonging to ``user_id`` that currently points to ``old_bucket``.
 
         Used by the driver-company-change archive flow:  the
-        ObjectStore moves the physical folder (one Drive re-parent
+        ObjectStorage moves the physical folder (one Drive re-parent
         call or a ``shutil.move``), and this method updates the DB
         rows so subsequent ``get_document`` reads resolve to the new
         path.  Returns the number of rows updated.
@@ -1277,7 +1277,7 @@ class DriverDocumentsMixin(_MixinBase):
         would push the account over its cap.
 
         Only meaningful when the account uses the local-disk
-        fallback ObjectStore; the API layer should skip this check
+        fallback ObjectStorage; the API layer should skip this check
         when the account is connected to Google Drive (which has
         its own quota on the user's Drive)."""
         used, quota = await self.get_storage_usage(account_id)
