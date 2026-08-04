@@ -210,11 +210,11 @@
     "role_permissions": "Permissions",
     "scorecard_rules": "Scorecard Rules",
     "billing": "Billing",
-    "storage": "Storage",
     "audit_log": "Audit Log",
     "knowledge_base": "Knowledge Base",
     "settings": "Settings",
-    "vehicle_inventory": "Inventory"
+    "vehicle_inventory": "Inventory",
+    "object_storage": "Object Storage"
   },
   "scorecards": {
     "page_title": "Scorecards",
@@ -1137,7 +1137,7 @@
     "bookmark_remove_title": "Remove from my bookmarks"
   },
   "storage": {
-    "page_title": "Attachment Storage",
+    "page_title": "Object Storage",
     "page_desc": "Where your company's documents and captures are saved — driver records, work-order invoices, dashcam frames, parking maps. Bring your own Google Drive to keep these bytes in your account and cut platform storage costs.",
     "badge_gdrive": "Google Drive",
     "badge_disk": "Local storage",

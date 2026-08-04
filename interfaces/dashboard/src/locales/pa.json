@@ -168,7 +168,8 @@
     "knowledge_base": "ਗਿਆਨ ਅਧਾਰ",
     "settings": "ਸੈਟਿੰਗਾਂ",
     "settings_group": "ਸੈਟਿੰਗਾਂ",
-    "truck_anatomy": "Truck Anatomy"
+    "truck_anatomy": "Truck Anatomy",
+    "object_storage": "Object Storage"
   },
   "scorecards": {
     "page_title": "ਵਾਹਨ ਸਕੋਰਕਾਰਡ",
@@ -639,7 +640,8 @@
       "routing_drive_header_connected": "Saved to your Drive",
       "routing_drive_header_disconnected": "Would save to your Drive (when connected)",
       "routing_platform_header": "Always on platform storage"
-    }
+    },
+    "page_title": "Object Storage"
   },
   "knowledge": {
     "new_article": "New article",

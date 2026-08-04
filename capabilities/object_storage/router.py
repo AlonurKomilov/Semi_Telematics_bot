@@ -10,8 +10,10 @@ Three endpoints:
 * ``GET  /storage/config`` — current backend + connection info
 * ``POST /storage/google/start`` — kick off the OAuth consent flow,
   returns the URL the dashboard redirects the browser to
-* ``GET  /storage/google/callback`` — Google redirects here with the
-  (path fixed by the Console registration — see the note at the route)
+* ``GET  /object-storage/google/callback`` — Google redirects here with
+  the code.  This exact path is registered in Cloud Console as the
+  authorized redirect URI (env GDRIVE_OAUTH_REDIRECT_URI); changing it
+  means Console first, env second, re-authorize third.
   auth code; we exchange for a refresh token, create the root folder
   on the user's Drive, and flip the account backend to gdrive
 * ``POST /storage/google/disconnect`` — remove stored creds and revert
@@ -49,14 +51,7 @@ from interfaces.api.deps import get_current_user, get_tenant_db, require_permiss
 from capabilities.activity_trail import record_simple
 
 logger = logging.getLogger(__name__)
-# Canonical prefix is /object-storage; /storage stays mounted as a
-# DEPRECATED ALIAS for one release so a dashboard bundle already in a
-# user's browser keeps working across the deploy (the same courtesy the
-# parts-catalog move got when it graduated out of /work-orders).
-# Remove the alias — and this comment — in the release after.
-router = APIRouter(prefix="/object-storage", tags=["object-store"])
-deprecated_router = APIRouter(prefix="/storage", tags=["object-store"],
-                              include_in_schema=False)
+router = APIRouter(prefix="/object-storage", tags=["object-storage"])
 
 
 # ── OAuth config (env-driven so deployments differ) ─────────────────────────
@@ -109,7 +104,6 @@ def _gc_pending_oauth() -> None:
 # ── GET /storage/config ──────────────────────────────────────────────────────
 
 
-@deprecated_router.get("/config")
 @router.get("/config")
 async def get_storage_config(
     user: dict = Depends(get_current_user),
@@ -197,7 +191,6 @@ class BackendSwitchRequest(BaseModel):
     backend: str = Field(..., description="One of: disk, gdrive, hybrid")
 
 
-@deprecated_router.post("/backend")
 @router.post("/backend")
 async def switch_storage_backend(
     body: BackendSwitchRequest,
@@ -244,7 +237,6 @@ async def switch_storage_backend(
     return {"backend": backend}
 
 
-@deprecated_router.get("/health")
 @router.get("/health")
 async def get_storage_health(
     user: dict = Depends(get_current_user),
@@ -316,7 +308,6 @@ async def get_storage_health(
     }
 
 
-@deprecated_router.get("/files")
 @router.get("/files")
 async def list_storage_files(
     only: str = "all",
@@ -370,7 +361,6 @@ async def list_storage_files(
     return {"items": out, "count": len(out)}
 
 
-@deprecated_router.post("/files/{queue_id}/retry")
 @router.post("/files/{queue_id}/retry")
 async def retry_storage_file(
     queue_id: int,
@@ -398,7 +388,6 @@ async def retry_storage_file(
     return {"retried": True}
 
 
-@deprecated_router.post("/files/retry-stuck")
 @router.post("/files/retry-stuck")
 async def retry_all_stuck_files(
     user: dict = Depends(require_permission("can_manage_storage")),
@@ -454,7 +443,6 @@ class OAuthStartResponse(BaseModel):
     authorize_url: str = Field(..., description="Send the browser here to begin consent")
 
 
-@deprecated_router.post("/google/start", response_model=OAuthStartResponse)
 @router.post("/google/start", response_model=OAuthStartResponse)
 async def start_google_oauth(
     user: dict = Depends(require_permission("can_manage_storage")),
@@ -522,7 +510,6 @@ async def start_google_oauth(
 # an OPS sequence, not a refactor: register the new URI in the Console,
 # deploy the env change, let in-flight flows drain, then retire the old
 # one.  Keep this route when the other /storage aliases are dropped.
-@deprecated_router.get("/google/callback")
 @router.get("/google/callback")
 async def google_oauth_callback(
     code: str = Query(...),
@@ -664,7 +651,6 @@ async def google_oauth_callback(
 # ── POST /storage/google/disconnect ──────────────────────────────────────────
 
 
-@deprecated_router.post("/google/disconnect")
 @router.post("/google/disconnect")
 async def disconnect_google(
     user: dict = Depends(require_permission("can_manage_storage")),
@@ -830,7 +816,6 @@ class StorageQuotaUpdate(BaseModel):
 
 
 @admin_router.get("/object-storage/quota")
-@admin_router.get("/storage/quota", include_in_schema=False)
 async def get_storage_quota(
     user: dict = Depends(require_permission("can_manage_storage")),
     tenant_db=Depends(get_tenant_db),
@@ -845,7 +830,6 @@ async def get_storage_quota(
 
 
 @admin_router.put("/object-storage/quota")
-@admin_router.put("/storage/quota", include_in_schema=False)
 async def update_storage_quota(
     body: StorageQuotaUpdate,
     user: dict = Depends(require_permission("can_manage_storage")),
@@ -873,7 +857,6 @@ async def update_storage_quota(
 # ── Orphan files (Phase 2: report, then delete on explicit confirm) ──
 
 
-@deprecated_router.get("/orphans")
 @router.get("/orphans")
 async def scan_orphans(
     grace_days: int = Query(7, ge=1, le=90),
@@ -901,7 +884,6 @@ async def scan_orphans(
     }
 
 
-@deprecated_router.post("/orphans/purge")
 @router.post("/orphans/purge")
 async def purge_orphans(
     confirm: bool = Query(False),
@@ -941,7 +923,6 @@ async def purge_orphans(
     }
 
 
-@deprecated_router.get("/usage")
 @router.get("/usage")
 async def storage_usage(
     grace_days: int = Query(7, ge=1, le=90),

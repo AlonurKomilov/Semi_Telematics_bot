@@ -213,7 +213,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   { id: 'billing',          labelKey: 'nav.billing',          path: '/billing',         icon: CreditCard,    modules: ['accounting', 'account'], tier: 'role', permission: ['can_manage_billing'], navGroup: 'account' },
   { id: 'companies',        labelKey: 'nav.companies',        path: '/companies',       icon: Building2,     modules: ['account'], tier: 'administration', permission: ['can_manage_companies'], navGroup: 'settings' },
   { id: 'integrations',     labelKey: 'nav.integrations',     path: '/integrations',    icon: Plug,          modules: ['account'], tier: 'administration', permission: ['can_manage_integrations'], navGroup: 'account' },
-  { id: 'storage',          labelKey: 'nav.storage',          path: '/storage',         icon: Cloud,         modules: ['account'], tier: 'administration', permission: ['can_manage_storage'], navGroup: 'account' },
+  { id: 'storage',          labelKey: 'nav.object_storage',    path: '/object-storage',         icon: Cloud,         modules: ['account'], tier: 'administration', permission: ['can_manage_storage'], navGroup: 'account' },
   { id: 'settings',         labelKey: 'nav.settings',         path: '/settings',        icon: SettingsIcon,  modules: ['account'], tier: 'administration', permission: ['can_manage_account', 'can_manage_role_bot'], navGroup: 'settings' },
   { id: 'role_permissions', labelKey: 'nav.role_permissions', path: '/permissions',     icon: Shield,        modules: ['account'], tier: 'administration', permission: ['can_manage_permissions'], navGroup: 'account' },
   // Scorecard Rules is the Scorecards (Shared) feature's CONFIG

@@ -307,7 +307,9 @@ export default function AppRouter() {
         <Route path="notifications/preferences" element={L(<MyNotifications />)} />
         <Route path="alerts/preferences" element={<Navigate to="/notifications/preferences" replace />} />
         <Route path="alerts/group-delivery" element={L(<GroupDelivery />)} />
-        <Route path="storage"  element={L(<P perm="can_manage_storage"><Storage /></P>)} />
+        <Route path="object-storage" element={L(<P perm="can_manage_storage"><Storage /></P>)} />
+        {/* bookmarks + the historical /admin/storage redirect land here */}
+        <Route path="storage" element={<Navigate to="/object-storage" replace />} />
         <Route path="permissions" element={L(<P perm="can_manage_permissions"><Permissions /></P>)} />
         <Route path="scorecard-rules" element={L(<P perm="can_manage_config_all"><ScorecardRules /></P>)} />
         <Route path="billing" element={L(<P perm="can_manage_billing"><Billing /></P>)} />

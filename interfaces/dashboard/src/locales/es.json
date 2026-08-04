@@ -168,7 +168,8 @@
     "knowledge_base": "Base de conocimientos",
     "settings": "Configuración",
     "settings_group": "Configuración",
-    "truck_anatomy": "Truck Anatomy"
+    "truck_anatomy": "Truck Anatomy",
+    "object_storage": "Object Storage"
   },
   "scorecards": {
     "page_title": "Tarjetas de Vehículos",
@@ -638,7 +639,7 @@
     "uploaded_by": "subido por {{name}}"
   },
   "storage": {
-    "page_title": "Almacenamiento de adjuntos",
+    "page_title": "Object Storage",
     "page_desc": "Dónde se guardan los documentos y capturas de su empresa: registros de conductores, facturas de órdenes de trabajo, fotogramas de dashcam y mapas de estacionamiento. Use su propio Google Drive para mantener los bytes en su cuenta y reducir el costo de almacenamiento de la plataforma.",
     "badge_gdrive": "Google Drive",
     "badge_disk": "Almacenamiento local",

@@ -168,7 +168,8 @@
     "knowledge_base": "የእውቀት መሠረት",
     "settings": "ቅንብሮች",
     "settings_group": "ቅንብሮች",
-    "truck_anatomy": "Truck Anatomy"
+    "truck_anatomy": "Truck Anatomy",
+    "object_storage": "Object Storage"
   },
   "scorecards": {
     "page_title": "የተሽከርካሪ ስኮርካርዶች",
@@ -639,7 +640,8 @@
       "routing_drive_header_connected": "Saved to your Drive",
       "routing_drive_header_disconnected": "Would save to your Drive (when connected)",
       "routing_platform_header": "Always on platform storage"
-    }
+    },
+    "page_title": "Object Storage"
   },
   "knowledge": {
     "new_article": "New article",

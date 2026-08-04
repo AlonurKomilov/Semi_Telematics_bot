@@ -168,7 +168,8 @@
     "knowledge_base": "Base de connaissances",
     "settings": "Paramètres",
     "settings_group": "Paramètres",
-    "truck_anatomy": "Truck Anatomy"
+    "truck_anatomy": "Truck Anatomy",
+    "object_storage": "Object Storage"
   },
   "scorecards": {
     "page_title": "Scorecards Véhicules",
@@ -638,7 +639,7 @@
     "uploaded_by": "téléversé par {{name}}"
   },
   "storage": {
-    "page_title": "Stockage des pièces jointes",
+    "page_title": "Object Storage",
     "page_desc": "Où sont enregistrés les documents et captures de votre entreprise — dossiers conducteurs, factures de bons de travail, images de dashcam et plans de stationnement. Utilisez votre propre Google Drive pour garder ces octets dans votre compte et réduire les coûts de stockage de la plateforme.",
     "badge_gdrive": "Google Drive",
     "badge_disk": "Stockage local",

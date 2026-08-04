@@ -168,7 +168,8 @@
     "knowledge_base": "База знаний",
     "settings": "Настройки",
     "settings_group": "Настройки",
-    "truck_anatomy": "Truck Anatomy"
+    "truck_anatomy": "Truck Anatomy",
+    "object_storage": "Object Storage"
   },
   "scorecards": {
     "page_title": "Оценки транспорта",
@@ -638,7 +639,7 @@
     "uploaded_by": "загрузил(а) {{name}}"
   },
   "storage": {
-    "page_title": "Хранилище вложений",
+    "page_title": "Object Storage",
     "page_desc": "Где сохраняются документы и снимки вашей компании — записи водителей, накладные на работы, кадры с видеорегистраторов и карты парковок. Подключите свой Google Drive, чтобы байты оставались в вашем аккаунте и не росли расходы на хранилище платформы.",
     "badge_gdrive": "Google Drive",
     "badge_disk": "Локальное хранилище",
