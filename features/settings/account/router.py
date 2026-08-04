@@ -82,7 +82,62 @@ async def update_setting(
     user: dict = Depends(require_permission("can_manage_account")),
     tenant_db=Depends(get_tenant_db),
 ):
-    """Update a single account setting."""
+    """Update a single account setting — the key's OWN owner must allow it.
+
+    ``can_manage_account`` is the General settings feature's Manage action.
+    ``account_settings`` is shared: Storage and Integrations are PEER
+    features in the same Administration band, and the config family keeps
+    its account-scope members there too.  Accepting any key meant one
+    feature's Manage wrote two siblings' configuration plus everything
+    gated on can_manage_config_all — the storage backend, a live Drive
+    OAuth token, KPI thresholds, the DQF passphrase.  Nobody grants that
+    when they tick "General settings".
+
+    So the dependency above only gets the caller THROUGH the door; the
+    key's declared owner decides whether this particular write is theirs.
+    An undeclared key is refused, never written — defaulting it to the
+    caller's permission is how the sprawl happened.
+    """
+    from capabilities.permissions.roles import can, is_system_owner
+    from capabilities.settings_registry import SELF_ONLY, SYSTEM_ONLY, owner_for
+
+    rule = owner_for(body.key)
+    if rule is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Unknown setting '{body.key}'. Settings must be declared in "
+                f"capabilities/settings_registry.py with the permission that "
+                f"owns them."
+            ),
+        )
+    if rule.permission == SYSTEM_ONLY:
+        # Platform infrastructure — AI model pinning and friends. No
+        # account-level action exists for these by design.
+        if not is_system_owner(int(user.get("sub") or 0)):
+            raise HTTPException(
+                status_code=403,
+                detail=f"'{body.key}' is managed by the platform, not the account.",
+            )
+    elif rule.permission == SELF_ONLY:
+        # Per-user preference. This endpoint is account-scoped and cannot
+        # establish that the caller owns the key's user id.
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"'{body.key}' is a per-user preference — set it from the "
+                f"surface that owns it, not the account settings endpoint."
+            ),
+        )
+    elif not can(user["role"], rule.permission):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"'{body.key}' belongs to {rule.feature} and requires "
+                f"{rule.permission}."
+            ),
+        )
+
     await tenant_db.set_account_setting(user["account_id"], body.key, body.value)
     await record_simple(
         tenant_db, user["account_id"], await resolve_user_id(user),
