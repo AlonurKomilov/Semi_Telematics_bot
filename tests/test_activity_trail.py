@@ -240,7 +240,7 @@ def test_registry_and_frontend_entity_vocabulary_agree():
     )
     ensure_declarations_loaded()
     src = (pathlib.Path(__file__).resolve().parent.parent
-           / "interfaces/dashboard/src/components/history/HistoryList.tsx"
+           / "interfaces/dashboard/src/components/activity-trail/ActivityTrailList.tsx"
            ).read_text()
     block = re.search(r"ENTITY_LABEL[^=]*= \{(.*?)\};", src, re.S).group(1)
     frontend = set(re.findall(r"^\s*([a-z_]+):", block, re.M))

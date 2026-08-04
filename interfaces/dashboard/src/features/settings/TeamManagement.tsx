@@ -13,7 +13,7 @@ import { apiJSON, apiFetch } from '../../api/client';
 import { toast } from 'sonner';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import { ActionMenu } from '../../components/ui/context-menu';
-import { HistoryDialog, HistoryTrigger } from '../../components/history/HistoryDialog';
+import { ActivityTrailDialog, ActivityTrailTrigger } from '../../components/activity-trail/ActivityTrailDialog';
 import { useTeamMembersQuery } from './useTeamMembers';
 import StatusBadge from '../../components/StatusBadge';
 import RoleBadge, { ROLE_LABEL, ASSIGNABLE_ROLES, roleTone } from '../../components/RoleBadge';
@@ -974,11 +974,11 @@ export default function TeamManagement() {
                         {/* Role changes, tier flips, company access —
                             the member's own who-did-what. */}
                         <div className="pt-2 border-t border-border">
-                          <HistoryTrigger onClick={() => setHistoryOpen(true)} />
-                          <HistoryDialog
+                          <ActivityTrailTrigger onClick={() => setHistoryOpen(true)} />
+                          <ActivityTrailDialog
                             entityType="user"
                             entityId={selected.id}
-                            title={`${nameOrFallback(selected)} — change history`}
+                            title={`${nameOrFallback(selected)} — activity history`}
                             open={historyOpen}
                             onOpenChange={setHistoryOpen}
                           />

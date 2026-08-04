@@ -1,9 +1,14 @@
 /**
  * The shared who-did-what renderer — ONE way to show activity-trail
- * events everywhere (the /audit page, per-record History dialogs, and
- * every feature that adopts the trail next).  Generalized from the
- * Inventory drawer's HISTORY card, the shape the owner asked to make
- * the standard.
+ * events everywhere (the Activity Log page, per-record activity
+ * dialogs, and every feature that adopts the trail next).  Generalized
+ * from the Inventory drawer's HISTORY card, the shape the owner asked
+ * to make the standard.
+ *
+ * NOT named "History": features/maintenance/ServiceHistoryModal owns
+ * that word for a vehicle's past SERVICES.  This is the audit trail —
+ * who changed what — and it takes the capability's name so the two are
+ * never confused again.
  *
  * Events arrive in the facade wire shape: field-level changes as
  * `{field: {from, to}}`, an `actor_name` resolved server-side, and
@@ -167,7 +172,7 @@ export function ChangeLines({
  * one block per event: what happened, by whom, when, and every field
  * that changed.
  */
-export function HistoryList({
+export function ActivityTrailList({
   events, tz, emptyText = 'No recorded activity yet.', onRestore,
 }: {
   events: ActivityEvent[];

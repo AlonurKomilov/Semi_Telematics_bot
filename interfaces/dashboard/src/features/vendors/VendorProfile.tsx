@@ -10,7 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Store, ArrowLeft, Merge, Globe, History as HistoryIcon, Link2Off, Pencil, Star, TrendingUp } from 'lucide-react';
 import { apiJSON } from '../../api/client';
-import { HistoryDialog } from '../../components/history/HistoryDialog';
+import { ActivityTrailDialog } from '../../components/activity-trail/ActivityTrailDialog';
 import DataGrid from '../../components/datagrid';
 import { PageHeader, ErrorState, TableSkeleton } from '../../components/shell';
 import {
@@ -656,10 +656,10 @@ export default function VendorProfile() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <HistoryDialog
+      <ActivityTrailDialog
         entityType="vendor"
         entityId={vendor?.id ?? null}
-        title={`${vendor?.name ?? 'Vendor'} — change history`}
+        title={`${vendor?.name ?? 'Vendor'} — activity history`}
         open={historyOpen}
         onOpenChange={setHistoryOpen}
       />

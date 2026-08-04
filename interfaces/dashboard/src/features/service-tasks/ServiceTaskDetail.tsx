@@ -19,7 +19,7 @@ import MergeTaskDialog from './MergeTaskDialog';
 import EditTaskDialog from './EditTaskDialog';
 import DataGrid from '../../components/datagrid';
 import { EmptyState, ErrorState, PageHeader, TableSkeleton } from '../../components/shell';
-import { HistoryDialog } from '../../components/history/HistoryDialog';
+import { ActivityTrailDialog } from '../../components/activity-trail/ActivityTrailDialog';
 import { Button } from '../../components/ui/button';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter,
@@ -334,10 +334,10 @@ export default function ServiceTaskDetail() {
         presetWinnerId={mergeWinner}
         onClose={() => { setMergeOpen(false); setMergeWinner(null); }}
       />
-      <HistoryDialog
+      <ActivityTrailDialog
         entityType="service_task"
         entityId={task?.id ?? null}
-        title={`${task?.name ?? 'Service task'} — change history`}
+        title={`${task?.name ?? 'Service task'} — activity history`}
         open={historyOpen}
         onOpenChange={setHistoryOpen}
       />

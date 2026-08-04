@@ -6,7 +6,7 @@ import { FileText, Plus, Paperclip, Receipt, X } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import DataGrid, { type DataGridSegment } from '../../components/datagrid';
 import { workOrderRowMenu } from './contextMenu';
-import { HistoryDialog } from '../../components/history/HistoryDialog';
+import { ActivityTrailDialog } from '../../components/activity-trail/ActivityTrailDialog';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
 } from '../../components/shell';
@@ -406,10 +406,10 @@ export default function WorkOrders() {
           {t('work_orders_page.row_click_hint')}
         </p>
       )}
-      <HistoryDialog
+      <ActivityTrailDialog
         entityType="work_order"
         entityId={historyWo?.id ?? null}
-        title={`Work order #${historyWo?.id ?? ''} — change history`}
+        title={`Work order #${historyWo?.id ?? ''} — activity history`}
         open={historyWo != null}
         onOpenChange={(o) => { if (!o) setHistoryWo(null); }}
       />

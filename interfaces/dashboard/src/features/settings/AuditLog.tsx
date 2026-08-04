@@ -25,9 +25,9 @@ import {
 } from '../../components/ui/dialog';
 import { Button } from '../../components/ui/button';
 import {
-  ChangeLines, HistoryList, actionLabel as trailActionLabel,
+  ChangeLines, ActivityTrailList, actionLabel as trailActionLabel,
   entityLabel, type ActivityEvent,
-} from '../../components/history/HistoryList';
+} from '../../components/activity-trail/ActivityTrailList';
 import type { AnyColumn } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
@@ -229,7 +229,7 @@ export default function AuditLog() {
             {groupQuery.isLoading ? (
               <p className="text-sm text-muted-foreground py-4 text-center">Loading…</p>
             ) : (
-              <HistoryList
+              <ActivityTrailList
                 events={groupQuery.data?.events ?? []}
                 tz={tz}
                 onRestore={(ev) => {

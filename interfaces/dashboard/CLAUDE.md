@@ -126,6 +126,17 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   background scroll lock, and is an ESLint error. Full rules, the
   refusal list, and what the module deliberately does NOT absorb:
   [components/scrolling/CLAUDE.md](src/components/scrolling/CLAUDE.md).
+- **Who-did-what = `components/activity-trail`, never "history".** The
+  word *history* is already taken by a different concept —
+  `features/maintenance/ServiceHistoryModal` shows a vehicle's past
+  SERVICES. The audit trail (who changed what, field-level old→new)
+  takes its name from the capability that owns it
+  (`capabilities/activity_trail`, table `activity_events`, `/activity`
+  endpoints), so one search for *activity* finds the whole stack.
+  Render every trail surface through `ActivityTrailList` /
+  `ActivityTrailDialog` — never a second renderer. Product wording may
+  still say "activity history" to users; two CODE names for one concept
+  is what this rule forbids.
 - **Tables = DataGrid, always.** Any tabular list of records — even a
   5-row read-only summary — uses
   [`components/datagrid`](src/components/datagrid/DataGrid.tsx); **never** a

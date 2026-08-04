@@ -35,7 +35,7 @@ import { CalendarMonth } from './CalendarMonth';
 import { toneClasses } from '@/lib/status';
 import { undoableToast } from '../../lib/undoable';
 import { ServiceHistoryModal } from './ServiceHistoryModal';
-import { TaskHistoryDialog } from './TaskHistoryDialog';
+import { TaskActivityDialog } from './TaskActivityDialog';
 import { TemplatesModal } from './TemplatesModal';
 import type { MaintenanceTemplate } from '../../types';
 import { useTimezone } from '../../hooks/useTimezone';
@@ -1856,7 +1856,7 @@ export default function Tasks() {
                   onClick={() => setHistoryOpen(true)}
                   className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  <History size={14} /> View change history
+                  <History size={14} /> View activity history
                 </button>
               </div>
             </dl>
@@ -2286,7 +2286,7 @@ export default function Tasks() {
           onClose={() => setHistoryVehicle(null)}
         />
       )}
-      <TaskHistoryDialog
+      <TaskActivityDialog
         taskId={selected?.id ?? null}
         open={historyOpen}
         onOpenChange={setHistoryOpen}

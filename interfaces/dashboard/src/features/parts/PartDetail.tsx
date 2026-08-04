@@ -22,7 +22,7 @@ import {
 } from 'recharts';
 import { ArrowLeft, Check, Cog, Globe, History as HistoryIcon, Link2Off, Merge, Pencil, TriangleAlert } from 'lucide-react';
 import { useAssemblies } from './useAssemblies';
-import { HistoryDialog } from '../../components/history/HistoryDialog';
+import { ActivityTrailDialog } from '../../components/activity-trail/ActivityTrailDialog';
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';
 import { PageHeader, EmptyState, ErrorState, TableSkeleton } from '../../components/shell';
@@ -777,10 +777,10 @@ export default function PartDetail() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <HistoryDialog
+      <ActivityTrailDialog
         entityType="part"
         entityId={part?.id ?? null}
-        title={`${part?.name ?? 'Part'} — change history`}
+        title={`${part?.name ?? 'Part'} — activity history`}
         open={historyOpen}
         onOpenChange={setHistoryOpen}
       />

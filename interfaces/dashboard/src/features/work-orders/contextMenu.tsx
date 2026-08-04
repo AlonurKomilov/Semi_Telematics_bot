@@ -38,7 +38,7 @@ export function workOrderRowMenu(
     },
     ...(deps.openHistory ? [{
       key: 'history',
-      label: 'View change history',
+      label: 'View activity history',
       icon: <History size={14} className="text-muted-foreground" />,
       onSelect: () => deps.openHistory!(wo),
     }] : []),

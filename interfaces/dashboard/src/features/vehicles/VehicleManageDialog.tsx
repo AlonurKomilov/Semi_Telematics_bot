@@ -23,7 +23,7 @@ import {
   DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
 import type { Vehicle } from '../../types';
-import { HistoryDialog, HistoryTrigger } from '../../components/history/HistoryDialog';
+import { ActivityTrailDialog, ActivityTrailTrigger } from '../../components/activity-trail/ActivityTrailDialog';
 
 const TYPES = [
   { value: 'truck', label: 'Truck' },
@@ -292,7 +292,7 @@ export default function VehicleManageDialog({
 
           {isEdit && vehicle && (
             <div className="pt-1">
-              <HistoryTrigger onClick={() => setHistoryOpen(true)} />
+              <ActivityTrailTrigger onClick={() => setHistoryOpen(true)} />
             </div>
           )}
 
@@ -313,10 +313,10 @@ export default function VehicleManageDialog({
           </DialogFooter>
         </form>
       </DialogContent>
-      <HistoryDialog
+      <ActivityTrailDialog
         entityType="vehicle"
         entityId={editId}
-        title={`Vehicle ${draft.unit_number || ''} — change history`}
+        title={`Vehicle ${draft.unit_number || ''} — activity history`}
         open={historyOpen}
         onOpenChange={setHistoryOpen}
       />
