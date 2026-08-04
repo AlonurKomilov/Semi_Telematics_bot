@@ -33,7 +33,7 @@ import pytest
 
 from adapters.storage import Role
 from adapters.storage.object_store import DiskObjectStore
-from adapters.storage.storage_sync import (
+from adapters.storage.object_store_sync import (
     ERR_FORBIDDEN, ERR_QUOTA_EXCEEDED, ERR_RATE_LIMITED, ERR_TOKEN_EXPIRED,
     ERR_TRANSIENT,
     STATE_LOCAL, STATE_REMOTE,
@@ -299,7 +299,7 @@ class TestRepointerGuard:
         # type and quietly turned the test green for the wrong reason.
         assert "not_a_registered_entity" not in ENTITY_REFERENCE
         await db._db.execute(
-            "UPDATE storage_sync_queue SET entity_type = 'not_a_registered_entity' "
+            "UPDATE object_store_sync_queue SET entity_type = 'not_a_registered_entity' "
             "WHERE account_id = ?", (acct.id,),
         )
         await db._db.commit()

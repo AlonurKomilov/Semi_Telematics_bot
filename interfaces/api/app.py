@@ -490,6 +490,8 @@ def create_api() -> FastAPI:
         app.include_router(capacity_routes.router, prefix=prefix)
         app.include_router(inspections_routes.router, prefix=prefix)
         app.include_router(object_store_routes.router, prefix=prefix)
+        # deprecated /storage alias — drop one release after c22b832
+        app.include_router(object_store_routes.deprecated_router, prefix=prefix)
         app.include_router(object_store_routes.admin_router, prefix=prefix)
         app.include_router(ai_routes.router, prefix=prefix)
         app.include_router(knowledge_routes.router, prefix=prefix)

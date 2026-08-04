@@ -206,10 +206,10 @@ async def _collect_referenced(tenant_db, account_id: int) -> set[str]:
             raise
 
     # ── 3. hybrid sync queue (pending uploads are not orphans) ──────
-    if "storage_sync_queue" in existing:
+    if "object_store_sync_queue" in existing:
         try:
             cur = await tenant_db._db.execute(
-                "SELECT DISTINCT local_path AS v FROM storage_sync_queue "
+                "SELECT DISTINCT local_path AS v FROM object_store_sync_queue "
                 "WHERE account_id = ? AND local_path IS NOT NULL "
                 "AND local_path <> ''",
                 (account_id,),

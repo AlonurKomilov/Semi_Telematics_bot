@@ -1,10 +1,10 @@
-"""Background sync worker — drains ``storage_sync_queue`` to cloud.
+"""Background sync worker — drains ``object_store_sync_queue`` to cloud.
 
 Runs as an APScheduler interval job (see ``interfaces/bot/scheduler``),
 ticking every ~60 s.  One pass:
 
   1. Claim up to ``SYNC_WORKER_BATCH_SIZE`` due rows using
-     ``StorageSyncMixin.claim_pending_sync`` — that helper handles the
+     ``ObjectStoreSyncMixin.claim_pending_sync`` — that helper handles the
      ``FOR UPDATE SKIP LOCKED`` + lease push so multiple workers can
      run side-by-side at scale without ever processing the same row.
   2. Group claimed rows by account.  Build the per-account Drive
@@ -39,7 +39,7 @@ from typing import Awaitable, Callable, Optional
 
 from adapters.storage.object_store import DiskObjectStore
 from capabilities.object_store.repointers import build_all, other_rows_reference
-from adapters.storage.storage_sync import (
+from adapters.storage.object_store_sync import (
     ERR_FORBIDDEN, ERR_QUOTA_EXCEEDED, ERR_RATE_LIMITED, ERR_TOKEN_EXPIRED,
     ERR_TRANSIENT, ERR_UNKNOWN,
     STATE_REMOTE,

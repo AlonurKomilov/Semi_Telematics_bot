@@ -102,14 +102,14 @@ class GDriveObjectStore:
         this and falls back to ``DiskObjectStore`` with a warning.
         """
         from .object_store import (
-            STORAGE_GDRIVE_REFRESH_TOKEN, STORAGE_GDRIVE_ROOT_FOLDER_ID,
+            OBJECT_STORE_GDRIVE_REFRESH_TOKEN, OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID,
         )
 
         encrypted_token = await tenant_db.get_account_setting(
-            account_id, STORAGE_GDRIVE_REFRESH_TOKEN, "",
+            account_id, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "",
         )
         root_folder_id = await tenant_db.get_account_setting(
-            account_id, STORAGE_GDRIVE_ROOT_FOLDER_ID, "",
+            account_id, OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID, "",
         )
         if not encrypted_token or not root_folder_id:
             raise RuntimeError(

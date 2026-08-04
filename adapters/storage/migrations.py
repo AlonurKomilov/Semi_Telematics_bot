@@ -8364,3 +8364,43 @@ async def migrate_asset_grain_surfaces(conn) -> None:
         )
     await conn.commit()
     logger.info("Migration 185: 10 asset grain surfaces ready")
+
+
+@_register("186_object_store_naming")
+async def migrate_object_store_naming(conn) -> None:
+    """Finish the storage → object_store rename in the DATA layer.
+
+    The package moved in c22b832; these are the persisted names that
+    moved with it.  Done now, deliberately, while the platform is small
+    — the owner's call, and the right one: an ``account_settings`` key
+    is cheap to migrate across four rows and expensive across four
+    thousand.
+
+    Both statements are idempotent and safe to re-run: the table rename
+    checks the catalog first, and the key rewrite only matches rows that
+    still carry the old prefix.
+    """
+    # 1. The sync queue table (tenant-scoped; its indexes, FKs and RLS
+    #    policy follow a RENAME automatically).
+    cur = await conn.execute(
+        "SELECT 1 FROM information_schema.tables "
+        "WHERE table_name = 'storage_sync_queue'",
+    )
+    if await cur.fetchone():
+        await conn.execute(
+            "ALTER TABLE storage_sync_queue RENAME TO object_store_sync_queue",
+        )
+        logger.info("Migration 186: storage_sync_queue → object_store_sync_queue")
+
+    # 2. The per-account settings keys.  These hold each tenant's chosen
+    #    backend and their encrypted Drive credentials — the rows MUST
+    #    move with the constant, or every account silently falls back to
+    #    disk and their Drive link goes dark.
+    cur = await conn.execute(
+        "UPDATE account_settings "
+        "SET key = 'object_store.' || substring(key from 9) "
+        "WHERE key LIKE 'storage.%'",
+    )
+    moved = cur.rowcount or 0
+    await conn.commit()
+    logger.info("Migration 186: %d account_settings keys re-prefixed", moved)

@@ -2532,7 +2532,7 @@ async def migrate_account_prefixed_file_paths(conn) -> None:
 
     Each column needs the row's account_id.  Some tables carry it
     directly (camera_checks, parking_events, maintenance_tasks,
-    storage_sync_queue); others reach it via a join
+    object_store_sync_queue); others reach it via a join
     (pti_inspection_media → driver_inspections,
     work_order_attachments → work_orders).
 
@@ -2559,7 +2559,7 @@ async def migrate_account_prefixed_file_paths(conn) -> None:
         ("camera_checks",      "image_path"),
         ("parking_events",     "map_image_path"),
         ("maintenance_tasks",  "attachment_path"),
-        ("storage_sync_queue", "local_path"),
+        ("object_store_sync_queue", "local_path"),
     ]
     via_join = [
         # (table, column, join_table, on_self, on_parent, parent_account_col)
@@ -2859,7 +2859,7 @@ async def migrate_repair_stale_account_path_ids(conn) -> None:
         ("camera_checks",          "image_path"),
         ("parking_events",         "map_image_path"),
         ("maintenance_tasks",      "attachment_path"),
-        ("storage_sync_queue",     "local_path"),
+        ("object_store_sync_queue",     "local_path"),
         ("pti_inspection_media",   "file_path"),
         ("pti_inspection_media",   "local_path"),
         ("work_order_attachments", "file_path"),

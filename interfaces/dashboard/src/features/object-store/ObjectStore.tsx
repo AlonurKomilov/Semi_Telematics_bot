@@ -1,10 +1,10 @@
 import { Cloud } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '../../components/shell';
-import StorageBackendCard from './StorageBackendCard';
-import StorageHealthCard from './StorageHealthCard';
-import StorageUsageCard from './StorageUsageCard';
-import StorageFileTable from './StorageFileTable';
+import ObjectStoreBackendCard from './ObjectStoreBackendCard';
+import ObjectStoreHealthCard from './ObjectStoreHealthCard';
+import ObjectStoreUsageCard from './ObjectStoreUsageCard';
+import ObjectStoreFileTable from './ObjectStoreFileTable';
 
 /**
  * Admin page for storage configuration + health.
@@ -32,10 +32,10 @@ export default function Storage() {
         description={t('storage.page_desc')}
       />
       <div className="space-y-4">
-        <StorageHealthCard />
-        <StorageUsageCard />
-        <StorageFileTable />
-        <StorageBackendCard />
+        <ObjectStoreHealthCard />
+        <ObjectStoreUsageCard />
+        <ObjectStoreFileTable />
+        <ObjectStoreBackendCard />
       </div>
     </div>
   );

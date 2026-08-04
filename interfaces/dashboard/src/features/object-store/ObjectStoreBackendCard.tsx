@@ -61,7 +61,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   access_denied: 'You declined the consent prompt.',
 };
 
-export default function StorageBackendCard() {
+export default function ObjectStoreBackendCard() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const [params, setParams] = useSearchParams();
@@ -71,7 +71,7 @@ export default function StorageBackendCard() {
 
   const { data, isLoading, error } = useQuery<StorageConfig>({
     queryKey: ['storage-config'],
-    queryFn: () => apiJSON<StorageConfig>('/storage/config'),
+    queryFn: () => apiJSON<StorageConfig>('/object-store/config'),
   });
 
   useEffect(() => {
@@ -94,7 +94,7 @@ export default function StorageBackendCard() {
     setConnecting(true);
     try {
       const res = await apiJSON<{ authorize_url: string }>(
-        '/storage/google/start', { method: 'POST' },
+        '/object-store/google/start', { method: 'POST' },
       );
       window.location.href = res.authorize_url;
     } catch (e) {
@@ -112,7 +112,7 @@ export default function StorageBackendCard() {
     )) return;
     setDisconnecting(true);
     try {
-      await apiJSON('/storage/google/disconnect', { method: 'POST' });
+      await apiJSON('/object-store/google/disconnect', { method: 'POST' });
       toast.success(t('storage.disconnect_success'));
       qc.invalidateQueries({ queryKey: ['storage-config'] });
       qc.invalidateQueries({ queryKey: ['storage-health'] });
@@ -126,7 +126,7 @@ export default function StorageBackendCard() {
   const handleSwitch = async (backend: Backend) => {
     setSwitching(backend);
     try {
-      await apiJSON('/storage/backend', {
+      await apiJSON('/object-store/backend', {
         method: 'POST',
         body: { backend },
       });

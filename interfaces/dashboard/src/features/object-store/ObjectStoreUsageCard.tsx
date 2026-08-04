@@ -14,7 +14,7 @@ import { InfoTip } from '../../components/tooltip';
  * What this account is actually STORING — the answer the page could not
  * give before.
  *
- * ``/storage/health`` reports ``quota.used_bytes`` as the pending-sync
+ * ``/object-store/health`` reports ``quota.used_bytes`` as the pending-sync
  * footprint, and the file table lists sync-QUEUE rows.  Both are ~0 once
  * the queue drains, so an account with 793 files and 142 MB on disk saw
  * zeroes and an empty table — which reads as "storage is broken", not
@@ -76,7 +76,7 @@ const KIND_LABEL: Record<string, string> = {
   'avatars':         'Avatars',
 };
 
-export default function StorageUsageCard() {
+export default function ObjectStoreUsageCard() {
   const qc = useQueryClient();
   const [reviewing, setReviewing] = useState<PurgeResponse | null>(null);
   const [busy, setBusy] = useState(false);
@@ -84,7 +84,7 @@ export default function StorageUsageCard() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['storage', 'usage'],
-    queryFn: () => apiJSON<UsageResponse>('/storage/usage'),
+    queryFn: () => apiJSON<UsageResponse>('/object-store/usage'),
   });
 
   // Step 1 of 2: a DRY RUN, which the server enforces by defaulting
@@ -94,7 +94,7 @@ export default function StorageUsageCard() {
     setError('');
     setBusy(true);
     try {
-      setReviewing(await apiJSON<PurgeResponse>('/storage/orphans/purge', { method: 'POST' }));
+      setReviewing(await apiJSON<PurgeResponse>('/object-store/orphans/purge', { method: 'POST' }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not scan for orphaned files');
     } finally {
@@ -106,7 +106,7 @@ export default function StorageUsageCard() {
     setError('');
     setBusy(true);
     try {
-      await apiJSON<PurgeResponse>('/storage/orphans/purge?confirm=true', { method: 'POST' });
+      await apiJSON<PurgeResponse>('/object-store/orphans/purge?confirm=true', { method: 'POST' });
       setReviewing(null);
       qc.invalidateQueries({ queryKey: ['storage'] });
     } catch (e) {

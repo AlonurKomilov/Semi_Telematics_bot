@@ -64,7 +64,7 @@ function formatTs(iso: string | null, tz?: string): string {
   return formatDate(iso, { timeZone: tz });
 }
 
-export default function StorageFileTable() {
+export default function ObjectStoreFileTable() {
   const { t } = useTranslation();
   const tz = useTimezone();
   const qc = useQueryClient();
@@ -76,14 +76,14 @@ export default function StorageFileTable() {
   // render a backend-aware empty state without firing its own /health.
   const { data: health } = useQuery<HealthResponse>({
     queryKey: ['storage-health'],
-    queryFn: () => apiJSON<HealthResponse>('/storage/health'),
+    queryFn: () => apiJSON<HealthResponse>('/object-store/health'),
     refetchInterval: POLL_MS,
     placeholderData: (prev) => prev,
   });
 
   const { data, isLoading } = useQuery<FilesResponse>({
     queryKey: ['storage-files', filter],
-    queryFn: () => apiJSON<FilesResponse>(`/storage/files?only=${filter}&limit=200`),
+    queryFn: () => apiJSON<FilesResponse>(`/object-store/files?only=${filter}&limit=200`),
     refetchInterval: POLL_MS,
     placeholderData: (prev) => prev,
   });
@@ -96,7 +96,7 @@ export default function StorageFileTable() {
   const retryOne = async (queueId: number) => {
     setRetrying(prev => new Set(prev).add(queueId));
     try {
-      await apiJSON(`/storage/files/${queueId}/retry`, { method: 'POST' });
+      await apiJSON(`/object-store/files/${queueId}/retry`, { method: 'POST' });
       toast.success(t('storage.files.retry_queued'));
       refresh();
     } catch (e) {
@@ -110,7 +110,7 @@ export default function StorageFileTable() {
     setBulkRetrying(true);
     try {
       const res = await apiJSON<{ retried: number }>(
-        `/storage/files/retry-stuck`, { method: 'POST' },
+        `/object-store/files/retry-stuck`, { method: 'POST' },
       );
       toast.success(t('storage.files.bulk_retry_done', { count: res.retried }));
       refresh();

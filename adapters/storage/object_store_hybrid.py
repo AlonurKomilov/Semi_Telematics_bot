@@ -7,7 +7,7 @@ long-term retention.  Concrete behaviour:
 
   * **Writes** go straight to local disk (always works, fast, never
     blocks the driver on a slow Drive call).  ``track_for_sync`` then
-    drops a row into ``storage_sync_queue`` — the durable outbox the
+    drops a row into ``object_store_sync_queue`` — the durable outbox the
     Phase 3 worker drains in the background.
   * **Reads** check disk first (where freshly-written + not-yet-synced
     files live).  After the worker successfully uploads to Drive and
@@ -15,7 +15,7 @@ long-term retention.  Concrete behaviour:
     Drive backend.  The caller never sees the tier transition.
 
 The whole thing is just a composition of the two existing stores plus
-the outbox machinery from ``StorageSyncMixin``.  No new transport
+the outbox machinery from ``ObjectStoreSyncMixin``.  No new transport
 code; no new protocol — `HybridObjectStore` satisfies the same
 ``ObjectStore`` Protocol that ``DiskObjectStore`` and
 ``GDriveObjectStore`` do, so every existing caller (work orders, PTI

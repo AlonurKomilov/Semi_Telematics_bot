@@ -94,7 +94,7 @@ from .scorecard import ScorecardMixin
 from .warehouse import WarehouseMixin
 from .driver_pay import DriverPayMixin
 from .coaching import CoachingMixin
-from .storage_sync import StorageSyncMixin
+from .object_store_sync import ObjectStoreSyncMixin
 from .ai_chat import AIChatHistoryMixin
 from .ai_actions import AIActionProposalsMixin
 from .notification_prefs import NotificationPrefsMixin
@@ -166,7 +166,7 @@ class Database(
     WarehouseMixin,
     DriverPayMixin,
     CoachingMixin,
-    StorageSyncMixin,
+    ObjectStoreSyncMixin,
     AIChatHistoryMixin,
     AIActionProposalsMixin,
     NotificationPrefsMixin,

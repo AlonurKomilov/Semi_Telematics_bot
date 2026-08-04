@@ -169,12 +169,12 @@ NOT_REFERENCES: dict[str, str] = {
     "driver_documents.doc_type": "an enum (cdl / medical), not a path",
     "driver_documents.file_name": "display name only; the path is bucket+object_key",
     "knowledge_base.media_type": "a MIME type",
-    "storage_sync_queue.local_path": (
+    "object_store_sync_queue.local_path": (
         "the sync queue's own bookkeeping — but see orphans.py: a file "
         "AWAITING upload must never be reaped, so the queue is consulted "
         "separately rather than treated as a feature reference"
     ),
-    "storage_sync_queue.filename": "queue bookkeeping (see local_path)",
+    "object_store_sync_queue.filename": "queue bookkeeping (see local_path)",
     "driver_inspections.driver_signature": "inline signature payload, not a stored file",
     "driver_inspections.reviewer_signature": "inline signature payload, not a stored file",
     "scan_log.signature": "a request signature/hash, not a file",

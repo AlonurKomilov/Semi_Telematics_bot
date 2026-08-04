@@ -41,11 +41,11 @@ function quotaTone(pct: number): Tone {
   return 'ok';
 }
 
-export default function StorageHealthCard() {
+export default function ObjectStoreHealthCard() {
   const { t } = useTranslation();
   const { data, isLoading } = useQuery<HealthResponse>({
     queryKey: ['storage-health'],
-    queryFn: () => apiJSON<HealthResponse>('/storage/health'),
+    queryFn: () => apiJSON<HealthResponse>('/object-store/health'),
     refetchInterval: POLL_MS,
     placeholderData: (prev) => prev,
   });

@@ -13,7 +13,7 @@ those backends is ``adapters/storage/object_store.py``.
 FROZEN, and deliberately NOT renamed with the package: the persisted
 settings keys (``storage.backend``, ``storage.gdrive.*`` — live rows in
 ``account_settings``; renaming them would silently revert every tenant
-to disk), the ``storage_sync_queue`` table, and the ``/storage/*`` API
+to disk), the ``object_store_sync_queue`` table, and the ``/storage/*`` API
 routes the dashboard calls.  Code names are ours to fix; wire and data
 contracts are not.
 """

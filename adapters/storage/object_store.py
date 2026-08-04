@@ -456,10 +456,10 @@ _per_account_stores: dict[int, ObjectStore] = {}
 
 # Convention: settings keys under ``account_settings`` for the storage
 # backend choice.  Module-level constants so callers stay typo-safe.
-STORAGE_BACKEND_KEY = "storage.backend"           # "disk" | "gdrive"
-STORAGE_GDRIVE_REFRESH_TOKEN = "storage.gdrive.refresh_token"  # encrypted
-STORAGE_GDRIVE_ROOT_FOLDER_ID = "storage.gdrive.root_folder_id"
-STORAGE_GDRIVE_USER_EMAIL = "storage.gdrive.user_email"  # for display only
+OBJECT_STORE_BACKEND_KEY = "object_store.backend"           # "disk" | "gdrive"
+OBJECT_STORE_GDRIVE_REFRESH_TOKEN = "object_store.gdrive.refresh_token"  # encrypted
+OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID = "object_store.gdrive.root_folder_id"
+OBJECT_STORE_GDRIVE_USER_EMAIL = "object_store.gdrive.user_email"  # for display only
 
 
 def get_object_store() -> ObjectStore:
@@ -508,7 +508,7 @@ async def get_object_store_for_account(account_id: int, tenant_db) -> ObjectStor
         return cached
 
     backend = (
-        await tenant_db.get_account_setting(account_id, STORAGE_BACKEND_KEY, "disk")
+        await tenant_db.get_account_setting(account_id, OBJECT_STORE_BACKEND_KEY, "disk")
     ) or "disk"
     backend = backend.lower()
 

@@ -267,7 +267,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         minute=25, args=[app], id="pti_fleet_digest",
         max_instances=1, coalesce=True,
     )
-    # Hybrid-storage sync: drain ``storage_sync_queue`` to each
+    # Hybrid-storage sync: drain ``object_store_sync_queue`` to each
     # account's cloud backend (Drive).  60s interval is the right
     # cadence — files land in cloud within a minute of upload in the
     # happy path, and a per-row lease ensures a crashed worker's rows

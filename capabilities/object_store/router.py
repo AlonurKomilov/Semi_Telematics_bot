@@ -40,15 +40,22 @@ from pydantic import BaseModel, Field
 
 from adapters.storage.object_store import (
     invalidate_object_store_for_account,
-    STORAGE_BACKEND_KEY, STORAGE_GDRIVE_REFRESH_TOKEN,
-    STORAGE_GDRIVE_ROOT_FOLDER_ID, STORAGE_GDRIVE_USER_EMAIL,
+    OBJECT_STORE_BACKEND_KEY, OBJECT_STORE_GDRIVE_REFRESH_TOKEN,
+    OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID, OBJECT_STORE_GDRIVE_USER_EMAIL,
 )
 from infra.crypto import encrypt
 from interfaces.api.deps import get_current_user, get_tenant_db, require_permission, resolve_user_id
 from capabilities.activity_trail import record_simple
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/storage", tags=["storage"])
+# Canonical prefix is /object-store; /storage stays mounted as a
+# DEPRECATED ALIAS for one release so a dashboard bundle already in a
+# user's browser keeps working across the deploy (the same courtesy the
+# parts-catalog move got when it graduated out of /work-orders).
+# Remove the alias — and this comment — in the release after.
+router = APIRouter(prefix="/object-store", tags=["object-store"])
+deprecated_router = APIRouter(prefix="/storage", tags=["object-store"],
+                              include_in_schema=False)
 
 
 # ── OAuth config (env-driven so deployments differ) ─────────────────────────
@@ -101,6 +108,7 @@ def _gc_pending_oauth() -> None:
 # ── GET /storage/config ──────────────────────────────────────────────────────
 
 
+@deprecated_router.get("/config")
 @router.get("/config")
 async def get_storage_config(
     user: dict = Depends(get_current_user),
@@ -126,16 +134,16 @@ async def get_storage_config(
       erroring out — the rest of the response stays usable.
     """
     backend = await tenant_db.get_account_setting(
-        user["account_id"], STORAGE_BACKEND_KEY, "disk",
+        user["account_id"], OBJECT_STORE_BACKEND_KEY, "disk",
     ) or "disk"
     has_token = bool(await tenant_db.get_account_setting(
-        user["account_id"], STORAGE_GDRIVE_REFRESH_TOKEN, "",
+        user["account_id"], OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "",
     ))
     user_email = await tenant_db.get_account_setting(
-        user["account_id"], STORAGE_GDRIVE_USER_EMAIL, "",
+        user["account_id"], OBJECT_STORE_GDRIVE_USER_EMAIL, "",
     )
     root_folder_id = await tenant_db.get_account_setting(
-        user["account_id"], STORAGE_GDRIVE_ROOT_FOLDER_ID, "",
+        user["account_id"], OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID, "",
     )
 
     # Our own attachment-byte tally — runs for every account because
@@ -153,7 +161,7 @@ async def get_storage_config(
     drive_quota: Optional[dict] = None
     if backend == "gdrive" and has_token:
         encrypted = await tenant_db.get_account_setting(
-            user["account_id"], STORAGE_GDRIVE_REFRESH_TOKEN, "",
+            user["account_id"], OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "",
         )
         if encrypted:
             from infra.crypto import decrypt
@@ -188,6 +196,7 @@ class BackendSwitchRequest(BaseModel):
     backend: str = Field(..., description="One of: disk, gdrive, hybrid")
 
 
+@deprecated_router.post("/backend")
 @router.post("/backend")
 async def switch_storage_backend(
     body: BackendSwitchRequest,
@@ -214,7 +223,7 @@ async def switch_storage_backend(
 
     if backend in ("gdrive", "hybrid"):
         has_token = bool(await tenant_db.get_account_setting(
-            account_id, STORAGE_GDRIVE_REFRESH_TOKEN, "",
+            account_id, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "",
         ))
         if not has_token:
             raise HTTPException(
@@ -234,6 +243,7 @@ async def switch_storage_backend(
     return {"backend": backend}
 
 
+@deprecated_router.get("/health")
 @router.get("/health")
 async def get_storage_health(
     user: dict = Depends(get_current_user),
@@ -243,7 +253,7 @@ async def get_storage_health(
 
     Drives the dashboard's storage widget AND is scrape-friendly for
     Prometheus once we add an exporter (Phase 6 / ops).  Reads cheap
-    aggregates from the existing storage_sync_queue + media tables —
+    aggregates from the existing object_store_sync_queue + media tables —
     no Google API call here, so safe to hit frequently.
 
     Response shape (stable for the dashboard contract):
@@ -265,13 +275,13 @@ async def get_storage_health(
     """
     account_id = int(user["account_id"])
     backend = (await tenant_db.get_account_setting(
-        account_id, STORAGE_BACKEND_KEY, "disk",
+        account_id, OBJECT_STORE_BACKEND_KEY, "disk",
     )) or "disk"
     has_token = bool(await tenant_db.get_account_setting(
-        account_id, STORAGE_GDRIVE_REFRESH_TOKEN, "",
+        account_id, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "",
     ))
     user_email = await tenant_db.get_account_setting(
-        account_id, STORAGE_GDRIVE_USER_EMAIL, "",
+        account_id, OBJECT_STORE_GDRIVE_USER_EMAIL, "",
     )
 
     used = await tenant_db.get_account_local_bytes(account_id)
@@ -305,6 +315,7 @@ async def get_storage_health(
     }
 
 
+@deprecated_router.get("/files")
 @router.get("/files")
 async def list_storage_files(
     only: str = "all",
@@ -358,6 +369,7 @@ async def list_storage_files(
     return {"items": out, "count": len(out)}
 
 
+@deprecated_router.post("/files/{queue_id}/retry")
 @router.post("/files/{queue_id}/retry")
 async def retry_storage_file(
     queue_id: int,
@@ -370,7 +382,7 @@ async def retry_storage_file(
     # Verify the row belongs to this account before letting them
     # touch it — defence-in-depth, the helper itself is account-blind.
     cur = await tenant_db._db.execute(
-        "SELECT account_id FROM storage_sync_queue WHERE id = ?",
+        "SELECT account_id FROM object_store_sync_queue WHERE id = ?",
         (queue_id,),
     )
     row = await cur.fetchone()
@@ -385,6 +397,7 @@ async def retry_storage_file(
     return {"retried": True}
 
 
+@deprecated_router.post("/files/retry-stuck")
 @router.post("/files/retry-stuck")
 async def retry_all_stuck_files(
     user: dict = Depends(require_permission("can_manage_storage")),
@@ -440,6 +453,7 @@ class OAuthStartResponse(BaseModel):
     authorize_url: str = Field(..., description="Send the browser here to begin consent")
 
 
+@deprecated_router.post("/google/start", response_model=OAuthStartResponse)
 @router.post("/google/start", response_model=OAuthStartResponse)
 async def start_google_oauth(
     user: dict = Depends(require_permission("can_manage_storage")),
@@ -499,6 +513,7 @@ async def start_google_oauth(
 # ── GET /storage/google/callback ─────────────────────────────────────────────
 
 
+@deprecated_router.get("/google/callback")
 @router.get("/google/callback")
 async def google_oauth_callback(
     code: str = Query(...),
@@ -619,10 +634,10 @@ async def google_oauth_callback(
         )
 
     encrypted_token = encrypt(creds.refresh_token)
-    await tenant_db.set_account_setting(account_id, STORAGE_GDRIVE_REFRESH_TOKEN, encrypted_token)
-    await tenant_db.set_account_setting(account_id, STORAGE_GDRIVE_ROOT_FOLDER_ID, root_folder_id)
-    await tenant_db.set_account_setting(account_id, STORAGE_GDRIVE_USER_EMAIL, user_email or "")
-    await tenant_db.set_account_setting(account_id, STORAGE_BACKEND_KEY, "gdrive")
+    await tenant_db.set_account_setting(account_id, OBJECT_STORE_GDRIVE_REFRESH_TOKEN, encrypted_token)
+    await tenant_db.set_account_setting(account_id, OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID, root_folder_id)
+    await tenant_db.set_account_setting(account_id, OBJECT_STORE_GDRIVE_USER_EMAIL, user_email or "")
+    await tenant_db.set_account_setting(account_id, OBJECT_STORE_BACKEND_KEY, "gdrive")
 
     invalidate_object_store_for_account(account_id)
     # OAuth callback has no request user — resolve the initiator from
@@ -640,6 +655,7 @@ async def google_oauth_callback(
 # ── POST /storage/google/disconnect ──────────────────────────────────────────
 
 
+@deprecated_router.post("/google/disconnect")
 @router.post("/google/disconnect")
 async def disconnect_google(
     user: dict = Depends(require_permission("can_manage_storage")),
@@ -656,10 +672,10 @@ async def disconnect_google(
     have permission to delete them without ``drive`` scope and even
     then we shouldn't auto-purge).  New uploads go to disk.
     """
-    await tenant_db.set_account_setting(user["account_id"], STORAGE_BACKEND_KEY, "disk")
-    await tenant_db.set_account_setting(user["account_id"], STORAGE_GDRIVE_REFRESH_TOKEN, "")
-    await tenant_db.set_account_setting(user["account_id"], STORAGE_GDRIVE_ROOT_FOLDER_ID, "")
-    await tenant_db.set_account_setting(user["account_id"], STORAGE_GDRIVE_USER_EMAIL, "")
+    await tenant_db.set_account_setting(user["account_id"], OBJECT_STORE_BACKEND_KEY, "disk")
+    await tenant_db.set_account_setting(user["account_id"], OBJECT_STORE_GDRIVE_REFRESH_TOKEN, "")
+    await tenant_db.set_account_setting(user["account_id"], OBJECT_STORE_GDRIVE_ROOT_FOLDER_ID, "")
+    await tenant_db.set_account_setting(user["account_id"], OBJECT_STORE_GDRIVE_USER_EMAIL, "")
     invalidate_object_store_for_account(user["account_id"])
     await record_simple(
         tenant_db, user["account_id"], await resolve_user_id(user),
@@ -804,7 +820,8 @@ class StorageQuotaUpdate(BaseModel):
     quota_bytes: int = Field(..., ge=0)
 
 
-@admin_router.get("/storage/quota")
+@admin_router.get("/object-store/quota")
+@admin_router.get("/storage/quota", include_in_schema=False)
 async def get_storage_quota(
     user: dict = Depends(require_permission("can_manage_storage")),
     tenant_db=Depends(get_tenant_db),
@@ -818,7 +835,8 @@ async def get_storage_quota(
     }
 
 
-@admin_router.put("/storage/quota")
+@admin_router.put("/object-store/quota")
+@admin_router.put("/storage/quota", include_in_schema=False)
 async def update_storage_quota(
     body: StorageQuotaUpdate,
     user: dict = Depends(require_permission("can_manage_storage")),
@@ -846,6 +864,7 @@ async def update_storage_quota(
 # ── Orphan files (Phase 2: report, then delete on explicit confirm) ──
 
 
+@deprecated_router.get("/orphans")
 @router.get("/orphans")
 async def scan_orphans(
     grace_days: int = Query(7, ge=1, le=90),
@@ -873,6 +892,7 @@ async def scan_orphans(
     }
 
 
+@deprecated_router.post("/orphans/purge")
 @router.post("/orphans/purge")
 async def purge_orphans(
     confirm: bool = Query(False),
@@ -912,6 +932,7 @@ async def purge_orphans(
     }
 
 
+@deprecated_router.get("/usage")
 @router.get("/usage")
 async def storage_usage(
     grace_days: int = Query(7, ge=1, le=90),
