@@ -19,8 +19,13 @@ leading content (expand toggle, row-number, …) that follows whichever column
 is currently leftmost. The narrow exceptions where raw `<table>` is still
 correct: (a) permission / config **matrices** (form UI, not a list), (b)
 **form-embedded** line-item editors (Work-order parts), (c) **headerless
-layout tables** used as form scaffolding (Forum routing rows). If it's a
-list of records the operator would want to sort or filter, it's DataGrid.
+layout tables** used as form scaffolding (Forum routing rows), (d)
+**printable documents** — a settlement statement or invoice whose target
+is paper (`features/driver_pay/StatementDrawer.tsx`). All four are the
+same case: not a list of records. A grid would bring a toolbar, search,
+pagination and column menus to a document that has to render clean on a
+page, and every one of them would need `print:hidden`. If it's a list of
+records the operator would want to sort or filter, it's DataGrid.
 
 ## Declare, don't implement — the contract that governs everything below
 

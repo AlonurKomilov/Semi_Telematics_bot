@@ -123,7 +123,11 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   **Modals are never hand-rolled**: `<Sheet>` for a side drawer,
   `<Dialog>` for a centred one — a bare `fixed inset-0 bg-black/…`
   backdrop has no focus trap, no Escape, no `aria-modal` and no
-  background scroll lock, and is an ESLint error. Full rules, the
+  background scroll lock. ESLint flags it — as a **warning**, not an
+  error, because 14 hand-rolled backdrops still exist and erroring would
+  break the build before they're converted; it is one line in a
+  200-warning pile, so treat it as a to-do list rather than a guard.
+  Full rules, the
   refusal list, and what the module deliberately does NOT absorb:
   [components/scrolling/CLAUDE.md](src/components/scrolling/CLAUDE.md).
 - **Who-did-what = `components/activity-trail`, never "history".** The

@@ -134,6 +134,15 @@ export default function StatementDrawer({
   const selectCls = 'bg-muted border border-input rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring';
 
   return (
+    // ⚠️ Hand-rolled backdrop, and ESLint says so.  NOT an oversight and
+    // not yet fixable: <Sheet> PORTALS its content to the end of <body>,
+    // and this drawer's whole purpose is ``window.print()``.  Nothing in
+    // the app hides the page BEHIND the drawer when printing (there is no
+    // global ``@media print`` block — only per-element ``print:*``
+    // utilities), so moving the content into a portal changes what lands
+    // on paper in a way no test here can catch.  Converting this one needs
+    // a real print check first, and probably a global print stylesheet.
+    // eslint-disable-next-line no-restricted-syntax -- see above; blocked on print verification
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
       <div
         className="w-full max-w-lg overflow-y-auto bg-card border-l border-border print:max-w-none print:border-0"
@@ -182,6 +191,13 @@ export default function StatementDrawer({
           {loads.length === 0 ? (
             <p className="mb-4 text-sm text-muted-foreground">No loads in this period.</p>
           ) : (
+            /* Raw <table>, deliberately — one of the four documented
+               exceptions to "Tables = DataGrid" (datagrid/CLAUDE.md):
+               this is a printable DOCUMENT, not a record list.  A grid
+               would bring a toolbar, search, pagination and column menus
+               to something whose target is paper, and every one of them
+               would need ``print:hidden``.  The same reasoning covers the
+               two sibling tables below. */
             <table className="mb-4 w-full text-xs">
               <thead>
                 <tr className="border-b border-border text-muted-foreground">
