@@ -244,6 +244,43 @@ swipe**. That is not hypothetical — it is the exact bug that shipped when
 the bridge lived inside `useScrollMetrics` and both scrollbars installed
 it.
 
+## The layering chain — and what enforces it
+
+```
+components/scrolling   owns HOW a surface scrolls
+       ↓
+components/datagrid    consumes it, and owns how a TABLE scrolls
+       ↓
+features/*             consume DataGrid — and reach scrolling directly
+                       ONLY for their own panes
+```
+
+The chain is the point. A change to table scrolling is made **once** and
+travels `scrolling → DataGrid → all 40 grids`. A feature that wires the
+table machinery itself steps out of that line, so the next change reaches
+every grid except that one — and nothing says so.
+
+Audited: **zero violations.** `components/scrolling` is imported by
+`DataGrid`, `PivotView`, `DrillDialog` (all inside the datagrid family)
+and by exactly two features — `Chat.tsx` and `NotificationsPanel.tsx`,
+both taking only `ScrollRegion`, neither containing a table. Every
+consumer uses the barrel. Nothing in `scrolling` imports `datagrid`.
+
+Three bans in `eslint.config.js`, and only three, because only these are
+ALWAYS wrong:
+
+| Banned | Why |
+|---|---|
+| `features/**` deep-importing `components/scrolling/<file>` | the barrel is what lets this module move things without a sweep |
+| `features/**` importing `ScrollbarH/V`, `useOverflow`, `useFittedHeight`, `useWheelToHorizontal`, `HIDE_NATIVE_SCROLLBAR` | table machinery belongs to whoever PAINTS a table; needing it in a feature means a grid is being hand-rolled |
+| `components/scrolling/**` importing `datagrid` | the bottom of the chain must not know about the top |
+
+⚠️ `ScrollRegion` / `useScrollRegion` are deliberately **left
+unrestricted** for features. A feature's own drawer or list pane is
+exactly what they are for, and two features use them correctly today.
+Same principle as the rejected raw-`overflow-*` ban below: restrict the
+thing that is always wrong, never the primitive that is usually right.
+
 ## Enforcement
 
 A folder people *can* use is a suggestion. This codebase makes a thing an

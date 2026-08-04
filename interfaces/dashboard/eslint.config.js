@@ -111,4 +111,65 @@ export default [
       'prefer-const': 'warn',
     },
   },
+
+  // ── The layering chain: scrolling → datagrid → features ───────────
+  //
+  //   components/scrolling   owns HOW a surface scrolls
+  //   components/datagrid    consumes it, and owns how a TABLE scrolls
+  //   features/*             consume DataGrid — and reach scrolling
+  //                          directly ONLY for their own panes
+  //
+  // The point of the chain is that a change to table scrolling is made
+  // in ONE place and travels: scrolling → DataGrid → all 40 grids. A
+  // feature that wires table machinery itself steps outside that, so
+  // the next change reaches every grid except that one — silently.
+  //
+  // Only the three things that are ALWAYS wrong are banned here. The
+  // general-purpose region contract (ScrollRegion / useScrollRegion) is
+  // deliberately NOT restricted: a feature's own drawer or list pane is
+  // exactly what it is for, and Chat + NotificationsPanel use it
+  // correctly today. Banning the primitive that is usually right is how
+  // a rule gets disabled wholesale — see scrolling/CLAUDE.md.
+  {
+    files: ['src/features/**/*.{ts,tsx}', 'src/pages/**/*.{ts,tsx}', 'src/shells/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            group: ['**/components/scrolling/*'],
+            message:
+              'Import from the components/scrolling barrel, not a file inside it. '
+              + 'The barrel is what lets the module move things around without a sweep.',
+          },
+          {
+            group: ['**/components/scrolling'],
+            importNames: [
+              'ScrollbarH', 'ScrollbarV', 'useOverflow',
+              'useWheelToHorizontal', 'useFittedHeight', 'HIDE_NATIVE_SCROLLBAR',
+            ],
+            message:
+              'Table machinery — it belongs to whoever PAINTS a table, which is '
+              + 'components/datagrid, not a feature. Needing it here means a grid is '
+              + 'being hand-rolled: use <DataGrid>, and the behaviour arrives through it. '
+              + 'ScrollRegion / useScrollRegion are unrestricted — those are for your own panes.',
+          },
+        ],
+      }],
+    },
+  },
+
+  // No cycle: the bottom of the chain must not know about the top.
+  {
+    files: ['src/components/scrolling/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['**/datagrid', '**/datagrid/**'],
+          message:
+            'components/scrolling sits BELOW datagrid and must not import it. '
+            + 'If something is needed in both, it belongs in scrolling and datagrid takes it.',
+        }],
+      }],
+    },
+  },
 ];
