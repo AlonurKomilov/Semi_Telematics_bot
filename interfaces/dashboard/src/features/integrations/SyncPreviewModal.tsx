@@ -12,6 +12,9 @@
 import { Loader2, Plus, ArrowUpCircle, AlertTriangle, RefreshCw, X } from 'lucide-react';
 import { Button } from '../../components/ui/button';
 import { toneClasses } from '../../lib/status';
+import {
+  Dialog, DialogContent, DialogTitle, DialogDescription,
+} from '../../components/ui/dialog';
 import type { DatatruckPreviewStatus } from './types';
 
 interface Props {
@@ -51,21 +54,29 @@ export default function SyncPreviewModal({
   const nothingToDo = actionable === 0;
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-start justify-center pt-[10vh] px-4 bg-black/40 backdrop-blur-sm"
-      onClick={applying ? undefined : onClose}
+    // <Dialog> — focus trap, Escape, aria-modal and scroll lock, none of
+    // which the hand-rolled overlay had.  ``z-[60]`` is kept on the
+    // CONTENT deliberately: this modal can be opened from above another
+    // dialog, and the z-ladder reserves 60 for that (design.md §7).
+    //
+    // Dismissal stays blocked while applying — a half-written sync must
+    // not be closable by Escape or a stray backdrop click, which is why
+    // onOpenChange guards on ``applying`` exactly as the old onClick did.
+    <Dialog
+      open
+      onOpenChange={(o) => { if (!o && !applying) onClose(); }}
     >
-      <div
-        className="w-full max-w-2xl bg-card border border-border rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
-        onClick={(e) => e.stopPropagation()}
+      <DialogContent
+        className="z-[60] w-full max-w-2xl overflow-hidden flex flex-col max-h-[80vh] p-0"
+        showCloseButton={false}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div>
-            <h2 className="text-base font-semibold">Review {label} sync</h2>
-            <p className="text-2xs text-muted-foreground">
+            <DialogTitle className="text-base font-semibold">Review {label} sync</DialogTitle>
+            <DialogDescription className="text-2xs text-muted-foreground">
               {(preview.fetched ?? 0).toLocaleString()} fetched from Datatruck ·
               nothing is written until you accept
-            </p>
+            </DialogDescription>
           </div>
           <Button type="button" variant="ghost" size="icon" onClick={onClose}
                   disabled={applying} aria-label="Close">
@@ -198,8 +209,8 @@ export default function SyncPreviewModal({
             {applying ? 'Applying…' : `Accept & apply${nothingToDo ? '' : ` (${actionable})`}`}
           </Button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useRoleView } from '../../context/RoleViewContext';
 import { ROUTE_ENTRIES, type RouteEntry } from './routeRegistry';
 import { shortcut } from '../../utils/platform';
+import { Dialog, DialogContent, DialogTitle } from '../ui/dialog';
 
 interface CommandPaletteProps {
   open: boolean;
@@ -116,14 +117,24 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-[60] flex items-start justify-center pt-[15vh] px-4 bg-black/40 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="w-full max-w-xl bg-card border border-border rounded-xl shadow-2xl overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+    // <Dialog> for the focus trap, aria-modal and background scroll lock
+    // the hand-rolled overlay never had.  ``z-[60]`` stays on the content:
+    // the palette is reachable from ON TOP of a dialog, and the z-ladder
+    // reserves 60 for exactly that (design.md §7).
+    //
+    // ⚠️ Two focus owners, deliberately reconciled rather than fought:
+    // the palette focuses its input on open, and the Dialog's own initial
+    // focus lands on the first focusable descendant — which IS that
+    // input, since it is the first control in the tree.  They agree, so
+    // neither is removed.  Escape is likewise handled twice (the input's
+    // onKeyDown and the Dialog) and both call the same onClose, so a
+    // double-fire is a no-op.
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent
+        className="z-[60] w-full max-w-xl overflow-hidden p-0 gap-0 top-[15vh] translate-y-0"
+        showCloseButton={false}
       >
+        <DialogTitle className="sr-only">Command palette</DialogTitle>
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
           <Search size={16} className="text-muted-foreground shrink-0" />
           <input
@@ -196,7 +207,7 @@ export default function CommandPalette({ open, onClose }: CommandPaletteProps) {
             anywhere
           </span>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

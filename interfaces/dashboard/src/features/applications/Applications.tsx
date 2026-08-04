@@ -1,5 +1,4 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Building2, Pencil, Trash2, Clock3, Minus, Lock } from 'lucide-react';
@@ -25,6 +24,9 @@ import { ContextMenu, type MenuAction } from '../../components/ui/context-menu';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../../components/ui/select';
+import {
+  Sheet, SheetContent, SheetBody, SheetTitle, SheetClose,
+} from '../../components/ui/sheet';
 import type { AnyColumn } from '../../types';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApplicationsQuery, type AppRow } from './useApplications';
@@ -1401,21 +1403,23 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
     } finally { setBusy(false); }
   };
 
-  // Portaled to <body>: rendered inline the drawer sits inside the shell's
-  // rounded content card, and any ancestor that forms a CSS containing
-  // block (transform/filter/contain) re-anchors `fixed` to the card — the
-  // drawer then starts below the topbar, inherits the card's rounded
-  // corner, and the scrim never dims the chrome.  From <body> it always
-  // spans the real viewport, like CommandPalette / MaintenanceOverlay.
-  return createPortal(
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-xl h-full bg-card border-l border-border overflow-y-auto p-5 space-y-4">
+  // <Sheet> — which also RETIRES the manual portal this used to need.
+  // The old note explained it well: rendered inline, a `fixed` overlay
+  // gets re-anchored to the shell's rounded content card by any ancestor
+  // forming a containing block (transform/filter/contain), so the drawer
+  // started below the topbar and the scrim never dimmed the chrome.
+  // SheetContent portals itself, so that whole class of bug is the
+  // primitive's problem now — along with the focus trap, Escape,
+  // aria-modal and scroll lock the hand-rolled version never had.
+  return (
+    <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent side="right" size="xl" aria-label="Application detail">
+        <SheetBody label="Application detail" className="p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold">
+          <SheetTitle className="text-lg font-semibold">
             {app ? `${app.first_name} ${app.last_name}` : 'Loading…'}
             {app && <span className="ml-2 font-mono text-xs text-muted-foreground">{app.reference}</span>}
-          </h2>
+          </SheetTitle>
           <div className="flex items-center gap-1">
             {app && (
               <button onClick={downloadPacket} title="Download application packet (PDF)"
@@ -1423,7 +1427,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
                 <Download size={14} /> Download packet (PDF)
               </button>
             )}
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></button>
+            <SheetClose className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></SheetClose>
           </div>
         </div>
 
@@ -1576,9 +1580,9 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
             </div>
           </>
         )}
-      </div>
-    </div>,
-    document.body,
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }
 
