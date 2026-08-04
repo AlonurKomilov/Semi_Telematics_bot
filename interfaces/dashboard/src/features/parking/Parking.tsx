@@ -138,7 +138,6 @@ export default function Parking() {
           tableId="parking"
           columns={columns}
           data={rows as unknown as Record<string, unknown>[]}
-          fillHeight
           savedTabs
           searchKey={['vehicle_name', 'address']}
           searchPlaceholder="Search vehicle or address…"

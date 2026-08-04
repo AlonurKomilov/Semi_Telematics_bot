@@ -7,6 +7,7 @@
 // The REGION contract — what makes a scrolling div a proper scroll
 // region: focusable, named, overscroll-contained, and padded away from
 // whatever sticky chrome sits over it.
+export { useFittedHeight } from './fit';
 export { ScrollRegion, useScrollRegion } from './region';
 export type { ScrollRegionOptions } from './region';
 

@@ -101,7 +101,10 @@ def _j(raw: Any) -> Any:
         return None
 
 
-def build_manifest(app: dict, history: list[dict] | None = None) -> dict:
+def build_manifest(
+    app: dict, history: list[dict] | None = None,
+    protection: dict | None = None,
+) -> dict:
     """The machine-readable half — what makes the folder RE-IMPORTABLE.
 
     This is the portability guarantee: if the carrier ever leaves for
@@ -152,6 +155,10 @@ def build_manifest(app: dict, history: list[dict] | None = None) -> dict:
         },
         "pre_hire_checks": _j(app.get("vetting_json")),
         "history": history or [],
+        # Which passphrase era this folder belongs to.  Injected by the
+        # writer, which is the only layer that knows the account's
+        # passphrase state.
+        "protection": protection or {},
     }
 
 
@@ -300,6 +307,12 @@ def render_pdf(manifest: dict) -> bytes:
             styles["Normal"],
         ))
         story.append(Spacer(1, 6))
+        _prot = manifest.get("protection") or {}
+        story.append(Paragraph(
+            f"<b>{stamp_line(_prot.get('set_at', ''), _prot.get('set_by', ''), bool(_prot.get('is_default')))}</b>",
+            styles["Normal"],
+        ))
+        story.append(Spacer(1, 6))
         story.append(Paragraph(
             "The password is your organisation's DQF export passphrase. To "
             "look it up, sign in to 4truck and open <b>Workforce &rarr; "
@@ -330,9 +343,44 @@ def render_pdf(manifest: dict) -> bytes:
 # regenerating a sidecar can reuse the same passphrase; the carrier knows
 # it independently, which is the whole point — see render_protected_ssn.
 DQF_PASSPHRASE_KEY = "dqf.export_passphrase"
+# When it was last changed and by whom.  Stamped into the READABLE files,
+# not only the encrypted one — see stamp_line.
+DQF_PASSPHRASE_SET_AT_KEY = "dqf.passphrase_set_at"
+DQF_PASSPHRASE_SET_BY_KEY = "dqf.passphrase_set_by"
 
 
-def render_protected_ssn(app: dict, passphrase: str) -> bytes:
+def stamp_line(set_at: str = "", set_by: str = "", is_default: bool = False) -> str:
+    """"Protected on 6 July 2026 by Alex Kim" — which passphrase ERA a
+    file belongs to.
+
+    Owner's idea, with one correction that decides whether it works:
+    this has to appear in the files anyone can READ.  Putting it only
+    inside ssn-protected.pdf would mean needing the password to learn
+    which password to use, which is the problem it exists to solve.  So
+    it goes in README.txt and application.pdf — legible in a Drive
+    preview — and is repeated inside the protected file as confirmation
+    once opened.
+
+    Why it matters: after a rotation a carrier's storage holds files from
+    two eras that look identical.  This is the only way to tell, at a
+    glance, whether a given folder predates the change and therefore
+    still wants the old passphrase.
+    """
+    if is_default:
+        return (
+            "Protected by the default passphrase for your company "
+            "(no administrator has set one)."
+        )
+    if not set_at:
+        return "Protected by your organisation's DQF export passphrase."
+    when = str(set_at)[:10]
+    who = f" by {set_by}" if set_by else ""
+    return f"Protected by the passphrase set on {when}{who}."
+
+
+def render_protected_ssn(
+    app: dict, passphrase: str, protection: dict | None = None,
+) -> bytes:
     """A password-protected PDF holding the ONE field that must not sit
     readable in a shared folder.
 
@@ -397,7 +445,16 @@ def render_protected_ssn(app: dict, passphrase: str) -> bytes:
             ),
             Spacer(1, 12),
             Paragraph(f"<b>Social security number: {ssn}</b>", st["Normal"]),
-            Spacer(1, 16),
+            Spacer(1, 10),
+            Paragraph(
+                stamp_line(
+                    (protection or {}).get("set_at", ""),
+                    (protection or {}).get("set_by", ""),
+                    bool((protection or {}).get("is_default")),
+                ),
+                small,
+            ),
+            Spacer(1, 10),
             Paragraph(
                 "Required on the driver's employment application by 49 CFR "
                 "391.21(b)(2), and required in the driver qualification file "
@@ -432,6 +489,8 @@ WHAT IS IN THIS FOLDER
                      signature — together with the protected file below.
 
 OPENING documents/ssn-protected.pdf
+
+  {stamp}
 
   This applicant's Social Security Number is required on the employment
   application by 49 CFR 391.21(b)(2) and must be retained in this file
@@ -476,10 +535,15 @@ def render_readme(manifest: dict) -> bytes:
     name = " ".join(
         p for p in (a.get("first_name"), a.get("last_name")) if p
     ) or "Applicant"
+    prot = manifest.get("protection") or {}
     return README_TEMPLATE.format(
         name=name,
         reference=manifest.get("reference", ""),
         generated_at=manifest.get("generated_at", ""),
+        stamp=stamp_line(
+            prot.get("set_at", ""), prot.get("set_by", ""),
+            bool(prot.get("is_default")),
+        ),
     ).encode("utf-8")
 
 

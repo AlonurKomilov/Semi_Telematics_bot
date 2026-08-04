@@ -1,5 +1,5 @@
 /**
- * ``fillHeight`` — the grid owns a viewport instead of growing to fit.
+ * The grid owns a viewport instead of growing to fit its rows.
  *
  * Moving the scrolling from the PAGE into a div inside the card is a
  * layout change with two consequences that stay invisible until someone
@@ -67,6 +67,25 @@ vi.mock('../../preferences', async () => {
 
 import DataGrid from './DataGrid';
 
+/**
+ * Render inside a stubbed scroll region.
+ *
+ * The grid no longer takes a ``fillHeight`` prop — it measures the room
+ * left below itself inside its nearest scrolling ancestor.  jsdom does
+ * no layout, so the ancestor has to be built by hand: an inline
+ * ``overflow-y`` (which jsdom's getComputedStyle DOES resolve) and a
+ * stubbed ``clientHeight``.  Every rect is 0 in jsdom, so the grid's
+ * offset within the region computes as 0 and the whole ``clientHeight``
+ * reads as available — which is what we want to assert against.
+ */
+function renderIn(ui: React.ReactElement, room = 600) {
+  const region = document.createElement('div');
+  region.style.overflowY = 'auto';
+  Object.defineProperty(region, 'clientHeight', { value: room, configurable: true });
+  document.body.appendChild(region);
+  return render(ui, { container: region });
+}
+
 interface Row extends Record<string, unknown> { id: number; type: string; name: string }
 
 // More than one page at the default size, so paging is reachable.
@@ -97,16 +116,16 @@ function trackScroll(el: HTMLElement, initial = 0) {
 
 afterEach(cleanup);
 
-describe('fillHeight — the rows are a keyboard-reachable region', () => {
+describe('the rows are a keyboard-reachable region', () => {
   it('exposes the scroll container as a focusable, named region', () => {
-    render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
+    renderIn(<DataGrid columns={COLUMNS} data={ROWS} />);
     // Without tabIndex the div cannot take focus, so PageDown / arrows
     // never reach it and everything past the first screen becomes
     // mouse-only.  Assert the attribute itself — it IS the fix.
     expect(region().getAttribute('tabindex')).toBe('0');
   });
 
-  it('is a region on every grid, not only the fillHeight ones', () => {
+  it('is a region on every grid, not only the ones with a viewport', () => {
     // The container also scrolls under ``stickyHeader``, and a grid that
     // grows with the page still benefits from being announceable.
     render(<DataGrid columns={COLUMNS} data={ROWS} />);
@@ -114,7 +133,7 @@ describe('fillHeight — the rows are a keyboard-reachable region', () => {
   });
 });
 
-describe('fillHeight — scroll resets when the list changes identity', () => {
+describe('scroll resets when the list changes identity', () => {
   it('returns to the top when the page changes', async () => {
     // Driven through the controlled prop rather than a Next click:
     // under vitest, tanstack's own autoResetPageIndex fires as the row
@@ -124,7 +143,7 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
     // which the prop exercises directly and without the interference.
     const { rerender } = render(
       <DataGrid
-        columns={COLUMNS} data={ROWS} fillHeight
+        columns={COLUMNS} data={ROWS}
         pageIndex={0} pageSize={25} onPaginationChange={() => {}}
       />,
     );
@@ -133,7 +152,7 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
     await act(async () => {
       rerender(
         <DataGrid
-          columns={COLUMNS} data={ROWS} fillHeight
+          columns={COLUMNS} data={ROWS}
           pageIndex={1} pageSize={25} onPaginationChange={() => {}}
         />,
       );
@@ -150,7 +169,7 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
     // was missing: the effect listed pageIndex but not pageSize.
     const { rerender } = render(
       <DataGrid
-        columns={COLUMNS} data={ROWS} fillHeight
+        columns={COLUMNS} data={ROWS}
         pageIndex={0} pageSize={25} onPaginationChange={() => {}}
       />,
     );
@@ -159,7 +178,7 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
     await act(async () => {
       rerender(
         <DataGrid
-          columns={COLUMNS} data={ROWS} fillHeight
+          columns={COLUMNS} data={ROWS}
           pageIndex={0} pageSize={50} onPaginationChange={() => {}}
         />,
       );
@@ -172,7 +191,7 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
     // The container's scrolling comes from components/scrolling now.
     // Asserted on inline STYLE because that is where the contract lives —
     // as classes it was clobberable by any layout class the grid added.
-    render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
+    renderIn(<DataGrid columns={COLUMNS} data={ROWS} />);
     const el = region() as HTMLElement;
     expect(el.style.overflowY).toBe('auto');
     // x is AUTO, and that is the point: ``hidden`` left the browser with
@@ -182,13 +201,13 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
     // HIDE_NATIVE_SCROLLBAR's ``display: none`` rather than by switching
     // the axis off — exactly what the VERTICAL axis has always done.
     expect(el.style.overflowX).toBe('auto');
-    // fillHeight means the grid owns a viewport, so its overscroll is
+    // A measured viewport means the grid owns its scrolling, so its overscroll is
     // contained rather than chaining to the page behind it.
     expect(el.style.overscrollBehavior).toBe('contain');
   });
 
   it('lets a grid that owns NO viewport chain its overscroll to the page', async () => {
-    // Without fillHeight or stickyHeader this container has no height cap
+    // With no room measured and no stickyHeader this container has no cap
     // — a scroll container with zero scroll range sitting inside the
     // page's own scroller.  Containing the overscroll of a box that
     // cannot scroll could only swallow a wheel the page should have got.
@@ -199,8 +218,8 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
   it('returns to the top when the sort changes', async () => {
     // Driven through the controlled prop rather than a header click, so
     // the test pins the EFFECT's dependency rather than header markup.
-    const { rerender } = render(
-      <DataGrid columns={COLUMNS} data={ROWS} fillHeight sorting={[]} onSortingChange={() => {}} />,
+    const { rerender } = renderIn(
+      <DataGrid columns={COLUMNS} data={ROWS} sorting={[]} onSortingChange={() => {}} />,
     );
     const scroll = trackScroll(region(), 300);
 
@@ -208,7 +227,7 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
     await act(async () => {
       rerender(
         <DataGrid
-          columns={COLUMNS} data={ROWS} fillHeight
+          columns={COLUMNS} data={ROWS}
           sorting={sorted} onSortingChange={() => {}}
         />,
       );
@@ -220,7 +239,7 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
   it('returns to the top when a column filter changes', async () => {
     const { rerender } = render(
       <DataGrid
-        columns={COLUMNS} data={ROWS} fillHeight
+        columns={COLUMNS} data={ROWS}
         columnFilters={[]} onColumnFiltersChange={() => {}}
       />,
     );
@@ -229,7 +248,7 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
     await act(async () => {
       rerender(
         <DataGrid
-          columns={COLUMNS} data={ROWS} fillHeight
+          columns={COLUMNS} data={ROWS}
           columnFilters={[{ id: 'type', value: ['fault'] }]}
           onColumnFiltersChange={() => {}}
         />,
@@ -240,15 +259,15 @@ describe('fillHeight — scroll resets when the list changes identity', () => {
   });
 
   it('leaves an already-top position alone instead of writing every render', async () => {
-    const { rerender } = render(
-      <DataGrid columns={COLUMNS} data={ROWS} fillHeight sorting={[]} onSortingChange={() => {}} />,
+    const { rerender } = renderIn(
+      <DataGrid columns={COLUMNS} data={ROWS} sorting={[]} onSortingChange={() => {}} />,
     );
     const scroll = trackScroll(region(), 0);
 
     await act(async () => {
       rerender(
         <DataGrid
-          columns={COLUMNS} data={ROWS} fillHeight
+          columns={COLUMNS} data={ROWS}
           sorting={[{ id: 'name', desc: true }]} onSortingChange={() => {}}
         />,
       );
@@ -269,7 +288,7 @@ describe('a table wider than the card SAYS so', () => {
   it('shows no fade when the table fits', () => {
     // jsdom reports 0 for every measurement, so useOverflow sees no
     // overflow — which is exactly the "it fits" case.
-    render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
+    renderIn(<DataGrid columns={COLUMNS} data={ROWS} />);
     expect(fade()).toBeNull();
   });
 
@@ -293,7 +312,7 @@ describe('measurement survives the pivot round-trip', () => {
   // to scroll sideways. Callback refs re-key those effects on the
   // element, so they follow whatever is live.
   it('re-observes the replacement scroll container', async () => {
-    render(<DataGrid columns={COLUMNS} data={ROWS} tableId="t" pivot fillHeight />);
+    renderIn(<DataGrid columns={COLUMNS} data={ROWS} tableId="t" pivot />);
     const before = screen.getByRole('region', { name: 'Table rows' });
     observed.length = 0;
 
@@ -327,7 +346,7 @@ describe('the vertical bar never runs up beside the column headers', () => {
   // everything as 0, so the guard below is what keeps a bar from being
   // painted against the header while that measurement is still pending.
   it('is not rendered at all until the header height is known', () => {
-    render(<DataGrid columns={COLUMNS} data={ROWS} fillHeight />);
+    renderIn(<DataGrid columns={COLUMNS} data={ROWS} />);
     // offsetHeight is 0 in jsdom, so the measurement never lands and the
     // bar must stay away rather than default to the top of the box.
     const bars = region().parentElement!.querySelectorAll('.z-30');

@@ -339,29 +339,39 @@ nothing changes.
 Search stays local by design (it's scoped to the loaded page) — say so
 above the table rather than implying it searched everything.
 
-## Tall grids own a viewport — the `fillHeight` prop
+## Every grid owns a viewport — measured, not configured
 
-By default a grid grows to fit its rows, so "rows per page: 250" makes
-the card 250 rows TALL and the PAGE does the scrolling. That pushes four
-things out of reach at once, and they get worse the more rows you show:
+By default a grid would grow to fit its rows, so "rows per page: 250"
+makes the card 250 rows TALL and the PAGE does the scrolling. That pushes
+four things out of reach at once, and they get worse the more rows you
+show:
 
-| | Default (page scrolls) | `fillHeight` (body scrolls) |
+| | Page scrolls | Body scrolls |
 |---|---|---|
 | Column headers | scroll away — unlabelled columns by row 40 | sticky at the top of the body |
 | Horizontal scrollbar | rides the bottom of the table, thousands of px down | pinned to the card's bottom edge |
 | Bulk-action bar | a TOP strip, above the rows it acts on | always visible |
 | Pagination / rows-per-page | past the last row | always visible |
 
-`fillHeight` gives the grid its own viewport: toolbar and footer pin to
-the card's edges, the body scrolls between them. **No measurement and no
-magic height** — the shell is already `h-screen overflow-hidden` with ONE
-scroll region ([`shells/`](../../shells/)), so this is pure flexbox.
+Rows-per-page is a **synced** preference, so one operator choosing 250
+once made every page in the app very tall, on every device.
 
-**The page must cooperate**: its root needs `h-full flex flex-col min-h-0`
-so there's a definite height to divide up, and the grid must be a direct
-flex child of it. On a page not laid out that way the grid keeps its
-natural height — nothing breaks, the prop just does nothing. Worked
-example: [`features/loads/Loads.tsx`](../../features/loads/Loads.tsx).
+**Nothing to wire, and no page has to know.** The grid measures the room
+left below its own card inside the nearest scrolling ancestor
+(`useFittedHeight`, [components/scrolling](../scrolling/CLAUDE.md)) and
+clamps to it. Too little room — a page stacking charts and KPI cards
+above its table — and it declines and grows naturally, which is the
+right answer for those pages.
+
+⚠️ **This replaced a `fillHeight` prop that ALSO required the page to be
+`flex h-full flex-col min-h-0` with the grid as a direct flex child.**
+Coverage after months: 3 of 40 surfaces. The prop still exists as a
+documented no-op so old pages don't break — delete it from a page
+whenever you touch one. `autoFit={false}` opts OUT, for a table whose own
+surface is what the reader scrolls (the AI chat artifacts).
+
+`stickyHeader="65vh"` is the older hand-tuned form, still right when a
+grid must be SHORTER than the room available to it (Scorecards).
 
 Moving the scrolling off the document takes three things with it, all
 restored here and pinned by `DataGrid.fillHeight.test.tsx`:
@@ -497,10 +507,8 @@ Two gotchas the implementation encodes, both easy to reintroduce:
   rest. The pivot branch gets `overflow-y-auto`; horizontal scrolling
   stays inside `PivotView` (its sticky row-label column depends on it).
 
-`stickyHeader="65vh"` is the older hand-tuned form — a fixed max-height,
-still right when a grid must be SHORTER than the space available to it
-(Scorecards). Both routes set the same internal `bodyScrolls` flag, so
-the sticky header and its z-index behave identically.
+Both routes set the same internal `bodyScrolls` flag, so the sticky
+header and its z-index behave identically.
 
 ## Right-click row actions = the `rowActions` prop
 

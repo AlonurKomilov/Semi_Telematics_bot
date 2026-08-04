@@ -6,6 +6,7 @@ inside.
 ```
 region.tsx      useScrollRegion() + <ScrollRegion>   ← the contract
 scrollbars.tsx  ScrollbarH/V, useOverflow, useWheelToHorizontal
+fit.ts          useFittedHeight()                    ← own your viewport
 ```
 
 ## Why this exists
@@ -113,6 +114,66 @@ Also **not** here, each having had fewer than two real consumers:
 
 The bar for adding an export: **two real consumers the existing
 primitives have not already absorbed.**
+
+## `useFittedHeight` — a surface finds its own viewport
+
+A table whose body scrolls inside its card, instead of growing to 250
+rows and making the whole PAGE scroll, needs a definite height. Flexbox
+can give it one — but only if every ancestor up to the scroll region
+cooperates (`h-full flex flex-col min-h-0`), and **CSS cannot be
+inverted**: a child has no way to impose that on its parents.
+
+So the contract lived on the PAGE, as a `fillHeight` prop plus a class
+recipe. Coverage after months: **3 of 40 grid surfaces.** That is the
+whole argument. A convention every future page author must remember is
+not a single source of truth; it is 40 opportunities to forget, and
+every later change to scrolling behaviour is another N edits.
+
+`useFittedHeight(el)` measures instead: it walks up to the nearest
+scrolling ancestor and returns the room left below `el`, or `null`.
+
+```tsx
+const [card, setCard] = useState<HTMLDivElement | null>(null);
+const fitted = useFittedHeight(card);
+<div ref={setCard} style={fitted !== null ? { maxHeight: fitted } : undefined} />
+```
+
+Four things make it safe to switch on everywhere:
+
+- **It fails OPEN.** No scroll ancestor, no layout (jsdom), no
+  `ResizeObserver`, too little room — every one returns `null`, meaning
+  "grow naturally, let the page scroll", which is exactly the behaviour
+  that came before. A measurement that goes wrong loses an improvement;
+  it cannot produce a broken layout.
+- **`max-height`, never `height`.** A three-row table stays three rows
+  tall instead of becoming a tall box with empty space under it.
+- **The floor is the feature.** Below ~256px it declines. Pages that
+  stack charts and KPI cards above their table fall through it on their
+  own — those pages ARE taller than a screen, and page scrolling is
+  correct for them. Nobody has to classify pages by hand. ±16px of
+  hysteresis stops a layout sitting on the boundary from flapping.
+- **The gap under the card is READ, not assumed** — the region's own
+  `padding-bottom`, which is the shell's `p-4 lg:p-6`. A constant here
+  silently disagrees the day the shell is restyled.
+
+⚠️ **Three observers, and the third is the one you would omit.** Region,
+the element's parent, and **the region's direct child (the page root)**.
+Content arriving above the grid after first paint — a hero strip
+resolving from its own query — moves the grid DOWN without resizing
+either of the first two, so neither fires. Do not add more: the complete
+set is three, and observing every ancestor "to be safe" is how you get a
+real feedback loop.
+
+⚠️ **The write must be idempotent.** Clamping the card shortens the page,
+which fires the page-root observer, which measures again. It gets the
+same answer — neither the region's height nor the element's top depends
+on the element's height — and the `>1px` epsilon skips the write, so the
+cascade stops on the second tick. Remove that guard and the two feed each
+other forever.
+
+Pass `enabled: false` where an internally-scrolling surface would be
+wrong: a table inside a chat message, where the conversation is what the
+reader scrolls.
 
 ## The custom painted bars are narrow by design
 

@@ -199,12 +199,10 @@ export default function Loads() {
   const refetch = () => qc.invalidateQueries({ queryKey: ['loads'] });
 
   return (
-    // Full-height column: header + status tabs keep their natural size
-    // and the grid takes the rest, so the LIST scrolls inside its own
-    // card instead of the page growing to 250 rows.  ``h-full`` works
-    // without any measurement because the shell's content region is
-    // already a definite height (``h-screen overflow-hidden`` + one
-    // scroll region) — see the ``fillHeight`` prop on DataGrid.
+    // Full-height column so the header and status tabs keep their
+    // natural size.  The grid no longer needs this — it measures the
+    // room left below itself — but keeping it means the page's own
+    // chrome can't be pushed off by a long toolbar.
     <div className="flex h-full flex-col min-h-0">
       <PageHeader
         icon={Package}
@@ -291,7 +289,6 @@ export default function Loads() {
           tableId="loads"
           columns={columns}
           pivot
-          fillHeight
           // Personal saved tabs — they capture the pivot config too, so a
           // built report can be kept rather than rebuilt each visit.
           savedTabs

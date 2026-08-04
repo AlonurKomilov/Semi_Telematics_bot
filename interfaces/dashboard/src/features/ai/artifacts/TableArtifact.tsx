@@ -24,6 +24,9 @@ function TableArtifactView({ artifact }: { artifact: Artifact }) {
         </div>
       )}
       <DataGrid
+      // The conversation is what the reader scrolls — a table that
+      // scrolled inside itself would trap them mid-answer.
+      autoFit={false}
         columns={columns}
         data={artifact.rows}
         enableToolbar={false}

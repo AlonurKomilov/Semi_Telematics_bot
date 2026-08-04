@@ -218,6 +218,9 @@ function ImportPreviewView({ artifact }: { artifact: Artifact }) {
         />
       ) : (
         <DataGrid
+      // The conversation is what the reader scrolls — a table that
+      // scrolled inside itself would trap them mid-answer.
+      autoFit={false}
           columns={columns}
           data={serverRows ?? preview.rows}
           enableToolbar={false}

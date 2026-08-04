@@ -1906,11 +1906,25 @@ async def set_dqf_config(
         user["account_id"], dqf.DQF_PASSPHRASE_KEY, encrypt(body.passphrase),
     )
     reviewer = None
+    actor_name = ""
     try:
         du = await get_current_db_user(user, platform_db)
         reviewer = du.id if du else None
+        actor_name = (du.display_name if du else "") or ""
     except Exception:
         pass
+    # WHO and WHEN, so the readable files can say which passphrase era a
+    # folder belongs to.  After a rotation a carrier's storage holds files
+    # from two eras that look identical; without this there is no way to
+    # tell which one still wants the old passphrase.
+    from datetime import datetime, timezone as _tz
+    await tenant_db.set_account_setting(
+        user["account_id"], dqf.DQF_PASSPHRASE_SET_AT_KEY,
+        datetime.now(_tz.utc).isoformat(),
+    )
+    await tenant_db.set_account_setting(
+        user["account_id"], dqf.DQF_PASSPHRASE_SET_BY_KEY, actor_name,
+    )
     # THAT it was set, never the value — the trail must not become the
     # second place the passphrase lives.
     await record_simple(
@@ -1922,14 +1936,47 @@ async def set_dqf_config(
     # arrive BEFORE anything goes wrong: if we are ever unreachable, the
     # system that would send it is the system that is down.  Best-effort;
     # the setting is already saved and a mail failure must not undo it.
-    changed_by = ""
-    try:
-        du = await get_current_db_user(user, platform_db)
-        changed_by = (du.display_name if du else "") or ""
-    except Exception:
-        pass
     await notify_passphrase_changed(
         platform_db, user["account_id"],
-        passphrase=body.passphrase, changed_by=changed_by,
+        passphrase=body.passphrase, changed_by=actor_name,
     )
     return {"configured": True, "ssn_included": True}
+
+
+@router.post("/dqf-config/reexport")
+async def reexport_dqf(
+    user: dict = Depends(require_permission("can_manage_config_all")),
+    tenant_db=Depends(get_tenant_db),
+    platform_db=Depends(get_platform_db),
+):
+    """Rewrite every application's protected SSN file with the CURRENT
+    passphrase.
+
+    The half of "set your own passphrase" that was missing: rotating
+    protects future exports, but everything already in the carrier's
+    storage keeps the password it was written with.  Without this, an
+    owner who follows the warning improves nothing except the next hire.
+
+    Rewrites ONE file per application — the other three artifacts are
+    unchanged by a rotation, and on a gdrive account every write is an
+    API call against a quota.
+
+    Does NOT reach copies that already left.  If a folder was shared with
+    a broker or insurer who downloaded the old file, rotation cannot
+    recall it; the UI says so rather than letting anyone assume otherwise.
+    """
+    from features.applications.sidecar import reexport_ssn_only
+
+    result = await reexport_ssn_only(tenant_db, platform_db, user["account_id"])
+    reviewer = None
+    try:
+        du = await get_current_db_user(user, platform_db)
+        reviewer = du.id if du else None
+    except Exception:
+        pass
+    await record_simple(
+        platform_db, user["account_id"], reviewer,
+        "dqf_reexported", "setting", "dqf.export_passphrase",
+        note=f"{result['written']} of {result['scanned']} applications rewritten",
+    )
+    return result

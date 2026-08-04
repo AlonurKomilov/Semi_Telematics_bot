@@ -29,6 +29,8 @@ import logging
 
 from features.applications.dqf import (
     DQF_PASSPHRASE_KEY,
+    DQF_PASSPHRASE_SET_AT_KEY,
+    DQF_PASSPHRASE_SET_BY_KEY,
     DOC_FILENAMES,
     application_folder,
     build_manifest,
@@ -39,6 +41,25 @@ from features.applications.dqf import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _protection(tenant_db, account_id: int, company) -> tuple[str, dict]:
+    """``(passphrase, protection-stamp)`` for this account.
+
+    One resolver so the full write and the SSN-only rewrite cannot
+    disagree about which passphrase is current or what the files claim
+    about it.
+    """
+    stored = await _passphrase(tenant_db, account_id)
+    if stored:
+        set_at = await tenant_db.get_account_setting(
+            account_id, DQF_PASSPHRASE_SET_AT_KEY, "",
+        )
+        set_by = await tenant_db.get_account_setting(
+            account_id, DQF_PASSPHRASE_SET_BY_KEY, "",
+        )
+        return stored, {"set_at": set_at, "set_by": set_by, "is_default": False}
+    return default_passphrase(company), {"is_default": True}
 
 
 async def _passphrase(tenant_db, account_id: int) -> str:
@@ -107,7 +128,8 @@ async def write_sidecar(
         bucket = f"{company_folder}/applications/{folder}"
 
         history = await _history(platform_db, account_id, app.get("id"))
-        manifest = build_manifest(app, history)
+        passphrase, protection = await _protection(tenant_db, account_id, company)
+        manifest = build_manifest(app, history, protection)
         store = await get_object_store_for_account(account_id, tenant_db)
 
         wrote = False
@@ -130,13 +152,7 @@ async def write_sidecar(
         # useful.
         store.put(bucket, "README.txt", render_readme(manifest))
 
-        # Configured passphrase first; otherwise the identifier-derived
-        # default, so an account that never opens the config card still
-        # exports a COMPLETE qualification file.  Owner decision — the
-        # trade-off is argued in dqf.default_passphrase, and the scheme is
-        # deliberately absent from README.txt and the cover PDF.
-        passphrase = await _passphrase(tenant_db, account_id) or default_passphrase(company)
-        protected = render_protected_ssn(app, passphrase)
+        protected = render_protected_ssn(app, passphrase, protection)
         if protected:
             store.put(f"{bucket}/documents", "ssn-protected.pdf", protected)
             # First time regulated PII lands in this account's own cloud
@@ -193,3 +209,93 @@ async def refresh_sidecar(tenant_db, platform_db, account_id: int, app_id: int) 
         )
     except Exception:
         logger.exception("DQF sidecar refresh failed for application %d", app_id)
+
+
+async def reexport_ssn_only(
+    tenant_db, platform_db, account_id: int, *, limit: int = 5000,
+) -> dict:
+    """Rewrite ONLY ``ssn-protected.pdf`` for every application.
+
+    The upgrade path for a passphrase change.  Rotating protects future
+    exports; everything already in the carrier's storage keeps the old
+    password, so "set your own to protect these files properly" is a
+    half-truth until this runs.
+
+    ONE FILE PER APPLICATION, deliberately.  When the passphrase is the
+    only thing that changed, the other three artifacts are byte-identical
+    to what is already there — application.pdf and application.json carry
+    the masked last-four, README.txt is generic.  Rewriting all four would
+    be four times the writes for three files whose content did not move,
+    and on a gdrive account every write is an API call against a quota.
+    A real content change still goes through ``write_sidecar``; this is
+    the narrow path for a rotation.
+
+    The stamp line DOES change, so the readable files go stale on the era
+    they name.  Accepted: they are rewritten on that application's next
+    real change, and a folder whose README says an older date is exactly
+    the signal a carrier needs while both eras coexist.  Claiming the new
+    date on a file we did not rewrite would be worse.
+
+    Never reads the old files — every byte is rebuilt from the database,
+    which is why a hybrid account having deleted its local copies after
+    sync does not matter here.
+    """
+    from adapters.storage.object_store import get_object_store_for_account
+    from features.work_orders.storage import sanitize_company_folder
+
+    result = {"scanned": 0, "written": 0, "skipped": 0, "failed": 0}
+    try:
+        apps = await platform_db.list_driver_applications(account_id, limit=limit)
+    except Exception:
+        logger.exception("DQF re-export: could not list applications acct=%s", account_id)
+        return result
+
+    store = await get_object_store_for_account(account_id, tenant_db)
+    companies: dict[int, object] = {}
+
+    for row in apps or []:
+        result["scanned"] += 1
+        try:
+            app = await platform_db.get_driver_application(
+                account_id, int(row["id"]), decrypt_pii=True,
+            )
+            if not app or not app.get("ssn"):
+                result["skipped"] += 1
+                continue
+
+            cid = app.get("company_id")
+            if cid and cid not in companies:
+                companies[cid] = await platform_db.get_company_in_account(
+                    account_id, int(cid),
+                )
+            company = companies.get(cid)
+
+            passphrase, protection = await _protection(tenant_db, account_id, company)
+            pdf = render_protected_ssn(app, passphrase, protection)
+            if not pdf:
+                result["skipped"] += 1
+                continue
+
+            folder = application_folder(
+                app.get("first_name") or "", app.get("last_name") or "",
+                str(app.get("reference") or ""),
+            )
+            company_folder = sanitize_company_folder(
+                (getattr(company, "display_name", "") or "") if company else "",
+            ) or "unnamed-company"
+            # Same path as the original write, so this OVERWRITES in place.
+            # The Drive backend looks the name up and updates rather than
+            # creating "ssn-protected (1).pdf" — without that, a rotation
+            # would leave the old file beside the new one, still openable
+            # with the old passphrase, defeating the rotation.
+            store.put(
+                f"{company_folder}/applications/{folder}/documents",
+                "ssn-protected.pdf", pdf,
+            )
+            result["written"] += 1
+        except Exception:
+            result["failed"] += 1
+            logger.exception(
+                "DQF re-export failed for application %s", row.get("id"),
+            )
+    return result

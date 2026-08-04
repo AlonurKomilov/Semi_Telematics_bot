@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, Eye, Loader2, TriangleAlert } from 'lucide-react';
+import { ShieldCheck, Eye, Loader2, TriangleAlert, RefreshCw } from 'lucide-react';
 
 import { toast } from 'sonner';
 
@@ -67,6 +67,7 @@ export default function DqfExportDialog({
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [revealed, setRevealed] = useState<RevealResponse | null>(null);
+  const [reexporting, setReexporting] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['applications', 'dqf-config'],
@@ -201,6 +202,52 @@ export default function DqfExportDialog({
               )}
             </div>
           )}
+
+          {/* Rotating protects FUTURE exports only. Without this button
+              "set your own to protect these files properly" is a
+              half-truth — everything already in the carrier's storage
+              keeps the password it was written with. */}
+          <div className="rounded-lg border border-border p-3 space-y-2">
+            <p className="text-xs text-muted-foreground">
+              Changing the passphrase does not re-protect files already in your
+              storage. Re-export rewrites each application&rsquo;s protected SSN
+              file with the current passphrase — one file per application; the
+              qualification files and uploaded documents are not touched.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={reexporting}
+                onClick={async () => {
+                  setReexporting(true);
+                  try {
+                    const r = await apiJSON<{
+                      scanned: number; written: number; failed: number;
+                    }>('/applications/dqf-config/reexport', { method: 'POST' });
+                    toast.success(
+                      `Re-exported ${r.written} of ${r.scanned} applications`
+                      + (r.failed ? ` — ${r.failed} failed` : ''),
+                    );
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : 'Re-export failed');
+                  } finally {
+                    setReexporting(false);
+                  }
+                }}
+              >
+                {reexporting
+                  ? <Loader2 size={14} className="animate-spin" />
+                  : <RefreshCw size={14} />}
+                <span className="ml-1.5">Re-export all</span>
+              </Button>
+              {/* Files travel. Rotation is not a recall, and someone will
+                  assume it is unless told. */}
+              <span className="text-xs text-muted-foreground">
+                Cannot reach copies already downloaded or shared.
+              </span>
+            </div>
+          </div>
 
           {/* The one thing that decides whether any of this works. A
               passphrase only we hold is worthless in exactly the scenario

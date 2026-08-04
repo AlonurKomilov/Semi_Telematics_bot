@@ -76,7 +76,7 @@ import PivotView from './pivot/PivotView';
 import PivotPanel from './pivot/PivotPanel';
 import { prunePivotModel, pivot, pivotToCsvRows, type PivotModel } from './pivot/pivot';
 import {
-  useOverflow, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR,
+  useOverflow, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR, useFittedHeight,
   useScrollRegion,
 } from '../scrolling';
 import { derivePivotDimensions } from './pivot/derived';
@@ -209,7 +209,14 @@ interface DataGridProps {
    *  this grid becomes the child that takes the remainder. Used on a
    *  page that isn't laid out that way, the grid keeps its natural
    *  height and nothing breaks. */
+  /** @deprecated NO-OP — the grid measures its own room now (see
+   *  ``useFittedHeight``).  Kept so the pages that passed it don't
+   *  break; delete the prop from a page whenever you touch it. */
   fillHeight?: boolean;
+  /** Opt OUT of the measured viewport.  For a table whose surface is
+   *  what the reader scrolls — a table inside a chat message, where an
+   *  internally-scrolling grid would trap the conversation. */
+  autoFit?: boolean;
   searchPlaceholder?: string;
   headerToolbar?: React.ReactNode;
   /** When set, the table participates in the "Manage columns" + drag-
@@ -679,7 +686,7 @@ type GroupRun = {
 const noShiftStrategy: SortingStrategy = () => null;
 
 export default function DataGrid({
-  columns, data: sourceData, onRowClick, rowActions, searchKey, stickyHeader, fillHeight, searchPlaceholder,
+  columns, data: sourceData, onRowClick, rowActions, searchKey, stickyHeader, autoFit = true, searchPlaceholder,
   pivot: pivotEnabled = false,
   headerToolbar, tableId, firstColumnLeading, rowGroupHeader, defaultRowGroup,
   defaultAggregation,
@@ -2789,7 +2796,22 @@ export default function DataGrid({
   // (sticky thead, its opaque background, the raised z-index that keeps
   // pinned header cells above scrolled body cells, whose scrollbar is
   // drawn) depends on the SCROLLING, not on which prop asked for it.
-  const bodyScrolls = !!stickyHeader || !!fillHeight;
+  // ── The grid finds its own viewport ──────────────────────────────
+  //
+  // This USED to be the ``fillHeight`` prop, and it only worked when the
+  // page ALSO wrapped it in ``flex h-full flex-col min-h-0`` — a
+  // contract 3 of 40 grid surfaces had actually paid, because CSS can't
+  // be inverted and every new page had to remember it again.  Now the
+  // grid measures the room left below itself and clamps to that, so no
+  // page has to know and a change here reaches every grid at once.
+  //
+  // ``null`` means "not enough room, grow naturally and let the page
+  // scroll" — which is what pages that stack charts and KPI cards above
+  // their table get, correctly, without asking for it.
+  const [cardEl, setCardEl] = useState<HTMLDivElement | null>(null);
+  const fitted = useFittedHeight(cardEl, autoFit);
+  const fills = fitted !== null;
+  const bodyScrolls = !!stickyHeader || fills;
 
   // The sticky header lives INSIDE the scroll container, so a native
   // vertical scrollbar runs the container's full height — up alongside
@@ -3135,7 +3157,7 @@ export default function DataGrid({
     // ``min-height: auto`` (never smaller than its content), which on a
     // 250-row table means "never smaller than 250 rows" and the whole
     // mechanism silently does nothing.
-    <div className={fillHeight ? 'flex flex-1 flex-col min-h-0' : undefined}>
+    <div className={fills ? 'flex flex-col min-h-0' : undefined}>
       {/* Segment tab strip — OUTSIDE the card, floating directly on
           the page background (no fill of its own), like physical
           folder tabs poking up from the card below.  ``-mb-px`` +
@@ -3249,20 +3271,29 @@ export default function DataGrid({
           lived outside the card so only the table body had a card
           edge around it.  ``overflow-hidden`` clips the table rows
           against the card's rounded corners. */}
-      <div className={cn(
-        'rounded-lg border border-border bg-card overflow-hidden',
-        // The card becomes the column that pins toolbar + footer to its
-        // edges and gives the table body everything between them.
-        fillHeight && 'flex flex-1 flex-col min-h-0',
-      )}>
+      <div
+        ref={setCardEl}
+        className={cn(
+          'rounded-lg border border-border bg-card overflow-hidden',
+          // The column that pins toolbar + footer to its edges and gives
+          // the table body everything between them.
+          fills && 'flex flex-col',
+          // A clamped card must not truncate on paper — print has no
+          // viewport to fit, and a scrolled-away row simply vanishes.
+          'print:max-h-none',
+        )}
+        // max-height, never height: a three-row table stays three rows
+        // tall instead of becoming a tall box with empty space under it.
+        style={fitted !== null ? { maxHeight: fitted } : undefined}
+      >
       {/* The fields panel is a PEER COLUMN of the whole grid — toolbar,
           body and footer all sit to its left — rather than a box inside
           the body region.  Nested in the body it started below the
           toolbar and stopped above the footer, so it read as something
           the grid contained; MUI stands it alongside, which is what it
           actually is: a second surface, not part of the table. */}
-      <div className={cn('flex items-stretch', fillHeight && 'flex-1 min-h-0')}>
-      <div className={cn('flex-1 min-w-0 flex flex-col', fillHeight && 'min-h-0')}>
+      <div className={cn('flex items-stretch', fills && 'flex-1 min-h-0')}>
+      <div className={cn('flex-1 min-w-0 flex flex-col', fills && 'min-h-0')}>
       {/* Toolbar shares the ``bg-muted`` surface used by the table
           header row + pinned cells, so all the "chrome" surfaces
           (toolbar / header / pinned cells / footer) read as one
@@ -3511,7 +3542,7 @@ export default function DataGrid({
           grid is still a row list, because that is where you switch
           pivoting ON.  The two bodies then swap inside the left column
           without the panel unmounting. */}
-      <div className={cn('flex flex-col', fillHeight && 'flex-1 min-h-0')}>
+      <div className={cn('flex flex-col', fills && 'flex-1 min-h-0')}>
       {/* Search hits the operator cannot see.  The live region is
           mounted whenever the row list is, and only its CONTENTS are
           conditional — a region that appears at the same moment as its
@@ -3596,9 +3627,9 @@ export default function DataGrid({
         // report is silently cut off with no way to reach the rest.
         // Horizontal scrolling stays PivotView's (its sticky row-label
         // column depends on being inside that scroller).
-        <div className={cn(fillHeight && 'flex-1 min-h-0')}>
+        <div className={cn(fills && 'flex-1 min-h-0')}>
             <PivotView
-              fill={!!fillHeight}
+              fill={fills}
               onRowCount={setPivotRowCount}
               onHiddenColumns={setPivotHiddenCols}
               rows={pivotSourceRows}
@@ -3616,7 +3647,7 @@ export default function DataGrid({
          page's own scroll region takes over instead.  A COLUMN, because
          under fillHeight the horizontal scrollbar stops being an overlay
          and becomes the row below the body (see below). */
-      <div className={cn('relative group/grid', fillHeight && 'flex flex-1 flex-col min-h-[16rem]')}>
+      <div className={cn('relative group/grid', fills && 'flex flex-1 flex-col min-h-[16rem]')}>
       {/* The scroll REGION contract comes from components/scrolling: it
           owns the overflow on both axes, focusability + the landmark
           name, overscroll containment, and the scroll-padding that keeps
@@ -3642,8 +3673,8 @@ export default function DataGrid({
         // bar moves into normal flow BELOW this box, so there is nothing
         // to reserve.
         className={cn(
-          needsHScroll && !fillHeight && 'pb-3',
-          fillHeight && 'flex-1 min-h-0',
+          needsHScroll && !fills && 'pb-3',
+          fills && 'flex-1 min-h-0',
           // Hide the NATIVE bars when we draw our own — a vertical one
           // would run the container's full height, up beside the sticky
           // column labels, and a horizontal one would span the pinned
@@ -3683,7 +3714,7 @@ export default function DataGrid({
             // A definite height so the slack-absorbing row below can
             // resolve its percentage; on overflow a table's height acts
             // as a minimum, so this never truncates.
-            fillHeight && 'h-full',
+            fills && 'h-full',
           )}
           // Once the operator has resized any column, widths become
           // authoritative: fixed layout + explicit total width (sum
@@ -3872,7 +3903,7 @@ export default function DataGrid({
                   colSpan={table.getVisibleLeafColumns().length}
                   className={cn(
                     'text-center text-muted-foreground',
-                    fillHeight ? 'h-64 align-middle' : 'py-8',
+                    fills ? 'h-64 align-middle' : 'py-8',
                   )}
                 >
                   {/* Three different situations used to share one system
@@ -4127,7 +4158,7 @@ export default function DataGrid({
                 the last row and floated mid-card with blank space
                 beneath.  A ``height: 100%`` row takes the surplus and
                 collapses when the rows do overflow. */}
-            {fillHeight && rowCount > 0 && (
+            {fills && rowCount > 0 && (
               <TableRow aria-hidden className="h-full hover:bg-transparent border-0">
                 <td colSpan={table.getVisibleLeafColumns().length} />
               </TableRow>
@@ -4185,7 +4216,7 @@ export default function DataGrid({
         el={scrollEl}
         insetLeft={pinnedLeftWidth}
         insetRight={pinnedRightWidth}
-        flow={!!fillHeight}
+        flow={fills}
       />
       {/* ``headerHeight > 0`` is not an optimisation — it is the whole
           contract.  The bar is offset below the sticky header so it
@@ -4317,7 +4348,7 @@ export default function DataGrid({
           onEnabledChange={setPivotEnabled}
           width={pivotPanelWidth}
           onWidthChange={setPivotPanelWidth}
-          fill={!!fillHeight}
+          fill={fills}
         />
       )}
       </div>{/* end grid + panel row */}
