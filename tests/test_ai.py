@@ -299,14 +299,41 @@ class TestAIKeyboard:
         assert "ai_summary" in callbacks
         assert "cmd_menu" in callbacks
 
-    def test_ai_menu_kb_owner_sees_model_button(self):
+    def test_account_owner_does_NOT_see_the_model_button(self):
+        """Model pinning left the account tier — this used to assert the
+        opposite.
+
+        Picking an individual model is not an account decision.  Users
+        choose a TIER (Fast / Thinking / Reasoning / Auto) and the router
+        resolves a model within it from live availability; a pinned
+        ``ai_model`` short-circuits that, so a model going down fails
+        instead of falling through.  ``is_management_role`` was never the
+        right gate — an account owner should not have it either.
+        """
         from interfaces.bot.ai import _ai_menu_kb
         from adapters.storage import Role
-        kb = _ai_menu_kb(user_role=Role.OWNER)
+        kb = _ai_menu_kb(user_role=Role.OWNER, telegram_id=999_000_111)
+        callbacks = self._all_callbacks(kb)
+        assert "ai_models_text" not in callbacks
+        assert "ai_models_vision" not in callbacks
+        # The rest of the AI menu is untouched.
+        assert "cmd_ai_alerts" in callbacks
+
+    def test_system_owner_still_sees_the_model_button(self):
+        """The override survives for whoever runs the platform.
+
+        Kept rather than deleted because there is no operator surface to
+        move it to, and pinning past a misbehaving provider is worth
+        having.
+        """
+        from unittest.mock import patch
+        from interfaces.bot.ai import _ai_menu_kb
+        from adapters.storage import Role
+        with patch("capabilities.permissions.roles.is_system_owner", return_value=True):
+            kb = _ai_menu_kb(user_role=Role.OWNER, telegram_id=555)
         callbacks = self._all_callbacks(kb)
         assert "ai_models_text" in callbacks
         assert "ai_models_vision" in callbacks
-        assert "cmd_ai_alerts" in callbacks
         labels = self._all_labels(kb)
         assert any("Text:" in l for l in labels)
         assert any("Vision:" in l for l in labels)

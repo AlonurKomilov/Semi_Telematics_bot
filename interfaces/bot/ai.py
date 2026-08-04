@@ -175,7 +175,7 @@ async def _gather_vehicles_snapshot(account_id: int,
     return await ai.build_context(account_id, vehicle_num=vehicle_num)
 
 
-def _ai_menu_kb(user_role=None, account_id=None) -> InlineKeyboardMarkup:
+def _ai_menu_kb(user_role=None, account_id=None, telegram_id=None) -> InlineKeyboardMarkup:
     """AI feature menu keyboard."""
     rows = [
         [InlineKeyboardButton("💬 Ask a Question", callback_data="ai_chat")],
@@ -184,7 +184,12 @@ def _ai_menu_kb(user_role=None, account_id=None) -> InlineKeyboardMarkup:
     rows.append([InlineKeyboardButton(
         "🤖 AI Alert Analysis", callback_data="cmd_ai_alerts",
     )])
-    if is_management_role(user_role):
+    # Model PINNING is system-owner work, not account work — the tier is
+    # the account-facing knob.  Hidden rather than shown-and-refused: an
+    # owner/admin who can see the button has no way to know the refusal is
+    # by design.  is_management_role alone was never the right gate here.
+    from capabilities.permissions.roles import is_system_owner
+    if telegram_id is not None and is_system_owner(int(telegram_id)):
         # Text model button
         text_model = ai.get_account_model_name(account_id) if account_id is not None else None
         if not text_model:
@@ -276,6 +281,7 @@ async def cmd_ai(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await _show(update, context, [text], keyboard=_ai_menu_kb(
         user_role=user.role, account_id=user.account_id,
+        telegram_id=user.telegram_id,
     ))
 
 
@@ -809,6 +815,26 @@ async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE,
         if update.callback_query:
             await update.callback_query.answer("AI not configured", show_alert=True)
         return
+    # SYSTEM-OWNER ONLY.  Picking an individual model is not an account
+    # decision — it predates the tier system and was never removed.  Users
+    # choose a TIER (Fast / Thinking / Reasoning / Auto); the router then
+    # walks that tier's fallback chain and picks whichever model the live
+    # availability probe reports as up.  A hard-pinned ``ai_model``
+    # short-circuits that, so a model going unavailable fails instead of
+    # falling through — and until now ANY registered user, including a
+    # driver, could pin it for the whole account.
+    #
+    # Kept rather than deleted because there is no operator surface to
+    # move it to, and overriding a misbehaving provider is worth having.
+    # It belongs to whoever runs the platform, not to whoever runs a fleet.
+    from capabilities.permissions.roles import is_system_owner
+    if not is_system_owner(int(update.effective_user.id)):
+        if update.callback_query:
+            await update.callback_query.answer(
+                "Model selection is managed by 4truck. Choose a tier instead "
+                "— Fast, Thinking or Reasoning.", show_alert=True,
+            )
+        return
 
     user = context.user_data["_db_user"]
     acct_id = user.account_id
@@ -878,7 +904,28 @@ async def cmd_ai_models(update: Update, context: ContextTypes.DEFAULT_TYPE,
 @_require_registered
 async def cmd_ai_set_model(update: Update, context: ContextTypes.DEFAULT_TYPE,
                            model_name: str):
-    """Switch the AI text model for this account."""
+    """Pin the AI text model. SYSTEM OWNER ONLY — see the guard below."""
+    # SYSTEM-OWNER ONLY.  Picking an individual model is not an account
+    # decision — it predates the tier system and was never removed.  Users
+    # choose a TIER (Fast / Thinking / Reasoning / Auto); the router then
+    # walks that tier's fallback chain and picks whichever model the live
+    # availability probe reports as up.  A hard-pinned ``ai_model``
+    # short-circuits that, so a model going unavailable fails instead of
+    # falling through — and until now ANY registered user, including a
+    # driver, could pin it for the whole account.
+    #
+    # Kept rather than deleted because there is no operator surface to
+    # move it to, and overriding a misbehaving provider is worth having.
+    # It belongs to whoever runs the platform, not to whoever runs a fleet.
+    from capabilities.permissions.roles import is_system_owner
+    if not is_system_owner(int(update.effective_user.id)):
+        if update.callback_query:
+            await update.callback_query.answer(
+                "Model selection is managed by 4truck. Choose a tier instead "
+                "— Fast, Thinking or Reasoning.", show_alert=True,
+            )
+        return
+
     user = context.user_data["_db_user"]
     acct_id = user.account_id
     try:
@@ -912,7 +959,28 @@ async def cmd_ai_set_model(update: Update, context: ContextTypes.DEFAULT_TYPE,
 @_require_registered
 async def cmd_ai_set_vision_model(update: Update, context: ContextTypes.DEFAULT_TYPE,
                                   model_name: str):
-    """Switch the AI vision model for this account."""
+    """Pin the AI vision model. SYSTEM OWNER ONLY — see the guard below."""
+    # SYSTEM-OWNER ONLY.  Picking an individual model is not an account
+    # decision — it predates the tier system and was never removed.  Users
+    # choose a TIER (Fast / Thinking / Reasoning / Auto); the router then
+    # walks that tier's fallback chain and picks whichever model the live
+    # availability probe reports as up.  A hard-pinned ``ai_model``
+    # short-circuits that, so a model going unavailable fails instead of
+    # falling through — and until now ANY registered user, including a
+    # driver, could pin it for the whole account.
+    #
+    # Kept rather than deleted because there is no operator surface to
+    # move it to, and overriding a misbehaving provider is worth having.
+    # It belongs to whoever runs the platform, not to whoever runs a fleet.
+    from capabilities.permissions.roles import is_system_owner
+    if not is_system_owner(int(update.effective_user.id)):
+        if update.callback_query:
+            await update.callback_query.answer(
+                "Model selection is managed by 4truck. Choose a tier instead "
+                "— Fast, Thinking or Reasoning.", show_alert=True,
+            )
+        return
+
     user = context.user_data["_db_user"]
     acct_id = user.account_id
     try:
