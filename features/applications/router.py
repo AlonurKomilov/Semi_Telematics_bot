@@ -1807,11 +1807,15 @@ async def get_dqf_config(
     raw = await tenant_db.get_account_setting(
         user["account_id"], dqf.DQF_PASSPHRASE_KEY, "",
     )
+    # ``configured`` is whether an administrator CHOSE one; ssn_included is
+    # whether exports actually carry the protected file.  They differ now
+    # that an unconfigured account falls back to an identifier-derived
+    # default — the export is complete either way, but the card must not
+    # claim someone chose a passphrase when nobody did.
     return {
         "configured": bool(raw),
-        # What the carrier gets in their Drive right now, stated plainly
-        # so the consequence of not setting one is visible.
-        "ssn_included": bool(raw),
+        "ssn_included": True,
+        "using_default": not bool(raw),
     }
 
 
@@ -1843,8 +1847,6 @@ async def reveal_dqf_passphrase(
     raw = await tenant_db.get_account_setting(
         user["account_id"], dqf.DQF_PASSPHRASE_KEY, "",
     )
-    if not raw:
-        raise HTTPException(status_code=404, detail="No passphrase is set.")
     reviewer = None
     try:
         du = await get_current_db_user(user, platform_db)
@@ -1855,7 +1857,27 @@ async def reveal_dqf_passphrase(
         platform_db, user["account_id"], reviewer,
         "dqf_passphrase_revealed", "setting", "dqf.export_passphrase",
     )
-    return {"passphrase": decrypt(raw)}
+    if raw:
+        return {"using_default": False, "passphrase": decrypt(raw), "defaults": []}
+
+    # No passphrase chosen, so exports use the per-COMPANY default. This
+    # account has one per carrier brand, and files under each open with
+    # that brand's own — so showing a single value would be a lie.  List
+    # them, which is also what support needs when a carrier calls with
+    # their company name and MC.
+    companies = await platform_db.get_account_companies(user["account_id"])
+    return {
+        "using_default": True,
+        "passphrase": "",
+        "defaults": [
+            {
+                "company": co.display_name or co.code,
+                "passphrase": dqf.default_passphrase(co),
+            }
+            for co in (companies or [])
+            if dqf.default_passphrase(co)
+        ],
+    }
 
 
 @router.put("/dqf-config")

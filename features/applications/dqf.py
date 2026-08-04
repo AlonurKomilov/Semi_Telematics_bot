@@ -301,20 +301,20 @@ def render_pdf(manifest: dict) -> bytes:
         ))
         story.append(Spacer(1, 6))
         story.append(Paragraph(
-            "The password is your organisation's DQF export passphrase, "
-            "chosen by one of your administrators. To look it up, sign in to "
-            "4truck, open <b>Workforce &rarr; Applications</b>, and select "
-            "<b>DQF export</b> in the settings panel. An administrator with "
-            "the account-wide Config permission can reveal it there.",
+            "The password is your organisation's DQF export passphrase. To "
+            "look it up, sign in to 4truck and open <b>Workforce &rarr; "
+            "Applications &rarr; DQF export</b>. An administrator with the "
+            "account-wide Config permission can view it there, and can "
+            "replace it with one of your own choosing.",
             styles["Normal"],
         ))
         story.append(Spacer(1, 6))
         story.append(Paragraph(
-            "<b>Keep a copy of that passphrase somewhere outside 4truck.</b> "
-            "It is stored encrypted and cannot be recovered from the "
-            "protected file itself. If 4truck is ever unavailable, a "
-            "passphrase you have not kept elsewhere cannot be retrieved, and "
-            "files protected with it cannot be opened.",
+            "If you cannot reach 4truck, contact 4truck support and provide "
+            "your company name together with your MC or USDOT number — "
+            "support can confirm the passphrase for the account those "
+            "identifiers belong to. We recommend keeping your own copy "
+            "somewhere outside 4truck, so that neither route is needed.",
             styles["Normal"],
         ))
 
@@ -438,20 +438,23 @@ OPENING documents/ssn-protected.pdf
   under 49 CFR 391.51. It is kept in its own password-protected file so
   that everything else here can be shared without exposing it.
 
-  The password is your organisation's DQF export passphrase, chosen by
-  one of your administrators. To look it up:
+  The password is your organisation's DQF export passphrase.
 
+  TO LOOK IT UP
     1. Sign in to 4truck.
     2. Open Workforce -> Applications.
-    3. Select DQF export in the settings panel.
+    3. Select DQF export.
 
-  An administrator with the account-wide Config permission can reveal
-  the passphrase there.
+  An administrator with the account-wide Config permission can view it
+  there, and can replace it with one of your own choosing.
 
-  KEEP A COPY OF THAT PASSPHRASE SOMEWHERE OUTSIDE 4TRUCK. It is stored
-  encrypted and cannot be recovered from the protected file itself. If
-  4truck is ever unavailable, a passphrase you have not kept elsewhere
-  cannot be retrieved, and files protected with it cannot be opened.
+  IF YOU CANNOT REACH 4TRUCK
+    Contact 4truck support and provide your company name together with
+    your MC or USDOT number. Support can confirm the passphrase for the
+    account those identifiers belong to.
+
+  We recommend keeping your own copy somewhere outside 4truck, so that
+  neither route is needed.
 
   Nothing else in this folder needs a password.
 
@@ -478,3 +481,49 @@ def render_readme(manifest: dict) -> bytes:
         reference=manifest.get("reference", ""),
         generated_at=manifest.get("generated_at", ""),
     ).encode("utf-8")
+
+
+def default_passphrase(company) -> str:
+    """The fallback password, derived from the carrier's own identifiers.
+
+    OWNER DECISION, and I argued against it — recorded here so the next
+    reader knows the trade rather than inheriting it silently.
+
+    WHAT IT BUYS: a carrier who never opens the config card still gets a
+    COMPLETE driver qualification file, SSN included, and can recover
+    access from information they can prove they own — company name plus
+    MC or USDOT — even if this platform is no longer running and only
+    support is reachable.  That is the scenario the whole sidecar exists
+    for, and a randomly generated passphrase nobody wrote down fails it.
+
+    WHAT IT DOES NOT BUY: real secrecy.  MC and USDOT numbers are public
+    (FMCSA SAFER lists them against the carrier name), and the company
+    name is the parent folder.  A determined reader who knows the scheme
+    can reconstruct this.  It is a barrier against CASUAL access — the
+    broker or office hire who opens a shared folder and idly clicks the
+    file — not against someone trying.
+
+    Two things follow, and both are load-bearing:
+      * the scheme is never printed in README.txt or the cover PDF.  Not
+        because obscurity is protection, but because writing the password
+        next to the file it protects removes even the casual barrier.
+      * an administrator who wants real protection replaces it, and the
+        config card says so.
+
+    Deterministic on purpose: support can recompute it from the account,
+    which is the recovery path this design is chosen for.
+    """
+    name = "".join(
+        ch for ch in str(getattr(company, "display_name", "") or "")
+        if ch.isalnum()
+    ).upper()
+    ident = (
+        str(getattr(company, "mc_number", "") or "").strip()
+        or str(getattr(company, "usdot_number", "") or "").strip()
+    )
+    ident = "".join(ch for ch in ident if ch.isalnum()).upper()
+    if not name and not ident:
+        # Nothing to derive from — better no file than one "protected"
+        # by an empty string.
+        return ""
+    return f"{name}-{ident}" if ident else name

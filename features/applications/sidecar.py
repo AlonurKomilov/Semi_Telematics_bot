@@ -32,6 +32,7 @@ from features.applications.dqf import (
     DOC_FILENAMES,
     application_folder,
     build_manifest,
+    default_passphrase,
     render_pdf,
     render_protected_ssn,
     render_readme,
@@ -83,7 +84,8 @@ async def _history(platform_db, account_id: int, app_id: int) -> list[dict]:
 
 
 async def write_sidecar(
-    tenant_db, platform_db, account_id: int, app: dict, *, company_folder: str,
+    tenant_db, platform_db, account_id: int, app: dict, *,
+    company_folder: str, company=None,
 ) -> bool:
     """(Re)write ``application.pdf`` + ``application.json`` + the protected
     SSN file for one application.  Returns True when something was written.
@@ -128,11 +130,12 @@ async def write_sidecar(
         # useful.
         store.put(bucket, "README.txt", render_readme(manifest))
 
-        # The protected file only exists once the carrier has set a
-        # passphrase.  Until then the SSN is simply absent from their
-        # storage — the safe default has to be the one that happens when
-        # nobody has made a choice.
-        passphrase = await _passphrase(tenant_db, account_id)
+        # Configured passphrase first; otherwise the identifier-derived
+        # default, so an account that never opens the config card still
+        # exports a COMPLETE qualification file.  Owner decision — the
+        # trade-off is argued in dqf.default_passphrase, and the scheme is
+        # deliberately absent from README.txt and the cover PDF.
+        passphrase = await _passphrase(tenant_db, account_id) or default_passphrase(company)
         protected = render_protected_ssn(app, passphrase)
         if protected:
             store.put(f"{bucket}/documents", "ssn-protected.pdf", protected)
@@ -165,6 +168,7 @@ async def refresh_sidecar(tenant_db, platform_db, account_id: int, app_id: int) 
         # to decides which company's Drive tree the file lands in, so a
         # company_id from another tenant must not resolve at all.
         company_folder = ""
+        co = None
         if app.get("company_id"):
             try:
                 co = await platform_db.get_company_in_account(
@@ -174,10 +178,11 @@ async def refresh_sidecar(tenant_db, platform_db, account_id: int, app_id: int) 
                     (co.display_name if co else "") or "",
                 )
             except Exception:
-                company_folder = ""
+                co, company_folder = None, ""
         await write_sidecar(
             tenant_db, platform_db, account_id, app,
             company_folder=company_folder or "unnamed-company",
+            company=co,
         )
     except Exception:
         logger.exception("DQF sidecar refresh failed for application %d", app_id)

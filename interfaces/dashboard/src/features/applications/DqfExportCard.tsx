@@ -19,24 +19,38 @@ import { InfoTip } from '../../components/tooltip';
  * same folder gets shared with brokers and office staff — so it is split
  * into its own password-protected PDF and everything else stays readable.
  *
- * This card sets that password.  Until it is set the export is complete
- * EXCEPT the SSN file, which is the safe default: no unprotected SSN ever
- * lands in someone's Drive because nobody made a choice.
+ * This card sets that password.  Until an administrator chooses one the
+ * export falls back to a passphrase derived from the carrier's own
+ * identifiers (owner decision — see dqf.default_passphrase), so files are
+ * complete and recoverable from day one.  That default is weak by
+ * construction and the card says so.
  *
  * Gated on ``can_manage_config_all`` server-side; the affordance mirrors
  * that check rather than assuming.
  */
 
+/** One default per carrier brand — an account with several companies
+ *  protects each brand's files with that brand's own identifiers, so a
+ *  single value would misrepresent what opens what. */
+interface RevealResponse {
+  using_default: boolean;
+  passphrase: string;
+  defaults: { company: string; passphrase: string }[];
+}
+
 interface DqfConfig {
   configured: boolean;
   ssn_included: boolean;
+  /** True when no administrator has chosen one and the account is
+   *  falling back to the identifier-derived default. */
+  using_default: boolean;
 }
 
 export default function DqfExportCard({ canManage }: { canManage: boolean }) {
   const qc = useQueryClient();
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
-  const [revealed, setRevealed] = useState('');
+  const [revealed, setRevealed] = useState<RevealResponse | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['applications', 'dqf-config'],
@@ -50,7 +64,7 @@ export default function DqfExportCard({ canManage }: { canManage: boolean }) {
         method: 'PUT', body: { passphrase: value },
       });
       setValue('');
-      setRevealed('');
+      setRevealed(null);
       qc.invalidateQueries({ queryKey: ['applications', 'dqf-config'] });
       toast.success('Passphrase saved — new exports will include the protected SSN file');
     } catch (e) {
@@ -66,10 +80,10 @@ export default function DqfExportCard({ canManage }: { canManage: boolean }) {
   async function reveal() {
     setBusy(true);
     try {
-      const r = await apiJSON<{ passphrase: string }>(
+      const r = await apiJSON<RevealResponse>(
         '/applications/dqf-config/reveal', { method: 'POST' },
       );
-      setRevealed(r.passphrase);
+      setRevealed(r);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not retrieve the passphrase');
     } finally {
@@ -87,21 +101,28 @@ export default function DqfExportCard({ canManage }: { canManage: boolean }) {
         <InfoTip label="Every application is exported to your own cloud storage as a self-contained driver qualification file, so your records still work if 4truck is unavailable. This passphrase protects the one file that holds the applicant's Social Security Number." />
       </h2>
 
-      {data.configured ? (
-        <p className="text-xs text-muted-foreground">
-          Exported files include a password-protected{' '}
-          <span className="font-mono">ssn-protected.pdf</span>. Everything else in
-          the folder stays readable, so a qualification file can be shared without
-          exposing the number.
-        </p>
-      ) : (
+      <p className="text-xs text-muted-foreground">
+        Exported files include a password-protected{' '}
+        <span className="font-mono">ssn-protected.pdf</span>. Everything else in
+        the folder stays readable, so a qualification file can be shared without
+        exposing the number.
+      </p>
+
+      {/* The default is derived from identifiers that are public (MC and
+          USDOT are listed against the carrier name in FMCSA SAFER) and it
+          sits under a folder named after the company. It stops a casual
+          click, not someone trying — and an administrator deserves to be
+          told that plainly rather than discovering it. */}
+      {data.using_default && (
         <div className="flex items-start gap-2">
           <TriangleAlert size={14} className="text-warn shrink-0 mt-0.5" />
           <p className="text-xs text-muted-foreground">
-            No passphrase set, so exported qualification files{' '}
-            <span className="text-foreground font-medium">do not include the
-            applicant's Social Security Number</span> — which 49 CFR 391.21(b)(2)
-            requires on the employment application. Set one to complete them.
+            Using the default passphrase for your company. It keeps exports
+            complete and recoverable, but it is derived from identifiers that
+            are publicly listed, so it deters a casual click rather than a
+            determined one.{' '}
+            <span className="text-foreground font-medium">Set your own to
+            protect these files properly.</span>
           </p>
         </div>
       )}
@@ -113,14 +134,14 @@ export default function DqfExportCard({ canManage }: { canManage: boolean }) {
               type="password"
               value={value}
               onChange={(e) => setValue(e.target.value)}
-              placeholder={data.configured ? 'Replace passphrase…' : 'Choose a passphrase'}
+              placeholder={data.configured ? 'Replace passphrase…' : 'Set your own passphrase'}
               className="max-w-xs"
               autoComplete="new-password"
             />
             <Button size="sm" onClick={save} disabled={busy || value.trim().length < 8}>
               {busy ? <Loader2 size={14} className="animate-spin" /> : data.configured ? 'Replace' : 'Set passphrase'}
             </Button>
-            {data.configured && !revealed && (
+            {!revealed && (
               <Button size="sm" variant="outline" onClick={reveal} disabled={busy}>
                 <Eye size={14} /> Show current
               </Button>
@@ -128,9 +149,32 @@ export default function DqfExportCard({ canManage }: { canManage: boolean }) {
           </div>
 
           {revealed && (
-            <div className="rounded-lg border border-border bg-muted p-3 space-y-1">
-              <p className="text-xs text-muted-foreground">Current passphrase</p>
-              <p className="font-mono text-sm text-foreground break-all">{revealed}</p>
+            <div className="rounded-lg border border-border bg-muted p-3 space-y-2">
+              {revealed.using_default ? (
+                <>
+                  <p className="text-xs text-muted-foreground">
+                    Default passphrase per carrier — files under each company open
+                    with that company's own.
+                  </p>
+                  <ul className="space-y-1">
+                    {revealed.defaults.map((d) => (
+                      <li key={d.company} className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="text-xs text-muted-foreground">{d.company}</span>
+                        <span className="font-mono text-sm text-foreground break-all">
+                          {d.passphrase}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-muted-foreground">Current passphrase</p>
+                  <p className="font-mono text-sm text-foreground break-all">
+                    {revealed.passphrase}
+                  </p>
+                </>
+              )}
             </div>
           )}
 
