@@ -139,6 +139,13 @@ async def write_sidecar(
         protected = render_protected_ssn(app, passphrase)
         if protected:
             store.put(f"{bucket}/documents", "ssn-protected.pdf", protected)
+            # First time regulated PII lands in this account's own cloud
+            # storage, tell the owners.  Nobody opted in — the derived
+            # default means it just starts happening — and the dialog's
+            # warning only reaches someone who opens the dialog.  Fires
+            # once, guarded by an account setting.
+            from features.applications.dqf_notify import notify_export_started
+            await notify_export_started(platform_db, tenant_db, account_id)
 
         return wrote
     except Exception:

@@ -45,6 +45,7 @@ from pydantic import BaseModel, Field
 
 from capabilities.activity_trail import new_group_id, record_simple
 from features.applications import dqf
+from features.applications.dqf_notify import notify_passphrase_changed
 from features.applications.sidecar import refresh_sidecar
 from interfaces.api.deps import (
     get_platform_db, get_tenant_db, require_permission,
@@ -1915,5 +1916,20 @@ async def set_dqf_config(
     await record_simple(
         platform_db, user["account_id"], reviewer,
         "dqf_passphrase_set", "setting", "dqf.export_passphrase",
+    )
+    # Mail the new passphrase to the OWNERS — not to whoever changed it.
+    # This is the only copy that lives outside 4truck, and it has to
+    # arrive BEFORE anything goes wrong: if we are ever unreachable, the
+    # system that would send it is the system that is down.  Best-effort;
+    # the setting is already saved and a mail failure must not undo it.
+    changed_by = ""
+    try:
+        du = await get_current_db_user(user, platform_db)
+        changed_by = (du.display_name if du else "") or ""
+    except Exception:
+        pass
+    await notify_passphrase_changed(
+        platform_db, user["account_id"],
+        passphrase=body.passphrase, changed_by=changed_by,
     )
     return {"configured": True, "ssn_included": True}

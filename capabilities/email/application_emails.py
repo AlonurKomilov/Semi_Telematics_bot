@@ -450,3 +450,101 @@ def send_link_expiring_email(
     except Exception as e:  # best-effort
         logger.debug("send_link_expiring_email to %s failed: %s", to, e)
         return False
+
+
+def send_dqf_passphrase_email(
+    *, to: str, account_name: str, passphrase: str, changed_by: str = "",
+    recipient_name: str = "",
+) -> bool:
+    """Mail the DQF export passphrase to an account contact.
+
+    Sent FORWARD, at set-time — never on request.  The distinction is the
+    whole point: this exists so a copy of the passphrase already sits
+    somewhere the carrier controls BEFORE anything goes wrong.  An
+    on-demand "email me my passphrase" endpoint would be useless in the
+    case it appears to solve, because the sender is our own server — if
+    4truck is unreachable, so is the thing that would send the mail.  It
+    would also be a phishing target.
+
+    Addressed to the OWNERS rather than whoever made the change: someone
+    with delegated ``can_manage_config_all`` may set this and leave the
+    company, taking the only external copy with them.  Owners are the
+    durable address, and they are also the people who should know when a
+    delegate alters what protects every applicant's SSN.
+    """
+    if not is_email_configured():
+        logger.info("DQF passphrase email NOT sent (SMTP unconfigured) to %s", to)
+        return False
+    brand = _company_name()
+    greeting = f"Hi {recipient_name}," if recipient_name else "Hi,"
+    who = f"{changed_by} changed" if changed_by else "Someone changed"
+    subject = f"{brand}: your DQF export passphrase changed"
+    text = (
+        f"{greeting}\n\n"
+        f"{who} the passphrase that protects the Social Security Number "
+        f"file inside the driver qualification files exported for "
+        f"\"{account_name}\".\n\n"
+        f"    Passphrase:  {passphrase}\n\n"
+        "WHY YOU ARE GETTING THIS\n"
+        "Your driver qualification files are written into your own cloud "
+        "storage so they still work if 4truck is ever unavailable. Each "
+        "applicant's Social Security Number is required in that file by "
+        "49 CFR 391.21(b)(2), so it is kept in a separate, "
+        "password-protected PDF. This is that password.\n\n"
+        "Keep this message, or store the passphrase somewhere you "
+        "control. If 4truck is ever unreachable, this email may be the "
+        "only copy — we cannot send you another one at that point, "
+        "because the system that sends it would be the system that is "
+        "down.\n\n"
+        "Files exported BEFORE this change still open with the previous "
+        "passphrase. Changing it does not re-protect files that already "
+        "exist.\n\n"
+        "If you did not expect this change, review who holds the "
+        "account-wide Config permission on your Permissions page.\n"
+    )
+    return send_email(to=to, subject=subject, body=text)
+
+
+def send_dqf_export_started_email(
+    *, to: str, account_name: str, recipient_name: str = "",
+) -> bool:
+    """One-time notice that exports have begun including the SSN file.
+
+    The companion to the derived default.  An account that never opens the
+    config dialog still starts writing regulated PII into its own cloud
+    storage — nobody opted in, and the warning in the dialog only reaches
+    someone who opens the dialog.  A change that puts an applicant's SSN
+    somewhere new on the customer's behalf should announce itself.
+
+    Deliberately does NOT contain the passphrase.  It is derived from the
+    carrier's own identifiers, and printing it in an email that also
+    explains where the file lives would hand both halves to anyone who
+    later reads that inbox.  The dialog shows it to an administrator who
+    asks.
+    """
+    if not is_email_configured():
+        logger.info("DQF export notice NOT sent (SMTP unconfigured) to %s", to)
+        return False
+    brand = _company_name()
+    greeting = f"Hi {recipient_name}," if recipient_name else "Hi,"
+    subject = f"{brand}: driver qualification files now include the SSN"
+    text = (
+        f"{greeting}\n\n"
+        f"The driver qualification files {brand} exports to your cloud "
+        f"storage for \"{account_name}\" now include each applicant's "
+        "Social Security Number, which 49 CFR 391.21(b)(2) requires on "
+        "the employment application.\n\n"
+        "It is kept in its own password-protected file, so the rest of "
+        "the qualification file can still be shared with a broker or "
+        "insurer without exposing the number.\n\n"
+        "IMPORTANT — SET YOUR OWN PASSPHRASE\n"
+        "Until you choose one, that file is protected by a default "
+        "derived from your company's own identifiers. It keeps your "
+        "files complete and recoverable, but those identifiers are "
+        "publicly listed, so it deters a casual click rather than a "
+        "determined one.\n\n"
+        "To set a stronger passphrase, open Workforce > Applications and "
+        "choose DQF export. You will be emailed the new passphrase so you "
+        "have a copy outside 4truck.\n"
+    )
+    return send_email(to=to, subject=subject, body=text)
