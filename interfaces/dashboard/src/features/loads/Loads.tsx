@@ -11,7 +11,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Clock, Package, Plus } from 'lucide-react';
-import DataGrid from '../../components/datagrid';
+import DataGrid, { TAB_PREFIX, type DataGridSegment } from '../../components/datagrid';
 import { loadRowMenu } from './contextMenu';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton,
@@ -136,8 +136,20 @@ const makeColumns = (): AnyColumn[] => [
   { key: 'source', label: 'Source', sortable: true, render: (v) => <SourceCell value={v} /> },
 ];
 
-const TABS: { key: string; label: string }[] = [
-  { key: '', label: 'All' },
+// Lifecycle tabs, DECLARED.  No ``match`` on purpose: the SERVER does
+// the slicing here (``listLoads(tab)``) and returns authoritative
+// per-status counts, so a local predicate would re-filter an already
+// filtered page and the tallies would drift.  That is exactly the
+// controlled-segments contract — segments + segmentKey +
+// onSegmentChange + segmentCounts.
+//
+// ``canceled`` stays out of the strip deliberately.
+const LOAD_SEGMENTS: DataGridSegment[] = [
+  // "All" carries no badge: it is never counted server-side, and a 0
+  // there would read as "no loads at all".  Every KEYED tab shows its
+  // number even when it is 0 — "nothing is upcoming" is an answer, and
+  // hiding it made that tab look identical to All.
+  { key: 'all', label: 'All', showCount: false },
   ...LOAD_STATUSES.filter((s) => s !== 'canceled').map((s) => ({
     key: s,
     label: s.replace('_', '-').replace(/\b\w/g, (c) => c.toUpperCase()),
@@ -149,7 +161,13 @@ export default function Loads() {
   const columns = useMemo(() => makeColumns(), []);
   const { viewHas } = useRoleView();
   const qc = useQueryClient();
+  // ``tab`` is the SERVER slice ('' = all).  ``savedId`` is separate
+  // because one strip now holds two kinds of occupant — a lifecycle tab
+  // or a personal saved one — and only the first may ever reach the API.
+  // Without the split a saved tab's id would be sent as ``?status=`` and
+  // the query would return nothing.
   const [tab, setTab] = useState('');
+  const [savedId, setSavedId] = useState('');
   const [editing, setEditing] = useState<LoadRow | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [layoverOpen, setLayoverOpen] = useState(false);
@@ -225,37 +243,6 @@ export default function Loads() {
         ) : undefined}
       />
 
-      {/* Status tabs with live counts. */}
-      <div className="mb-3 flex flex-wrap items-center gap-1.5">
-        {TABS.map(({ key, label }) => {
-          const active = tab === key;
-          const count = key ? counts[key] ?? 0 : undefined;
-          return (
-            <button
-              key={key || 'all'}
-              type="button"
-              onClick={() => setTab(key)}
-              className={`px-3 py-1.5 rounded-md text-sm border transition-colors ${
-                active
-                  ? 'bg-primary text-primary-foreground border-primary'
-                  : 'bg-card text-foreground border-border hover:border-ring'
-              }`}
-            >
-              {label}
-              {/* ``0`` is an ANSWER — "no loads are upcoming" — and
-                  hiding the badge for it made that tab look identical
-                  to "All", which carries no badge because it is never
-                  counted.  Same pixels, two different meanings.  Keyed
-                  tabs always show their number; only "All" stays bare. */}
-              {count != null && (
-                <span className={`ml-1.5 text-xs ${active ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>
-                  {count}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
 
       {isLoading && <TableSkeleton />}
       {!isLoading && error != null && (
@@ -287,6 +274,28 @@ export default function Loads() {
           // Also what makes the ``filterable`` columns below actually
           // reachable — the filter popover opens from the 3-dot menu.
           tableId="loads"
+          segments={LOAD_SEGMENTS}
+          // ONE slot, two kinds of occupant (the AlertsResults pattern).
+          segmentKey={savedId ? TAB_PREFIX + savedId : (tab || 'all')}
+          onSegmentChange={(key, savedTab) => {
+            if (savedTab) {
+              // A saved tab restores the lifecycle slice it was captured
+              // under (``baseSegment``); its own filters and search are
+              // applied by the grid over that slice, which works because
+              // this page does not pass ``manualFiltering`` — only the
+              // STATUS is server-side.
+              setSavedId(key.slice(TAB_PREFIX.length));
+              const base = savedTab.baseSegment;
+              setTab(base && base !== 'all' ? base : '');
+              return;
+            }
+            setSavedId('');
+            setTab(key === 'all' ? '' : key);
+          }}
+          // Authoritative, from the server — the grid holds one status
+          // slice at a time, so tallying loaded rows would report 0 for
+          // every tab except the open one.
+          segmentCounts={counts}
           columns={columns}
           pivot
           // Personal saved tabs — they capture the pivot config too, so a
