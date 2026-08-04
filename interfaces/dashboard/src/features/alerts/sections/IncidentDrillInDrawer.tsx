@@ -53,6 +53,7 @@ import { toneText } from '../../../lib/status';
 import { formatAlertDescription } from '../../../utils/alertDescription';
 import { formatDate } from '../../../utils/datetime';
 import { useTimezone } from '../../../hooks/useTimezone';
+import { Sheet, SheetContent } from '../../../components/ui/sheet';
 import type { Alert } from '../../../types';
 
 export default function IncidentDrillInDrawer() {
@@ -73,23 +74,24 @@ export default function IncidentDrillInDrawer() {
   return (
     <>
       {/* Backdrop — click-outside closes. */}
-      <button
-        type="button"
-        aria-label={t('alerts.drillin.close')}
-        onClick={closeDrillIn}
-        className="fixed inset-0 z-40 bg-black/40 cursor-default"
-      />
-      {/* Drawer — slides in from the right; max-width keeps it readable
-          on wide monitors. */}
-      <aside
-        role="dialog"
-        aria-label={`Alert #${drillInAlert.id} details`}
-        className="fixed top-0 right-0 bottom-0 z-50 w-full sm:max-w-md bg-background border-l border-border shadow-2xl flex flex-col"
-      >
-        <DrawerHeader alert={drillInAlert} onClose={closeDrillIn} />
-        <DrawerBody alert={drillInAlert} />
-        <DrawerFooter alert={drillInAlert} onAcknowledged={closeDrillIn} />
-      </aside>
+      {/* <Sheet> rather than a hand-rolled overlay.  The old shape — a
+          backdrop <button> plus an <aside role="dialog"> — looked like a
+          modal and behaved like a div: no focus trap, no Escape, no
+          aria-modal, and the page behind it still scrolled.  ``open`` is
+          always true because this component mounts only while the drawer
+          is open; onOpenChange routes Escape and backdrop clicks to the
+          same close the ✕ already used. */}
+      <Sheet open onOpenChange={(o) => { if (!o) closeDrillIn(); }}>
+        <SheetContent
+          side="right"
+          size="md"
+          aria-label={`Alert #${drillInAlert.id} details`}
+        >
+          <DrawerHeader alert={drillInAlert} onClose={closeDrillIn} />
+          <DrawerBody alert={drillInAlert} />
+          <DrawerFooter alert={drillInAlert} onAcknowledged={closeDrillIn} />
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

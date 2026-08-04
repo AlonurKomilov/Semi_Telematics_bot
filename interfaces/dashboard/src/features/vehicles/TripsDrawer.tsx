@@ -24,6 +24,9 @@ import DataGrid from '../../components/datagrid';
 import { formatDate } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
 import { Tip } from '../../components/tooltip';
+import {
+  Sheet, SheetContent, SheetHeader, SheetTitle, SheetBody, SheetClose,
+} from '../../components/ui/sheet';
 import { toneClasses } from '../../lib/status';
 import { FLAG_NOTE } from './mileageFlags';
 
@@ -147,21 +150,18 @@ export default function TripsDrawer({
     && gap / Math.max(gpsTotal, rowMiles, 1) > 0.25;
 
   return (
-    <>
-      <button
-        type="button"
-        aria-label="Close trips"
-        onClick={onClose}
-        className="fixed inset-0 z-40 bg-black/40 cursor-default"
-      />
-      <aside
-        role="dialog"
-        aria-label={`Trips for ${vehicleName}`}
-        className="fixed top-0 right-0 bottom-0 z-50 w-full sm:max-w-xl bg-background border-l border-border shadow-2xl flex flex-col"
-      >
-        <header className="px-5 py-4 border-b border-border flex items-start gap-3 shrink-0">
+    // <Sheet> rather than a hand-rolled overlay: the old one was a
+    // backdrop <button> plus an <aside role="dialog">, which LOOKED like
+    // a modal and behaved like a div — no focus trap, no Escape, no
+    // aria-modal, and the page behind it still scrolled.  ``open`` is
+    // always true because the parent mounts this component only while the
+    // drawer is open; onOpenChange routes Escape and backdrop clicks to
+    // the same onClose the ✕ already used.
+    <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent side="right" size="xl" aria-label={`Trips for ${vehicleName}`}>
+        <SheetHeader className="px-5 py-4 border-b border-border flex-row items-start gap-3 shrink-0">
           <div className="flex-1 min-w-0">
-            <h2 className="text-base font-semibold flex items-center gap-2">
+            <SheetTitle className="text-base font-semibold flex items-center gap-2">
               Trips — {vehicleName}
               {rowFlag && FLAG_NOTE[rowFlag] && (
                 <Tip label={FLAG_NOTE[rowFlag].tip}>
@@ -170,7 +170,7 @@ export default function TripsDrawer({
                   </span>
                 </Tip>
               )}
-            </h2>
+            </SheetTitle>
             <p className="text-xs text-muted-foreground mt-0.5">
               {start.replace('T', ' ')} → {end.replace('T', ' ')}
               {data && !data.no_data && (
@@ -182,17 +182,17 @@ export default function TripsDrawer({
               )}
             </p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
+          <SheetClose
             className="text-muted-foreground hover:text-foreground p-1 -m-1"
             aria-label="Close"
           >
             <X size={16} />
-          </button>
-        </header>
+          </SheetClose>
+        </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        {/* SheetBody is a real scroll region (components/scrolling) —
+            focusable and named, which a bare overflow div is not. */}
+        <SheetBody label="Trips" className="px-5 py-4">
           {isLoading && (
             <p className="text-sm text-muted-foreground">Loading trips from Samsara…</p>
           )}
@@ -236,8 +236,8 @@ export default function TripsDrawer({
               number is closer to reality.
             </p>
           )}
-        </div>
-      </aside>
-    </>
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }

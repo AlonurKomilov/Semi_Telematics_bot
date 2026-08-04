@@ -45,8 +45,12 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
  *  The larger steps follow design.md §7's dialog ladder (lg/xl/2xl) —
  *  a side panel showing an image plus prose needs more than 24rem.
  *  Ignored for top/bottom sheets, which are height-driven. */
-const SHEET_SIZE: Record<"sm" | "lg" | "xl" | "2xl", string> = {
+const SHEET_SIZE: Record<"sm" | "md" | "lg" | "xl" | "2xl", string> = {
   sm: "data-[side=left]:sm:max-w-sm data-[side=right]:sm:max-w-sm",
+  // ``md`` is on design.md §7's drawer ladder (md/lg/xl) but was missing
+  // here, so a drawer that wanted it had to either widen to ``lg`` or
+  // hand-roll the class — which is how widths drift back apart.
+  md: "data-[side=left]:sm:max-w-md data-[side=right]:sm:max-w-md",
   lg: "data-[side=left]:sm:max-w-lg data-[side=right]:sm:max-w-lg",
   xl: "data-[side=left]:sm:max-w-xl data-[side=right]:sm:max-w-xl",
   "2xl": "data-[side=left]:sm:max-w-2xl data-[side=right]:sm:max-w-2xl",
