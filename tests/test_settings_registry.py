@@ -174,3 +174,48 @@ class TestNoUndeclaredWrites:
               "permission that owns it. Leaving one undeclared means "
               "PUT /settings refuses it — and means nobody decided whose it is."
         )
+
+
+class TestReadableKeysAreAlsoWritable:
+    """A setting you can SEE must be a setting you can SAVE.
+
+    This class exists because per-key enforcement shipped and immediately
+    broke five of them: ``account_name``, ``alert_defaults``, ``language``,
+    ``digest_hour`` and ``scorecard_default_subject`` were read by the
+    Settings page and refused by the new write guard — visible, editable
+    in the UI, 422 on save.
+
+    The drift test could not catch it.  That test scans write CALL SITES,
+    and these keys are written through ``PUT /settings`` as a runtime
+    ``body.key`` no static scan can resolve.  The only place their names
+    appear literally is the GET handler's allow-list, so that is what this
+    reads.  Two different blind spots need two different scans.
+    """
+
+    def _get_allowlist(self) -> list[str]:
+        import re
+        path = os.path.join(
+            REPO, "features", "settings", "account", "router.py",
+        )
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        # The literal tuple the GET handler iterates.
+        m = re.search(
+            r"for key in \(\s*((?:[\"'][^\"']+[\"'],?\s*)+)\)", text,
+        )
+        assert m, "GET /settings no longer iterates a literal key tuple — update this test"
+        return re.findall(r"[\"']([^\"']+)[\"']", m.group(1))
+
+    def test_every_readable_key_has_a_declared_owner(self):
+        missing = [k for k in self._get_allowlist() if owner_for(k) is None]
+        assert not missing, (
+            "these keys are returned by GET /settings but refused by "
+            f"PUT /settings: {missing}\n"
+            "A setting the UI shows and cannot save is worse than one it "
+            "hides. Declare each in capabilities/settings_registry.py."
+        )
+
+    def test_the_allowlist_is_not_empty(self):
+        """Guards the regex above: a silently-empty list would make the
+        test above vacuously pass, which is how a check stops checking."""
+        assert len(self._get_allowlist()) >= 5

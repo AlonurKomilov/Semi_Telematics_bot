@@ -147,6 +147,22 @@ SETTING_OWNERS: tuple[SettingOwner, ...] = (
         "Which alert types route to the AI forum topic.",
     ),
     SettingOwner("timezone", "can_manage_account", "manage", "settings"),
+    # The Settings page READS these six; before they were declared, my own
+    # per-key enforcement refused five of them on write — a setting you
+    # could see and not save.  The drift test could not catch it: it scans
+    # write CALL SITES, and these are written through PUT /settings as a
+    # runtime ``body.key`` it cannot resolve.  Hence
+    # test_get_settings_allowlist_is_declared, which reads the GET list.
+    SettingOwner("account_name", "can_manage_account", "manage", "settings"),
+    SettingOwner("alert_defaults", "can_manage_account", "manage", "settings"),
+    SettingOwner("language", "can_manage_account", "manage", "settings"),
+    SettingOwner("digest_hour", "can_manage_account", "manage", "settings"),
+    SettingOwner(
+        "scorecard_default_subject", "can_manage_account", "manage", "settings",
+        "Default subject line for scorecard emails.  Account operating "
+        "choice, not a scoring RULE — the rules themselves are scorecards' "
+        "own rows behind can_manage_config_all.",
+    ),
     SettingOwner("forum_*", "can_manage_account", "manage", "settings"),
     SettingOwner("bot_*", "can_manage_account", "manage", "settings"),
     SettingOwner("modules.*", "can_manage_account", "manage", "settings"),
