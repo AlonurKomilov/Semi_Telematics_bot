@@ -42,6 +42,10 @@ export RCLONE_CONFIG_R2_PROVIDER=Cloudflare
 export RCLONE_CONFIG_R2_ENDPOINT="$R2_ENDPOINT"
 export RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
 export RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+export RCLONE_CONFIG_R2_REGION=auto
+# R2 object-scoped tokens may not HeadBucket/CreateBucket; rclone's
+# default pre-flight bucket check then 403s every upload.
+export RCLONE_CONFIG_R2_NO_CHECK_BUCKET=true
 DEST="R2:4truck-backups"
 
 STAMP=$(date -u +%F)
