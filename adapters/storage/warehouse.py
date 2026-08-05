@@ -673,7 +673,7 @@ class WarehouseMixin(_MixinBase):
                     avg_fuel_pct=excluded.avg_fuel_pct,
                     harsh_event_count=excluded.harsh_event_count,
                     -- Keep a prior non-null banked reading when a re-run
-                    -- can't recompute one: replaying an hour whose 5-min
+                    -- can't recompute one: replaying an hour whose minute
                     -- snapshots have since been pruned yields a row only
                     -- from safety events, carrying no odometer at all.
                     odometer_eod=COALESCE(excluded.odometer_eod, vehicle_telemetry.odometer_eod),
@@ -776,7 +776,7 @@ class WarehouseMixin(_MixinBase):
         return out
 
 
-    # ── vehicle_state_snapshot (5-min history) ──────────────────────
+    # ── vehicle_state_snapshot (minute-grain history) ───────────────
     #
     # Persistence layer for the per-vehicle state-over-time history
     # that backs the maintenance calendar projection, safety event
@@ -944,7 +944,7 @@ class WarehouseMixin(_MixinBase):
 
         Tiered so the answer reaches past the 7-day snapshot retention:
           * Recent, precise movement comes from ``vehicle_state_snapshot``
-            (5-min cadence, ≤7 days) — this also decides which vehicles are
+            (minute cadence, ≤7 days) — this also decides which vehicles are
             online enough to consider.
           * For an online truck with NO movement inside the snapshot window,
             the last day it actually drove is read from the long-retention
@@ -962,7 +962,7 @@ class WarehouseMixin(_MixinBase):
         since = (now - timedelta(days=lookback_days)).isoformat()
         cutoff = (now - timedelta(days=min_days)).isoformat()
 
-        # Online trucks + recent precise movement (5-min snapshot tier).
+        # Online trucks + recent precise movement (minute snapshot tier).
         cur = await self._db.execute(
             """
             SELECT vehicle_id,
@@ -1947,7 +1947,7 @@ class WarehouseMixin(_MixinBase):
     ) -> list[dict]:
         """Read raw snapshot rows for one vehicle (or all) over a window.
 
-        Surfaces the ``vehicle_state_snapshot`` 5-min history to the AI
+        Surfaces the ``vehicle_state_snapshot`` minute history to the AI
         agent so it can answer trend / utilization / "when did X last
         move" / idle-streak questions that the point-in-time tools
         can't.  Caps at ``max_rows`` so a careless 30-day query against

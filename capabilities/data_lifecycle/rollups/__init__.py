@@ -1,4 +1,4 @@
-"""Roll-up hub — generic time-series downsampling (live → 5-min → hourly →
+"""Roll-up hub — generic time-series downsampling (live → minute → hour →
 daily → weekly).
 
 Part of the data-lifecycle family (``capabilities/data_lifecycle``); holds only the
@@ -15,7 +15,7 @@ from .._common import make_discover
 # + its aggregation.  Add a line when a new high-frequency stream needs tiered
 # history; missing modules are skipped (logged), never fatal.
 _CONTRIBUTORS = (
-    "features.vehicles.lifecycle",   # vehicle state → 5-min → hourly → daily → weekly
+    "features.vehicles.lifecycle",   # vehicle state → minute → hour → day → week
 )
 
 discover = make_discover(_CONTRIBUTORS)

@@ -94,7 +94,7 @@ async def main():
     config.WAREHOUSE_READS_ENABLED = True
     wh = await get_vehicle_health(7)
     print(f"live={len(live)}  warehouse={len(wh)}")
-    # vehicle_id sets should match within ~5 trucks (warehouse is up to 5min stale)
+    # vehicle_id sets should match within ~5 trucks (warehouse is up to a minute stale)
     print(set(v['name'] for v in live) ^ set(v['name'] for v in wh))
     await shutdown()
 

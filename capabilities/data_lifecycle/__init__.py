@@ -4,7 +4,7 @@ A data tier is born (ingest), promoted to coarser tiers, kept for a window,
 then deleted.  This package groups the two engines that run that lifecycle:
 
   * ``rollups``   — BUILD: downsample a high-frequency stream into tiered
-                    history (live → 5-min → hourly → daily → weekly), on each
+                    history (live → minute → hour → day → week), on each
                     tier's own cadence.
   * ``retention`` — DELETE: prune every registered tier to the window its
                     owning feature declares, in one nightly pass.

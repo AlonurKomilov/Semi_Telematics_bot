@@ -42,7 +42,7 @@ async def report_faults(
 ):
     """Fault report — all vehicles with active fault codes.
 
-    Reads from the warehouse (ingested every 5 min); falls back to
+    Reads from the warehouse (ingested every minute); falls back to
     live Samsara only when the warehouse is cold for this account.
     """
     allowed = await get_user_company_codes(user)

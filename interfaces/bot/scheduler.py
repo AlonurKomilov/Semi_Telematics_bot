@@ -26,9 +26,9 @@ _JOB_META = {
     # ── Telematics (warehouse ingest + rollup) ──
     "warehouse_vehicle_state":        ("Telematics", "Pull live vehicle state from Samsara"),
     "warehouse_state_snapshot":       ("Telematics", "Capture the minute-grain vehicle-state history"),
-    "warehouse_telemetry_hourly":     ("Telematics", "Roll 5-min snapshots into the hourly tier"),
-    "warehouse_metrics_daily":        ("Telematics", "Roll the hourly tier into the daily tier"),
-    "warehouse_metrics_weekly":       ("Telematics", "Roll the daily tier into the weekly tier"),
+    "warehouse_telemetry_hourly":     ("Telematics", "Roll minute samples into the hour tier"),
+    "warehouse_metrics_daily":        ("Telematics", "Roll the hour tier into the day tier"),
+    "warehouse_metrics_weekly":       ("Telematics", "Roll the day tier into the week tier"),
     "warehouse_vehicle_health":       ("Telematics", "Ingest current vehicle health"),
     "warehouse_vehicle_faults":       ("Telematics", "Ingest current vehicle faults (DTCs)"),
     "warehouse_safety_events":        ("Telematics", "Ingest safety / harsh-driving events"),
@@ -433,7 +433,7 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
     # ── data retention (cross-cutting hub) ───────────────────
     # One nightly pass that prunes every registered retention target to the
     # window its OWNING feature declares (capabilities/data_lifecycle/retention):
-    #   tenant   — vehicle.timeline_5min (7d), vehicle.timeline_hourly (90d),
+    #   tenant   — vehicle.timeline_minute (7d), vehicle.timeline_hourly (90d),
     #              vehicle.metrics_daily (730d), scorecards.score_history (90d)
     #   platform — email.delivery_events (14d)
     # Replaces three scattered paths (the per-capability HISTORY_PRUNE job,

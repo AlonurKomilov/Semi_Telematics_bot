@@ -8366,6 +8366,31 @@ async def migrate_asset_grain_surfaces(conn) -> None:
     logger.info("Migration 185: 10 asset grain surfaces ready")
 
 
+@_register("186_retention_key_timeline_minute")
+async def migrate_retention_key_timeline_minute(conn) -> None:
+    """Fold the retention ledger onto the renamed minute-tier key.
+
+    ``vehicle.timeline_5min`` was the last operator-visible artifact of
+    the retired 5-minute cadence — a stored ledger identity, so the
+    rename travels WITH its history (an AI dev reading the console
+    reconstructed the old world from exactly this string).  Idempotent:
+    the WHERE clause makes re-runs no-ops.
+    """
+    cur = await conn.execute("SELECT to_regclass('retention_runs')")
+    if (await cur.fetchone())[0] is None:
+        # Fresh install: the ledger table is born later (platform side)
+        # and has no history to fold — nothing to do here.
+        logger.info("Migration 186: no retention ledger yet (fresh install)")
+        await conn.commit()
+        return
+    await conn.execute(
+        "UPDATE retention_runs SET target_key = 'vehicle.timeline_minute' "
+        "WHERE target_key = 'vehicle.timeline_5min'"
+    )
+    await conn.commit()
+    logger.info("Migration 186: retention ledger speaks timeline_minute")
+
+
 @_register("186_object_store_naming")
 async def migrate_object_store_naming(conn) -> None:
     """Finish the storage → object_store rename in the DATA layer.

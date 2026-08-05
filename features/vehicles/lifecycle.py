@@ -103,15 +103,15 @@ from capabilities.data_lifecycle.retention.registry import (  # noqa: E402
 
 # Target names are the feature-component identity (``vehicle.<component>``),
 # decoupled from the physical table the executor prunes:
-#   vehicle.timeline_5min   -> vehicle_state_snapshot      (minute-grain state;
-#                              the name predates the cadence change and is a
-#                              stored ledger key — renaming needs the alias recipe)
+#   vehicle.timeline_minute -> vehicle_state_snapshot      (minute-grain state;
+#                              renamed from timeline_5min — migration 186 folds
+#                              the ledger history onto the new key)
 #   vehicle.timeline_hourly -> vehicle_telemetry (hourly)  (hourly roll-up)
 #   vehicle.metrics_daily   -> vehicle_telemetry (daily)   (daily roll-up + EOD odometer)
 #   vehicle.timeline_weekly -> vehicle_telemetry (weekly)  (weekly roll-up, long horizon)
 #   vehicle.faults          -> vehicle_fault_detail        (CLEARED DTC history only)
 register_target(RetentionTarget(
-    "vehicle.timeline_5min", "Vehicle timeline (minute state history)", "tenant",
+    "vehicle.timeline_minute", "Vehicle timeline (minute state history)", "tenant",
     lambda db, acct, days: db.prune_vehicle_state_snapshots(acct, days_keep=days),
 ))
 register_target(RetentionTarget(
@@ -136,7 +136,7 @@ register_target(RetentionTarget(
 # The Vehicle feature's own needs.  (vehicle.metrics_daily's window comes from
 # its consumers — Maintenance + Work Orders — via their own retention modules.)
 register_need(RetentionNeed(
-    "vehicles", "vehicle.timeline_5min", 7, "live map + recent vehicle timeline",
+    "vehicles", "vehicle.timeline_minute", 7, "live map + recent vehicle timeline",
 ))
 register_need(RetentionNeed(
     "vehicles", "vehicle.timeline_hourly", 90, "vehicle timeline trend lines",

@@ -1,7 +1,7 @@
 """Vehicle telemetry warehouse — aggregation (the roll-up tier builders).
 
 These functions downsample data ALREADY in the warehouse into the tiered
-history: the raw 5-min ``vehicle_state_snapshot`` rolls up into the unified
+history: the raw minute-grain ``vehicle_state_snapshot`` rolls up into the unified
 ``vehicle_telemetry`` aggregate table (``granularity`` hourly → daily →
 weekly).  They are PROVIDER-AGNOSTIC — they read local tables and make no
 integration call — and are registered as the vehicle roll-up cascade with
@@ -480,7 +480,7 @@ async def _aggregate_day_window(
     )
     hourly_agg = await cur.fetchall()
 
-    # End-of-day odometer + engine-hours, read straight from the 5-min
+    # End-of-day odometer + engine-hours, read straight from the minute
     # snapshots for this day.  Both readings are monotonic (cumulative),
     # so MAX over the day == the last reading of the day — no correlated
     # subquery needed.  This carries the long-lived odometer into the
@@ -592,7 +592,7 @@ async def aggregate_metrics_daily(account_id: int) -> int:
     rolled = 0
     for i in range(1, _DAILY_HEAL_DAYS + 1):
         past = day_start - timedelta(days=i)
-        # Only days the 5-min tier still covers.  Past that edge the
+        # Only days the minute tier still covers.  Past that edge the
         # hours can no longer be rebuilt, so re-summing would republish
         # the hourly tier over a daily row that may be the better copy.
         if not await _day_has_snapshots(tenant, account_id, past):
@@ -835,7 +835,7 @@ async def backfill_aggregations(
 
 
 async def _day_has_snapshots(tenant, account_id: int, day_start: datetime) -> bool:
-    """Whether the 5-min tier still covers this UTC day."""
+    """Whether the minute tier still covers this UTC day."""
     cur = await tenant._db.execute(
         "SELECT 1 FROM vehicle_state_snapshot WHERE account_id = ? "
         "AND captured_at >= ? AND captured_at < ? LIMIT 1",
@@ -863,11 +863,11 @@ async def reaggregate_window(
 
     Both tiers upsert, so calls are idempotent and the hourly pass
     completes before the daily one sums it.  What the window CANNOT
-    rebuild it leaves alone: an hour whose 5-min snapshots have aged out
+    rebuild it leaves alone: an hour whose minute snapshots have aged out
     produces no row, and the daily upsert keeps the reading it already
     banked.
 
-    Days the 5-min tier no longer covers are left ALONE by default.
+    Days the minute tier no longer covers are left ALONE by default.
     Their hours can no longer be rebuilt, so re-summing a daily row
     there does not refresh it — it merely republishes whatever the hourly
     tier happens to hold, and if anything damaged those hours the daily
@@ -886,7 +886,7 @@ async def reaggregate_window(
 
     end_exclusive = day_last + timedelta(days=1)
 
-    # Decide per day BEFORE touching either tier.  A day the 5-min tier
+    # Decide per day BEFORE touching either tier.  A day the minute tier
     # no longer covers cannot be rebuilt from anything local, and running
     # the passes anyway is not merely useless: the hourly pass still
     # emits a zero-mile row for any vehicle that logged a safety event
@@ -920,7 +920,7 @@ async def reaggregate_window(
 
     if skipped:
         logger.warning(
-            "reaggregate_window acct=%d left %d day(s) alone — no 5-min "
+            "reaggregate_window acct=%d left %d day(s) alone — no minute-grain "
             "coverage left to rebuild them from: %s",
             account_id, len(skipped), ", ".join(skipped),
         )

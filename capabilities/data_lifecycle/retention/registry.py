@@ -14,7 +14,7 @@ hubs:
     ``register_need`` (e.g. Maintenance/Work Orders on
     ``vehicle.metrics_daily``).
   * ``resolve()`` keeps each target for the MAX of its declared needs —
-    so a shared tier (e.g. ``vehicle.timeline_5min``, read by several
+    so a shared tier (e.g. ``vehicle.timeline_minute``, read by several
     features) is retained as long as the hungriest consumer requires,
     and the magic numbers become a contract you can read.
 
@@ -38,7 +38,7 @@ PruneExecutor = Callable[[Any, "int | None", int], Awaitable[int]]
 class RetentionTarget:
     """How to prune one data target (declared by the platform layer)."""
 
-    key: str            # feature-component id, e.g. "vehicle.timeline_5min"
+    key: str            # feature-component id, e.g. "vehicle.timeline_minute"
     label: str          # human label
     scope: str          # "tenant" (per-account) | "platform" (global)
     prune: PruneExecutor

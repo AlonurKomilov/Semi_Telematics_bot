@@ -195,7 +195,7 @@ Two timestamps, uniform meaning on every warehouse table:
 - `source_ts` (new, nullable) — when the PROVIDER's sensor actually sampled.
   Ingest maps provider markers (odometer_time, gps time, …) into it. Roll-up
   stages propagate `max(source_ts)` of their inputs and **never mint it**.
-  The 5-min snapshot keeps the old `source_ts` for unchanged rows — or skips
+  The minute snapshot keeps the old `source_ts` for unchanged rows — or skips
   dead rows entirely. NULL renders as "age unknown", never as fresh.
 - `captured_at` — **semantics are frozen per table as they are today** and
   documented here: on `vehicle_state` it currently holds PROVIDER time (the

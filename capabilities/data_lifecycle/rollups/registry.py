@@ -2,7 +2,7 @@
 
 Some data arrives as a high-frequency live stream that we keep at several
 resolutions so each consumer reads the cheapest tier that answers it:
-live → 5-min → hourly → daily.  Building those tiers is *downsampling* — a
+live → minute → hour → day.  Building those tiers is *downsampling* — a
 generic mechanism (cadence, per-account fan-out, idempotent upsert) that is
 the same regardless of WHAT is rolled up.  The *aggregation* (which columns,
 summed/maxed/averaged how) is irreducibly feature-specific.
@@ -32,7 +32,7 @@ RollupRun = Callable[[int], Awaitable[int]]
 
 @dataclass(frozen=True)
 class RollupStage:
-    """One tier of a cascade — e.g. "roll 5-min snapshots into the hourly
+    """One tier of a cascade — e.g. "roll minute snapshots into the hour
     tier" — with the cadence it runs on and the function that does it.
 
     ``cadence`` is a small spec the scheduler translates to a trigger:
@@ -62,7 +62,7 @@ class RollupStage:
 @dataclass(frozen=True)
 class RollupCascade:
     """An ordered set of stages downsampling one stream (e.g. vehicle state
-    → 5-min → hourly → daily).  ``name`` is the stream/owner id."""
+    → minute → hour → day).  ``name`` is the stream/owner id."""
 
     name: str
     stages: tuple[RollupStage, ...]

@@ -46,7 +46,7 @@ async def warehouse_status(
     Designed as the pre-flight check before flipping
     ``WAREHOUSE_READS_ENABLED=1`` in production: if every table has rows
     and the timestamps are within the expected ingestor cadence (60s /
-    5min / hourly), the flag is safe to flip.
+    minute / hour), the flag is safe to flip.
     """
     from infra import config as _cfg
 

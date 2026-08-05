@@ -17,7 +17,7 @@ async def get_vehicle_health(
 ) -> list[dict]:
     """Fetch vehicle health stats (battery, oil, coolant, DEF, etc.).
 
-    Warehouse-first: reads ``vehicle_health_snapshot`` (5-min-fresh) when
+    Warehouse-first: reads ``vehicle_health_snapshot`` (5-min ingest cadence) when
     WAREHOUSE_READS_ENABLED=1, falls back to live Samsara otherwise
     (or on cold-start empty warehouse).
     """
@@ -39,7 +39,7 @@ async def get_fleet_weather(
 ) -> list[dict]:
     """Fetch ambient temperature readings from vehicle sensors.
 
-    Warehouse-first: reads ``weather_snapshot`` (5-min-fresh) when
+    Warehouse-first: reads ``weather_snapshot`` (10-min ingest cadence) when
     WAREHOUSE_READS_ENABLED=1, falls back to live Samsara otherwise.
     """
     await prepare_companies(account_id)
