@@ -33,7 +33,9 @@ logger = logging.getLogger(__name__)
 # real one booked 24,352 miles) and high enough that no honest reading
 # has ever approached it.  Distance is dropped, never clamped — a
 # clamped value would look like miles somebody drove.
-IMPLAUSIBLE_STEP_MILES = 10_000.0
+# A truck cannot out-drive this sustained speed; an odometer step is
+# plausible only if step <= elapsed_hours * this + a 2-mile slack.
+MAX_PLAUSIBLE_MPH = 90.0
 
 # A sample's state persists until the NEXT sample — that gap is the
 # duty time it earns.  Capped, because a gap is only believable while
@@ -202,11 +204,16 @@ async def _aggregate_hour_window(
     # they part company exactly where the odometer misbehaves: a gateway
     # that re-baselines mid-window makes MAX-MIN report the whole old
     # reading as distance driven (one truck booked 24,352 miles in a
-    # single hour that way), and a reading that resumes after a silent
-    # stretch dumps the entire catch-up into whichever bucket saw both
-    # values.  Steps beyond ``IMPLAUSIBLE_STEP_MILES`` are dropped, not
-    # clamped: they are an artefact of the device, not distance the
-    # truck covered.  Negative steps are resets and contribute nothing.
+    # single hour that way).  Plausibility is PHYSICS, not a magic
+    # number: a step counts only if the truck could have DRIVEN it in
+    # the wall time between the two readings (MAX_PLAUSIBLE_MPH, plus
+    # a small slack for GPS/odometer rounding).  The gap uses provider
+    # time (source_ts) when present, so a truck returning from a long
+    # silence gets its real catch-up miles counted, while the same
+    # step across one minute is dropped as the artefact it is — the
+    # old flat 10k ceiling let every sub-10k re-baseline through (179
+    # impossible hour rows before this guard).  Negative steps are
+    # resets and contribute nothing.
     dist_cols = [
         "vehicle_id", "miles_in_window", "reset_steps", "jump_steps",
         "odometer_eoh", "engine_hours_eoh",
@@ -214,28 +221,31 @@ async def _aggregate_hour_window(
     cur = await tenant._db.execute(
         """
         SELECT vehicle_id,
-               SUM(CASE WHEN step > 0 AND step <= ? THEN step ELSE 0 END)
+               SUM(CASE WHEN step > 0 AND step <= gap_h * ? + 2 THEN step ELSE 0 END)
                                                    AS miles_in_window,
                SUM(CASE WHEN step < 0 THEN 1 ELSE 0 END) AS reset_steps,
-               SUM(CASE WHEN step > ? THEN 1 ELSE 0 END) AS jump_steps,
+               SUM(CASE WHEN step > gap_h * ? + 2 THEN 1 ELSE 0 END) AS jump_steps,
                MAX(odometer_mi)                    AS odometer_eoh,
                MAX(engine_hours)                   AS engine_hours_eoh
           FROM (
               SELECT vehicle_id, odometer_mi, engine_hours,
-                     odometer_mi - LAG(odometer_mi) OVER (
-                         PARTITION BY vehicle_id ORDER BY captured_at
-                     ) AS step
+                     odometer_mi - LAG(odometer_mi) OVER w AS step,
+                     EXTRACT(EPOCH FROM (
+                         COALESCE(source_ts, captured_at)::timestamptz
+                         - LAG(COALESCE(source_ts, captured_at)::timestamptz) OVER w
+                     )) / 3600.0 AS gap_h
                 FROM vehicle_state_snapshot
                WHERE account_id = ?
                  AND captured_at >= ?
                  AND captured_at <  ?
                  AND odometer_mi IS NOT NULL
+              WINDOW w AS (PARTITION BY vehicle_id ORDER BY captured_at)
           ) ordered
          GROUP BY vehicle_id
         """,
-        # Placeholder order follows the SQL text: the two ceilings sit in
-        # the select list, ahead of the derived table's own filters.
-        (IMPLAUSIBLE_STEP_MILES, IMPLAUSIBLE_STEP_MILES,
+        # Placeholder order follows the SQL text: the speed ceiling twice
+        # in the select list, ahead of the derived table's own filters.
+        (MAX_PLAUSIBLE_MPH, MAX_PLAUSIBLE_MPH,
          account_id, hour_start.isoformat(), hour_end.isoformat()),
     )
     dist_by_vid = {

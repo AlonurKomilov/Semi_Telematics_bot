@@ -586,3 +586,46 @@ async def test_odometer_re_baseline_does_not_become_miles(tenant):
     # The odometer itself still banks the newest reading — the reading is
     # real, it is the DISTANCE that was fiction.
     assert float(row["odometer_eod"]) == pytest.approx(306_408)
+
+
+async def test_step_plausibility_is_physics_not_a_magic_number(tenant):
+    """Two identical 900-mile odometer steps; only their TIME context
+    differs.  Across one minute it is a re-baseline artefact (dropped
+    — the old flat 10k ceiling admitted every sub-10k jump: 179
+    impossible hour rows).  Across a 14-hour provider silence
+    (source_ts gap) it is a truck's real catch-up and counts."""
+    from datetime import datetime as _dt, timezone as _tz
+    from capabilities.warehouse.telemetry import aggregator as agg
+
+    hour = _dt(2026, 8, 3, 9, tzinfo=_tz.utc)
+
+    # v_fake: odometer jumps 900 between two samples a minute apart.
+    await tenant.upsert_vehicle_state_snapshots(61, [
+        {"vehicle_id": "v_fake",
+         "captured_at": hour.replace(minute=m).isoformat(),
+         "odometer_mi": odo, "engine_state": "idle", "speed_mph": 0,
+         "source_ts": hour.replace(minute=m).isoformat()}
+        for m, odo in ((10, 1000), (11, 1900), (12, 1901))
+    ])
+    # v_real: same 900-mile step, but the provider was silent 14 hours
+    # (source_ts gap) — the truck genuinely drove those miles.
+    await tenant.upsert_vehicle_state_snapshots(61, [
+        {"vehicle_id": "v_real",
+         "captured_at": hour.replace(minute=10).isoformat(),
+         "odometer_mi": 5000, "engine_state": "moving", "speed_mph": 50,
+         "source_ts": "2026-08-02T19:10:00+00:00"},
+        {"vehicle_id": "v_real",
+         "captured_at": hour.replace(minute=11).isoformat(),
+         "odometer_mi": 5900, "engine_state": "moving", "speed_mph": 50,
+         "source_ts": hour.replace(minute=11).isoformat()},
+    ])
+    await agg._aggregate_hour_window(tenant, 61, hour)
+
+    cur = await tenant._db.execute(
+        "SELECT vehicle_id, miles FROM vehicle_telemetry "
+        "WHERE account_id = ? AND granularity = 'hourly' "
+        "AND bucket_start = ? ORDER BY vehicle_id",
+        (61, "2026-08-03T09:00:00"))
+    miles = {r[0]: float(r[1]) for r in await cur.fetchall()}
+    assert miles["v_fake"] == pytest.approx(1.0)    # the 900 dropped, the 1 kept
+    assert miles["v_real"] == pytest.approx(900.0)  # the catch-up counted
