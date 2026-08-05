@@ -2,8 +2,9 @@ import {
   LayoutDashboard, Truck, Bell, Bot, FileText, Mail, MapPin, BookOpen,
   Wrench, Map, Route, Trophy, AlertTriangle, TrendingUp,
   Camera, ParkingSquare, Fuel, DollarSign, Users, Shield, Building2,
-  Link as LinkIcon, ClipboardList, Clock, CreditCard, GraduationCap,
-  IdCard,
+  Link as LinkIcon, ClipboardList, CreditCard, GraduationCap,
+  IdCard, Gauge, Boxes, Receipt, Store, Cog, ClipboardCheck, Package,
+  UserPlus, Plug, Cloud,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -69,10 +70,15 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
     description: 'Driver coaching assignments and acks', keywords: ['training','review'] },
   { label: 'Driver Pay',      path: '/driver-pay',          icon: DollarSign,    group: 'Workforce', permission: ['can_driver_pay_admin'],
     description: 'Driver paystubs and pay rules', keywords: ['pay','salary','wages'] },
-  { label: 'Working Hours',   path: '/work-hours', icon: Clock,         group: 'Workforce', permission: ['can_manage_work_hours'],
-    description: 'Driver hours, HOS and shifts', keywords: ['hos','hours','shift'] },
+  // Working Hours is NOT listed: it was folded into Team Management ->
+  // Working Hours, and its sidebar entry was removed on purpose so
+  // operators don't see two doors to the same config (featureCatalog says
+  // so).  ``/work-hours`` still resolves as a Navigate redirect for old
+  // bookmarks — but search advertising it would put the second door
+  // straight back.  Its keywords move onto Team Management instead, so
+  // typing "hos" or "shift" still lands somewhere useful.
   { label: 'Team Management', path: '/team',      icon: Users,         group: 'Workforce', permission: ['can_manage_users'],
-    description: 'Add or remove users, set roles', keywords: ['users','staff','team'] },
+    description: 'Add or remove users, set roles', keywords: ['users','staff','team','hos','hours','shift','working hours'] },
   { label: 'Invites',         path: '/invites',    icon: LinkIcon,      group: 'Workforce', permission: ['can_invite'],
     description: 'Generate invite links for new staff', keywords: ['invite','onboard'] },
 
@@ -93,6 +99,62 @@ export const ROUTE_ENTRIES: RouteEntry[] = [
   // Knowledge
   { label: 'Knowledge Base', path: '/knowledge', icon: BookOpen, group: 'Help', permission: null,
     description: 'Internal docs, SOPs, and guides', keywords: ['docs','help','wiki'] },
+  // ── Added after a responsive audit found the palette could not reach
+  //    13 live routes.  This list is a hand-kept SIBLING of
+  //    config/featureCatalog.ts — it exists because search needs three
+  //    things the catalog does not carry: an English label to match on
+  //    (the catalog holds an i18n KEY), a one-line description, and
+  //    keywords for the words people actually type.  A drift guard in
+  //    routeRegistry.test.ts now fails the build when the catalog gains
+  //    a route this list has not.
+  { label: 'Loads', path: '/loads', icon: Package, group: 'Fleet',
+    permission: ['can_loads_all', 'can_loads_own'],
+    description: 'Freight — entered by hand or synced from your TMS',
+    keywords: ['load', 'freight', 'trip', 'dispatch', 'rate'] },
+  { label: 'Work Orders', path: '/work-orders', icon: Receipt, group: 'Fleet',
+    permission: ['can_work_orders_all', 'can_work_orders_vehicle'],
+    description: 'Shop visits, labour, parts and invoices',
+    keywords: ['wo', 'repair', 'shop', 'invoice', 'labour', 'labor'] },
+  { label: 'Inspections', path: '/inspections', icon: ClipboardCheck, group: 'Fleet',
+    permission: ['can_inspections_all', 'can_inspections_vehicle'],
+    description: 'DVIR and scheduled inspection records',
+    keywords: ['dvir', 'inspect', 'defect', 'pti'] },
+  { label: 'Parts', path: '/parts', icon: Cog, group: 'Fleet',
+    permission: 'can_parts',
+    description: 'Parts catalogue and stock',
+    keywords: ['part', 'inventory', 'stock', 'sku'] },
+  { label: 'Vendors', path: '/vendors', icon: Store, group: 'Fleet',
+    permission: 'can_work_orders_all',
+    description: 'Repair shops and suppliers',
+    keywords: ['vendor', 'shop', 'supplier', 'garage'] },
+  { label: 'Service Tasks', path: '/service-tasks', icon: ClipboardList, group: 'Fleet',
+    permission: 'can_service_tasks',
+    description: 'The shared job vocabulary behind maintenance and work orders',
+    keywords: ['task', 'service', 'job', 'pm'] },
+  { label: 'Vehicle Inventory', path: '/vehicles/inventory', icon: Boxes, group: 'Fleet',
+    permission: ['can_vehicle_all', 'can_vehicle_vehicle'],
+    description: 'Onboard items per truck — cameras, fuel cards, ELDs',
+    keywords: ['inventory', 'item', 'camera', 'eld', 'fuel card', 'toll'] },
+  { label: 'KPI', path: '/kpi', icon: Gauge, group: 'Reports',
+    permission: ['can_kpi'],
+    description: 'Account-wide performance analytics',
+    keywords: ['kpi', 'metric', 'performance', 'analytics'] },
+  { label: 'Driver Applications', path: '/workforce/applications', icon: UserPlus, group: 'Workforce',
+    permission: ['can_manage_applications'],
+    description: 'Recruiting intake — apply links and applicants',
+    keywords: ['applicant', 'recruit', 'hire', 'apply', 'dqf'] },
+  { label: 'Carrier Directory', path: '/workforce/carrier-directory', icon: Building2, group: 'Workforce',
+    permission: ['can_carrier_directory'],
+    description: 'Reference info for the carriers we recruit for',
+    keywords: ['carrier', 'directory', 'prequal'] },
+  { label: 'Integrations', path: '/integrations', icon: Plug, group: 'Admin',
+    permission: ['can_manage_integrations'],
+    description: 'Connect Samsara, Datatruck and other systems',
+    keywords: ['integration', 'samsara', 'datatruck', 'motive', 'sync', 'api'] },
+  { label: 'Storage', path: '/object-storage', icon: Cloud, group: 'Admin',
+    permission: ['can_manage_storage'],
+    description: 'Where uploaded files live, and how much space they use',
+    keywords: ['storage', 'file', 'upload', 'drive', 'space'] },
 ];
 
 export function findRouteByPath(pathname: string): RouteEntry | undefined {
