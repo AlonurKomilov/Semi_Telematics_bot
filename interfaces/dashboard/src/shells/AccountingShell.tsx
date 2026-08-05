@@ -13,6 +13,7 @@ import { Outlet } from 'react-router-dom';
 import ShellHero from './heroes/ShellHero';
 import { Search, Menu, X } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
+import MobileNavDrawer from '../components/shell/MobileNavDrawer';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
@@ -52,16 +53,10 @@ export default function AccountingShell() {
         <Sidebar />
       </div>
 
-      {mobileSidebarOpen && (
-        <div
-          className="lg:hidden fixed inset-0 z-50 bg-black/50"
-          onClick={() => setMobileSidebarOpen(false)}
-        >
-          <div className="h-full" onClick={(e) => e.stopPropagation()}>
-            <Sidebar />
-          </div>
-        </div>
-      )}
+      <MobileNavDrawer
+        open={mobileSidebarOpen}
+        onOpenChange={setMobileSidebarOpen}
+      />
 
       <div className="flex-1 flex flex-col overflow-hidden bg-sidebar pr-2 pb-2">
         <header className="h-12 bg-sidebar text-sidebar-foreground flex items-center justify-between px-3 lg:px-4 shrink-0 gap-3">

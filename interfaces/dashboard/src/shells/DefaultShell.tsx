@@ -20,6 +20,7 @@ import { Outlet } from 'react-router-dom';
 import ShellHero from './heroes/ShellHero';
 import { Search, Menu, X } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
+import MobileNavDrawer from '../components/shell/MobileNavDrawer';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
@@ -62,19 +63,10 @@ export default function DefaultShell() {
       </div>
 
       {/* Mobile sidebar drawer */}
-      {mobileSidebarOpen && (
-        <div
-          className="lg:hidden fixed inset-0 z-50 bg-black/50"
-          onClick={() => setMobileSidebarOpen(false)}
-        >
-          <div
-            className="h-full"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Sidebar />
-          </div>
-        </div>
-      )}
+      <MobileNavDrawer
+        open={mobileSidebarOpen}
+        onOpenChange={setMobileSidebarOpen}
+      />
 
       {/* Right column is the chrome envelope around the content card.
           ``bg-sidebar`` paints the chrome colour, ``pr-2 pb-2`` leaves

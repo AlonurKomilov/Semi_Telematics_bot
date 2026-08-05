@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Search, Menu, X } from 'lucide-react';
 import Sidebar from '../components/Sidebar';
+import MobileNavDrawer from '../components/shell/MobileNavDrawer';
 import { ThemeToggle } from '../components/ThemeToggle';
 import { LanguageSelector } from '../components/LanguageSelector';
 import { AvatarMenu } from '../components/AvatarMenu';
@@ -52,16 +53,10 @@ export default function SafetyShell() {
         <Sidebar />
       </div>
 
-      {mobileSidebarOpen && (
-        <div
-          className="lg:hidden fixed inset-0 z-50 bg-black/50"
-          onClick={() => setMobileSidebarOpen(false)}
-        >
-          <div className="h-full" onClick={(e) => e.stopPropagation()}>
-            <Sidebar />
-          </div>
-        </div>
-      )}
+      <MobileNavDrawer
+        open={mobileSidebarOpen}
+        onOpenChange={setMobileSidebarOpen}
+      />
 
       <div className="flex-1 flex flex-col overflow-hidden bg-sidebar pr-2 pb-2">
         {/* Three-zone header — see DefaultShell for the design note. */}
