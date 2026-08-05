@@ -72,6 +72,21 @@ async def health_check():
     }
 
 
+@router.get("/health/watch")
+async def health_watch():
+    """External-monitor endpoint — the same truth as ``/health`` but
+    spoken in STATUS CODES: 200 only when everything (DB + bot pulse)
+    is ok, 503 otherwise.  Exists because free uptime checkers can't
+    read response bodies (keyword matching is a paid feature), while
+    ``/health`` keeps its documented 200-always contract for deploys
+    and diagnostics.  Point UptimeRobot HERE.
+    """
+    from fastapi.responses import JSONResponse
+
+    body = await health_check()
+    return JSONResponse(body, status_code=200 if body["status"] == "ok" else 503)
+
+
 @router.get("/health/deps")
 async def deps_health():
     """Per-dependency status snapshot.
