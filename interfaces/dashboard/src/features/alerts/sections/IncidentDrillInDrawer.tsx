@@ -86,6 +86,8 @@ export default function IncidentDrillInDrawer() {
           side="right"
           size="md"
           aria-label={`Alert #${drillInAlert.id} details`}
+          // DrawerHeader already carries a ✕ (see TripsDrawer).
+          showCloseButton={false}
         >
           <DrawerHeader alert={drillInAlert} onClose={closeDrillIn} />
           <DrawerBody alert={drillInAlert} />

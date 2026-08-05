@@ -23,6 +23,7 @@
 // never had.
 
 import { useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 
 import Sidebar from '../Sidebar';
 import { Sheet, SheetContent, SheetTitle } from '../ui/sheet';
@@ -37,6 +38,15 @@ export default function MobileNavDrawer({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  // Close on NAVIGATION.  The hand-rolled version unmounted with the
+  // route because it lived inline in the shell's tree; a Sheet portals to
+  // <body> and outlives it, so tapping a nav item changed the URL and
+  // left the drawer sitting over the new page with the background still
+  // scroll-locked.  A conversion regression, and the worst kind: the user
+  // arrives somewhere new and cannot scroll it.
+  const { pathname } = useLocation();
+  useEffect(() => { onOpenChange(false); }, [pathname]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   // The old version leaned on ``lg:hidden`` to disappear at desktop
   // width.  A Sheet cannot: it PORTALS and locks the page's scroll, so
   // hiding it with a class would leave a desktop user unable to scroll

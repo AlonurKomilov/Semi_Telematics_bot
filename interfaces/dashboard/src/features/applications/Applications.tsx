@@ -1413,7 +1413,15 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
   // aria-modal and scroll lock the hand-rolled version never had.
   return (
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent side="right" size="xl" aria-label="Application detail">
+      <SheetContent
+        side="right"
+        size="xl"
+        aria-label="Application detail"
+        // The header already carries a ✕ beside "Download packet"; the
+        // primitive's own landed on top of it — the audit caught the two
+        // overlapping here first, but all three conversions had it.
+        showCloseButton={false}
+      >
         <SheetBody label="Application detail" className="p-5 space-y-4">
         <div className="flex items-center justify-between">
           <SheetTitle className="text-lg font-semibold">
@@ -1427,7 +1435,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
                 <Download size={14} /> Download packet (PDF)
               </button>
             )}
-            <SheetClose className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></SheetClose>
+            <SheetClose aria-label="Close" className="text-muted-foreground hover:text-foreground p-1"><X size={16} /></SheetClose>
           </div>
         </div>
 

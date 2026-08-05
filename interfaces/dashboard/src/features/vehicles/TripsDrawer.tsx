@@ -158,7 +158,14 @@ export default function TripsDrawer({
     // drawer is open; onOpenChange routes Escape and backdrop clicks to
     // the same onClose the ✕ already used.
     <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent side="right" size="xl" aria-label={`Trips for ${vehicleName}`}>
+      <SheetContent
+        side="right"
+        size="xl"
+        aria-label={`Trips for ${vehicleName}`}
+        // The header already carries a ✕; the primitive's own would sit
+        // on top of it — two close buttons overlapping, one unlabelled.
+        showCloseButton={false}
+      >
         <SheetHeader className="px-5 py-4 border-b border-border flex-row items-start gap-3 shrink-0">
           <div className="flex-1 min-w-0">
             <SheetTitle className="text-base font-semibold flex items-center gap-2">
