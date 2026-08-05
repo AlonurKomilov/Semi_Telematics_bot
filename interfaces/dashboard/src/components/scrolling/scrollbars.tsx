@@ -198,9 +198,13 @@ const BAR_LAYER = 'z-30';
 
 
 const TRACK = 'relative bg-muted/40 rounded-full cursor-pointer';
-// ``touch-none`` so a drag on the thumb isn't stolen by the page's own
-// pan gesture — on a touchscreen this bar is the ONLY way to scroll the
-// horizontal axis, so losing the gesture loses the axis.
+// ``touch-none`` so a drag ON THE THUMB isn't stolen by the page's own
+// pan gesture.  The old reason — "this bar is the only way to scroll the
+// horizontal axis on a touchscreen" — expired when ``overflow-x`` went
+// back to ``auto``: the browser pans the container natively now, and this
+// bar is an affordance rather than the mechanism.  The class stays
+// because a thumb you cannot drag without the page moving underneath is
+// still broken; it just no longer carries the axis on its own.
 const THUMB = 'absolute bg-muted-foreground/50 hover:bg-muted-foreground/70'
   + ' rounded-full cursor-grab active:cursor-grabbing touch-none';
 
@@ -336,6 +340,15 @@ export function ScrollbarV({
       className={cn(
         BAR_LAYER,
         'absolute right-0.5 w-2 opacity-0 group-hover/grid:opacity-100 transition-opacity',
+        // An INVISIBLE bar must not take pointer events.  At ``opacity-0``
+        // it still occupied an 8px strip over the rightmost column, so on
+        // touch a finger landing there grabbed the scrollbar — or the
+        // track's page-scroll — instead of panning the table, on a
+        // control the user could not see.  Interactive only once it is
+        // actually visible, which on a touch device is never: there is no
+        // hover, and the browser's own panning is the right mechanism
+        // there anyway.
+        'pointer-events-none group-hover/grid:pointer-events-auto',
       )}
       style={{ top: insetTop, height: track }}
     >

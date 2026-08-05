@@ -175,3 +175,22 @@ describe('the thumb drag uses pointer capture', () => {
     expect(thumb.className).toContain('touch-none');
   });
 });
+
+describe('an invisible bar does not take the pointer', () => {
+  // ScrollbarV is transparent until the grid is hovered, but it still
+  // occupied an 8px strip OVER the rightmost data column.  On touch a
+  // finger landing there grabbed the scrollbar — or the track's
+  // page-scroll — instead of panning the table, on a control nobody
+  // could see.  Reported by a responsive audit at 375px.
+  it('is pointer-inert while transparent, and live once hovered', () => {
+    const el = makeScroller();
+    const { container } = render(<ScrollbarV el={el} />);
+    const bar = container.firstElementChild as HTMLElement;
+    expect(bar.className).toContain('opacity-0');
+    expect(bar.className).toContain('pointer-events-none');
+    // The two must move together: visible-but-inert would be a dead
+    // control, invisible-but-live is the bug above.
+    expect(bar.className).toContain('group-hover/grid:opacity-100');
+    expect(bar.className).toContain('group-hover/grid:pointer-events-auto');
+  });
+});

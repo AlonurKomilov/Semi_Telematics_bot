@@ -204,7 +204,12 @@ was tried and reverted the same day. It is wrong twice over:
   say so: *"the last column is not staying at the last of the datagrid."*
 
 The bar is an overlay, invisible until hover, 8px at the extreme edge —
-the macOS/iOS convention. If content under it is genuinely unreadable,
+the macOS/iOS convention. ⚠️ **Invisible means pointer-INERT.** At
+`opacity-0` it still occupied that strip over the rightmost column, so a
+finger landing there grabbed the scrollbar instead of panning the table,
+on a control nobody could see. `pointer-events` tracks `opacity` — the
+two move together, because visible-but-inert is a dead control and
+invisible-but-live is that bug. If content under it is genuinely unreadable,
 the answer is the column's width or the page's column config, not a
 gutter carved out of the table.
 
