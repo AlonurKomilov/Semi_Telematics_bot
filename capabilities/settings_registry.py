@@ -109,11 +109,29 @@ SETTING_OWNERS: tuple[SettingOwner, ...] = (
     SettingOwner(
         "datatruck.*", "can_manage_integrations", "manage", "integrations",
     ),
+    SettingOwner(
+        "datatruck_pay_estimate", "can_manage_integrations",
+        "manage", "integrations",
+        "Opt-in tariff-estimated driver pay from Datatruck, default OFF "
+        "until the math is validated against real settlements.  Read by "
+        "adapters/storage/loads.py and written by nothing — found by the "
+        "reader scan, not the writer scan, which is the pattern for an "
+        "opt-in nobody wired a switch for.",
+    ),
     # ── Config family, ACCOUNT scope ────────────────────────────────
     SettingOwner(
         "kpi_thresholds", "can_manage_config_all", "config", "kpi",
         "Grading thresholds — data-meaning config, so account-wide by the "
         "blast-radius rule.",
+    ),
+    SettingOwner(
+        "scorecard_alert_*", "can_manage_config_all", "config", "scorecards",
+        "Drop/floor thresholds that decide when a scorecard fires an "
+        "alert.  Data-meaning config, so account-wide by the blast-radius "
+        "rule — two roles must not disagree about when a driver is "
+        "flagged.  jobs.py documents them as account-overridable but no "
+        "code writes them: the only route is PUT /settings, which means an "
+        "undeclared key made a documented override impossible.",
     ),
     SettingOwner(
         "dqf.*", "can_manage_config_all", "config", "applications",

@@ -215,6 +215,54 @@ class TestReadableKeysAreAlsoWritable:
             "hides. Declare each in capabilities/settings_registry.py."
         )
 
+    def test_every_key_the_code_READS_is_declared(self):
+        """A key that is read but undeclared can never be SET.
+
+        Third blind spot, after write-call-sites and the GET allow-list.
+        ``scorecard_alert_drop_threshold`` and its floor twin are read by
+        capabilities/scorecards/jobs.py, whose comment says "Accounts can
+        override these via account_settings" — and no code writes them, so
+        the only route is PUT /settings.  Undeclared, that documented
+        override was impossible.
+
+        Readers are where an unsettable setting shows up, because the
+        feature that consumes a value is usually not the surface that
+        sets it.
+        """
+        import re
+        pat = re.compile(
+            r"get_account_setting\(\s*[^,]+,\s*(?:[\"']([^\"']+)[\"']|([A-Z][A-Z0-9_]*))",
+        )
+        const = re.compile(r"^\s*([A-Z][A-Z0-9_]*)\s*=\s*[\"']([^\"']+)[\"']", re.M)
+        skip = {".git", "node_modules", "__pycache__", "venv", ".venv", "tests"}
+        consts: dict[str, str] = {}
+        seen: list[tuple[str, str, bool]] = []
+        for root, dirs, files in os.walk(REPO):
+            dirs[:] = [d for d in dirs if d not in skip]
+            for fn in files:
+                if not fn.endswith(".py"):
+                    continue
+                path = os.path.join(root, fn)
+                with open(path, encoding="utf-8", errors="ignore") as fh:
+                    text = fh.read()
+                consts.update(dict(const.findall(text)))
+                for literal, name in pat.findall(text):
+                    if literal or name:
+                        seen.append(
+                            (os.path.relpath(path, REPO), literal or name, bool(literal)),
+                        )
+        undeclared = []
+        for rel, key, is_literal in seen:
+            resolved = key if is_literal else consts.get(key)
+            if not resolved or "{" in resolved:
+                continue
+            if owner_for(resolved) is None:
+                undeclared.append(f"{rel}: {resolved}")
+        assert not undeclared, (
+            "these keys are READ but declare no owner, so nothing can set "
+            "them:\n  " + "\n  ".join(sorted(set(undeclared)))
+        )
+
     def test_the_allowlist_is_not_empty(self):
         """Guards the regex above: a silently-empty list would make the
         test above vacuously pass, which is how a check stops checking."""
