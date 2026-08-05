@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import type { ReactNode } from 'react';
-import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Building2, Pencil, Trash2, Clock3, Minus, Lock } from 'lucide-react';
+import { UserPlus, Link as LinkIcon, Copy, Check, Ban, X, FileText, ExternalLink, Bell, Mail, MessageSquare, Monitor, CheckCheck, Download, ShieldCheck, LayoutGrid, List, Users, Building2, Pencil, Trash2, Clock3, Minus, Lock, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader } from '../../components/shell';
@@ -559,6 +559,19 @@ export default function Applications() {
   // badges, board columns — counts the LOADED slice, not the pipeline.
   // Say so rather than let "Submitted 12" read as the whole truth.
   const truncated = (appsData?.total ?? 0) > rows.length;
+  // Application Links opens only when there is nothing else to look at —
+  // a fresh account's whole job is creating the first link.  Once
+  // applications exist the table is the point, so the tool folds and the
+  // grid can own a viewport again (see the section's own comment).
+  // Seeded once from the first non-empty response rather than tracked, so
+  // toggling it stays the operator's choice afterwards.
+  const [linksOpen, setLinksOpen] = useState(true);
+  const seededLinksOpen = useRef(false);
+  useEffect(() => {
+    if (seededLinksOpen.current || loading) return;
+    seededLinksOpen.current = true;
+    setLinksOpen(rows.length === 0);
+  }, [loading, rows.length]);
   const boardRows = useMemo(
     () => (segmentMatch
       ? rows.filter((r) => segmentMatch(r as unknown as Record<string, unknown>))
@@ -825,10 +838,41 @@ export default function Applications() {
       />
 
       {/* ── Application links ──────────────────────────────────── */}
+      {/* Application Links is a SECOND FEATURE stacked above the primary
+          table — create a link, brand it, list them.  Expanded it runs
+          ~900px on a phone, which pushed the applications grid entirely
+          below the fold AND past the point where it can own a viewport:
+          ``useFittedHeight`` measures the room left under the grid's top
+          and correctly declined, so the page grew with the row count
+          instead.  The mechanism was right; the page composition was not.
+
+          Collapsed, the table starts near the top and gets its viewport
+          back.  The default is not a preference but an ANSWER: with no
+          applications yet there is nothing to look at and creating a link
+          is the whole job, so it opens; once applications exist the table
+          is the point and the tool folds away. */}
       <section className="bg-card border border-border rounded-lg p-4">
         <h2 className="text-base font-semibold flex items-center gap-2 mb-3">
-          <LinkIcon size={16} className="text-muted-foreground" /> Application Links
+          <button
+            type="button"
+            onClick={() => setLinksOpen((o) => !o)}
+            aria-expanded={linksOpen}
+            className="flex flex-1 items-center gap-2 text-left"
+          >
+            <LinkIcon size={16} className="text-muted-foreground" /> Application Links
+            {!linksOpen && links.length > 0 && (
+              <span className="text-xs font-normal text-muted-foreground">
+                {links.length}
+              </span>
+            )}
+            <ChevronDown
+              size={16}
+              aria-hidden
+              className={`ml-auto text-muted-foreground transition-transform ${linksOpen ? '' : '-rotate-90'}`}
+            />
+          </button>
         </h2>
+        {linksOpen && (<>
         <div className="flex flex-wrap gap-2 mb-4">
           <Input placeholder="Label (e.g. Indeed campaign)" value={label}
             onChange={(e) => setLabel(e.target.value)} className="max-w-xs" />
@@ -981,6 +1025,7 @@ export default function Applications() {
             })}
           </ul>
         )}
+        </>)}
       </section>
 
       {/* ── In-progress drafts (save & resume funnel stage) ─────── */}
