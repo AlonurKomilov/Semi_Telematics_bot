@@ -45,11 +45,30 @@ async def health_check():
         except Exception:
             redis_status = "error"
 
-    status = "ok" if db_ok else "degraded"
+    # Check the BOT process (separate service): its capacity sampler
+    # writes a minute row every 60s — that pulse is readable from here.
+    # An external watcher keyword-matching '"status":"ok"' therefore
+    # catches a dead bot even while this API answers fine — the one
+    # failure mode every in-process alerter is structurally blind to
+    # (proven by a 20-hour unalerted outage, 2026-08-04).
+    bot_status = "unknown"
+    if db_ok:
+        try:
+            from capabilities.platform.capacity.sampler import (
+                bot_heartbeat_age_min,
+            )
+            age = await bot_heartbeat_age_min(db)
+            if age is not None:
+                bot_status = "ok" if age <= 3 else "silent"
+        except Exception:
+            pass  # stays "unknown" — never break the liveness probe
+
+    status = "ok" if db_ok and bot_status != "silent" else "degraded"
     return {
         "status": status,
         "db": "ok" if db_ok else "error",
         "redis": redis_status,
+        "bot": bot_status,
     }
 
 

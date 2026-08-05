@@ -1286,6 +1286,25 @@ async def system_health(
     except Exception as e:
         components["ingest"] = {"status": "down", "detail": str(e)[:200]}
 
+    # Bot process pulse — the capacity sampler inside the bot writes a
+    # minute row every 60s; its freshness IS live daemon state, closing
+    # the "API can't see the bot process" gap documented above.
+    try:
+        from capabilities.platform.capacity.sampler import bot_heartbeat_age_min
+        age = await bot_heartbeat_age_min(platform_db)
+        if age is None:
+            components["bot_process"] = {
+                "status": "warn", "detail": "no heartbeat recorded yet",
+            }
+        else:
+            status = "ok" if age <= 3 else ("warn" if age <= 10 else "down")
+            components["bot_process"] = {
+                "status": status,
+                "detail": f"scheduler pulse {round(age)} min ago",
+            }
+    except Exception as e:
+        components["bot_process"] = {"status": "down", "detail": str(e)[:200]}
+
     # Error rate — counts from error_log.
     try:
         errors_1h = await platform_db.count_recent_errors(hours=1)
