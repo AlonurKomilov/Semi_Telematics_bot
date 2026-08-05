@@ -118,6 +118,59 @@ def validate_application(data: dict) -> None:
         raise ValueError(f"Required consent(s) not accepted: {', '.join(missing)}")
 
 
+# A drawn signature is a base64 PNG, routinely 30-60 KB — three to
+# fifteen times MAX_TEXTAREA.  It gets its own cap, at image scale, and
+# is detached before ``cap_strings`` ever sees it (below).  The real gate
+# is not length anyway: it is the magic-byte sniff + byte cap that every
+# other uploaded image goes through.
+MAX_SIG_DATA_URL = 3_000_000      # base64 chars (~2.2 MB decoded)
+MAX_SIG_BYTES = 2 * 1024 * 1024   # decoded PNG
+
+
+def pop_signature_data_url(data: dict) -> str:
+    """Detach ``consents.sigDataUrl`` BEFORE the text caps run.
+
+    ``cap_strings`` trims every string to MAX_TEXTAREA.  Applied to a
+    data URL that chopped it mid-base64: 4,000 - len("data:image/png;
+    base64,") = 3,978 characters, which is never a multiple of 4, so
+    ``decode_data_url`` raised and returned None for EVERY drawn
+    signature.  ``sigMode``/``sigDate`` are short and survived, so the
+    record kept saying "signed, draw mode" while the image was gone —
+    no error to the applicant, no log, and a §391.51 packet printing a
+    blank signature rule.
+    """
+    consents = data.get("consents")
+    if not isinstance(consents, dict):
+        return ""
+    raw = consents.pop("sigDataUrl", "")
+    return raw[:MAX_SIG_DATA_URL] if isinstance(raw, str) else ""
+
+
+def signature_bytes(consents: dict, sig_data_url: str) -> bytes | None:
+    """The drawn signature's PNG bytes, or None when it was typed.
+
+    Raises ``ValueError`` (→ 422) rather than letting a signature go
+    missing.  Same reasoning the required-consents check states: the
+    consents are the legal basis for pulling a candidate's records, and
+    the signature is what makes them attributable, so a direct API POST
+    must not be able to submit without one either.
+    """
+    from infra.file_safety import validate_upload
+
+    consents = consents or {}
+    if (consents.get("sigMode") or "type") != "draw":
+        if not str(consents.get("sigName") or "").strip():
+            raise ValueError("A signature is required")
+        return None
+    if not sig_data_url:
+        raise ValueError("A drawn signature is required")
+    raw = decode_data_url(sig_data_url)
+    ok, mime, _ = validate_upload(raw or b"", max_bytes=MAX_SIG_BYTES)
+    if not ok or mime != "image/png" or not raw:
+        raise ValueError("Your signature could not be read \u2014 please draw it again")
+    return raw
+
+
 def gen_reference() -> str:
     return "APP-" + secrets.token_hex(3).upper()
 
