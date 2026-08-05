@@ -73,7 +73,7 @@ export default function MobileNavDrawer({
         showCloseButton={false}
       >
         <SheetTitle className="sr-only">Navigation</SheetTitle>
-        <Sidebar />
+        <Sidebar forceExpanded />
       </SheetContent>
     </Sheet>
   );

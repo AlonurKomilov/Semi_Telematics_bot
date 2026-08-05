@@ -14,13 +14,24 @@ import { generateNav, type NavItem } from '../shells/nav/generateNav';
 // every shell just renders <Sidebar /> and the catalog decides what each
 // persona sees (catalog ∩ enabled modules ∩ permissions).
 
-export default function Sidebar() {
+export default function Sidebar({ forceExpanded = false }: {
+  /** Ignore the collapsed preference and always render labels.
+   *
+   *  For the MOBILE DRAWER: the rail is a desktop space-saver, and
+   *  ``sidebar.collapsed`` is device-scoped — but a phone-width window on
+   *  a desktop machine IS the same device, so a collapsed desktop rail
+   *  followed the user into the drawer.  An icon-only nav inside an
+   *  overlay that is already covering the screen saves nothing and costs
+   *  every label. */
+  forceExpanded?: boolean;
+} = {}) {
   const { user } = useAuth();
   const { t } = useTranslation();
   // Collapsed state is a per-user preference (device-scoped: it depends on
   // THIS screen's width).  Persistence + the legacy '1'/'0' migration live
   // in the preferences registry.
-  const { value: collapsed, setValue: setCollapsed } = usePreference('sidebar.collapsed');
+  const { value: storedCollapsed, setValue: setCollapsed } = usePreference('sidebar.collapsed');
+  const collapsed = forceExpanded ? false : storedCollapsed;
   // The Settings group follows the route: it expands while you're on
   // the Settings page or any of its components, and folds by itself the
   // moment you navigate to another feature — no chevron press needed.

@@ -3176,7 +3176,13 @@ export default function DataGrid({
           // (radius ~10px) — tighter insets stack the fillet's curve
           // on top of the card-corner curve and the two read as one
           // lumpy S instead of two clean shapes.
-          className="relative z-10 -mb-px flex items-end gap-1 px-6"
+          // ``overflow-x-auto`` because a fixed row of tabs CLIPS on a
+          // narrow screen, and a clipped tab is not merely ugly — it is
+          // unreachable.  On a 400px phone the Vehicles strip cut off at
+          // "Stopped" and "No telemetry" could not be selected at all.
+          // ``shrink-0`` on the tabs stops flex from squeezing them into
+          // illegible slivers instead of overflowing.
+          className="relative z-10 -mb-px flex items-end gap-1 px-6 overflow-x-auto [&>*]:shrink-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           {effectiveSegments.map((seg, i) => {
             // A CONTROLLED key that names nothing — a saved tab deleted
