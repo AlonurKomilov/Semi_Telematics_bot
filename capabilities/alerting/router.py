@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from interfaces.api.deps import require_permission, require_permission_any, get_tenant_db, get_user_vehicle_nums, paginate, active_view, get_user_company_codes, filter_by_company_map
+from interfaces.api.deps import require_permission, require_permission_any, get_tenant_db, get_user_vehicle_nums, paginate, active_view, get_user_company_codes, filter_by_company_map, vehicle_company_map as _deps_vehicle_company_map
 from capabilities.alerting.service import filter_alerts_by_access
 
 router = APIRouter(prefix="/alerts", tags=["alerts"])
@@ -199,21 +199,14 @@ def _norm_ack_state(value: str | None) -> str:
 
 
 async def _vehicle_company_map(account_id: int, tenant_db) -> dict:
-    """``vehicle_id → company_code`` for the account, so alerts (which
-    carry no company column) can be company-filtered via their vehicle.
+    """``vehicle_id -> company_code`` — see ``deps.vehicle_company_map``.
 
-    Keyed by ``vehicle_id`` (globally unique), NOT ``vehicle_name`` —
-    names collide across companies (e.g. truck "103" in two companies),
-    which would silently mis-map one and hide its alerts.
-
-    Best-effort: any read failure returns ``{}`` → ``filter_by_company_map``
-    fail-opens (shows all) rather than hiding every alert.
+    Kept as a local name because several call sites below read better
+    with it, but the RULE lives in one place: camera checks need the same
+    map, and two copies of a company-scoping rule is exactly how the
+    visibility walls drifted apart in the first place.
     """
-    try:
-        states = await tenant_db.get_vehicle_state(account_id)
-        return {s.get("vehicle_id"): s.get("company_code") for s in states}
-    except Exception:
-        return {}
+    return await _deps_vehicle_company_map(account_id, tenant_db)
 
 
 def _attach_company(alerts: list[dict], veh_map: dict) -> list[dict]:

@@ -393,6 +393,28 @@ def filter_by_company_map(
     return out
 
 
+async def vehicle_company_map(account_id: int, tenant_db) -> dict:
+    """``vehicle_id -> company_code`` for one account.
+
+    The companion to :func:`filter_by_company_map` for rows that carry no
+    company column of their own — camera checks, alerts — where the
+    company lives on the VEHICLE.
+
+    Keyed by ``vehicle_id`` (globally unique), NOT ``vehicle_name``:
+    names collide across companies (truck "103" can exist in two), and a
+    name key would silently mis-map one of them.
+
+    Best-effort — any read failure returns ``{}``, which makes
+    ``filter_by_company_map`` fail OPEN (shows everything) rather than
+    hiding every row behind a cold data source.
+    """
+    try:
+        states = await tenant_db.get_vehicle_state(account_id)
+        return {s.get("vehicle_id"): s.get("company_code") for s in states}
+    except Exception:
+        return {}
+
+
 async def get_user_vehicle_scope(user: dict) -> "VehicleScope | None":
     """The identity-aware visibility scope for a restricted user.
 

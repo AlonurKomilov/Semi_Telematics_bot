@@ -236,12 +236,21 @@ class DriverInspectionsMixin(_MixinBase):
         status: Optional[str] = None,
         vehicle_name: Optional[str] = None,
         user_id: Optional[int] = None,
+        only_user_ids: Optional[list[int]] = None,
         days: int = 30,
         page: int = 1,
         page_size: int = 50,
     ) -> dict:
         """Dashboard list — paginated, filterable.  Returns
-        ``{items, total, page, page_size}``."""
+        ``{items, total, page, page_size}``.
+
+        ``only_user_ids`` is the COMPANY wall, and it belongs in the query
+        rather than in the caller: this endpoint is server-paginated, so
+        filtering the returned page would leave ``total`` counting rows
+        the caller may not see and the page numbers pointing at gaps.
+        An EMPTY list means "no drivers in your companies" and must
+        return nothing — distinct from ``None``, which means unrestricted.
+        """
         from datetime import timedelta
         cutoff = (
             datetime.now(timezone.utc) - timedelta(days=max(days, 1))
@@ -261,6 +270,13 @@ class DriverInspectionsMixin(_MixinBase):
         if user_id:
             where.append("user_id = ?")
             params.append(int(user_id))
+        if only_user_ids is not None:
+            if not only_user_ids:
+                return {"items": [], "total": 0, "page": page,
+                        "page_size": page_size}
+            marks = ", ".join("?" for _ in only_user_ids)
+            where.append(f"user_id IN ({marks})")
+            params.extend(int(u) for u in only_user_ids)
         where_sql = " AND ".join(where)
 
         # Count first so the caller gets the unpaged total.

@@ -8,8 +8,11 @@ Paths keep the historical ``/safety`` prefix so URLs are unchanged.
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import Response
 
-from adapters.storage.object_store import get_object_store_for_account
-from interfaces.api.deps import require_permission_any, get_tenant_db
+from adapters.storage.object_storage import get_object_storage_for_account
+from interfaces.api.deps import (
+    require_permission_any, get_tenant_db,
+    get_user_company_codes, filter_by_company_map, vehicle_company_map,
+)
 
 router = APIRouter(prefix="/safety", tags=["safety"])
 
@@ -23,6 +26,31 @@ router = APIRouter(prefix="/safety", tags=["safety"])
 
 
 # ── Camera Checks ────────────────────────────────────────────
+
+async def _company_scoped(rows: list[dict], user: dict, tenant_db) -> list[dict]:
+    """Narrow camera checks to the caller's Team-Management companies.
+
+    ``camera_checks`` carries no company column — the company lives on
+    the VEHICLE — so this resolves it through the shared
+    ``vehicle_id -> company_code`` map, keyed on the id rather than the
+    name because names collide across companies.
+
+    This wall was simply absent: cameras applied no company scoping at
+    all, so a company-restricted fleet or safety user could read every
+    company's dashcam frames (24k checks across 6 companies in the live
+    account).  It went unnoticed because the only company-restricted
+    users today are a dispatcher and two drivers, and none of them holds
+    ``can_cameras``.
+
+    Fail-open on ambiguity, matching ``filter_by_company_map``: no
+    restriction, a cold map, or an unresolved vehicle keeps the row.
+    """
+    allowed = await get_user_company_codes(user)
+    if not allowed:
+        return rows
+    veh_map = await vehicle_company_map(user["account_id"], tenant_db)
+    return filter_by_company_map(rows, allowed, veh_map, key="vehicle_id")
+
 
 @router.get("/cameras")
 async def camera_checks(
@@ -39,6 +67,7 @@ async def camera_checks(
         vehicle_name=vehicle if vehicle else None,
         latest_only=latest_only,
     )
+    checks = await _company_scoped(checks, user, tenant_db)
     return {"checks": checks, "count": len(checks)}
 
 
@@ -55,6 +84,11 @@ async def camera_check_image(
     check = next((c for c in checks if c.get("id") == check_id), None)
     if not check:
         raise HTTPException(status_code=404, detail="Camera check not found")
+    # The image route is the one that actually discloses: a check id is
+    # guessable and the response is the dashcam frame itself.  404, not
+    # 403 — the same no-oracle answer the list gives by omission.
+    if not await _company_scoped([check], user, tenant_db):
+        raise HTTPException(status_code=404, detail="Camera check not found")
     img_path = check.get("image_path", "")
     if not img_path:
         raise HTTPException(status_code=404, detail="No image available")
@@ -68,7 +102,7 @@ async def camera_check_image(
     # call is correct on all three backends.  Containment against path
     # traversal now lives inside the store (_disk_path_candidates), which
     # covers this route and every other get_by_id caller at once.
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     data = store.get_by_id(img_path)
     if data is None:
         raise HTTPException(status_code=404, detail="Image file not found")

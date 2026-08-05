@@ -51,10 +51,12 @@ from interfaces.api.deps import (
     get_current_db_user,
     get_platform_db,
     get_tenant_db,
+    get_user_company_codes,
     require_permission,
     require_permission_any,
     resolve_user_id,
 )
+from infra.platform import get_router as _get_router
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +131,7 @@ def _map_pti_error(exc: Exception) -> HTTPException:
 
 
 def _storage_put_error(store) -> HTTPException:
-    """Build an actionable HTTP error when an ObjectStore.put returns "".
+    """Build an actionable HTTP error when an ObjectStorage.put returns "".
 
     The common cause on Google-Drive-backed accounts is an expired or
     revoked OAuth token (Google expires Drive refresh tokens after 7
@@ -174,7 +176,7 @@ async def _check_quota_or_413(tenant_db, account_id: int, additional_bytes: int)
     """Pre-upload quota gate.
 
     Refuses writes that would push the account past its local-cache
-    quota.  ``StorageSyncMixin.account_has_quota_for`` returns
+    quota.  ``ObjectStorageSyncMixin.account_has_quota_for`` returns
     ``(allowed, used, quota)`` so the 413 carries the real numbers —
     the dashboard renders an accurate "1.2 GB of 5 GB" message and
     can offer the "Reconnect Drive to free space" CTA.
@@ -496,7 +498,7 @@ async def upload_media(
     When ``item_key`` is provided the media is linked to that item;
     when omitted it's stored as general inspection media (used for
     the catch-all "any other photos" slot on the mini-app)."""
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
 
     ins = await _require_visible_inspection(inspection_id, user, tenant_db)
     # ``_require_visible_inspection`` already enforces own/all scope
@@ -558,7 +560,7 @@ async def upload_media(
     # space" as the actionable fix.
     await _check_quota_or_413(tenant_db, int(user["account_id"]), len(raw))
 
-    # ObjectStore folder convention: per-company / inspections / id.
+    # ObjectStorage folder convention: per-company / inspections / id.
     # Matches the work-orders + maintenance + driver-docs layout so a
     # user browsing Drive sees one consistent ``{COMPANY}/...`` tree.
     company_folder = await _inspection_company_folder(
@@ -571,7 +573,7 @@ async def upload_media(
     if (ins.get("status") or "").lower() == "scheduled":
         await tenant_db.mark_inspection_in_progress(inspection_id)
 
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     safe_name = (file.filename or f"upload.{media_type}").replace("/", "_")[:128]
     file_path = store.put(folder, safe_name, raw)
     if not file_path:
@@ -618,7 +620,7 @@ async def delete_media(
     tenant_db=Depends(get_tenant_db),
 ):
     """Remove a media row + best-effort blob deletion."""
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
 
     ins = await _require_visible_inspection(inspection_id, user, tenant_db)
     # ``_require_visible_inspection`` enforces own/all scope for drivers.
@@ -638,7 +640,7 @@ async def delete_media(
     # are idempotent so hitting both is cheap and covers rows from
     # before the layout move.
     try:
-        store = await get_object_store_for_account(user["account_id"], tenant_db)
+        store = await get_object_storage_for_account(user["account_id"], tenant_db)
         company_folder = await _inspection_company_folder(
             tenant_db, int(user["account_id"]), dict(ins),
         )
@@ -673,7 +675,7 @@ async def annotate_media(
 
     Driver-only path: the annotator runs in the Mini App, composites
     photo + red-marker overlay onto a single canvas, and POSTs the
-    resulting PNG.  Server validates, rewrites the same ObjectStore
+    resulting PNG.  Server validates, rewrites the same ObjectStorage
     path, and stamps ``annotated_at``.
 
     Refused when the inspection is past the writable state — once
@@ -681,7 +683,7 @@ async def annotate_media(
     be annotated; the route refuses to touch a media row whose type
     isn't ``photo``.
     """
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
 
     ins = await _require_visible_inspection(inspection_id, user, tenant_db)
     if (ins.get("status") or "").lower() not in ("scheduled", "in_progress", "revision_required"):
@@ -723,7 +725,7 @@ async def annotate_media(
         # to a synthesized path the static mount can't find.
         raise HTTPException(status_code=500, detail="Media has no file_name on record")
 
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     company_folder = await _inspection_company_folder(
         tenant_db, int(user["account_id"]), dict(ins),
     )
@@ -776,7 +778,7 @@ async def ai_check_media(
     """
     import capabilities.ai as ai
     from features.inspections import ai_review
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
 
     ins = await _require_visible_inspection(inspection_id, user, tenant_db)
     media = await tenant_db.get_inspection_media(media_id)
@@ -789,10 +791,10 @@ async def ai_check_media(
     if not ai.is_configured():
         return {"status": "unavailable"}
 
-    # Pull the image bytes from the same ObjectStore path the stream
+    # Pull the image bytes from the same ObjectStorage path the stream
     # route uses.  Pass the legacy folder too so rows uploaded before
     # the company-rooted layout still resolve.
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     company_folder = await _inspection_company_folder(
         tenant_db, int(user["account_id"]), dict(ins),
     )
@@ -1033,8 +1035,8 @@ async def upload_reference_image(
     """Attach a reference photo to a template item — the example shot
     the driver sees in the wizard ("here's what a correct Mudflap photo
     looks like").  Fleet-only; stored under the account's
-    ``template_refs`` ObjectStore folder."""
-    from adapters.storage.object_store import get_object_store_for_account
+    ``template_refs`` ObjectStorage folder."""
+    from adapters.storage.object_storage import get_object_storage_for_account
 
     if vehicle_type not in ("truck", "trailer"):
         raise HTTPException(status_code=422, detail="vehicle_type must be truck|trailer")
@@ -1060,12 +1062,12 @@ async def upload_reference_image(
     ext = "jpg" if "jpeg" in content_type or "jpg" in content_type else content_type.split("/")[-1]
     safe_key = item_key.replace("/", "_")[:64]
     filename = f"ref_{vehicle_type}_{safe_key}.{ext}"
-    # Bucket is account-agnostic: DiskObjectStore prefixes with
+    # Bucket is account-agnostic: DiskObjectStorage prefixes with
     # account-{id}/ internally, and on Drive it lands cleanly at
     # ``4truck/template_refs/`` (no redundant account-id segment).
     folder = "template_refs"
 
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     if not store.put(folder, filename, raw):
         raise _storage_put_error(store)
 
@@ -1101,16 +1103,16 @@ async def stream_reference_image(
     tenant_db=Depends(get_tenant_db),
 ):
     """Stream a template reference image.  Account-scoped by the JWT —
-    the DiskObjectStore transparently prefixes the bucket with
+    the DiskObjectStorage transparently prefixes the bucket with
     ``account-{id}/``, so one tenant can't read another's references
     even if filenames collide.  Readable by drivers too (own scope) so
     the Mini App wizard can show the example above the camera."""
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
 
     # Defensive: a filename is an opaque key, never a path.
     safe_name = filename.replace("/", "_").replace("\\", "_")
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
-    # Bucket is account-agnostic: DiskObjectStore prefixes with
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
+    # Bucket is account-agnostic: DiskObjectStorage prefixes with
     # account-{id}/ internally, and on Drive it lands cleanly at
     # ``4truck/template_refs/`` (no redundant account-id segment).
     folder = "template_refs"
@@ -1230,6 +1232,33 @@ async def resend_inspection_reminder(
         raise _map_pti_error(e)
 
 
+async def _drivers_in_my_companies(user: dict) -> list[int] | None:
+    """User ids the caller's Team-Management companies permit, or None
+    when unrestricted.
+
+    ``driver_inspections`` carries no company column — an inspection
+    belongs to a DRIVER, and Team Management is where a user's companies
+    are set, so the wall resolves through the person rather than the
+    vehicle.  Keying on the driver also sidesteps the trap the alerting
+    map documents: vehicle NAMES collide across companies, user ids do
+    not.
+
+    Returns ``[]`` (deny-all) rather than None when the caller is
+    restricted but no driver falls in their companies — the two are
+    different answers and the query treats them differently.
+    """
+    allowed = await get_user_company_codes(user)
+    if not allowed:
+        return None
+    platform_db = _get_router().platform
+    by_user = await platform_db.get_all_user_company_codes(user["account_id"])
+    allowed_upper = {c.upper() for c in allowed}
+    return [
+        uid for uid, codes in (by_user or {}).items()
+        if any((c or "").upper() in allowed_upper for c in (codes or []))
+    ]
+
+
 @router.get("")
 async def list_inspections(
     review_status: Optional[str] = Query(default=None),
@@ -1249,6 +1278,7 @@ async def list_inspections(
         status=status,
         vehicle_name=vehicle_name,
         user_id=user_id,
+        only_user_ids=await _drivers_in_my_companies(user),
         days=days,
         page=page,
         page_size=page_size,
@@ -1288,13 +1318,13 @@ async def stream_media(
     tenant_db=Depends(get_tenant_db),
 ):
     """Stream a media file back to the client.  Same auth shape as
-    work-order attachments — read-through ObjectStore.get."""
-    from adapters.storage.object_store import get_object_store_for_account
+    work-order attachments — read-through ObjectStorage.get."""
+    from adapters.storage.object_storage import get_object_storage_for_account
     ins = await _require_visible_inspection(inspection_id, user, tenant_db)
     media = await tenant_db.get_inspection_media(media_id)
     if not media or int(media.get("inspection_id") or 0) != inspection_id:
         raise HTTPException(status_code=404, detail="Media not found")
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     company_folder = await _inspection_company_folder(
         tenant_db, int(user["account_id"]), dict(ins),
     )
@@ -1330,7 +1360,7 @@ async def download_report(
     Drivers can download their own; fleet can download any.
     """
     import asyncio
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
     from features.inspections import pdf as pti_pdf
 
     ins = await _require_visible_inspection(inspection_id, user, tenant_db)
@@ -1345,7 +1375,7 @@ async def download_report(
     # so the synchronous PDF build doesn't touch storage.  A failed
     # fetch (e.g. expired token) just renders "[photo unavailable]" —
     # the report still generates.
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     company_folder = await _inspection_company_folder(
         tenant_db, int(user["account_id"]), dict(ins),
     )
