@@ -10,7 +10,7 @@ URL history: the utilisation heatmap was /fleet/utilisation/heatmap until 2026-0
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import Response
 
-from adapters.storage.object_store import get_object_store_for_account
+from adapters.storage.object_storage import get_object_storage_for_account
 
 from interfaces.api import deps as _deps
 from interfaces.api.deps import (
@@ -26,8 +26,10 @@ _parking_read = require_permission_any("can_parking_all", "can_parking_vehicle")
 
 
 async def _scope(user: dict):
-    """``(company_codes, truck_names)`` for this caller — see
-    ``features.parking.service`` for what each value means."""
+    """``(company_codes, truck_names, scope)`` for this caller — see
+    ``features.parking.service`` for what each value means.  ``scope`` is
+    the identity ladder; ``truck_names`` is kept for the callers that
+    still pass it down to the query layer."""
     return await parking_service.scope_for(user, _deps)
 
 # No ``_PROJECT_ROOT`` here any more.  This router used to resolve stored
@@ -56,13 +58,14 @@ async def active_parking(
     unsafely 18" chip) with nothing on screen explaining the gap.  Same
     single query either way — no extra cost for the second number.
     """
-    company_codes, truck_names = await _scope(user)
+    company_codes, truck_names, scope = await _scope(user)
     result = await parking_service.get_events(
         user["account_id"],
         include_resolved=False,
         attention_only=attention_only,
         company_codes=company_codes,
         truck_names=truck_names,
+        scope=scope,
         vehicle=vehicle,
     )
     # ``total_active`` is this endpoint's historical name for "everything
@@ -94,10 +97,10 @@ async def parking_vehicle_history(
     isolates this read — but a route silently missing the GUC would
     become the one hole the day RLS is extended to this table.
     """
-    company_codes, truck_names = await _scope(user)
+    company_codes, truck_names, scope = await _scope(user)
     events = await parking_service.get_vehicle_history(
         user["account_id"], vehicle_id,
-        company_codes=company_codes, truck_names=truck_names, limit=limit,
+        company_codes=company_codes, truck_names=truck_names, scope=scope, limit=limit,
     )
     return {"events": events, "count": len(events)}
 
@@ -115,9 +118,9 @@ async def parking_history(
     events = await tenant_db.get_parking_history(
         user["account_id"], days=days, limit=limit,
     )
-    company_codes, truck_names = await _scope(user)
+    company_codes, truck_names, scope = await _scope(user)
     events = parking_service.scope_events(
-        events, company_codes=company_codes, truck_names=truck_names,
+        events, company_codes=company_codes, truck_names=truck_names, scope=scope,
     )
     if vehicle:
         q = vehicle.lower()
@@ -137,9 +140,9 @@ async def parking_detail(
     event = await tenant_db.get_parking_event_by_id(event_id, account_id=user["account_id"])
     if not event:
         raise HTTPException(status_code=404, detail="Parking event not found")
-    company_codes, truck_names = await _scope(user)
+    company_codes, truck_names, scope = await _scope(user)
     if not parking_service.is_visible(
-        event, company_codes=company_codes, truck_names=truck_names,
+        event, company_codes=company_codes, truck_names=truck_names, scope=scope,
     ):
         raise HTTPException(status_code=404, detail="Parking event not found")
     return event
@@ -155,9 +158,9 @@ async def resolve_parking(
     event = await tenant_db.get_parking_event_by_id(event_id, account_id=user["account_id"])
     if not event:
         raise HTTPException(status_code=404, detail="Parking event not found")
-    company_codes, truck_names = await _scope(user)
+    company_codes, truck_names, scope = await _scope(user)
     if not parking_service.is_visible(
-        event, company_codes=company_codes, truck_names=truck_names,
+        event, company_codes=company_codes, truck_names=truck_names, scope=scope,
     ):
         raise HTTPException(status_code=404, detail="Parking event not found")
     if event.get("resolved"):
@@ -180,9 +183,9 @@ async def parking_stats(
     )
     # Previously truck-scoped only: a company-restricted caller's summary
     # counted every company's trucks.
-    company_codes, truck_names = await _scope(user)
+    company_codes, truck_names, scope = await _scope(user)
     all_active = parking_service.scope_events(
-        all_active, company_codes=company_codes, truck_names=truck_names,
+        all_active, company_codes=company_codes, truck_names=truck_names, scope=scope,
     )
     unsafe = sum(1 for e in all_active if e.get("location_class") == "unsafe")
     unknown = sum(1 for e in all_active if e.get("location_class") == "unknown")
@@ -213,9 +216,9 @@ async def parking_map_image(
     # Previously truck-scoped only, so a company-restricted caller was
     # blocked from an event's DETAIL while the photo of the same stop was
     # still served.  Same predicate as the detail route now.
-    company_codes, truck_names = await _scope(user)
+    company_codes, truck_names, scope = await _scope(user)
     if not parking_service.is_visible(
-        event, company_codes=company_codes, truck_names=truck_names,
+        event, company_codes=company_codes, truck_names=truck_names, scope=scope,
     ):
         raise HTTPException(status_code=404, detail="Parking event not found")
     img_path = event.get("map_image_path", "")
@@ -239,7 +242,7 @@ async def parking_map_image(
     # correct on all three.  Path-traversal containment moved INTO the
     # store (_disk_path_candidates), where it also covers the get_by_id
     # callers — inspections, drivers, knowledge — that never had it.
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     data = store.get_by_id(img_path)
     if data is None:
         raise HTTPException(status_code=404, detail="Map image file not found")

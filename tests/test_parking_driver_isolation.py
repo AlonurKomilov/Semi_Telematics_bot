@@ -221,7 +221,16 @@ class TestParkingApiDetailGuards:
 
 
 class TestBotParkingFilter:
-    def test_filter_keeps_own_truck_substring_match(self):
+    def test_filter_keeps_own_truck_by_exact_name(self):
+        """The bot delegates to the API's predicate, so it inherited the
+        tightening: matching is EXACT, never substring.
+
+        It previously kept "Truck-107A" by prefix, which also meant an
+        assignment of "107" would have kept "1107".  The bot reaches the
+        predicate with the legacy single ``truck_num`` and no registry
+        lookup, so it has no id rung to fall back on — exact is the
+        honest rule here, and wrong-hidden beats wrong-shown on a wall.
+        """
         from interfaces.bot.callbacks.parking import _filter_to_own_vehicles
 
         class _U:
@@ -229,13 +238,12 @@ class TestBotParkingFilter:
 
         events = [
             {"vehicle_name": "107"},
-            {"vehicle_name": "Truck-107A"},
+            {"vehicle_name": "1107"},      # the old over-match
             {"vehicle_name": "213"},
             {"vehicle_name": "571701"},
         ]
         kept = _filter_to_own_vehicles(events, _U())
-        names = {e["vehicle_name"] for e in kept}
-        assert names == {"107", "Truck-107A"}
+        assert {e["vehicle_name"] for e in kept} == {"107"}
 
     def test_filter_empty_when_no_truck_assigned(self):
         from interfaces.bot.callbacks.parking import _filter_to_own_vehicles

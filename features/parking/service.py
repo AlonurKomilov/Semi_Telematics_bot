@@ -80,22 +80,39 @@ def is_visible(
     *,
     company_codes: list[str] | None,
     truck_names: list[str] | None,
+    scope: Any = None,
 ) -> bool:
-    """THE visibility predicate.  One implementation, both paths.
+    """THE visibility predicate.  One implementation, every path.
 
-    ``truck_names`` matching is SUBSTRING, deliberately: a truck assigned
-    as "107" must match an event whose vehicle_name is "Truck-107A",
-    which is how the fleet actually names units.  Preserved from the
-    original router logic rather than tightened, because tightening it
-    here would silently hide events from drivers who can see them today.
+    Truck matching was SUBSTRING, and the reasoning was sound at the
+    time: a truck assigned as "107" had to match an event whose
+    vehicle_name is "Truck-107A", so tightening it would have hidden
+    events from drivers who could see them.  The cost was that "107"
+    also matched "1107" and "230" matched "2303" — on a visibility wall
+    that is a disclosure, and it is the same defect corrected across
+    alerting, work orders, maintenance and events.
+
+    What makes tightening safe now is the identity ladder: ``scope``
+    matches on registry id, then the provider's vehicle id, and only
+    then on an exact name.  A renamed or oddly-named unit is caught by
+    an id rung rather than by a text prefix, which is what the substring
+    was standing in for.
+
+    ``scope=None`` keeps the legacy list path working, but by EXACT name
+    — never substring, so the old over-match cannot come back through
+    the side door.
     """
     if company_codes:
         if (ev.get("company_code") or "") not in company_codes:
             return False
+    if scope is not None:
+        return scope.allows_row(
+            ev, name_key="vehicle_name", external_key="vehicle_id",
+        )
     if truck_names is not None:
         # Empty list => truck-scoped caller with no trucks => nothing.
-        name = (ev.get("vehicle_name") or "").lower()
-        if not any(t.lower() in name for t in truck_names):
+        name = (ev.get("vehicle_name") or "").strip().lower()
+        if not any((t or "").strip().lower() == name for t in truck_names):
             return False
     return True
 
@@ -105,11 +122,14 @@ def scope_events(
     *,
     company_codes: list[str] | None,
     truck_names: list[str] | None,
+    scope: Any = None,
 ) -> list[dict]:
     """List form of :func:`is_visible` — same predicate, no second copy."""
     return [
         e for e in events
-        if is_visible(e, company_codes=company_codes, truck_names=truck_names)
+        if is_visible(
+            e, company_codes=company_codes, truck_names=truck_names, scope=scope,
+        )
     ]
 
 
@@ -121,6 +141,7 @@ async def get_events(
     attention_only: bool = False,
     company_codes: list[str] | None = None,
     truck_names: list[str] | None = None,
+    scope: Any = None,
     vehicle: str | None = None,
     limit: int = 500,
 ) -> dict:
@@ -150,7 +171,7 @@ async def get_events(
         )
 
     rows = scope_events(
-        rows, company_codes=company_codes, truck_names=truck_names,
+        rows, company_codes=company_codes, truck_names=truck_names, scope=scope,
     )
     if vehicle:
         q = vehicle.lower()
@@ -190,6 +211,7 @@ async def get_vehicle_history(
     *,
     company_codes: list[str] | None = None,
     truck_names: list[str] | None = None,
+    scope: Any = None,
     limit: int = 50,
 ) -> list[dict]:
     """One vehicle's parking events, newest first — the detail drawer's
@@ -206,12 +228,12 @@ async def get_vehicle_history(
         account_id, vehicle_id, limit=limit,
     )
     return scope_events(
-        rows, company_codes=company_codes, truck_names=truck_names,
+        rows, company_codes=company_codes, truck_names=truck_names, scope=scope,
     )
 
 
-async def scope_for(user: dict, deps: Any) -> tuple[list[str], list[str] | None]:
-    """Resolve a request user into ``(company_codes, truck_names)``.
+async def scope_for(user: dict, deps: Any):
+    """Resolve a request user into ``(company_codes, truck_names, scope)``.
 
     ``deps`` is the interfaces.api.deps module, passed in rather than
     imported: this module is service-layer and must not depend on the
@@ -219,6 +241,22 @@ async def scope_for(user: dict, deps: Any) -> tuple[list[str], list[str] | None]
     """
     company_codes = await deps.get_user_company_codes(user)
     truck_names: list[str] | None = None
+    scope = None
     if user.get("_matched_perm") == "can_parking_vehicle":
         truck_names = await deps.get_user_vehicle_nums(user)
-    return company_codes, truck_names
+        # Resolve the assignment strings into the identity ladder so the
+        # wall matches on registry / provider id before falling back to
+        # an exact name.  An empty assignment list yields an EMPTY scope,
+        # which denies every row — the same "truck-scoped caller with no
+        # trucks sees nothing" rule the list path already had.
+        from capabilities.permissions.vehicle_scope import (
+            VehicleScope, build_vehicle_scope,
+        )
+        if truck_names:
+            tenant = await get_tenant_db(user["account_id"])
+            scope = await build_vehicle_scope(
+                tenant, user["account_id"], truck_names,
+            )
+        else:
+            scope = VehicleScope()
+    return company_codes, truck_names, scope

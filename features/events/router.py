@@ -16,6 +16,7 @@ from interfaces.api.deps import (
     get_user_vehicle_nums, get_user_company_codes,
     validate_company_access, filter_by_allowed_companies,
 )
+from capabilities.permissions.vehicle_scope import VehicleScope, build_vehicle_scope
 from infra.services import get_client
 from features.events.severity import classify_event_severity as _classify_severity
 
@@ -24,6 +25,30 @@ router = APIRouter(prefix="/safety", tags=["safety"])
 
 
 # ── Safety Events ─────────────────────────────────────────────
+
+
+async def _events_vehicle_scope(user: dict, tenant_db):
+    """The vehicle wall for a ``can_events_vehicle`` (_own) caller, or None.
+
+    ``None`` means unrestricted — the caller holds the ``_all`` grade.
+    Anything else is authoritative, INCLUDING an empty scope, which denies
+    every row (a truck-scoped caller with no assignments sees nothing).
+
+    Membership is by identity — registry id -> provider id -> exact name
+    (capabilities/permissions/vehicle_scope).  Four walls in this file
+    each compared by SUBSTRING, so an assignment of "230" also matched
+    "2303" and "100" matched trailer "AK1001".  On /events/{id}/video
+    that meant a driver could watch another truck's dashcam footage.
+    Substring also happened to absorb provider renames ("229" inside
+    "229 Idris Ahmed"); the id rungs now do that on purpose, and survive
+    a rename that drops the number entirely.
+    """
+    if user.get("_matched_perm") != "can_events_vehicle":
+        return None
+    trucks = await get_user_vehicle_nums(user)
+    if not trucks:
+        return VehicleScope()
+    return await build_vehicle_scope(tenant_db, user["account_id"], trucks)
 
 
 @router.get("/events")
@@ -38,6 +63,7 @@ async def safety_events(
     driver: str | None = Query(None, description="Filter by driver name (substring)"),
     company: str | None = Query(None),
     user: dict = Depends(require_permission_any("can_events_all", "can_events_vehicle")),
+    tenant_db=Depends(get_tenant_db),
 ):
     """Safety events — harsh braking, crashes, speeding, etc.
 
@@ -144,13 +170,9 @@ async def safety_events(
         events = [e for e in events if _in_window(e)]
 
     # If user only has _own, filter to their assigned vehicle
-    if user.get("_matched_perm") == "can_events_vehicle":
-        trucks = await get_user_vehicle_nums(user)
-        if trucks:
-            needles = [t.lower() for t in trucks]
-            events = [e for e in events if any(n in e["vehicle_name"].lower() for n in needles)]
-        else:
-            events = []
+    scope = await _events_vehicle_scope(user, tenant_db)
+    if scope is not None:
+        events = [e for e in events if scope.allows_row(e, name_key="vehicle_name")]
 
     # Apply filters
     if event_type:
@@ -180,6 +202,7 @@ async def safety_events_summary(
     days: int = Query(7, ge=1, le=90),
     company: str | None = Query(None),
     user: dict = Depends(require_permission_any("can_events_all", "can_events_vehicle")),
+    tenant_db=Depends(get_tenant_db),
     platform_db=Depends(get_platform_db),
 ):
     """Lightweight summary counts for the Safety persona's hero strip.
@@ -226,13 +249,9 @@ async def safety_events_summary(
         })
     rows = filter_by_allowed_companies(rows, allowed, key="company")
 
-    if user.get("_matched_perm") == "can_events_vehicle":
-        trucks = await get_user_vehicle_nums(user)
-        if trucks:
-            needles = [t.lower() for t in trucks]
-            rows = [e for e in rows if any(n in e["vehicle_name"].lower() for n in needles)]
-        else:
-            rows = []
+    scope = await _events_vehicle_scope(user, tenant_db)
+    if scope is not None:
+        rows = [e for e in rows if scope.allows_row(e, name_key="vehicle_name")]
 
     # "Today" boundary in the account's timezone so the count matches
     # what an operator sees on their wall clock.  Falls back to UTC if
@@ -272,6 +291,7 @@ async def safety_event_video(
     event_id: str,
     angle: str = Query("forward", pattern="^(forward|inward)$"),
     user: dict = Depends(require_permission_any("can_events_all", "can_events_vehicle")),
+    tenant_db=Depends(get_tenant_db),
 ):
     """Return a freshly-signed Samsara video URL as JSON.
 
@@ -300,12 +320,13 @@ async def safety_event_video(
     # assignments.  Permission-by-truck is already enforced for
     # /events listing; we re-check here so a known event_id from
     # another driver's truck can't be opened via direct URL.
-    if user.get("_matched_perm") == "can_events_vehicle":
-        trucks = await get_user_vehicle_nums(user)
-        if not trucks:
-            raise HTTPException(status_code=403, detail="No truck assignments")
-        vname = (evt.get("vehicle") or {}).get("name", "")
-        if not any(t.lower() in (vname or "").lower() for t in trucks):
+    scope = await _events_vehicle_scope(user, tenant_db)
+    if scope is not None:
+        # The provider's nested shape, mapped onto the ladder: its
+        # vehicle id is the same external ref build_vehicle_scope
+        # resolved from the registry, so a rename still matches.
+        veh = evt.get("vehicle") or {}
+        if not scope.allows(external_id=veh.get("id"), name=veh.get("name")):
             raise HTTPException(status_code=403, detail="Event not in your assignments")
 
     url = evt.get("inward_video_url") if angle == "inward" else evt.get("video_url")
@@ -326,6 +347,7 @@ async def safety_event_video(
 async def safety_events_heatmap(
     days: int = Query(30, ge=1, le=90),
     user: dict = Depends(require_permission_any("can_events_all", "can_events_vehicle")),
+    tenant_db=Depends(get_tenant_db),
 ):
     """Lat/lon density of safety events over the trailing window
     ( \u2014 LiveMap heat layer).
@@ -348,11 +370,9 @@ async def safety_events_heatmap(
     )
     # Restrict drivers with _own permission to their own truck(s).
     if user.get("_matched_perm") == "can_events_vehicle":
-        trucks = await get_user_vehicle_nums(user)
-        if not trucks:
-            return {"days": days, "points": []}
-        needles = [t.lower() for t in trucks]
-        rows = [r for r in rows if any(n in (r.get("vehicle_name") or "").lower() for n in needles)]
+        scope = await _events_vehicle_scope(user, tenant_db)
+        if scope is not None:
+            rows = [r for r in rows if scope.allows_row(r, name_key="vehicle_name")]
     points = [
         [r["lat"], r["lon"], 1]
         for r in rows

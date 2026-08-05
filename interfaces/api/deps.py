@@ -12,6 +12,7 @@ from jose import JWTError
 from interfaces.api.auth import AUTH_COOKIE_NAME, decode_jwt, is_jti_revoked
 from infra.platform import get_router as _get_router
 from capabilities.permissions.roles import get_user_permissions
+from capabilities.permissions.vehicle_scope import VehicleScope
 from adapters.storage import Role
 
 _log = logging.getLogger(__name__)

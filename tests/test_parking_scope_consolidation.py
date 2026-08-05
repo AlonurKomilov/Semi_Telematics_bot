@@ -244,13 +244,30 @@ class TestPredicateUnit:
         ev = {"vehicle_name": "500", "company_code": "AAA"}
         assert is_visible(ev, company_codes=[], truck_names=None) is True
 
-    def test_substring_match_preserved(self):
-        """"107" must still match "Truck-107A" — the fleet names units
-        that way, and tightening this would hide events drivers can see
-        today."""
+    def test_odd_named_unit_matches_by_ID_not_by_substring(self):
+        """"107" must still reach "Truck-107A" — the fleet does name units
+        that way, and hiding a driver's own truck would be a regression.
+
+        It reaches it through the IDENTITY ladder now, not a text prefix.
+        The substring that used to carry this also matched "1107" and
+        "2107", which on a visibility wall is a disclosure — the same
+        defect corrected across alerting, work orders, maintenance and
+        events.  The id rung keeps the legitimate case and drops the leak.
+        """
         from features.parking.service import is_visible
-        ev = {"vehicle_name": "Truck-107A", "company_code": "AAA"}
-        assert is_visible(ev, company_codes=[], truck_names=["107"]) is True
+        from capabilities.permissions.vehicle_scope import VehicleScope
+        scope = VehicleScope(
+            external_ids=frozenset({"sam_107"}), names=frozenset({"107"}),
+        )
+        own = {"vehicle_name": "Truck-107A", "vehicle_id": "sam_107",
+               "company_code": "AAA"}
+        assert is_visible(own, company_codes=[], truck_names=["107"],
+                          scope=scope) is True
+        # The over-match the substring came with is gone.
+        other = {"vehicle_name": "1107", "vehicle_id": "sam_1107",
+                 "company_code": "AAA"}
+        assert is_visible(other, company_codes=[], truck_names=["107"],
+                          scope=scope) is False
 
     def test_company_restriction_denies_other_company(self):
         from features.parking.service import is_visible

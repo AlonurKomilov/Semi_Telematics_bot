@@ -14,6 +14,7 @@ from typing import Optional
 from interfaces.api.deps import get_current_user, require_permission, get_tenant_db, get_platform_db, get_user_vehicle_nums, paginate, resolve_user_id, get_user_company_codes, filter_by_allowed_companies
 from capabilities.activity_trail import new_group_id
 from capabilities.permissions.roles import can
+from capabilities.permissions.vehicle_scope import VehicleScope, build_vehicle_scope
 from features.maintenance.service import apply_live_readings, has_maintenance_access, spawn_recurring_if_completed
 
 # Who-did-what now rides capabilities/activity_trail (recorded inside
@@ -178,6 +179,38 @@ class TaskUpdate(BaseModel):
     )
 
 
+async def _maintenance_vehicle_scope(user: dict, tenant_db):
+    """The vehicle wall for a ``_own`` maintenance user, or None.
+
+    ``None`` means unrestricted — the caller holds ``can_maintenance_all``.
+    Anything else is authoritative, INCLUDING an empty scope, which denies
+    every row.  That safe-deny is deliberate and is the opposite of
+    ``deps.py``'s "no assignments = unrestricted": maintenance has always
+    denied here, and widening it would be a silent grant.
+
+    Membership is decided by identity (registry id -> provider id ->
+    exact name) in ``capabilities/permissions/vehicle_scope``.  In THIS
+    module only the last rung is reachable: ``maintenance_tasks`` has no
+    registry_id and never writes its vehicle_id column, so a task row
+    carries no id to match on.  That is fine while every task stores the
+    bare unit number (it does today, 156/156); the fix for a fleet that
+    decorates names is to enrich the rows from the registry, never to
+    restore the substring.  SEVEN call
+    sites in this file each re-decided it with a substring test, so an
+    assignment of "230" also matched vehicle "2303" and "100" matched
+    trailer "AK1001" — on a visibility wall that is a disclosure, and on
+    the attachment routes it let a driver read and write another truck's
+    files.  ``interfaces/api/deps.py`` was corrected for exactly this;
+    these copies were left behind.
+    """
+    if can(user["role"], "can_maintenance_all"):
+        return None
+    trucks = await get_user_vehicle_nums(user)
+    if not trucks:
+        return VehicleScope()
+    return await build_vehicle_scope(tenant_db, user["account_id"], trucks)
+
+
 @router.get("/tasks")
 async def list_tasks(
     status: Optional[str] = Query(None),
@@ -201,25 +234,25 @@ async def list_tasks(
     # Legacy tasks with no company_code are conservatively hidden from a
     # restricted user (safe-deny); unrestricted users (empty allowed) see all.
     tasks = filter_by_allowed_companies(tasks, await get_user_company_codes(user), key="company_code")
-    # Filter to assigned trucks for _own permission.  Pre-compile a
-    # single alternation regex from the driver's truck-num set so the
-    # inner ``in`` loop collapses to one scan per task — was O(tasks ×
-    # needles); now O(tasks).  Substring semantics preserved so
-    # "Truck-107A" still matches needle "107".
+    # Filter to assigned trucks for _own permission — membership decided
+    # by IDENTITY (registry id → provider id → exact name), never by
+    # substring.
     #
-    # Safe-deny: a user with can_maintenance_vehicle but NO assigned trucks
-    # gets an empty list, never the unfiltered account dataset.
-    if not can(user["role"], "can_maintenance_all"):
-        trucks = await get_user_vehicle_nums(user)
-        if not trucks:
-            tasks = []
-        else:
-            import re
-            pattern = re.compile("|".join(re.escape(t.lower()) for t in trucks if t))
-            tasks = [
-                t for t in tasks
-                if pattern.search((t.get("vehicle_name") or "").lower())
-            ]
+    # This wall used an alternation regex with substring semantics, so an
+    # assignment of "230" also matched vehicle "2303" and "100" matched
+    # trailer "AK1001".  On a visibility wall an over-match is a
+    # disclosure, not a cosmetic bug.  ``interfaces/api/deps.py`` was
+    # corrected for exactly this and this second copy was left behind —
+    # so it now shares the one engine instead of re-deciding membership.
+    #
+    # Safe-deny: a user with can_maintenance_vehicle but NO assigned
+    # trucks gets an empty list, never the unfiltered account dataset.
+    # That is the OPPOSITE of deps.py's "no assignments = unrestricted"
+    # and is preserved deliberately — maintenance has always denied here,
+    # and widening it would be a silent grant.
+    scope = await _maintenance_vehicle_scope(user, tenant_db)
+    if scope is not None:
+        tasks = [t for t in tasks if scope.allows_row(t, name_key="vehicle_name")]
 
     paged = paginate(tasks, page, page_size)
     # Resolve telegram_id → display_name once and enrich each row so the
@@ -390,13 +423,9 @@ async def get_task(
     await _require_company_visible_task(task, user)
     # Check truck ownership for _own permission.  Safe-deny: a user with
     # can_maintenance_vehicle but no assigned trucks must NOT see anything.
-    if not can(user["role"], "can_maintenance_all"):
-        trucks = await get_user_vehicle_nums(user)
-        if not trucks:
-            raise HTTPException(status_code=404, detail="Task not found")
-        needles = {t.lower() for t in trucks}
-        if not any(n in (task.get("vehicle_name") or "").lower() for n in needles):
-            raise HTTPException(status_code=404, detail="Task not found")
+    scope = await _maintenance_vehicle_scope(user, tenant_db)
+    if scope is not None and not scope.allows_row(task, name_key="vehicle_name"):
+        raise HTTPException(status_code=404, detail="Task not found")
     name_map = await _build_user_name_map(user["account_id"], platform_db)
     enriched = _enrich_task(task, name_map)
 
@@ -755,8 +784,8 @@ async def upload_task_attachment(
     a task whose vehicle the driver is assigned to.  Drivers must NOT
     be able to attach evidence to other trucks' tasks.
     """
-    from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.object_store.tracking import track_for_sync_if_hybrid
+    from adapters.storage.object_storage import get_object_storage_for_account
+    from capabilities.object_storage.tracking import track_for_sync_if_hybrid
     from features.work_orders.storage import (
         resolve_company_folder, safe_attachment_name,
     )
@@ -768,13 +797,9 @@ async def upload_task_attachment(
     await _require_company_visible_task(task, user)
     # Drivers locked to their assigned trucks.  Safe-deny on empty
     # assignment list, matching the list/get routes.
-    if not can(user["role"], "can_maintenance_all"):
-        trucks = await get_user_vehicle_nums(user)
-        if not trucks:
-            raise HTTPException(status_code=404, detail="Task not found")
-        needles = {t.lower() for t in trucks}
-        if not any(n in (task.get("vehicle_name") or "").lower() for n in needles):
-            raise HTTPException(status_code=404, detail="Task not found")
+    scope = await _maintenance_vehicle_scope(user, tenant_db)
+    if scope is not None and not scope.allows_row(task, name_key="vehicle_name"):
+        raise HTTPException(status_code=404, detail="Task not found")
 
     content_type = (file.content_type or "").lower()
     if content_type not in _ALLOWED_ATTACHMENT_TYPES:
@@ -798,7 +823,7 @@ async def upload_task_attachment(
     # maintenance / task-id.  Keeps maintenance evidence siblings of
     # the work-order tree so admins know where to look.
     folder = f"{company_folder}/maintenance/{task_id}"
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     file_path = store.put(folder, safe_name, raw)
 
     await tenant_db.set_task_attachment(
@@ -832,11 +857,11 @@ async def download_task_attachment(
 ):
     """Stream the task's attached file back to the client.
 
-    Read-through ``ObjectStore.get`` so the route works for any
+    Read-through ``ObjectStorage.get`` so the route works for any
     backend.  ``inline`` Content-Disposition so images preview in the
     browser; PDFs render too.
     """
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
     from features.work_orders.storage import resolve_company_folder
     from fastapi.responses import StreamingResponse
     if not has_maintenance_access(user["role"]):
@@ -845,13 +870,9 @@ async def download_task_attachment(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     await _require_company_visible_task(task, user)
-    if not can(user["role"], "can_maintenance_all"):
-        trucks = await get_user_vehicle_nums(user)
-        if not trucks:
-            raise HTTPException(status_code=404, detail="Task not found")
-        needles = {t.lower() for t in trucks}
-        if not any(n in (task.get("vehicle_name") or "").lower() for n in needles):
-            raise HTTPException(status_code=404, detail="Task not found")
+    scope = await _maintenance_vehicle_scope(user, tenant_db)
+    if scope is not None and not scope.allows_row(task, name_key="vehicle_name"):
+        raise HTTPException(status_code=404, detail="Task not found")
 
     name = task.get("attachment_name")
     ctype = task.get("attachment_content_type") or "application/octet-stream"
@@ -862,7 +883,7 @@ async def download_task_attachment(
         tenant_db, user["account_id"], task.get("company_code", ""),
     )
     folder = f"{company_folder}/maintenance/{task_id}"
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     data = store.get(folder, name)
     if data is None:
         raise HTTPException(status_code=404, detail="File not found in storage")
@@ -887,7 +908,7 @@ async def delete_task_attachment(
     re-upload but can't delete — once an attestation artifact is
     captured, only a manager removes it (audit-trail intent).
     """
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
     from features.work_orders.storage import resolve_company_folder
     task = await tenant_db.get_maintenance_task(task_id, account_id=user["account_id"])
     if not task:
@@ -900,7 +921,7 @@ async def delete_task_attachment(
                 tenant_db, user["account_id"], task.get("company_code", ""),
             )
             folder = f"{company_folder}/maintenance/{task_id}"
-            store = await get_object_store_for_account(user["account_id"], tenant_db)
+            store = await get_object_storage_for_account(user["account_id"], tenant_db)
             try:
                 store.delete(folder, name)
             except Exception:
@@ -1133,13 +1154,16 @@ async def get_service_history(
     # Drivers see only their own truck — matches the list-route policy.
     # Safe-deny: an unassigned driver gets a 404, never another truck's
     # history just because their assignment list is empty.
-    if not can(user["role"], "can_maintenance_all"):
-        trucks = await get_user_vehicle_nums(user)
-        if not trucks:
-            raise HTTPException(status_code=404, detail="Vehicle not found")
-        needles = {t.lower() for t in trucks}
-        if not any(n in vehicle_name.lower() for n in needles):
-            raise HTTPException(status_code=404, detail="Vehicle not found")
+    # Walled on the NAME rung alone, and that is all this module has:
+    # ``maintenance_tasks`` carries no registry_id and its vehicle_id
+    # column is never written, so a task row cannot reach rungs 1-2 no
+    # matter how the check is arranged.  Every task in this account
+    # stores the bare unit number, so exact equality is the right rule —
+    # but a fleet that decorated names ("Truck-107A") would need the
+    # rows enriched from the registry first, NOT the substring back.
+    scope = await _maintenance_vehicle_scope(user, tenant_db)
+    if scope is not None and not scope.allows(name=vehicle_name):
+        raise HTTPException(status_code=404, detail="Vehicle not found")
 
     # Pull every task for this vehicle (the adapter returns all rows
     # ordered by status then created_at; we re-sort here for the timeline).
@@ -1349,14 +1373,9 @@ async def export_tasks_csv(
     )
     # Safe-deny: an unassigned driver gets an empty CSV, never the
     # account-wide list.
-    if not can(user["role"], "can_maintenance_all"):
-        trucks = await get_user_vehicle_nums(user)
-        if not trucks:
-            tasks = []
-        else:
-            needles = {t.lower() for t in trucks}
-            tasks = [t for t in tasks
-                     if any(n in (t.get("vehicle_name") or "").lower() for n in needles)]
+    scope = await _maintenance_vehicle_scope(user, tenant_db)
+    if scope is not None:
+        tasks = [t for t in tasks if scope.allows_row(t, name_key="vehicle_name")]
 
     # Resolve telegram_id → display name once so the CSV shows readable
     # attester names instead of raw user IDs.
@@ -1524,20 +1543,13 @@ async def maintenance_due_locations(
     )
     overdue_tasks = await tenant_db.get_overdue_tasks(user["account_id"])
 
-    if not can(user["role"], "can_maintenance_all"):
-        # _own scope: filter to assigned trucks.  Same substring rule
-        # the /tasks endpoint uses for consistency.
-        trucks = await get_user_vehicle_nums(user)
-        if not trucks:
-            pending_tasks = []
-            overdue_tasks = []
-        else:
-            needles = [t.lower() for t in trucks if t]
-            def _matches(t: dict) -> bool:
-                vn = (t.get("vehicle_name") or "").lower()
-                return any(n in vn for n in needles)
-            pending_tasks = [t for t in pending_tasks if _matches(t)]
-            overdue_tasks = [t for t in overdue_tasks if _matches(t)]
+    # _own scope: the same identity wall /tasks uses.
+    scope = await _maintenance_vehicle_scope(user, tenant_db)
+    if scope is not None:
+        def _allowed(t: dict) -> bool:
+            return scope.allows_row(t, name_key="vehicle_name")
+        pending_tasks = [t for t in pending_tasks if _allowed(t)]
+        overdue_tasks = [t for t in overdue_tasks if _allowed(t)]
 
     # Aggregate per (vehicle_id or vehicle_name).  Vehicle_id is the
     # canonical join key (matches the base map's marker id) but some

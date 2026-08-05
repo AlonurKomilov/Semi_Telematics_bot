@@ -99,6 +99,119 @@ class TestWallIntegration:
         got = filter_alerts_by_access(alerts, ["230"])
         assert [a["vehicle_name"] for a in got] == ["230"]
 
+    @pytest.mark.asyncio
+    async def test_maintenance_wall(self, monkeypatch):
+        """Maintenance kept its OWN copy of the wall, and that copy still
+        compared by substring long after deps.py was corrected — across
+        seven call sites, two of them the attachment routes, so a driver
+        assigned 230 could read AND write 2303's files.
+
+        This exercises the REAL helper: only its two I/O dependencies are
+        faked, never the function under test.
+        """
+        from features.maintenance import router as mr
+
+        built = _scope(ids=[10, 60], names=["230", "229"])
+
+        async def _nums(user):
+            return ["230", "229"]
+
+        async def _build(tenant_db, account_id, trucks):
+            assert trucks == ["230", "229"], trucks
+            return built
+
+        monkeypatch.setattr(mr, "get_user_vehicle_nums", _nums)
+        monkeypatch.setattr(mr, "build_vehicle_scope", _build)
+
+        # A _own caller gets the ladder...
+        scope = await mr._maintenance_vehicle_scope(
+            {"role": "driver", "account_id": 1}, object(),
+        )
+        assert scope is built
+        assert scope.allows_row({"vehicle_name": "230"}, name_key="vehicle_name")
+        # ...and the disclosure that started all this is gone.
+        assert not scope.allows_row({"vehicle_name": "2303"}, name_key="vehicle_name")
+        # A rename still resolves, via the registry rung.
+        assert scope.allows_row(
+            {"vehicle_name": "229 Idris Ahmed", "registry_id": 60},
+            name_key="vehicle_name",
+        )
+
+        # can_maintenance_all short-circuits to unrestricted, and must not
+        # even look up assignments.
+        async def _boom(user):
+            raise AssertionError("must not resolve trucks for an _all caller")
+        monkeypatch.setattr(mr, "get_user_vehicle_nums", _boom)
+        assert await mr._maintenance_vehicle_scope(
+            {"role": "owner", "account_id": 1}, object(),
+        ) is None
+
+    @pytest.mark.asyncio
+    async def test_maintenance_unassigned_own_user_is_denied_not_widened(
+        self, monkeypatch,
+    ):
+        """The real helper's safe-deny: no assignments must yield an EMPTY
+        scope (denies everything), never None (which every call site reads
+        as unrestricted)."""
+        from features.maintenance import router as mr
+
+        async def _none(user):
+            return []
+        monkeypatch.setattr(mr, "get_user_vehicle_nums", _none)
+
+        scope = await mr._maintenance_vehicle_scope(
+            {"role": "driver", "account_id": 1}, object(),
+        )
+        assert scope is not None, "None would read as UNRESTRICTED at every wall"
+        assert scope.empty
+        assert not scope.allows_row({"vehicle_name": "230"}, name_key="vehicle_name")
+
+    def test_maintenance_empty_assignment_denies_not_widens(self):
+        """Maintenance safe-DENIES an unassigned _own user, the opposite
+        of deps.py's "no assignments = unrestricted".  The two conventions
+        are deliberate; collapsing them here would be a silent grant."""
+        empty = VehicleScope()
+        assert empty.empty
+        assert not empty.allows_row({"vehicle_name": "230"}, name_key="vehicle_name")
+
+    def test_parking_wall_uses_the_ladder(self):
+        """Parking's predicate declared its substring DELIBERATE — the
+        stated case was an assignment of "107" matching "Truck-107A".
+        The id rungs cover that properly, so the over-match ("107" also
+        matching "1107") no longer comes with it."""
+        from features.parking import service as ps
+        s = _scope(ids=[10], ext=["sam_107"], names=["107"])
+        ok = {"vehicle_name": "Truck-107A", "vehicle_id": "sam_107", "company_code": "A"}
+        bad = {"vehicle_name": "1107", "vehicle_id": "sam_1107", "company_code": "A"}
+        assert ps.is_visible(ok, company_codes=None, truck_names=["107"], scope=s)
+        assert not ps.is_visible(bad, company_codes=None, truck_names=["107"], scope=s)
+
+    def test_parking_wall_without_scope_is_exact_not_substring(self):
+        """The legacy list path must not let the over-match back in."""
+        from features.parking import service as ps
+        assert ps.is_visible({"vehicle_name": "107"},
+                             company_codes=None, truck_names=["107"])
+        assert not ps.is_visible({"vehicle_name": "1107"},
+                                 company_codes=None, truck_names=["107"])
+
+    def test_parking_company_wall_still_applies_first(self):
+        from features.parking import service as ps
+        s = _scope(names=["107"])
+        assert not ps.is_visible({"vehicle_name": "107", "company_code": "B"},
+                                 company_codes=["A"], truck_names=["107"], scope=s)
+
+    def test_events_wall_ladder(self):
+        """/events/{id}/video let a driver assigned 230 open 2303's
+        dashcam footage — four walls in that file compared by substring."""
+        s = _scope(ids=[10], ext=["sam_230"], names=["230"])
+        assert s.allows_row({"vehicle_name": "230", "vehicle_id": "sam_230"},
+                            name_key="vehicle_name")
+        assert not s.allows_row({"vehicle_name": "2303", "vehicle_id": "sam_2303"},
+                                name_key="vehicle_name")
+        # The video route maps the provider's nested shape onto the ladder.
+        assert s.allows(external_id="sam_230", name="230 Idris Ahmed")
+        assert not s.allows(external_id="sam_2303", name="2303")
+
     def test_work_order_wall(self):
         from features.work_orders.router import _driver_owns_vehicle
         s = _scope(ids=[60], names=["230"])
