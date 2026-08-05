@@ -86,6 +86,26 @@ already-filtered page), and you pass `segmentKey` + `onSegmentChange` +
 `segmentCounts`. The counts MUST come from the server: tallying loaded
 rows reports 0 for every tab except the open one.
 
+⚠️ **Never unmount the grid on a per-tab empty result.** The tab strip
+lives INSIDE the grid, so `{rows.length > 0 && <DataGrid segments=… />}`
+means an empty tab deletes the control that got you there — the only way
+back is a reload. It reads as a race (it was reported as one) but it is
+deterministic: any tab with zero rows is a dead end.
+
+The guard is only safe when it tests the WHOLE dataset. With local
+`match` segments it does — `rows` holds every segment, so empty means
+every tab is empty (`ServiceTasks` is correct for this reason). With
+CONTROLLED segments it does not: the rows are one server-filtered slice,
+so distinguish the two questions —
+
+```tsx
+const accountEmpty = rows.length === 0 && !tab && !savedTabId;
+{accountEmpty ? <EmptyState … /> : <DataGrid segments={…} emptyMessage="No loads in this status." … />}
+```
+
+"This account has nothing" is the page's answer to give; "this tab has
+nothing" is the grid's, and it has an `emptyMessage` for it.
+
 ⚠️ **Controlled + `savedTabs` has a trap.** One strip then holds two
 kinds of occupant, and only the lifecycle tab may reach the API — send a
 saved tab's id as `?status=` and the query returns nothing. Keep two

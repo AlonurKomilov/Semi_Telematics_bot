@@ -196,6 +196,14 @@ export default function Loads() {
   });
 
   const loads = useMemo(() => data?.loads ?? [], [data]);
+  // "This ACCOUNT has no loads" and "this TAB has no loads" are different
+  // answers and only the first one is the page's to give.  ``loads`` is a
+  // server-filtered slice, so an empty Delivered tab used to satisfy the
+  // page-level empty state — which UNMOUNTED the grid, and the tab strip
+  // lives inside the grid now, so the control that got you there vanished
+  // with it and the only way back was a reload.  Reported as a race; it
+  // is deterministic — any tab with zero rows was a dead end.
+  const accountEmpty = loads.length === 0 && !tab && !savedId;
   const counts = data?.counts ?? {};
 
   // Driver / dispatcher options for the layover dialog, derived from the
@@ -248,7 +256,7 @@ export default function Loads() {
       {!isLoading && error != null && (
         <ErrorState message={error instanceof Error ? error.message : String(error)} />
       )}
-      {!isLoading && error == null && loads.length === 0 && (
+      {!isLoading && error == null && accountEmpty && (
         <EmptyState
           icon={Package}
           title={t('loads_page.empty_title', 'No loads yet')}
@@ -267,13 +275,17 @@ export default function Loads() {
           )}
         </p>
       )}
-      {!isLoading && error == null && loads.length > 0 && (
+      {/* Rendered whenever the account HAS loads, empty tab or not — the
+          grid draws its own "no rows" line and, crucially, keeps the tab
+          strip on screen so the operator can leave. */}
+      {!isLoading && error == null && !accountEmpty && (
         <DataGrid
           // ``tableId`` opts into the column-controls layer (3-dot
           // menu / pin / hide / reorder / Export / per-user layout).
           // Also what makes the ``filterable`` columns below actually
           // reachable — the filter popover opens from the 3-dot menu.
           tableId="loads"
+          emptyMessage={t('loads_page.empty_tab', 'No loads in this status.')}
           segments={LOAD_SEGMENTS}
           // ONE slot, two kinds of occupant (the AlertsResults pattern).
           segmentKey={savedId ? TAB_PREFIX + savedId : (tab || 'all')}
