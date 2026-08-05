@@ -91,6 +91,45 @@ describe('useFittedHeight', () => {
     } finally { globalThis.ResizeObserver = keep; }
   });
 
+  // A footnote under a table, a second card, an activity strip — clamping
+  // without subtracting them pushes that content past the fold, and a
+  // region whose pointer sits over the grid scrolls the GRID, so it can
+  // be close to unreachable.  Work Orders: a one-line hint landed at
+  // y796-828 in an 812px viewport.
+  it('leaves room for whatever is laid out AFTER the element', () => {
+    const host = region(600);
+    const target = document.createElement('div');
+    host.appendChild(target);
+    const footnote = document.createElement('p');
+    Object.defineProperty(footnote, 'getBoundingClientRect', {
+      value: () => ({ height: 40, top: 0, bottom: 0, left: 0, right: 0, width: 0, x: 0, y: 0, toJSON: () => {} }),
+      configurable: true,
+    });
+    host.appendChild(footnote);
+    render(<Fitted />, { container: target });
+    expect(target.querySelector('[data-testid=target]')!.textContent).toBe('560');
+  });
+
+  // Siblings BELOW cannot depend on the element's height, so subtracting
+  // them stays idempotent — otherwise the clamp and the re-measure would
+  // chase each other.
+  it('still agrees with itself when something follows', () => {
+    const host = region(600);
+    const target = document.createElement('div');
+    host.appendChild(target);
+    const after = document.createElement('p');
+    Object.defineProperty(after, 'getBoundingClientRect', {
+      value: () => ({ height: 40, top: 0, bottom: 0, left: 0, right: 0, width: 0, x: 0, y: 0, toJSON: () => {} }),
+      configurable: true,
+    });
+    host.appendChild(after);
+    render(<Fitted />, { container: target });
+    const el = target.querySelector('[data-testid=target]')!;
+    expect(el.textContent).toBe('560');
+    for (const o of observers) o.cb([], {} as ResizeObserver);
+    expect(el.textContent).toBe('560');
+  });
+
   // The loop-breaker.  Clamping the card shortens the page, which fires
   // the page-root observer, which measures again — and must get the same
   // answer and write nothing, or the two feed each other forever.

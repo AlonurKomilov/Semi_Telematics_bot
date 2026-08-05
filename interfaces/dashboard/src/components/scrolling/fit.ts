@@ -30,6 +30,30 @@ const FLOOR = 256;
  *  between clamped and natural on every resize tick. */
 const HYSTERESIS = 16;
 
+/**
+ * Everything laid out AFTER `el` and still inside the region — a footnote
+ * under a table, a second card, an activity strip.
+ *
+ * Without this the element clamps to the whole remaining height and
+ * pushes its own siblings past the fold. Work Orders showed it: a
+ * one-line "click a row to…" hint ended up at y796–828 in an 812px
+ * viewport, and because the region scrolls the GRID whenever the pointer
+ * is over it, the last line was close to unreachable.
+ *
+ * Not circular: these boxes sit below `el` and their heights do not
+ * depend on its height, so subtracting them yields the same answer on
+ * every re-measure.
+ */
+function spaceBelow(el: HTMLElement, region: HTMLElement): number {
+  let total = 0;
+  for (let node: HTMLElement | null = el; node && node !== region; node = node.parentElement) {
+    for (let sib = node.nextElementSibling; sib; sib = sib.nextElementSibling) {
+      total += sib.getBoundingClientRect().height;
+    }
+  }
+  return total;
+}
+
 /** The nearest ancestor that actually scrolls. In this app that is the
  *  shell's one content region — every shell wraps `<Outlet />` in the
  *  same `h-full overflow-y-auto` div — but a grid inside a drawer or a
@@ -84,7 +108,7 @@ export function useFittedHeight(
       // shell's ``p-4 lg:p-6``). Read it rather than hard-coding a
       // constant that silently disagrees the day the shell is restyled.
       const gap = parseFloat(getComputedStyle(region).paddingBottom) || 0;
-      const available = region.clientHeight - offset - gap;
+      const available = region.clientHeight - offset - gap - spaceBelow(el, region);
 
       const clamped = applied.current !== null;
       const limit = clamped ? FLOOR - HYSTERESIS : FLOOR + HYSTERESIS;

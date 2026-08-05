@@ -3647,13 +3647,18 @@ export default function DataGrid({
             />
         </div>
       ) : (
-      /* ``min-h-[16rem]`` rather than ``min-h-0`` is the floor: the body
-         grows to fill, but a cramped viewport (phone, or a page with a
-         tall header above the grid) stops it collapsing to a slit — the
-         page's own scroll region takes over instead.  A COLUMN, because
-         under fillHeight the horizontal scrollbar stops being an overlay
-         and becomes the row below the body (see below). */
-      <div className={cn('relative group/grid', fills && 'flex flex-1 flex-col min-h-[16rem]')}>
+      /* ``min-h-0``, NOT a ``min-h-[16rem]`` floor.  That floor belonged to
+         the old flexbox path, where the card's height came from its parent
+         and could collapse to a slit.  Against a MEASURED max-height it
+         does the opposite: the body refuses to shrink into its share, so
+         toolbar + body + footer exceed the card and the pagination row
+         lands on top of the last rows — reported on /alerts at 375px.
+         "Don't collapse to a slit" is now ``useFittedHeight``'s job: it
+         declines to clamp at all rather than clamping to something
+         unusable.
+         A COLUMN, because the horizontal scrollbar stops being an overlay
+         here and becomes the row below the body (see below). */
+      <div className={cn('relative group/grid', fills && 'flex flex-1 flex-col min-h-0')}>
       {/* The scroll REGION contract comes from components/scrolling: it
           owns the overflow on both axes, focusability + the landmark
           name, overscroll containment, and the scroll-padding that keeps
