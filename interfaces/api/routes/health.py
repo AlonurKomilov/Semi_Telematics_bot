@@ -20,7 +20,10 @@ from fastapi import APIRouter
 router = APIRouter(tags=["health"])
 
 
+# HEAD alongside GET: free uptime checkers probe with HEAD, and a
+# GET-only route answers 405 — which reads as "down" to the monitor.
 @router.get("/health")
+@router.head("/health")
 async def health_check():
     """Basic health check — used by Docker HEALTHCHECK and CI/CD."""
     import infra.cache as rcache
@@ -73,6 +76,7 @@ async def health_check():
 
 
 @router.get("/health/watch")
+@router.head("/health/watch")
 async def health_watch():
     """External-monitor endpoint — the same truth as ``/health`` but
     spoken in STATUS CODES: 200 only when everything (DB + bot pulse)
