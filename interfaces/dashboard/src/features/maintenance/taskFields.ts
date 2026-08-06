@@ -48,6 +48,11 @@ export const STATUS_ITEMS = STATUS_OPTIONS.map((s) => ({
 // and Cancelled stays reachable via the Status column filter there.
 export const CLOSED_STATUSES = new Set(['completed', 'cancelled']);
 
+/** Which dimension a task is scheduled against.  Both forms pick one and
+ *  send only that dimension's value, so the API never stores a stale
+ *  number from a mode the operator switched away from. */
+export type TriggerMode = 'date' | 'miles' | 'hours';
+
 // Convert a period in days (e.g. "30") to a YYYY-MM-DD due date by
 // adding to today's calendar day. Returns empty when the period is
 // empty/non-numeric (caller treats that as "no date trigger").
