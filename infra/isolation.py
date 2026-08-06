@@ -17,7 +17,16 @@ logger = logging.getLogger(__name__)
 # inside a scheduled job before being cancelled.
 ACCOUNT_JOB_TIMEOUT = 120
 # Camera checks download snapshots + run Gemini Vision per vehicle — needs more time
-CAMERA_JOB_TIMEOUT = 600
+# Raised from 600s.  The camera job is ~360 vision calls (78 vehicles x
+# several cameras) at a concurrency of 3, and successful calls average
+# 6.3s / p95 14.5s — so a clean run is 360 x 6.3 / 3 = ~750s and does not
+# fit in 600.  It USUALLY finished only because a third of the calls fail
+# fast on quota (see the semaphore note in features/cameras/alert.py):
+# the job was fitting inside its budget by not doing the work.  900s
+# covers a run at measured latency; it does not need to cover one where
+# every call succeeds at p95, because the quota makes that impossible
+# today anyway.
+CAMERA_JOB_TIMEOUT = 900
 # Scheduled-Reports generation iterates through every subscriber,
 # queries the warehouse, renders a PDF, and delivers it via Telegram
 # and/or email — that loop can legitimately take well over 2 min on

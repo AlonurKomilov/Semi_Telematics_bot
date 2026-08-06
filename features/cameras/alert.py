@@ -112,6 +112,17 @@ async def _check_cameras_account(
     if not snapshots:
         return
 
+    # DO NOT RAISE THIS on the current Vertex quota.  It looks like the
+    # obvious lever for the job's runtime, and it is the wrong one:
+    # 2,278 of the last 5,970 vision calls (38%) already came back 429.
+    # The quota is the binding constraint, not our parallelism, so more
+    # concurrency buys a higher rejection rate rather than throughput —
+    # and there is no retry here, so a 429 means that camera is simply
+    # not analysed this cycle.
+    #
+    # Revisit when the account moves off the limited tier; until then the
+    # honest levers are fewer calls per run (not every camera every
+    # cycle) or more quota.
     sem = asyncio.Semaphore(3)
     tasks = [analyze_snapshot(s, account_id, sem) for s in snapshots]
     results = await asyncio.gather(*tasks)
