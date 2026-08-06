@@ -12,35 +12,50 @@ generic**. `capabilities/data_lifecycle/` owns three sibling engines —
 — all discovering feature contributions via `_CONTRIBUTORS` module-name
 strings + `make_discover` (never importing `features/`). Each feature's
 `lifecycle.py` declares its full data lifecycle top-to-bottom: what it
-acquires, how it tiers, what it keeps. `capabilities/warehouse/` is retired
-at the end of the arc.
+acquires, how it tiers, what it keeps. `capabilities/warehouse/` was retired
+at the end of the arc (2026-08-06) — see the as-built tree below.
 
-## Target tree
+## The tree — AS BUILT (Phase 5 landed 2026-08-06)
 
 ```
 capabilities/
-  data_lifecycle/
-    _common.py                  # fan-out + discovery (unchanged)
-    ingest/                     # NEW — ACQUIRE engine
-      registry.py               #   IngestDataset contract
-      engine.py                 #   per-account fan-out + ingest_runs recording
-      watchdog.py               #   freshness/rows-written alert source
-      router.py                 #   /telemetry/warehouse-status (moved, URL byte-identical)
-    rollups/   retention/       # BUILD / KEEP (unchanged)
+  data_lifecycle/               # the engines — feature-agnostic machinery
+    _common.py                  #   fan-out + discovery
+    ingest/                     #   ACQUIRE: registry, engine, watchdog,
+                                #   router.py (/telemetry/warehouse-status,
+                                #   URL unchanged through the move)
+    rollups/   retention/       #   BUILD / KEEP (cascades carry an optional
+                                #   ``reroll`` hook so capability machinery can
+                                #   rebuild a stream without importing features)
+    staleness.py  timegrid.py  catalog.py
   integrations/samsara/sync.py  # provider FETCHERS + shape adapters only
+                                # (guard-enforced: never imports features/)
 features/
   vehicles/
-    lifecycle.py                # ACQUIRE + BUILD + KEEP declarations in one file
-    warehouse/aggregator.py     # tier aggregation (feature-owned)
-    warehouse/readers.py        # warehouse-first reads + staleness fallback
+    lifecycle.py                # ACQUIRE + BUILD + KEEP declarations
+    warehouse/                  # the feature's OWN warehouse logic
+      aggregator.py             #   tier aggregation (+ registers as reroll)
+      readers.py                #   warehouse-first reads, age-based fallback
+      service.py                #   health/weather/efficiency read facade
   events/lifecycle.py           # safety_event_log dataset
   drivers/lifecycle.py          # driver_efficiency dataset
   geofencing/lifecycle.py       # geofence-definitions cache dataset
 adapters/storage/
-  warehouse_vehicles.py  warehouse_safety.py  warehouse_drivers.py
-  warehouse_geofences.py warehouse_aggregates.py   # split of WarehouseMixin, method names unchanged
-  ops_runs.py                   # OpsRunsMixin: scheduler_jobs, retention_runs, ingest_runs
+  warehouse/                    # one mixin file per stream — the package IS
+    vehicles.py  safety.py      # the prefix (same rule as the Postgres
+    drivers.py   geofences.py   # schema); combined WarehouseMixin exported
+    aggregates.py  ledgers.py   # at the old dotted path
+    _util.py
+  ops_runs.py                   # OpsRunsMixin: scheduler_jobs + retention_runs
+                                # (platform-wide, so NOT in the warehouse family)
 ```
+
+`capabilities/warehouse/` is GONE (the arc-end state).  Tolerated
+debt, cleaned when those roots get their own audit arc:
+capabilities/{reporting,scorecards,ai} import the vehicles read
+facade directly (beside the pre-existing permissions/vehicle_scope
+case) — legal under the guard table, listed here so it is chosen,
+not accidental.
 
 ## Naming: stream + grain (the two words, kept separate)
 
