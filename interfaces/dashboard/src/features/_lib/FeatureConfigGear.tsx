@@ -56,7 +56,13 @@ export function FeatureConfigGear({
   // Config are three actions (docs/architecture/config.md).
   if (!viewHas('can_manage_config_all')) return null;
 
-  const label = t('config.gear_label', '{{feature}} settings', { feature });
+  // "KPI config", not "KPI settings" — and not the name of whatever the
+  // config happens to contain ("Thresholds", "DQF export", "When sources
+  // disagree"). One word, every feature, so the label teaches where the
+  // next feature keeps its config instead of naming this one's payload.
+  // What is INSIDE keeps its own name: DQF is a thing in Applications
+  // config, not a config of its own.
+  const label = t('config.gear_label', '{{feature}} config', { feature });
 
   return (
     <>

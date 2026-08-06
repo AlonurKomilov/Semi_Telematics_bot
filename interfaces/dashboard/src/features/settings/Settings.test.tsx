@@ -28,8 +28,13 @@ vi.mock('../../hooks/useViewPermissions', () => ({
 }));
 
 // --- i18n: echo the key so assertions match stable strings, not copy
+// `initReactI18next` is exported because the page now reaches src/i18n.ts
+// through the config gear's import chain, and that module calls
+// `.use(initReactI18next)` at load. Without it the whole suite fails to
+// collect — an incomplete mock, not a broken page.
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
+  initReactI18next: { type: '3rdParty', init: () => {} },
 }));
 
 // --- data hooks: no real network / react-query provider needed

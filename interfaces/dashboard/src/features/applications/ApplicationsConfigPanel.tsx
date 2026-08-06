@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, Eye, Loader2, TriangleAlert, RefreshCw, Wand2, X } from 'lucide-react';
+import { Eye, Loader2, TriangleAlert, RefreshCw, Wand2, X } from 'lucide-react';
 
 import { toast } from 'sonner';
 
@@ -8,9 +8,6 @@ import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { generatePassphrase } from './passphrase';
-import {
-  Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
-} from '../../components/ui/dialog';
 
 /**
  * The DQF export passphrase — account-scope config (docs/architecture/config.md).
@@ -57,13 +54,12 @@ interface DqfConfig {
   using_default: boolean;
 }
 
-export default function DqfExportDialog({
-  open, onOpenChange, canManage,
-}: {
-  open: boolean;
-  onOpenChange: (o: boolean) => void;
-  canManage: boolean;
-}) {
+export default function ApplicationsConfigPanel() {
+  // No `canManage` prop: FeatureConfigGear renders this only for holders
+  // of can_manage_config_all, so reaching it IS the permission. Passing a
+  // flag that is always true invites someone to pass false later and get
+  // a half-rendered panel instead of a closed door.
+  const canManage = true;
   const qc = useQueryClient();
   const [value, setValue] = useState('');
   // True while `value` holds a machine SUGGESTION the admin has not yet
@@ -78,7 +74,7 @@ export default function DqfExportDialog({
   const [reexporting, setReexporting] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['applications', 'dqf-config'],
+    queryKey: ['applications', 'config'],
     queryFn: () => apiJSON<DqfConfig>('/applications/config'),
   });
 
@@ -91,7 +87,7 @@ export default function DqfExportDialog({
       setValue('');
       setSuggested(false);
       setRevealed(null);
-      qc.invalidateQueries({ queryKey: ['applications', 'dqf-config'] });
+      qc.invalidateQueries({ queryKey: ['applications', 'config'] });
       toast.success('Passphrase saved — emailed to the account owners, and new exports use it');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not save the passphrase');
@@ -118,20 +114,15 @@ export default function DqfExportDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <ShieldCheck size={16} className="text-muted-foreground" />
-            DQF export
-          </DialogTitle>
-          <DialogDescription>
+    <div className="space-y-3">
+        <div>
+          <p className="text-sm text-muted-foreground">
             Every application is exported to your own cloud storage as a
             self-contained driver qualification file, so your records still work
             if 4truck is unavailable. This passphrase protects the one file that
             holds the applicant&rsquo;s Social Security Number.
-          </DialogDescription>
-        </DialogHeader>
+          </p>
+        </div>
 
         {!isLoading && data && (
         <div className="space-y-3">
@@ -312,7 +303,6 @@ export default function DqfExportDialog({
       )}
         </div>
         )}
-      </DialogContent>
-    </Dialog>
+    </div>
   );
 }

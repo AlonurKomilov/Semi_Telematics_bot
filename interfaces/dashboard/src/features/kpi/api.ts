@@ -39,11 +39,11 @@ export interface ThresholdsResponse {
   defaults?: Record<string, number>;
 }
 
-export async function getKpiThresholds(): Promise<ThresholdsResponse> {
+export async function getKpiConfig(): Promise<ThresholdsResponse> {
   return apiJSON<ThresholdsResponse>('/kpi/config');
 }
 
-export async function putKpiThresholds(
+export async function putKpiConfig(
   thresholds: Record<string, number>,
 ): Promise<ThresholdsResponse> {
   return apiJSON<ThresholdsResponse>('/kpi/config', {

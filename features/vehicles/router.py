@@ -879,7 +879,7 @@ class SourcePrecedenceUpdate(BaseModel):
 # domain noun (docs/architecture/PERSONA.md).
 @router.get("/config")
 @router.get("/source-precedence", deprecated=True)
-async def get_source_precedence(
+async def get_config(
     user: dict = Depends(require_permission("can_manage_config_all")),
 ):
     """Per-field primary source + the choices, for the Integrations-page
@@ -901,7 +901,7 @@ async def get_source_precedence(
 
 @router.put("/config")
 @router.put("/source-precedence", deprecated=True)
-async def put_source_precedence(
+async def put_config(
     body: SourcePrecedenceUpdate,
     user: dict = Depends(require_permission("can_manage_config_all")),
 ):

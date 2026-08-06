@@ -334,11 +334,11 @@ class TestDedicatedWritersHonourTheDeclaredOwner:
     # rather than discovered: the point is to state the intended pairing
     # so a future regate has to argue with a name, not a regex.
     WRITERS = (
-        ("capabilities/object_storage/router.py", "switch_storage_backend"),
-        ("features/vehicles/router.py", "put_source_precedence"),
-        ("features/vehicles/router.py", "get_source_precedence"),
+        ("capabilities/object_storage/router.py", "put_config"),
+        ("features/vehicles/router.py", "put_config"),
+        ("features/vehicles/router.py", "get_config"),
         ("capabilities/notifications/delivery_admin/forum.py",
-         "update_forum_settings"),
+         "put_config"),
         ("capabilities/notifications/delivery_admin/forum.py",
          "set_forum_subtypes"),
         ("features/kpi/router.py", "get_config"),

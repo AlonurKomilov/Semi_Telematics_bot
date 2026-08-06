@@ -6,7 +6,8 @@ import { toast } from 'sonner';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader } from '../../components/shell';
 import { usePermissions } from '../../hooks/usePermissions';
-import DqfExportDialog from './DqfExportDialog';
+import ApplicationsConfigPanel from './ApplicationsConfigPanel';
+import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import { Tip } from '../../components/tooltip';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
@@ -513,8 +514,6 @@ const APP_SEARCH_KEYS = ['first_name', 'last_name', 'email', 'reference'];
 
 export default function Applications() {
   const qc = useQueryClient();
-  const { has } = usePermissions();
-  const [dqfOpen, setDqfOpen] = useState(false);
   const [links, setLinks] = useState<ApplicationLink[]>([]);
   const [view, setView] = useState<'table' | 'board'>('table');
   // The board used to render all seven columns of ALL rows regardless of
@@ -817,25 +816,18 @@ export default function Applications() {
         description="Application links + submitted driver applications."
         actions={
           <div className="flex items-center gap-2">
-            {/* Account-scope config lives behind a header action, not a card
-                in the content flow — set once, then out of the way. Same
-                placement as KPI's Thresholds, which is the house precedent
-                for this tier. */}
-            {has('can_manage_config_all') && (
-              <Button variant="outline" size="sm" onClick={() => setDqfOpen(true)}>
-                <ShieldCheck size={16} className="mr-1.5" />
-                DQF export
-              </Button>
-            )}
+            {/* Account-scope config lives behind the gear, in the same
+                header slot on every feature. It was a labelled "DQF export"
+                button here — which named the artifact rather than the
+                action, and taught nothing transferable. DQF is not a peer
+                of Applications' config; it is what that config IS.
+                The gear self-gates on can_manage_config_all. */}
+            <FeatureConfigGear feature="Applications" size="xl">
+              <ApplicationsConfigPanel />
+            </FeatureConfigGear>
             <NotificationsBell onOpen={(id) => setOpenId(id)} />
           </div>
         } />
-
-      <DqfExportDialog
-        open={dqfOpen}
-        onOpenChange={setDqfOpen}
-        canManage={has('can_manage_config_all')}
-      />
 
       {/* ── Application links ──────────────────────────────────── */}
       {/* Application Links is a SECOND FEATURE stacked above the primary

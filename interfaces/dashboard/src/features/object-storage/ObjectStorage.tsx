@@ -2,6 +2,8 @@ import { Cloud } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '../../components/shell';
 import ObjectStorageBackendCard from './ObjectStorageBackendCard';
+import StorageConfigPanel from './StorageConfigPanel';
+import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import ObjectStorageHealthCard from './ObjectStorageHealthCard';
 import ObjectStorageUsageCard from './ObjectStorageUsageCard';
 import ObjectStorageFileTable from './ObjectStorageFileTable';
@@ -30,6 +32,14 @@ export default function Storage() {
         icon={Cloud}
         title={t('storage.page_title')}
         description={t('storage.page_desc')}
+        /* Choosing the backend is config; connecting Drive, retrying
+           syncs and clearing orphans are the feature's operations and
+           stay on the cards below. */
+        actions={(
+          <FeatureConfigGear feature={t('storage.page_title')} size="xl">
+            <StorageConfigPanel />
+          </FeatureConfigGear>
+        )}
       />
       <div className="space-y-4">
         <ObjectStorageHealthCard />

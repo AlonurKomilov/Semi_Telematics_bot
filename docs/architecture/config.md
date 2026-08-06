@@ -127,6 +127,26 @@ Note: `can_manage_config_all` itself is NOT module-masked (it spans
 features across modules); a member PAGE may still mask with its
 feature's modules, as scorecard rules does.
 
+### Naming: the SURFACE is "config"; what is inside keeps its own name
+
+One word, everywhere the config surface is named — URL, permission,
+component, file, dialog title:
+
+    /kpi/config          can_manage_config_all   KpiConfigPanel.tsx      "KPI config"
+    /applications/config can_manage_config_all   ApplicationsConfigPanel "Applications config"
+    /vehicles/config     can_manage_config_all   IntegrationsConfigPanel "Integrations config"
+
+Not "KPI settings", not "Thresholds", not "Source precedence", not "DQF
+export".  Naming the surface after its current payload is what produced
+six spellings for one idea, and it teaches the reader nothing about where
+the NEXT feature keeps its config.
+
+What lives INSIDE keeps its domain name.  DQF is a thing in Applications
+config, not a config of its own; thresholds are what KPI config contains.
+The rule is only that a component of a feature's config never gets to be
+called a config itself — `/applications/config` holds DQF, there is no
+`/applications/dqf-config`.
+
 ### View / Manage / Config are three actions, not three strengths
 
 The matrix gives every feature three columns and they do not overlap.

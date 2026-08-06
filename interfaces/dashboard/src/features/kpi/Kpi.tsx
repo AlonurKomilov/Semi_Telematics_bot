@@ -18,7 +18,7 @@ import {
 import { Tip } from '../../components/tooltip';
 import { toneClasses, type Tone } from '../../lib/status';
 import type { AnyColumn } from '../../types';
-import ThresholdsForm from './ThresholdsForm';
+import KpiConfigPanel from './KpiConfigPanel';
 import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import { getDispatcherKpis } from './api';
 import type { DispatcherKpisResponse } from './api';
@@ -105,7 +105,7 @@ export default function Kpi() {
            no permission check is needed here. */
         actions={(
           <FeatureConfigGear feature={t('nav.kpi', 'KPI')}>
-            <ThresholdsForm
+            <KpiConfigPanel
               onSaved={() => qc.invalidateQueries({ queryKey: ['kpi-dispatchers'] })}
             />
           </FeatureConfigGear>

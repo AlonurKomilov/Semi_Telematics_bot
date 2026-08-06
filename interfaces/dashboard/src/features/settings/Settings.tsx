@@ -17,6 +17,8 @@ import { useNow } from '../../hooks/useNow';
 import { rollupByDisplayLabel } from '../../features/ai/helpers';
 import { Link } from 'react-router-dom';
 import DeliveryModeSelector from '../notifications/delivery/DeliveryModeSelector';
+import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
+import SettingsConfigPanel from './SettingsConfigPanel';
 import SubBotRoster from '../notifications/delivery/SubBotRoster';
 import DangerZoneSection from './DangerZoneSection';
 import { toneClasses } from '../../lib/status';
@@ -303,6 +305,22 @@ export default function Settings() {
         icon={SettingsIcon}
         title={t('pages.settings_title')}
         description={t('pages.settings_desc_long')}
+        /* The account_settings VALUES move to the gear; the page keeps
+           its operations (bot config, forum routing, modules, public
+           identity, danger zone). A card headed "Configuration" sitting
+           among them put a config surface in the same tier as the
+           operational ones — on the one page where that distinction is
+           hardest to see, because everything here is called a setting. */
+        actions={(
+          <FeatureConfigGear feature={t('pages.settings_title')} size="xl">
+            <SettingsConfigPanel
+              edits={edits}
+              setEdits={setEdits}
+              saving={saving}
+              onSave={handleSaveSetting}
+            />
+          </FeatureConfigGear>
+        )}
       />
       {(canManageAccount || canConfigAccount) && (error || fetchError) && <ErrorState message={error || fetchError} />}
 
@@ -656,25 +674,6 @@ export default function Settings() {
           Manage-only holder would otherwise see this card claiming "No
           settings configured yet" when in truth they simply cannot read
           them. */}
-      {canConfigAccount && (
-      <section className="bg-card border border-border rounded-xl p-5">
-        <h2 className="text-lg font-semibold mb-3">Configuration</h2>
-        {Object.keys(edits).length === 0 ? (
-          <p className="text-muted-foreground text-sm">No settings configured yet.</p>
-        ) : (
-          <div className="space-y-3">
-            {Object.entries(edits).map(([key, val]) => (
-              <div key={key} className="flex items-center gap-3">
-                <span className="text-sm text-muted-foreground w-48 flex-shrink-0 truncate">{key}</span>
-                <input value={val} onChange={e => setEdits(prev => ({ ...prev, [key]: e.target.value }))}
-                  className="flex-1 bg-muted border border-border rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-ring" />
-                <button onClick={() => handleSaveSetting(key)} disabled={saving} className="px-3 py-1.5 bg-primary hover:bg-primary/90 disabled:opacity-50 rounded text-xs font-medium transition">Save</button>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-      )}
 
       {/* AI Usage */}
       {canManageAccount && data?.ai_usage && Object.keys(data.ai_usage).length > 0 && (

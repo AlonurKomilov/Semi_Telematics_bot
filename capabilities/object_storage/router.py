@@ -210,7 +210,7 @@ class BackendSwitchRequest(BaseModel):
 
 @router.put("/config")
 @router.post("/backend", deprecated=True)
-async def switch_storage_backend(
+async def put_config(
     body: BackendSwitchRequest,
     user: dict = Depends(require_permission("can_manage_config_all")),
     tenant_db=Depends(get_tenant_db),

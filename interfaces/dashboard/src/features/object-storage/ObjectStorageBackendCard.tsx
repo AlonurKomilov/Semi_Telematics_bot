@@ -25,9 +25,9 @@ import { useRoleView } from '../../context/RoleViewContext';
  * connected, since it has no meaning otherwise.
  */
 
-type Backend = 'disk' | 'gdrive' | 'hybrid';
+export type Backend = 'disk' | 'gdrive' | 'hybrid';
 
-interface StorageConfig {
+export interface StorageConfig {
   backend: Backend | string;
   gdrive: {
     connected: boolean;
@@ -233,59 +233,18 @@ export default function ObjectStorageBackendCard() {
         {driveConnected && <DriveQuotaBar usage={cfg.usage} />}
       </section>
 
-      {/* ── Backend chooser ──────────────────────────────────── */}
-      <section>
-        <p className="text-sm font-medium mb-2">{t('storage.settings.backend_section')}</p>
-        {!canConfigureBackend && (
-          <p className="text-xs text-muted-foreground mb-2">
-            {t(
-              'storage.settings.backend_needs_config',
-              'Changing the backend needs Config · account-wide — it decides where every document in the account is stored. You can still connect Drive and manage syncing here.',
-            )}
-          </p>
-        )}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-          <BackendOption
-            icon={<HardDrive size={16} />}
-            title={t('storage.settings.backend_disk_title')}
-            description={t('storage.settings.backend_disk_desc')}
-            active={activeBackend === 'disk'}
-            needsDrive={false}
-            driveConnected={driveConnected}
-            switching={switching === 'disk'}
-            onSwitch={canConfigureBackend ? () => handleSwitch('disk') : undefined}
-          />
-          <BackendOption
-            icon={<Cloud size={16} />}
-            title={t('storage.settings.backend_gdrive_title')}
-            description={t('storage.settings.backend_gdrive_desc')}
-            active={activeBackend === 'gdrive'}
-            needsDrive
-            driveConnected={driveConnected}
-            switching={switching === 'gdrive'}
-            onSwitch={canConfigureBackend ? () => handleSwitch('gdrive') : undefined}
-          />
-          <BackendOption
-            icon={<RefreshCcw size={16} />}
-            title={t('storage.settings.backend_hybrid_title')}
-            description={t('storage.settings.backend_hybrid_desc')}
-            active={activeBackend === 'hybrid'}
-            needsDrive
-            driveConnected={driveConnected}
-            switching={switching === 'hybrid'}
-            onSwitch={canConfigureBackend ? () => handleSwitch('hybrid') : undefined}
-            recommended
-          />
-        </div>
-      </section>
-
+      {/* The backend CHOOSER moved to the config gear in the page
+          header (StorageConfigPanel). This card kept both the Drive
+          connection (operational, can_manage_storage) and the backend
+          choice (config, can_manage_config_all) in one box, which made
+          two different permissions look like one setting. */}
       {/* ── Routing table ────────────────────────────────────── */}
       <RoutingTable connectedToDrive={driveConnected} />
     </div>
   );
 }
 
-function BackendOption({
+export function BackendOption({
   icon, title, description, active, needsDrive, driveConnected,
   switching, onSwitch, recommended,
 }: {

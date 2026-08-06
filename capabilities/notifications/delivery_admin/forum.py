@@ -161,7 +161,7 @@ class ForumSettingsUpdate(BaseModel):
 
 @config_router.put("/config")
 @router.put("/forum-routing/settings", deprecated=True)
-async def update_forum_settings(
+async def put_config(
     body: ForumSettingsUpdate,
     # CONFIG, not Manage.  Writes ``forum_ai.<type>`` account_settings
     # rows, which the config family owns.  The rest of forum routing —

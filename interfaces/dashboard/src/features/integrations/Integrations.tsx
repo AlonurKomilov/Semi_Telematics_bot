@@ -19,7 +19,8 @@ import { useTranslation } from 'react-i18next';
 import { CardSkeleton, PageHeader } from '../../components/shell';
 import IntegrationCard from './IntegrationCard';
 import BackfillStatusBadge from './BackfillStatusBadge';
-import SourcePrecedencePanel from './SourcePrecedencePanel';
+import IntegrationsConfigPanel from './IntegrationsConfigPanel';
+import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import ConflictsPanel from './ConflictsPanel';
 import {
   connectIntegration,
@@ -147,6 +148,16 @@ export default function Integrations() {
           'integrations.description',
           'Connect your telematics platform and choose which data syncs into 4truck.',
         )}
+        /* Provider precedence is this feature's config, so it moves to the
+           gear — the same header slot every feature uses. Still bound to
+           `showPrecedence`: with fewer than two vehicle-writing providers
+           nothing can disagree, and a gear opening onto an empty question
+           is worse than no gear. */
+        actions={showPrecedence ? (
+          <FeatureConfigGear feature="Integrations" size="xl">
+            <IntegrationsConfigPanel />
+          </FeatureConfigGear>
+        ) : undefined}
       />
 
       <div className="grid grid-cols-1 gap-4">
@@ -162,7 +173,6 @@ export default function Integrations() {
       </div>
 
       {showPrecedence && <ConflictsPanel />}
-      {showPrecedence && <SourcePrecedencePanel />}
 
       {upcoming.length > 0 && (
         <>

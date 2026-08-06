@@ -41,11 +41,11 @@ export interface SourcePrecedence {
   fields: PrecedenceField[];
 }
 
-export async function getSourcePrecedence(): Promise<SourcePrecedence> {
+export async function getIntegrationsConfig(): Promise<SourcePrecedence> {
   return apiJSON<SourcePrecedence>('/vehicles/config');
 }
 
-export async function putSourcePrecedence(
+export async function putIntegrationsConfig(
   primary: Record<string, string>,
 ): Promise<SourcePrecedence> {
   return apiJSON<SourcePrecedence>('/vehicles/config', {

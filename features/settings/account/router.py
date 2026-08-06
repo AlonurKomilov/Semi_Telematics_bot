@@ -46,7 +46,7 @@ class SettingUpdate(BaseModel):
 
 @config_router.get("/config")
 @router.get("/settings", deprecated=True)
-async def get_settings(
+async def get_config(
     user: dict = Depends(require_permission("can_manage_account")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
@@ -122,7 +122,7 @@ async def get_settings(
 
 @config_router.put("/config")
 @router.put("/settings", deprecated=True)
-async def update_setting(
+async def put_config(
     body: SettingUpdate,
     user: dict = Depends(require_permission("can_manage_config_all")),
     tenant_db=Depends(get_tenant_db),

@@ -13,9 +13,8 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { GitMerge } from 'lucide-react';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
-import { getSourcePrecedence, putSourcePrecedence } from './api';
+import { getIntegrationsConfig, putIntegrationsConfig } from './api';
 import type { SourcePrecedence } from './api';
 import { useRoleView } from '../../context/RoleViewContext';
 
@@ -24,7 +23,7 @@ const SOURCE_LABEL: Record<string, string> = {
   samsara: 'Samsara',
 };
 
-export default function SourcePrecedencePanel() {
+export default function IntegrationsConfigPanel() {
   const qc = useQueryClient();
   // Precedence is CONFIG, not Manage — it decides which provider WINS per
   // field, so every vehicle read downstream resolves through it.  Both
@@ -35,16 +34,16 @@ export default function SourcePrecedencePanel() {
   const canConfigure = viewHas('can_manage_config_all');
 
   const { data } = useQuery<SourcePrecedence>({
-    queryKey: ['vehicle-source-precedence'],
-    queryFn: getSourcePrecedence,
+    queryKey: ['vehicles-config'],
+    queryFn: getIntegrationsConfig,
     enabled: canConfigure,
   });
 
   const mutation = useMutation({
     mutationFn: (primary: Record<string, string>) =>
-      putSourcePrecedence(primary),
+      putIntegrationsConfig(primary),
     onSuccess: (next) =>
-      qc.setQueryData(['vehicle-source-precedence'], next),
+      qc.setQueryData(['vehicles-config'], next),
   });
 
   // Best-effort panel — stay invisible until the policy loads.
@@ -61,14 +60,14 @@ export default function SourcePrecedencePanel() {
     mutation.mutate(primary);
   };
 
+  // No card wrapper and no heading: FeatureConfigGear supplies the
+  // dialog, the title and the permission wall. This used to be a card in
+  // the page's content flow, which put an account-wide SETTING in the
+  // same visual tier as the provider cards next to it — those are
+  // operational (connect, sync, test), this decides what every vehicle
+  // read resolves to.
   return (
-    <div className="mt-4 rounded-lg border border-border bg-card p-4">
-      <div className="mb-1 flex items-center gap-2">
-        <GitMerge size={16} className="text-muted-foreground" />
-        <h3 className="text-base font-semibold text-foreground">
-          When sources disagree
-        </h3>
-      </div>
+    <div>
       <p className="mb-3 text-sm text-muted-foreground">
         Samsara and Datatruck both fill in vehicle details. Choose which
         source wins each field — the other only fills it when it's empty.
