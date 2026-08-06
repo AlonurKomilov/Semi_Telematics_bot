@@ -41,11 +41,11 @@ from features.vehicles.service import (
     get_vehicles_overview as _svc_vehicles_overview,
     get_vehicle_detail as _svc_vehicle_detail,
 )
-from capabilities.warehouse.telemetry.service import (
+from features.vehicles.warehouse.service import (
     get_vehicle_health as _svc_vehicle_health,
     get_fleet_weather as _svc_fleet_weather,
 )
-from capabilities.warehouse.telemetry import warehouse_reader as _wh_reader
+from features.vehicles.warehouse import readers as _wh_reader
 from features.location.service import classify_vehicle_status
 from infra.platform import get_tenant_db as _get_tenant_db
 import infra.cache as _redis

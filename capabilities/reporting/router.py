@@ -14,7 +14,7 @@ from interfaces.api.deps import require_permission, require_permission_any, get_
 from capabilities.activity_trail import record_simple
 from capabilities.permissions.roles import can as _can
 from infra.services import get_client
-from capabilities.warehouse.telemetry.service import (
+from features.vehicles.warehouse.service import (
     get_vehicle_health as _svc_vehicle_health,
     get_fleet_efficiency as _svc_fleet_efficiency,
 )
@@ -47,7 +47,7 @@ async def report_faults(
     """
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    from capabilities.warehouse.telemetry import warehouse_reader as _wh
+    from features.vehicles.warehouse import readers as _wh
     client = await get_client(user["account_id"])
 
     async def _live():
@@ -86,7 +86,7 @@ async def report_fuel_levels(
     """
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    from capabilities.warehouse.telemetry import warehouse_reader as _wh
+    from features.vehicles.warehouse import readers as _wh
     client = await get_client(user["account_id"])
 
     async def _live():

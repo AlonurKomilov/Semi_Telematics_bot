@@ -42,6 +42,11 @@ FORBIDDEN = {
     # and decides — it never touches the transport.  Every send, edit,
     # button and deferral goes through capabilities/notifications.
     "capabilities/alerting": ("telegram",),
+    # Arc-end invariant (telemetry-warehouse SSOT): integrations are
+    # provider fetchers + shape adapters — feature logic reaches them
+    # only through data_lifecycle registrations (e.g. the vehicle
+    # cascade's reroll hook), never by import.
+    "capabilities/integrations": ("features",),
 }
 
 # Narrow, deliberate exemptions (path prefixes, repo-relative).
@@ -127,7 +132,9 @@ def test_physical_warehouse_tables_stay_inside_the_machinery():
         "adapters/storage/warehouse",
         "adapters/storage/migrations.py",
         "adapters/storage/vehicle_departure.py",
-        "capabilities/warehouse/",
+        "features/vehicles/warehouse/",
+        "capabilities/data_lifecycle/",   # engines + the status router
+
         "capabilities/integrations/",     # ingest writers
         "scripts/",
         "tests/",

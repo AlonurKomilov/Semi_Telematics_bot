@@ -48,7 +48,7 @@ async def test_aggregate_hour_window_accepts_arbitrary_hour():
     """The helper must accept any hour_start, not just 'just-closed
     hour'.  Mock the tenant DB and verify the SQL was bound to the
     requested window, not to ``now``."""
-    from capabilities.warehouse.telemetry.aggregator import _aggregate_hour_window
+    from features.vehicles.warehouse.aggregator import _aggregate_hour_window
 
     tenant = MagicMock()
     cur = MagicMock()
@@ -74,7 +74,7 @@ async def test_aggregate_hour_window_accepts_arbitrary_hour():
 
 @pytest.mark.asyncio
 async def test_aggregate_day_window_accepts_arbitrary_day():
-    from capabilities.warehouse.telemetry.aggregator import _aggregate_day_window
+    from features.vehicles.warehouse.aggregator import _aggregate_day_window
 
     tenant = MagicMock()
     cur = MagicMock()
@@ -101,7 +101,7 @@ async def test_aggregate_week_window_rolls_daily_into_weekly():
     """The weekly window reads the DAILY granularity over the whole 7-day
     span and upserts one weekly row per vehicle, carrying the latest EOD
     odometer in the week."""
-    from capabilities.warehouse.telemetry.aggregator import _aggregate_week_window
+    from features.vehicles.warehouse.aggregator import _aggregate_week_window
 
     tenant = MagicMock()
     cur = MagicMock()
@@ -138,7 +138,7 @@ async def test_backfill_aggregations_walks_each_hour_in_window(monkeypatch):
     (30 days × 24 hours + the in-progress hour) and _aggregate_day_window
     30 times.  The trailing in-progress hour gets re-aggregated by the
     next live cron tick — UPSERT semantics make this safe."""
-    from capabilities.warehouse.telemetry import aggregator as ingestor
+    from features.vehicles.warehouse import aggregator as ingestor
 
     tenant = MagicMock()
     monkeypatch.setattr(
@@ -176,7 +176,7 @@ async def test_backfill_aggregations_walks_each_hour_in_window(monkeypatch):
 async def test_backfill_aggregations_smaller_window(monkeypatch):
     """7-day backfill should call 7*24 + 1 = 169 hours, 7 days
     (the +1 is the in-progress hour, see test above)."""
-    from capabilities.warehouse.telemetry import aggregator as ingestor
+    from features.vehicles.warehouse import aggregator as ingestor
 
     tenant = MagicMock()
     monkeypatch.setattr(
@@ -198,7 +198,7 @@ async def test_backfill_aggregations_smaller_window(monkeypatch):
 async def test_backfill_aggregations_continues_when_one_hour_fails(monkeypatch):
     """A per-hour aggregation failure should log + skip, not abort
     the whole 30-day backfill — partial data is still useful."""
-    from capabilities.warehouse.telemetry import aggregator as ingestor
+    from features.vehicles.warehouse import aggregator as ingestor
 
     tenant = MagicMock()
     monkeypatch.setattr(
@@ -227,7 +227,7 @@ async def test_backfill_aggregations_continues_when_one_hour_fails(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_backfill_aggregations_returns_zero_when_no_tenant(monkeypatch):
-    from capabilities.warehouse.telemetry import aggregator as ingestor
+    from features.vehicles.warehouse import aggregator as ingestor
 
     monkeypatch.setattr(
         ingestor, "get_tenant_db", AsyncMock(return_value=None),
@@ -245,7 +245,7 @@ async def test_m5_backfill_calls_aggregations_on_success(monkeypatch):
     so the calendar projection's median path has data the moment M5
     finishes (rather than waiting ~7 days for the cron to catch up)."""
     from capabilities.integrations.shared import history_backfill
-    from capabilities.warehouse.telemetry import aggregator as ingestor
+    from features.vehicles.warehouse import aggregator as ingestor
 
     # Mock the M5 setup so it gets to the chain-into-aggregations
     # point: integration row exists, status connected, toggle on,
@@ -311,7 +311,7 @@ async def test_m5_backfill_aggregations_failure_does_not_flip_state(monkeypatch)
     aggregations failure just means the live cron will catch up over
     the next 7 days)."""
     from capabilities.integrations.shared import history_backfill
-    from capabilities.warehouse.telemetry import aggregator as ingestor
+    from features.vehicles.warehouse import aggregator as ingestor
 
     integration = MagicMock()
     integration.status = "connected"
@@ -373,7 +373,7 @@ async def tenant(pg_db):
 @pytest.mark.asyncio
 async def test_daily_run_heals_a_missing_earlier_day(tenant, monkeypatch):
     from datetime import datetime as _dt, timezone as _tz, timedelta as _td
-    from capabilities.warehouse.telemetry import aggregator as agg
+    from features.vehicles.warehouse import aggregator as agg
 
     await tenant.upsert_vehicle_state(1, [
         {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
@@ -421,7 +421,7 @@ async def test_daily_run_re_rolls_a_day_that_is_present_but_wrong(tenant, monkey
     row existed.
     """
     from datetime import datetime as _dt, timezone as _tz
-    from capabilities.warehouse.telemetry import aggregator as agg
+    from features.vehicles.warehouse import aggregator as agg
 
     await tenant.upsert_vehicle_state(1, [
         {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
@@ -431,8 +431,12 @@ async def test_daily_run_re_rolls_a_day_that_is_present_but_wrong(tenant, monkey
         {"vehicle_id": "v1", "captured_at": day.isoformat(),
          "odometer_mi": 1_000, "engine_hours": 10,
          "engine_state": "moving", "speed_mph": 55},
+        # 25 miles in 30 minutes — physically plausible driving, so the
+        # gap-aware step guard (steps must fit elapsed time x 90 mph)
+        # counts it.  The original 120-in-30 fixture implied 240 mph and
+        # was correctly dropped once the physics guard landed.
         {"vehicle_id": "v1", "captured_at": (day.replace(minute=30)).isoformat(),
-         "odometer_mi": 1_120, "engine_hours": 12,
+         "odometer_mi": 1_025, "engine_hours": 12,
          "engine_state": "moving", "speed_mph": 55},
     ])
     await agg._aggregate_hour_window(tenant, 1, day)
@@ -460,7 +464,7 @@ async def test_daily_run_re_rolls_a_day_that_is_present_but_wrong(tenant, monkey
         "SELECT miles FROM vehicle_telemetry WHERE account_id = ? "
         "AND granularity = 'daily' AND bucket_start = ?", (1, "2026-07-27"))
     miles = float(dict(await cur.fetchone())["miles"])
-    assert miles == pytest.approx(120.0), (
+    assert miles == pytest.approx(25.0), (
         "a wrong day must be re-summed from its hours, not left alone"
     )
 
@@ -475,7 +479,7 @@ async def test_duty_time_counts_without_a_working_odometer(tenant):
     hours forever, however much it moved.
     """
     from datetime import datetime as _dt, timezone as _tz
-    from capabilities.warehouse.telemetry import aggregator as agg
+    from features.vehicles.warehouse import aggregator as agg
 
     await tenant.upsert_vehicle_state(1, [
         {"vehicle_id": "v1", "vehicle_name": "301", "company_code": "A"},
@@ -514,7 +518,7 @@ async def test_duty_time_is_cadence_independent(tenant):
     duty asks each sample how long its state actually lasted.
     """
     from datetime import datetime as _dt, timezone as _tz
-    from capabilities.warehouse.telemetry import aggregator as agg
+    from features.vehicles.warehouse import aggregator as agg
 
     await tenant.upsert_vehicle_state(1, [
         {"vehicle_id": "v1", "vehicle_name": "310", "company_code": "A"},
@@ -558,7 +562,7 @@ async def test_odometer_re_baseline_does_not_become_miles(tenant):
     jump is dropped while the surrounding real movement survives.
     """
     from datetime import datetime as _dt, timezone as _tz
-    from capabilities.warehouse.telemetry import aggregator as agg
+    from features.vehicles.warehouse import aggregator as agg
 
     await tenant.upsert_vehicle_state(1, [
         {"vehicle_id": "v1", "vehicle_name": "233", "company_code": "A"},
@@ -595,7 +599,7 @@ async def test_step_plausibility_is_physics_not_a_magic_number(tenant):
     impossible hour rows).  Across a 14-hour provider silence
     (source_ts gap) it is a truck's real catch-up and counts."""
     from datetime import datetime as _dt, timezone as _tz
-    from capabilities.warehouse.telemetry import aggregator as agg
+    from features.vehicles.warehouse import aggregator as agg
 
     hour = _dt(2026, 8, 3, 9, tzinfo=_tz.utc)
 

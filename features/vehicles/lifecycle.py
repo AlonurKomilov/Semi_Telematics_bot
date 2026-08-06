@@ -22,10 +22,11 @@ from capabilities.data_lifecycle.rollups.registry import (
     RollupStage,
     register_cascade,
 )
-from capabilities.warehouse.telemetry.aggregator import (
+from features.vehicles.warehouse.aggregator import (
     aggregate_metrics_daily,
     aggregate_metrics_weekly,
     aggregate_telemetry_hourly,
+    backfill_aggregations,
     snapshot_vehicle_state,
 )
 
@@ -89,6 +90,9 @@ register_cascade(
                 stream="vehicle.timeline", grain="week",
             ),
         ),
+        # The whole-cascade rebuild the history backfill calls through
+        # the registry (capabilities may not import features).
+        reroll=backfill_aggregations,
     )
 )
 

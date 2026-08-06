@@ -284,20 +284,20 @@ class TestTruckFilter:
             return await samsara_fallback() if samsara_fallback else list(rows)
 
         monkeypatch.setattr(
-            "capabilities.warehouse.telemetry.service.get_client", _stub_get_client,
+            "features.vehicles.warehouse.service.get_client", _stub_get_client,
         )
         monkeypatch.setattr(
-            "capabilities.warehouse.telemetry.service.prepare_companies", _stub_prepare,
+            "features.vehicles.warehouse.service.prepare_companies", _stub_prepare,
         )
         monkeypatch.setattr(
-            "capabilities.warehouse.telemetry.warehouse_reader.get_driver_efficiency_window",
+            "features.vehicles.warehouse.readers.get_driver_efficiency_window",
             _stub_window,
         )
         return rows
 
     async def test_substring_no_longer_leaks(self, patched):
         """Filtering on truck "T1" must NOT also return T10, T100 or "Tony"."""
-        from capabilities.warehouse.telemetry.service import get_driver_efficiency
+        from features.vehicles.warehouse.service import get_driver_efficiency
 
         out = await get_driver_efficiency(
             account_id=1, days=7, vehicle_nums=["T1"],
@@ -306,7 +306,7 @@ class TestTruckFilter:
         assert names == {"Alice T1"}
 
     async def test_case_insensitive_exact_match(self, patched):
-        from capabilities.warehouse.telemetry.service import get_driver_efficiency
+        from features.vehicles.warehouse.service import get_driver_efficiency
 
         out = await get_driver_efficiency(
             account_id=1, days=7, vehicle_nums=["t10"],
@@ -315,7 +315,7 @@ class TestTruckFilter:
         assert names == {"Bob T10"}
 
     async def test_empty_truck_list_returns_empty(self, patched):
-        from capabilities.warehouse.telemetry.service import get_driver_efficiency
+        from features.vehicles.warehouse.service import get_driver_efficiency
 
         out = await get_driver_efficiency(
             account_id=1, days=7, vehicle_nums=[],
@@ -323,7 +323,7 @@ class TestTruckFilter:
         assert out == []
 
     async def test_none_means_no_filter(self, patched):
-        from capabilities.warehouse.telemetry.service import get_driver_efficiency
+        from features.vehicles.warehouse.service import get_driver_efficiency
 
         out = await get_driver_efficiency(
             account_id=1, days=7, vehicle_nums=None,

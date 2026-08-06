@@ -17,7 +17,7 @@ import logging
 from dataclasses import asdict
 
 from features.events.service import get_events
-from capabilities.warehouse.telemetry.service import (
+from features.vehicles.warehouse.service import (
     get_driver_efficiency,
     get_fleet_efficiency,
     get_vehicle_health,

@@ -410,7 +410,7 @@ def _live(id, name, org="PTG"):
 
 
 def test_merge_enriches_match_by_telematics_ref():
-    from capabilities.warehouse.telemetry.warehouse_reader import merge_registry_with_live
+    from features.vehicles.warehouse.readers import merge_registry_with_live
     registry = [_reg(1, "247", ref="sam_99", source="samsara")]
     live = [_live("sam_99", "247")]
     out = merge_registry_with_live(registry, live)
@@ -422,7 +422,7 @@ def test_merge_enriches_match_by_telematics_ref():
 
 
 def test_merge_matches_by_company_unit_case_insensitive():
-    from capabilities.warehouse.telemetry.warehouse_reader import merge_registry_with_live
+    from features.vehicles.warehouse.readers import merge_registry_with_live
     registry = [_reg(1, "247", org="PTG")]
     live = [_live("x", "247", org="ptg")]   # different case
     out = merge_registry_with_live(registry, live)
@@ -430,7 +430,7 @@ def test_merge_matches_by_company_unit_case_insensitive():
 
 
 def test_merge_synthesizes_no_telemetry_for_trailer():
-    from capabilities.warehouse.telemetry.warehouse_reader import merge_registry_with_live
+    from features.vehicles.warehouse.readers import merge_registry_with_live
     registry = [_reg(7, "SS006414", type="trailer", vin="3H3V")]
     out = merge_registry_with_live(registry, [])  # no live data at all
     assert len(out) == 1
@@ -443,7 +443,7 @@ def test_merge_synthesizes_no_telemetry_for_trailer():
 def test_merge_appends_unregistered_live_vehicle():
     """A Samsara vehicle the registry hasn't caught yet must still
     show (safety) — not vanish behind the registry spine."""
-    from capabilities.warehouse.telemetry.warehouse_reader import merge_registry_with_live
+    from features.vehicles.warehouse.readers import merge_registry_with_live
     registry = [_reg(1, "247", ref="sam_99", source="samsara")]
     live = [_live("sam_99", "247"), _live("sam_new", "999")]
     out = merge_registry_with_live(registry, live)

@@ -35,7 +35,7 @@ from features.vehicles.fuel.report import generate_fuel_report_pdf
 from features.vehicles.efficiency.report import generate_fleet_efficiency_pdf
 from features.cameras.report import generate_camera_check_pdf
 from features.vehicles.health.report import generate_vehicle_health_pdf
-from capabilities.warehouse.telemetry.service import (
+from features.vehicles.warehouse.service import (
     get_vehicles_with_faults as _svc_vehicles_with_faults,
 )
 from features.vehicles.service import (

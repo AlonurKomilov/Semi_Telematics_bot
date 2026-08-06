@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from capabilities.warehouse.telemetry import warehouse_reader as wr
+from features.vehicles.warehouse import readers as wr
 
 
 class _FakeTenant:

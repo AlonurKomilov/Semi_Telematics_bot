@@ -34,7 +34,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from capabilities.warehouse.telemetry.aggregator import reaggregate_window  # noqa: E402
+from features.vehicles.warehouse.aggregator import reaggregate_window  # noqa: E402
 from infra.services import get_tenant_db  # noqa: E402
 from infra.startup import initialize as init_services  # noqa: E402
 

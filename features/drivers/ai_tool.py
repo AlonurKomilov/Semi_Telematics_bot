@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from capabilities.ai.tools.registry import register_tool
 from capabilities.ai.tools.scope import filter_to_scope
-from capabilities.warehouse.telemetry.service import get_driver_efficiency as _svc_drv_eff
+from features.vehicles.warehouse.service import get_driver_efficiency as _svc_drv_eff
 
 
 @register_tool({

@@ -99,7 +99,7 @@ async def safety_events(
     async def _live():
         return await client.get_events(days=fetch_days, company=company)
 
-    from capabilities.warehouse.telemetry import warehouse_reader as _wh
+    from features.vehicles.warehouse import readers as _wh
     # include_raw=False skips the per-row ``json.loads(raw_json)`` in
     # the warehouse layer — saves hundreds of ms on a 30-day window.
     # The list view doesn't need the full Samsara event shape; the
@@ -222,7 +222,7 @@ async def safety_events_summary(
     async def _live():
         return await client.get_events(days=days, company=company)
 
-    from capabilities.warehouse.telemetry import warehouse_reader as _wh
+    from features.vehicles.warehouse import readers as _wh
     wh_rows = await _wh.get_safety_events(
         user["account_id"],
         days=days,
@@ -357,7 +357,7 @@ async def safety_events_heatmap(
     is off so the heat layer simply renders nothing instead of
     erroring.
     """
-    from capabilities.warehouse.telemetry import warehouse_reader as _wh
+    from features.vehicles.warehouse import readers as _wh
     from infra.services import get_tenant_db
 
     if not getattr(_wh, "_enabled")():

@@ -941,10 +941,13 @@ async def backfill_vehicle_history(
             # snapshot rows but the calendar would still be empty
             # for ~7 more days while the live aggregators caught up.
             try:
-                from capabilities.warehouse.telemetry.aggregator import (
-                    backfill_aggregations,
+                from capabilities.data_lifecycle.rollups.registry import (
+                    get_cascade,
                 )
-                agg = await backfill_aggregations(account_id, days=days)
+                _cascade = get_cascade("vehicle")
+                if _cascade is None or _cascade.reroll is None:
+                    raise RuntimeError("vehicle cascade has no reroll hook")
+                agg = await _cascade.reroll(account_id, days=days)
                 logger.info(
                     "backfill acct=%d provider=%s aggregations rolled up: "
                     "hours=%d days=%d hourly_rows=%d daily_rows=%d",

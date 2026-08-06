@@ -10,7 +10,7 @@ the backfill script, or a test fixture without surprises.
 Lives WITH the integration (beside ``datatruck/sync.py``), not in the
 warehouse: the warehouse only stores + aggregates; each provider owns its own
 sync.  The provider-agnostic tier aggregation lives in
-``capabilities/warehouse/telemetry/aggregator.py``; the integration-gated fan-out the
+``features/vehicles/warehouse/aggregator.py``; the integration-gated fan-out the
 jobs use lives in ``capabilities/integrations/shared/helpers.py``.
 
 Each job is wrapped in defensive try/except + structured logging \u2014 warehouse

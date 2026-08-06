@@ -107,7 +107,7 @@ async def _check_events_account(bot_app: Application, account):
     # rows with the live-shape dict wrapped in ``raw`` (see ingestor
     # ``_safety_event_to_log_row``); when the flag is off it falls back
     # to the live ``samsara.get_events`` call we used to have here.
-    from capabilities.warehouse.telemetry import warehouse_reader as _wh
+    from features.vehicles.warehouse import readers as _wh
 
     async def _live():
         return await samsara.get_events(days=1)

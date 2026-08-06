@@ -73,7 +73,7 @@ async def test_source_ts_propagates_snapshot_to_hourly_to_daily(pg_db):
     rides the exact same path.  A tier row without identity is
     invisible to every registry-joined consumer, which is how a
     perfectly current warehouse once *looked* two weeks stale."""
-    from capabilities.warehouse.telemetry import aggregator as agg
+    from features.vehicles.warehouse import aggregator as agg
 
     acct = 46
     hour = datetime(2026, 7, 20, 9, tzinfo=timezone.utc)

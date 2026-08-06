@@ -27,7 +27,7 @@ import asyncio
 import logging
 import sys
 
-from capabilities.warehouse.telemetry.aggregator import aggregate_telemetry_hourly
+from features.vehicles.warehouse.aggregator import aggregate_telemetry_hourly
 from capabilities.integrations.samsara.sync import (
     ingest_driver_efficiency_daily,
     ingest_fleet_efficiency,

@@ -12,14 +12,22 @@ from fastapi.responses import FileResponse
 
 from interfaces.api.deps import require_permission, require_permission_any, get_tenant_db, get_platform_db, get_user_vehicle_nums, get_user_company_codes, validate_company_access, filter_by_allowed_companies
 from infra.services import get_client
-from capabilities.warehouse.telemetry.service import get_driver_efficiency as _svc_driver_efficiency
+from features.vehicles.warehouse.service import get_driver_efficiency as _svc_driver_efficiency
 from features.events.severity import classify_event_severity as _classify_severity
 from capabilities.scorecards.service import evaluate_subjects as _svc_evaluate_subjects
 import infra.cache as _redis_cache
 
 router = APIRouter(prefix="/safety", tags=["safety"])
 
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# THREE dirname calls, not four: this file is at <root>/features/<x>/
+# router.py, so one call strips the filename and two more climb the
+# two package directories.  A fourth landed on the PARENT of the
+# project, which broke every stored-file lookup in this router
+# (paths are relative to the project root) and simultaneously
+# widened the path-traversal guard below to the whole parent dir.
+# Must stay equal to adapters.storage.object_storage's own root —
+# tests/test_project_root_depth.py enforces that.
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # grace period: drivers with fewer than this many daily
 # snapshots haven't been around long enough to be ranked fairly.
