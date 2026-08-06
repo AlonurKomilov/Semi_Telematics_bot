@@ -8360,7 +8360,7 @@ async def migrate_asset_grain_surfaces(conn) -> None:
             f"COMMENT ON VIEW warehouse.{name} IS "
             f"'warehouse surface: {stream} · grain {grain} — read here; "
             f"writers use the physical tables. "
-            f"SSOT docs/architecture/telemetry-warehouse.md'"
+            f"SSOT docs/architecture/warehouse.md'"
         )
     await conn.commit()
     logger.info("Migration 185: 10 asset grain surfaces ready")

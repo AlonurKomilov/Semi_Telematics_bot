@@ -54,7 +54,7 @@ def _enabled() -> bool:
 # one: the empty case falls back loudly, the stale case used to serve
 # a 43-hour-old fleet as "current" with nothing amiss (2026-07-27
 # outage).  Readers therefore fall back on AGE, not just emptiness --
-# Contract 2 (docs/architecture/telemetry-warehouse.md).  30 min
+# Contract 2 (docs/architecture/warehouse.md).  30 min
 # matches the operator console's ingest-freshness card.
 _STATE_STALE_MIN = 30.0
 

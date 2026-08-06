@@ -53,6 +53,17 @@ design problem, escalate that one question to `fable-advisor`.
   [docs/architecture/PERSONA.md](docs/architecture/PERSONA.md)
   §"Naming: role words vs domain nouns".
 
+# Domain SSOTs — read before touching
+
+- **The warehouse** (anything named `warehouse`, tiered history,
+  grains live·minute·hour·day·week, the `warehouse.*` Postgres
+  schema): [docs/architecture/warehouse.md](docs/architecture/warehouse.md)
+  is the law — orientation, reading rules (surfaces + `source_ts`
+  staleness + `registry_id` joins), and the add-a-dataset recipe.
+  Physical warehouse tables are machinery-internal (CI-guarded);
+  never assume 5-minute snapshots — the minute grain replaced them
+  (2026-08).
+
 # Project rituals
 
 - **After building or modifying any user-facing feature** (dashboard page,

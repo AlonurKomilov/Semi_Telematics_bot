@@ -1,8 +1,71 @@
-# Telemetry warehouse — target architecture (SSOT)
+# The warehouse — architecture (SSOT)
 
-Approved 2026-07-31 (owner + advisor). This document is the contract the
-warehouse refactor arc implements. If code and this document disagree, one
-of them is wrong — fix whichever, but never silently.
+The platform's analytical store: every stream of history the product
+keeps and learns from.  Telemetry was its first family; safety events,
+driver stats, and geofence definitions already live here too, and any
+feature can add its own — the design is family-agnostic on purpose.
+If code and this document disagree, one of them is wrong — fix
+whichever, but never silently.
+
+## Quick orientation (read this much before touching anything)
+
+- **What it is**: tiered history in the Postgres `warehouse` schema.
+  Grains: `live · minute · hour · day · week`.  Three data categories
+  decide who gets grains: **assets** climb the full ladder, **logs**
+  keep full fidelity + counts in the tiers, **caches** hold one
+  current row (details below).
+- **Where things live** (one kind of thing per layer):
+  data → `warehouse.*` schema · SQL → `adapters/storage/warehouse/`
+  · feature logic → `features/<x>/warehouse/` · declarations →
+  `features/<x>/lifecycle.py` · engines →
+  `capabilities/data_lifecycle/` (ACQUIRE · BUILD · KEEP).
+- **How to read**: see “Reading from the warehouse”.
+- **How to add a stream**: see “Adding a dataset — the recipe”.
+- **The five iron rules**: physical-table SQL only in the machinery
+  (CI-guarded) · grain never in a name · `source_ts` is truth and is
+  never minted · sample labels sit on the time grid · capabilities
+  never import features.
+
+## Reading from the warehouse (for feature developers)
+
+- **Query the surfaces, never the physical tables** — CI fails you
+  otherwise.  Per-grain: `warehouse.vehicle_state_live/minute/hour/
+  day/week`, `warehouse.vehicle_health_*`.  Cross-grain:
+  `warehouse.vehicle_timeline` (grain as a column).
+- **Join identity on `registry_id`** (Postgres `vehicles.id`), never
+  on names; names are display labels.
+- **Trust freshness only via `source_ts`** with the shared
+  `is_stale()` (`capabilities/data_lifecycle/staleness.py`); unknown
+  age IS stale.  Readers fall back to the live provider on AGE, not
+  on emptiness (`features/vehicles/warehouse/readers.py` is the
+  worked example).
+- In Python, prefer the read facade
+  (`features/vehicles/warehouse/service.py`) or the storage methods
+  over raw SQL.
+
+## Adding a dataset — the recipe
+
+Copy `features/events/lifecycle.py` (33 lines — the template) and:
+
+1. **Pick the category** (asset / log / cache — table below).  It
+   decides whether you declare rollup stages at all.
+2. **Name tables by the template** `<domain-noun>_<subtask>[_<kind>]`
+   — no grain, no role word, no `warehouse_` prefix; create them in
+   the `warehouse` schema (migration).
+3. **Declare in `features/<you>/lifecycle.py`**: an `IngestDataset`
+   (key, owner, job_id, cadence, run, tables, freshness SLA,
+   `expect_rows=False` for sparse feeds); rollup stages + `reroll`
+   if an asset; retention targets + needs.
+4. **Register the module**: one line in each hub's `_CONTRIBUTORS`
+   roster (`capabilities/data_lifecycle/{ingest,rollups,retention}/
+   __init__.py`).
+5. Domain math (aggregation, readers) goes in
+   `features/<you>/warehouse/` — never in the engines.
+
+Everything else is free and automatic: the scheduler runs it, the
+ledger records it, the watchdog guards it, the catalog stamps the
+tables, `/telemetry/warehouse-status` reports it, retention prunes
+it.  Zero engine edits — the engines never learn your name.
 
 ## The shape in one paragraph
 
@@ -256,27 +319,18 @@ and their upserts stop overwriting `account_id` on conflict.
    CONCURRENTLY`; never CREATE INDEX inside platform_schema.py's
    CREATE-TABLE block.
 
-## Phase routing
+## History (the 2026 refactor arc, condensed)
 
-Fixes land in their natural phase — never early, never twice:
-
-- **Phase 1 (rescue):** outage-window re-aggregation + forced Samsara
-  backfill; odometer jump/reset guard; re-roll repair mode; restore the
-  missing `uniq_vehicle_state_account_company_name` index.
-- **Phase 2 (root causes):** engine-state ingest, hour-23 race, fuel
-  persist, `source_ts` columns + propagation (Contract 2), fetcher/upsert
-  split in sync.py, `ingest_runs` + registry + engine (first datasets
-  registered).
-- **Phase 3 (identity):** `registry_id` columns + ingest resolver +
-  orphan quarantine (Contract 3); consumers move off name joins (the sweep
-  holds the full site list); tenancy key swaps.
-- **Phase 4 (hardening):** watchdog as alert source; misfire/DST/cron
-  fixes; staleness checks in readers; RLS coverage incl.
-  vehicle_state_snapshot.
-- **Phase 5 (mechanical re-homing):** storage split, aggregator + readers
-  move, `capabilities/warehouse/` deleted, guards tightened. Method/function
-  names unchanged ⇒ re-points are one-line import edits.
-
-The full violation inventory (113 items, per-file, with fix options) is a
-working paper from the 2026-07-31 conformance sweep — session artifact, not
-committed; this document carries everything durable.
+Born from a 65-finding audit (2026-07-31; owner + advisor approved
+the target design).  Phase 1 rescued damaged data (step-based miles,
+re-roll repair); Phase 2 fixed root causes (`source_ts`, ingest
+registry + ledger); Phase 3 built identity (`registry_id`, security
+walls, departure lifecycle); Phase 4 hardened (watchdog, cadences,
+age-based reader fallback, the registry-driven status page); Phase 5
+re-homed everything into the tree above and dissolved
+`capabilities/warehouse/`.  Along the way, owner-driven: the
+`warehouse` Postgres schema + four table renames (2026-08-03), the
+minute grain replacing 5-minute sampling, the grain surfaces, the
+gauge ladder, and the physics step-guard.  Every audit finding was
+repaired or explicitly retired.  Details live in git history and the
+runbooks (`docs/runbooks/warehouse-*.md`).

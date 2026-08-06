@@ -21,7 +21,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-_SSOT = "SSOT docs/architecture/telemetry-warehouse.md"
+_SSOT = "SSOT docs/architecture/warehouse.md"
 
 # Grain/kind notes for tables whose dataset key alone doesn't say what
 # tier they hold.  Keyed by physical table name.

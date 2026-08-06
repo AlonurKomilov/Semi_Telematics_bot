@@ -42,7 +42,7 @@ FORBIDDEN = {
     # and decides — it never touches the transport.  Every send, edit,
     # button and deferral goes through capabilities/notifications.
     "capabilities/alerting": ("telegram",),
-    # Arc-end invariant (telemetry-warehouse SSOT): integrations are
+    # Arc-end invariant (warehouse SSOT): integrations are
     # provider fetchers + shape adapters — feature logic reaches them
     # only through data_lifecycle registrations (e.g. the vehicle
     # cascade's reroll hook), never by import.
