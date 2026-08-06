@@ -71,7 +71,7 @@ class RollupCascade:
     # backfill) re-roll a stream's tiers WITHOUT importing the owning
     # feature — it looks the cascade up here instead (the same
     # inversion every other registration in this hub uses).
-    reroll: object | None = None
+    reroll: "Callable[..., Awaitable[dict]] | None" = None
 
 
 _CASCADES: dict[str, RollupCascade] = {}

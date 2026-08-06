@@ -9,6 +9,8 @@ once froze all back-dated odometer history).  These guard both.
 
 from __future__ import annotations
 
+import pytest
+
 import asyncio
 import os
 
@@ -76,3 +78,29 @@ def test_run_stage_fans_out_across_active_accounts(monkeypatch):
     asyncio.run(run_stage(stage))
 
     assert seen["fn"] is my_run
+
+
+@pytest.mark.asyncio
+async def test_reroll_hook_is_late_bound_and_discoverable(monkeypatch):
+    """The cascade's reroll must (a) exist after a plain discover() —
+    the cold-worker path the backfill takes — and (b) resolve the
+    aggregator's CURRENT function at call time, so monkeypatches and
+    hot-fixes take effect.  A bound-at-registration reference silently
+    ignored both (review finding, 2026-08-06)."""
+    from capabilities.data_lifecycle.rollups import discover
+    from capabilities.data_lifecycle.rollups.registry import get_cascade
+    import features.vehicles.warehouse.aggregator as agg
+
+    discover()
+    cascade = get_cascade("vehicle")
+    assert cascade is not None and cascade.reroll is not None
+
+    called = {}
+
+    async def fake(account_id, *, days):
+        called["args"] = (account_id, days)
+        return {"hours": 0, "days": 0, "hourly_rows": 0, "daily_rows": 0}
+
+    monkeypatch.setattr(agg, "backfill_aggregations", fake)
+    out = await cascade.reroll(7, days=3)
+    assert called["args"] == (7, 3) and out["hours"] == 0

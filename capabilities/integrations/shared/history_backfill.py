@@ -941,9 +941,16 @@ async def backfill_vehicle_history(
             # snapshot rows but the calendar would still be empty
             # for ~7 more days while the live aggregators caught up.
             try:
+                from capabilities.data_lifecycle.rollups import (
+                    discover as _discover_rollups,
+                )
                 from capabilities.data_lifecycle.rollups.registry import (
                     get_cascade,
                 )
+                # A cold worker may not have discovered feature
+                # registrations yet — idempotent, same pattern as the
+                # status router and the retention jobs.
+                _discover_rollups()
                 _cascade = get_cascade("vehicle")
                 if _cascade is None or _cascade.reroll is None:
                     raise RuntimeError("vehicle cascade has no reroll hook")

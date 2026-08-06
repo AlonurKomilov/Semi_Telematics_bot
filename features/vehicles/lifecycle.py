@@ -26,9 +26,17 @@ from features.vehicles.warehouse.aggregator import (
     aggregate_metrics_daily,
     aggregate_metrics_weekly,
     aggregate_telemetry_hourly,
-    backfill_aggregations,
     snapshot_vehicle_state,
 )
+
+
+async def _reroll_vehicle_tiers(account_id: int, *, days: int) -> dict:
+    """The cascade's whole-stream rebuild hook, LATE-BOUND on purpose:
+    resolving ``backfill_aggregations`` at call time (not registration
+    time) keeps monkeypatches and hot-fixes effective — a bound
+    reference frozen into the registry ignores them forever."""
+    from features.vehicles.warehouse.aggregator import backfill_aggregations
+    return await backfill_aggregations(account_id, days=days)
 
 # Cadences match exactly what the scheduler ran before this was hub-driven:
 #   snapshot — on the minute (wall-aligned cron; see timegrid.py)
@@ -92,7 +100,7 @@ register_cascade(
         ),
         # The whole-cascade rebuild the history backfill calls through
         # the registry (capabilities may not import features).
-        reroll=backfill_aggregations,
+        reroll=_reroll_vehicle_tiers,
     )
 )
 
