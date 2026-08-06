@@ -50,6 +50,29 @@ def _enabled() -> bool:
     can monkeypatch ``core.config.WAREHOUSE_READS_ENABLED`` freely."""
     return bool(getattr(config, "WAREHOUSE_READS_ENABLED", False))
 
+# A warehouse row that is PRESENT but ancient is worse than an empty
+# one: the empty case falls back loudly, the stale case used to serve
+# a 43-hour-old fleet as "current" with nothing amiss (2026-07-27
+# outage).  Readers therefore fall back on AGE, not just emptiness --
+# Contract 2 (docs/architecture/telemetry-warehouse.md).  30 min
+# matches the operator console's ingest-freshness card.
+_STATE_STALE_MIN = 30.0
+
+
+def _rows_are_stale(rows, sla_min, *keys):
+    """True when the freshest timestamp across ``rows`` (first present
+    key per row wins) is older than ``sla_min`` -- or unknowable."""
+    from capabilities.data_lifecycle.staleness import freshest, is_stale
+
+    newest = None
+    for r in rows:
+        for k in keys:
+            v = r.get(k)
+            if v:
+                newest = freshest(newest, str(v))
+                break
+    return is_stale(newest, sla_min)
+
 
 def _warehouse_row_to_overview(row: dict[str, Any]) -> dict[str, Any]:
     """Reshape a ``vehicle_state`` row back into the nested layout the
@@ -231,6 +254,12 @@ async def get_current_vehicles(
     if not rows and samsara_fallback is not None:
         logger.info("warehouse cold (vehicle_state empty) for acct=%d \u2014 using live Samsara", account_id)
         return await samsara_fallback()
+    if rows and samsara_fallback is not None and _rows_are_stale(
+            rows, _STATE_STALE_MIN, "source_ts", "captured_at"):
+        logger.warning(
+            "warehouse STALE (vehicle_state age > %.0f min) for acct=%d "
+            "-- using live Samsara", _STATE_STALE_MIN, account_id)
+        return await samsara_fallback()
     return [_warehouse_row_to_overview(r) for r in rows]
 
 
@@ -267,6 +296,10 @@ async def get_safety_events(
         driver_id=driver_id,
         include_raw=include_raw,
     )
+    # Deliberately NO age-based fallback here: an event's age is a
+    # fact about the WORLD (a quiet fleet has old events), not about
+    # the pipe.  Pipe health for this sparse feed is the watchdog's
+    # job (expect_rows=False + the ingest ledger).
     if not rows and samsara_fallback is not None:
         return await samsara_fallback()
     return rows
@@ -293,6 +326,12 @@ async def get_driver_efficiency_window(
         account_id, days=days, driver_id=driver_id,
     )
     if not rows and samsara_fallback is not None:
+        return await samsara_fallback()
+    if rows and samsara_fallback is not None and _rows_are_stale(
+            rows, 2 * 24 * 60.0, "source_ts", "day"):
+        logger.warning(
+            "warehouse STALE (driver_efficiency newest day > 2d) for "
+            "acct=%d -- using live Samsara", account_id)
         return await samsara_fallback()
     return rows
 

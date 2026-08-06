@@ -11,88 +11,119 @@ from interfaces.api.deps import require_permission, get_tenant_db
 router = APIRouter(prefix="/telemetry", tags=["telemetry"])
 
 
-# ── Warehouse diagnostics ─────────────────────────────────────
-#
-# Surfaces the row counts + freshness of every warehouse table for the
-# caller's account. Used during the WAREHOUSE_READS_ENABLED rollout to
-# verify that the ingestor is populating the tables before flipping the
-# read flag, and afterwards to verify that the data stays fresh. Also
-# reports the current value of WAREHOUSE_READS_ENABLED so ops can
-# confirm the flag is set correctly per pod.
-
-_WAREHOUSE_TABLES: list[tuple[str, str | None]] = [
-    # (table_name, ts_column or None if the table has no timestamp)
-    ("vehicle_state",             "fetched_at"),
-    ("vehicle_health_snapshot",   "fetched_at"),
-    ("vehicle_fault_snapshot",    "fetched_at"),
-    ("weather_snapshot",    "fetched_at"),
-    ("efficiency_snapshot", "fetched_at"),
-    ("safety_event_log",          "occurred_at"),
-    ("driver_efficiency",   "snapshot_date"),
-    ("vehicle_telemetry",         "ingested_at"),
-    ("geofence_definitions",      "fetched_at"),
-]
-
-
 @router.get("/warehouse-status")
 async def warehouse_status(
     user: dict = Depends(require_permission("can_manage_account")),
     tenant=Depends(get_tenant_db),
 ):
-    """Per-table row count + most-recent-row timestamp for the caller's
-    account warehouse. Exposes ``warehouse_reads_enabled`` so ops can
-    verify the env var is set on the pod handling the request.
+    """Registry-driven warehouse health for the caller's account.
 
-    Designed as the pre-flight check before flipping
-    ``WAREHOUSE_READS_ENABLED=1`` in production: if every table has rows
-    and the timestamps are within the expected ingestor cadence (60s /
-    minute / hour), the flag is safe to flip.
+    The old version hand-listed tables with timestamp columns that no
+    longer existed — blind for months without erroring.  This one asks
+    the SSOT instead: every registered ingest dataset reports its
+    tables (row counts + newest ``source_ts``), its staleness verdict
+    against its OWN declared SLA (Contract 2: unknown age IS stale),
+    and its ingest-ledger line.  The BUILD tiers and the bot pulse
+    ride along.  A new dataset appears here the day it is registered —
+    nothing to update by hand ever again.
     """
     from infra import config as _cfg
+    from capabilities.data_lifecycle.ingest import all_datasets, discover
+    from capabilities.data_lifecycle.staleness import (
+        data_age_minutes,
+        freshest,
+        is_stale,
+    )
 
+    discover()
     account_id = user["account_id"]
-    tables: list[dict] = []
 
-    for name, ts_col in _WAREHOUSE_TABLES:
-        entry: dict = {"table": name}
-        try:
-            count_row = await tenant.read_one(
-                f"SELECT COUNT(*) AS n FROM {name} WHERE account_id = ?",
-                (account_id,),
-            )
-            entry["rows"] = int(count_row["n"]) if count_row else 0
-        except Exception as e:
-            # Table may not exist yet on a freshly-installed tenant DB
-            # that hasn't run the warehouse migrations. Surface it as a
-            # diagnostic rather than failing the whole endpoint.
-            entry["rows"] = 0
-            entry["error"] = str(e)[:200]
-            tables.append(entry)
-            continue
-
-        if ts_col and entry["rows"] > 0:
+    datasets: list[dict] = []
+    for d in sorted(all_datasets(), key=lambda x: x.key):
+        entry: dict = {
+            "dataset": d.key,
+            "owner": d.owner,
+            "sla_min": d.freshness_sla_min,
+            "expect_rows": d.expect_rows,
+            "tables": [],
+        }
+        newest = None
+        for table in d.tables:
             try:
-                ts_row = await tenant.read_one(
-                    f"SELECT MAX({ts_col}) AS ts FROM {name} "
-                    f"WHERE account_id = ?",
+                row = await tenant.read_one(
+                    f"SELECT COUNT(*) AS n, MAX(source_ts) AS ts "
+                    f"FROM {table} WHERE account_id = ?",
                     (account_id,),
                 )
-                entry["last_seen"] = ts_row["ts"] if ts_row else None
-            except Exception:
-                entry["last_seen"] = None
+                entry["tables"].append({
+                    "table": table,
+                    "rows": int(row["n"] or 0) if row else 0,
+                    "newest_source_ts": row["ts"] if row else None,
+                })
+                if row and row["ts"]:
+                    newest = freshest(newest, row["ts"])
+            except Exception as e:
+                entry["tables"].append(
+                    {"table": table, "rows": 0, "error": str(e)[:200]}
+                )
+        age = data_age_minutes(newest)
+        entry["age_min"] = round(age, 1) if age is not None else None
+        entry["stale"] = is_stale(newest, d.freshness_sla_min)
+        try:
+            led = await tenant.read_one(
+                "SELECT day, runs, rows_sum, last_rows, last_ran_at "
+                "FROM ingest_runs WHERE account_id = ? AND dataset_key = ? "
+                "ORDER BY day DESC LIMIT 1",
+                (account_id, d.key),
+            )
+            if led:
+                entry["ledger"] = dict(led)
+        except Exception:
+            pass
+        datasets.append(entry)
 
-        tables.append(entry)
+    # BUILD side — the aggregate tiers, newest bucket per grain.
+    tiers: list[dict] = []
+    for granularity, grain in (("hourly", "hour"), ("daily", "day"),
+                               ("weekly", "week")):
+        try:
+            row = await tenant.read_one(
+                "SELECT COUNT(*) AS n, MAX(bucket_start) AS newest "
+                "FROM vehicle_telemetry "
+                "WHERE account_id = ? AND granularity = ?",
+                (account_id, granularity),
+            )
+            tiers.append({
+                "grain": grain,
+                "rows": int(row["n"] or 0) if row else 0,
+                "newest_bucket": row["newest"] if row else None,
+            })
+        except Exception as e:
+            tiers.append({"grain": grain, "rows": 0, "error": str(e)[:200]})
 
-    populated = sum(1 for t in tables if t.get("rows", 0) > 0)
+    # The bot process pulse (cross-process heartbeat — same source as
+    # /health's "bot" field).
+    try:
+        from capabilities.platform.capacity.sampler import bot_heartbeat_age_min
+        pulse = await bot_heartbeat_age_min(tenant)
+        bot = {"age_min": round(pulse, 1) if pulse is not None else None,
+               "status": "ok" if pulse is not None and pulse <= 3 else
+                         ("silent" if pulse is not None else "unknown")}
+    except Exception:
+        bot = {"age_min": None, "status": "unknown"}
+
+    stale_count = sum(1 for d in datasets if d["stale"])
     return {
         "account_id": account_id,
-        "warehouse_reads_enabled": bool(getattr(_cfg, "WAREHOUSE_READS_ENABLED", False)),
-        "tables": tables,
+        "warehouse_reads_enabled": bool(
+            getattr(_cfg, "WAREHOUSE_READS_ENABLED", False)
+        ),
+        "bot": bot,
+        "datasets": datasets,
+        "build_tiers": tiers,
         "summary": {
-            "total":     len(tables),
-            "populated": populated,
-            "empty":     len(tables) - populated,
+            "datasets": len(datasets),
+            "stale": stale_count,
+            "fresh": len(datasets) - stale_count,
         },
     }
-
-
