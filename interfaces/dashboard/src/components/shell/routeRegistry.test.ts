@@ -51,6 +51,38 @@ describe('command palette route coverage', () => {
     expect(orphans).toEqual([]);
   });
 
+  // The words people actually type.  The audit found "loads", "mainten"
+  // and "applic" returning No results for pages that exist — not a
+  // scorer bug (it does exact → startsWith → includes → group →
+  // description → keywords), the entries simply were not there.  This
+  // asserts the DATA, which is what was missing, and needs nothing from
+  // the palette component.
+  it.each([
+    ['loads',    '/loads'],
+    ['load',     '/loads'],
+    ['wo',       '/work-orders'],
+    ['work',     '/work-orders'],
+    ['repair',   '/work-orders'],
+    ['invoice',  '/work-orders'],
+    ['dvir',     '/inspections'],
+    ['inspect',  '/inspections'],
+    ['mainten',  '/maintenance'],
+    ['applic',   '/workforce/applications'],
+    ['recruit',  '/workforce/applications'],
+    ['hos',      '/team'],
+    ['samsara',  '/integrations'],
+    ['vendor',   '/vendors'],
+    ['kpi',      '/kpi'],
+  ])('finds %s', (query, path) => {
+    const q = query.toLowerCase();
+    const matches = ROUTE_ENTRIES.filter((r) =>
+      r.label.toLowerCase().includes(q)
+      || r.group.toLowerCase().includes(q)
+      || r.description?.toLowerCase().includes(q)
+      || r.keywords?.some((k) => k.toLowerCase().includes(q)));
+    expect(matches.map((m) => m.path)).toContain(path);
+  });
+
   it('gives every entry something to match on beyond its label', () => {
     // A one-word label with no keywords is only findable by typing that
     // exact word — which is how "work orders" stays reachable but "wo",
