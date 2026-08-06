@@ -204,7 +204,26 @@ export default function Loads() {
   // with it and the only way back was a reload.  Reported as a race; it
   // is deterministic — any tab with zero rows was a dead end.
   const accountEmpty = loads.length === 0 && !tab && !savedId;
-  const counts = data?.counts ?? {};
+  // Memoised: ``data?.counts ?? {}`` is a NEW object every render, which
+  // would bust the total memo below on every parent render.
+  const counts = useMemo<Record<string, number>>(() => data?.counts ?? {}, [data]);
+  // What the CURRENT tab really holds, server-side.  The badges have
+  // always known this; the grid did not, so its footer read "1-250 of
+  // 500" on a Delivered tab whose own badge said 1,271 — two numbers on
+  // one screen disagreeing, with the smaller one dressed as the total.
+  //
+  // ``totalRows`` is DataGrid's contract for exactly this (see its
+  // CLAUDE.md, "Holding a slice? Say so").  It fixes far more than the
+  // footer: without it sort silently orders the loaded 500 and reads as
+  // sorted, export writes a fragment as if it were everything, and PIVOT
+  // — which this page enables — summarises part of the data as a total,
+  // with no rows on screen to notice the shortfall by.
+  const tabTotal = useMemo(() => {
+    if (!data?.truncated) return undefined;         // the grid holds it all
+    if (tab) return counts[tab];
+    const all = Object.values(counts).reduce((a, b) => a + b, 0);
+    return all || undefined;
+  }, [data?.truncated, counts, tab]);
 
   // Driver / dispatcher options for the layover dialog, derived from the
   // loads on screen (the people who actually run freight here) — avoids
@@ -269,10 +288,16 @@ export default function Loads() {
       )}
       {!isLoading && error == null && data?.truncated && (
         <p className="mb-2 text-xs text-muted-foreground">
-          {t(
-            'loads_page.truncated',
-            'Showing the latest 500 loads — use the status tabs or search to narrow further.',
-          )}
+          {tabTotal
+            ? t(
+              'loads_page.truncated_of',
+              'Showing the latest {{shown}} of {{total}} — use the status tabs or search to narrow further.',
+              { shown: loads.length, total: tabTotal.toLocaleString() },
+            )
+            : t(
+              'loads_page.truncated',
+              'Showing the latest 500 loads — use the status tabs or search to narrow further.',
+            )}
         </p>
       )}
       {/* Rendered whenever the account HAS loads, empty tab or not — the
@@ -308,6 +333,9 @@ export default function Loads() {
           // slice at a time, so tallying loaded rows would report 0 for
           // every tab except the open one.
           segmentCounts={counts}
+          // Declares the slice.  Undefined when the grid holds everything,
+          // so nothing changes on a tab that is not truncated.
+          totalRows={tabTotal}
           columns={columns}
           pivot
           // Personal saved tabs — they capture the pivot config too, so a
