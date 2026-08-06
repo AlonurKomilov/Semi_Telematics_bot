@@ -42,7 +42,20 @@ interface HeroChipProps {
  *  It carried a dead ``scrollbar-thin`` in all six copies: tailwind.config
  *  has ``plugins: []`` and no rule defines it, so it emitted nothing. */
 export const HERO_STRIP =
-  'flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden';
+  // ``hidden lg:flex`` — the strip is a WIDE-SCREEN overview and does not
+  // survive a phone.  The topbar hands it whatever is left after the ☰ and
+  // the six controls on the right, which at 375px is about 57px of a
+  // 685px strip: 8%, showing a sliver of one chip with no hint that six
+  // more exist.  It scrolls, so nothing was unreachable — it just read as
+  // a rendering fault.
+  //
+  // Hiding loses nothing, because the same numbers live on the pages: the
+  // Vehicles grid carries Moving / Idle / Stopped as its own tabs.
+  //
+  // ONE standalone display utility, not ``hidden`` beside ``flex`` — they
+  // are the same Tailwind group, so both in one string is a coin-flip on
+  // source order.
+  'hidden lg:flex flex-1 min-w-0 items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden';
 
 export default function HeroChip({ label, value, tone = 'neutral', title }: HeroChipProps) {
   const chip = (

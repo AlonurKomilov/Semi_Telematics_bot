@@ -301,13 +301,24 @@ SSOT by banning the alternative, the way `title=` is banned in favour of
 
 **What shipped:** `eslint.config.js` bans the **hand-rolled modal
 backdrop** — `className` matching `fixed inset-0 … bg-black/`. That
-pattern is never correct: 12 existed, every one missing the same four
-things (focus trap, Escape, `aria-modal`, background scroll lock). Use
-`<Sheet>` for a side drawer, `<Dialog>` for a centred one.
+pattern is never correct: every one was missing the same four things
+(focus trap, Escape, `aria-modal`, background scroll lock), and two were
+outright keyboard traps. Use `<Sheet>` for a side drawer, `<Dialog>` for
+a centred one; when the backdrop IS the surface (a lightbox), style the
+CONTENT full-bleed and let the primitive's overlay sit behind it —
+`MediaGallery` is the worked example.
 
 The rule earned its place immediately: a `bg-black/60` grep found the 12
 I converted; the rule found **16 more** at other opacities. A grep finds
 what you thought to look for.
+
+**The count is now ZERO, and a test keeps it there.**
+`backdrops.test.ts` walks `src/` and fails the build on any match. The
+ESLint rule could not be raised from warning to error — it shares
+`no-restricted-syntax` with the `title=` ban, which still has live
+violations, so flipping it would break the build for an unrelated
+migration. A warning in a 200-warning pile is not a guard; a red test
+is.
 
 **What was REJECTED, and why it matters more than what shipped:** a ban
 on raw `overflow-*` classes, routing every scroller through this module.

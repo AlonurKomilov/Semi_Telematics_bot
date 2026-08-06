@@ -16,6 +16,9 @@ import { useState } from 'react';
 import { X, Printer, Download, Plus, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '../../components/ui/button';
+import {
+  Sheet, SheetContent, SheetTitle, SheetClose,
+} from '../../components/ui/sheet';
 import { apiFetch } from '../../api/client';
 import { createLineItem, LINE_ITEM_BUCKET } from '../loads/api';
 import type {
@@ -134,22 +137,27 @@ export default function StatementDrawer({
   const selectCls = 'bg-muted border border-input rounded-lg px-2 py-1 text-xs text-foreground focus:outline-none focus:border-ring';
 
   return (
-    // ⚠️ Hand-rolled backdrop, and ESLint says so.  NOT an oversight and
-    // not yet fixable: <Sheet> PORTALS its content to the end of <body>,
-    // and this drawer's whole purpose is ``window.print()``.  Nothing in
-    // the app hides the page BEHIND the drawer when printing (there is no
-    // global ``@media print`` block — only per-element ``print:*``
-    // utilities), so moving the content into a portal changes what lands
-    // on paper in a way no test here can catch.  Converting this one needs
-    // a real print check first, and probably a global print stylesheet.
-    // eslint-disable-next-line no-restricted-syntax -- see above; blocked on print verification
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" onClick={onClose}>
-      <div
-        className="w-full max-w-lg overflow-y-auto bg-card border-l border-border print:max-w-none print:border-0"
-        onClick={(e) => e.stopPropagation()}
+    // The LAST hand-rolled overlay, and it was blocked on printing: a
+    // <Sheet> portals to the end of <body>, and nothing told the browser
+    // what to leave off the page, so the statement printed on top of
+    // whatever was behind it.  index.css now carries a global
+    // ``@media print`` rule keyed on ``data-print-root`` — which uses
+    // ``visibility`` precisely because it survives a portal — so the
+    // conversion is safe and the statement finally prints alone.
+    <Sheet open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent
+        side="right"
+        size="lg"
+        aria-label="Settlement statement"
+        showCloseButton={false}
+        // Marks THIS subtree as the print target.  On paper it lifts out
+        // of the drawer's box (see index.css) and flows across as many
+        // sheets as it needs.
+        data-print-root
+        className="p-0 gap-0 print:max-w-none print:border-0"
       >
         <div className="flex items-center justify-between border-b border-border px-5 py-3 print:hidden">
-          <span className="text-base font-semibold text-foreground">Settlement statement</span>
+          <SheetTitle className="text-base font-semibold text-foreground">Settlement statement</SheetTitle>
           <div className="flex items-center gap-2">
             <Button type="button" variant="outline" size="xs" onClick={() => window.print()}>
               <Printer size={14} className="mr-1" /> Print
@@ -157,9 +165,9 @@ export default function StatementDrawer({
             <Button type="button" variant="outline" size="xs" onClick={downloadCsv}>
               <Download size={14} className="mr-1" /> CSV
             </Button>
-            <button type="button" onClick={onClose} aria-label="Close" className="p-1 text-muted-foreground hover:text-foreground">
+            <SheetClose aria-label="Close" className="p-1 text-muted-foreground hover:text-foreground">
               <X size={16} />
-            </button>
+            </SheetClose>
           </div>
         </div>
 
@@ -301,8 +309,8 @@ export default function StatementDrawer({
             </div>
           </dl>
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 

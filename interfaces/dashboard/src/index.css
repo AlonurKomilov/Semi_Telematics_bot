@@ -329,3 +329,44 @@
 .ai-response strong { font-weight: 600; }
 .ai-response em { font-style: italic; }
 .ai-response a { color: var(--primary); text-decoration: underline; }
+/* ── Printing ─────────────────────────────────────────────────
+ *
+ * A surface that is MEANT for paper marks itself with
+ * ``data-print-root`` and becomes the only thing that prints.
+ * Everything else on the page — sidebar, topbar, the table you happened
+ * to be looking at — is hidden for the print job.
+ *
+ * Before this, ``window.print()`` on a driver settlement statement put
+ * the statement on top of whatever page was behind it: nothing told the
+ * browser what to leave out, so the whole dashboard came with it.
+ *
+ * ``visibility``, not ``display``, is what makes this work through a
+ * PORTAL.  A <Sheet> renders its content at the end of <body>, far from
+ * the page that opened it, so "hide the page and show the drawer" cannot
+ * be expressed by walking the tree.  ``visibility: hidden`` inherits down
+ * and can be turned back ON by a descendant, which ``display: none``
+ * cannot — the marked subtree reappears wherever it happens to live.
+ *
+ * ``:has()`` scopes the whole rule to pages that actually declare a print
+ * root, so every other page prints exactly as it did before.
+ */
+@media print {
+  body:has([data-print-root]) * { visibility: hidden; }
+  body:has([data-print-root]) [data-print-root],
+  body:has([data-print-root]) [data-print-root] * { visibility: visible; }
+
+  /* Lift it out of whatever fixed / centred / max-height box the drawer
+     put it in, so it flows down the page and across as many sheets as it
+     needs instead of being clipped to one screen. */
+  body:has([data-print-root]) [data-print-root] {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    box-shadow: none;
+  }
+}
