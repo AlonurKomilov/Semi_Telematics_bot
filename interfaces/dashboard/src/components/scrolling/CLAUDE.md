@@ -317,6 +317,24 @@ The rule earned its place immediately: a `bg-black/60` grep found the 12
 I converted; the rule found **16 more** at other opacities. A grep finds
 what you thought to look for.
 
+### `aria-modal` is absent on purpose — do not add it
+
+An audit flagged that the sheets carry `role="dialog"` with `aria-modal`
+null. It is not a defect, and the finding will keep coming back unless
+somebody writes down why.
+
+Base UI does not use `aria-modal`. On open it runs `markOthers`
+(`floating-ui-react/utils/markOthers.js`, the `aria-hidden` library's
+approach) and applies **`inert` plus `aria-hidden="true"` to every
+sibling** of the dialog, marking them `data-base-ui-inert`. That removes
+the rest of the document from the accessibility tree *and* from focus.
+
+`aria-modal` is only a HINT that assistive tech should ignore everything
+outside the dialog; inerting the siblings actually does it. It is the
+approach the WAI-ARIA Authoring Practices recommends, precisely because
+`aria-modal` support has been uneven. Adding it on top would be redundant
+at best, and some AT combinations have historically misbehaved with both.
+
 **The count is now ZERO, and a test keeps it there.**
 `backdrops.test.ts` walks `src/` and fails the build on any match. The
 ESLint rule could not be raised from warning to error — it shares

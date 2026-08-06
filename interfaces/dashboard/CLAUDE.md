@@ -123,11 +123,14 @@ in [design.md](design.md).** It is the single source of truth. Key rules:
   **Modals are never hand-rolled**: `<Sheet>` for a side drawer,
   `<Dialog>` for a centred one — a bare `fixed inset-0 bg-black/…`
   backdrop has no focus trap, no Escape, no `aria-modal` and no
-  background scroll lock. ESLint flags it — as a **warning**, not an
-  error, because 14 hand-rolled backdrops still exist and erroring would
-  break the build before they're converted; it is one line in a
-  200-warning pile, so treat it as a to-do list rather than a guard.
-  Full rules, the
+  background scroll lock. There are now **zero** in the app, and
+  `backdrops.test.ts` fails the build on any new one. (ESLint flags it
+  too, but only as a warning — the rule shares `no-restricted-syntax`
+  with the `title=` ban, which still has live violations, so it can't be
+  raised without breaking an unrelated migration. The test is the guard.)
+  When the backdrop IS the surface — a lightbox — style the CONTENT
+  full-bleed and let the primitive's overlay sit behind it; `MediaGallery`
+  is the worked example. Full rules, the
   refusal list, and what the module deliberately does NOT absorb:
   [components/scrolling/CLAUDE.md](src/components/scrolling/CLAUDE.md).
 - **Who-did-what = `components/activity-trail`, never "history".** The
