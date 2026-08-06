@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, Eye, Loader2, TriangleAlert, RefreshCw } from 'lucide-react';
+import { ShieldCheck, Eye, Loader2, TriangleAlert, RefreshCw, Wand2, X } from 'lucide-react';
 
 import { toast } from 'sonner';
 
 import { apiJSON } from '../../api/client';
 import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
+import { generatePassphrase } from './passphrase';
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
@@ -65,25 +66,33 @@ export default function DqfExportDialog({
 }) {
   const qc = useQueryClient();
   const [value, setValue] = useState('');
+  // True while `value` holds a machine SUGGESTION the admin has not yet
+  // committed. It drives two things and nothing else: the field shows in
+  // plain text (you cannot check a passphrase you cannot read, and you
+  // are about to be responsible for keeping it), and the copy says it is
+  // not saved yet. Any keystroke clears the flag — from then on it is
+  // their own text.
+  const [suggested, setSuggested] = useState(false);
   const [busy, setBusy] = useState(false);
   const [revealed, setRevealed] = useState<RevealResponse | null>(null);
   const [reexporting, setReexporting] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['applications', 'dqf-config'],
-    queryFn: () => apiJSON<DqfConfig>('/applications/dqf-config'),
+    queryFn: () => apiJSON<DqfConfig>('/applications/config'),
   });
 
   async function save() {
     setBusy(true);
     try {
-      await apiJSON('/applications/dqf-config', {
+      await apiJSON('/applications/config', {
         method: 'PUT', body: { passphrase: value },
       });
       setValue('');
+      setSuggested(false);
       setRevealed(null);
       qc.invalidateQueries({ queryKey: ['applications', 'dqf-config'] });
-      toast.success('Passphrase saved — new exports will include the protected SSN file');
+      toast.success('Passphrase saved — emailed to the account owners, and new exports use it');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Could not save the passphrase');
     } finally {
@@ -98,7 +107,7 @@ export default function DqfExportDialog({
     setBusy(true);
     try {
       const r = await apiJSON<RevealResponse>(
-        '/applications/dqf-config/reveal', { method: 'POST' },
+        '/applications/config/reveal', { method: 'POST' },
       );
       setRevealed(r);
     } catch (e) {
@@ -156,16 +165,55 @@ export default function DqfExportDialog({
         <>
           <div className="flex flex-wrap items-center gap-2">
             <Input
-              type="password"
+              type={suggested ? 'text' : 'password'}
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => { setValue(e.target.value); setSuggested(false); }}
               placeholder={data.configured ? 'Replace passphrase…' : 'Set your own passphrase'}
-              className="max-w-xs"
+              className={`max-w-xs${suggested ? ' font-mono' : ''}`}
               autoComplete="new-password"
             />
+            {/* Fills the field. Does NOT save — see the note below the
+                row. The account keeps the passphrase it already has until
+                someone presses the button to the left of this one. */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => { setValue(generatePassphrase()); setSuggested(true); }}
+              disabled={busy}
+            >
+              <Wand2 size={14} /> Suggest strong
+            </Button>
+            {suggested && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => { setValue(''); setSuggested(false); }}
+                disabled={busy}
+              >
+                <X size={14} /> Discard
+              </Button>
+            )}
             <Button size="sm" onClick={save} disabled={busy || value.trim().length < 8}>
               {busy ? <Loader2 size={14} className="animate-spin" /> : data.configured ? 'Replace' : 'Set passphrase'}
             </Button>
+          </div>
+
+          {suggested && (
+            /* The whole point of the suggestion flow: it is inert until a
+               human commits it. Nothing rotates on its own — the derived
+               default is deterministic, so silently replacing it would
+               change the password on files already in carriers' storage
+               and lock out anyone holding the old one. */
+            <p className="text-xs text-muted-foreground">
+              Suggested, <span className="text-foreground font-medium">not
+              saved yet</span>. Write it down or replace it with your own,
+              then press {data.configured ? '“Replace”' : '“Set passphrase”'}.
+              Saving emails it to the account owners so there is a copy
+              outside 4truck.
+            </p>
+          )}
+
+          <div className="flex flex-wrap items-center gap-2">
             {!revealed && (
               <Button size="sm" variant="outline" onClick={reveal} disabled={busy}>
                 <Eye size={14} /> Show current
@@ -224,7 +272,7 @@ export default function DqfExportDialog({
                   try {
                     const r = await apiJSON<{
                       scanned: number; written: number; failed: number;
-                    }>('/applications/dqf-config/reexport', { method: 'POST' });
+                    }>('/applications/config/reexport', { method: 'POST' });
                     toast.success(
                       `Re-exported ${r.written} of ${r.scanned} applications`
                       + (r.failed ? ` — ${r.failed} failed` : ''),

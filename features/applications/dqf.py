@@ -322,12 +322,30 @@ def render_pdf(manifest: dict) -> bytes:
             styles["Normal"],
         ))
         story.append(Spacer(1, 6))
+        # DELIBERATELY NOT a support-recovery promise.
+        #
+        # This paragraph used to say: contact support with your company
+        # name and MC or USDOT number, and "support can confirm the
+        # passphrase for the account those identifiers belong to."  Both
+        # of those identifiers are public FMCSA records, so the sentence
+        # published a recovery path whose only proof of identity is a
+        # SAFER lookup — printed inside the very folder it unlocks.
+        #
+        # Worse than the derived default it was written to soften: the
+        # promise was UNCONDITIONAL.  An administrator who took the
+        # dialog's advice and set a strong passphrase of their own was
+        # still covered by it, so the one mitigation this design offers
+        # was cancelled by its own README.
+        #
+        # The signed-in route above is the recovery path, and it is
+        # already gated (can_manage_config_all) and audit-logged.
         story.append(Paragraph(
-            "If you cannot reach 4truck, contact 4truck support and provide "
-            "your company name together with your MC or USDOT number — "
-            "support can confirm the passphrase for the account those "
-            "identifiers belong to. We recommend keeping your own copy "
-            "somewhere outside 4truck, so that neither route is needed.",
+            "<b>Keep your own copy of that passphrase somewhere outside "
+            "4truck.</b> A passphrase an administrator chose is not "
+            "recoverable from a support request — 4truck support cannot "
+            "confirm it, and will not release it on the strength of a "
+            "company name or an MC/USDOT number, because those are public "
+            "records that anyone can look up.",
             styles["Normal"],
         ))
 
@@ -507,13 +525,11 @@ OPENING documents/ssn-protected.pdf
   An administrator with the account-wide Config permission can view it
   there, and can replace it with one of your own choosing.
 
-  IF YOU CANNOT REACH 4TRUCK
-    Contact 4truck support and provide your company name together with
-    your MC or USDOT number. Support can confirm the passphrase for the
-    account those identifiers belong to.
-
-  We recommend keeping your own copy somewhere outside 4truck, so that
-  neither route is needed.
+  KEEP YOUR OWN COPY OF THAT PASSPHRASE SOMEWHERE OUTSIDE 4TRUCK.
+    A passphrase an administrator chose is not recoverable from a support
+    request. 4truck support cannot confirm it, and will not release it on
+    the strength of a company name or an MC/USDOT number -- those are
+    public records that anyone can look up.
 
   Nothing else in this folder needs a password.
 
@@ -574,8 +590,20 @@ def default_passphrase(company) -> str:
       * an administrator who wants real protection replaces it, and the
         config card says so.
 
-    Deterministic on purpose: support can recompute it from the account,
-    which is the recovery path this design is chosen for.
+    Deterministic on purpose: support can recompute THIS DEFAULT from the
+    account, which is the recovery path the design is chosen for.
+
+    That recomputation is the ONLY thing support can do, and the exported
+    documents no longer say otherwise.  They used to promise that support
+    "can confirm the passphrase for the account" given a company name and
+    an MC/USDOT number — unconditionally, so it covered a strong
+    passphrase an administrator had chosen, not just this derived one.
+    Since both identifiers are public FMCSA records, that published a
+    recovery path anyone could walk, inside the folder it unlocks, and it
+    cancelled the one mitigation this docstring points at ("an
+    administrator who wants real protection replaces it").  Recomputing a
+    value that is already derivable costs nothing; releasing a chosen
+    passphrase on public identifiers costs everything.
     """
     name = "".join(
         ch for ch in str(getattr(company, "display_name", "") or "")
