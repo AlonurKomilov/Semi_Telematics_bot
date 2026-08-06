@@ -8511,6 +8511,25 @@ async def migrate_grain_physical_tables(conn) -> None:
                     return
                 # Tables converged (operator window) but views missing —
                 # fall through and (re)create only the views.
+            if legacy is not None:
+                # RLS guard (the migration-076 precedent): under FORCE
+                # ROW LEVEL SECURITY with a non-BYPASSRLS role, every
+                # count below reads 0, the copied==total check passes
+                # vacuously, and the DROP would delete the dataset
+                # silently.  Refuse loudly instead.
+                forced = await raw.fetchval(
+                    "SELECT relforcerowsecurity FROM pg_class "
+                    "WHERE oid = 'warehouse.vehicle_telemetry'::regclass")
+                bypass = await raw.fetchval(
+                    "SELECT rolbypassrls FROM pg_roles "
+                    "WHERE rolname = current_user")
+                if forced and not bypass:
+                    raise RuntimeError(
+                        "Migration 188: vehicle_telemetry has FORCE ROW "
+                        "LEVEL SECURITY and current_user cannot bypass "
+                        "it — counts would read 0 and the split would "
+                        "silently drop the dataset.  Run as a BYPASSRLS "
+                        "role (see platform migration 076).")
             async with raw.transaction():
                 if legacy is not None:
                     bad = await raw.fetchval(

@@ -144,20 +144,28 @@ def test_physical_warehouse_tables_stay_inside_the_machinery():
     # machinery-only; and the RETIRED names (vehicle_state bare,
     # vehicle_state_snapshot, vehicle_telemetry) may appear nowhere —
     # a straggler means unswept code.
-    verb = re.compile(
+    write_verb = re.compile(
         r"(INTO|UPDATE|DELETE\s+FROM)\s+"
         r"(warehouse\.)?vehicle_state_(live|minute|hour|day|week)\b"
-        r"|(FROM|INTO|UPDATE|JOIN)\s+"
+    )
+    # Retired names are checked EVERYWHERE except the historical
+    # migration bodies — the allowlist must not shelter stragglers
+    # (a scripts/ file once hid one exactly this way).
+    retired = re.compile(
+        r"(FROM|INTO|UPDATE|JOIN)\s+"
         r"(warehouse\.)?vehicle_(state_snapshot|telemetry)\b"
         r"|(FROM|INTO|UPDATE|JOIN)\s+(warehouse\.)?vehicle_state\b(?!_)"
     )
     offenders = []
     for path in REPO.rglob("*.py"):
         rel = path.relative_to(REPO).as_posix()
-        if rel.startswith(allowed) or "__pycache__" in rel:
+        if "__pycache__" in rel:
             continue
-        if verb.search(path.read_text(errors="ignore")):
-            offenders.append(rel)
+        txt = path.read_text(errors="ignore")
+        if rel != "adapters/storage/migrations.py" and retired.search(txt):
+            offenders.append(rel + "  (retired table name)")
+        if not rel.startswith(allowed) and write_verb.search(txt):
+            offenders.append(rel + "  (write outside machinery)")
     assert not offenders, (
         "SQL against PHYSICAL warehouse tables outside the machinery — "
         "read through the grain surfaces instead:\n  " + "\n  ".join(offenders)

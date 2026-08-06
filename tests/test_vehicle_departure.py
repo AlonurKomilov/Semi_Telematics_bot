@@ -115,6 +115,6 @@ async def test_history_survives_the_retirement(pg_db):
     await pg_db.sweep_departed_vehicles(acct)
 
     cur = await pg_db._db.execute(
-        "SELECT COUNT(*) FROM vehicle_telemetry "
+        "SELECT COUNT(*) FROM vehicle_state_hour "
         "WHERE account_id = ? AND vehicle_id = ?", (acct, "gone"))
     assert (await cur.fetchone())[0] == 1

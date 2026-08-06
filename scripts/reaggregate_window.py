@@ -64,19 +64,20 @@ async def _report_coverage(account_id: int, first: datetime, last: datetime) -> 
         nxt = (day + timedelta(days=1)).strftime("%Y-%m-%d")
         cur = await tenant._db.execute(
             "SELECT COUNT(DISTINCT vehicle_id), COUNT(*) "
-            "FROM vehicle_state_snapshot "
+            "FROM vehicle_state_minute "
             "WHERE account_id = ? AND captured_at >= ? AND captured_at < ?",
             (account_id, label, nxt),
         )
         snap_vehicles, snap_rows = (await cur.fetchone()) or (0, 0)
 
         counts: dict[str, int] = {}
-        for grain in ("hourly", "daily"):
+        for grain, table in (("hourly", "vehicle_state_hour"),
+                             ("daily", "vehicle_state_day")):
             cur = await tenant._db.execute(
-                "SELECT COUNT(DISTINCT vehicle_id) FROM vehicle_telemetry "
-                "WHERE account_id = ? AND granularity = ? "
+                f"SELECT COUNT(DISTINCT vehicle_id) FROM {table} "
+                "WHERE account_id = ? "
                 "AND bucket_start >= ? AND bucket_start < ?",
-                (account_id, grain, label, nxt),
+                (account_id, label, nxt),
             )
             counts[grain] = ((await cur.fetchone()) or (0,))[0]
 

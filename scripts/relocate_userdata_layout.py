@@ -117,7 +117,7 @@ async def _company_folder_by_id(conn, account_id: int, company_id: int) -> str |
 async def _company_folder_by_vehicle(conn, account_id: int, vehicle_id: str) -> str:
     """vehicle → company_code (vehicle_state) → display-name folder."""
     code = await conn.fetchval(
-        "SELECT company_code FROM vehicle_state WHERE account_id=$1 AND vehicle_id=$2",
+        "SELECT company_code FROM warehouse.vehicle_state_live WHERE account_id=$1 AND vehicle_id=$2",
         account_id, str(vehicle_id),
     )
     if not code:
