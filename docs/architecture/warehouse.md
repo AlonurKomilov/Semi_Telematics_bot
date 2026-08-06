@@ -21,9 +21,10 @@ whichever, but never silently.
   `capabilities/data_lifecycle/` (ACQUIRE · BUILD · KEEP).
 - **How to read**: see “Reading from the warehouse”.
 - **How to add a stream**: see “Adding a dataset — the recipe”.
-- **The five iron rules**: physical-table SQL only in the machinery
-  (CI-guarded) · grain never in a name · `source_ts` is truth and is
-  never minted · sample labels sit on the time grid · capabilities
+- **The five iron rules**: reads via the grain names, WRITES only in
+  the machinery (CI-guarded) · one vocabulary — tiered streams are
+  named `<stream>_<grain>` at every layer · `source_ts` is truth and
+  is never minted · sample labels sit on the time grid · capabilities
   never import features.
 
 ## Reading from the warehouse (for feature developers)
@@ -122,14 +123,25 @@ not accidental.
 
 ## Naming: stream + grain (the two words, kept separate)
 
-One dataset = one STREAM name; resolution is a GRAIN label, never part
-of the name.  The rule that decides physical tables: **shape decides
-the table, grain is a label** — rows with identical columns share one
-table with a grain column; rows of different kinds (a *sample* is a
-moment, an *aggregate* is a period) get their own table.  The clean
-vocabulary lives in the declarations and in the `vehicle_timeline`
-VIEW (migration 182), which presents all five grains as one queryable
-surface.
+One dataset = one STREAM name; resolution is a GRAIN.  For tiered
+(asset) streams the physical tables ARE named by grain —
+`<stream>_<grain>`: `vehicle_state_live / _minute / _hour / _day /
+_week` — one vocabulary at every layer (migration 188).
+
+**Recorded reversal (2026-08-06):** the arc's original rule was
+"shape decides the table, grain is a label" (one aggregate table with
+a `granularity` column).  It was RIGHT while hundreds of call sites
+spoke physical names, and it was deliberately reversed once the
+grain-surface views had moved every consumer onto the grain names:
+at that point the label column bought nothing (writers, pruners and
+builders were already per-grain) and cost a permanent second
+vocabulary.  Owner asked three times; the advisor endorsed ("not
+vanity").  Do not merge the tier tables back — and do not cite the
+old rule against per-grain tables for a stream whose consumers
+address grains.  The residual cost is known and accepted: a column
+added to all three aggregate tiers is three ALTERs.
+`vehicle_timeline` remains the cross-grain surface (grain as a
+column, five branches).
 
 **The `warehouse` schema (decided 2026-08-03, pre-customer window):**
 the whole family — 13 tables + the view — lives in a dedicated
@@ -150,15 +162,16 @@ references is a later, CI-guarded follow-up — never part of cutover.
 
 | Stream | Grain | Kind | Physical table | Kept |
 |---|---|---|---|---|
-| vehicle.timeline | live | sample | `vehicle_state` | until departed |
-| vehicle.timeline | minute | sample | `vehicle_state_snapshot` | 7 d |
-| vehicle.timeline | hour | aggregate | `vehicle_telemetry` (`granularity='hourly'`) | 90 d |
-| vehicle.timeline | day | aggregate | `vehicle_telemetry` (`granularity='daily'`) | 730 d |
-| vehicle.timeline | week | aggregate | `vehicle_telemetry` (`granularity='weekly'`) | 1825 d |
+| vehicle.timeline | live | sample | `vehicle_state_live` | until departed |
+| vehicle.timeline | minute | sample | `vehicle_state_minute` | 7 d |
+| vehicle.timeline | hour | aggregate | `vehicle_state_hour` | 90 d |
+| vehicle.timeline | day | aggregate | `vehicle_state_day` | 730 d |
+| vehicle.timeline | week | aggregate | `vehicle_state_week` | 1825 d |
 
-**Asset grain surfaces (migration 185, owner decision 2026-08-03):**
-each ASSET stream exposes one READ view per grain, named
-`<stream>_<grain>` — the warehouse's official addressing surface:
+**Asset grain addressing:** every asset stream is addressed as
+`<stream>_<grain>`.  For `vehicle_state_*` these are the PHYSICAL
+tables themselves (migration 188 completed the interface-first swap);
+`vehicle_health_*` are column-slice views over the same tables:
 
 | grain | state stream | health stream |
 |---|---|---|
@@ -168,14 +181,11 @@ each ASSET stream exposes one READ view per grain, named
 | day | `warehouse.vehicle_state_day` | `warehouse.vehicle_health_day` |
 | week | `warehouse.vehicle_state_week` | `warehouse.vehicle_health_week` |
 
-Two naming layers, both deliberate: PHYSICAL tables follow the
-template (never a grain in the name — shape decides the table);
-SURFACE views are named by grain because grain-addressing is their
-entire job.  Readers use the surfaces; writers use the physical
-tables (upserts cannot ride views).  This is interface-first: if the
-physical layer is ever restructured (e.g. per-grain tables), only the
-view bodies change — no consumer moves.  `vehicle_timeline` remains
-the cross-grain surface (all five grains, one query).
+Reads address the grain names freely; WRITES stay machinery-only
+(CI-guarded write-verb rule).  The interface-first bridge already
+paid out once: the 185 views moved every consumer onto these names,
+which made the 188 physical swap invisible.  `vehicle_timeline`
+remains the cross-grain surface (all five grains, one query).
 
 The minute grain samples at the live ingest's own 60-second cadence
 (pre-2026-08 history is 5-minute spaced; duty math is gap-based and
@@ -185,10 +195,10 @@ the view maps them; new declarations use the grain vocabulary.  Every
 NEW dataset adopts this scheme from day one: stream named after the
 domain, grain declared separately.
 
-**Table-name template (every warehouse table):**
-`<domain-noun>_<subtask>[_<kind>]` — `vehicle_fault_snapshot` is the
-model citizen.  Never a grain in the name (grain is a label/column),
-never a role word (PERSONA.md), never a `warehouse_` prefix (the
+**Table-name template:** tiered ASSET streams: `<stream>_<grain>`
+(`vehicle_state_hour`).  Logs and caches:
+`<domain-noun>_<subtask>[_<kind>]` (`vehicle_fault_snapshot`).
+Never a role word (PERSONA.md), never a `warehouse_` prefix (the
 schema is the prefix).  New tables are born in the `warehouse`
 schema.  What a name still can't say, the database says:
 `capabilities/data_lifecycle/catalog.py` stamps every registered
@@ -332,5 +342,8 @@ re-homed everything into the tree above and dissolved
 `warehouse` Postgres schema + four table renames (2026-08-03), the
 minute grain replacing 5-minute sampling, the grain surfaces, the
 gauge ladder, and the physics step-guard.  Every audit finding was
-repaired or explicitly retired.  Details live in git history and the
-runbooks (`docs/runbooks/warehouse-*.md`).
+repaired or explicitly retired.  Finally (2026-08-06) the grain
+names went physical — migration 188 renamed live/minute and split the
+aggregate tiers, retiring `vehicle_telemetry` and the `granularity`
+column.  Details live in git history and the runbooks
+(`docs/runbooks/warehouse-*.md`).
