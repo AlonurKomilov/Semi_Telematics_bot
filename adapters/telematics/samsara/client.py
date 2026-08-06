@@ -2428,7 +2428,24 @@ class MultiCompanyClient:
     ) -> list[dict]:
         """Search all (or one) company for a truck name.
         Returns a list — may contain 0, 1, or 2+ matches.
+
+        Cached like its twelve siblings, and it is the one that most
+        needed it: resolving ONE truck pulls the whole ``/fleet/vehicles``
+        list plus the enrichment maps, and every Vehicle detail / usage /
+        timeline view called that uncached against a 5s total HTTP
+        budget.  On 07-29 it timed out, and five timeouts in a minute is
+        exactly the circuit breaker's threshold — so a slow single-truck
+        page took every Samsara-backed endpoint down with it for 30s.
+        The breaker was right; it was being fed.
+
+        Same TTL as the fleet overview, which is the same underlying
+        data seen whole rather than one row at a time.
         """
+        cache_key = f"vehicle_detail:{company or 'all'}:{vehicle_name.strip().lower()}"
+        cached = await self._cache_get(cache_key)
+        if cached is not None:
+            return cached
+
         async def _fn(c):
             return await c.get_vehicle_detail(vehicle_name)
 
@@ -2453,6 +2470,7 @@ class MultiCompanyClient:
             ),
             reverse=True,
         )
+        await self._cache_set(cache_key, matches)
         return matches
 
     # ── engine hours ─────────────────────────────────────────────
