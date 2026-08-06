@@ -4,6 +4,7 @@ import { apiFetch } from '../../api/client';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/datetime';
 import type { PTIInspectionDetail, PTIInspectionMedia } from '../../types';
+import { Dialog, DialogContent, DialogTitle } from '../../components/ui/dialog';
 import { parseVerdict, VERDICT_EMOJI, verdictTone } from './aiVerdict';
 
 // Solid-fill class for the AI verdict dot on a thumbnail.  Derives from
@@ -200,12 +201,31 @@ export function MediaGallery({ inspection }: Props) {
         </div>
       ))}
 
-      {/* Lightbox modal */}
+      {/* Lightbox — a <Dialog>, though it does not look like one.
+          The hand-rolled version had NO Escape handler at all: opening a
+          photo trapped a keyboard user, whose only exit was clicking the
+          ✕ with a mouse.  It also had no focus trap and no background
+          scroll lock.
+          The look is unchanged: the CONTENT is the full-bleed black
+          surface here, so the primitive's own faint overlay sits behind
+          it and never shows.  Geometry goes in inline STYLE because the
+          popup's own ``top-1/2 left-1/2 -translate-*`` centring and
+          ``max-w-*`` are classes tailwind-merge files under different
+          keys than the overrides — the winner would be decided by CSS
+          emit order (same trap as the mobile nav's width). */}
       {active && lightboxIdx != null && (
-        <div
-          className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center"
+        <Dialog open onOpenChange={(o) => { if (!o) setLightboxIdx(null); }}>
+        <DialogContent
+          aria-label={active.file_name}
+          showCloseButton={false}
+          className="bg-black/90 rounded-none ring-0 p-0 gap-0 flex items-center justify-center z-[60]"
+          style={{
+            inset: 0, top: 0, left: 0, width: '100vw', height: '100dvh',
+            maxWidth: 'none', maxHeight: 'none', transform: 'none',
+          }}
           onClick={() => setLightboxIdx(null)}
         >
+          <DialogTitle className="sr-only">{active.file_name}</DialogTitle>
           <button
             onClick={() => setLightboxIdx(null)}
             aria-label="Close"
@@ -239,7 +259,8 @@ export function MediaGallery({ inspection }: Props) {
               {active.file_name}
             </p>
           </div>
-        </div>
+        </DialogContent>
+        </Dialog>
       )}
     </>
   );

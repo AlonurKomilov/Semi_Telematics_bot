@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { X, Download, Truck, User, MapPin, Gauge, Clock, Loader2 } from 'lucide-react';
 import { apiJSON } from '@/api/client';
 import { toneClasses } from '@/lib/status';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { formatDate, formatDay, formatTime } from '@/utils/datetime';
 import { useTimezone } from '@/hooks/useTimezone';
 import type { SafetyEvent } from '@/types';
@@ -44,12 +45,11 @@ export default function EventVideoModal({
   const [loading, setLoading] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Close on Escape — Samsara's own player does the same.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+  // Escape is <Dialog>'s job now.  The hand-rolled listener that used to
+  // live here worked, but it was the ONLY part of modal behaviour this
+  // had: no focus trap (Tab walked out into the page behind the video)
+  // and no background scroll lock.  ``role="dialog" aria-modal="true"``
+  // were written on a plain div, which is a claim, not an implementation.
 
   const hasInward = !!event.inward_video_url;
 
@@ -116,16 +116,17 @@ export default function EventVideoModal({
   );
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-    >
-      <div
-        className="bg-card border border-border rounded-xl w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+    // Unlike the inspection lightbox, the backdrop here is NOT the
+    // surface — the player sits in a real card, so this is an ordinary
+    // centred dialog and takes the primitive's own chrome.
+    <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent
+        className="w-full max-w-5xl max-h-[92vh] overflow-hidden flex flex-col p-0 gap-0"
+        showCloseButton={false}
       >
+        <DialogTitle className="sr-only">
+          Event video — {dateStr}
+        </DialogTitle>
         {/* Header — date · vehicle · driver · time (matches Samsara layout) */}
         <div className="flex items-center justify-between gap-4 px-4 py-3 bg-black text-white">
           <div className="flex items-center gap-4 text-sm">
@@ -256,7 +257,7 @@ export default function EventVideoModal({
             Download
           </a>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
