@@ -123,16 +123,25 @@ export default function Sidebar({ forceExpanded = false }: {
           <div className="ml-auto">
             <PersonaSelector />
           </div>
-          <Tip label="Collapse sidebar">
-            <button
-              type="button"
-              onClick={() => setCollapsed((c) => !c)}
-              className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
-              aria-label="Collapse sidebar"
-            >
-              <PanelLeftClose size={16} />
-            </button>
-          </Tip>
+          {/* Hidden in the mobile drawer.  ``forceExpanded`` pins
+              ``collapsed`` to false, so pressing this did NOTHING visible
+              — while still flipping the stored preference, so a tap on a
+              phone silently collapsed the operator's DESKTOP sidebar next
+              time they opened a laptop.  A dead control with an invisible
+              side effect.  The drawer is dismissed with ☰ / backdrop /
+              Escape, not by collapsing. */}
+          {!forceExpanded && (
+            <Tip label="Collapse sidebar">
+              <button
+                type="button"
+                onClick={() => setCollapsed((c) => !c)}
+                className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 hover:text-foreground transition"
+                aria-label="Collapse sidebar"
+              >
+                <PanelLeftClose size={16} />
+              </button>
+            </Tip>
+          )}
         </div>
       )}
 

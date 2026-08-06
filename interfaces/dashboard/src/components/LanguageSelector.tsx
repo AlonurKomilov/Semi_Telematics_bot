@@ -11,6 +11,7 @@
 import { useTranslation } from 'react-i18next';
 import { useState, useRef, useEffect } from 'react';
 import { Check } from 'lucide-react';
+import { ActionMenu, type MenuAction } from './ui/context-menu';
 import { SUPPORTED_LOCALES, type Locale } from '../i18n';
 import { apiJSON } from '../api/client';
 
@@ -69,44 +70,35 @@ export function LanguageSelector() {
     }
   }
 
+  // ActionMenu, not a hand-rolled dropdown.  The old one was
+  // ``absolute right-0 … w-44`` — it extended 176px LEFT from the
+  // trigger with no idea where the viewport edge was, so on a phone the
+  // menu ran off the left of the screen and the language names were cut
+  // in half ("…ний", "…нська").  Base UI's positioner shifts to stay on
+  // screen, which is the entire reason the dashboard rule says never
+  // hand-roll a menu.
+  //
+  // Keeping the tick: ``MenuAction.icon`` is a fully-styled node, so the
+  // active language still shows a ✓ — as a leading icon now rather than
+  // a trailing one, which is what the shared list renders.
+  const items: MenuAction[] = SUPPORTED_LOCALES.map((lng) => ({
+    key: lng,
+    label: NATIVE_LABEL[lng],
+    icon: lng === current
+      ? <Check size={14} aria-hidden className="text-foreground" />
+      : <span aria-hidden className="inline-block size-3.5" />,
+    onSelect: () => pick(lng),
+  }));
+
   return (
-    <div ref={wrapperRef} className="relative">
+    <ActionMenu items={items} align="end">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-haspopup="listbox"
-        aria-expanded={open}
         aria-label={t('language.switch')}
         className="inline-flex items-center px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition"
       >
         <span className="font-mono tracking-wider">{SHORT_CODE[current]}</span>
       </button>
-      {open && (
-        <div
-          role="listbox"
-          aria-label={t('language.label')}
-          className="absolute right-0 top-full mt-1 z-50 w-44 max-h-80 overflow-auto bg-popover border border-border rounded-md shadow-lg py-1"
-        >
-          {SUPPORTED_LOCALES.map((lng) => {
-            const active = lng === current;
-            return (
-              <button
-                key={lng}
-                type="button"
-                role="option"
-                aria-selected={active}
-                onClick={() => pick(lng)}
-                className={`w-full text-left flex items-center justify-between gap-2 px-3 py-1.5 text-sm hover:bg-muted transition ${
-                  active ? 'text-foreground font-medium' : 'text-muted-foreground'
-                }`}
-              >
-                <span>{NATIVE_LABEL[lng]}</span>
-                {active && <Check size={14} aria-hidden />}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
+    </ActionMenu>
   );
 }
