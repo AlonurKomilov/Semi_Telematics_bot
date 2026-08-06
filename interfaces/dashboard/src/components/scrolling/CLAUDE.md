@@ -5,7 +5,7 @@ inside.
 
 ```
 region.tsx      useScrollRegion() + <ScrollRegion>   ← the contract
-scrollbars.tsx  ScrollbarH/V, useOverflow, useWheelToHorizontal
+scrollbars.tsx  ScrollbarH/V, useOverflow
 fit.ts          useFittedHeight()                    ← own your viewport
 ```
 
@@ -125,7 +125,8 @@ inverted**: a child has no way to impose that on its parents.
 
 So the contract lived on the PAGE, as a `fillHeight` prop plus a class
 recipe. Coverage after months: **3 of 40 grid surfaces.** That is the
-whole argument. A convention every future page author must remember is
+whole argument. (The prop is gone now — it lingered as a documented no-op
+only until the measured path was verified.) A convention every future page author must remember is
 not a single source of truth; it is 40 opportunities to forget, and
 every later change to scrolling behaviour is another N edits.
 
@@ -240,14 +241,18 @@ switched off on stale grounds.
 
 **So: both axes `auto`, native bars hidden, painted bars on top.**
 
-⚠️ `useWheelToHorizontal` exists only for the `overflow-x: hidden` shape,
-and therefore has **zero consumers** — it is kept until the switch is
-confirmed in a browser, then deleted (the bar for an export here is two
-real consumers). Do not reach for it: with `auto` the browser applies
-`deltaX` itself, so calling it as well moves the container **twice per
-swipe**. That is not hypothetical — it is the exact bug that shipped when
-the bridge lived inside `useScrollMetrics` and both scrollbars installed
-it.
+⚠️ **`useWheelToHorizontal` is DELETED — do not bring it back.** It
+existed only to put back a gesture `overflow-x: hidden` had switched off.
+With `auto` the browser applies `deltaX` itself, so a bridge on top of it
+moves the container **twice per swipe** — not hypothetical, it is the
+exact bug that shipped when the bridge lived inside `useScrollMetrics`
+and both scrollbars installed it.
+
+It was kept, unused, until a browser confirmed the switch. A responsive
+audit did: *"finger-panning genuinely works … `overflow-x: auto` with
+`touch-action: auto` … full extent reachable — Vehicles 923/923, Loads
+1586/1586"*, with `touchstart`/`touchmove` dispatched and neither
+`preventDefault`ed. Confirmed, so it went.
 
 ## The layering chain — and what enforces it
 

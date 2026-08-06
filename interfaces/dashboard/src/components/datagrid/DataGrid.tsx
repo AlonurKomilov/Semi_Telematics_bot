@@ -209,10 +209,6 @@ interface DataGridProps {
    *  this grid becomes the child that takes the remainder. Used on a
    *  page that isn't laid out that way, the grid keeps its natural
    *  height and nothing breaks. */
-  /** @deprecated NO-OP — the grid measures its own room now (see
-   *  ``useFittedHeight``).  Kept so the pages that passed it don't
-   *  break; delete the prop from a page whenever you touch it. */
-  fillHeight?: boolean;
   /** Opt OUT of the measured viewport.  For a table whose surface is
    *  what the reader scrolls — a table inside a chat message, where an
    *  internally-scrolling grid would trap the conversation. */

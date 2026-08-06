@@ -105,52 +105,6 @@ function useScrollMetrics(el: HTMLElement | null): ScrollMetrics {
 const LINE_PX = 16;
 
 /**
- * Trackpad horizontal swipe / shift+wheel → `scrollLeft`.
- *
- * ⚠️ CURRENTLY UNUSED — kept only until the `overflow-x: auto` switch is
- * confirmed in a real browser, then delete it.  The module's own bar is
- * two real consumers; this has zero.
- *
- * It exists for one shape: a container whose horizontal axis is
- * `overflow-x: hidden`, where the browser ignores the gesture entirely.
- * Both grids ran that way until it turned out the reason was stale — the
- * track-reservation problem is real for `::-webkit-scrollbar { height: 0 }`
- * but not for `display: none`, which is what HIDE_NATIVE_SCROLLBAR uses
- * and what the VERTICAL axis had been doing all along.  With `auto` the
- * browser applies `deltaX` itself, so calling this as well moves the
- * container TWICE per swipe.
- *
- * ⚠️ CALL IT EXACTLY ONCE PER CONTAINER, from whoever owns the scroll
- * element — never from a scrollbar.  It used to live inside
- * ``useScrollMetrics``, which BOTH bars call on the same element, so two
- * handlers each added the same delta and every trackpad swipe scrolled
- * TWICE AS FAR as it should.  The early ``return null`` in a bar that
- * isn't needed does not save you: hooks run before it, so even an
- * invisible bar had its handler installed.
- *
- * Sets no state, so calling it from a parent cannot re-render anything at
- * scroll rate.
- */
-export function useWheelToHorizontal(el: HTMLElement | null) {
-  useEffect(() => {
-    if (!el) return;
-    const onWheel = (e: WheelEvent) => {
-      const raw = e.shiftKey && e.deltaX === 0 ? e.deltaY : e.deltaX;
-      if (raw === 0) return;
-      // DOM_DELTA_LINE = 1, DOM_DELTA_PAGE = 2.
-      const unit = e.deltaMode === 1 ? LINE_PX
-        : e.deltaMode === 2 ? el.clientWidth
-          : 1;
-      el.scrollLeft += raw * unit;
-    };
-    // Passive: there is nothing to preventDefault — the browser already
-    // won't scroll this axis.
-    el.addEventListener('wheel', onWheel, { passive: true });
-    return () => el.removeEventListener('wheel', onWheel);
-  }, [el]);
-}
-
-/**
  * Does this container overflow?  Booleans only, and NO scroll listener —
  * a surface that needs to reserve space for a scrollbar re-renders when
  * overflow appears or disappears, not while you scroll.

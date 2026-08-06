@@ -19,7 +19,6 @@ export {
   ScrollbarH,
   ScrollbarV,
   useOverflow,
-  useWheelToHorizontal,
   HIDE_NATIVE_SCROLLBAR,
 } from './scrollbars';
 export type { ScrollMetrics } from './scrollbars';

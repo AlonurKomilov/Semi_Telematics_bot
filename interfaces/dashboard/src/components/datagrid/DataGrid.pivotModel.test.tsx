@@ -90,7 +90,7 @@ const FULL: PivotModel = {
 };
 
 async function openPanel() {
-  render(<DataGrid columns={COLUMNS} data={ROWS} tableId="t" pivot fillHeight />);
+  render(<DataGrid columns={COLUMNS} data={ROWS} tableId="t" pivot />);
   // The toolbar button only OPENS the panel; the switch inside pivots.
   const btn = screen.getByRole('button', { name: /^Pivot/ });
   await act(async () => { btn.click(); });

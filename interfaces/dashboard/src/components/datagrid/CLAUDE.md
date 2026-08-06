@@ -475,10 +475,11 @@ right answer for those pages.
 
 ⚠️ **This replaced a `fillHeight` prop that ALSO required the page to be
 `flex h-full flex-col min-h-0` with the grid as a direct flex child.**
-Coverage after months: 3 of 40 surfaces. The prop still exists as a
-documented no-op so old pages don't break — delete it from a page
-whenever you touch one. `autoFit={false}` opts OUT, for a table whose own
-surface is what the reader scrolls (the AI chat artifacts).
+Coverage after months: 3 of 40 surfaces. The prop is **gone** — it
+survived briefly as a documented no-op, then was deleted once a
+responsive audit confirmed the measured path holds. `autoFit={false}`
+opts OUT, for a table whose own surface is what the reader scrolls (the
+AI chat artifacts).
 
 `stickyHeader="65vh"` is the older hand-tuned form, still right when a
 grid must be SHORTER than the room available to it (Scorecards).
