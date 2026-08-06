@@ -4,7 +4,7 @@ import { FEATURE_CATALOG } from '../../../config/featureCatalog';
 import {
   FEATURE_GROUPS,
   SUBTYPE_LABELS,
-} from '../../notifications/delivery/alertRoutingConstants';
+} from '../delivery/alertRoutingConstants';
 import en from '../../../locales/en.json';
 import { familyText, kindText } from './components';
 

@@ -196,7 +196,7 @@ export default function ForumRoutingSection() {
   const handleToggleAIForType = async (alertType: string, next: boolean) => {
     setBusyKey(`__ai_${alertType}__`);
     try {
-      await apiJSON('/notifications/config', {
+      await apiJSON('/alerts/config', {
         method: 'PUT',
         body: { ai_per_type: { [alertType]: next } },
       });
@@ -223,7 +223,7 @@ export default function ForumRoutingSection() {
     }
     setBusyKey(`__st_${r.alert_type}__`);
     try {
-      await apiJSON(`/notifications/config/${r.alert_type}/subtypes`, {
+      await apiJSON(`/alerts/config/${r.alert_type}/subtypes`, {
         method: 'PUT', body: { selected: next },
       });
       await load();

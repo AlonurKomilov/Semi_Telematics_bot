@@ -17,7 +17,11 @@ import { apiJSON } from '../../../api/client';
 import { toneClasses } from '../../../lib/status';
 import { InfoTip } from '../../../components/tooltip';
 import { useRoleView } from '../../../context/RoleViewContext';
-import { ROLE_ORDER } from './alertRoutingConstants';
+import { ROLE_ORDER } // Alert-routing VOCABULARY (personas, family labels), not a component.
+// It stays in features/alerts/delivery because it describes alerts; this
+// roster only renders those names. A shared constant crossing features is
+// a far milder coupling than the shared COMPONENTS that were just undone.
+from '../../alerts/delivery/alertRoutingConstants';
 
 interface SubBotRow { persona: string; bot_username: string; is_running: boolean; }
 interface SubBotsResponse { personas: Record<string, SubBotRow | null>; manageable: string[]; }

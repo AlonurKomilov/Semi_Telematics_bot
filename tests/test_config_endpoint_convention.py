@@ -88,7 +88,7 @@ ALIAS_PAIRS = [
     ("/object-storage/config", "PUT", "/object-storage/backend", "POST"),
     ("/settings/config", "GET", "/admin/settings", "GET"),
     ("/settings/config", "PUT", "/admin/settings", "PUT"),
-    ("/notifications/config", "PUT", "/admin/forum-routing/settings", "PUT"),
+    ("/alerts/config", "PUT", "/admin/forum-routing/settings", "PUT"),
     ("/scorecards/config/rules", "GET", "/admin/scorecard-rules", "GET"),
     ("/scorecards/config/pillar-caps", "GET",
      "/admin/scorecard-pillar-caps", "GET"),

@@ -20,7 +20,18 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["settings"])
 
-# The feature-prefixed config surface: ``/notifications/config``.
+# The feature-prefixed config surface: ``/alerts/config``.
+#
+# ALERTS, not notifications — and the first attempt got this wrong by
+# naming the URL after the backend MODULE this file happens to live in.
+# ``capabilities/notifications`` is the DELIVERY capability (alerting is
+# the domain; a CI rule keeps telegram out of it), and that placement is
+# right.  But the surface a user opens is Group delivery, a tab of
+# ``/alerts``, and ``/notifications/*`` is already the Notification
+# Centre's live namespace — ``/notifications/inbox``,
+# ``/notifications/push``, ``/notifications/preferences``.  A
+# ``/notifications/config`` in the middle of those reads as the bell's
+# config and is not.
 #
 # Only the two CONFIG writes move here — the AI column and the
 # sub-category chips, both of which write account_settings rows.  The
@@ -29,7 +40,7 @@ router = APIRouter(prefix="/admin", tags=["settings"])
 # because that is OPERATING the integration, not configuring it.  Same
 # split as everywhere else: Manage runs the feature, Config sets the
 # values it runs on.
-config_router = APIRouter(prefix="/notifications", tags=["notifications"])
+config_router = APIRouter(prefix="/alerts", tags=["alerts"])
 
 
 # ── Forum routing (Telegram group topics) ─────────────────────

@@ -24,8 +24,8 @@ import type { BotConfig } from '@/types';
 import { PageHeader, CardSkeleton, EmptyState } from '@/components/shell';
 import { useViewPermissions } from '@/hooks/useViewPermissions';
 import { AlertsTabs } from './AlertsTabs';
-import AlertRoutingSection from '../notifications/delivery/AlertRoutingSection';
-import ForumRoutingSection from '../notifications/delivery/ForumRoutingSection';
+import AlertRoutingSection from './delivery/AlertRoutingSection';
+import ForumRoutingSection from './delivery/ForumRoutingSection';
 
 export default function GroupDelivery() {
   const { has, ready } = useViewPermissions();
