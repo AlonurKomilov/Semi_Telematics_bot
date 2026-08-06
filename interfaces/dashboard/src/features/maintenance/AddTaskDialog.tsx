@@ -252,7 +252,12 @@ export default function AddTaskDialog({
     finally { setSaving(false); }
   };
 
-  if (!open) return null;
+  // NOTE: no ``if (!open) return null`` here.  It reads like it discards
+  // the form, and it does not — the hooks above have already run, so
+  // React keeps every value and the next open restores a half-typed
+  // task.  The PAGE not rendering this component is what actually
+  // clears it; ``open`` below is only for the Dialog primitive's own
+  // open/close animation and focus handling.
 
   return (
 

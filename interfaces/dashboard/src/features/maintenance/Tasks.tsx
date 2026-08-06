@@ -818,6 +818,13 @@ export default function Tasks() {
           split).  Rendered only while OPEN so closing it discards the
           form state — which is why the old fourteen-line manual reset is
           gone. */}
+      {/* Rendered ONLY while open — that is what discards the form state,
+          and it is load-bearing.  ``if (!open) return null`` inside the
+          component does NOT do it: the hooks have already run, so React
+          keeps the state and the next open shows the last half-typed
+          task.  ``handleAdd``'s fourteen-line manual reset used to cover
+          for that and was deleted with this move. */}
+      {showAdd && (
       <AddTaskDialog
         open={showAdd}
         onOpenChange={setShowAdd}
@@ -834,6 +841,7 @@ export default function Tasks() {
         company={fCompany}
         onCompanyChange={setFCompany}
       />
+      )}
 
       {/* The urgency chip row that used to live here (All / Overdue /
           Due Soon / Pending) is gone: the topbar MaintenanceHero now
