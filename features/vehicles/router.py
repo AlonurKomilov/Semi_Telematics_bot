@@ -857,71 +857,10 @@ async def vehicle_period_trips(
         "driving_min": round(driving_min, 1),
     }
 
-
-# ── Source precedence (when Samsara + Datatruck disagree) ──────────
-#
-# Owner-level policy: which integration wins each vehicle spec field.  Placed
-# among the LITERAL routes (before the parametric ``/{vehicle_name}``) so the
-# path isn't swallowed as a vehicle name.
-
-
-class SourcePrecedenceUpdate(BaseModel):
-    # {spec_field: primary_source}, e.g. {"vin": "datatruck", "make": "samsara"}.
-    primary: dict[str, str] = Field(default_factory=dict)
-
-
-# ── Feature config ──────────────────────────────────────────────────
-# ``/vehicles/config`` — one config endpoint, same shape as every other
-# feature.  The URL follows the DOMAIN NOUN (vehicles), not the page that
-# happens to host the panel (Integrations): the setting is
-# ``vehicle_field_precedence`` and it decides which provider wins per
-# VEHICLE field.  Naming rule: shared/wire identifiers are named after the
-# domain noun (docs/architecture/PERSONA.md).
-@router.get("/config")
-@router.get("/source-precedence", deprecated=True)
-async def get_config(
-    user: dict = Depends(require_permission("can_manage_config_all")),
-):
-    """Per-field primary source + the choices, for the Integrations-page
-    'When sources disagree' panel.
-
-    The READ moved onto the config flag with the write, for the reason
-    ``GET /kpi/thresholds`` did: its only consumer is the editor
-    (SourcePrecedencePanel), so it is not a view of integration DATA — it
-    is the settings themselves.  Leaving a config read on the weaker
-    permission makes the write gate decorative, since the values are
-    fully visible and only the Save button is refused.
-    """
-    account_id = int(user["account_id"])
-    tenant = await _get_tenant_db(account_id)
-    if tenant is None:
-        raise HTTPException(503, "tenant DB unavailable")
-    return await reconciliation.precedence_options(tenant, account_id, "vehicle")
-
-
-@router.put("/config")
-@router.put("/source-precedence", deprecated=True)
-async def put_config(
-    body: SourcePrecedenceUpdate,
-    user: dict = Depends(require_permission("can_manage_config_all")),
-):
-    """Set the per-field primary source.  The other source still fills gaps;
-    operator hand-edits always win.
-
-    CONFIG, not Manage.  This writes ``vehicle_field_precedence`` — an
-    account_settings row owned by the config family — which decides which
-    provider WINS per field when Samsara and Datatruck disagree.  Every
-    vehicle read downstream resolves through it, so it is exactly the
-    "a computation reads it" case the blast-radius rule covers.
-    ``can_manage_integrations`` still owns connecting and syncing the
-    providers themselves.
-    """
-    account_id = int(user["account_id"])
-    tenant = await _get_tenant_db(account_id)
-    if tenant is None:
-        raise HTTPException(503, "tenant DB unavailable")
-    await reconciliation.set_precedence(tenant, account_id, "vehicle", body.primary)
-    return await reconciliation.precedence_options(tenant, account_id, "vehicle")
+# Source precedence moved to features/vehicles/config.py — config is a
+# separate action from view, so it is a separate file (/vehicles/config).
+# That module MUST be mounted before this router: /{vehicle_name} below
+# would otherwise swallow /vehicles/config.
 
 
 @router.get("/{vehicle_name}")

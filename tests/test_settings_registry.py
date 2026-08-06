@@ -335,14 +335,14 @@ class TestDedicatedWritersHonourTheDeclaredOwner:
     # so a future regate has to argue with a name, not a regex.
     WRITERS = (
         ("capabilities/object_storage/router.py", "put_config"),
-        ("features/vehicles/router.py", "put_config"),
-        ("features/vehicles/router.py", "get_config"),
+        ("features/vehicles/config.py", "put_config"),
+        ("features/vehicles/config.py", "get_config"),
         ("capabilities/notifications/delivery_admin/forum.py",
          "put_config"),
         ("capabilities/notifications/delivery_admin/forum.py",
          "set_forum_subtypes"),
-        ("features/kpi/router.py", "get_config"),
-        ("features/kpi/router.py", "put_config"),
+        ("features/kpi/config.py", "get_config"),
+        ("features/kpi/config.py", "put_config"),
     )
 
     def test_config_endpoints_require_the_config_permission(self):

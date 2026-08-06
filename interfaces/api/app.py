@@ -68,7 +68,10 @@ from capabilities.platform.service_assembly_library import router as service_ass
 from capabilities.platform.market_intel import router as market_intel_routes
 from capabilities.platform.capacity import router as capacity_routes
 from features.loads import router as loads_routes
+from features.applications import config as applications_config
+from features.kpi import config as kpi_config
 from features.kpi import router as kpi_routes
+from features.vehicles import config as vehicles_config
 from features.inspections import router as inspections_routes
 from features.knowledge import router as knowledge_routes
 from features.driver_pay import router as driver_pay_routes
@@ -440,9 +443,12 @@ def create_api() -> FastAPI:
         app.include_router(preferences_routes.router, prefix=prefix)
         app.include_router(page_layouts_routes.router, prefix=prefix)
         app.include_router(overview_routes.router, prefix=prefix)
+        # Config FIRST — vehicles' /{vehicle_name} would shadow /config.
+        app.include_router(vehicles_config.router, prefix=prefix)
         app.include_router(vehicles_routes.router, prefix=prefix)
         app.include_router(vehicle_inventory_routes.router, prefix=prefix)
         app.include_router(loads_routes.router, prefix=prefix)
+        app.include_router(kpi_config.router, prefix=prefix)
         app.include_router(kpi_routes.router, prefix=prefix)
         app.include_router(maps.router, prefix=prefix)
         app.include_router(pois.router, prefix=prefix)
@@ -470,6 +476,8 @@ def create_api() -> FastAPI:
         app.include_router(telemetry_routes.router, prefix=prefix)
         app.include_router(jobs_routes.router, prefix=prefix)
         app.include_router(system_routes.router, prefix=prefix)
+        # Config FIRST — applications' /{...} routes would shadow /config.
+        app.include_router(applications_config.router, prefix=prefix)
         app.include_router(applications_routes.router, prefix=prefix)
         app.include_router(driver_onboarding_routes.router, prefix=prefix)
         app.include_router(carrier_directory_routes.router, prefix=prefix)
