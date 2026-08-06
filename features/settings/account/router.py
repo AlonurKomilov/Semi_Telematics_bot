@@ -58,7 +58,7 @@ async def get_config(
     ``account`` and ``ai_usage`` are the Settings PAGE's own data, so the
     page's Manage action (can_manage_account) admits the caller.  The
     ``settings`` dict is something else: every key in it is an
-    ``account_settings`` row, which capabilities/settings_registry.py
+    ``account_settings`` row, which capabilities/config/account.py
     puts behind ``can_manage_config_all`` to WRITE.  A read that returns
     the same values on a weaker permission would make the write gate
     decorative — you could see every value and simply not save.
@@ -146,7 +146,7 @@ async def put_config(
     from capabilities.permissions.roles import (
         get_user_permissions, is_system_owner,
     )
-    from capabilities.settings_registry import SELF_ONLY, SYSTEM_ONLY, owner_for
+    from capabilities.config import SELF_ONLY, SYSTEM_ONLY, owner_for
 
     rule = owner_for(body.key)
     if rule is None:
@@ -154,7 +154,7 @@ async def put_config(
             status_code=422,
             detail=(
                 f"Unknown setting '{body.key}'. Settings must be declared in "
-                f"capabilities/settings_registry.py with the permission that "
+                f"capabilities/config/account.py with the permission that "
                 f"owns them."
             ),
         )

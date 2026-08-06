@@ -22,50 +22,20 @@ can't be used as a scratchpad.
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
-from capabilities.permissions.roles import Role, get_user_permissions
+from capabilities.config.role import (
+    ALLOWED_FEATURES, VALID_ROLES, may_manage_config_role,
+)
 from interfaces.api.deps import get_current_user, get_tenant_db
 
 router = APIRouter(prefix="/page-layouts", tags=["page-layouts"])
 
-# Feature pages that HAVE configurable sections.  Grows one entry per
-# page that opts into the gear — an allow-list, so the table can't
-# accumulate rows for keys no page will ever read.
-_ALLOWED_FEATURES = frozenset({"alerts"})
-
-# Roles a team default may exist for — the dashboard personas that render
-# Pattern-B pages.  Driver is deliberately absent (the Mini App is their
-# surface); owner/admin ARE present so an owner can tune their own view's
-# default too.
-_VALID_ROLES = frozenset({
-    "owner", "admin", "fleet", "dispatcher", "safety",
-    "hr", "accounting", "recruiter",
-})
-
-
-async def _may_manage_config_role(user: dict, role: str) -> bool:
-    """The matrix decides WHO; code decides HOW FAR.
-
-    Resolves the caller's EFFECTIVE permission set (their own tier row,
-    per-account overrides included), so whatever the owner ticked in the
-    Permissions matrix is the authority:
-      * ``can_manage_account``      → any role's default,
-      * ``can_manage_config_role``  → the caller's OWN role's only.
-    The own-role wall stays hard-coded — delegating the grant to a fleet
-    employee can never extend to the safety team's page.
-    """
-    own = user.get("role", "")
-    try:
-        perms = await get_user_permissions(
-            Role(own),
-            user["account_id"],
-            is_manager=bool(user.get("is_manager")),
-            is_primary_owner=bool(user.get("is_primary_owner")),
-        )
-    except ValueError:
-        return False        # a role string Role() doesn't know
-    if perms.can_manage_account:
-        return True
-    return bool(perms.can_manage_config_role) and own == role
+# _ALLOWED_FEATURES, _VALID_ROLES and the own-role wall moved to
+# capabilities/config/role.py — the config family's home, beside the
+# account-scope registry.  What stays here is routing: this module is the
+# interface layer and the only one that may import interfaces.api.deps.
+_ALLOWED_FEATURES = ALLOWED_FEATURES
+_VALID_ROLES = VALID_ROLES
+_may_manage_config_role = may_manage_config_role
 
 
 class PageLayoutBody(BaseModel):

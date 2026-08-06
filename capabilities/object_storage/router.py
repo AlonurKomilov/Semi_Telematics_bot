@@ -130,7 +130,7 @@ async def get_storage_status(
     many bytes — which is what Manage exists for.  The one true config
     value in here, ``backend``, is read-only on this path; CHANGING it
     goes through the account_settings registry, which puts it behind
-    can_manage_config_all (capabilities/settings_registry.py).
+    can_manage_config_all (capabilities/config/account.py).
 
     Includes a usage breakdown so the Settings page can render a
     "187 MB used of 15 GB" progress bar:
@@ -219,7 +219,7 @@ async def put_config(
 
     CONFIG, not Manage — and this endpoint is why the distinction has
     teeth.  It writes ``object_storage.backend``, an account_settings row
-    the registry owns (capabilities/settings_registry.py), and that one
+    the registry owns (capabilities/config/account.py), and that one
     value decides where every driver document, invoice and DQF the
     account ever stores is written.  The blast-radius rule puts it
     account-wide: "anything a computation reads is account-wide, always."

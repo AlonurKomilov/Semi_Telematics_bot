@@ -28,7 +28,7 @@ os.environ.setdefault("ENCRYPTION_KEY", "")
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from capabilities.settings_registry import (  # noqa: E402
+from capabilities.config import (  # noqa: E402
     SELF_ONLY, SETTING_OWNERS, SYSTEM_ONLY, owner_for,
 )
 
@@ -212,7 +212,7 @@ class TestNoUndeclaredWrites:
         assert not undeclared, (
             "these account_settings keys are written but declare no owner:\n  "
             + "\n  ".join(sorted(set(undeclared)))
-            + "\n\nAdd each to capabilities/settings_registry.py with the "
+            + "\n\nAdd each to capabilities/config/account.py with the "
               "permission that owns it. Leaving one undeclared means "
               "PUT /settings refuses it — and means nobody decided whose it is."
         )
@@ -254,7 +254,7 @@ class TestReadableKeysAreAlsoWritable:
             "these keys are returned by GET /settings but refused by "
             f"PUT /settings: {missing}\n"
             "A setting the UI shows and cannot save is worse than one it "
-            "hides. Declare each in capabilities/settings_registry.py."
+            "hides. Declare each in capabilities/config/account.py."
         )
 
     def test_every_key_the_code_READS_is_declared(self):

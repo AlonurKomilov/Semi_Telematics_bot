@@ -127,6 +127,27 @@ Note: `can_manage_config_all` itself is NOT module-masked (it spans
 features across modules); a member PAGE may still mask with its
 feature's modules, as scorecard rules does.
 
+### Where the code lives
+
+    capabilities/config/          the family's shared machinery
+      _common.py                  scope + kind vocabulary; the flag NAMES
+      account.py                  account_settings ownership registry
+      role.py                     the own-role wall + page allow-list
+
+    features/<x>/router.py        each feature's OWN /<feature>/config
+    interfaces/api/page_layouts.py  role-scope routing (interface layer)
+
+`capabilities/config/` is the ENGINE, not a place to put configuration.
+A feature's config endpoints stay with that feature. Collecting them here
+would rebuild the single `PUT /settings` this arc dismantled — one router
+accepting any key on one permission, which is how one feature's Manage
+came to write two sibling features' configuration.
+
+Role scope is one central module on purpose: there is ONE endpoint
+(`PUT /page-layouts/{role}/{feature}`) taking the feature as a path
+parameter, not one per feature. Split it out per feature only when a
+feature grows genuinely per-feature role config.
+
 ### Naming: the SURFACE is "config"; what is inside keeps its own name
 
 One word, everywhere the config surface is named — URL, permission,
