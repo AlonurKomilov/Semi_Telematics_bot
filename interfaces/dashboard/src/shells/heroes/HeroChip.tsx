@@ -55,7 +55,16 @@ export const HERO_STRIP =
   // ONE standalone display utility, not ``hidden`` beside ``flex`` — they
   // are the same Tailwind group, so both in one string is a coin-flip on
   // source order.
-  'hidden lg:flex flex-1 min-w-0 items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden';
+  // The container STAYS on every width — it is the ``flex-1`` spacer that
+  // pushes the topbar's right cluster (search / language / bell / theme /
+  // avatar) to the right edge.  Hiding the whole strip below ``lg`` took
+  // the spacer with it and let the whole topbar bunch up on the left.
+  //
+  // So only the CHIPS hide.  ``[&>*]:hidden`` below lg, restored to their
+  // own ``inline-flex`` at lg — matching what HeroChip renders, since a
+  // plain ``flex`` here would change their box and their spacing.
+  'flex-1 min-w-0 flex items-center px-2 gap-1.5 overflow-x-auto overflow-y-hidden '
+  + '[&>*]:hidden lg:[&>*]:inline-flex';
 
 export default function HeroChip({ label, value, tone = 'neutral', title }: HeroChipProps) {
   const chip = (
