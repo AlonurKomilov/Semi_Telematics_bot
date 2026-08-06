@@ -46,6 +46,8 @@ from features.vehicles.warehouse.service import (
     get_vehicle_health as _svc_vehicle_health,
     get_fleet_weather as _svc_fleet_weather,
 )
+import aiohttp
+
 from features.vehicles.warehouse import readers as _wh_reader
 from features.location.service import classify_vehicle_status
 from infra.platform import get_tenant_db as _get_tenant_db
@@ -725,6 +727,71 @@ async def vehicle_period_mileage(
     return {"start": start, "end": end, "no_data": False, **out}
 
 
+async def _resolve_vehicle(
+    vehicle_name: str, company: str | None, user: dict, allowed: list[str],
+) -> list[dict]:
+    """Resolve one truck for a detail-style endpoint, permission-filtered.
+
+    The registry is the SSOT and the provider ENRICHES it, so a truck the
+    registry knows must still resolve when the provider cannot answer.
+    Two ways it fails to answer, and both land here:
+
+    * It answers with nothing — trailers and manual vehicles exist only
+      in the registry, so a row click on them must not read "Vehicle not
+      found".  This path already existed on the detail endpoint.
+    * It RAISES — a 5s timeout, an HTTP error, or SamsaraUnavailable
+      once the breaker opens.  That escaped as a 500 and took the page
+      with it, which is what GET /vehicles/224/usage did on 07-29: the
+      truck vanished from the dashboard because a third party was slow.
+
+    Caught narrowly on purpose.  ``SamsaraUnavailable`` subclasses
+    ``aiohttp.ClientError``, so those two plus ``TimeoutError`` cover
+    every provider failure without a bare ``except`` swallowing real
+    bugs behind a silently degraded page.
+    """
+    try:
+        matches = await _svc_vehicle_detail(
+            user["account_id"], vehicle_name, company=company,
+        )
+    except (aiohttp.ClientError, TimeoutError):
+        # WARNING, not debug: a provider outage must be visible in the
+        # logs rather than hiding behind a page that still renders.
+        logger.warning(
+            "telematics lookup failed for acct=%s vehicle=%s — "
+            "serving the registry record without live telemetry",
+            user["account_id"], vehicle_name, exc_info=True,
+        )
+        matches = []
+    else:
+        matches = filter_by_allowed_companies(matches, allowed)
+        matches = await filter_by_assigned_trucks(matches, user)
+        if matches:
+            return matches
+
+    # merge_registry_with_live([v], []) synthesizes the same
+    # no-telemetry overview row the list builds for a registry-only
+    # vehicle, so every consumer sees one shape.
+    tenant_reg = await _get_tenant_db(user["account_id"])
+    if tenant_reg is None:
+        return []
+    try:
+        registry = await tenant_reg.list_vehicles(
+            user["account_id"], company_code=company,
+        )
+    except Exception:
+        logger.warning(
+            "registry fallback failed for acct=%s vehicle=%s",
+            user["account_id"], vehicle_name, exc_info=True,
+        )
+        registry = []
+    needle = vehicle_name.lower()
+    reg_matches = _wh_reader.merge_registry_with_live(
+        [v for v in registry if v.unit_number.lower() == needle], [],
+    )
+    reg_matches = filter_by_allowed_companies(reg_matches, allowed)
+    return await filter_by_assigned_trucks(reg_matches, user)
+
+
 @router.get("/{vehicle_name}/trips")
 async def vehicle_period_trips(
     vehicle_name: str,
@@ -880,32 +947,7 @@ async def vehicle_detail(
     """
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    matches = await _svc_vehicle_detail(user["account_id"], vehicle_name, company=company)
-    matches = filter_by_allowed_companies(matches, allowed)
-    matches = await filter_by_assigned_trucks(matches, user)
-    if not matches:
-        # Registry fallback — trailers and manual vehicles exist only
-        # in the registry (SSOT), so a row click on them must not land
-        # on "Vehicle not found".  merge_registry_with_live([v], [])
-        # synthesizes the same no-telemetry overview row the list uses.
-        tenant_reg = await _get_tenant_db(user["account_id"])
-        if tenant_reg is not None:
-            try:
-                registry = await tenant_reg.list_vehicles(
-                    user["account_id"], company_code=company,
-                )
-            except Exception:
-                logger.warning(
-                    "registry fallback failed for acct=%s vehicle=%s",
-                    user["account_id"], vehicle_name, exc_info=True,
-                )
-                registry = []
-            needle = vehicle_name.lower()
-            reg_matches = _wh_reader.merge_registry_with_live(
-                [v for v in registry if v.unit_number.lower() == needle], [],
-            )
-            reg_matches = filter_by_allowed_companies(reg_matches, allowed)
-            matches = await filter_by_assigned_trucks(reg_matches, user)
+    matches = await _resolve_vehicle(vehicle_name, company, user, allowed)
     if not matches:
         return {"error": "Vehicle not found", "vehicles": []}
 
@@ -1075,9 +1117,7 @@ async def vehicle_timeline(
     """
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    matches = await _svc_vehicle_detail(user["account_id"], vehicle_name, company=company)
-    matches = filter_by_allowed_companies(matches, allowed)
-    matches = await filter_by_assigned_trucks(matches, user)
+    matches = await _resolve_vehicle(vehicle_name, company, user, allowed)
     if not matches:
         return {"error": "Vehicle not found", "points": []}
     vehicle_id = str(matches[0].get("id") or "")
@@ -1112,9 +1152,7 @@ async def vehicle_usage(
     """
     allowed = await get_user_company_codes(user)
     validate_company_access(allowed, company)
-    matches = await _svc_vehicle_detail(user["account_id"], vehicle_name, company=company)
-    matches = filter_by_allowed_companies(matches, allowed)
-    matches = await filter_by_assigned_trucks(matches, user)
+    matches = await _resolve_vehicle(vehicle_name, company, user, allowed)
     if not matches:
         return {"error": "Vehicle not found", "summary": None, "series": []}
     vehicle_id = str(matches[0].get("id") or "")
