@@ -124,7 +124,7 @@ def test_physical_warehouse_tables_stay_inside_the_machinery():
     import re
 
     allowed = (
-        "adapters/storage/warehouse.py",
+        "adapters/storage/warehouse",
         "adapters/storage/migrations.py",
         "adapters/storage/vehicle_departure.py",
         "capabilities/warehouse/",

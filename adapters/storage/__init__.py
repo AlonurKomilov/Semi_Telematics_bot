@@ -92,6 +92,7 @@ from .geofence import GeofenceMixin
 from .custom_poi import CustomPoiMixin
 from .scorecard import ScorecardMixin
 from .warehouse import WarehouseMixin
+from .ops_runs import OpsRunsMixin
 from .driver_pay import DriverPayMixin
 from .coaching import CoachingMixin
 from .object_storage_sync import ObjectStorageSyncMixin
@@ -164,6 +165,7 @@ class Database(
     CustomPoiMixin,
     ScorecardMixin,
     WarehouseMixin,
+    OpsRunsMixin,
     DriverPayMixin,
     CoachingMixin,
     ObjectStorageSyncMixin,

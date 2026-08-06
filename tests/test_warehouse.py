@@ -304,12 +304,17 @@ class TestWarehouseReader:
             return tenant
         monkeypatch.setattr(warehouse_reader, "get_tenant_db", get_tenant_db_stub)
 
+        # A FRESH source_ts is now part of "warehouse hit": rows that
+        # are present but stale legitimately fall back since the Phase-4
+        # age contract (see test_reader_staleness.py for that case).
+        from datetime import datetime, timezone
         await tenant.upsert_vehicle_state(1, [
-            {"vehicle_id": "v1", "vehicle_name": "T-1", "company_code": "A"},
+            {"vehicle_id": "v1", "vehicle_name": "T-1", "company_code": "A",
+             "source_ts": datetime.now(timezone.utc).isoformat()},
         ])
 
         async def fallback():
-            raise AssertionError("fallback must not run when warehouse has rows")
+            raise AssertionError("fallback must not run when warehouse is fresh")
 
         rows = await warehouse_reader.get_current_vehicles(
             account_id=1, samsara_fallback=fallback,
