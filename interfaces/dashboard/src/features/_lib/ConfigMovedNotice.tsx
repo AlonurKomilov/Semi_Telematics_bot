@@ -19,13 +19,22 @@
  * close button.
  */
 import { Cog, X } from 'lucide-react';
-import { usePreference } from '../../preferences';
+import { usePreference, useSyncLoaded } from '../../preferences';
 
 export function ConfigMovedNotice({ what }: { what: string }) {
   const { value: dismissed, setValue: setDismissed } = usePreference(
     'config.moved_notice_dismissed',
   );
-  if (dismissed) return null;
+  // GATE ON HYDRATION, not just on the value.  The dismissal is a SYNCED
+  // preference, and store.ts is explicit that synced values are only
+  // authoritative after the bulk read lands — which is why isSyncLoaded()
+  // exists and why DataGrid gates its default tab on it.  Rendering
+  // before then means a user who already dismissed this gets the banner,
+  // then loses it a moment later, and the page jumps ~50px unprompted.
+  // Showing nothing until we know is the honest default: a pointer that
+  // appears late costs nothing; one that flashes costs trust in the layout.
+  const syncLoaded = useSyncLoaded();
+  if (!syncLoaded || dismissed) return null;
 
   return (
     <div className="mb-3 flex items-start gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">

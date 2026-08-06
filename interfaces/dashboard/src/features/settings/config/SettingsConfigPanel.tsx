@@ -62,26 +62,36 @@ export default function SettingsConfigPanel({
         set and the built-in behaviour applies.
       </p>
 
-      <div className="space-y-4">
+      {/* ONE config-row grammar, shared with IntegrationsConfigPanel:
+          a divided list, label (+hint) on the left, control on the right,
+          py-2 rhythm. Both panels open from the same cog and present the
+          same thing — a list of editable account values — so they should
+          not teach two different list conventions. */}
+      <ul className="divide-y divide-border">
         {FIELDS.map((f) => {
           const value = edits[f.key] ?? '';
           return (
-            <div key={f.key} className="space-y-1">
-              <label
-                htmlFor={`setting-${f.key}`}
-                className="text-sm font-medium text-foreground"
-              >
-                {f.label}
-              </label>
-              <p className="text-xs text-muted-foreground">{f.hint}</p>
-              <div className="flex items-center gap-2">
+            <li
+              key={f.key}
+              className="flex items-start justify-between gap-3 py-2"
+            >
+              <div className="min-w-0">
+                <label
+                  htmlFor={`setting-${f.key}`}
+                  className="text-sm text-foreground"
+                >
+                  {f.label}
+                </label>
+                <p className="text-xs text-muted-foreground">{f.hint}</p>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
                 <Input
                   id={`setting-${f.key}`}
                   value={value}
                   onChange={(e) =>
                     setEdits((prev) => ({ ...prev, [f.key]: e.target.value }))
                   }
-                  className="flex-1"
+                  className="w-56"
                 />
                 {/* Disabled while blank: an empty value is what "unset"
                     already means, so saving one is a no-op that looks
@@ -95,10 +105,10 @@ export default function SettingsConfigPanel({
                   Save
                 </Button>
               </div>
-            </div>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </div>
   );
 }

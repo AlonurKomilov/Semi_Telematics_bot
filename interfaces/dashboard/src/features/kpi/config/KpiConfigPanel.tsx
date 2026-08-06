@@ -83,7 +83,10 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
   };
 
   return (
-    <div className="space-y-3">
+    // space-y-4 outer against the grid's gap-3: between-group air
+    // must exceed within-group air, or the intro sentence and the six
+    // fields read as one flat run of seven things.
+    <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         What counts as good or bad for the A–D grades. Applies to the whole
         account —{' '}

@@ -99,7 +99,7 @@ export default function IntegrationsConfigPanel() {
         {data.fields.map((f) => (
           <li
             key={f.key}
-            className="flex items-center justify-between gap-3 py-1.5 text-sm"
+            className="flex items-start justify-between gap-3 py-2 text-sm"
           >
             <span className="text-foreground">{f.label}</span>
             <Select

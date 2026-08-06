@@ -114,9 +114,18 @@ export function FeatureConfigGear({
         </button>
       </Tip>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className={
-          size === '2xl' ? 'max-w-2xl' : size === 'xl' ? 'max-w-xl' : 'max-w-lg'
-        }>
+        {/* Tall dialogs anchor to the TOP; only `lg` stays centred.
+            DialogContent is `top-1/2 … -translate-y-1/2`, so a centred box
+            grows in BOTH directions — expanding a disclosure inside it
+            moves the summary the user just clicked upward, out from under
+            the cursor.  Anchoring makes growth push downward only. */}
+        <DialogContent
+          className={
+            size === '2xl' ? 'max-w-2xl top-[8vh] translate-y-0'
+              : size === 'xl' ? 'max-w-xl top-[8vh] translate-y-0'
+                : 'max-w-lg'
+          }
+        >
           <DialogHeader>
             <DialogTitle>{label}</DialogTitle>
           </DialogHeader>
