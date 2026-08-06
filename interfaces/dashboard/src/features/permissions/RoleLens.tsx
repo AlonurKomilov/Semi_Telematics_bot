@@ -150,11 +150,19 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
       {configCell(fam, 'can_manage_config_all')}
     </>
   );
-  const configCell = (fam: VerbFamily, scope: ConfigScope): ReactNode => {
-    if (fam.configVia !== scope) return emptyCell;
-    const cap = capRow(fam.configVia);
+  const configCell = (fam: VerbFamily, scope: ConfigScope): ReactNode =>
+    configCellFor(fam.configVia, fam.configNote, scope);
+
+  // Shared by feature families and SERVICE rows: a service is always-on
+  // but can still own config (Alerts → Group delivery), and its row used
+  // to render four dashes that said otherwise.
+  const configCellFor = (
+    via: ConfigScope | undefined, note: string | undefined, scope: ConfigScope,
+  ): ReactNode => {
+    if (via !== scope) return emptyCell;
+    const cap = capRow(via);
     return verbCell(cap, 'config', (
-      <Tip label={`Shared control — the same flag as “${cap.label}”${fam.configNote ? ` (here: ${fam.configNote})` : ''}. Changing it here changes it everywhere that flag appears.`}>
+      <Tip label={`Shared control — the same flag as “${cap.label}”${note ? ` (here: ${note})` : ''}. Changing it here changes it everywhere that flag appears.`}>
         <span className="inline-flex text-muted-foreground"><Link2 size={12} aria-hidden /></span>
       </Tip>
     ));
@@ -386,8 +394,12 @@ export function RoleLens({ api }: { api: RoleLensApi }) {
                   </span>
                 </div>
                 {emptyCell}
-                {emptyCell}
-                {emptyCell}
+                {/* A service has no Manage, but it CAN have config —
+                    Alerts owns Group delivery. Three dashes here told the
+                    owner there was nothing to grant, which is true of the
+                    inbox and false of the delivery setup behind it. */}
+                {configCellFor(sv.configVia, sv.configNote, 'can_manage_config_role')}
+                {configCellFor(sv.configVia, sv.configNote, 'can_manage_config_all')}
               </div>
             ))}
           </>

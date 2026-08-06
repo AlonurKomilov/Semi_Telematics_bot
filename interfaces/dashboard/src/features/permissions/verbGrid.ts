@@ -53,6 +53,23 @@ const CONFIG_VIA: Record<string, ['can_manage_config_all' | 'can_manage_config_r
   can_kpi: ['can_manage_config_all', 'grade thresholds'],
   can_manage_storage: ['can_manage_config_all', 'backend + disk quota'],
   can_manage_integrations: ['can_manage_config_all', 'provider precedence'],
+  can_manage_applications: ['can_manage_config_all', 'DQF export passphrase'],
+  can_manage_account: ['can_manage_config_all', 'account-wide values'],
+};
+
+// Services can have config too, and the matrix could not say so.
+//
+// A service row renders "always on for every role, nothing to grant" and
+// four dashes, which was true when a service was only an inbox. Alerts
+// now has Group delivery — forum topics and per-type AI, written to
+// account_settings behind can_manage_config_all — so "nothing to grant"
+// was FALSE for the one column that mattered. An owner reading the matrix
+// could not discover that granting Config · account-wide changes how
+// alerts reach a Telegram group.
+//
+// Access to the service stays derived; only its CONFIG is grantable.
+const SERVICE_CONFIG_VIA: Record<string, ['can_manage_config_all' | 'can_manage_config_role', string]> = {
+  alerts: ['can_manage_config_all', 'group delivery — topics + per-type AI'],
 };
 
 const rowKey = (r: TickRow): string => (isScoped(r) ? r.allKey : (r as SimpleFlag).key);
@@ -183,7 +200,14 @@ const SERVICE_COPY: Record<string, string> = {
   reports: 'The hub and its scheduled-report subscription are open to every role; which tabs appear follows the role\u2019s features. The report TYPES (Risk Summary, Cost Reports) stay grantable below.',
 };
 
-export interface ServiceRow { id: string; label: string; note: string }
+export interface ServiceRow {
+  id: string;
+  label: string;
+  note: string;
+  /** Set when the service has account/role config behind a family flag. */
+  configVia?: 'can_manage_config_all' | 'can_manage_config_role';
+  configNote?: string;
+}
 
 export function serviceRows(): ServiceRow[] {
   return FEATURE_CATALOG
@@ -195,5 +219,7 @@ export function serviceRows(): ServiceRow[] {
       // row nobody can act on).
       label: e.id.split('_').map((w) => w[0].toUpperCase() + w.slice(1)).join(' '),
       note: SERVICE_COPY[e.id] ?? '',
+      configVia: SERVICE_CONFIG_VIA[e.id]?.[0],
+      configNote: SERVICE_CONFIG_VIA[e.id]?.[1],
     }));
 }

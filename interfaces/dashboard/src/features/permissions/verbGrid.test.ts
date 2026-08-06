@@ -38,6 +38,8 @@ describe('verb grid completeness', () => {
     expect(withCfg.map((f) => ('allKey' in f.parent ? f.parent.allKey : (f.parent as { key: string }).key)).sort())
       .toEqual([
         'can_kpi',
+        'can_manage_account',
+        'can_manage_applications',
         'can_manage_integrations',
         'can_manage_storage',
         'can_scorecard_all',
@@ -93,6 +95,26 @@ describe('the Services band', () => {
       ('allKey' in f ? f.allKey : (f as { key?: string }).key)));
     for (const id of serviceRows().map((s) => s.id)) {
       expect(grantable.has(`can_${id}`), id).toBe(false);
+    }
+  });
+});
+
+
+describe('services can own config', () => {
+  it('Alerts declares its Group delivery config', () => {
+    // A service row renders "always on, nothing to grant". That was true
+    // when Alerts was only an inbox; Group delivery writes account_settings
+    // behind can_manage_config_all, so the Config column had to stop
+    // saying "-" for a grant that really exists.
+    const alerts = serviceRows().find((s) => s.id === 'alerts');
+    expect(alerts?.configVia).toBe('can_manage_config_all');
+  });
+
+  it('services WITHOUT config still declare none', () => {
+    // Guards the opposite error: a blanket tick on every service would
+    // promise grants that do not exist for AI Assistant and Reports.
+    for (const id of ['ai_assistant', 'reports']) {
+      expect(serviceRows().find((s) => s.id === id)?.configVia).toBeUndefined();
     }
   });
 });

@@ -56,13 +56,19 @@ export function FeatureConfigGear({
   // Config are three actions (docs/architecture/config.md).
   if (!viewHas('can_manage_config_all')) return null;
 
-  // "KPI config", not "KPI settings" — and not the name of whatever the
-  // config happens to contain ("Thresholds", "DQF export", "When sources
-  // disagree"). One word, every feature, so the label teaches where the
-  // next feature keeps its config instead of naming this one's payload.
-  // What is INSIDE keeps its own name: DQF is a thing in Applications
-  // config, not a config of its own.
-  const label = t('config.gear_label', '{{feature}} config', { feature });
+  // "KPI configuration" — the whole word.
+  //
+  // Three names were tried and two were wrong. "KPI settings" collided
+  // with Settings, the feature. "KPI config" fixed that but reads as
+  // developer shorthand: `config` is what a file is called, not what an
+  // owner calls a screen. "Configuration" is the plain English noun, it
+  // matches the permission column the owner already sees (Config ·
+  // account-wide), and it survives translation.
+  //
+  // Still never named after the payload — not "Thresholds", "DQF export"
+  // or "When sources disagree". The label teaches where the NEXT feature
+  // keeps its configuration; what is inside keeps its own name.
+  const label = t('config.gear_label', '{{feature}} configuration', { feature });
 
   return (
     <>
