@@ -822,10 +822,16 @@ export default function Applications() {
                 action, and taught nothing transferable. DQF is not a peer
                 of Applications' config; it is what that config IS.
                 The gear self-gates on can_manage_config_all. */}
+            <NotificationsBell onOpen={(id) => setOpenId(id)} />
+            {/* The config gear is ALWAYS the last action in a page header
+                — Scorecards already placed it there, and one position
+                across every feature is the whole point of a shared entry
+                point. It is also the least-used control on any of these
+                pages, so it belongs at the end rather than pushing the
+                frequently-used ones rightward. */}
             <FeatureConfigGear feature="Applications" size="xl">
               <ApplicationsConfigPanel />
             </FeatureConfigGear>
-            <NotificationsBell onOpen={(id) => setOpenId(id)} />
           </div>
         } />
 

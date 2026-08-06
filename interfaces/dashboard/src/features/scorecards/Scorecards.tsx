@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { Trophy, Download, X, Settings } from 'lucide-react';
+import { Trophy, Download, X } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
   LineChart, Line, CartesianGrid, ReferenceLine,
@@ -33,6 +33,7 @@ import type {
   ScoreExplanationResponse,
   AnyColumn,
 } from '../../types';
+import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 
 // ── Color helpers ───────────────────────────────────────────────────
 
@@ -711,17 +712,18 @@ export default function Scorecards() {
   // shown only to roles that may edit the rules.  Routes to the standalone
   // /scorecard-rules page (this feature's config surface), instead of a peer
   // tab sitting next to the live scoreboard.
-  const rulesGear = canRules ? (
-    <button
-      type="button"
-      onClick={() => navigate('/scorecard-rules')}
-      className="inline-flex items-center justify-center size-7 rounded-md border border-border bg-background text-muted-foreground hover:text-foreground hover:bg-muted transition"
-      title={t('scorecards.open_rules', 'Scorecard Rules — configure scoring')}
-      aria-label={t('scorecards.open_rules', 'Scorecard Rules — configure scoring')}
-    >
-      <Settings size={14} />
-    </button>
-  ) : null;
+  // The shared gear, in page mode. This was hand-rolled: its own button,
+  // its own size-7 (off the size-8 the others use), its own permission
+  // check, and a native title= the tooltip rule bans. Scorecards' config
+  // is a full CRUD page rather than a panel, so the gear navigates —
+  // which is exactly what `to` exists for. FeatureConfigGear self-gates
+  // on can_manage_config_all, so `canRules` is no longer consulted here.
+  const rulesGear = (
+    <FeatureConfigGear
+      feature={t('scorecards.page_title')}
+      to="/scorecard-rules"
+    />
+  );
 
   if (error && cards.length === 0) {
     return (

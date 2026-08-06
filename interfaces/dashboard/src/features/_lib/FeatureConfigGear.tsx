@@ -12,6 +12,13 @@
  * whatever that feature can be configured to do lives INSIDE it. DQF is
  * not a thing next to Applications' config; it is a thing in it.
  *
+ * THE ICON IS A COG, and that is load-bearing. `PageSectionsGear` uses
+ * `Settings2` — the sliders glyph — and this used the same one, so the
+ * two gears were pixel-identical while meaning different things: one
+ * rearranges what YOU see, the other changes an account-wide value for
+ * everyone. Sliders read as "adjust my view"; a cog reads as "configure
+ * the thing". Keep them different.
+ *
  * RELATIONSHIP TO THE OTHER GEAR. `PageSectionsGear` is a different tier
  * and deliberately stays separate: it arranges the sections of a
  * Pattern-B page (show/hide/reorder), touches no permissions, and is a
@@ -27,8 +34,9 @@
  * backend chooser and forum routing table already do.
  */
 import { useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Settings2 } from 'lucide-react';
+import { Cog } from 'lucide-react';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '../../components/ui/dialog';
@@ -36,17 +44,25 @@ import { Tip } from '../../components/tooltip';
 import { useRoleView } from '../../context/RoleViewContext';
 
 interface FeatureConfigGearProps {
-  /** Feature name, used in the dialog title: "KPI settings". */
+  /** Feature name, used in the dialog title: "KPI configuration". */
   feature: string;
   /** The feature's config UI. Rendered only while the dialog is open, so
-   *  a panel that fetches on mount does not fetch on every page load. */
-  children: ReactNode;
+   *  a panel that fetches on mount does not fetch on every page load.
+   *  Omit when passing `to`. */
+  children?: ReactNode;
   /** Widen for config with more than a short form. */
   size?: 'lg' | 'xl' | '2xl';
+  /** Config that is a PAGE, not a panel — the gear navigates instead of
+   *  opening a dialog. Scorecards' rules are a full CRUD editor and
+   *  Alerts' live inside Group delivery; neither shrinks into a dialog
+   *  honestly. Same icon, same slot, same permission — only the
+   *  destination differs, which is the point: a user learns one place to
+   *  look and it holds even where the config is too big for a popup. */
+  to?: string;
 }
 
 export function FeatureConfigGear({
-  feature, children, size = 'lg',
+  feature, children, size = 'lg', to,
 }: FeatureConfigGearProps) {
   const { t } = useTranslation();
   const { viewHas } = useRoleView();
@@ -70,6 +86,21 @@ export function FeatureConfigGear({
   // keeps its configuration; what is inside keeps its own name.
   const label = t('config.gear_label', '{{feature}} configuration', { feature });
 
+  const gearCls =
+    'inline-flex items-center justify-center size-8 rounded-md border '
+    + 'border-border text-muted-foreground hover:bg-muted hover:text-foreground transition';
+
+  // Page-mode: same gear, same slot, same gate — it just navigates.
+  if (to) {
+    return (
+      <Tip label={label}>
+        <Link to={to} aria-label={label} className={gearCls}>
+          <Cog size={16} />
+        </Link>
+      </Tip>
+    );
+  }
+
   return (
     <>
       <Tip label={label}>
@@ -77,9 +108,9 @@ export function FeatureConfigGear({
           type="button"
           aria-label={label}
           onClick={() => setOpen(true)}
-          className="inline-flex items-center justify-center size-8 rounded-md border border-border text-muted-foreground hover:bg-muted hover:text-foreground transition"
+          className={gearCls}
         >
-          <Settings2 size={16} />
+          <Cog size={16} />
         </button>
       </Tip>
       <Dialog open={open} onOpenChange={setOpen}>
