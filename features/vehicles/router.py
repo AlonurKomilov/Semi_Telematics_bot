@@ -870,13 +870,28 @@ class SourcePrecedenceUpdate(BaseModel):
     primary: dict[str, str] = Field(default_factory=dict)
 
 
-@router.get("/source-precedence")
+# ── Feature config ──────────────────────────────────────────────────
+# ``/vehicles/config`` — one config endpoint, same shape as every other
+# feature.  The URL follows the DOMAIN NOUN (vehicles), not the page that
+# happens to host the panel (Integrations): the setting is
+# ``vehicle_field_precedence`` and it decides which provider wins per
+# VEHICLE field.  Naming rule: shared/wire identifiers are named after the
+# domain noun (docs/architecture/PERSONA.md).
+@router.get("/config")
+@router.get("/source-precedence", deprecated=True)
 async def get_source_precedence(
-    user: dict = Depends(require_permission("can_manage_integrations")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
 ):
     """Per-field primary source + the choices, for the Integrations-page
-    'When sources disagree' panel.  Gated by ``can_manage_integrations`` —
-    same permission as the Integrations page it lives on."""
+    'When sources disagree' panel.
+
+    The READ moved onto the config flag with the write, for the reason
+    ``GET /kpi/thresholds`` did: its only consumer is the editor
+    (SourcePrecedencePanel), so it is not a view of integration DATA — it
+    is the settings themselves.  Leaving a config read on the weaker
+    permission makes the write gate decorative, since the values are
+    fully visible and only the Save button is refused.
+    """
     account_id = int(user["account_id"])
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
@@ -884,13 +899,23 @@ async def get_source_precedence(
     return await reconciliation.precedence_options(tenant, account_id, "vehicle")
 
 
-@router.put("/source-precedence")
+@router.put("/config")
+@router.put("/source-precedence", deprecated=True)
 async def put_source_precedence(
     body: SourcePrecedenceUpdate,
-    user: dict = Depends(require_permission("can_manage_integrations")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
 ):
     """Set the per-field primary source.  The other source still fills gaps;
-    operator hand-edits always win.  Gated by ``can_manage_integrations``."""
+    operator hand-edits always win.
+
+    CONFIG, not Manage.  This writes ``vehicle_field_precedence`` — an
+    account_settings row owned by the config family — which decides which
+    provider WINS per field when Samsara and Datatruck disagree.  Every
+    vehicle read downstream resolves through it, so it is exactly the
+    "a computation reads it" case the blast-radius rule covers.
+    ``can_manage_integrations`` still owns connecting and syncing the
+    providers themselves.
+    """
     account_id = int(user["account_id"])
     tenant = await _get_tenant_db(account_id)
     if tenant is None:

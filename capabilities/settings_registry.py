@@ -7,7 +7,7 @@ key-value store that several peer features write into, and
 ``PUT /settings`` accepted ANY key with a single permission:
 
     key: str = Field(..., min_length=1, max_length=50)   # no allow-list
-    user = Depends(require_permission("can_manage_account"))
+    user = Depends(require_permission("can_manage_config_all"))
 
 ``can_manage_account`` is the **General settings** feature's Manage action
 — one row in the Administration band, described to the owner as
@@ -23,15 +23,34 @@ the config-family members that correctly require ``can_manage_config_all``:
 
 None of that is what an owner grants when they tick "General settings".
 
-FOUR KINDS, NOT ONE
--------------------
-The store holds four genuinely different tiers, and conflating them is
-how the endpoint came to span all of them.  ``kind`` names which:
+VIEW / MANAGE / CONFIG ARE THREE ACTIONS, NOT A GRADIENT
+--------------------------------------------------------
+The Permissions matrix gives every feature three columns, and they do not
+overlap.  ``account_settings`` rows are the CONFIG column's account-wide
+store — config.md's own table says so outright:
 
-  MANAGE      a feature's operational state — its own Manage action owns
-              it (storage backend, forum routing).
+    Account | a feature's SHARED SETTINGS — one truth for everyone
+            | account_settings key-value rows
+            | can_manage_config_all
+
+The first version of this registry preserved each writer's existing
+permission — storage keys to ``can_manage_storage``, integrations keys to
+``can_manage_integrations``, the rest to ``can_manage_account``.  That
+made ownership visible, which was worth doing, and it ENCODED THE MIXING
+rather than removing it: five permissions over one store, when the
+architecture says one.
+
+So every ``account_settings`` key is ``can_manage_config_all`` now.  A
+feature's Manage keeps its real work — connecting Drive, retrying a sync,
+running an import — and stops owning the VALUES a computation reads.  The
+blast-radius rule is what settles it: "anything a computation reads is
+account-wide, always."  The storage backend decides where every document
+is written; provider precedence decides which value wins.  Those are
+settings, not operations.
+
   CONFIG      the config family's account scope — ``can_manage_config_all``
-              (docs/architecture/config.md).
+              (docs/architecture/config.md).  The default, and now the
+              only answer for an account_settings key.
   SYSTEM      platform infrastructure with no account-level action at all.
               AI model pinning is here: AI is a SERVICE, and services
               render "nothing to grant" because their access is DERIVED
@@ -83,17 +102,22 @@ class SettingOwner:
 SETTING_OWNERS: tuple[SettingOwner, ...] = (
     # ── Storage (Administration band, its own feature) ──────────────
     SettingOwner(
-        "object_storage.gdrive.refresh_token", "can_manage_storage",
-        "manage", "storage",
+        "object_storage.gdrive.refresh_token", "can_manage_config_all",
+        "config", "storage",
         "A live OAuth credential.  It is a token in a key-value table, not "
-        "a setting — declared here so nothing but Storage can overwrite it.",
+        "a setting, and NOTHING should ever write it through PUT /settings "
+        "— the OAuth callback stores it directly.  Declared anyway, and "
+        "declared FIRST so the object_storage.* prefix cannot quietly "
+        "grant it: an undeclared key is refused, but a key swept up by a "
+        "broad prefix is accepted, and this is the one value in the store "
+        "where that difference is a credential disclosure.",
     ),
     SettingOwner(
-        "object_storage.*", "can_manage_storage", "manage", "storage",
+        "object_storage.*", "can_manage_config_all", "config", "storage",
         "Backend choice decides where every driver document and DQF lands.",
     ),
     SettingOwner(
-        "storage.disk_quota_bytes", "can_manage_storage", "manage", "storage",
+        "storage.disk_quota_bytes", "can_manage_config_all", "config", "storage",
         "Per-account disk cap, overriding DEFAULT_DISK_QUOTA_BYTES.  Found "
         "by the drift test, not by hand — it is written from an adapter "
         "rather than a router, which is why it was missed in the manual "
@@ -101,17 +125,17 @@ SETTING_OWNERS: tuple[SettingOwner, ...] = (
     ),
     # ── Integrations (Administration band, its own feature) ─────────
     SettingOwner(
-        "vehicle_field_precedence", "can_manage_integrations",
-        "manage", "integrations",
+        "vehicle_field_precedence", "can_manage_config_all",
+        "config", "integrations",
         "Which provider wins per vehicle field when Samsara and Datatruck "
         "disagree.",
     ),
     SettingOwner(
-        "datatruck.*", "can_manage_integrations", "manage", "integrations",
+        "datatruck.*", "can_manage_config_all", "config", "integrations",
     ),
     SettingOwner(
-        "datatruck_pay_estimate", "can_manage_integrations",
-        "manage", "integrations",
+        "datatruck_pay_estimate", "can_manage_config_all",
+        "config", "integrations",
         "Opt-in tariff-estimated driver pay from Datatruck, default OFF "
         "until the math is validated against real settlements.  Read by "
         "adapters/storage/loads.py and written by nothing — found by the "
@@ -155,35 +179,35 @@ SETTING_OWNERS: tuple[SettingOwner, ...] = (
         "declared so the misplacement is visible rather than invisible.",
     ),
     SettingOwner(
-        "ai_tier", "can_manage_account", "manage", "ai",
+        "ai_tier", "can_manage_config_all", "config", "ai",
         "The ACCOUNT's default tier when a user has not chosen one.  A "
         "default is an account operating choice, unlike the model itself.",
     ),
     # ── General settings' own keys ──────────────────────────────────
     SettingOwner(
-        "forum_ai.*", "can_manage_account", "manage", "settings",
+        "forum_ai.*", "can_manage_config_all", "config", "settings",
         "Which alert types route to the AI forum topic.",
     ),
-    SettingOwner("timezone", "can_manage_account", "manage", "settings"),
+    SettingOwner("timezone", "can_manage_config_all", "config", "settings"),
     # The Settings page READS these six; before they were declared, my own
     # per-key enforcement refused five of them on write — a setting you
     # could see and not save.  The drift test could not catch it: it scans
     # write CALL SITES, and these are written through PUT /settings as a
     # runtime ``body.key`` it cannot resolve.  Hence
     # test_get_settings_allowlist_is_declared, which reads the GET list.
-    SettingOwner("account_name", "can_manage_account", "manage", "settings"),
-    SettingOwner("alert_defaults", "can_manage_account", "manage", "settings"),
-    SettingOwner("language", "can_manage_account", "manage", "settings"),
-    SettingOwner("digest_hour", "can_manage_account", "manage", "settings"),
+    SettingOwner("account_name", "can_manage_config_all", "config", "settings"),
+    SettingOwner("alert_defaults", "can_manage_config_all", "config", "settings"),
+    SettingOwner("language", "can_manage_config_all", "config", "settings"),
+    SettingOwner("digest_hour", "can_manage_config_all", "config", "settings"),
     SettingOwner(
-        "scorecard_default_subject", "can_manage_account", "manage", "settings",
+        "scorecard_default_subject", "can_manage_config_all", "config", "settings",
         "Default subject line for scorecard emails.  Account operating "
         "choice, not a scoring RULE — the rules themselves are scorecards' "
         "own rows behind can_manage_config_all.",
     ),
-    SettingOwner("forum_*", "can_manage_account", "manage", "settings"),
-    SettingOwner("bot_*", "can_manage_account", "manage", "settings"),
-    SettingOwner("modules.*", "can_manage_account", "manage", "settings"),
+    SettingOwner("forum_*", "can_manage_config_all", "config", "settings"),
+    SettingOwner("bot_*", "can_manage_config_all", "config", "settings"),
+    SettingOwner("modules.*", "can_manage_config_all", "config", "settings"),
 )
 
 

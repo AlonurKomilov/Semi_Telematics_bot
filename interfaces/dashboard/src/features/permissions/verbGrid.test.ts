@@ -31,9 +31,17 @@ describe('verb grid completeness', () => {
   });
 
   it('config cells only ride known family flags on known features', () => {
+    // Storage and Integrations joined when account_settings ownership
+    // moved off their Manage actions and onto the config family — the
+    // matrix had been showing "–" in Config for settings that existed.
     const withCfg = grid.bands.flatMap((b) => b.families).filter((f) => f.configVia);
     expect(withCfg.map((f) => ('allKey' in f.parent ? f.parent.allKey : (f.parent as { key: string }).key)).sort())
-      .toEqual(['can_kpi', 'can_scorecard_all']);
+      .toEqual([
+        'can_kpi',
+        'can_manage_integrations',
+        'can_manage_storage',
+        'can_scorecard_all',
+      ]);
   });
 
   it('merged families are single write-level flags, never scoped pairs', () => {

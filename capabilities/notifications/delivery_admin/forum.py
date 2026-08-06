@@ -20,6 +20,17 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["settings"])
 
+# The feature-prefixed config surface: ``/notifications/config``.
+#
+# Only the two CONFIG writes move here — the AI column and the
+# sub-category chips, both of which write account_settings rows.  The
+# rest of forum routing (link the group, create topics, test delivery,
+# unlink) stays on ``/admin/forum-routing/*`` with can_manage_account,
+# because that is OPERATING the integration, not configuring it.  Same
+# split as everywhere else: Manage runs the feature, Config sets the
+# values it runs on.
+config_router = APIRouter(prefix="/notifications", tags=["notifications"])
+
 
 # ── Forum routing (Telegram group topics) ─────────────────────
 
@@ -148,10 +159,16 @@ class ForumSettingsUpdate(BaseModel):
     ai_per_type: Optional[dict[str, bool]] = None
 
 
-@router.put("/forum-routing/settings")
+@config_router.put("/config")
+@router.put("/forum-routing/settings", deprecated=True)
 async def update_forum_settings(
     body: ForumSettingsUpdate,
-    user: dict = Depends(require_permission("can_manage_account")),
+    # CONFIG, not Manage.  Writes ``forum_ai.<type>`` account_settings
+    # rows, which the config family owns.  The rest of forum routing —
+    # linking the group, creating topics, testing delivery — stays on
+    # can_manage_account, because that is operating the integration
+    # rather than setting a value every future alert is rendered through.
+    user: dict = Depends(require_permission("can_manage_config_all")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):
@@ -293,11 +310,16 @@ class ForumSubtypeSelection(BaseModel):
     selected: list[str]
 
 
-@router.put("/forum-routing/{alert_type}/subtypes")
+@config_router.put("/config/{alert_type}/subtypes")
+@router.put("/forum-routing/{alert_type}/subtypes", deprecated=True)
 async def set_forum_subtypes(
     alert_type: str,
     body: ForumSubtypeSelection,
-    user: dict = Depends(require_permission("can_manage_account")),
+    # CONFIG, not Manage — writes ``forum_subtypes.<type>``, an
+    # account_settings row owned by the config family.  It decides which
+    # sub-categories reach the group, so every future alert of that type
+    # is filtered through it.
+    user: dict = Depends(require_permission("can_manage_config_all")),
     platform_db=Depends(get_platform_db),
     tenant_db=Depends(get_tenant_db),
 ):

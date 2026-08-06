@@ -19,6 +19,7 @@ import {
   MapPin, BarChart3, Wrench, FileText, RefreshCw,
   type LucideIcon,
 } from 'lucide-react';
+import { useRoleView } from '../../../context/RoleViewContext';
 
 // alert_type → lucide icon.  Keep in sync with FORUM_TOPIC_SPEC in
 // capabilities/alerting/forum_topics.py.  An unknown key falls back
@@ -98,6 +99,8 @@ const AI_CAPABLE_TYPES = ['faults', 'health', 'parking', 'camera'] as const;
  * on until /resetforum is run inside the group.
  */
 export default function ForumRoutingSection() {
+  const { viewHas } = useRoleView();
+  const canConfigureRouting = viewHas('can_manage_config_all');
   const { t } = useTranslation();
   const tz = useTimezone();
   const [state, setState] = useState<RoutingState | null>(null);
@@ -183,10 +186,17 @@ export default function ForumRoutingSection() {
     }
   };
 
+  // The AI toggle and the sub-category chips write account_settings rows
+  // (forum_ai.<type>, forum_subtypes.<type>) that the config family owns,
+  // so both moved to can_manage_config_all.  Linking the group, creating
+  // topics and testing delivery stay on can_manage_account — that is
+  // operating the integration, not setting a value every future alert is
+  // rendered through.  This section is reached on the latter, so the two
+  // differ and the controls must be inert rather than error on click.
   const handleToggleAIForType = async (alertType: string, next: boolean) => {
     setBusyKey(`__ai_${alertType}__`);
     try {
-      await apiJSON('/admin/forum-routing/settings', {
+      await apiJSON('/notifications/config', {
         method: 'PUT',
         body: { ai_per_type: { [alertType]: next } },
       });
@@ -213,7 +223,7 @@ export default function ForumRoutingSection() {
     }
     setBusyKey(`__st_${r.alert_type}__`);
     try {
-      await apiJSON(`/admin/forum-routing/${r.alert_type}/subtypes`, {
+      await apiJSON(`/notifications/config/${r.alert_type}/subtypes`, {
         method: 'PUT', body: { selected: next },
       });
       await load();
@@ -332,6 +342,17 @@ export default function ForumRoutingSection() {
                 <p className="text-xs text-muted-foreground font-mono">
                   {t('forum_routing.mode_group_chat_id', { id: state.chat_id })}
                 </p>
+                {/* A greyed control with no reason reads as broken, not
+                    as withheld — say which permission it needs, the same
+                    way the storage backend chooser does. */}
+                {!canConfigureRouting && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    {t(
+                      'forum_routing.needs_config_permission',
+                      'The AI column and sub-category chips need Config · account-wide. You can still link the group, create topics and test delivery.',
+                    )}
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground mt-2">
                   {/* Count PROVISIONED threads only — a deliberately
                       disabled type must not read as missing/broken. */}
@@ -442,7 +463,7 @@ export default function ForumRoutingSection() {
                                 size="sm"
                                 aria-label={`${r.name} — ${t('forum_routing.col_ai')}`}
                                 checked={aiEnabled}
-                                disabled={aiBusy}
+                                disabled={aiBusy || !canConfigureRouting}
                                 onCheckedChange={(v) => handleToggleAIForType(r.alert_type, v)}
                               />
                             )}
@@ -495,7 +516,7 @@ export default function ForumRoutingSection() {
                                     <button
                                       key={s}
                                       type="button"
-                                      disabled={busyKey === `__st_${r.alert_type}__`}
+                                      disabled={busyKey === `__st_${r.alert_type}__` || !canConfigureRouting}
                                       onClick={() => { void toggleSubtype(r, s); }}
                                       className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md border text-2xs transition disabled:opacity-60 ${
                                         active

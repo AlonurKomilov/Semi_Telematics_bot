@@ -47,7 +47,7 @@ from adapters.storage.object_storage import (
     OBJECT_STORAGE_GDRIVE_ROOT_FOLDER_ID, OBJECT_STORAGE_GDRIVE_USER_EMAIL,
 )
 from infra.crypto import encrypt
-from interfaces.api.deps import get_current_user, get_tenant_db, require_permission, resolve_user_id
+from interfaces.api.deps import get_tenant_db, require_permission, resolve_user_id
 from capabilities.activity_trail import record_simple
 
 logger = logging.getLogger(__name__)
@@ -104,9 +104,10 @@ def _gc_pending_oauth() -> None:
 # ── GET /storage/config ──────────────────────────────────────────────────────
 
 
-@router.get("/config")
-async def get_storage_config(
-    user: dict = Depends(get_current_user),
+@router.get("/status")
+@router.get("/config", deprecated=True)
+async def get_storage_status(
+    user: dict = Depends(require_permission("can_manage_storage")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Return the account's current storage backend + connection info.
@@ -114,6 +115,22 @@ async def get_storage_config(
     Used by the Settings page to render the current state and the
     Connect/Disconnect actions.  Never returns the encrypted refresh
     token itself — only whether one is present.
+
+    GATED, and it was not.  ``get_current_user`` meant ANY authenticated
+    user — a driver, an applicant-facing recruiter — could read which
+    backend the account uses, whether Drive is connected, the linked
+    Google account's EMAIL ADDRESS, and the Drive root folder id.  None
+    of that is the caller's business and the email is a real person's.
+    Every consumer is a card on the Storage settings page (verified: no
+    caller outside features/object-storage/), so the feature's own Manage
+    action is the correct gate and costs no working surface.
+
+    Manage, specifically, rather than Config · account-wide: the response
+    is mostly OPERATIONAL state — is Drive connected, whose account, how
+    many bytes — which is what Manage exists for.  The one true config
+    value in here, ``backend``, is read-only on this path; CHANGING it
+    goes through the account_settings registry, which puts it behind
+    can_manage_config_all (capabilities/settings_registry.py).
 
     Includes a usage breakdown so the Settings page can render a
     "187 MB used of 15 GB" progress bar:
@@ -191,13 +208,27 @@ class BackendSwitchRequest(BaseModel):
     backend: str = Field(..., description="One of: disk, gdrive, hybrid")
 
 
-@router.post("/backend")
+@router.put("/config")
+@router.post("/backend", deprecated=True)
 async def switch_storage_backend(
     body: BackendSwitchRequest,
-    user: dict = Depends(require_permission("can_manage_storage")),
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Switch the account's storage backend.
+
+    CONFIG, not Manage — and this endpoint is why the distinction has
+    teeth.  It writes ``object_storage.backend``, an account_settings row
+    the registry owns (capabilities/settings_registry.py), and that one
+    value decides where every driver document, invoice and DQF the
+    account ever stores is written.  The blast-radius rule puts it
+    account-wide: "anything a computation reads is account-wide, always."
+
+    ``can_manage_storage`` keeps this feature's real operational work —
+    connecting and disconnecting Drive, retrying failed syncs, clearing
+    orphans, reading health.  It no longer decides where the bytes live.
+    A holder of Storage alone can still run the storage; they cannot
+    silently redirect the account's entire document estate.
 
     ``disk``    — files stay on the platform server.
     ``gdrive``  — every upload streams directly to the user's Drive.
@@ -239,10 +270,19 @@ async def switch_storage_backend(
 
 @router.get("/health")
 async def get_storage_health(
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission("can_manage_storage")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Storage-sync health for the account.
+
+    Gated for the same reason as ``/config`` above — it returned the
+    backend, the connection flag and the linked Google EMAIL to any
+    authenticated caller.  Its two consumers are both Storage settings
+    cards (ObjectStorageHealthCard, ObjectStorageFileTable).
+
+    The "scrape-friendly for Prometheus" note below predates that: an
+    exporter would authenticate as itself against the metrics endpoint,
+    not ride a logged-in user's session, so nothing is lost by gating.
 
     Drives the dashboard's storage widget AND is scrape-friendly for
     Prometheus once we add an exporter (Phase 6 / ops).  Reads cheap

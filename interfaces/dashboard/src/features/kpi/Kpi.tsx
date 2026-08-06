@@ -10,17 +10,16 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useRoleView } from '../../context/RoleViewContext';
-import { Gauge, SlidersHorizontal } from 'lucide-react';
+import { Gauge } from 'lucide-react';
 import DataGrid from '../../components/datagrid';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton, DateRangePresets,
 } from '../../components/shell';
-import { Button } from '../../components/ui/button';
 import { Tip } from '../../components/tooltip';
 import { toneClasses, type Tone } from '../../lib/status';
 import type { AnyColumn } from '../../types';
-import ThresholdsDialog from './ThresholdsDialog';
+import ThresholdsForm from './ThresholdsForm';
+import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import { getDispatcherKpis } from './api';
 import type { DispatcherKpisResponse } from './api';
 
@@ -78,16 +77,8 @@ const SECTIONS = [
 export default function Kpi() {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const { viewHas } = useRoleView();
-  // Threshold editing is account-scope feature config — KPI view access
-  // alone must not move the grading goalposts.  Mirrors the server gate:
-  // can_manage_account (owner/Full-Admin) or the config family's
-  // delegatable can_manage_config_all.
-  const canEditThresholds =
-    viewHas('can_manage_account') || viewHas('can_manage_config_all');
   const [days, setDays] = useState(30);
   const [section, setSection] = useState('dispatchers');
-  const [thresholdsOpen, setThresholdsOpen] = useState(false);
 
   const { data, isLoading, isFetching, error } = useQuery<DispatcherKpisResponse>({
     queryKey: ['kpi-dispatchers', days],
@@ -106,12 +97,19 @@ export default function Kpi() {
           'kpi_page.description',
           'Performance across the account — graded against your thresholds.',
         )}
-        actions={canEditThresholds ? (
-          <Button variant="outline" onClick={() => setThresholdsOpen(true)}>
-            <SlidersHorizontal size={16} className="mr-1.5" />
-            {t('kpi_page.thresholds', 'Thresholds')}
-          </Button>
-        ) : undefined}
+        /* The gear is the ONE config entry point, in the same header slot
+           on every feature.  It replaced a bespoke "Thresholds" button
+           with a sliders icon — which read as a filter, and taught the
+           user nothing transferable about where the next feature keeps
+           its settings.  The gear self-gates on can_manage_config_all, so
+           no permission check is needed here. */
+        actions={(
+          <FeatureConfigGear feature={t('nav.kpi', 'KPI')}>
+            <ThresholdsForm
+              onSaved={() => qc.invalidateQueries({ queryKey: ['kpi-dispatchers'] })}
+            />
+          </FeatureConfigGear>
+        )}
       />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -175,11 +173,6 @@ export default function Kpi() {
         />
       )}
 
-      <ThresholdsDialog
-        open={thresholdsOpen}
-        onClose={() => setThresholdsOpen(false)}
-        onSaved={() => qc.invalidateQueries({ queryKey: ['kpi-dispatchers'] })}
-      />
     </div>
   );
 }

@@ -116,12 +116,55 @@ Current members:
 
 | Feature setting | Code home | Store | Gate |
 |---|---|---|---|
-| KPI grade thresholds | `features/kpi/` (service + router + ThresholdsDialog) | `account_settings["kpi_thresholds"]` | `can_manage_account` OR `can_manage_config_all` |
+| KPI grade thresholds | `features/kpi/` (service + router + ThresholdsDialog) | `account_settings["kpi_thresholds"]` | `can_manage_config_all` |
 | Scorecard rules + pillar caps | `features/scorecards/config_router.py` + `/scorecard-rules` page | scorecards' own rows | `can_manage_config_all` (owner seeded; route/nav additionally module-masked safety/hr via featureCatalog) |
+| Storage backend + disk quota | `capabilities/object_storage/` | `account_settings["object_storage.*"]`, `["storage.disk_quota_bytes"]` | `can_manage_config_all` |
+| Provider precedence (Samsara vs Datatruck) | `capabilities/integrations/` | `account_settings["vehicle_field_precedence"]`, `["datatruck*"]` | `can_manage_config_all` |
+| Forum alert routing (AI column, sub-categories) | `capabilities/notifications/delivery_admin/forum.py` | `account_settings["forum_ai.*"]`, `["forum_subtypes.*"]` | `can_manage_config_all` |
+| General account settings | `features/settings/account/` | `account_settings["account_name"]`, `["language"]`, `["digest_hour"]`, `["alert_defaults"]`, `["scorecard_default_subject"]` | `can_manage_config_all` |
 
 Note: `can_manage_config_all` itself is NOT module-masked (it spans
 features across modules); a member PAGE may still mask with its
 feature's modules, as scorecard rules does.
+
+### View / Manage / Config are three actions, not three strengths
+
+The matrix gives every feature three columns and they do not overlap.
+`account_settings` is the **Config** column's account-wide store, so
+**no row in it may be owned by a feature's Manage or View action** —
+`capabilities/settings_registry.py` declares every key and
+`tests/test_settings_registry.py::test_no_key_claims_a_FEATURE_permission`
+fails the build if one drifts back.
+
+Two mistakes this rule retires:
+
+* **Manage owning its feature's settings.** Storage's backend choice sat
+  on `can_manage_storage`, provider precedence on
+  `can_manage_integrations`. Five permissions over one store. A feature's
+  Manage keeps its real work — connecting Drive, retrying a sync — and
+  stops owning the VALUES a computation reads. (Blast-radius rule:
+  *anything a computation reads is account-wide, always*.)
+* **A config READ riding View.** `GET /kpi/thresholds` was gated on
+  `can_kpi` on the reasoning that reading a threshold is harmless. Its
+  only caller is `ThresholdsDialog` — the editor. A read that exists
+  solely to populate an editor is part of Config; leaving it on View
+  makes the write gate decorative, since you could see every value and
+  simply not save.
+
+**The registry governs one door; check the others.** `owner_for()` is
+enforced inside `PUT /settings`, but most settings have their own
+endpoint carrying its own `require_permission` — and the declaration has
+no force there. Four endpoints sat in exactly that state (storage backend
+switch, vehicle source-precedence GET+PUT, the two forum-routing writes):
+the key WAS declared, and the dedicated route wrote it on the old feature
+permission anyway. `test_settings_registry.py::TestDedicatedWritersHonourTheDeclaredOwner` pins the gate on each such function by name.
+
+**Mixed payloads split by gate, they do not pick a side.**
+`GET /admin/settings` carries page data (account, AI usage) *and* config
+values. It admits `can_manage_account` for the page data and populates
+the `settings` dict only for `can_manage_config_all` — rather than
+403-ing a General-settings holder who has legitimate business on the
+page, or leaking values on the weaker flag.
 
 ### Opt-in recipe (next feature setting)
 
@@ -130,11 +173,16 @@ feature's modules, as scorecard rules does.
    back — see `get_kpi_thresholds` for the reference shape).
 2. Store under a feature-owned `account_settings` key (or the feature's
    own rows when the shape outgrows a KV blob).
-3. Gate writes with `require_permission("can_manage_config_all")` (add
-   `can_manage_account` via `require_permission_any` only when
-   preserving a pre-family gate, as KPI does); mirror the same check on
-   the UI affordance.
-4. Add ZERO new permissions and ZERO new tables. If the setting seems
+3. Gate writes **and config reads** with
+   `require_permission("can_manage_config_all")` — never
+   `require_permission_any` with a feature flag, which is the mixing this
+   family exists to remove. Mirror the same check on the UI affordance,
+   including the button that OPENS the editor: a button leading to a 403
+   is worse than no button.
+4. Declare the key in `capabilities/settings_registry.py`. An undeclared
+   key is refused at `PUT /settings`, so this is not optional bookkeeping
+   — it is how the setting starts working.
+5. Add ZERO new permissions and ZERO new tables. If the setting seems
    to need per-role values, it's either view arrangement (→ role scope)
    or it violates the blast-radius rule — stop and reconsider.
 

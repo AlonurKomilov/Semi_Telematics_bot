@@ -23,6 +23,20 @@ from capabilities.scorecards.rules.defs import get_default_rules as _get_default
 
 admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
+# The feature-prefixed config surface: ``/scorecards/config/...``.
+#
+# Scorecards is the one feature whose config does NOT collapse into a
+# single GET/PUT, and that is a property of the config itself rather than
+# an exception to the convention: rules and pillar caps are ROWS with
+# create / edit / delete, not fields in a settings blob.  Forcing them
+# into one PUT would mean read-modify-write of the whole rule set on every
+# edit, and two admins editing different rules would silently clobber each
+# other.  So the URL convention holds — everything lives under
+# ``/scorecards/config/`` — while the verbs stay per-row.
+#
+# ``/admin/scorecard-*`` stays registered as a deprecated alias.
+config_router = APIRouter(prefix="/scorecards", tags=["scorecards"])
+
 # ── Scorecard rules + pillar caps ─────────────────────────────────────────────
 #
 # Tenant-level scoring config — sits in /admin to match the "Scorecard Rules"
@@ -49,7 +63,8 @@ class PillarCapsUpdate(BaseModel):
         return self.safety + self.efficiency + self.compliance
 
 
-@admin_router.get("/scorecard-rules")
+@config_router.get("/config/rules")
+@admin_router.get("/scorecard-rules", deprecated=True)
 async def list_score_rules(
     user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
@@ -90,7 +105,8 @@ async def list_score_rules(
     return {"rules": out, "count": len(out)}
 
 
-@admin_router.put("/scorecard-rules/{rule_id}")
+@config_router.put("/config/rules/{rule_id}")
+@admin_router.put("/scorecard-rules/{rule_id}", deprecated=True)
 async def update_score_rule(
     rule_id: str,
     body: ScoreRuleUpdate,
@@ -114,7 +130,8 @@ async def update_score_rule(
     return {"ok": True, "rule_id": rule_id}
 
 
-@admin_router.delete("/scorecard-rules/{rule_id}")
+@config_router.delete("/config/rules/{rule_id}")
+@admin_router.delete("/scorecard-rules/{rule_id}", deprecated=True)
 async def reset_score_rule(
     rule_id: str,
     user: dict = Depends(require_permission("can_manage_config_all")),
@@ -125,7 +142,8 @@ async def reset_score_rule(
     return {"ok": True, "rule_id": rule_id, "deleted": deleted}
 
 
-@admin_router.get("/scorecard-pillar-caps")
+@config_router.get("/config/pillar-caps")
+@admin_router.get("/scorecard-pillar-caps", deprecated=True)
 async def get_pillar_caps(
     user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),
@@ -147,7 +165,8 @@ async def get_pillar_caps(
     return {**PILLAR_CAPS, "is_custom": False}
 
 
-@admin_router.put("/scorecard-pillar-caps")
+@config_router.put("/config/pillar-caps")
+@admin_router.put("/scorecard-pillar-caps", deprecated=True)
 async def set_pillar_caps(
     body: PillarCapsUpdate,
     user: dict = Depends(require_permission("can_manage_config_all")),
@@ -168,7 +187,8 @@ async def set_pillar_caps(
     return {"ok": True, "caps": caps}
 
 
-@admin_router.delete("/scorecard-pillar-caps")
+@config_router.delete("/config/pillar-caps")
+@admin_router.delete("/scorecard-pillar-caps", deprecated=True)
 async def reset_pillar_caps(
     user: dict = Depends(require_permission("can_manage_config_all")),
     tenant=Depends(get_tenant_db),

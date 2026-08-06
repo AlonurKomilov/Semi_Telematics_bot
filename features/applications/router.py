@@ -163,10 +163,10 @@ async def submit_application(
     # ``{COMPANY}/...`` tree work orders / camera images / parking maps
     # use, on disk AND in the customer's Drive.  Generic links (no
     # company) fall back to the account-level ``applications/`` root.
-    from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.object_store.tracking import track_for_sync_if_hybrid
+    from adapters.storage.object_storage import get_object_storage_for_account
+    from capabilities.object_storage.tracking import track_for_sync_if_hybrid
     from features.work_orders.storage import sanitize_company_folder
-    store = await get_object_store_for_account(account_id, platform_db)
+    store = await get_object_storage_for_account(account_id, platform_db)
     company_folder = ""
     if link.get("company_id"):
         _co = await platform_db.get_company_in_account(account_id, link["company_id"])
@@ -409,8 +409,8 @@ async def public_link_logo(
     link, co = await _link_company(platform_db, token)
     if not co or not co.logo_object_id:
         raise HTTPException(status_code=404, detail="No logo")
-    from adapters.storage.object_store import get_object_store_for_account
-    store = await get_object_store_for_account(link["account_id"], platform_db)
+    from adapters.storage.object_storage import get_object_storage_for_account
+    store = await get_object_storage_for_account(link["account_id"], platform_db)
     try:
         raw = store.get_by_id(co.logo_object_id)
     except Exception:
@@ -433,8 +433,8 @@ async def public_link_banner(
     link, co = await _link_company(platform_db, token)
     if not co or not co.banner_object_id:
         raise HTTPException(status_code=404, detail="No photo")
-    from adapters.storage.object_store import get_object_store_for_account
-    store = await get_object_store_for_account(link["account_id"], platform_db)
+    from adapters.storage.object_storage import get_object_storage_for_account
+    store = await get_object_storage_for_account(link["account_id"], platform_db)
     try:
         raw = store.get_by_id(co.banner_object_id)
     except Exception:
@@ -806,8 +806,8 @@ async def ai_theme(
     logo_bytes = None
     if co.logo_object_id:
         try:
-            from adapters.storage.object_store import get_object_store_for_account
-            store = await get_object_store_for_account(user["account_id"], platform_db)
+            from adapters.storage.object_storage import get_object_storage_for_account
+            store = await get_object_storage_for_account(user["account_id"], platform_db)
             logo_bytes = store.get_by_id(co.logo_object_id)
         except Exception:
             logo_bytes = None
@@ -851,9 +851,9 @@ async def upload_company_logo(
     ok, mime, _ = validate_upload(raw, max_bytes=2 * 1024 * 1024)
     if not ok or mime not in _LOGO_MIME_EXT:
         raise HTTPException(status_code=422, detail="Logo must be a JPG, PNG, or WEBP image under 2 MB")
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
     from features.work_orders.storage import sanitize_company_folder
-    store = await get_object_store_for_account(user["account_id"], platform_db)
+    store = await get_object_storage_for_account(user["account_id"], platform_db)
     # Brand assets live IN the company's folder ({COMPANY}/branding/) —
     # a logo belongs to exactly one company.  The row id stays in the
     # FILENAME so two companies with the same display name can't collide.
@@ -869,7 +869,7 @@ async def upload_company_logo(
     # was registered before this call existed, which meant the registry
     # advertised coverage nothing exercised — branding never reached a
     # hybrid account's Drive.
-    from capabilities.object_store.tracking import track_for_sync_if_hybrid
+    from capabilities.object_storage.tracking import track_for_sync_if_hybrid
     await track_for_sync_if_hybrid(
         store, f"{folder}/branding", f"logo-{company_id}.{_LOGO_MIME_EXT[mime]}", oid,
         entity_type="company_logo", entity_id=int(company_id),
@@ -888,8 +888,8 @@ async def get_recruiter_company_logo(
     co = await platform_db.get_company_in_account(user["account_id"], company_id)
     if not co or not co.logo_object_id:
         raise HTTPException(status_code=404, detail="No logo")
-    from adapters.storage.object_store import get_object_store_for_account
-    store = await get_object_store_for_account(user["account_id"], platform_db)
+    from adapters.storage.object_storage import get_object_storage_for_account
+    store = await get_object_storage_for_account(user["account_id"], platform_db)
     raw = store.get_by_id(co.logo_object_id)
     if not raw:
         raise HTTPException(status_code=404, detail="No logo")
@@ -929,9 +929,9 @@ async def upload_company_banner(
     ok, mime, _ = validate_upload(raw, max_bytes=4 * 1024 * 1024)
     if not ok or mime not in _LOGO_MIME_EXT:
         raise HTTPException(status_code=422, detail="Photo must be a JPG, PNG, or WEBP image under 4 MB")
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
     from features.work_orders.storage import sanitize_company_folder
-    store = await get_object_store_for_account(user["account_id"], platform_db)
+    store = await get_object_storage_for_account(user["account_id"], platform_db)
     folder = sanitize_company_folder(co.display_name or getattr(co, "code", "") or "")
     try:
         oid = store.put(f"{folder}/branding", f"banner-{company_id}.{_LOGO_MIME_EXT[mime]}", raw)
@@ -939,7 +939,7 @@ async def upload_company_banner(
         logger.exception("recruiter company banner store failed company=%s", company_id)
         raise HTTPException(status_code=500, detail="Could not store the photo.")
     await platform_db.update_company(company_id, account_id=user["account_id"], banner_object_id=oid)
-    from capabilities.object_store.tracking import track_for_sync_if_hybrid
+    from capabilities.object_storage.tracking import track_for_sync_if_hybrid
     await track_for_sync_if_hybrid(
         store, f"{folder}/branding", f"banner-{company_id}.{_LOGO_MIME_EXT[mime]}", oid,
         entity_type="company_banner", entity_id=int(company_id),
@@ -958,8 +958,8 @@ async def get_recruiter_company_banner(
     co = await platform_db.get_company_in_account(user["account_id"], company_id)
     if not co or not co.banner_object_id:
         raise HTTPException(status_code=404, detail="No photo")
-    from adapters.storage.object_store import get_object_store_for_account
-    store = await get_object_store_for_account(user["account_id"], platform_db)
+    from adapters.storage.object_storage import get_object_storage_for_account
+    store = await get_object_storage_for_account(user["account_id"], platform_db)
     raw = store.get_by_id(co.banner_object_id)
     if not raw:
         raise HTTPException(status_code=404, detail="No photo")
@@ -1373,8 +1373,8 @@ async def download_application_packet(
     sig_id = (app.get("docs") or {}).get("signature")
     if sig_id:
         try:
-            from adapters.storage.object_store import get_object_store_for_account
-            store = await get_object_store_for_account(user["account_id"], platform_db)
+            from adapters.storage.object_storage import get_object_storage_for_account
+            store = await get_object_storage_for_account(user["account_id"], platform_db)
             sig_png = store.get_by_id(sig_id)
         except Exception:
             sig_png = None
@@ -1529,8 +1529,8 @@ async def send_verification(
     sig_id = (app.get("docs") or {}).get("signature")
     if sig_id:
         try:
-            from adapters.storage.object_store import get_object_store_for_account
-            store = await get_object_store_for_account(account_id, platform_db)
+            from adapters.storage.object_storage import get_object_storage_for_account
+            store = await get_object_storage_for_account(account_id, platform_db)
             sig_png = store.get_by_id(sig_id)
         except Exception:
             sig_png = None
@@ -1647,8 +1647,8 @@ async def get_application_doc(
     if not object_id:
         raise HTTPException(status_code=404, detail="Document not found")
 
-    from adapters.storage.object_store import get_object_store_for_account
-    store = await get_object_store_for_account(user["account_id"], platform_db)
+    from adapters.storage.object_storage import get_object_storage_for_account
+    store = await get_object_storage_for_account(user["account_id"], platform_db)
     raw = store.get_by_id(object_id)
     if raw is None:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -1783,14 +1783,28 @@ class DqfPassphraseRequest(BaseModel):
     passphrase: str = Field(..., min_length=8, max_length=200)
 
 
-@router.get("/dqf-config")
-async def get_dqf_config(
-    user: dict = Depends(require_permission_any(
-        "can_manage_applications", "can_manage_config_all",
-    )),
+# ── Feature config ──────────────────────────────────────────────────
+#
+# ``/applications/config`` is this feature's ONE config endpoint, the same
+# shape every feature uses.  DQF lives INSIDE it as a key rather than
+# owning a path of its own — it is one thing this feature can be
+# configured to do, not a feature.
+#
+# ``/dqf-config`` remains as a DEPRECATED ALIAS so a browser holding the
+# previous JS bundle keeps working across a deploy.
+@router.get("/config")
+@router.get("/dqf-config", deprecated=True)
+async def get_config(
+    user: dict = Depends(require_permission("can_manage_config_all")),
     tenant_db=Depends(get_tenant_db),
 ):
     """Whether a DQF export passphrase is set — NEVER the passphrase.
+
+    The gate was ``require_permission_any("can_manage_applications",
+    "can_manage_config_all")``.  The feature flag is gone: this is a
+    config read, and Manage does not carry Config.  It was the last
+    ``require_permission_any`` mixing a feature action with the config
+    action.
 
     Deliberately unreadable through the API, even by an authorized
     caller.  Two reasons, and the second is the important one:
@@ -1820,7 +1834,8 @@ async def get_dqf_config(
     }
 
 
-@router.post("/dqf-config/reveal")
+@router.post("/config/reveal")
+@router.post("/dqf-config/reveal", deprecated=True)
 async def reveal_dqf_passphrase(
     user: dict = Depends(require_permission("can_manage_config_all")),
     tenant_db=Depends(get_tenant_db),
@@ -1881,8 +1896,9 @@ async def reveal_dqf_passphrase(
     }
 
 
-@router.put("/dqf-config")
-async def set_dqf_config(
+@router.put("/config")
+@router.put("/dqf-config", deprecated=True)
+async def set_config(
     body: DqfPassphraseRequest,
     user: dict = Depends(require_permission("can_manage_config_all")),
     tenant_db=Depends(get_tenant_db),
@@ -1943,7 +1959,8 @@ async def set_dqf_config(
     return {"configured": True, "ssn_included": True}
 
 
-@router.post("/dqf-config/reexport")
+@router.post("/config/reexport")
+@router.post("/dqf-config/reexport", deprecated=True)
 async def reexport_dqf(
     user: dict = Depends(require_permission("can_manage_config_all")),
     tenant_db=Depends(get_tenant_db),

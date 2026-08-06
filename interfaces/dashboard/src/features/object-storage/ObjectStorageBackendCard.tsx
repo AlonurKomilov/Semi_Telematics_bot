@@ -8,6 +8,7 @@ import {
   AlertTriangle, Loader2,
 } from 'lucide-react';
 import { apiJSON } from '../../api/client';
+import { useRoleView } from '../../context/RoleViewContext';
 
 /**
  * Storage settings card — backend chooser + Google Drive connection.
@@ -68,10 +69,18 @@ export default function ObjectStorageBackendCard() {
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [switching, setSwitching] = useState<Backend | null>(null);
+  // Choosing the backend is CONFIG, not Manage: it writes
+  // ``object_storage.backend``, the one value that decides where every
+  // document this account ever stores is written.  can_manage_storage
+  // still runs the storage — connect/disconnect Drive, retry syncs,
+  // clear orphans — and that is what this page is gated on, so the two
+  // now differ and the chooser must say so rather than 403 on click.
+  const { viewHas } = useRoleView();
+  const canConfigureBackend = viewHas('can_manage_config_all');
 
   const { data, isLoading, error } = useQuery<StorageConfig>({
     queryKey: ['storage-config'],
-    queryFn: () => apiJSON<StorageConfig>('/object-storage/config'),
+    queryFn: () => apiJSON<StorageConfig>('/object-storage/status'),
   });
 
   useEffect(() => {
@@ -126,8 +135,12 @@ export default function ObjectStorageBackendCard() {
   const handleSwitch = async (backend: Backend) => {
     setSwitching(backend);
     try {
-      await apiJSON('/object-storage/backend', {
-        method: 'POST',
+      // PUT /object-storage/config, not POST /object-storage/backend:
+      // under the config convention this replaces a config VALUE rather
+      // than performing an action.  The old POST stays mounted as a
+      // deprecated alias, so a stale bundle mid-deploy still works.
+      await apiJSON('/object-storage/config', {
+        method: 'PUT',
         body: { backend },
       });
       toast.success(t('storage.settings.switch_done', { backend }));
@@ -223,6 +236,14 @@ export default function ObjectStorageBackendCard() {
       {/* ── Backend chooser ──────────────────────────────────── */}
       <section>
         <p className="text-sm font-medium mb-2">{t('storage.settings.backend_section')}</p>
+        {!canConfigureBackend && (
+          <p className="text-xs text-muted-foreground mb-2">
+            {t(
+              'storage.settings.backend_needs_config',
+              'Changing the backend needs Config · account-wide — it decides where every document in the account is stored. You can still connect Drive and manage syncing here.',
+            )}
+          </p>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
           <BackendOption
             icon={<HardDrive size={16} />}
@@ -232,7 +253,7 @@ export default function ObjectStorageBackendCard() {
             needsDrive={false}
             driveConnected={driveConnected}
             switching={switching === 'disk'}
-            onSwitch={() => handleSwitch('disk')}
+            onSwitch={canConfigureBackend ? () => handleSwitch('disk') : undefined}
           />
           <BackendOption
             icon={<Cloud size={16} />}
@@ -242,7 +263,7 @@ export default function ObjectStorageBackendCard() {
             needsDrive
             driveConnected={driveConnected}
             switching={switching === 'gdrive'}
-            onSwitch={() => handleSwitch('gdrive')}
+            onSwitch={canConfigureBackend ? () => handleSwitch('gdrive') : undefined}
           />
           <BackendOption
             icon={<RefreshCcw size={16} />}
@@ -252,7 +273,7 @@ export default function ObjectStorageBackendCard() {
             needsDrive
             driveConnected={driveConnected}
             switching={switching === 'hybrid'}
-            onSwitch={() => handleSwitch('hybrid')}
+            onSwitch={canConfigureBackend ? () => handleSwitch('hybrid') : undefined}
             recommended
           />
         </div>
@@ -275,7 +296,7 @@ function BackendOption({
   needsDrive: boolean;
   driveConnected: boolean;
   switching: boolean;
-  onSwitch: () => void;
+  onSwitch?: () => void;
   recommended?: boolean;
 }) {
   const { t } = useTranslation();
@@ -311,7 +332,7 @@ function BackendOption({
           <AlertTriangle size={12} />
           {t('storage.settings.needs_drive')}
         </span>
-      ) : (
+      ) : !onSwitch ? null : (
         <button
           type="button"
           onClick={onSwitch}

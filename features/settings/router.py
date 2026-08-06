@@ -15,11 +15,12 @@ from .invites.router import router as _invites
 from .companies.router import router as _companies
 from .audit.router import router as _audit
 from .account.router import router as _account
+from .account.router import config_router as _account_config
 from .work_hours.router import router as _work_hours
 
 router = APIRouter()
 for _component_router in (
     _team_management, _invites, _companies, _audit,
-    _account, _work_hours,
+    _account, _account_config, _work_hours,
 ):
     router.include_router(_component_router)

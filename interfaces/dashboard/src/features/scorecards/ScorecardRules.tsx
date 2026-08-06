@@ -88,7 +88,7 @@ export function ScorecardRulesPanel() {
   const load = () => {
     setLoading(true);
     setError('');
-    apiJSON<RulesResponse>('/admin/scorecard-rules')
+    apiJSON<RulesResponse>('/scorecards/config/rules')
       .then((d) => setRules(d.rules || []))
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load rules'))
       .finally(() => setLoading(false));
@@ -148,7 +148,7 @@ export function ScorecardRulesPanel() {
     const d = draftFor(r);
     setSavingId(r.id);
     try {
-      await apiJSON(`/admin/scorecard-rules/${encodeURIComponent(r.id)}`, {
+      await apiJSON(`/scorecards/config/rules/${encodeURIComponent(r.id)}`, {
         method: 'PUT',
         body: {
           points: d.points,
@@ -173,7 +173,7 @@ export function ScorecardRulesPanel() {
     if (!window.confirm(`Reset "${r.label}" to defaults?`)) return;
     setSavingId(r.id);
     try {
-      await apiJSON(`/admin/scorecard-rules/${encodeURIComponent(r.id)}`, { method: 'DELETE' });
+      await apiJSON(`/scorecards/config/rules/${encodeURIComponent(r.id)}`, { method: 'DELETE' });
       setDrafts((prev) => { const { [r.id]: _, ...rest } = prev; return rest; });
       load();
     } catch (e) {

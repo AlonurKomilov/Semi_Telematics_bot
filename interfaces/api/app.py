@@ -455,6 +455,7 @@ def create_api() -> FastAPI:
         app.include_router(scorecards_routes.router, prefix=prefix)
         app.include_router(scorecard_rules_routes.legacy_router, prefix=prefix)
         app.include_router(scorecard_rules_routes.admin_router, prefix=prefix)
+        app.include_router(scorecard_rules_routes.config_router, prefix=prefix)
         app.include_router(events_routes.router, prefix=prefix)
         app.include_router(cameras_routes.router, prefix=prefix)
         app.include_router(reports_routes.router, prefix=prefix)
@@ -465,6 +466,7 @@ def create_api() -> FastAPI:
         # notifications' side of the boundary; historical /admin URLs.
         app.include_router(delivery_admin_routes.routing_router, prefix=prefix)
         app.include_router(delivery_admin_routes.forum_router, prefix=prefix)
+        app.include_router(delivery_admin_routes.forum_config_router, prefix=prefix)
         app.include_router(telemetry_routes.router, prefix=prefix)
         app.include_router(jobs_routes.router, prefix=prefix)
         app.include_router(system_routes.router, prefix=prefix)

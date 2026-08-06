@@ -66,12 +66,63 @@ BODY = {"thresholds": {"rpm_good": 2.5}}
 
 
 class TestKpiThresholdGate:
-    async def test_owner_keeps_historical_reach_via_manage_account(self, seeded):
+    async def test_owner_keeps_reach_on_the_config_flag_alone(self, seeded):
+        """can_manage_account is no longer in this gate.
+
+        It was — via require_permission_any — to preserve the pre-family
+        reach of owner/Full-Admin.  That was the View/Manage/Config mixing
+        in miniature: General settings' MANAGE action carrying KPI's
+        grading rules.  Both flags are owner-seeded, so removing it costs
+        the owner nothing; what it stops is an account that delegated
+        General settings picking up grading rules it never granted.
+        """
         async with await _client(seeded["app"]) as c:
             r = await c.put("/api/kpi/thresholds", json=BODY,
                             headers=_h(seeded["owner"]))
             assert r.status_code == 200
             assert r.json()["thresholds"]["rpm_good"] == 2.5
+
+    async def test_the_config_READ_is_gated_too_not_just_the_write(self, seeded):
+        """GET /kpi/thresholds rode can_kpi — the VIEW action — on the
+        reasoning that reading a threshold is harmless.
+
+        Its only caller is ThresholdsDialog, the editor; the KPI page
+        never asks, because grades arrive already computed.  A read that
+        exists solely to populate an editor is part of Config, and leaving
+        it on View made the write gate decorative: any can_kpi holder
+        could see every value and simply not save.
+        """
+        from capabilities.permissions.roles import invalidate_permissions_cache
+        db, acct = seeded["db"], seeded["acct"]
+        try:
+            async with await _client(seeded["app"]) as c:
+                # can_kpi alone: the grades, yes; the thresholds, no.
+                await db.set_role_permissions(
+                    acct.id, "fleet", {"can_kpi": True}, 9501)
+                invalidate_permissions_cache(acct.id)
+                r = await c.get("/api/kpi/config", headers=_h(seeded["emp"]))
+                assert r.status_code == 403, (
+                    "the config READ is back on the VIEW action"
+                )
+
+                await db.set_role_permissions(
+                    acct.id, "fleet",
+                    {"can_kpi": True, "can_manage_config_all": True}, 9501)
+                invalidate_permissions_cache(acct.id)
+                r = await c.get("/api/kpi/config", headers=_h(seeded["emp"]))
+                assert r.status_code == 200
+
+                # The DEPRECATED alias must still answer identically —
+                # that is the whole point of keeping it mounted.
+                r = await c.get("/api/kpi/thresholds", headers=_h(seeded["emp"]))
+                assert r.status_code == 200
+        finally:
+            # These grants are account-wide and the fixture is shared, so
+            # leaving them set makes a LATER test pass or fail depending on
+            # collection order.  It did: TestScorecardRulesGate's "plain
+            # employee refused" started seeing a config-granted fleet role.
+            await db.set_role_permissions(acct.id, "fleet", {}, 9501)
+            invalidate_permissions_cache(acct.id)
 
     async def test_plain_employee_refused_until_owner_delegates(self, seeded):
         from capabilities.permissions.roles import invalidate_permissions_cache

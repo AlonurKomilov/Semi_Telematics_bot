@@ -17,6 +17,7 @@ import { GitMerge } from 'lucide-react';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { getSourcePrecedence, putSourcePrecedence } from './api';
 import type { SourcePrecedence } from './api';
+import { useRoleView } from '../../context/RoleViewContext';
 
 const SOURCE_LABEL: Record<string, string> = {
   datatruck: 'Datatruck',
@@ -25,10 +26,18 @@ const SOURCE_LABEL: Record<string, string> = {
 
 export default function SourcePrecedencePanel() {
   const qc = useQueryClient();
+  // Precedence is CONFIG, not Manage — it decides which provider WINS per
+  // field, so every vehicle read downstream resolves through it.  Both
+  // verbs moved to can_manage_config_all, and the Integrations page is
+  // gated on can_manage_integrations, so the two now differ: without this
+  // the panel would fire a request it cannot be served.
+  const { viewHas } = useRoleView();
+  const canConfigure = viewHas('can_manage_config_all');
 
   const { data } = useQuery<SourcePrecedence>({
     queryKey: ['vehicle-source-precedence'],
     queryFn: getSourcePrecedence,
+    enabled: canConfigure,
   });
 
   const mutation = useMutation({

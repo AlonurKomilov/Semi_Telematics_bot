@@ -34,6 +34,10 @@ from capabilities.settings_registry import (  # noqa: E402
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+# The ONE permission an account_settings key may name.  Not a convenience
+# constant — it is the assertion: account scope has exactly one owner.
+ALLOWED_OWNER = "can_manage_config_all"
+
 
 class TestOwnership:
     def test_every_live_key_shape_is_declared(self):
@@ -59,11 +63,49 @@ class TestOwnership:
         assert owner_for("something_nobody_declared") is None
         assert owner_for("") is None
 
-    def test_sibling_features_do_not_share_an_owner(self):
-        """Storage / Integrations / General settings are PEER features."""
-        assert owner_for("object_storage.backend").permission == "can_manage_storage"
-        assert owner_for("vehicle_field_precedence").permission == "can_manage_integrations"
-        assert owner_for("timezone").permission == "can_manage_account"
+    def test_no_key_claims_a_FEATURE_permission(self):
+        """THE guard.  View / Manage / Config are three separate actions.
+
+        ``account_settings`` is the CONFIG column's account-wide store —
+        config.md's own table says so — so no row in it may be owned by a
+        feature's Manage or View action.  The first version of this
+        registry preserved each writer's existing permission, which made
+        ownership visible but ENCODED the mixing: ``can_manage_storage``
+        owned the backend choice, ``can_manage_integrations`` owned
+        provider precedence, ``can_manage_account`` owned the rest.  Five
+        permissions over one store, when the architecture says one.
+
+        A feature's Manage keeps its real work — connecting Drive,
+        retrying a sync — and stops owning the VALUES a computation reads.
+        """
+        offenders = [
+            (r.key, r.permission) for r in SETTING_OWNERS
+            if r.permission not in (ALLOWED_OWNER, SYSTEM_ONLY, SELF_ONLY)
+        ]
+        assert not offenders, (
+            "account_settings keys owned by a feature permission rather than "
+            f"{ALLOWED_OWNER}: {offenders}.\n"
+            "Config is not Manage.  If the key is genuinely a feature's "
+            "OPERATIONAL state and not a setting, it does not belong in "
+            "account_settings at all — give it a typed column."
+        )
+
+    def test_the_two_outliers_are_the_only_non_config_kinds(self):
+        """Exactly two things are not account config, and both are
+        declared so the misplacement is VISIBLE rather than invisible:
+
+          ai_*   — AI is a SERVICE; no account-level action exists to grant.
+          user:* — per-user state, which config.md puts in the preferences
+                   service, not here.
+        """
+        for r in SETTING_OWNERS:
+            if r.kind == "config":
+                continue
+            assert r.key.startswith(("ai_model", "ai_location", "ai_vision", "user:")), (
+                f"{r.key} is kind={r.kind!r} but is neither an AI model pin "
+                "nor a per-user key — every other account_settings row is "
+                "account-scope config"
+            )
 
     def test_config_family_members_require_the_config_permission(self):
         for key in ("kpi_thresholds", "dqf.export_passphrase"):
@@ -267,3 +309,71 @@ class TestReadableKeysAreAlsoWritable:
         """Guards the regex above: a silently-empty list would make the
         test above vacuously pass, which is how a check stops checking."""
         assert len(self._get_allowlist()) >= 5
+
+
+class TestDedicatedWritersHonourTheDeclaredOwner:
+    """The registry governed ONE door, and there are several.
+
+    ``owner_for()`` is enforced inside ``PUT /settings``.  But most
+    settings are not written there — they have their own endpoint, and
+    that endpoint carries its own ``require_permission``.  So the
+    registry could say ``object_storage.backend`` is
+    ``can_manage_config_all`` while ``POST /object-storage/backend``
+    happily wrote it on ``can_manage_storage``, and every existing test
+    stayed green: the key WAS declared, the declaration simply had no
+    force on that path.
+
+    Three endpoints were in exactly that state — the storage backend
+    switch, the vehicle source-precedence PUT, and the two forum-routing
+    writes.  This test closes the door by checking the gate on the same
+    function that performs the write.
+    """
+
+    # Endpoint functions that write an account_settings key, and the
+    # permission the registry says owns that key.  Listed explicitly
+    # rather than discovered: the point is to state the intended pairing
+    # so a future regate has to argue with a name, not a regex.
+    WRITERS = (
+        ("capabilities/object_storage/router.py", "switch_storage_backend"),
+        ("features/vehicles/router.py", "put_source_precedence"),
+        ("features/vehicles/router.py", "get_source_precedence"),
+        ("capabilities/notifications/delivery_admin/forum.py",
+         "update_forum_settings"),
+        ("capabilities/notifications/delivery_admin/forum.py",
+         "set_forum_subtypes"),
+        ("features/kpi/router.py", "get_config"),
+        ("features/kpi/router.py", "put_config"),
+    )
+
+    def test_config_endpoints_require_the_config_permission(self):
+        import ast as _ast
+        offenders: list[str] = []
+        for rel, func in self.WRITERS:
+            path = os.path.join(REPO, rel)
+            src = open(path, encoding="utf-8").read()
+            tree = _ast.parse(src)
+            found = None
+            for node in _ast.walk(tree):
+                if isinstance(node, (_ast.AsyncFunctionDef, _ast.FunctionDef)) \
+                        and node.name == func:
+                    found = node
+                    break
+            assert found is not None, f"{rel}: no function named {func}"
+            # The gate may be inline or a module-level dependency alias;
+            # resolve the alias by looking it up in the same file.
+            seg = _ast.get_source_segment(src, found) or ""
+            perms = set(re.findall(
+                r'require_permission[_a-z]*\(\s*"([a-z_]+)"', seg))
+            if not perms:
+                for alias in re.findall(r"Depends\((_[a-z_]+)\)", seg):
+                    perms |= set(re.findall(
+                        rf'^{alias}\s*=\s*require_permission[_a-z]*\(\s*"([a-z_]+)"',
+                        src, re.M))
+            if perms != {ALLOWED_OWNER}:
+                offenders.append(f"{rel}::{func} gated on {sorted(perms) or '?'}")
+        assert not offenders, (
+            "config endpoints not on " + ALLOWED_OWNER + ":\n  "
+            + "\n  ".join(offenders)
+            + "\nA feature's Manage may operate the feature; it may not "
+              "write the account-wide values a computation reads."
+        )

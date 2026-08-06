@@ -42,13 +42,13 @@ export interface SourcePrecedence {
 }
 
 export async function getSourcePrecedence(): Promise<SourcePrecedence> {
-  return apiJSON<SourcePrecedence>('/vehicles/source-precedence');
+  return apiJSON<SourcePrecedence>('/vehicles/config');
 }
 
 export async function putSourcePrecedence(
   primary: Record<string, string>,
 ): Promise<SourcePrecedence> {
-  return apiJSON<SourcePrecedence>('/vehicles/source-precedence', {
+  return apiJSON<SourcePrecedence>('/vehicles/config', {
     method: 'PUT',
     body: { primary },
   });

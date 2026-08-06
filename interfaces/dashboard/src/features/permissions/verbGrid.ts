@@ -40,9 +40,19 @@ export interface VerbBand { band: string; families: VerbFamily[] }
 
 // Feature → which config-family flag tunes it (grows as features gain
 // config; docs/architecture/config.md is the SSOT of members).
+// Every entry here is a feature whose account_settings rows are owned by
+// the config family rather than by the feature's own Manage — which, per
+// capabilities/settings_registry.py, is now ALL of them.  A feature
+// appears the moment it has an account_settings key; the four below are
+// the four that do.  Storage and Integrations were absent while their
+// keys were owned by can_manage_storage / can_manage_integrations, so
+// the matrix showed "–" in the Config column for settings that plainly
+// existed — the owner could not see what granting Config actually moved.
 const CONFIG_VIA: Record<string, ['can_manage_config_all' | 'can_manage_config_role', string]> = {
   can_scorecard_all: ['can_manage_config_all', 'rules + pillar caps'],
   can_kpi: ['can_manage_config_all', 'grade thresholds'],
+  can_manage_storage: ['can_manage_config_all', 'backend + disk quota'],
+  can_manage_integrations: ['can_manage_config_all', 'provider precedence'],
 };
 
 const rowKey = (r: TickRow): string => (isScoped(r) ? r.allKey : (r as SimpleFlag).key);

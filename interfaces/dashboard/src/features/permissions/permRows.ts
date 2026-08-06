@@ -117,8 +117,8 @@ export const PERM_GROUPS: PermGroup[] = [
       // capabilities/ (like Alerts↔capabilities/alerting).  NOT Settings
       // components: consumed account-wide, each with its own page.
       { key: 'can_manage_permissions',  kind: 'feature', label: 'Permissions', description: 'This role matrix — the owner always keeps it' },
-      { key: 'can_manage_integrations', kind: 'feature', label: 'Integrations', description: 'Telematics connections (Samsara, Datatruck)' },
-      { key: 'can_manage_storage',      kind: 'feature', label: 'Storage', description: 'File-storage backend & quota' },
+      { key: 'can_manage_integrations', kind: 'feature', label: 'Integrations', description: 'Connecting and syncing Samsara / Datatruck. The provider-precedence SETTING moved to Config — account-wide.' },
+      { key: 'can_manage_storage',      kind: 'feature', label: 'Storage', description: 'Connecting Drive, retrying syncs, clearing orphans. Choosing the backend and the disk quota are settings — Config — account-wide.' },
 
       { key: 'can_manage_account',     kind: 'feature', label: 'General settings', description: 'The Settings page itself — timezone, bot + forum routing; also rides: department modules' },
       { key: 'can_manage_users',       kind: 'feature', label: 'Team Management', description: 'Members, roles, data scope — also gates the Audit Log' },
@@ -131,7 +131,7 @@ export const PERM_GROUPS: PermGroup[] = [
       // Settings components would misplace them (and the role lens
       // already bands them apart — the two lenses must agree).
       { key: 'can_manage_config_role', kind: 'cross_feature', label: 'Config — own role', indented: true, description: 'Save team-default page layouts for their OWN role (the page gear’s "Team default" block). General settings holders can set any role’s.' },
-      { key: 'can_manage_config_all', kind: 'cross_feature', label: 'Config — account-wide', indented: true, description: 'A feature’s SHARED settings, one truth for everyone: scorecard rules + pillar caps, KPI grade thresholds, and every future feature setting.' },
+      { key: 'can_manage_config_all', kind: 'cross_feature', label: 'Config — account-wide', indented: true, description: 'A feature’s SHARED settings, one truth for everyone: scorecard rules + pillar caps, KPI grade thresholds, storage backend + disk quota, provider precedence — and every future feature setting. Config is its own action: a feature’s Manage no longer carries its settings.' },
     ],
   },
   {

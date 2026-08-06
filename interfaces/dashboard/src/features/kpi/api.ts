@@ -40,13 +40,13 @@ export interface ThresholdsResponse {
 }
 
 export async function getKpiThresholds(): Promise<ThresholdsResponse> {
-  return apiJSON<ThresholdsResponse>('/kpi/thresholds');
+  return apiJSON<ThresholdsResponse>('/kpi/config');
 }
 
 export async function putKpiThresholds(
   thresholds: Record<string, number>,
 ): Promise<ThresholdsResponse> {
-  return apiJSON<ThresholdsResponse>('/kpi/thresholds', {
+  return apiJSON<ThresholdsResponse>('/kpi/config', {
     method: 'PUT',
     body: { thresholds },
   });

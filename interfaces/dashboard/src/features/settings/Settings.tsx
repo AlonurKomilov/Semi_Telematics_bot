@@ -61,6 +61,14 @@ export default function Settings() {
   // (every owner section's endpoint re-checks can_manage_account /
   // primary-owner server-side).
   const canManageAccount = viewHas('can_manage_account');
+  // CONFIG is a third action, not a stronger Manage.  The account_settings
+  // VALUES on this page (timezone, language, digest hour, alert defaults,
+  // scorecard subject) are owned by the config family — see
+  // capabilities/settings_registry.py — while the page's own operations
+  // (bot config, forum routing, modules, danger zone) stay on Manage.
+  // GET /admin/settings mirrors this: it admits Manage holders but returns
+  // an EMPTY `settings` dict unless the caller also holds config.
+  const canConfigAccount = viewHas('can_manage_config_all');
   // Role MANAGERS reach Settings for the Telegram Bot card ONLY (their
   // own role's Sub bot).  The page renders just that card for them — no
   // /admin/settings fetch, so they never hit its can_manage_account 403.
@@ -134,8 +142,13 @@ export default function Settings() {
 
   const { data, isLoading: loading, error: queryError } = useQuery({
     queryKey: ['admin-settings'],
-    queryFn: () => apiJSON<SettingsResponse>('/admin/settings'),
-    enabled: canManageAccount,   // managers get the bot card only
+    queryFn: () => apiJSON<SettingsResponse>('/settings/config'),
+    // Either action needs this payload: Manage for account info + AI
+    // usage, Config for the settings dict.  Config-only holders are real
+    // — MANAGER_GRANTS gives a Safety manager can_manage_config_all
+    // without can_manage_account — and gating the fetch on Manage alone
+    // left them staring at "No settings configured yet" forever.
+    enabled: canManageAccount || canConfigAccount,
   });
   const fetchError = queryError instanceof Error ? queryError.message : '';
   const load = () => qc.invalidateQueries({ queryKey: ['admin-settings'] });
@@ -245,7 +258,7 @@ export default function Settings() {
   const handleSaveSetting = async (key: string) => {
     setSaving(true); setError('');
     try {
-      await apiJSON('/admin/settings', { method: 'PUT', body: { key, value: edits[key] } });
+      await apiJSON('/settings/config', { method: 'PUT', body: { key, value: edits[key] } });
       load();
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
     finally { setSaving(false); }
@@ -268,7 +281,7 @@ export default function Settings() {
     } catch (e) { setError(e instanceof Error ? e.message : 'Failed'); }
   };
 
-  if (loading && canManageAccount) {
+  if (loading && (canManageAccount || canConfigAccount)) {
     return (
       <div>
         <PageHeader
@@ -291,7 +304,7 @@ export default function Settings() {
         title={t('pages.settings_title')}
         description={t('pages.settings_desc_long')}
       />
-      {canManageAccount && (error || fetchError) && <ErrorState message={error || fetchError} />}
+      {(canManageAccount || canConfigAccount) && (error || fetchError) && <ErrorState message={error || fetchError} />}
 
       {/* Account Timezone — admin-only.  Single source of truth that
           drives cron-job timing and every display formatter for users
@@ -636,8 +649,14 @@ export default function Settings() {
         </section>
       )}
 
-      {/* Editable Settings */}
-      {canManageAccount && (
+      {/* Editable Settings — every row here is an account_settings key,
+          which capabilities/settings_registry.py owns via the config
+          family.  Gated on the config flag rather than the page's Manage:
+          the server returns an empty `settings` dict without it, so a
+          Manage-only holder would otherwise see this card claiming "No
+          settings configured yet" when in truth they simply cannot read
+          them. */}
+      {canConfigAccount && (
       <section className="bg-card border border-border rounded-xl p-5">
         <h2 className="text-lg font-semibold mb-3">Configuration</h2>
         {Object.keys(edits).length === 0 ? (
