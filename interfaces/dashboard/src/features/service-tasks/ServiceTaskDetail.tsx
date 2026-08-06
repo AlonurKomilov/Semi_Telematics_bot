@@ -93,6 +93,20 @@ export default function ServiceTaskDetail() {
     enabled: !!task,
   });
 
+  // ⚠️ ABOVE the early returns, with every other hook.  It used to sit
+  // below them, after ``if (isLoading) return <TableSkeleton/>`` — so on
+  // a COLD cache the first render bailed before calling it and the
+  // second render called it, changing the hook count between renders.
+  // React's answer to that is to throw ("Rendered more hooks than during
+  // the previous render") and take the page down.
+  //
+  // It survived because ``useAssemblies`` sets ``staleTime: 5min``: come
+  // in from another page that already fetched, ``isLoading`` is false on
+  // the very first render, the counts agree and nothing breaks.  Hard-
+  // refresh ON this page and it crashes.  The only eslint ERROR in the
+  // codebase, and it was pointing at a real one.
+  const { labelOf: assemblyLabel } = useAssemblies();
+
   const refresh = () => {
     qc.invalidateQueries({ queryKey: SERVICE_TASKS_KEY });
   };
@@ -123,7 +137,6 @@ export default function ServiceTaskDetail() {
   const shared = !!task.canonical_key;
   const systemLabel = (systemsData?.systems ?? [])
     .find((s) => s.key === task.system_key)?.label;
-  const { labelOf: assemblyLabel } = useAssemblies();
   const links = partsData?.parts ?? [];
 
   return (
