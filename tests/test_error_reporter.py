@@ -175,6 +175,46 @@ class TestReportError:
         call_kwargs = mock_post.call_args.kwargs["json"]
         assert "GET /api/fleet" in call_kwargs["text"]
 
+    async def test_job_timeout_reads_as_a_timeout_not_UnknownError(self):
+        """A scheduler timeout must SAY so in the body.
+
+        ``run_account_job`` used to report the timeout with ``exc=None``,
+        which ``_report`` renders as "UnknownError: (no exception
+        object)" — the least informative thing it can say about the most
+        precisely-known failure there is.  The title carried "(timeout
+        after 600s)" while the body shrugged, and a real camera_check
+        timeout was read as an inexplicable crash.
+        """
+        import asyncio as _asyncio
+        from infra import isolation
+
+        db = _make_db()
+        reporter.init_error_reporter("fake:token", "-100123", db)
+
+        async def _hangs():
+            await _asyncio.sleep(5)
+
+        with patch("httpx.AsyncClient") as MockClient:
+            mock_post = AsyncMock(return_value=MagicMock(status_code=200))
+            MockClient.return_value.__aenter__ = AsyncMock(
+                return_value=MagicMock(post=mock_post)
+            )
+            MockClient.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            ok = await isolation.run_account_job(
+                _hangs(), job_name="camera_check", account_id=42, timeout=1,
+            )
+            # The report is fired as a task; let it run.
+            await _asyncio.sleep(0.1)
+
+        assert ok is False
+        assert mock_post.called, "a timeout must still be reported"
+        text = mock_post.call_args.kwargs["json"]["text"]
+        assert "UnknownError" not in text
+        assert "no exception object" not in text
+        assert "TimeoutError" in text
+        assert "camera_check" in text and "1s budget" in text and "42" in text
+
     async def test_traceback_html_chars_escaped(self):
         """Traceback containing < > & must be HTML-escaped in <pre> block."""
         db = _make_db()

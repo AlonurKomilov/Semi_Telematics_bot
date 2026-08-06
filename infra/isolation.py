@@ -67,8 +67,19 @@ async def run_account_job(
         )
         try:
             from infra.error_reporter import report_error
+            # A REAL exception, not None.  ``report_error(None)`` renders
+            # as "UnknownError: (no exception object)", so the alert read
+            # as something inexplicable when a timeout is the most
+            # precisely-known failure there is — the title already said
+            # so while the body shrugged.  ``asyncio.timeout`` raises a
+            # bare TimeoutError with no message, hence the constructed
+            # one: it carries the job, the budget and the account into
+            # the body where a reader is looking.
             asyncio.create_task(report_error(
-                None,
+                TimeoutError(
+                    f"{job_name} exceeded its {job_timeout}s budget "
+                    f"for account {account_id}"
+                ),
                 source="scheduler",
                 job_name=f"{job_name} (timeout after {job_timeout}s)",
                 account_id=account_id,

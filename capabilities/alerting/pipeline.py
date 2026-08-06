@@ -66,7 +66,7 @@ async def _compose_persona_critical_mention(
     """Return an HTML mention prefix for CRITICAL persona-mode primary
     targets, or "" otherwise.
 
-    Shared by ``_post_one_target`` (send_alert path) and
+    Shared by the send_alert group path and
     ``post_alert_to_topic`` (the lite per-check helpers — camera,
     parking, doc-expiry, etc.) so a CRITICAL camera digest in
     per_persona_groups mode pings the on-shift safety operators the
