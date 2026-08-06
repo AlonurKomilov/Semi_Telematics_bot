@@ -71,7 +71,7 @@ async def phase_e_app(pg_db, monkeypatch):
         ]
 
     monkeypatch.setattr(
-        "features.vehicles.warehouse.readers.get_vehicle_telemetry_hourly",
+        "features.vehicles.warehouse.readers.get_vehicle_state_hour",
         _fake_timeline,
     )
 
@@ -163,7 +163,7 @@ class TestVehicleTimelineRoute:
         async def _empty(account_id, *, vehicle_id=None, hours=168):
             return []
         monkeypatch.setattr(
-            "features.vehicles.warehouse.readers.get_vehicle_telemetry_hourly",
+            "features.vehicles.warehouse.readers.get_vehicle_state_hour",
             _empty,
         )
         async with AsyncClient(

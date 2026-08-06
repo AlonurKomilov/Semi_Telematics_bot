@@ -1083,7 +1083,7 @@ async def vehicle_timeline(
     vehicle_id = str(matches[0].get("id") or "")
     if not vehicle_id:
         return {"name": matches[0].get("name"), "points": []}
-    points = await _wh_reader.get_vehicle_telemetry_hourly(
+    points = await _wh_reader.get_vehicle_state_hour(
         user["account_id"], vehicle_id=vehicle_id, hours=days * 24,
     )
     points = list(reversed(points))  # reader returns DESC; chart wants oldest-first
@@ -1123,7 +1123,7 @@ async def vehicle_usage(
     summary = await _wh_reader.get_vehicle_usage_summary(
         user["account_id"], vehicle_id, days=days,
     )
-    series = await _wh_reader.get_vehicle_metrics_daily(
+    series = await _wh_reader.get_vehicle_state_day(
         user["account_id"], vehicle_id=vehicle_id, days=days,
     )
     return {

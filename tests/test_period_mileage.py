@@ -31,9 +31,9 @@ async def tenant(pg_db):
 async def _day(db, vid: str, name: str, day: str,
                odo: float | None, miles: float = 0.0, account_id: int = 1):
     await db._db.execute(
-        "INSERT INTO vehicle_telemetry "
-        "(account_id, vehicle_id, vehicle_name, granularity, bucket_start, "
-        " miles, odometer_eod) VALUES (?, ?, ?, 'daily', ?, ?, ?)",
+        "INSERT INTO vehicle_state_day "
+        "(account_id, vehicle_id, vehicle_name, bucket_start, "
+        " miles, odometer_eod) VALUES (?, ?, ?, ?, ?, ?)",
         (account_id, vid, name, day, miles, odo),
     )
     await db._db.commit()
@@ -221,7 +221,7 @@ class TestTieredFreshness:
 
     @staticmethod
     async def _snap(db, vid, captured_at, odo, account_id=1):
-        await db.upsert_vehicle_state_snapshots(account_id, [
+        await db.upsert_vehicle_state_minutes(account_id, [
             {"vehicle_id": vid, "captured_at": captured_at,
              "odometer_mi": odo, "engine_hours": 10,
              "engine_state": "moving", "speed_mph": 55},
@@ -276,7 +276,7 @@ class TestExactTimeBoundaries:
 
     @staticmethod
     async def _snap(db, vid, captured_at, odo, account_id=1):
-        await db.upsert_vehicle_state_snapshots(account_id, [
+        await db.upsert_vehicle_state_minutes(account_id, [
             {"vehicle_id": vid, "captured_at": captured_at,
              "odometer_mi": odo, "engine_hours": 10,
              "engine_state": "moving", "speed_mph": 55},
@@ -284,7 +284,7 @@ class TestExactTimeBoundaries:
 
     @staticmethod
     async def _hourly(db, vid, hour_label, odo, account_id=1):
-        await db.upsert_vehicle_telemetry_hourly(account_id, [
+        await db.upsert_vehicle_state_hour(account_id, [
             {"vehicle_id": vid, "hour_utc": hour_label, "miles": 0,
              "drive_min": 0, "idle_min": 0, "max_speed_mph": 0,
              "harsh_event_count": 0, "odometer_eod": odo},

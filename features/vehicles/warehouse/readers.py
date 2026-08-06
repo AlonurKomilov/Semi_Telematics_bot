@@ -336,7 +336,7 @@ async def get_driver_efficiency_window(
     return rows
 
 
-async def get_vehicle_telemetry_hourly(
+async def get_vehicle_state_hour(
     account_id: int,
     *,
     vehicle_id: str | None = None,
@@ -353,12 +353,12 @@ async def get_vehicle_telemetry_hourly(
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return []
-    return await tenant.get_vehicle_telemetry_hourly(
+    return await tenant.get_vehicle_state_hour(
         account_id, vehicle_id=vehicle_id, hours=hours,
     )
 
 
-async def get_vehicle_metrics_daily(
+async def get_vehicle_state_day(
     account_id: int,
     *,
     vehicle_id: str | None = None,
@@ -372,7 +372,7 @@ async def get_vehicle_metrics_daily(
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return []
-    return await tenant.get_vehicle_metrics_daily(
+    return await tenant.get_vehicle_state_day(
         account_id, vehicle_id=vehicle_id, days=days,
     )
 

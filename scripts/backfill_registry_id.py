@@ -39,9 +39,11 @@ logger = logging.getLogger("warehouse.backfill_registry_id")
 # included for completeness even though the next ingest tick would
 # stamp it anyway.
 _TABLES = (
-    "vehicle_state",
-    "vehicle_state_snapshot",
-    "vehicle_telemetry",
+    "vehicle_state_live",
+    "vehicle_state_minute",
+    "vehicle_state_hour",
+    "vehicle_state_day",
+    "vehicle_state_week",
     "safety_event_log",
     "vehicle_health_snapshot",
     "vehicle_fault_snapshot",

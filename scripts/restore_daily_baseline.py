@@ -78,8 +78,8 @@ async def main(argv: list[str]) -> int:
         return 1
 
     cur = await tenant._db.execute(
-        "SELECT vehicle_id, bucket_start, miles FROM vehicle_telemetry "
-        "WHERE account_id = ? AND granularity = 'daily' "
+        "SELECT vehicle_id, bucket_start, miles FROM vehicle_state_day "
+        "WHERE account_id = ? "
         "AND bucket_start >= ? AND bucket_start <= ?",
         (args.account, args.start, args.end),
     )
@@ -118,15 +118,15 @@ async def main(argv: list[str]) -> int:
     for vid, day, _have, want, odo in changes:
         if odo is not None:
             await tenant._db.execute(
-                "UPDATE vehicle_telemetry SET miles = ?, odometer_eod = ? "
-                "WHERE account_id = ? AND granularity = 'daily' "
+                "UPDATE vehicle_state_day SET miles = ?, odometer_eod = ? "
+                "WHERE account_id = ? "
                 "AND vehicle_id = ? AND bucket_start = ?",
                 (want, odo, args.account, vid, day),
             )
         else:
             await tenant._db.execute(
-                "UPDATE vehicle_telemetry SET miles = ? "
-                "WHERE account_id = ? AND granularity = 'daily' "
+                "UPDATE vehicle_state_day SET miles = ? "
+                "WHERE account_id = ? "
                 "AND vehicle_id = ? AND bucket_start = ?",
                 (want, args.account, vid, day),
             )

@@ -107,7 +107,7 @@ async def test_history_survives_the_retirement(pg_db):
     await _seed(pg_db, acct, "gone", "777", "RMR", 90)
     await _seed(pg_db, acct, "here", "778", "RMR", 1)
     # History under the departing badge.
-    await pg_db.upsert_vehicle_telemetry_hourly(acct, [{
+    await pg_db.upsert_vehicle_state_hour(acct, [{
         "vehicle_id": "gone", "hour_utc": "2026-05-01T10:00:00",
         "miles": 42.0,
     }])

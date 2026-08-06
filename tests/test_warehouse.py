@@ -2,7 +2,7 @@
 
 Covers:
 
-  * ``WarehouseMixin`` upserts + reads (vehicle_state, safety_event_log,
+  * ``WarehouseMixin`` upserts + reads (vehicle_state_live, safety_event_log,
     driver_efficiency, vehicle_telemetry_hourly).
   * Idempotency (re-ingesting the same Samsara payload doesn't dupe).
   * Filter contracts on the readers (company, vehicle_nums, days window).
@@ -46,7 +46,7 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-# ── vehicle_state ────────────────────────────────────────────────────
+# ── vehicle_state_live ────────────────────────────────────────────────────
 
 
 class TestVehicleState:
@@ -215,9 +215,9 @@ class TestTelemetryHourly:
              "miles": 60, "drive_min": 55, "max_speed_mph": 70,
              "harsh_event_count": 1},
         ]
-        n = await tenant.upsert_vehicle_telemetry_hourly(1, rows)
+        n = await tenant.upsert_vehicle_state_hour(1, rows)
         assert n == 1
-        out = await tenant.get_vehicle_telemetry_hourly(1)
+        out = await tenant.get_vehicle_state_hour(1)
         assert out[0]["miles"] == 60
         assert out[0]["harsh_event_count"] == 1
 
@@ -443,7 +443,7 @@ async def test_get_reading_as_of(tenant):
     await tenant.upsert_vehicle_state(1, [
         {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
     ])
-    await tenant.upsert_vehicle_state_snapshots(1, [
+    await tenant.upsert_vehicle_state_minutes(1, [
         {"vehicle_id": "v1", "captured_at": "2026-06-01T12:00:00Z",
          "odometer_mi": 1000, "engine_hours": 100},
         {"vehicle_id": "v1", "captured_at": "2026-06-10T12:00:00Z",
@@ -480,7 +480,7 @@ async def test_get_snapshot_coverage(tenant):
         # Telematics-linked but no odometer snapshots yet.
         {"vehicle_id": "v2", "vehicle_name": "trailer-7", "company_code": "A"},
     ])
-    await tenant.upsert_vehicle_state_snapshots(1, [
+    await tenant.upsert_vehicle_state_minutes(1, [
         {"vehicle_id": "v1", "captured_at": "2026-06-01T12:00:00Z",
          "odometer_mi": 1000, "engine_hours": 100},
         {"vehicle_id": "v1", "captured_at": "2026-06-17T12:00:00Z",
@@ -497,7 +497,7 @@ async def test_get_snapshot_coverage(tenant):
     assert cov2["telematics_linked"] is True
     assert cov2["coverage_start"] is None
 
-    # Not in vehicle_state at all → not linked.
+    # Not in vehicle_state_live at all → not linked.
     cov3 = await tenant.get_snapshot_coverage(1, "ghost")
     assert cov3["telematics_linked"] is False
     assert cov3["coverage_start"] is None
@@ -512,12 +512,12 @@ async def test_get_reading_as_of_daily_eod_fallback(tenant):
         {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
     ])
     # A precise snapshot only for a recent day.
-    await tenant.upsert_vehicle_state_snapshots(1, [
+    await tenant.upsert_vehicle_state_minutes(1, [
         {"vehicle_id": "v1", "captured_at": "2026-06-16T12:00:00Z",
          "odometer_mi": 5000, "engine_hours": 500},
     ])
     # Daily EOD rows reaching months back (snapshots long pruned).
-    await tenant.upsert_vehicle_metrics_daily(1, [
+    await tenant.upsert_vehicle_state_day(1, [
         {"vehicle_id": "v1", "day_utc": "2026-03-10",
          "odometer_eod": 1200, "engine_hours_eod": 120},
         {"vehicle_id": "v1", "day_utc": "2026-04-10",
@@ -550,11 +550,11 @@ async def test_get_snapshot_coverage_spans_daily(tenant):
     await tenant.upsert_vehicle_state(1, [
         {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
     ])
-    await tenant.upsert_vehicle_state_snapshots(1, [
+    await tenant.upsert_vehicle_state_minutes(1, [
         {"vehicle_id": "v1", "captured_at": "2026-06-16T12:00:00Z",
          "odometer_mi": 5000, "engine_hours": 500},
     ])
-    await tenant.upsert_vehicle_metrics_daily(1, [
+    await tenant.upsert_vehicle_state_day(1, [
         {"vehicle_id": "v1", "day_utc": "2025-09-01",
          "odometer_eod": 100, "engine_hours_eod": 10},
     ])
@@ -574,7 +574,7 @@ async def test_aggregate_day_window_captures_eod(tenant):
         {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
     ])
     # Three rising readings within one hour of one day.
-    await tenant.upsert_vehicle_state_snapshots(1, [
+    await tenant.upsert_vehicle_state_minutes(1, [
         {"vehicle_id": "v1", "captured_at": "2026-06-15T12:00:00",
          "odometer_mi": 1000, "engine_hours": 100, "engine_state": "moving",
          "speed_mph": 50},
@@ -594,9 +594,9 @@ async def test_aggregate_day_window_captures_eod(tenant):
     await aggregator._aggregate_day_window(tenant, 1, day)
 
     cur = await tenant._db.execute(
-        "SELECT odometer_eod, engine_hours_eod FROM vehicle_telemetry "
+        "SELECT odometer_eod, engine_hours_eod FROM vehicle_state_day "
         "WHERE account_id = ? AND vehicle_id = ? "
-        "AND granularity = 'daily' AND bucket_start = ?",
+        "AND bucket_start = ?",
         (1, "v1", "2026-06-15"),
     )
     row = dict(await cur.fetchone())

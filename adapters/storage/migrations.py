@@ -4109,7 +4109,7 @@ async def migrate_permissions_own_to_vehicle(conn) -> None:
 async def migrate_vehicle_metrics_daily(conn) -> None:
     """Create the per-day vehicle roll-up table.
 
-    Backs ``WarehouseMixin.upsert/get/prune_vehicle_metrics_daily`` and
+    Backs ``WarehouseMixin.upsert/get/prune_vehicle_state_day`` and
     the daily-velocity reads — the feature's storage code shipped
     without its DDL, so it only worked on dev DBs where the table
     already existed; a fresh Postgres install crashed with
@@ -8466,3 +8466,202 @@ async def migrate_object_storage_naming(conn) -> None:
     moved = cur.rowcount or 0
     await conn.commit()
     logger.info("Migration 187: %d account_settings keys re-prefixed", moved)
+
+
+@_register("188_grain_physical_tables")
+async def migrate_grain_physical_tables(conn) -> None:
+    """The physical layer takes the grain names — one vocabulary, done.
+
+    Owner decision (2026-08-06, advisor-endorsed): with every consumer
+    already speaking the grain-surface names and the tiers already
+    having per-grain writers/pruners/builders, the one-table
+    ``granularity`` label had become pure predicate overhead plus a
+    permanent two-vocabulary tax.  REVERSES "shape decides the table"
+    for the timeline family — rationale in docs/architecture/warehouse.md.
+
+      vehicle_state           -> vehicle_state_live      (rename)
+      vehicle_state_snapshot  -> vehicle_state_minute    (rename)
+      vehicle_telemetry       -> vehicle_state_hour/_day/_week (split)
+
+    The five ``vehicle_state_*`` surface VIEWS are dropped — the
+    physical tables take their exact names.  ``vehicle_health_*`` and
+    ``vehicle_timeline`` are (re)created over the new tables — also on
+    the already-converged path, so the operator-window flow (which
+    moves tables but relies on boot for views) self-heals.  Convergent
+    (183 pattern); counts verified BEFORE any drop.  RLS was OFF at
+    migration time; future RLS rollout must cover the new tables.
+    """
+    pool = getattr(getattr(conn, "_pool", None), "_pool", None)
+    if pool is None:
+        raise RuntimeError("Migration 188: asyncpg pool unavailable.")
+    tier_cols = "account_id, vehicle_id, vehicle_name, bucket_start, miles, drive_min, idle_min, max_speed_mph, avg_fuel_pct, harsh_event_count, fault_count_eod, odometer_eod, engine_hours_eod, ingested_at, registry_id, source_ts, battery_min_v, battery_avg_v, oil_min_psi, oil_avg_psi, coolant_max_c, coolant_avg_c, rpm_avg, engine_load_avg_pct"
+    async with pool.acquire() as raw:
+        await raw.execute("SELECT pg_advisory_lock(478188)")
+        try:
+            done = await raw.fetchval(
+                "SELECT to_regclass('warehouse.vehicle_state_hour')")
+            legacy = await raw.fetchval(
+                "SELECT to_regclass('warehouse.vehicle_telemetry')")
+            if done is not None and legacy is None:
+                have_view = await raw.fetchval(
+                    "SELECT to_regclass('warehouse.vehicle_timeline')")
+                if have_view is not None:
+                    logger.info(
+                        "Migration 188: grain tables already converged")
+                    return
+                # Tables converged (operator window) but views missing —
+                # fall through and (re)create only the views.
+            async with raw.transaction():
+                if legacy is not None:
+                    bad = await raw.fetchval(
+                        "SELECT COUNT(*) FROM warehouse.vehicle_telemetry "
+                        "WHERE granularity NOT IN "
+                        "('hourly','daily','weekly')")
+                    if bad:
+                        raise RuntimeError(
+                            f"Migration 188: {bad} unknown-granularity "
+                            "rows — refusing to split")
+                    total = await raw.fetchval(
+                        "SELECT COUNT(*) "
+                        "FROM warehouse.vehicle_telemetry")
+                    for view in ("vehicle_timeline",
+                                 "vehicle_state_live",
+                                 "vehicle_state_minute",
+                                 "vehicle_state_hour", "vehicle_state_day",
+                                 "vehicle_state_week",
+                                 "vehicle_health_live",
+                                 "vehicle_health_minute",
+                                 "vehicle_health_hour", "vehicle_health_day",
+                                 "vehicle_health_week"):
+                        await raw.execute(
+                            f"DROP VIEW IF EXISTS warehouse.{view}")
+                    if await raw.fetchval(
+                            "SELECT to_regclass("
+                            "'warehouse.vehicle_state')"):
+                        await raw.execute(
+                            "ALTER TABLE warehouse.vehicle_state "
+                            "RENAME TO vehicle_state_live")
+                    if await raw.fetchval(
+                            "SELECT to_regclass("
+                            "'warehouse.vehicle_state_snapshot')"):
+                        await raw.execute(
+                            "ALTER TABLE warehouse.vehicle_state_snapshot "
+                            "RENAME TO vehicle_state_minute")
+                    copied = 0
+                    for tbl, gran in (("vehicle_state_hour", "hourly"),
+                                      ("vehicle_state_day", "daily"),
+                                      ("vehicle_state_week", "weekly")):
+                        await raw.execute(
+                            f"CREATE TABLE warehouse.{tbl} "
+                            f"(LIKE warehouse.vehicle_telemetry "
+                            f"INCLUDING DEFAULTS)")
+                        await raw.execute(
+                            f"ALTER TABLE warehouse.{tbl} "
+                            f"DROP COLUMN granularity")
+                        status = await raw.execute(
+                            f"INSERT INTO warehouse.{tbl} ({tier_cols}) "
+                            f"SELECT {tier_cols} "
+                            f"FROM warehouse.vehicle_telemetry "
+                            f"WHERE granularity = '{gran}'")
+                        copied += int(status.split()[-1])
+                        await raw.execute(
+                            f"ALTER TABLE warehouse.{tbl} "
+                            f"ADD PRIMARY KEY "
+                            f"(account_id, vehicle_id, bucket_start)")
+                        await raw.execute(
+                            f"CREATE INDEX idx_{tbl}_bucket "
+                            f"ON warehouse.{tbl} "
+                            f"(account_id, bucket_start DESC)")
+                    if copied != total:
+                        raise RuntimeError(
+                            f"Migration 188: copied {copied} of "
+                            f"{total} — refusing to drop the source")
+                    await raw.execute(
+                        "DROP TABLE warehouse.vehicle_telemetry")
+                for _v in ("vehicle_timeline", "vehicle_health_live",
+                           "vehicle_health_minute", "vehicle_health_hour",
+                           "vehicle_health_day", "vehicle_health_week"):
+                    await raw.execute(
+                        f"DROP VIEW IF EXISTS warehouse.{_v}")
+                await raw.execute("""
+        CREATE VIEW warehouse.vehicle_timeline AS
+        SELECT account_id, registry_id, vehicle_id, vehicle_name,
+               'live'::text  AS grain, 'sample'::text AS kind,
+               captured_at   AS ts, source_ts,
+               lat, lon, speed_mph, fuel_pct, odometer_mi, engine_hours,
+               engine_state,
+               NULL::real AS battery_v, NULL::real AS oil_psi,
+               NULL::real AS coolant_c, NULL::real AS rpm,
+               NULL::real AS miles, NULL::real AS drive_min,
+               NULL::real AS idle_min, NULL::real AS avg_fuel_pct,
+               NULL::real AS odometer_eod, NULL::real AS engine_hours_eod,
+               NULL::real AS battery_min_v, NULL::real AS battery_avg_v,
+               NULL::real AS oil_min_psi, NULL::real AS oil_avg_psi,
+               NULL::real AS coolant_max_c, NULL::real AS coolant_avg_c,
+               NULL::real AS rpm_avg, NULL::real AS engine_load_avg_pct
+          FROM warehouse.vehicle_state_live
+        UNION ALL
+        SELECT account_id, registry_id, vehicle_id, NULL::text,
+               'minute', 'sample',
+               captured_at, source_ts,
+               lat, lon, speed_mph, fuel_pct, odometer_mi, engine_hours,
+               engine_state,
+               battery_v, oil_psi, coolant_c, rpm,
+               NULL, NULL, NULL, NULL, NULL, NULL,
+               NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
+          FROM warehouse.vehicle_state_minute
+        UNION ALL
+        SELECT account_id, registry_id, vehicle_id, vehicle_name,
+               'hour', 'aggregate',
+               bucket_start, source_ts,
+               NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+               NULL, NULL, NULL, NULL,
+               miles, drive_min, idle_min, avg_fuel_pct,
+               odometer_eod, engine_hours_eod,
+               battery_min_v, battery_avg_v, oil_min_psi, oil_avg_psi,
+               coolant_max_c, coolant_avg_c, rpm_avg, engine_load_avg_pct
+          FROM warehouse.vehicle_state_hour
+        UNION ALL
+        SELECT account_id, registry_id, vehicle_id, vehicle_name,
+               'day', 'aggregate',
+               bucket_start, source_ts,
+               NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+               NULL, NULL, NULL, NULL,
+               miles, drive_min, idle_min, avg_fuel_pct,
+               odometer_eod, engine_hours_eod,
+               battery_min_v, battery_avg_v, oil_min_psi, oil_avg_psi,
+               coolant_max_c, coolant_avg_c, rpm_avg, engine_load_avg_pct
+          FROM warehouse.vehicle_state_day
+        UNION ALL
+        SELECT account_id, registry_id, vehicle_id, vehicle_name,
+               'week', 'aggregate',
+               bucket_start, source_ts,
+               NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+               NULL, NULL, NULL, NULL,
+               miles, drive_min, idle_min, avg_fuel_pct,
+               odometer_eod, engine_hours_eod,
+               battery_min_v, battery_avg_v, oil_min_psi, oil_avg_psi,
+               coolant_max_c, coolant_avg_c, rpm_avg, engine_load_avg_pct
+          FROM warehouse.vehicle_state_week
+                """)
+                await raw.execute(
+                    "CREATE VIEW warehouse.vehicle_health_live AS "
+                    "SELECT * FROM warehouse.vehicle_health_snapshot")
+                await raw.execute(
+                    "CREATE VIEW warehouse.vehicle_health_minute AS "
+                    "SELECT account_id, registry_id, vehicle_id, "
+                    "captured_at, source_ts, battery_v, oil_psi, "
+                    "coolant_c, engine_load_pct, rpm "
+                    "FROM warehouse.vehicle_state_minute")
+                for grain in ("hour", "day", "week"):
+                    await raw.execute(
+                        f"CREATE VIEW warehouse.vehicle_health_{grain} "
+                        f"AS SELECT account_id, registry_id, vehicle_id, vehicle_name, bucket_start, source_ts, battery_min_v, battery_avg_v, oil_min_psi, oil_avg_psi, coolant_max_c, coolant_avg_c, rpm_avg, engine_load_avg_pct "
+                        f"FROM warehouse.vehicle_state_{grain}")
+            if legacy is not None:
+                logger.warning(
+                    "Migration 188: split tier rows into grain tables at "
+                    "boot — if this is production, use the operator "
+                    "window (docs/runbooks/warehouse-grain-split.md)")
+        finally:
+            await raw.execute("SELECT pg_advisory_unlock(478188)")

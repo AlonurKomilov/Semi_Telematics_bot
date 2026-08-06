@@ -1,6 +1,6 @@
 """Vehicle lifecycle machinery: the departure sweep and the ingest ledger.
 
-``vehicle_state`` means "the fleet as it reports NOW", but nothing ever
+``vehicle_state_live`` means "the fleet as it reports NOW", but nothing ever
 removed a row once its gateway went silent: a truck that left Samsara in
 May was still served as a current vehicle in August, its frozen odometer
 indistinguishable from a fresh one.  Gateway swaps made it worse — the
@@ -60,7 +60,7 @@ class VehicleDepartureMixin:
 
         cols = ("vehicle_id", "vehicle_name", "company_code", "captured_at")
         cur = await self._db.execute(
-            f"SELECT {', '.join(cols)} FROM vehicle_state "
+            f"SELECT {', '.join(cols)} FROM vehicle_state_live "
             f"WHERE account_id = ?",
             (account_id,),
         )
@@ -102,7 +102,7 @@ class VehicleDepartureMixin:
         deactivated = getattr(cur, "rowcount", 0) or 0
 
         await self._db.execute(
-            f"DELETE FROM vehicle_state "
+            f"DELETE FROM vehicle_state_live "
             f"WHERE account_id = ? AND vehicle_id IN ({placeholders})",
             (account_id, *stale_ids),
         )

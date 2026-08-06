@@ -115,28 +115,28 @@ from capabilities.data_lifecycle.retention.registry import (  # noqa: E402
 
 # Target names are the feature-component identity (``vehicle.<component>``),
 # decoupled from the physical table the executor prunes:
-#   vehicle.timeline_minute -> vehicle_state_snapshot      (minute-grain state;
+#   vehicle.timeline_minute -> vehicle_state_minute        (minute-grain state;
 #                              renamed from timeline_5min — migration 186 folds
 #                              the ledger history onto the new key)
-#   vehicle.timeline_hourly -> vehicle_telemetry (hourly)  (hourly roll-up)
-#   vehicle.metrics_daily   -> vehicle_telemetry (daily)   (daily roll-up + EOD odometer)
-#   vehicle.timeline_weekly -> vehicle_telemetry (weekly)  (weekly roll-up, long horizon)
+#   vehicle.timeline_hourly -> vehicle_state_hour          (hour roll-up)
+#   vehicle.metrics_daily   -> vehicle_state_day           (day roll-up + EOD odometer)
+#   vehicle.timeline_weekly -> vehicle_state_week          (week roll-up, long horizon)
 #   vehicle.faults          -> vehicle_fault_detail        (CLEARED DTC history only)
 register_target(RetentionTarget(
     "vehicle.timeline_minute", "Vehicle timeline (minute state history)", "tenant",
-    lambda db, acct, days: db.prune_vehicle_state_snapshots(acct, days_keep=days),
+    lambda db, acct, days: db.prune_vehicle_state_minutes(acct, days_keep=days),
 ))
 register_target(RetentionTarget(
     "vehicle.timeline_hourly", "Vehicle timeline (hourly roll-up)", "tenant",
-    lambda db, acct, days: db.prune_vehicle_telemetry_hourly(acct, days_keep=days),
+    lambda db, acct, days: db.prune_vehicle_state_hour(acct, days_keep=days),
 ))
 register_target(RetentionTarget(
     "vehicle.metrics_daily", "Vehicle daily metrics (+ end-of-day odometer)", "tenant",
-    lambda db, acct, days: db.prune_vehicle_metrics_daily(acct, days_keep=days),
+    lambda db, acct, days: db.prune_vehicle_state_day(acct, days_keep=days),
 ))
 register_target(RetentionTarget(
     "vehicle.timeline_weekly", "Vehicle timeline (weekly roll-up)", "tenant",
-    lambda db, acct, days: db.prune_vehicle_telemetry_weekly(acct, days_keep=days),
+    lambda db, acct, days: db.prune_vehicle_state_week(acct, days_keep=days),
 ))
 # Cleared DTCs only — the executor never touches active faults (cleared_at
 # IS NULL), so live faults are kept regardless of the window.
@@ -234,7 +234,7 @@ register_dataset(IngestDataset(
     capability="vehicle_state",
     cadence={"interval_min": 1},
     run=_run_vehicle_state,
-    tables=("vehicle_state", "vehicle_state_snapshot"),
+    tables=("vehicle_state_live", "vehicle_state_minute"),
     freshness_sla_min=15,
     label="Pull live vehicle state from the provider",
 ))

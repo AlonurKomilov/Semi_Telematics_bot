@@ -46,7 +46,7 @@ async def _seed_daily(db: Database, account_id: int, vehicle_id: str,
         }
         for offset, miles in miles_by_offset.items()
     ]
-    await db.upsert_vehicle_metrics_daily(account_id, rows)
+    await db.upsert_vehicle_state_day(account_id, rows)
 
 
 # ── Median over drive days ────────────────────────────────────────

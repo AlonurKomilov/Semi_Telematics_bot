@@ -43,10 +43,10 @@ async def mileage_app(pg_db):
 
     async def day(vid, name, day_s, odo, miles=0.0):
         await db._db.execute(
-            "INSERT INTO vehicle_telemetry "
-            "(account_id, vehicle_id, vehicle_name, granularity, "
+            "INSERT INTO vehicle_state_day "
+            "(account_id, vehicle_id, vehicle_name, "
             " bucket_start, miles, odometer_eod) "
-            "VALUES (?, ?, ?, 'daily', ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?, ?)",
             (acct.id, vid, name, day_s, miles, odo),
         )
     # 107: 10,000 → 10,600 over the range; 213: 8,000 → 9,000.
@@ -55,7 +55,7 @@ async def mileage_app(pg_db):
     await day("v107", "107", "2026-07-03", 10_600, 350)
     await day("v213", "213", "2026-07-01", 8_000)
     await day("v213", "213", "2026-07-03", 9_000, 1000)
-    # 999 has vehicle_state but no telemetry rows → the no_data list.
+    # 999 has vehicle_state_live but no telemetry rows → the no_data list.
     await db._db.commit()
 
     import infra.platform as _cp
@@ -247,7 +247,7 @@ class TestUnitMerge:
 
     Same unit number in two companies = two different trucks (production:
     "103" in G1 and OSY).  Same number twice in ONE company = a gateway
-    swap (production: PTG's "6729").  vehicle_state's unique constraint
+    swap (production: PTG's "6729").  vehicle_state_live's unique constraint
     blocks creating the second case through the API, so the grouping is
     exercised directly on the pure helper.
     """

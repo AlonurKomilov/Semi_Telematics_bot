@@ -220,7 +220,7 @@ async def snapshot_coverage(
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
-    coverage = await tenant.vehicle_state_snapshot_day_summary(
+    coverage = await tenant.vehicle_state_minute_day_summary(
         account_id, days_back=days,
     )
     entry = PROVIDER_CATALOG[_PROVIDER_ID]

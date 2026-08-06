@@ -78,7 +78,7 @@ async def test_source_ts_propagates_snapshot_to_hourly_to_daily(pg_db):
     acct = 46
     hour = datetime(2026, 7, 20, 9, tzinfo=timezone.utc)
     gauges = {0: (12.9, 92.0), 5: (13.4, 85.0), 10: (13.1, 88.0)}
-    await pg_db.upsert_vehicle_state_snapshots(acct, [
+    await pg_db.upsert_vehicle_state_minutes(acct, [
         {"vehicle_id": "v1",
          "captured_at": hour.replace(minute=m).isoformat(),
          "odometer_mi": 1000 + m, "engine_state": "moving", "speed_mph": 55,
@@ -89,10 +89,11 @@ async def test_source_ts_propagates_snapshot_to_hourly_to_daily(pg_db):
     ])
     await agg._aggregate_hour_window(pg_db, acct, hour)
 
-    tier_cols = ("SELECT source_ts, registry_id, battery_min_v, "
-                 "coolant_max_c, oil_min_psi FROM vehicle_telemetry "
-                 "WHERE account_id = ? AND granularity = ? AND bucket_start = ?")
-    cur = await pg_db._db.execute(tier_cols, (acct, "hourly", "2026-07-20T09:00:00"))
+    def tier_cols(table):
+        return ("SELECT source_ts, registry_id, battery_min_v, "
+                f"coolant_max_c, oil_min_psi FROM {table} "
+                "WHERE account_id = ? AND bucket_start = ?")
+    cur = await pg_db._db.execute(tier_cols("vehicle_state_hour"), (acct, "2026-07-20T09:00:00"))
     hourly_ts, hourly_rid, batt_min, cool_max, oil_min = await cur.fetchone()
     assert hourly_ts == "2026-07-20T08:42:00Z"   # the freshest sample, verbatim
     assert hourly_rid == 37
@@ -103,7 +104,7 @@ async def test_source_ts_propagates_snapshot_to_hourly_to_daily(pg_db):
     assert oil_min is None
 
     await agg._aggregate_day_window(pg_db, acct, hour.replace(hour=0))
-    cur = await pg_db._db.execute(tier_cols, (acct, "daily", "2026-07-20"))
+    cur = await pg_db._db.execute(tier_cols("vehicle_state_day"), (acct, "2026-07-20"))
     daily_ts, daily_rid, batt_min, cool_max, oil_min = await cur.fetchone()
     assert daily_ts == "2026-07-20T08:42:00Z"
     assert daily_rid == 37
@@ -112,7 +113,7 @@ async def test_source_ts_propagates_snapshot_to_hourly_to_daily(pg_db):
 
     # 2026-07-20 is a Monday — roll the same day into its week bucket.
     await agg._aggregate_week_window(pg_db, acct, hour.replace(hour=0))
-    cur = await pg_db._db.execute(tier_cols, (acct, "weekly", "2026-07-20"))
+    cur = await pg_db._db.execute(tier_cols("vehicle_state_week"), (acct, "2026-07-20"))
     weekly_ts, weekly_rid, batt_min, cool_max, oil_min = await cur.fetchone()
     assert weekly_ts == "2026-07-20T08:42:00Z"
     assert weekly_rid == 37
@@ -125,17 +126,17 @@ async def test_replay_without_sources_keeps_the_banked_world_time(pg_db):
     """Re-running a bucket whose snapshots aged out must not erase the
     age it honestly knew — same COALESCE rule the odometer bank uses."""
     acct = 47
-    await pg_db.upsert_vehicle_telemetry_hourly(acct, [{
+    await pg_db.upsert_vehicle_state_hour(acct, [{
         "vehicle_id": "v1", "hour_utc": "2026-07-20T09:00:00",
         "miles": 10.0, "source_ts": "2026-07-20T08:42:00Z",
     }])
-    await pg_db.upsert_vehicle_telemetry_hourly(acct, [{
+    await pg_db.upsert_vehicle_state_hour(acct, [{
         "vehicle_id": "v1", "hour_utc": "2026-07-20T09:00:00",
         "miles": 10.0, "source_ts": None,
     }])
     cur = await pg_db._db.execute(
-        "SELECT source_ts FROM vehicle_telemetry WHERE account_id = ? "
-        "AND granularity = 'hourly' AND bucket_start = ?",
+        "SELECT source_ts FROM vehicle_state_hour WHERE account_id = ? "
+        "AND bucket_start = ?",
         (acct, "2026-07-20T09:00:00"))
     assert (await cur.fetchone())[0] == "2026-07-20T08:42:00Z"
 
@@ -164,12 +165,12 @@ async def test_asset_grain_surfaces_agree_with_storage(pg_db):
     minute sample must feed BOTH streams' minute surface; one tier row
     must split by stream (miles on state, gauges on health)."""
     acct = 52
-    await pg_db.upsert_vehicle_state_snapshots(acct, [
+    await pg_db.upsert_vehicle_state_minutes(acct, [
         {"vehicle_id": "v1", "captured_at": "2026-08-03T10:01:00+00:00",
          "odometer_mi": 900.0, "engine_state": "moving", "speed_mph": 55.0,
          "battery_v": 13.2, "coolant_c": 88.0},
     ])
-    await pg_db.upsert_vehicle_metrics_daily(acct, [
+    await pg_db.upsert_vehicle_state_day(acct, [
         {"vehicle_id": "v1", "day_utc": "2026-08-02", "miles": 123.0,
          "battery_min_v": 12.8, "coolant_max_c": 93.0},
     ])
@@ -239,11 +240,13 @@ async def test_no_warehouse_table_shadows_in_public(pg_db):
     every read.  A fresh install must end with the family living in
     the warehouse schema and NOTHING shadowing it in public."""
     old_and_new = [
-        "vehicle_state", "vehicle_state_snapshot", "vehicle_telemetry",
+        "vehicle_state_live", "vehicle_state_minute",
+        "vehicle_state_hour", "vehicle_state_day", "vehicle_state_week",
         "vehicle_health_snapshot", "vehicle_fault_snapshot",
         "vehicle_fault_detail", "safety_event_log", "geofence_definitions",
         "ingest_runs", "driver_efficiency", "weather_snapshot",
         "efficiency_snapshot", "ingest_orphans", "vehicle_timeline",
+        "vehicle_state", "vehicle_state_snapshot", "vehicle_telemetry",
         "driver_efficiency_daily", "aggregate_weather_snapshot",
         "aggregate_efficiency_snapshot", "warehouse_ingest_orphans",
     ]
@@ -253,7 +256,8 @@ async def test_no_warehouse_table_shadows_in_public(pg_db):
         assert (await cur.fetchone())[0] is None, (
             f"public.{name} exists — it shadows the warehouse schema"
         )
-    for name in ["vehicle_state", "vehicle_telemetry", "driver_efficiency",
+    for name in ["vehicle_state_live", "vehicle_state_hour", "vehicle_state_day",
+                 "vehicle_state_week", "driver_efficiency",
                  "weather_snapshot", "efficiency_snapshot", "ingest_orphans",
                  "vehicle_timeline"]:
         cur = await pg_db._db.execute(
@@ -276,9 +280,10 @@ async def test_catalog_comments_describe_the_family(pg_db):
             "SELECT obj_description(?::regclass, 'pg_class')", (table,))
         return (await cur.fetchone())[0] or ""
 
-    assert "vehicles.state (owner: vehicles)" in await comment_of("vehicle_state")
-    assert "grain minute" in await comment_of("vehicle_state_snapshot")
-    assert "hour|day|week" in await comment_of("vehicle_telemetry")
+    assert "vehicles.state (owner: vehicles)" in await comment_of("vehicle_state_live")
+    assert "grain minute" in await comment_of("vehicle_state_minute")
+    assert "grain hour" in await comment_of("vehicle_state_hour")
+    assert "grain week" in await comment_of("vehicle_state_week")
     assert "events.safety (owner: events)" in await comment_of("safety_event_log")
     # Operational feature tables are NOT the warehouse — no family tag.
     assert "warehouse" not in await comment_of("vehicles")
@@ -293,7 +298,8 @@ async def test_every_contract_table_carries_the_column(pg_db):
     )
     have = {r[0] for r in await cur.fetchall()}
     required = {
-        "vehicle_state", "vehicle_state_snapshot", "vehicle_telemetry",
+        "vehicle_state_live", "vehicle_state_minute",
+        "vehicle_state_hour", "vehicle_state_day", "vehicle_state_week",
         "vehicle_health_snapshot", "vehicle_fault_snapshot",
         "vehicle_fault_detail", "safety_event_log",
         "driver_efficiency", "geofence_definitions",
@@ -314,12 +320,12 @@ async def test_vehicle_timeline_view_agrees_with_its_tables(pg_db):
         {"vehicle_id": "v1", "vehicle_name": "401", "company_code": "PTG",
          "speed_mph": 55.0, "captured_at": "2026-08-03T10:00:00Z"},
     ])
-    await pg_db.upsert_vehicle_state_snapshots(acct, [
+    await pg_db.upsert_vehicle_state_minutes(acct, [
         {"vehicle_id": "v1", "captured_at": "2026-08-03T10:01:00+00:00",
          "odometer_mi": 900.0, "engine_state": "moving", "speed_mph": 55.0,
          "battery_v": 13.2},
     ])
-    await pg_db.upsert_vehicle_metrics_daily(acct, [
+    await pg_db.upsert_vehicle_state_day(acct, [
         {"vehicle_id": "v1", "day_utc": "2026-08-02", "miles": 123.0},
     ])
 

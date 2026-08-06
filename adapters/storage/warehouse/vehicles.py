@@ -86,7 +86,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         if values:
             await self._db.executemany(
                 """
-                INSERT INTO vehicle_state (
+                INSERT INTO vehicle_state_live (
                     vehicle_id, account_id, vehicle_name, company_code,
                     lat, lon, speed_mph, heading, address,
                     engine_state, fuel_pct, def_pct,
@@ -106,10 +106,10 @@ class VehiclesWarehouseMixin(_MixinBase):
                     address=excluded.address,
                     engine_state=excluded.engine_state,
                     fuel_pct=excluded.fuel_pct, def_pct=excluded.def_pct,
-                    odometer_mi=COALESCE(excluded.odometer_mi, vehicle_state.odometer_mi),
-                    odometer_time=COALESCE(excluded.odometer_time, vehicle_state.odometer_time),
-                    engine_hours=COALESCE(excluded.engine_hours, vehicle_state.engine_hours),
-                    engine_hours_time=COALESCE(excluded.engine_hours_time, vehicle_state.engine_hours_time),
+                    odometer_mi=COALESCE(excluded.odometer_mi, vehicle_state_live.odometer_mi),
+                    odometer_time=COALESCE(excluded.odometer_time, vehicle_state_live.odometer_time),
+                    engine_hours=COALESCE(excluded.engine_hours, vehicle_state_live.engine_hours),
+                    engine_hours_time=COALESCE(excluded.engine_hours_time, vehicle_state_live.engine_hours_time),
                     fault_count=excluded.fault_count,
                     dtc_critical_count=excluded.dtc_critical_count,
                     last_driver_id=excluded.last_driver_id,
@@ -117,11 +117,11 @@ class VehiclesWarehouseMixin(_MixinBase):
                     -- The identity WE resolved outranks its absence: a
                     -- tick where the resolver missed keeps the last
                     -- known registry link rather than unlinking history.
-                    registry_id=COALESCE(excluded.registry_id, vehicle_state.registry_id),
+                    registry_id=COALESCE(excluded.registry_id, vehicle_state_live.registry_id),
                     -- A known world-time outranks its absence: a tick
                     -- where every provider marker went missing keeps
                     -- the last honest age instead of erasing it.
-                    source_ts=COALESCE(excluded.source_ts, vehicle_state.source_ts),
+                    source_ts=COALESCE(excluded.source_ts, vehicle_state_live.source_ts),
                     -- Keep the most recent non-empty Samsara location
                     -- timestamp.  If Samsara hiccups and returns the
                     -- vehicle without a location ``time``, we shouldn't
@@ -129,7 +129,7 @@ class VehiclesWarehouseMixin(_MixinBase):
                     -- this column for activity detection.
                     captured_at=CASE
                         WHEN COALESCE(excluded.captured_at, '') = ''
-                            THEN vehicle_state.captured_at
+                            THEN vehicle_state_live.captured_at
                         ELSE excluded.captured_at
                     END,
                     updated_at=excluded.updated_at
@@ -181,7 +181,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         cur = await self._db.execute(
             f"""
             SELECT {', '.join(cols)}
-            FROM vehicle_state
+            FROM vehicle_state_live
             WHERE {' AND '.join(where)}
             ORDER BY vehicle_name
             """,
@@ -190,15 +190,15 @@ class VehiclesWarehouseMixin(_MixinBase):
         return [dict(zip(cols, row)) for row in await cur.fetchall()]
 
 
-    # ── vehicle_telemetry_hourly ────────────────────────────────────
+    # ── vehicle_state_hour ────────────────────────────────────
 
-    async def upsert_vehicle_telemetry_hourly(
+    async def upsert_vehicle_state_hour(
         self,
         account_id: int,
         rows: Iterable[dict[str, Any]],
     ) -> int:
         """Upsert hourly roll-up rows.  Aggregator computes these from
-        ``vehicle_state`` history + safety events; this mixin just
+        ``vehicle_state_live`` history + safety events; this mixin just
         persists them."""
         ts = _now_iso()
         values: list[tuple] = []
@@ -232,12 +232,12 @@ class VehiclesWarehouseMixin(_MixinBase):
                 ts,
             ))
         if values:
-            # granularity='hourly' bucket in the unified vehicle_telemetry
+            # the hour-grain table; bucket_start carries the old hour_utc label.
             # table; bucket_start carries the old hour_utc label.
             await self._db.executemany(
                 """
-                INSERT INTO vehicle_telemetry (
-                    account_id, vehicle_id, granularity, bucket_start,
+                INSERT INTO vehicle_state_hour (
+                    account_id, vehicle_id, bucket_start,
                     miles, drive_min, idle_min,
                     max_speed_mph, avg_fuel_pct, harsh_event_count,
                     odometer_eod, engine_hours_eod, source_ts, registry_id,
@@ -250,9 +250,9 @@ class VehiclesWarehouseMixin(_MixinBase):
                     rpm_avg,
                     engine_load_avg_pct,
                     ingested_at
-                ) VALUES (?, ?, 'hourly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                           ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(account_id, vehicle_id, granularity, bucket_start) DO UPDATE SET
+                ON CONFLICT(account_id, vehicle_id, bucket_start) DO UPDATE SET
                     miles=excluded.miles,
                     drive_min=excluded.drive_min,
                     idle_min=excluded.idle_min,
@@ -263,18 +263,18 @@ class VehiclesWarehouseMixin(_MixinBase):
                     -- can't recompute one: replaying an hour whose minute
                     -- snapshots have since been pruned yields a row only
                     -- from safety events, carrying no odometer at all.
-                    odometer_eod=COALESCE(excluded.odometer_eod, vehicle_telemetry.odometer_eod),
-                    engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_telemetry.engine_hours_eod),
-                    source_ts=COALESCE(excluded.source_ts, vehicle_telemetry.source_ts),
-                    registry_id=COALESCE(excluded.registry_id, vehicle_telemetry.registry_id),
-                    battery_min_v=COALESCE(excluded.battery_min_v, vehicle_telemetry.battery_min_v),
-                    battery_avg_v=COALESCE(excluded.battery_avg_v, vehicle_telemetry.battery_avg_v),
-                    oil_min_psi=COALESCE(excluded.oil_min_psi, vehicle_telemetry.oil_min_psi),
-                    oil_avg_psi=COALESCE(excluded.oil_avg_psi, vehicle_telemetry.oil_avg_psi),
-                    coolant_max_c=COALESCE(excluded.coolant_max_c, vehicle_telemetry.coolant_max_c),
-                    coolant_avg_c=COALESCE(excluded.coolant_avg_c, vehicle_telemetry.coolant_avg_c),
-                    rpm_avg=COALESCE(excluded.rpm_avg, vehicle_telemetry.rpm_avg),
-                    engine_load_avg_pct=COALESCE(excluded.engine_load_avg_pct, vehicle_telemetry.engine_load_avg_pct),
+                    odometer_eod=COALESCE(excluded.odometer_eod, vehicle_state_hour.odometer_eod),
+                    engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_state_hour.engine_hours_eod),
+                    source_ts=COALESCE(excluded.source_ts, vehicle_state_hour.source_ts),
+                    registry_id=COALESCE(excluded.registry_id, vehicle_state_hour.registry_id),
+                    battery_min_v=COALESCE(excluded.battery_min_v, vehicle_state_hour.battery_min_v),
+                    battery_avg_v=COALESCE(excluded.battery_avg_v, vehicle_state_hour.battery_avg_v),
+                    oil_min_psi=COALESCE(excluded.oil_min_psi, vehicle_state_hour.oil_min_psi),
+                    oil_avg_psi=COALESCE(excluded.oil_avg_psi, vehicle_state_hour.oil_avg_psi),
+                    coolant_max_c=COALESCE(excluded.coolant_max_c, vehicle_state_hour.coolant_max_c),
+                    coolant_avg_c=COALESCE(excluded.coolant_avg_c, vehicle_state_hour.coolant_avg_c),
+                    rpm_avg=COALESCE(excluded.rpm_avg, vehicle_state_hour.rpm_avg),
+                    engine_load_avg_pct=COALESCE(excluded.engine_load_avg_pct, vehicle_state_hour.engine_load_avg_pct),
                     ingested_at=excluded.ingested_at
                 """,
                 values,
@@ -283,7 +283,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         return len(values)
 
 
-    async def get_vehicle_telemetry_hourly(
+    async def get_vehicle_state_hour(
         self,
         account_id: int,
         *,
@@ -295,7 +295,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         the weekly bot scorecard."""
         from datetime import timedelta
         since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:00:00")
-        where = ["account_id = ?", "granularity = 'hourly'", "bucket_start >= ?"]
+        where = ["account_id = ?", "bucket_start >= ?"]
         args: list[Any] = [account_id, since]
         if vehicle_id:
             where.append("vehicle_id = ?")
@@ -311,7 +311,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             f"""
             SELECT vehicle_id, bucket_start, miles, drive_min, idle_min,
                    max_speed_mph, harsh_event_count
-            FROM vehicle_telemetry
+            FROM vehicle_state_hour
             WHERE {' AND '.join(where)}
             ORDER BY bucket_start DESC
             """,
@@ -328,7 +328,7 @@ class VehiclesWarehouseMixin(_MixinBase):
     ) -> dict[str, float]:
         """Average daily miles per vehicle over the last ``days``.
 
-        Aggregates ``vehicle_telemetry_hourly.miles`` per vehicle_id and
+        Aggregates ``vehicle_state_hour.miles`` per vehicle_id and
         divides by ``days``.  Drives the maintenance-calendar's mileage
         projection: a truck that does 120 mi/day with 600 mi to go on
         the next oil change projects to ~5 days out.
@@ -349,8 +349,8 @@ class VehiclesWarehouseMixin(_MixinBase):
         cur = await self._db.execute(
             """
             SELECT vehicle_id, SUM(miles) AS total_miles
-              FROM vehicle_telemetry
-             WHERE account_id = ? AND granularity = 'hourly' AND bucket_start >= ?
+              FROM vehicle_state_hour
+             WHERE account_id = ? AND bucket_start >= ?
              GROUP BY vehicle_id
             """,
             (account_id, since),
@@ -366,17 +366,17 @@ class VehiclesWarehouseMixin(_MixinBase):
 
 
 
-    # ── vehicle_state_snapshot (minute-grain history) ───────────────
+    # ── vehicle_state_minute (minute-grain history) ───────────────
     #
     # Persistence layer for the per-vehicle state-over-time history
     # that backs the maintenance calendar projection, safety event
     # correlation, dispatch trip playback, accounting fuel-burn
     # reports, HR hours-of-service reconciliation, and predictive
-    # maintenance.  The snapshot job copies vehicle_state rows in;
+    # maintenance.  The snapshot job copies vehicle_state_live rows in;
     # the aggregator job reads them to compute hourly deltas; the
     # retention prune drops rows past the configured window.
 
-    async def upsert_vehicle_state_snapshots(
+    async def upsert_vehicle_state_minutes(
         self,
         account_id: int,
         rows: Iterable[dict[str, Any]],
@@ -415,7 +415,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         if values:
             await self._db.executemany(
                 """
-                INSERT INTO vehicle_state_snapshot (
+                INSERT INTO vehicle_state_minute (
                     account_id, vehicle_id, captured_at,
                     lat, lon, speed_mph, engine_state,
                     fuel_pct, def_pct, odometer_mi, engine_hours,
@@ -449,7 +449,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             """
             SELECT odometer_mi, engine_hours, fuel_pct, captured_at,
                    engine_state, speed_mph
-              FROM vehicle_state_snapshot
+              FROM vehicle_state_minute
              WHERE account_id = ? AND vehicle_id = ?
                AND captured_at <= ?
              ORDER BY captured_at DESC
@@ -480,13 +480,13 @@ class VehiclesWarehouseMixin(_MixinBase):
 
         Movement-based — the authoritative answer to "which vehicle hasn't
         driven in N days" — as opposed to parking-location events.  Only
-        vehicles still reporting (recent ``vehicle_state_snapshot`` rows)
+        vehicles still reporting (recent ``vehicle_state_minute`` rows)
         are considered, so a truck that simply fell offline isn't reported
         as "stopped".  Snapshots are keyed by ``vehicle_id``, so we join the
-        current ``vehicle_state`` for name + company.
+        current ``vehicle_state_live`` for name + company.
 
         Tiered so the answer reaches past the 7-day snapshot retention:
-          * Recent, precise movement comes from ``vehicle_state_snapshot``
+          * Recent, precise movement comes from ``vehicle_state_minute``
             (minute cadence, ≤7 days) — this also decides which vehicles are
             online enough to consider.
           * For an online truck with NO movement inside the snapshot window,
@@ -511,7 +511,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             SELECT vehicle_id,
                    MAX(CASE WHEN speed_mph > ? THEN captured_at END) AS last_moved,
                    MAX(captured_at) AS last_seen
-              FROM vehicle_state_snapshot
+              FROM vehicle_state_minute
              WHERE account_id = ? AND captured_at >= ?
              GROUP BY vehicle_id
             """,
@@ -534,8 +534,8 @@ class VehiclesWarehouseMixin(_MixinBase):
             cur = await self._db.execute(
                 """
                 SELECT vehicle_id, MAX(bucket_start) AS last_drive_day
-                  FROM vehicle_telemetry
-                 WHERE account_id = ? AND granularity = 'daily'
+                  FROM vehicle_state_day
+                 WHERE account_id = ? 
                    AND bucket_start >= ? AND drive_min > 0
                  GROUP BY vehicle_id
                 """,
@@ -600,7 +600,7 @@ class VehiclesWarehouseMixin(_MixinBase):
     ) -> dict[str, float]:
         """Average daily miles per vehicle over the recent history.
 
-        Reads from ``vehicle_state_snapshot`` directly so the answer
+        Reads from ``vehicle_state_minute`` directly so the answer
         reflects the genuine odometer-delta over the window, regardless
         of whether the hourly aggregator has run for every hour in the
         window.
@@ -626,7 +626,7 @@ class VehiclesWarehouseMixin(_MixinBase):
                    MAX(odometer_mi) AS last_odo,
                    MIN(captured_at) AS first_at,
                    MAX(captured_at) AS last_at
-              FROM vehicle_state_snapshot
+              FROM vehicle_state_minute
              WHERE account_id = ?
                AND captured_at >= ?
                AND odometer_mi IS NOT NULL
@@ -733,8 +733,8 @@ class VehiclesWarehouseMixin(_MixinBase):
         cur = await self._db.execute(
             """
             SELECT vehicle_id, bucket_start, COALESCE(miles, 0) AS miles
-              FROM vehicle_telemetry
-             WHERE account_id = ? AND granularity = 'daily' AND bucket_start >= ?
+              FROM vehicle_state_day
+             WHERE account_id = ? AND bucket_start >= ?
              ORDER BY vehicle_id, bucket_start
             """,
             (account_id, since_day),
@@ -778,14 +778,14 @@ class VehiclesWarehouseMixin(_MixinBase):
         return out
 
 
-    async def prune_vehicle_state_snapshots(
+    async def prune_vehicle_state_minutes(
         self, account_id: int, *, days_keep: int = 7,
     ) -> int:
         """Drop snapshot rows older than the retention window."""
         from datetime import timedelta
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_keep)).isoformat()
         cur = await self._db.execute(
-            "DELETE FROM vehicle_state_snapshot "
+            "DELETE FROM vehicle_state_minute "
             "WHERE account_id = ? AND captured_at < ?",
             (account_id, cutoff),
         )
@@ -800,10 +800,10 @@ class VehiclesWarehouseMixin(_MixinBase):
 
         Powers back-dated work orders: a WO dated last month should show
         the mileage the truck had then, not today's.  ``vehicle_name`` is
-        the unit name; resolved to the telematics id via ``vehicle_state``.
+        the unit name; resolved to the telematics id via ``vehicle_state_live``.
 
         Tiered lookup, precise-first:
-          1. The 5-minute ``vehicle_state_snapshot`` (kept 7 days) — exact
+          1. The 5-minute ``vehicle_state_minute`` (kept 7 days) — exact
              reading at/-before end of ``on_date``.
           2. Fallback to the end-of-day reading in ``vehicle_metrics_daily``
              (kept 730 days) for dates older than the snapshot window.
@@ -818,7 +818,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             return None
         # name → telematics vehicle_id (the snapshot's key).
         rc = await self._db.execute(
-            "SELECT vehicle_id FROM vehicle_state "
+            "SELECT vehicle_id FROM vehicle_state_live "
             "WHERE account_id = ? AND lower(vehicle_name) = lower(?) LIMIT 1",
             (account_id, name),
         )
@@ -837,7 +837,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         # Tier 1 — precise 5-minute snapshot.
         cur = await self._db.execute(
             "SELECT odometer_mi, engine_hours, captured_at "
-            "FROM vehicle_state_snapshot "
+            "FROM vehicle_state_minute "
             "WHERE account_id = ? AND vehicle_id = ? AND captured_at < ? "
             "AND odometer_mi IS NOT NULL "
             "ORDER BY captured_at DESC LIMIT 1",
@@ -854,8 +854,8 @@ class VehiclesWarehouseMixin(_MixinBase):
         # Tier 2 — end-of-day reading from the long-retention daily table.
         cur = await self._db.execute(
             "SELECT odometer_eod, engine_hours_eod, bucket_start AS day_utc "
-            "FROM vehicle_telemetry "
-            "WHERE account_id = ? AND vehicle_id = ? AND granularity = 'daily' "
+            "FROM vehicle_state_day "
+            "WHERE account_id = ? AND vehicle_id = ? "
             "AND bucket_start <= ? AND odometer_eod IS NOT NULL "
             "ORDER BY bucket_start DESC LIMIT 1",
             (account_id, vehicle_id, on_date),
@@ -915,7 +915,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         its last reading — no driving means no drift.
 
         TIERED like ``get_reading_as_of``: both boundaries prefer the
-        5-minute ``vehicle_state_snapshot`` (kept 7 days) when it is a
+        5-minute ``vehicle_state_minute`` (kept 7 days) when it is a
         later day than the daily bucket, else the daily end-of-day
         reading (kept 730 days).  Without the snapshot tier the newest
         answer was always "yesterday" - the daily roll-up only lands at
@@ -959,15 +959,15 @@ class VehiclesWarehouseMixin(_MixinBase):
             cur = await self._db.execute(
                 f"SELECT t.vehicle_id, t.vehicle_name, t.odometer_eod, "
                 f"       t.bucket_start "
-                f"FROM vehicle_telemetry t "
+                f"FROM vehicle_state_day t "
                 f"JOIN (SELECT vehicle_id, MAX(bucket_start) AS mb "
-                f"      FROM vehicle_telemetry "
-                f"      WHERE account_id = ? AND granularity = 'daily' "
+                f"      FROM vehicle_state_day "
+                f"      WHERE account_id = ? "
                 f"      AND bucket_start {op} ? AND odometer_eod IS NOT NULL "
                 f"      GROUP BY vehicle_id) m "
                 f"  ON m.vehicle_id = t.vehicle_id "
                 f" AND m.mb = t.bucket_start "
-                f"WHERE t.account_id = ? AND t.granularity = 'daily' "
+                f"WHERE t.account_id = ? "
                 f"AND t.odometer_eod IS NOT NULL",
                 (account_id, upper, account_id),
             )
@@ -988,9 +988,9 @@ class VehiclesWarehouseMixin(_MixinBase):
         async def _last_snapshot_per_vehicle(before_iso: str):
             cur = await self._db.execute(
                 "SELECT s.vehicle_id, s.odometer_mi, s.captured_at "
-                "FROM vehicle_state_snapshot s "
+                "FROM vehicle_state_minute s "
                 "JOIN (SELECT vehicle_id, MAX(captured_at) AS mc "
-                "      FROM vehicle_state_snapshot "
+                "      FROM vehicle_state_minute "
                 "      WHERE account_id = ? AND captured_at < ? "
                 "      AND odometer_mi IS NOT NULL "
                 "      GROUP BY vehicle_id) m "
@@ -1035,14 +1035,14 @@ class VehiclesWarehouseMixin(_MixinBase):
         async def _last_hourly_reading_per_vehicle(le_hour_label: str):
             cur = await self._db.execute(
                 "SELECT t.vehicle_id, t.odometer_eod, t.bucket_start "
-                "FROM vehicle_telemetry t "
+                "FROM vehicle_state_hour t "
                 "JOIN (SELECT vehicle_id, MAX(bucket_start) AS mb "
-                "      FROM vehicle_telemetry "
-                "      WHERE account_id = ? AND granularity = 'hourly' "
+                "      FROM vehicle_state_hour "
+                "      WHERE account_id = ? "
                 "      AND bucket_start <= ? AND odometer_eod IS NOT NULL "
                 "      GROUP BY vehicle_id) m "
                 "  ON m.vehicle_id = t.vehicle_id AND m.mb = t.bucket_start "
-                "WHERE t.account_id = ? AND t.granularity = 'hourly' "
+                "WHERE t.account_id = ? "
                 "AND t.odometer_eod IS NOT NULL",
                 (account_id, le_hour_label, account_id),
             )
@@ -1066,9 +1066,9 @@ class VehiclesWarehouseMixin(_MixinBase):
                              "read_at": str(h["bucket_start"])}
             cur = await self._db.execute(
                 "SELECT s.vehicle_id, s.odometer_mi, s.captured_at "
-                "FROM vehicle_state_snapshot s "
+                "FROM vehicle_state_minute s "
                 "JOIN (SELECT vehicle_id, MAX(captured_at) AS mc "
-                "      FROM vehicle_state_snapshot "
+                "      FROM vehicle_state_minute "
                 "      WHERE account_id = ? AND captured_at <= ? "
                 "      AND odometer_mi IS NOT NULL "
                 "      GROUP BY vehicle_id) m "
@@ -1115,8 +1115,8 @@ class VehiclesWarehouseMixin(_MixinBase):
             "SELECT vehicle_id, MIN(bucket_start) AS first_day, "
             "       SUM(miles) AS sum_miles, COUNT(*) AS days_covered, "
             "       MAX(miles) AS max_day_miles "
-            "FROM vehicle_telemetry "
-            "WHERE account_id = ? AND granularity = 'daily' "
+            "FROM vehicle_state_day "
+            "WHERE account_id = ? "
             "AND bucket_start >= ? AND bucket_start <= ? "
             "AND odometer_eod IS NOT NULL "
             "GROUP BY vehicle_id",
@@ -1131,14 +1131,14 @@ class VehiclesWarehouseMixin(_MixinBase):
             op = ">=" if inclusive else ">"
             cur2 = await self._db.execute(
                 f"SELECT t.vehicle_id, t.odometer_eod, t.bucket_start "
-                f"FROM vehicle_telemetry t "
+                f"FROM vehicle_state_day t "
                 f"JOIN (SELECT vehicle_id, MIN(bucket_start) AS mb "
-                f"      FROM vehicle_telemetry "
-                f"      WHERE account_id = ? AND granularity = 'daily' "
+                f"      FROM vehicle_state_day "
+                f"      WHERE account_id = ? "
                 f"      AND bucket_start {op} ? AND odometer_eod IS NOT NULL "
                 f"      GROUP BY vehicle_id) m "
                 f"  ON m.vehicle_id = t.vehicle_id AND m.mb = t.bucket_start "
-                f"WHERE t.account_id = ? AND t.granularity = 'daily' "
+                f"WHERE t.account_id = ? "
                 f"AND t.odometer_eod IS NOT NULL",
                 (account_id, lower, account_id),
             )
@@ -1255,7 +1255,7 @@ class VehiclesWarehouseMixin(_MixinBase):
 
         Same odometer-delta rule as :meth:`get_period_mileage`;
         ``vehicle_name`` resolves to the telematics id via
-        ``vehicle_state`` (the same door ``get_reading_as_of`` uses).
+        ``vehicle_state_live`` (the same door ``get_reading_as_of`` uses).
         Returns ``None`` when the vehicle isn't telematics-linked or has
         no usable reading for the range; otherwise the summary dict plus
         ``days``: ``[{day, miles}]`` for the range (bars in the UI).
@@ -1264,7 +1264,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         if not name:
             return None
         rc = await self._db.execute(
-            "SELECT vehicle_id FROM vehicle_state "
+            "SELECT vehicle_id FROM vehicle_state_live "
             "WHERE account_id = ? AND lower(vehicle_name) = lower(?) LIMIT 1",
             (account_id, name),
         )
@@ -1278,9 +1278,9 @@ class VehiclesWarehouseMixin(_MixinBase):
         if summary is None:
             return None
         cur = await self._db.execute(
-            "SELECT bucket_start AS day, miles FROM vehicle_telemetry "
+            "SELECT bucket_start AS day, miles FROM vehicle_state_day "
             "WHERE account_id = ? AND vehicle_id = ? "
-            "AND granularity = 'daily' "
+            ""
             "AND bucket_start >= ? AND bucket_start <= ? "
             "ORDER BY bucket_start",
             (account_id, vid, (start or "")[:10], (end or "")[:10]),
@@ -1301,7 +1301,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         reading: the vehicle has no telematics link at all, or it's linked
         but our stored history doesn't reach that far.  Mirrors the tiered
         read in ``get_reading_as_of`` — the window is the UNION of the
-        5-minute ``vehicle_state_snapshot`` (≤7 days) and the end-of-day
+        5-minute ``vehicle_state_minute`` (≤7 days) and the end-of-day
         ``vehicle_metrics_daily`` (≤730 days), so the reported reach
         matches what the as-of lookup can actually answer.
 
@@ -1314,7 +1314,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             return {"telematics_linked": False,
                     "coverage_start": None, "coverage_end": None}
         rc = await self._db.execute(
-            "SELECT vehicle_id FROM vehicle_state "
+            "SELECT vehicle_id FROM vehicle_state_live "
             "WHERE account_id = ? AND lower(vehicle_name) = lower(?) LIMIT 1",
             (account_id, name),
         )
@@ -1326,7 +1326,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         # Snapshot tier (precise, recent) — full ISO timestamps.
         cur = await self._db.execute(
             "SELECT MIN(captured_at) AS first_at, MAX(captured_at) AS last_at "
-            "FROM vehicle_state_snapshot "
+            "FROM vehicle_state_minute "
             "WHERE account_id = ? AND vehicle_id = ? AND odometer_mi IS NOT NULL",
             (account_id, vehicle_id),
         )
@@ -1334,8 +1334,8 @@ class VehiclesWarehouseMixin(_MixinBase):
         # Daily EOD tier (long-retention) — bare YYYY-MM-DD day labels.
         cur = await self._db.execute(
             "SELECT MIN(bucket_start) AS first_day, MAX(bucket_start) AS last_day "
-            "FROM vehicle_telemetry "
-            "WHERE account_id = ? AND vehicle_id = ? AND granularity = 'daily' "
+            "FROM vehicle_state_day "
+            "WHERE account_id = ? AND vehicle_id = ? "
             "AND odometer_eod IS NOT NULL",
             (account_id, vehicle_id),
         )
@@ -1398,8 +1398,8 @@ class VehiclesWarehouseMixin(_MixinBase):
     async def get_telemetry_tier_freshness(
         self, account_id: int,
     ) -> dict[str, dict]:
-        """Per-granularity ``{count, last_at}`` for the unified
-        ``vehicle_telemetry`` table — powers the operator telemetry-cascade
+        """Per-tier ``{count, last_at}`` across the grain tables
+        (wire labels hourly/daily/weekly) — powers the operator telemetry-cascade
         diagnostic, where hourly/daily/weekly share one physical table and
         ``get_feed_freshness`` (one row per table) can't tell them apart."""
         out: dict[str, dict] = {
@@ -1408,9 +1408,17 @@ class VehiclesWarehouseMixin(_MixinBase):
         }
         try:
             cur = await self._db.execute(
-                "SELECT granularity, COUNT(*) AS n, MAX(ingested_at) AS last_at "
-                "FROM vehicle_telemetry WHERE account_id = ? GROUP BY granularity",
-                (account_id,),
+                # Three tables since the grain split; the WIRE labels
+                # (hourly/daily/weekly) stay — the operator console keys
+                # on them.
+                "SELECT 'hourly' AS granularity, COUNT(*) AS n, "
+                "MAX(ingested_at) AS last_at FROM vehicle_state_hour "
+                "WHERE account_id = ? "
+                "UNION ALL SELECT 'daily', COUNT(*), MAX(ingested_at) "
+                "FROM vehicle_state_day WHERE account_id = ? "
+                "UNION ALL SELECT 'weekly', COUNT(*), MAX(ingested_at) "
+                "FROM vehicle_state_week WHERE account_id = ?",
+                (account_id, account_id, account_id),
             )
             for row in await cur.fetchall():
                 d = dict(zip(("granularity", "n", "last_at"), row))
@@ -1425,7 +1433,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         return out
 
 
-    async def vehicle_state_snapshot_has_day(
+    async def vehicle_state_minute_has_day(
         self, account_id: int, day_utc: date,
     ) -> bool:
         """Cheap existence check used by the backfill day cursor.
@@ -1442,7 +1450,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         start = _dt.combine(day_utc, _dt.min.time(), tzinfo=_tz.utc).isoformat()
         end = (_dt.combine(day_utc, _dt.min.time(), tzinfo=_tz.utc) + _td(days=1)).isoformat()
         cur = await self._db.execute(
-            "SELECT 1 FROM vehicle_state_snapshot "
+            "SELECT 1 FROM vehicle_state_minute "
             "WHERE account_id = ? AND captured_at >= ? AND captured_at < ? "
             "LIMIT 1",
             (account_id, start, end),
@@ -1451,7 +1459,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         return row is not None
 
 
-    async def vehicle_state_snapshot_day_summary(
+    async def vehicle_state_minute_day_summary(
         self, account_id: int, *, days_back: int = 30,
     ) -> list[dict[str, Any]]:
         """Per-day row count for the recent window — backs the
@@ -1467,7 +1475,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             """
             SELECT substr(captured_at, 1, 10) AS day_utc,
                    COUNT(*) AS row_count
-              FROM vehicle_state_snapshot
+              FROM vehicle_state_minute
              WHERE account_id = ? AND captured_at >= ?
              GROUP BY day_utc
              ORDER BY day_utc DESC
@@ -1503,7 +1511,7 @@ class VehiclesWarehouseMixin(_MixinBase):
     ) -> list[dict]:
         """Read raw snapshot rows for one vehicle (or all) over a window.
 
-        Surfaces the ``vehicle_state_snapshot`` minute history to the AI
+        Surfaces the ``vehicle_state_minute`` minute history to the AI
         agent so it can answer trend / utilization / "when did X last
         move" / idle-streak questions that the point-in-time tools
         can't.  Caps at ``max_rows`` so a careless 30-day query against
@@ -1514,7 +1522,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         Requires either ``vehicle_id`` (Samsara ID) or ``vehicle_name``
         — account-wide history queries are intentionally not supported
         because the row count explodes quadratically with fleet size.
-        ``vehicle_name`` is resolved via the ``vehicle_state`` table
+        ``vehicle_name`` is resolved via the ``vehicle_state_live`` table
         which carries the canonical name→id mapping.
         """
         from datetime import timedelta as _td
@@ -1524,7 +1532,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         # Resolve vehicle_name → vehicle_id if needed.
         if not vehicle_id and vehicle_name:
             cur = await self._db.execute(
-                "SELECT vehicle_id FROM vehicle_state "
+                "SELECT vehicle_id FROM vehicle_state_live "
                 "WHERE account_id = ? AND vehicle_name = ? LIMIT 1",
                 (account_id, vehicle_name),
             )
@@ -1540,7 +1548,7 @@ class VehiclesWarehouseMixin(_MixinBase):
                    fuel_pct, def_pct, odometer_mi, engine_hours,
                    fault_count, dtc_critical_count, last_driver_id,
                    battery_v, oil_psi, coolant_c, engine_load_pct, rpm
-              FROM vehicle_state_snapshot
+              FROM vehicle_state_minute
              WHERE account_id = ? AND vehicle_id = ?
                AND captured_at >= ?
              ORDER BY captured_at DESC
@@ -1561,7 +1569,7 @@ class VehiclesWarehouseMixin(_MixinBase):
 
     # ── vehicle_metrics_daily (day roll-up) ─────────────────────────
 
-    async def upsert_vehicle_metrics_daily(
+    async def upsert_vehicle_state_day(
         self,
         account_id: int,
         rows: Iterable[dict[str, Any]],
@@ -1600,12 +1608,12 @@ class VehiclesWarehouseMixin(_MixinBase):
                 ts,
             ))
         if values:
-            # granularity='daily' bucket in the unified vehicle_telemetry
+            # the day-grain table; bucket_start carries the old day_utc label.
             # table; bucket_start carries the old day_utc label.
             await self._db.executemany(
                 """
-                INSERT INTO vehicle_telemetry (
-                    account_id, vehicle_id, granularity, bucket_start,
+                INSERT INTO vehicle_state_day (
+                    account_id, vehicle_id, bucket_start,
                     miles, drive_min, idle_min,
                     max_speed_mph, avg_fuel_pct,
                     harsh_event_count, fault_count_eod,
@@ -1619,9 +1627,9 @@ class VehiclesWarehouseMixin(_MixinBase):
                     rpm_avg,
                     engine_load_avg_pct,
                     ingested_at
-                ) VALUES (?, ?, 'daily', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                           ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (account_id, vehicle_id, granularity, bucket_start) DO UPDATE SET
+                ON CONFLICT (account_id, vehicle_id, bucket_start) DO UPDATE SET
                     miles=excluded.miles,
                     drive_min=excluded.drive_min,
                     idle_min=excluded.idle_min,
@@ -1631,18 +1639,18 @@ class VehiclesWarehouseMixin(_MixinBase):
                     fault_count_eod=excluded.fault_count_eod,
                     -- Keep a prior non-null EOD reading if a later re-run
                     -- (e.g. after snapshot pruning) can't recompute it.
-                    odometer_eod=COALESCE(excluded.odometer_eod, vehicle_telemetry.odometer_eod),
-                    engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_telemetry.engine_hours_eod),
-                    source_ts=COALESCE(excluded.source_ts, vehicle_telemetry.source_ts),
-                    registry_id=COALESCE(excluded.registry_id, vehicle_telemetry.registry_id),
-                    battery_min_v=COALESCE(excluded.battery_min_v, vehicle_telemetry.battery_min_v),
-                    battery_avg_v=COALESCE(excluded.battery_avg_v, vehicle_telemetry.battery_avg_v),
-                    oil_min_psi=COALESCE(excluded.oil_min_psi, vehicle_telemetry.oil_min_psi),
-                    oil_avg_psi=COALESCE(excluded.oil_avg_psi, vehicle_telemetry.oil_avg_psi),
-                    coolant_max_c=COALESCE(excluded.coolant_max_c, vehicle_telemetry.coolant_max_c),
-                    coolant_avg_c=COALESCE(excluded.coolant_avg_c, vehicle_telemetry.coolant_avg_c),
-                    rpm_avg=COALESCE(excluded.rpm_avg, vehicle_telemetry.rpm_avg),
-                    engine_load_avg_pct=COALESCE(excluded.engine_load_avg_pct, vehicle_telemetry.engine_load_avg_pct),
+                    odometer_eod=COALESCE(excluded.odometer_eod, vehicle_state_day.odometer_eod),
+                    engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_state_day.engine_hours_eod),
+                    source_ts=COALESCE(excluded.source_ts, vehicle_state_day.source_ts),
+                    registry_id=COALESCE(excluded.registry_id, vehicle_state_day.registry_id),
+                    battery_min_v=COALESCE(excluded.battery_min_v, vehicle_state_day.battery_min_v),
+                    battery_avg_v=COALESCE(excluded.battery_avg_v, vehicle_state_day.battery_avg_v),
+                    oil_min_psi=COALESCE(excluded.oil_min_psi, vehicle_state_day.oil_min_psi),
+                    oil_avg_psi=COALESCE(excluded.oil_avg_psi, vehicle_state_day.oil_avg_psi),
+                    coolant_max_c=COALESCE(excluded.coolant_max_c, vehicle_state_day.coolant_max_c),
+                    coolant_avg_c=COALESCE(excluded.coolant_avg_c, vehicle_state_day.coolant_avg_c),
+                    rpm_avg=COALESCE(excluded.rpm_avg, vehicle_state_day.rpm_avg),
+                    engine_load_avg_pct=COALESCE(excluded.engine_load_avg_pct, vehicle_state_day.engine_load_avg_pct),
                     ingested_at=excluded.ingested_at
                 """,
                 values,
@@ -1651,28 +1659,28 @@ class VehiclesWarehouseMixin(_MixinBase):
         return len(values)
 
 
-    async def prune_vehicle_metrics_daily(
+    async def prune_vehicle_state_day(
         self, account_id: int, *, days_keep: int = 730,
     ) -> int:
         """Drop daily roll-up rows older than the retention window."""
         from datetime import timedelta
         cutoff_day = (datetime.now(timezone.utc) - timedelta(days=days_keep)).date().isoformat()
         cur = await self._db.execute(
-            "DELETE FROM vehicle_telemetry "
-            "WHERE account_id = ? AND granularity = 'daily' AND bucket_start < ?",
+            "DELETE FROM vehicle_state_day "
+            "WHERE account_id = ? AND bucket_start < ?",
             (account_id, cutoff_day),
         )
         await self._db.commit()
         return getattr(cur, "rowcount", 0) or 0
 
 
-    async def upsert_vehicle_metrics_weekly(
+    async def upsert_vehicle_state_week(
         self,
         account_id: int,
         rows: Iterable[dict[str, Any]],
     ) -> int:
-        """Upsert weekly roll-up rows (granularity='weekly' in the unified
-        ``vehicle_telemetry`` table).  ``bucket_start`` is the ISO-week
+        """Upsert weekly roll-up rows (the week-grain table, formerly part of the unified
+        ``vehicle_state_week`` table).  ``bucket_start`` is the ISO-week
         Monday (YYYY-MM-DD, UTC).  Same columns as the daily tier; the
         long-horizon store for multi-year trends without keeping 730 daily
         rows per vehicle."""
@@ -1709,8 +1717,8 @@ class VehiclesWarehouseMixin(_MixinBase):
         if values:
             await self._db.executemany(
                 """
-                INSERT INTO vehicle_telemetry (
-                    account_id, vehicle_id, granularity, bucket_start,
+                INSERT INTO vehicle_state_week (
+                    account_id, vehicle_id, bucket_start,
                     miles, drive_min, idle_min,
                     max_speed_mph, avg_fuel_pct,
                     harsh_event_count, fault_count_eod,
@@ -1724,9 +1732,9 @@ class VehiclesWarehouseMixin(_MixinBase):
                     rpm_avg,
                     engine_load_avg_pct,
                     ingested_at
-                ) VALUES (?, ?, 'weekly', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
                           ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT (account_id, vehicle_id, granularity, bucket_start) DO UPDATE SET
+                ON CONFLICT (account_id, vehicle_id, bucket_start) DO UPDATE SET
                     miles=excluded.miles,
                     drive_min=excluded.drive_min,
                     idle_min=excluded.idle_min,
@@ -1734,18 +1742,18 @@ class VehiclesWarehouseMixin(_MixinBase):
                     avg_fuel_pct=excluded.avg_fuel_pct,
                     harsh_event_count=excluded.harsh_event_count,
                     fault_count_eod=excluded.fault_count_eod,
-                    odometer_eod=COALESCE(excluded.odometer_eod, vehicle_telemetry.odometer_eod),
-                    engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_telemetry.engine_hours_eod),
-                    source_ts=COALESCE(excluded.source_ts, vehicle_telemetry.source_ts),
-                    registry_id=COALESCE(excluded.registry_id, vehicle_telemetry.registry_id),
-                    battery_min_v=COALESCE(excluded.battery_min_v, vehicle_telemetry.battery_min_v),
-                    battery_avg_v=COALESCE(excluded.battery_avg_v, vehicle_telemetry.battery_avg_v),
-                    oil_min_psi=COALESCE(excluded.oil_min_psi, vehicle_telemetry.oil_min_psi),
-                    oil_avg_psi=COALESCE(excluded.oil_avg_psi, vehicle_telemetry.oil_avg_psi),
-                    coolant_max_c=COALESCE(excluded.coolant_max_c, vehicle_telemetry.coolant_max_c),
-                    coolant_avg_c=COALESCE(excluded.coolant_avg_c, vehicle_telemetry.coolant_avg_c),
-                    rpm_avg=COALESCE(excluded.rpm_avg, vehicle_telemetry.rpm_avg),
-                    engine_load_avg_pct=COALESCE(excluded.engine_load_avg_pct, vehicle_telemetry.engine_load_avg_pct),
+                    odometer_eod=COALESCE(excluded.odometer_eod, vehicle_state_week.odometer_eod),
+                    engine_hours_eod=COALESCE(excluded.engine_hours_eod, vehicle_state_week.engine_hours_eod),
+                    source_ts=COALESCE(excluded.source_ts, vehicle_state_week.source_ts),
+                    registry_id=COALESCE(excluded.registry_id, vehicle_state_week.registry_id),
+                    battery_min_v=COALESCE(excluded.battery_min_v, vehicle_state_week.battery_min_v),
+                    battery_avg_v=COALESCE(excluded.battery_avg_v, vehicle_state_week.battery_avg_v),
+                    oil_min_psi=COALESCE(excluded.oil_min_psi, vehicle_state_week.oil_min_psi),
+                    oil_avg_psi=COALESCE(excluded.oil_avg_psi, vehicle_state_week.oil_avg_psi),
+                    coolant_max_c=COALESCE(excluded.coolant_max_c, vehicle_state_week.coolant_max_c),
+                    coolant_avg_c=COALESCE(excluded.coolant_avg_c, vehicle_state_week.coolant_avg_c),
+                    rpm_avg=COALESCE(excluded.rpm_avg, vehicle_state_week.rpm_avg),
+                    engine_load_avg_pct=COALESCE(excluded.engine_load_avg_pct, vehicle_state_week.engine_load_avg_pct),
                     ingested_at=excluded.ingested_at
                 """,
                 values,
@@ -1754,7 +1762,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         return len(values)
 
 
-    async def prune_vehicle_telemetry_weekly(
+    async def prune_vehicle_state_week(
         self, account_id: int, *, days_keep: int = 1825,
     ) -> int:
         """Drop weekly roll-up rows older than the retention window
@@ -1763,8 +1771,8 @@ class VehiclesWarehouseMixin(_MixinBase):
         from datetime import timedelta
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_keep)).date().isoformat()
         cur = await self._db.execute(
-            "DELETE FROM vehicle_telemetry "
-            "WHERE account_id = ? AND granularity = 'weekly' AND bucket_start < ?",
+            "DELETE FROM vehicle_state_week "
+            "WHERE account_id = ? AND bucket_start < ?",
             (account_id, cutoff),
         )
         await self._db.commit()
@@ -1791,7 +1799,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         return getattr(cur, "rowcount", 0) or 0
 
 
-    async def get_vehicle_metrics_daily(
+    async def get_vehicle_state_day(
         self,
         account_id: int,
         *,
@@ -1808,7 +1816,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         """
         from datetime import timedelta
         since_day = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
-        where = ["account_id = ?", "granularity = 'daily'", "bucket_start >= ?"]
+        where = ["account_id = ?", "bucket_start >= ?"]
         args: list[Any] = [account_id, since_day]
         if vehicle_id:
             where.append("vehicle_id = ?")
@@ -1823,7 +1831,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             f"""
             SELECT vehicle_id, bucket_start, miles, drive_min, idle_min,
                    max_speed_mph, avg_fuel_pct, harsh_event_count
-              FROM vehicle_telemetry
+              FROM vehicle_state_day
              WHERE {' AND '.join(where)}
              ORDER BY bucket_start ASC
             """,
@@ -1861,9 +1869,9 @@ class VehiclesWarehouseMixin(_MixinBase):
                    AVG(avg_fuel_pct)                    AS avg_fuel_pct,
                    COALESCE(SUM(harsh_event_count), 0)  AS harsh_events,
                    COUNT(*)                             AS days_with_data
-              FROM vehicle_telemetry
+              FROM vehicle_state_day
              WHERE account_id = ? AND vehicle_id = ?
-               AND granularity = 'daily' AND bucket_start >= ?
+               AND bucket_start >= ?
             """,
             (account_id, vehicle_id, since_day),
         )
@@ -1881,7 +1889,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         # date is the canonical "when did the cost occur" timestamp.
         cur = await self._db.execute(
             """
-            SELECT vehicle_id, vehicle_name FROM vehicle_state
+            SELECT vehicle_id, vehicle_name FROM vehicle_state_live
              WHERE account_id = ? AND vehicle_id = ?
              LIMIT 1
             """,
@@ -1958,8 +1966,8 @@ class VehiclesWarehouseMixin(_MixinBase):
                    COALESCE(SUM(drive_min), 0) AS drive_min,
                    COALESCE(SUM(idle_min), 0)  AS idle_min,
                    COUNT(*)                    AS days_with_data
-              FROM vehicle_telemetry
-             WHERE account_id = ? AND granularity = 'daily' AND bucket_start >= ?
+              FROM vehicle_state_day
+             WHERE account_id = ? AND bucket_start >= ?
              GROUP BY vehicle_id
             """,
             (account_id, since_day),
@@ -1986,7 +1994,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         return out
 
 
-    async def prune_vehicle_telemetry_hourly(
+    async def prune_vehicle_state_hour(
         self, account_id: int, *, days_keep: int = 90,
     ) -> int:
         """Drop hourly bucket rows older than the retention window.
@@ -1999,8 +2007,8 @@ class VehiclesWarehouseMixin(_MixinBase):
             "%Y-%m-%dT%H:00:00",
         )
         cur = await self._db.execute(
-            "DELETE FROM vehicle_telemetry "
-            "WHERE account_id = ? AND granularity = 'hourly' AND bucket_start < ?",
+            "DELETE FROM vehicle_state_hour "
+            "WHERE account_id = ? AND bucket_start < ?",
             (account_id, cutoff),
         )
         await self._db.commit()
@@ -2336,7 +2344,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         """Return ``(faulted, total, breakdown)`` mirroring the live shape.
 
         * ``faulted``   — decoded raw_json from ``vehicle_fault_snapshot``
-        * ``total``     — vehicle count from ``vehicle_state`` (filtered)
+        * ``total``     — vehicle count from ``vehicle_state_live`` (filtered)
         * ``breakdown`` — per-company ``{total, faulted, dtcs}``
         """
         # faulted list
@@ -2362,7 +2370,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             except Exception:
                 pass
 
-        # totals + breakdown from vehicle_state
+        # totals + breakdown from vehicle_state_live
         where2 = ["account_id = ?"]
         args2: list[Any] = [account_id]
         if company:
@@ -2373,7 +2381,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             SELECT company_code, COUNT(*) AS total,
                    SUM(CASE WHEN fault_count > 0 THEN 1 ELSE 0 END) AS faulted,
                    SUM(fault_count) AS dtcs
-            FROM vehicle_state
+            FROM vehicle_state_live
             WHERE {' AND '.join(where2)}
             GROUP BY company_code
             """,
@@ -2403,7 +2411,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         with ``spnDescription`` / ``fmiDescription`` / ``sourceAddressName``.
         Used by /api/vehicles/{name}/faults so the dashboard renders the
         actual fault descriptions instead of the empty-dict placeholders
-        that ``_warehouse_row_to_overview`` produces from vehicle_state's
+        that ``_warehouse_row_to_overview`` produces from vehicle_state_live's
         fault_count alone.
 
         Returns None when no fault snapshot exists for the vehicle.

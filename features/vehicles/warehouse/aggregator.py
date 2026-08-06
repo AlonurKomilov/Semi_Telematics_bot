@@ -1,8 +1,8 @@
 """Vehicle telemetry warehouse — aggregation (the roll-up tier builders).
 
 These functions downsample data ALREADY in the warehouse into the tiered
-history: the raw minute-grain ``vehicle_state_snapshot`` rolls up into the unified
-``vehicle_telemetry`` aggregate table (``granularity`` hourly → daily →
+history: the raw minute-grain ``vehicle_state_minute`` rolls up into the unified
+per-grain aggregate tables (``vehicle_state_hour`` → ``_day`` →
 weekly).  They are PROVIDER-AGNOSTIC — they read local tables and make no
 integration call — and are registered as the vehicle roll-up cascade with
 the data-lifecycle hub (see ``features/vehicles/lifecycle.py``).
@@ -62,8 +62,8 @@ def _opt(v):
 
 
 async def snapshot_vehicle_state(account_id: int) -> int:
-    """Copy the current ``vehicle_state`` row for every active vehicle
-    into ``vehicle_state_snapshot``, labeled with the current minute
+    """Copy the current ``vehicle_state_live`` row for every active vehicle
+    into ``vehicle_state_minute``, labeled with the current minute
     slot (the moment the provider saw each value rides separately in
     ``source_ts`` — see timegrid.py for the label-vs-truth rule).
 
@@ -145,7 +145,7 @@ async def snapshot_vehicle_state(account_id: int) -> int:
         })
     if not rows:
         return 0
-    n = await tenant.upsert_vehicle_state_snapshots(account_id, rows)
+    n = await tenant.upsert_vehicle_state_minutes(account_id, rows)
     logger.info(
         "snapshot_vehicle_state acct=%d at=%s rows=%d with_health=%d",
         account_id, captured_at, n, sum(1 for v in health_by_vid.values() if v),
@@ -158,7 +158,7 @@ async def _aggregate_hour_window(
     account_id: int,
     hour_start: datetime,
 ) -> int:
-    """Aggregate ONE hour into the hourly tier of ``vehicle_telemetry``.
+    """Aggregate ONE hour into ``vehicle_state_hour``.
 
     Shared body of the live cron path and the backfill path.  Window
     is ``[hour_start, hour_start + 1h)`` so the caller controls
@@ -234,7 +234,7 @@ async def _aggregate_hour_window(
                          COALESCE(source_ts, captured_at)::timestamptz
                          - LAG(COALESCE(source_ts, captured_at)::timestamptz) OVER w
                      )) / 3600.0 AS gap_h
-                FROM vehicle_state_snapshot
+                FROM vehicle_state_minute
                WHERE account_id = ?
                  AND captured_at >= ?
                  AND captured_at <  ?
@@ -302,7 +302,7 @@ async def _aggregate_hour_window(
                          )) / 60.0,
                          ?
                      ) AS duty_min
-                FROM vehicle_state_snapshot
+                FROM vehicle_state_minute
                WHERE account_id = ?
                  AND captured_at >= ?
                  AND captured_at <  ?
@@ -407,12 +407,12 @@ async def _aggregate_hour_window(
 
     if not rows:
         return 0
-    return await tenant.upsert_vehicle_telemetry_hourly(account_id, rows)
+    return await tenant.upsert_vehicle_state_hour(account_id, rows)
 
 
 async def aggregate_telemetry_hourly(account_id: int) -> int:
     """Roll the last closed hour into one row per vehicle in the
-    hourly tier of ``vehicle_telemetry``.
+    ``vehicle_state_hour`` table.
 
     Live-path wrapper around ``_aggregate_hour_window`` — computes
     the just-closed hour and delegates.  Miles come from snapshot
@@ -441,7 +441,7 @@ async def _aggregate_day_window(
     account_id: int,
     day_start: datetime,
 ) -> int:
-    """Aggregate ONE UTC day into the daily tier of ``vehicle_telemetry``.
+    """Aggregate ONE UTC day into the daily tier of ``vehicle_state_hour``.
 
     Shared body of the live cron path and the backfill path.  Sums
     the 24 hourly buckets in ``[day_start, day_start + 1d)`` and
@@ -479,9 +479,9 @@ async def _aggregate_day_window(
                AVG(coolant_avg_c)                  AS coolant_avg_c,
                AVG(rpm_avg)                        AS rpm_avg,
                AVG(engine_load_avg_pct)            AS engine_load_avg_pct
-          FROM vehicle_telemetry
+          FROM vehicle_state_hour
          WHERE account_id = ?
-           AND granularity = 'hourly'
+           
            AND bucket_start >= ?
            AND bucket_start <  ?
          GROUP BY vehicle_id
@@ -504,7 +504,7 @@ async def _aggregate_day_window(
         SELECT vehicle_id,
                MAX(odometer_mi)  AS odometer_eod,
                MAX(engine_hours) AS engine_hours_eod
-          FROM vehicle_state_snapshot
+          FROM vehicle_state_minute
          WHERE account_id = ?
            AND captured_at >= ?
            AND captured_at <  ?
@@ -548,12 +548,12 @@ async def _aggregate_day_window(
         })
     if not rows:
         return 0
-    return await tenant.upsert_vehicle_metrics_daily(account_id, rows)
+    return await tenant.upsert_vehicle_state_day(account_id, rows)
 
 
 async def aggregate_metrics_daily(account_id: int) -> int:
     """Roll the previous UTC day's hourly buckets into one daily row
-    per vehicle in the daily tier of ``vehicle_telemetry``.
+    per vehicle in ``vehicle_state_day``.
 
     Live-path wrapper around ``_aggregate_day_window`` — computes
     "yesterday UTC" and delegates.  Runs at 00:05 UTC daily.
@@ -671,9 +671,9 @@ async def _aggregate_week_window(
                AVG(coolant_avg_c)                  AS coolant_avg_c,
                AVG(rpm_avg)                        AS rpm_avg,
                AVG(engine_load_avg_pct)            AS engine_load_avg_pct
-          FROM vehicle_telemetry
+          FROM vehicle_state_day
          WHERE account_id = ?
-           AND granularity = 'daily'
+           
            AND bucket_start >= ?
            AND bucket_start <  ?
          GROUP BY vehicle_id
@@ -704,7 +704,7 @@ async def _aggregate_week_window(
         })
     if not rows:
         return 0
-    return await tenant.upsert_vehicle_metrics_weekly(account_id, rows)
+    return await tenant.upsert_vehicle_state_week(account_id, rows)
 
 
 async def aggregate_metrics_weekly(account_id: int) -> int:
@@ -762,7 +762,7 @@ async def backfill_aggregations(
 
     Pipeline:
       1. For each hour in the last ``days * 24`` hours: re-aggregate
-         from ``vehicle_state_snapshot`` into the hourly tier.
+         from ``vehicle_state_minute`` into the hourly tier.
       2. For each UTC day in the last ``days`` days: roll the hourly
          buckets into one row per vehicle in the daily tier.
 
@@ -847,7 +847,7 @@ async def backfill_aggregations(
 async def _day_has_snapshots(tenant, account_id: int, day_start: datetime) -> bool:
     """Whether the minute tier still covers this UTC day."""
     cur = await tenant._db.execute(
-        "SELECT 1 FROM vehicle_state_snapshot WHERE account_id = ? "
+        "SELECT 1 FROM vehicle_state_minute WHERE account_id = ? "
         "AND captured_at >= ? AND captured_at < ? LIMIT 1",
         (account_id,
          day_start.strftime("%Y-%m-%d"),

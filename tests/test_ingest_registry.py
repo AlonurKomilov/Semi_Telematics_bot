@@ -26,9 +26,9 @@ def test_discovery_yields_the_vehicles_state_dataset():
     assert ds is not None
     # The wire invariants: legacy job id verbatim, domain-noun key.
     assert ds.job_id == "warehouse_vehicle_state"
-    assert ds.capability == "vehicle_state"
+    assert ds.capability == "vehicle_state"   # WIRE toggle key, not the table
     assert ds.freshness_sla_min > 0
-    assert "vehicle_state" in ds.tables
+    assert "vehicle_state_live" in ds.tables
 
 
 def test_double_registration_of_a_key_is_refused():
@@ -37,16 +37,16 @@ def test_double_registration_of_a_key_is_refused():
 
     probe = IngestDataset(
         key="test.probe", owner="vehicles", job_id="test_probe",
-        capability="vehicle_state", cadence={"interval_min": 5},
-        run=_noop, tables=("vehicle_state",), freshness_sla_min=60,
+        capability="vehicle_state_live", cadence={"interval_min": 5},
+        run=_noop, tables=("vehicle_state_live",), freshness_sla_min=60,
     )
     register_dataset(probe)
     try:
         assert get_dataset("test.probe") is probe
         clone = IngestDataset(
             key="test.probe", owner="vehicles", job_id="test_probe_2",
-            capability="vehicle_state", cadence={"interval_min": 5},
-            run=_noop, tables=("vehicle_state",), freshness_sla_min=60,
+            capability="vehicle_state_live", cadence={"interval_min": 5},
+            run=_noop, tables=("vehicle_state_live",), freshness_sla_min=60,
         )
         with pytest.raises(ValueError):
             register_dataset(clone)

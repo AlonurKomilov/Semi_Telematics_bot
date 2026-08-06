@@ -88,10 +88,10 @@ async def warehouse_status(
                                ("weekly", "week")):
         try:
             row = await tenant.read_one(
-                "SELECT COUNT(*) AS n, MAX(bucket_start) AS newest "
-                "FROM vehicle_telemetry "
-                "WHERE account_id = ? AND granularity = ?",
-                (account_id, granularity),
+                f"SELECT COUNT(*) AS n, MAX(bucket_start) AS newest "
+                f"FROM warehouse.vehicle_state_{grain} "
+                f"WHERE account_id = ?",
+                (account_id,),
             )
             tiers.append({
                 "grain": grain,

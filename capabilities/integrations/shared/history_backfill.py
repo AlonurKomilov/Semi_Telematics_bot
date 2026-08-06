@@ -9,7 +9,7 @@ snapshot tables (vehicle_state, vehicle_health_snapshot, etc.) and
 the existing event logs.  Each ingestor reaches back its own window
 (safety events: 7 days, driver efficiency: 30 days, etc.).
 
-This module is different: it populates ``vehicle_state_snapshot``
+This module is different: it populates ``vehicle_state_minute``
 (the per-vehicle time-series introduced by M1) by fetching genuine
 historical samples from Samsara's ``/fleet/vehicles/stats/history``
 endpoint and resampling them to the same minute-grain slot cadence the
@@ -37,7 +37,7 @@ A backfill is one long-running async task that:
         rate never exceeds the configured ``SAMSARA_BACKFILL_RPS``.
      c. Resamples the event-driven Samsara samples to one row per
         minute-grain slot per vehicle (matches live snapshot cadence).
-     d. Bulk-inserts via ``upsert_vehicle_state_snapshots`` —
+     d. Bulk-inserts via ``upsert_vehicle_state_minutes`` —
         idempotent at the row level via ``ON CONFLICT DO NOTHING``.
      e. Sleeps ``SAMSARA_BACKFILL_DAY_CHUNK_SEC`` between days.
   5. Updates a per-account-per-provider Redis status key so the
@@ -124,7 +124,7 @@ STAT_BATCHES: tuple[list[str], ...] = (
 # (Was 300s; finer slots keep more of the provider's raw samples.)
 SLOT_SECONDS = 60
 
-# Per-Samsara-stat-type, the ``vehicle_state_snapshot`` column +
+# Per-Samsara-stat-type, the ``vehicle_state_minute`` column +
 # optional unit-converter.  Stat types that map to multiple columns
 # (``gps`` → lat/lon/speed_mph) are handled specially below.
 STAT_TYPE_TO_COLUMN: dict[str, tuple[str, Any]] = {
@@ -643,7 +643,7 @@ async def backfill_vehicle_history(
     triggered_by: int = 0,
     company_code: str | None = None,
 ) -> BackfillResult:
-    """Backfill ``vehicle_state_snapshot`` from the provider's
+    """Backfill ``vehicle_state_minute`` from the provider's
     historical stats endpoint.
 
     Idempotent and resumable — re-running over the same window skips
@@ -809,7 +809,7 @@ async def backfill_vehicle_history(
             # short-circuits duplicates.
             #
             # Per-company refresh bypasses the skip: the per-account
-            # ``vehicle_state_snapshot_has_day`` predicate can't tell
+            # ``vehicle_state_minute_has_day`` predicate can't tell
             # WHICH company already has data, and the operator clicked
             # Refresh on a specific company expecting that company's
             # data to be fetched.  Skipping would leave them clicking
@@ -820,7 +820,7 @@ async def backfill_vehicle_history(
                 d = today - timedelta(days=offset)
                 if (
                     company_code is None
-                    and await tenant.vehicle_state_snapshot_has_day(account_id, d)
+                    and await tenant.vehicle_state_minute_has_day(account_id, d)
                 ):
                     result.days_skipped_already_present += 1
                 else:
@@ -885,7 +885,7 @@ async def backfill_vehicle_history(
                 try:
                     rows = _resample_to_snapshot_rows(merged)
                     if rows:
-                        n = await tenant.upsert_vehicle_state_snapshots(
+                        n = await tenant.upsert_vehicle_state_minutes(
                             account_id, rows,
                         )
                         result.rows_inserted += n
@@ -936,7 +936,7 @@ async def backfill_vehicle_history(
 
             # Chain hourly + daily aggregations so the calendar
             # projection's median path (which reads the daily tier of
-            # ``vehicle_telemetry``) has data the moment this
+            # ``vehicle_state_day``) has data the moment this
             # backfill finishes — otherwise the operator would see
             # snapshot rows but the calendar would still be empty
             # for ~7 more days while the live aggregators caught up.

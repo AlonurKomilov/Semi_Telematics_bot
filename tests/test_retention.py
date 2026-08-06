@@ -81,13 +81,13 @@ async def test_engine_calls_existing_methods_with_resolved_windows():
     calls: dict[str, int] = {}
 
     class FakeTenantDB:
-        async def prune_vehicle_state_snapshots(self, _a, *, days_keep):
+        async def prune_vehicle_state_minutes(self, _a, *, days_keep):
             calls["snapshot"] = days_keep
             return 3
-        async def prune_vehicle_telemetry_hourly(self, _a, *, days_keep):
+        async def prune_vehicle_state_hour(self, _a, *, days_keep):
             calls["hourly"] = days_keep
             return 0
-        async def prune_vehicle_metrics_daily(self, _a, *, days_keep):
+        async def prune_vehicle_state_day(self, _a, *, days_keep):
             calls["daily"] = days_keep
             return 1
         async def prune_vehicle_fault_detail(self, _a, *, days_keep):

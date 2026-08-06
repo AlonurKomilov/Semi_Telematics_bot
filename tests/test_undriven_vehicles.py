@@ -1,7 +1,7 @@
 """Integration test for ``warehouse.get_undriven_vehicles`` against real PG.
 
-Exercises the actual SQL (not a fake DB): seeds ``vehicle_state`` (names +
-company for the join) and ``vehicle_state_snapshot`` (movement history), then
+Exercises the actual SQL (not a fake DB): seeds ``vehicle_state_live`` (names +
+company for the join) and ``vehicle_state_minute`` (movement history), then
 verifies the movement-based "hasn't driven in N days" computation — last-moved
 detection, the min_days cutoff, the name/company join, and days_stopped math.
 """
@@ -35,7 +35,7 @@ async def test_undriven_returns_stopped_excludes_driving(pg_db):
 
     # B-1: last actually moved 5 days ago, then parked but still reporting.
     # B-2: moved an hour ago.
-    await db.upsert_vehicle_state_snapshots(acct, [
+    await db.upsert_vehicle_state_minutes(acct, [
         {"vehicle_id": "v1", "captured_at": _iso(now - timedelta(days=5)), "speed_mph": 35.0},
         {"vehicle_id": "v1", "captured_at": _iso(now - timedelta(hours=1)), "speed_mph": 0.0},
         {"vehicle_id": "v2", "captured_at": _iso(now - timedelta(hours=1)), "speed_mph": 40.0},
@@ -62,7 +62,7 @@ async def test_undriven_respects_min_days_cutoff(pg_db):
     await db.upsert_vehicle_state(acct, [
         {"vehicle_id": "v1", "vehicle_name": "C-1", "company_code": "C"},
     ])
-    await db.upsert_vehicle_state_snapshots(acct, [
+    await db.upsert_vehicle_state_minutes(acct, [
         {"vehicle_id": "v1", "captured_at": _iso(now - timedelta(days=5)), "speed_mph": 35.0},
         {"vehicle_id": "v1", "captured_at": _iso(now - timedelta(hours=1)), "speed_mph": 0.0},
     ])
@@ -87,7 +87,7 @@ async def test_undriven_skips_offline_vehicles(pg_db):
         {"vehicle_id": "v9", "vehicle_name": "D-9", "company_code": "D"},
     ])
     # Only a very old snapshot, outside the default 30-day lookback.
-    await db.upsert_vehicle_state_snapshots(acct, [
+    await db.upsert_vehicle_state_minutes(acct, [
         {"vehicle_id": "v9", "captured_at": _iso(now - timedelta(days=60)), "speed_mph": 0.0},
     ])
     rows = await db.get_undriven_vehicles(acct, min_days=3)
@@ -108,12 +108,12 @@ async def test_undriven_extends_past_snapshot_window_via_daily(pg_db):
     ])
     # Online but PARKED throughout the snapshot window (speed 0) — so the
     # snapshot tier alone reports "no movement", with no idea how long.
-    await db.upsert_vehicle_state_snapshots(acct, [
+    await db.upsert_vehicle_state_minutes(acct, [
         {"vehicle_id": "v5", "captured_at": _iso(now - timedelta(days=2)), "speed_mph": 0.0},
         {"vehicle_id": "v5", "captured_at": _iso(now - timedelta(hours=1)), "speed_mph": 0.0},
     ])
     # Daily roll-up: it last actually drove 20 days ago, idle ever since.
-    await db.upsert_vehicle_metrics_daily(acct, [
+    await db.upsert_vehicle_state_day(acct, [
         {"vehicle_id": "v5", "day_utc": (now - timedelta(days=20)).date().isoformat(),
          "miles": 210.0, "drive_min": 320.0},
         {"vehicle_id": "v5", "day_utc": (now - timedelta(days=5)).date().isoformat(),

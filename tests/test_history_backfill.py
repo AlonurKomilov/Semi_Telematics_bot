@@ -6,8 +6,8 @@ Covers:
   * The resampler (``_resample_to_snapshot_rows``) — single sample,
     multiple samples in one slot collapse to last-value, GPS fans
     out into lat/lon/speed_mph columns.
-  * The day-cursor storage helpers (``vehicle_state_snapshot_has_day``,
-    ``vehicle_state_snapshot_day_summary``).
+  * The day-cursor storage helpers (``vehicle_state_minute_has_day``,
+    ``vehicle_state_minute_day_summary``).
   * The backfill capability end-to-end with a fake provider:
     - happy path inserts rows
     - resume skips already-populated days
@@ -284,7 +284,7 @@ async def test_snapshot_has_day_false_when_empty(seeded_db):
     db = seeded_db["db"]
     account = seeded_db["account"]
     today = datetime.now(timezone.utc).date()
-    assert await db.vehicle_state_snapshot_has_day(account.id, today) is False
+    assert await db.vehicle_state_minute_has_day(account.id, today) is False
 
 
 @pytest.mark.asyncio
@@ -297,14 +297,14 @@ async def test_snapshot_has_day_true_after_insert(seeded_db):
         day, datetime.min.time(), tzinfo=timezone.utc,
     ).replace(hour=14, minute=20).isoformat()
 
-    await db.upsert_vehicle_state_snapshots(account.id, [{
+    await db.upsert_vehicle_state_minutes(account.id, [{
         "vehicle_id": "vid-1",
         "captured_at": captured,
         "odometer_mi": 1000.0,
     }])
-    assert await db.vehicle_state_snapshot_has_day(account.id, day) is True
+    assert await db.vehicle_state_minute_has_day(account.id, day) is True
     # Adjacent day still empty.
-    assert await db.vehicle_state_snapshot_has_day(
+    assert await db.vehicle_state_minute_has_day(
         account.id, day - timedelta(days=1),
     ) is False
 
@@ -319,13 +319,13 @@ async def test_snapshot_day_summary_reports_per_day_counts(seeded_db):
     captured = datetime.combine(
         day_with_data, datetime.min.time(), tzinfo=timezone.utc,
     ).replace(hour=10).isoformat()
-    await db.upsert_vehicle_state_snapshots(account.id, [{
+    await db.upsert_vehicle_state_minutes(account.id, [{
         "vehicle_id": "vid-1",
         "captured_at": captured,
         "odometer_mi": 1000.0,
     }])
 
-    coverage = await db.vehicle_state_snapshot_day_summary(
+    coverage = await db.vehicle_state_minute_day_summary(
         account.id, days_back=7,
     )
     assert len(coverage) == 7
@@ -502,8 +502,8 @@ async def test_backfill_completes_and_inserts_rows(monkeypatch, _no_sleep):
     )
 
     tenant = MagicMock()
-    tenant.vehicle_state_snapshot_has_day = AsyncMock(return_value=False)
-    tenant.upsert_vehicle_state_snapshots = AsyncMock(return_value=3)
+    tenant.vehicle_state_minute_has_day = AsyncMock(return_value=False)
+    tenant.upsert_vehicle_state_minutes = AsyncMock(return_value=3)
     monkeypatch.setattr(
         "capabilities.integrations.shared.history_backfill.get_tenant_db",
         AsyncMock(return_value=tenant),
@@ -545,8 +545,8 @@ async def test_backfill_skips_already_populated_days(monkeypatch, _no_sleep):
         return offset % 2 == 0
 
     tenant = MagicMock()
-    tenant.vehicle_state_snapshot_has_day = _has_day
-    tenant.upsert_vehicle_state_snapshots = AsyncMock(return_value=3)
+    tenant.vehicle_state_minute_has_day = _has_day
+    tenant.upsert_vehicle_state_minutes = AsyncMock(return_value=3)
     monkeypatch.setattr(
         "capabilities.integrations.shared.history_backfill.get_tenant_db",
         AsyncMock(return_value=tenant),
@@ -583,8 +583,8 @@ async def test_backfill_continues_after_per_day_batch_failure(
     )
 
     tenant = MagicMock()
-    tenant.vehicle_state_snapshot_has_day = AsyncMock(return_value=False)
-    tenant.upsert_vehicle_state_snapshots = AsyncMock(return_value=2)
+    tenant.vehicle_state_minute_has_day = AsyncMock(return_value=False)
+    tenant.upsert_vehicle_state_minutes = AsyncMock(return_value=2)
     monkeypatch.setattr(
         "capabilities.integrations.shared.history_backfill.get_tenant_db",
         AsyncMock(return_value=tenant),

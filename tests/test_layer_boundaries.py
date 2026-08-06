@@ -139,9 +139,17 @@ def test_physical_warehouse_tables_stay_inside_the_machinery():
         "scripts/",
         "tests/",
     )
+    # READ verbs may address the grain tables (they took the surface
+    # names — that is the public read API); WRITE verbs on them stay
+    # machinery-only; and the RETIRED names (vehicle_state bare,
+    # vehicle_state_snapshot, vehicle_telemetry) may appear nowhere —
+    # a straggler means unswept code.
     verb = re.compile(
-        r"(FROM|INTO|UPDATE|JOIN)\s+(?!warehouse\.\w+_(live|minute|hour|day|week))"
-        r"(warehouse\.)?vehicle_(state_snapshot|state|telemetry)\b"
+        r"(INTO|UPDATE|DELETE\s+FROM)\s+"
+        r"(warehouse\.)?vehicle_state_(live|minute|hour|day|week)\b"
+        r"|(FROM|INTO|UPDATE|JOIN)\s+"
+        r"(warehouse\.)?vehicle_(state_snapshot|telemetry)\b"
+        r"|(FROM|INTO|UPDATE|JOIN)\s+(warehouse\.)?vehicle_state\b(?!_)"
     )
     offenders = []
     for path in REPO.rglob("*.py"):

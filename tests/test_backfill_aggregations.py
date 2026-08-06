@@ -54,7 +54,7 @@ async def test_aggregate_hour_window_accepts_arbitrary_hour():
     cur = MagicMock()
     cur.fetchall = AsyncMock(return_value=[])
     tenant._db.execute = AsyncMock(return_value=cur)
-    tenant.upsert_vehicle_telemetry_hourly = AsyncMock(return_value=0)
+    tenant.upsert_vehicle_state_hour = AsyncMock(return_value=0)
 
     historical_hour = datetime(2026, 5, 14, 7, 0, tzinfo=timezone.utc)
     await _aggregate_hour_window(tenant, 42, historical_hour)
@@ -80,7 +80,7 @@ async def test_aggregate_day_window_accepts_arbitrary_day():
     cur = MagicMock()
     cur.fetchall = AsyncMock(return_value=[])
     tenant._db.execute = AsyncMock(return_value=cur)
-    tenant.upsert_vehicle_metrics_daily = AsyncMock(return_value=0)
+    tenant.upsert_vehicle_state_day = AsyncMock(return_value=0)
 
     historical_day = datetime(2026, 5, 14, 0, 0, tzinfo=timezone.utc)
     await _aggregate_day_window(tenant, 42, historical_day)
@@ -111,7 +111,7 @@ async def test_aggregate_week_window_rolls_daily_into_weekly():
         ("v1", 700.0, 300.0, 60.0, 70.0, 50.0, 3, 0, 12345.0, 800.0),
     ])
     tenant._db.execute = AsyncMock(return_value=cur)
-    tenant.upsert_vehicle_metrics_weekly = AsyncMock(return_value=1)
+    tenant.upsert_vehicle_state_week = AsyncMock(return_value=1)
 
     monday = datetime(2026, 5, 11, 0, 0, tzinfo=timezone.utc)  # an ISO Monday
     n = await _aggregate_week_window(tenant, 7, monday)
@@ -122,7 +122,7 @@ async def test_aggregate_week_window_rolls_daily_into_weekly():
     assert params == (7, "2026-05-11", "2026-05-18")
 
     # The summed row was forwarded to the weekly upsert.
-    rows = tenant.upsert_vehicle_metrics_weekly.call_args.args[1]
+    rows = tenant.upsert_vehicle_state_week.call_args.args[1]
     assert rows[0]["vehicle_id"] == "v1"
     assert rows[0]["week_utc"] == "2026-05-11"
     assert rows[0]["miles"] == 700.0
@@ -262,8 +262,8 @@ async def test_m5_backfill_calls_aggregations_on_success(monkeypatch):
     )
 
     tenant = MagicMock()
-    tenant.vehicle_state_snapshot_has_day = AsyncMock(return_value=False)
-    tenant.upsert_vehicle_state_snapshots = AsyncMock(return_value=0)
+    tenant.vehicle_state_minute_has_day = AsyncMock(return_value=False)
+    tenant.upsert_vehicle_state_minutes = AsyncMock(return_value=0)
     monkeypatch.setattr(
         history_backfill, "get_tenant_db", AsyncMock(return_value=tenant),
     )
@@ -324,8 +324,8 @@ async def test_m5_backfill_aggregations_failure_does_not_flip_state(monkeypatch)
     )
 
     tenant = MagicMock()
-    tenant.vehicle_state_snapshot_has_day = AsyncMock(return_value=False)
-    tenant.upsert_vehicle_state_snapshots = AsyncMock(return_value=0)
+    tenant.vehicle_state_minute_has_day = AsyncMock(return_value=False)
+    tenant.upsert_vehicle_state_minutes = AsyncMock(return_value=0)
     monkeypatch.setattr(
         history_backfill, "get_tenant_db", AsyncMock(return_value=tenant),
     )
@@ -383,7 +383,7 @@ async def test_daily_run_heals_a_missing_earlier_day(tenant, monkeypatch):
     now = _dt(2026, 7, 29, 6, 0, tzinfo=_tz.utc)
     for day, odo in ((_dt(2026, 7, 27, 12, tzinfo=_tz.utc), 1_000),
                      (_dt(2026, 7, 28, 12, tzinfo=_tz.utc), 1_400)):
-        await tenant.upsert_vehicle_state_snapshots(1, [
+        await tenant.upsert_vehicle_state_minutes(1, [
             {"vehicle_id": "v1", "captured_at": day.isoformat(),
              "odometer_mi": odo, "engine_hours": 10,
              "engine_state": "moving", "speed_mph": 55},
@@ -403,8 +403,8 @@ async def test_daily_run_heals_a_missing_earlier_day(tenant, monkeypatch):
     await agg.aggregate_metrics_daily(1)
 
     cur = await tenant._db.execute(
-        "SELECT bucket_start FROM vehicle_telemetry WHERE account_id = ? "
-        "AND granularity = 'daily' ORDER BY bucket_start", (1,))
+        "SELECT bucket_start FROM vehicle_state_day WHERE account_id = ? "
+        "ORDER BY bucket_start", (1,))
     days = [str(dict(r)["bucket_start"])[:10] for r in await cur.fetchall()]
     # 07-28 is the normal "yesterday"; 07-27 is the healed hole.
     assert "2026-07-28" in days
@@ -427,7 +427,7 @@ async def test_daily_run_re_rolls_a_day_that_is_present_but_wrong(tenant, monkey
         {"vehicle_id": "v1", "vehicle_name": "204", "company_code": "A"},
     ])
     day = _dt(2026, 7, 27, 12, tzinfo=_tz.utc)
-    await tenant.upsert_vehicle_state_snapshots(1, [
+    await tenant.upsert_vehicle_state_minutes(1, [
         {"vehicle_id": "v1", "captured_at": day.isoformat(),
          "odometer_mi": 1_000, "engine_hours": 10,
          "engine_state": "moving", "speed_mph": 55},
@@ -442,7 +442,7 @@ async def test_daily_run_re_rolls_a_day_that_is_present_but_wrong(tenant, monkey
     await agg._aggregate_hour_window(tenant, 1, day)
 
     # A stale daily row claiming a total the hours do not support.
-    await tenant.upsert_vehicle_metrics_daily(1, [
+    await tenant.upsert_vehicle_state_day(1, [
         {"vehicle_id": "v1", "day_utc": "2026-07-27", "miles": 9_999.0},
     ])
 
@@ -461,8 +461,8 @@ async def test_daily_run_re_rolls_a_day_that_is_present_but_wrong(tenant, monkey
     await agg.aggregate_metrics_daily(1)
 
     cur = await tenant._db.execute(
-        "SELECT miles FROM vehicle_telemetry WHERE account_id = ? "
-        "AND granularity = 'daily' AND bucket_start = ?", (1, "2026-07-27"))
+        "SELECT miles FROM vehicle_state_day WHERE account_id = ? "
+        "AND bucket_start = ?", (1, "2026-07-27"))
     miles = float(dict(await cur.fetchone())["miles"])
     assert miles == pytest.approx(25.0), (
         "a wrong day must be re-summed from its hours, not left alone"
@@ -485,7 +485,7 @@ async def test_duty_time_counts_without_a_working_odometer(tenant):
         {"vehicle_id": "v1", "vehicle_name": "301", "company_code": "A"},
     ])
     hour = _dt(2026, 7, 21, 9, tzinfo=_tz.utc)
-    await tenant.upsert_vehicle_state_snapshots(1, [
+    await tenant.upsert_vehicle_state_minutes(1, [
         {"vehicle_id": "v1", "captured_at": hour.replace(minute=m).isoformat(),
          "odometer_mi": None, "engine_state": state, "speed_mph": speed}
         for m, state, speed in (
@@ -495,8 +495,8 @@ async def test_duty_time_counts_without_a_working_odometer(tenant):
     await agg._aggregate_hour_window(tenant, 1, hour)
 
     cur = await tenant._db.execute(
-        "SELECT miles, drive_min, idle_min FROM vehicle_telemetry "
-        "WHERE account_id = ? AND granularity = 'hourly' AND bucket_start = ?",
+        "SELECT miles, drive_min, idle_min FROM vehicle_state_hour "
+        "WHERE account_id = ? AND bucket_start = ?",
         (1, "2026-07-21T09:00:00"))
     row = dict(await cur.fetchone())
     # Gap-based: each sample's state lasts until the next sample.
@@ -537,12 +537,12 @@ async def test_duty_time_is_cadence_independent(tenant):
                      "captured_at": hour.replace(minute=m).isoformat(),
                      "odometer_mi": 5030, "engine_state": "idle",
                      "speed_mph": 0})
-    await tenant.upsert_vehicle_state_snapshots(1, rows)
+    await tenant.upsert_vehicle_state_minutes(1, rows)
     await agg._aggregate_hour_window(tenant, 1, hour)
 
     cur = await tenant._db.execute(
-        "SELECT drive_min, idle_min FROM vehicle_telemetry "
-        "WHERE account_id = ? AND granularity = 'hourly' AND bucket_start = ?",
+        "SELECT drive_min, idle_min FROM vehicle_state_hour "
+        "WHERE account_id = ? AND bucket_start = ?",
         (1, "2026-08-03T09:00:00"))
     row = dict(await cur.fetchone())
     # Moving: 5+5+5+5+5 (to :25) + 5 (:25 -> :30) = 30 minutes.
@@ -568,7 +568,7 @@ async def test_odometer_re_baseline_does_not_become_miles(tenant):
         {"vehicle_id": "v1", "vehicle_name": "233", "company_code": "A"},
     ])
     hour = _dt(2026, 7, 21, 15, tzinfo=_tz.utc)
-    await tenant.upsert_vehicle_state_snapshots(1, [
+    await tenant.upsert_vehicle_state_minutes(1, [
         {"vehicle_id": "v1", "captured_at": hour.replace(minute=0).isoformat(),
          "odometer_mi": 282_050, "engine_state": "moving", "speed_mph": 60},
         {"vehicle_id": "v1", "captured_at": hour.replace(minute=5).isoformat(),
@@ -580,8 +580,8 @@ async def test_odometer_re_baseline_does_not_become_miles(tenant):
     await agg._aggregate_hour_window(tenant, 1, hour)
 
     cur = await tenant._db.execute(
-        "SELECT miles, odometer_eod FROM vehicle_telemetry "
-        "WHERE account_id = ? AND granularity = 'hourly' AND bucket_start = ?",
+        "SELECT miles, odometer_eod FROM vehicle_state_hour "
+        "WHERE account_id = ? AND bucket_start = ?",
         (1, "2026-07-21T15:00:00"))
     row = dict(await cur.fetchone())
     assert float(row["miles"]) == pytest.approx(6.0), (
@@ -604,7 +604,7 @@ async def test_step_plausibility_is_physics_not_a_magic_number(tenant):
     hour = _dt(2026, 8, 3, 9, tzinfo=_tz.utc)
 
     # v_fake: odometer jumps 900 between two samples a minute apart.
-    await tenant.upsert_vehicle_state_snapshots(61, [
+    await tenant.upsert_vehicle_state_minutes(61, [
         {"vehicle_id": "v_fake",
          "captured_at": hour.replace(minute=m).isoformat(),
          "odometer_mi": odo, "engine_state": "idle", "speed_mph": 0,
@@ -613,7 +613,7 @@ async def test_step_plausibility_is_physics_not_a_magic_number(tenant):
     ])
     # v_real: same 900-mile step, but the provider was silent 14 hours
     # (source_ts gap) — the truck genuinely drove those miles.
-    await tenant.upsert_vehicle_state_snapshots(61, [
+    await tenant.upsert_vehicle_state_minutes(61, [
         {"vehicle_id": "v_real",
          "captured_at": hour.replace(minute=10).isoformat(),
          "odometer_mi": 5000, "engine_state": "moving", "speed_mph": 50,
@@ -626,8 +626,8 @@ async def test_step_plausibility_is_physics_not_a_magic_number(tenant):
     await agg._aggregate_hour_window(tenant, 61, hour)
 
     cur = await tenant._db.execute(
-        "SELECT vehicle_id, miles FROM vehicle_telemetry "
-        "WHERE account_id = ? AND granularity = 'hourly' "
+        "SELECT vehicle_id, miles FROM vehicle_state_hour "
+        "WHERE account_id = ? "
         "AND bucket_start = ? ORDER BY vehicle_id",
         (61, "2026-08-03T09:00:00"))
     miles = {r[0]: float(r[1]) for r in await cur.fetchall()}

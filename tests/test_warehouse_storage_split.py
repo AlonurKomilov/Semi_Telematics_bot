@@ -1,4 +1,4 @@
-"""Stage-1 parity guard — the six-way split lost nothing.
+"""Parity guard — the six-way split + grain method renames lost nothing.
 
 The 3,283-line warehouse.py monolith became a package of per-stream
 mixins plus a root-level OpsRunsMixin.  Method names and bodies are
@@ -13,20 +13,20 @@ from adapters.storage.warehouse import WarehouseMixin
 EXPECTED = {
     # vehicles.py
     "upsert_vehicle_state", "get_vehicle_state",
-    "upsert_vehicle_telemetry_hourly", "get_vehicle_telemetry_hourly",
-    "get_vehicle_avg_daily_miles", "upsert_vehicle_state_snapshots",
+    "upsert_vehicle_state_hour", "get_vehicle_state_hour",
+    "get_vehicle_avg_daily_miles", "upsert_vehicle_state_minutes",
     "get_vehicle_state_at_or_before", "get_undriven_vehicles",
     "compute_vehicle_velocity_window", "compute_vehicle_velocity_daily",
-    "prune_vehicle_state_snapshots", "get_reading_as_of", "_days_between",
+    "prune_vehicle_state_minutes", "get_reading_as_of", "_days_between",
     "get_period_mileage", "get_vehicle_period_mileage",
     "get_snapshot_coverage", "get_feed_freshness",
-    "get_telemetry_tier_freshness", "vehicle_state_snapshot_has_day",
-    "vehicle_state_snapshot_day_summary", "query_vehicle_state_history",
-    "upsert_vehicle_metrics_daily", "prune_vehicle_metrics_daily",
-    "upsert_vehicle_metrics_weekly", "prune_vehicle_telemetry_weekly",
-    "prune_vehicle_fault_detail", "get_vehicle_metrics_daily",
+    "get_telemetry_tier_freshness", "vehicle_state_minute_has_day",
+    "vehicle_state_minute_day_summary", "query_vehicle_state_history",
+    "upsert_vehicle_state_day", "prune_vehicle_state_day",
+    "upsert_vehicle_state_week", "prune_vehicle_state_week",
+    "prune_vehicle_fault_detail", "get_vehicle_state_day",
     "get_vehicle_usage_summary", "get_account_utilization_summary",
-    "prune_vehicle_telemetry_hourly", "upsert_vehicle_health_snapshots",
+    "prune_vehicle_state_hour", "upsert_vehicle_health_snapshots",
     "get_vehicle_health_snapshots", "upsert_vehicle_fault_snapshot",
     "upsert_vehicle_fault_details", "get_vehicles_with_faults_warehouse",
     "get_vehicle_fault_snapshot_by_name", "get_active_fault_dtc_ids",

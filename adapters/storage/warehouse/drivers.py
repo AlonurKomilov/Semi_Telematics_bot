@@ -169,7 +169,7 @@ class DriversWarehouseMixin(_MixinBase):
         self, account_id: int, *, days_keep: int = 730,
     ) -> int:
         """Drop per-driver daily efficiency rows older than the window
-        (the Driver-feature analogue of ``prune_vehicle_metrics_daily``)."""
+        (the Driver-feature analogue of ``prune_vehicle_state_day``)."""
         from datetime import timedelta
         cutoff_day = (datetime.now(timezone.utc) - timedelta(days=days_keep)).date().isoformat()
         cur = await self._db.execute(

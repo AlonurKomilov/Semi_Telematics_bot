@@ -26,16 +26,19 @@ _SSOT = "SSOT docs/architecture/warehouse.md"
 # Grain/kind notes for tables whose dataset key alone doesn't say what
 # tier they hold.  Keyed by physical table name.
 _TABLE_NOTES = {
-    "vehicle_state": "grain live — one current sample row per vehicle",
-    "vehicle_state_snapshot": "grain minute — sample history, labels on the minute grid",
+    "vehicle_state_live": "grain live — one current sample row per vehicle",
+    "vehicle_state_minute": "grain minute — sample history, labels on the minute grid",
 }
 
 # Build outputs and machinery: written by the rollup/ledger paths, not
 # by any ingest dataset, so the registry loop can't describe them.
 _EXTRA_COMMENTS = {
-    "vehicle_telemetry":
-        "warehouse: vehicle.timeline aggregates (owner: vehicles) · "
-        f"grains hour|day|week via granularity column · built by rollup stages, never ingested · {_SSOT}",
+    **{
+        f"vehicle_state_{g}":
+            f"warehouse: vehicle.timeline aggregate (owner: vehicles) · "
+            f"grain {g} · built by rollup stages, never ingested · {_SSOT}"
+        for g in ("hour", "day", "week")
+    },
     "ingest_runs":
         f"warehouse machinery: day-grain ACQUIRE ledger (dataset_key × account × day) · {_SSOT}",
     "ingest_orphans":
