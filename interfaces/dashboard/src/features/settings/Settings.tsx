@@ -18,7 +18,7 @@ import { rollupByDisplayLabel } from '../../features/ai/helpers';
 import { Link } from 'react-router-dom';
 import DeliveryModeSelector from './delivery/DeliveryModeSelector';
 import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
-import SettingsConfigPanel from './SettingsConfigPanel';
+import SettingsConfigPanel from './config/SettingsConfigPanel';
 import SubBotRoster from './delivery/SubBotRoster';
 import DangerZoneSection from './DangerZoneSection';
 import { toneClasses } from '../../lib/status';

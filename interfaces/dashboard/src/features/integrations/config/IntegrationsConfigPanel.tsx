@@ -13,10 +13,10 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
-import { getIntegrationsConfig, putIntegrationsConfig } from './api';
-import type { SourcePrecedence } from './api';
-import { useRoleView } from '../../context/RoleViewContext';
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../../components/ui/select';
+import { getIntegrationsConfig, putIntegrationsConfig } from '../api';
+import type { SourcePrecedence } from '../api';
+import { useRoleView } from '../../../context/RoleViewContext';
 
 const SOURCE_LABEL: Record<string, string> = {
   datatruck: 'Datatruck',

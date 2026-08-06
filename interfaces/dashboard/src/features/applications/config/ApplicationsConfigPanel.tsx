@@ -4,10 +4,10 @@ import { Eye, Loader2, TriangleAlert, RefreshCw, Wand2, X } from 'lucide-react';
 
 import { toast } from 'sonner';
 
-import { apiJSON } from '../../api/client';
-import { Button } from '../../components/ui/button';
-import { Input } from '../../components/ui/input';
-import { generatePassphrase } from './passphrase';
+import { apiJSON } from '../../../api/client';
+import { Button } from '../../../components/ui/button';
+import { Input } from '../../../components/ui/input';
+import { generatePassphrase } from '../passphrase';
 
 /**
  * The DQF export passphrase — account-scope config (docs/architecture/config.md).

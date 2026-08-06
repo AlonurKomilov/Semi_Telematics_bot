@@ -17,8 +17,8 @@
 
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { Button } from '../../components/ui/button';
-import { getKpiConfig, putKpiConfig } from './api';
+import { Button } from '../../../components/ui/button';
+import { getKpiConfig, putKpiConfig } from '../api';
 
 const inputCls =
   'w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm ' +

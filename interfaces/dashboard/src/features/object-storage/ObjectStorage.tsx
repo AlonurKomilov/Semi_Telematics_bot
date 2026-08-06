@@ -2,7 +2,7 @@ import { Cloud } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '../../components/shell';
 import ObjectStorageBackendCard from './ObjectStorageBackendCard';
-import StorageConfigPanel from './StorageConfigPanel';
+import StorageConfigPanel from './config/StorageConfigPanel';
 import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import ObjectStorageHealthCard from './ObjectStorageHealthCard';
 import ObjectStorageUsageCard from './ObjectStorageUsageCard';

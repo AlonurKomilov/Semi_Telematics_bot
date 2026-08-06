@@ -18,7 +18,7 @@ import {
 import { Tip } from '../../components/tooltip';
 import { toneClasses, type Tone } from '../../lib/status';
 import type { AnyColumn } from '../../types';
-import KpiConfigPanel from './KpiConfigPanel';
+import KpiConfigPanel from './config/KpiConfigPanel';
 import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import { getDispatcherKpis } from './api';
 import type { DispatcherKpisResponse } from './api';

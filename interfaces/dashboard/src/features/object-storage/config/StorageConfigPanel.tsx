@@ -22,10 +22,10 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { HardDrive, Cloud, RefreshCcw, Loader2 } from 'lucide-react';
-import { apiJSON } from '../../api/client';
+import { apiJSON } from '../../../api/client';
 import {
   BackendOption, type Backend, type StorageConfig,
-} from './ObjectStorageBackendCard';
+} from '../ObjectStorageBackendCard';
 
 export default function StorageConfigPanel() {
   const { t } = useTranslation();

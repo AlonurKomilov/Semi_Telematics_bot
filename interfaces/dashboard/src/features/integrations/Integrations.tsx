@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { CardSkeleton, PageHeader } from '../../components/shell';
 import IntegrationCard from './IntegrationCard';
 import BackfillStatusBadge from './BackfillStatusBadge';
-import IntegrationsConfigPanel from './IntegrationsConfigPanel';
+import IntegrationsConfigPanel from './config/IntegrationsConfigPanel';
 import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import ConflictsPanel from './ConflictsPanel';
 import {

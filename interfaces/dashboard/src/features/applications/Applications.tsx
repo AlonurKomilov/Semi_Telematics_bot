@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { apiJSON, apiFetch } from '../../api/client';
 import { PageHeader } from '../../components/shell';
 import { usePermissions } from '../../hooks/usePermissions';
-import ApplicationsConfigPanel from './ApplicationsConfigPanel';
+import ApplicationsConfigPanel from './config/ApplicationsConfigPanel';
 import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import { Tip } from '../../components/tooltip';
 import { Button } from '../../components/ui/button';
