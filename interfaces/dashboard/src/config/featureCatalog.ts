@@ -119,7 +119,7 @@ export const FEATURE_CATALOG: CatalogFeature[] = [
   // ── CORE (always on) ──────────────────────────────────────────────
   { id: 'overview',       labelKey: 'nav.overview',       path: '/',          icon: LayoutDashboard, modules: ['core'], tier: 'shared', permission: null, navGroup: 'main' },
   // Route-only: the assistant launches from the topbar icon (beside the
-  // avatar) + ⌘J, not a sidebar row — navHidden keeps the route guard
+  // avatar) + ⌘/Ctrl-J, not a sidebar row — navHidden keeps the route guard
   // and can_ai_chat wiring while dropping the nav entry.
   { id: 'ai_assistant',   labelKey: 'nav.ai_assistant',   path: '/ai/chat',   icon: Bot,             modules: ['core'], kind: 'service', permission: ['can_ai_chat'], navGroup: 'main', navHidden: true },
   // Alerts launches from the topbar bell (a monitoring SERVICE beside

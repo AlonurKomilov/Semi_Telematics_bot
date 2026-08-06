@@ -203,9 +203,14 @@ export default function LiveAckPanel() {
       </Tip>
       <span className="ml-auto self-center text-2xs text-muted-foreground">
         {t('alerts.live_ack.hotkey_hint')}{' '}
-        <kbd className="px-1 py-px rounded bg-muted text-foreground/80 text-3xs">
+        {/* NOT <kbd>: this is the Acknowledge BUTTON's name, not a key to
+            press.  <kbd> means "keyboard input", and a screen reader
+            announces it that way — so it was telling one group of users
+            to press a key that does not exist.  Same pixels, honest
+            element. */}
+        <span className="px-1 py-px rounded bg-muted text-foreground/80 text-3xs font-medium">
           {t('alerts.live_ack.hotkey_action')}
-        </kbd>{' '}
+        </span>{' '}
         {t('alerts.live_ack.hotkey_tail')}
       </span>
     </div>
