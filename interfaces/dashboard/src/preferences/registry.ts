@@ -162,6 +162,16 @@ export const DEFS = {
     },
     note: 'Colour scheme, density and corner radius.',
   }),
+  // Dismissal of the one-release "config moved to the gear" pointer.
+  // SYNCED, not device: the user learned where config went — they should
+  // not be re-taught on their laptop after dismissing it on their desktop.
+  // Delete this entry and its banner once the release has landed.
+  'config.moved_notice_dismissed': def<boolean>({
+    default: false,
+    scope: 'synced',
+    sanitize: asBool,
+    note: 'Hides the "settings moved to the gear" pointer once dismissed.',
+  }),
   'sidebar.collapsed': def<boolean>({
     default: false,
     scope: 'device',

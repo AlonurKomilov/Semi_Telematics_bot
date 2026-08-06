@@ -18,10 +18,9 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
+import { Input } from '../../../components/ui/input';
 import { getKpiConfig, putKpiConfig } from '../api';
 
-const inputCls =
-  'w-full bg-muted border border-border rounded px-2.5 py-1.5 text-sm ' +
   'text-foreground focus:outline-none focus:border-ring';
 
 const FIELDS: { key: string; label: string }[] = [
@@ -46,8 +45,18 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
     setLoading(true);
     getKpiConfig()
       .then((res) => {
+        // Fall back to the server's DEFAULTS, which this response has
+        // always carried and this panel used to throw away.  Six blank
+        // number boxes at a first-run decision point ask an owner to
+        // invent "what counts as good RPM" from nothing; the shipped
+        // defaults are the honest expert answer, and they are what the
+        // grades are computed against until someone overrides them.
         const v: Record<string, string> = {};
-        for (const f of FIELDS) v[f.key] = String(res.thresholds[f.key] ?? '');
+        for (const f of FIELDS) {
+          const stored = res.thresholds?.[f.key];
+          const fallback = res.defaults?.[f.key];
+          v[f.key] = String(stored ?? fallback ?? '');
+        }
         setValues(v);
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Load failed'))
@@ -77,7 +86,10 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
         What counts as good or bad for the A–D grades. Applies to the whole
-        account.
+        account —{' '}
+        <span className="text-foreground">saving re-grades everyone</span> on
+        the next load. Values shown are the current thresholds, or the
+        4truck defaults where none has been set.
       </p>
       {loading ? (
         <div className="flex justify-center py-6">
@@ -88,15 +100,14 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
           {FIELDS.map((f) => (
             <label key={f.key} className="text-sm">
               <span className="text-muted-foreground">{f.label}</span>
-              <input
-                className={inputCls}
-                type="number"
-                step="0.01"
-                value={values[f.key] ?? ''}
-                onChange={(e) =>
-                  setValues((v) => ({ ...v, [f.key]: e.target.value }))
-                }
-              />
+              <Input
+                  type="number"
+                  step="0.01"
+                  value={values[f.key] ?? ''}
+                  onChange={(e) =>
+                    setValues((v) => ({ ...v, [f.key]: e.target.value }))
+                  }
+                />
             </label>
           ))}
         </div>

@@ -35,6 +35,9 @@ const FROZEN_KEYS: readonly string[] = [
   'invites.lastChannel',
   'dispatch.soundOn',
   'assistant.panelWidth',
+  // One-release pointer telling users config moved to the gear.
+  // Remove together with ConfigMovedNotice.tsx and its call sites.
+  'config.moved_notice_dismissed',
   'pivot.panelWidth',
   'permissions.role',
   'assistant.expanded',

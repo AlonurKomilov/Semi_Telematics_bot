@@ -310,9 +310,14 @@ export default function Settings() {
            identity, danger zone). A card headed "Configuration" sitting
            among them put a config surface in the same tier as the
            operational ones — on the one page where that distinction is
-           hardest to see, because everything here is called a setting. */
+           hardest to see, because everything here is called a setting.
+
+           The gear says "Account", not the page title: "<Feature>
+           configuration" would render "Settings configuration" here,
+           which collides with Settings the feature. Every other feature
+           keeps the standard label. */
         actions={(
-          <FeatureConfigGear feature={t('pages.settings_title')} size="xl">
+          <FeatureConfigGear feature="Account" size="xl">
             <SettingsConfigPanel
               edits={edits}
               setEdits={setEdits}

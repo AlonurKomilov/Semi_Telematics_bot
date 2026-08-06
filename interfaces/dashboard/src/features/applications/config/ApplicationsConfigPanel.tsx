@@ -246,8 +246,15 @@ export default function ApplicationsConfigPanel() {
               "set your own to protect these files properly" is a
               half-truth — everything already in the carrier's storage
               keeps the password it was written with. */}
-          <div className="rounded-lg border border-border p-3 space-y-2">
-            <p className="text-xs text-muted-foreground">
+          {/* Collapsed by default. A UX pass found the panel led with
+              four paragraphs before the input; re-export is a follow-up
+              someone does after a rotation, not part of setting a
+              passphrase, so it no longer competes with the decision. */}
+          <details className="rounded-lg border border-border p-3">
+            <summary className="text-xs font-medium text-foreground cursor-pointer">
+              Re-protect files already exported
+            </summary>
+            <p className="mt-2 text-xs text-muted-foreground">
               Changing the passphrase does not re-protect files already in your
               storage. Re-export rewrites each application&rsquo;s protected SSN
               file with the current passphrase — one file per application; the
@@ -286,7 +293,7 @@ export default function ApplicationsConfigPanel() {
                 Cannot reach copies already downloaded or shared.
               </span>
             </div>
-          </div>
+          </details>
 
           {/* The one thing that decides whether any of this works. A
               passphrase only we hold is worthless in exactly the scenario
@@ -294,10 +301,9 @@ export default function ApplicationsConfigPanel() {
           <p className="text-xs text-muted-foreground">
             <span className="text-foreground font-medium">Keep a copy outside
             4truck.</span>{' '}
-            Replacing the passphrase does not re-protect files already exported —
-            those still open only with the passphrase they were written with. If
-            4truck is ever unavailable, a passphrase you have not stored elsewhere
-            cannot be recovered.
+            If 4truck is ever unavailable, a passphrase you have not stored
+            elsewhere cannot be recovered — and support cannot release one you
+            chose.
           </p>
         </>
       )}

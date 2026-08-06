@@ -22,6 +22,7 @@ import KpiConfigPanel from './config/KpiConfigPanel';
 import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import { getDispatcherKpis } from './api';
 import type { DispatcherKpisResponse } from './api';
+import { ConfigMovedNotice } from '../_lib/ConfigMovedNotice';
 
 const GRADE_TONE: Record<string, Tone> = {
   A: 'ok', B: 'info', C: 'warn', D: 'danger',
@@ -111,6 +112,8 @@ export default function Kpi() {
           </FeatureConfigGear>
         )}
       />
+
+      <ConfigMovedNotice what="Grading thresholds" />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         {/* Domain sections */}

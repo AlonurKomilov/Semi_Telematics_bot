@@ -54,9 +54,13 @@ export function PageSectionsGear<P extends object>({
 
   return (
     <PopoverPrimitive.Root open={open} onOpenChange={setOpen}>
-      <Tip label="Customise which sections this page shows">
+      {/* The scope is in the label because a second gear — the config
+          COG — now sits in the same corner on several pages. The icons
+          differ (sliders vs cog); the words say which one changes only
+          YOUR view and which changes the account for everyone. */}
+      <Tip label="Page sections — your view only">
         <PopoverPrimitive.Trigger
-          aria-label="Customise page sections"
+          aria-label="Page sections — your view only"
           className={`inline-flex size-8 items-center justify-center rounded-md transition-colors ${
             open
               ? 'bg-primary/15 text-primary'

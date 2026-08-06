@@ -36,6 +36,7 @@ import type {
   IntegrationsListResponse,
   TestConnectionResponse,
 } from './types';
+import { ConfigMovedNotice } from '../_lib/ConfigMovedNotice';
 
 // Shape returned by the backfill trigger endpoint.  Inlined here
 // (rather than added to types.ts) because it only appears at the
@@ -101,7 +102,9 @@ export default function Integrations() {
     return (
       <div>
         <PageHeader icon={Plug} title={t('integrations.title', 'Integrations')} description={t('integrations.description', 'Connect your telematics platform and choose which data syncs.')} />
-        <div className="grid grid-cols-1 gap-4">
+        <ConfigMovedNotice what="Provider precedence" />
+
+      <div className="grid grid-cols-1 gap-4">
           <CardSkeleton height="h-48" />
           <CardSkeleton height="h-32" />
           <CardSkeleton height="h-32" />

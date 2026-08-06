@@ -17,6 +17,8 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '.
 import { getIntegrationsConfig, putIntegrationsConfig } from '../api';
 import type { SourcePrecedence } from '../api';
 import { useRoleView } from '../../../context/RoleViewContext';
+import { Loader2 } from 'lucide-react';
+import { ErrorState } from '../../../components/shell';
 
 const SOURCE_LABEL: Record<string, string> = {
   datatruck: 'Datatruck',
@@ -33,7 +35,7 @@ export default function IntegrationsConfigPanel() {
   const { viewHas } = useRoleView();
   const canConfigure = viewHas('can_manage_config_all');
 
-  const { data } = useQuery<SourcePrecedence>({
+  const { data, isLoading, error } = useQuery<SourcePrecedence>({
     queryKey: ['vehicles-config'],
     queryFn: getIntegrationsConfig,
     enabled: canConfigure,
@@ -46,8 +48,26 @@ export default function IntegrationsConfigPanel() {
       qc.setQueryData(['vehicles-config'], next),
   });
 
-  // Best-effort panel — stay invisible until the policy loads.
-  if (!data) return null;
+  // THREE states, not one.  This was `if (!data) return null`, which is
+  // correct for a card in a page's content flow — a panel that quietly
+  // omits itself — and wrong the moment it became the whole contents of a
+  // dialog the user deliberately opened.  While loading, the dialog was
+  // blank; if the fetch FAILED it stayed blank forever, with nothing to
+  // distinguish "still working" from "broken".
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-6">
+        <Loader2 size={18} className="animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (error || !data) {
+    return (
+      <ErrorState
+        message={error instanceof Error ? error.message : 'Could not load provider precedence'}
+      />
+    );
+  }
 
   // Every field picks from the same source list; build the item set once.
   const sourceItems = data.sources.map((s) => ({ value: s, label: SOURCE_LABEL[s] ?? s }));
@@ -71,7 +91,9 @@ export default function IntegrationsConfigPanel() {
       <p className="mb-3 text-sm text-muted-foreground">
         Samsara and Datatruck both fill in vehicle details. Choose which
         source wins each field — the other only fills it when it's empty.
-        Your hand-edits always win.
+        Your hand-edits always win.{' '}
+        <span className="text-foreground">Applies to every vehicle</span>;
+        existing values re-resolve on the next sync.
       </p>
       <ul className="divide-y divide-border">
         {data.fields.map((f) => (
