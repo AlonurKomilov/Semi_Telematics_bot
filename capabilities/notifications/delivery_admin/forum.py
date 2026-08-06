@@ -1,14 +1,14 @@
 """Settings · Forum Routing — Telegram group-topic alert routing config.
 
 router.py is interface-layer code co-located with its feature
-(docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
+(docs/FEATURES.md): router.py and config.py are the interface-layer pair — those two may
+# import interfaces.api.deps; nothing else in the feature may.
 Keeps the historical ``/admin`` URL prefix.
 """
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional
 
 from interfaces.api.deps import (
     require_permission, get_tenant_db,
@@ -163,55 +163,6 @@ class ForumRouteToggle(BaseModel):
     is_active: bool
 
 
-class ForumSettingsUpdate(BaseModel):
-    # Map of alert_type → bool.  Only alert types in _AI_CAPABLE are
-    # honoured server-side; unknown keys are ignored so the API stays
-    # tolerant if the dashboard sends extras.
-    ai_per_type: Optional[dict[str, bool]] = None
-
-
-@config_router.put("/config")
-@router.put("/forum-routing/settings", deprecated=True)
-async def put_config(
-    body: ForumSettingsUpdate,
-    # CONFIG, not Manage.  Writes ``forum_ai.<type>`` account_settings
-    # rows, which the config family owns.  The rest of forum routing —
-    # linking the group, creating topics, testing delivery — stays on
-    # can_manage_account, because that is operating the integration
-    # rather than setting a value every future alert is rendered through.
-    user: dict = Depends(require_permission("can_manage_config_all")),
-    platform_db=Depends(get_platform_db),
-    tenant_db=Depends(get_tenant_db),
-):
-    """Update per-alert-type AI toggles for the group routing.
-
-    Each key in ``ai_per_type`` is a canonical alert key (``faults``,
-    ``health``, ``parking`` today — the only types with AI content).
-    Setting any of them to False makes future alerts of that type
-    post to the topic *without* the AI section; DM fallback (for
-    CRITICAL mirrors and non-routed accounts) still respects each
-    subscriber's per-user ``ai_*`` preference.
-    """
-    account_id = user["account_id"]
-    _AI_CAPABLE = ("faults", "health", "parking", "camera")
-    changed: list[str] = []
-    if body.ai_per_type:
-        for alert_type, enabled in body.ai_per_type.items():
-            if alert_type not in _AI_CAPABLE:
-                continue
-            await platform_db.set_account_setting(
-                account_id, f"forum_ai.{alert_type}",
-                "1" if enabled else "0",
-            )
-            changed.append(f"{alert_type}={'on' if enabled else 'off'}")
-
-    if changed:
-        await record_simple(
-            tenant_db, account_id, await resolve_user_id(user),
-            "forum_settings_update", "account", account_id,
-            note="ai_per_type: " + ", ".join(changed),
-        )
-    return {"ok": True, "changed": changed}
 
 
 @router.put("/forum-routing/{alert_type}")
@@ -316,45 +267,6 @@ async def toggle_forum_route_receipt(
 # Stored as account_setting ``forum_subtypes.{key}`` (csv, ""=ALL); the
 # resolver's single-group path gates on it.  Owner/admin only.
 
-
-class ForumSubtypeSelection(BaseModel):
-    selected: list[str]
-
-
-@config_router.put("/config/{alert_type}/subtypes")
-@router.put("/forum-routing/{alert_type}/subtypes", deprecated=True)
-async def set_forum_subtypes(
-    alert_type: str,
-    body: ForumSubtypeSelection,
-    # CONFIG, not Manage — writes ``forum_subtypes.<type>``, an
-    # account_settings row owned by the config family.  It decides which
-    # sub-categories reach the group, so every future alert of that type
-    # is filtered through it.
-    user: dict = Depends(require_permission("can_manage_config_all")),
-    platform_db=Depends(get_platform_db),
-    tenant_db=Depends(get_tenant_db),
-):
-    """Narrow which sub-categories of an alert type reach the group
-    (e.g. Safety Events → only crash + braking).  A full or empty
-    selection normalizes to ALL (stored as "")."""
-    from capabilities.alerting.persona_mapping import ALERT_SUBTYPES
-
-    vocab = ALERT_SUBTYPES.get(alert_type)
-    if not vocab:
-        raise HTTPException(status_code=422, detail=f"'{alert_type}' has no sub-categories.")
-    unknown = [s for s in body.selected if s not in vocab]
-    if unknown:
-        raise HTTPException(status_code=422, detail=f"Unknown sub-categories: {unknown}")
-
-    sel = set(body.selected)
-    csv = "" if (not sel or len(sel) >= len(vocab)) else ",".join(s for s in vocab if s in sel)
-    await tenant_db.set_account_setting(user["account_id"], f"forum_subtypes.{alert_type}", csv)
-    await record_simple(
-        tenant_db, user["account_id"], await resolve_user_id(user),
-        "forum_subtypes_set", "alert_type", alert_type,
-        note=f"selected={csv or 'all'}",
-    )
-    return {"alert_type": alert_type, "selected": (csv.split(",") if csv else None)}
 
 
 # ── Custom topics (single mode) — sentinel-keyed, PRIMARY-bot thread ──

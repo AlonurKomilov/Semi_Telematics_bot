@@ -163,3 +163,81 @@ class TestConventionHolds:
             "config paths that are not /<feature>/config:\n  "
             + "\n  ".join(sorted(offenders))
         )
+
+
+class TestConfigLivesInConfigPy:
+    """A feature's config endpoints live in ``features/<x>/config.py``.
+
+    The convention only holds if it cannot drift.  Without this, the next
+    developer adds a config endpoint to ``router.py``, every other test
+    stays green, and the file layout quietly stops matching the URLs.
+    """
+
+    def test_every_config_endpoint_is_defined_in_a_config_module(self):
+        import inspect
+        offenders = []
+        for methods, path, endpoint, deprecated in _routes():
+            if deprecated:
+                continue
+            parts = [p for p in path.split("/") if p]
+            if len(parts) < 2 or parts[1] != "config":
+                continue
+            if parts[0] == "auth":
+                continue        # pre-dates this family; a public login read
+            mod = inspect.getsourcefile(endpoint) or ""
+            if os.path.basename(mod) != "config.py":
+                offenders.append(
+                    f"{sorted(methods)[0]} {path} -> {os.path.relpath(mod, REPO)}"
+                )
+        assert not offenders, (
+            "config endpoints defined outside a config.py:\n  "
+            + "\n  ".join(sorted(offenders))
+            + "\nA feature's config belongs in features/<x>/config.py beside "
+              "its router — see docs/architecture/config.md."
+        )
+
+
+class TestConfigIsNotShadowed:
+    """``/<feature>/config`` must RESOLVE to the config handler.
+
+    This is the failure route-parity cannot see.  Several feature routers
+    carry a parametric route — ``/vehicles/{vehicle_name}``, and nine in
+    applications — and FastAPI matches in registration order across the
+    whole app.  Mount a feature router before its config router and
+    ``GET /vehicles/config`` resolves to the vehicle-detail handler with
+    ``vehicle_name="config"``.
+
+    Both routes still exist, so route counts and parity diffs stay
+    IDENTICAL while the endpoint is dead.  Only resolution shows it.
+    """
+
+    def test_config_paths_resolve_to_their_config_handler(self):
+        from interfaces.api.app import create_api
+        app = create_api()
+        checks = [
+            ("/api/v1/vehicles/config", "GET"),        # vs /{vehicle_name}
+            ("/api/v1/applications/config", "GET"),    # vs nine parametric
+            ("/api/v1/kpi/config", "GET"),
+            ("/api/v1/settings/config", "GET"),
+        ]
+        wrong = []
+        for path, method in checks:
+            scope = {
+                "type": "http", "method": method, "path": path,
+                "headers": [], "query_string": b"",
+            }
+            hit = None
+            for r in app.routes:
+                match, _ = r.matches(scope)
+                if str(match) == "Match.FULL":
+                    hit = getattr(r, "endpoint", None)
+                    break
+            name = getattr(hit, "__name__", repr(hit))
+            if name not in ("get_config", "put_config"):
+                wrong.append(f"{method} {path} resolves to {name}")
+        assert not wrong, (
+            "a parametric route is shadowing a config endpoint:\n  "
+            + "\n  ".join(wrong)
+            + "\nMount each config router BEFORE its feature router in "
+              "interfaces/api/app.py."
+        )

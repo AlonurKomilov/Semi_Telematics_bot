@@ -134,8 +134,24 @@ feature's modules, as scorecard rules does.
       account.py                  account_settings ownership registry
       role.py                     the own-role wall + page allow-list
 
-    features/<x>/router.py        each feature's OWN /<feature>/config
+    features/<x>/config.py        each feature's OWN /<feature>/config
+    features/<x>/router.py        the feature's data
     interfaces/api/page_layouts.py  role-scope routing (interface layer)
+
+`router.py` and `config.py` are the interface-layer PAIR — both may import
+`interfaces.api.deps`; nothing else in the feature may. Config is not the
+feature's data: it is the values that data is computed against, granted by
+a different permission and edited by a different surface, so it gets its
+own file.
+
+⚠️ **Mount each config router BEFORE its feature router** in
+`interfaces/api/app.py`. Several feature routers carry a parametric route
+(`/vehicles/{vehicle_name}`, nine in applications) and FastAPI matches in
+registration order across the whole app — mount the feature router first
+and `GET /vehicles/config` resolves to the vehicle-detail handler with
+`vehicle_name="config"`. Route counts and route-parity diffs stay
+IDENTICAL while the endpoint is dead, because both routes still exist.
+`TestConfigIsNotShadowed` asserts resolution, not registration.
 
 `capabilities/config/` is the ENGINE, not a place to put configuration.
 A feature's config endpoints stay with that feature. Collecting them here

@@ -236,8 +236,10 @@ class TestReadableKeysAreAlsoWritable:
 
     def _get_allowlist(self) -> list[str]:
         import re
+        # config.py, not router.py: the config verbs moved out of the
+        # feature router into the interface-layer pair beside it.
         path = os.path.join(
-            REPO, "features", "settings", "account", "router.py",
+            REPO, "features", "settings", "account", "config.py",
         )
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
@@ -334,12 +336,12 @@ class TestDedicatedWritersHonourTheDeclaredOwner:
     # rather than discovered: the point is to state the intended pairing
     # so a future regate has to argue with a name, not a regex.
     WRITERS = (
-        ("capabilities/object_storage/router.py", "put_config"),
+        ("capabilities/object_storage/config.py", "put_config"),
         ("features/vehicles/config.py", "put_config"),
         ("features/vehicles/config.py", "get_config"),
-        ("capabilities/notifications/delivery_admin/forum.py",
+        ("capabilities/notifications/delivery_admin/config.py",
          "put_config"),
-        ("capabilities/notifications/delivery_admin/forum.py",
+        ("capabilities/notifications/delivery_admin/config.py",
          "set_forum_subtypes"),
         ("features/kpi/config.py", "get_config"),
         ("features/kpi/config.py", "put_config"),

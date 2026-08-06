@@ -1,7 +1,8 @@
 """Driver Applications API — public application intake + recruiter dashboard.
 
 router.py is interface-layer code co-located with its feature (see
-docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+docs/FEATURES.md): router.py and config.py are the interface-layer pair — those two may
+# import interfaces.api.deps; nothing else in the feature may;
 service/storage modules never do.  Naming: the *feature* is "applications";
 the *role* that manages it is "recruiter" — intentionally distinct words.
 (The physical DB tables keep their legacy ``recruitment_*`` names — renaming

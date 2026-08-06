@@ -26,7 +26,8 @@ deployment, but each user's refresh token is scoped to their own
 Drive).
 """
 # router.py is interface-layer code co-located with its hub/domain
-# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
+# (docs/FEATURES.md): router.py and config.py are the interface-layer pair — those two may
+# import interfaces.api.deps; nothing else in the feature may.
 
 
 from __future__ import annotations
@@ -204,68 +205,6 @@ async def get_storage_status(
     }
 
 
-class BackendSwitchRequest(BaseModel):
-    backend: str = Field(..., description="One of: disk, gdrive, hybrid")
-
-
-@router.put("/config")
-@router.post("/backend", deprecated=True)
-async def put_config(
-    body: BackendSwitchRequest,
-    user: dict = Depends(require_permission("can_manage_config_all")),
-    tenant_db=Depends(get_tenant_db),
-):
-    """Switch the account's storage backend.
-
-    CONFIG, not Manage — and this endpoint is why the distinction has
-    teeth.  It writes ``object_storage.backend``, an account_settings row
-    the registry owns (capabilities/config/account.py), and that one
-    value decides where every driver document, invoice and DQF the
-    account ever stores is written.  The blast-radius rule puts it
-    account-wide: "anything a computation reads is account-wide, always."
-
-    ``can_manage_storage`` keeps this feature's real operational work —
-    connecting and disconnecting Drive, retrying failed syncs, clearing
-    orphans, reading health.  It no longer decides where the bytes live.
-    A holder of Storage alone can still run the storage; they cannot
-    silently redirect the account's entire document estate.
-
-    ``disk``    — files stay on the platform server.
-    ``gdrive``  — every upload streams directly to the user's Drive.
-    ``hybrid``  — uploads land on disk first, a background worker pushes
-                  them to Drive within ~60 s.  Requires Drive connection.
-
-    ``gdrive`` and ``hybrid`` require an active Drive OAuth grant — the
-    endpoint 409s otherwise so the UI can prompt the user to connect.
-    """
-    backend = (body.backend or "").strip().lower()
-    if backend not in ("disk", "gdrive", "hybrid"):
-        raise HTTPException(
-            status_code=422,
-            detail="backend must be disk, gdrive, or hybrid",
-        )
-    account_id = int(user["account_id"])
-
-    if backend in ("gdrive", "hybrid"):
-        has_token = bool(await tenant_db.get_account_setting(
-            account_id, OBJECT_STORAGE_GDRIVE_REFRESH_TOKEN, "",
-        ))
-        if not has_token:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "message": "Connect Google Drive before switching to this backend.",
-                    "error_code": "drive_not_connected",
-                },
-            )
-
-    await tenant_db.set_account_storage_backend(account_id, backend)
-    await record_simple(
-        tenant_db, account_id, await resolve_user_id(user),
-        "storage_backend_switch", "account", account_id,
-        changes={"storage_backend": {"from": None, "to": backend}},
-    )
-    return {"backend": backend}
 
 
 @router.get("/health")

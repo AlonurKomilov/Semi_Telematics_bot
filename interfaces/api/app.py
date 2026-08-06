@@ -40,7 +40,7 @@ from interfaces.api import page_layouts as page_layouts_routes
 from capabilities.reporting import router as reports_routes
 from capabilities.ai import router as ai_routes
 from features.scorecards import router as scorecards_routes
-from features.scorecards import config_router as scorecard_rules_routes
+from features.scorecards import config as scorecard_rules_routes
 from capabilities.platform.billing import router as billing_routes
 from capabilities.integrations import router as integrations_routes
 from capabilities.object_storage import router as object_storage_routes
@@ -68,6 +68,7 @@ from capabilities.platform.service_assembly_library import router as service_ass
 from capabilities.platform.market_intel import router as market_intel_routes
 from capabilities.platform.capacity import router as capacity_routes
 from features.loads import router as loads_routes
+from capabilities.object_storage import config as object_storage_config
 from features.applications import config as applications_config
 from features.kpi import config as kpi_config
 from features.kpi import router as kpi_routes
@@ -472,7 +473,8 @@ def create_api() -> FastAPI:
         # notifications' side of the boundary; historical /admin URLs.
         app.include_router(delivery_admin_routes.routing_router, prefix=prefix)
         app.include_router(delivery_admin_routes.forum_router, prefix=prefix)
-        app.include_router(delivery_admin_routes.forum_config_router, prefix=prefix)
+        app.include_router(delivery_admin_routes.alerts_config_router, prefix=prefix)
+        app.include_router(delivery_admin_routes.alerts_config_legacy_router, prefix=prefix)
         app.include_router(telemetry_routes.router, prefix=prefix)
         app.include_router(jobs_routes.router, prefix=prefix)
         app.include_router(system_routes.router, prefix=prefix)
@@ -499,6 +501,7 @@ def create_api() -> FastAPI:
         app.include_router(market_intel_routes.router, prefix=prefix)
         app.include_router(capacity_routes.router, prefix=prefix)
         app.include_router(inspections_routes.router, prefix=prefix)
+        app.include_router(object_storage_config.router, prefix=prefix)
         app.include_router(object_storage_routes.router, prefix=prefix)
         app.include_router(object_storage_routes.admin_router, prefix=prefix)
         app.include_router(ai_routes.router, prefix=prefix)
