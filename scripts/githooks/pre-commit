@@ -1,0 +1,145 @@
+#!/usr/bin/env python3
+"""Commit guard — the rules, enforced instead of remembered.
+
+Two AIs and one human share this working tree, and production runs out
+of it.  Every rule below exists because breaking it cost real time on
+2026-08-07, and every one is checked against the STAGED content, never
+the working tree: a guard that stashes or checks out to inspect a
+commit can lose the very work it is protecting.
+
+Install once:
+    git config core.hooksPath scripts/githooks
+
+Bypass, when you have a reason:
+    git commit --no-verify
+"""
+from __future__ import annotations
+
+import subprocess
+import sys
+
+RED, YEL, DIM, OFF = "\033[31m", "\033[33m", "\033[2m", "\033[0m"
+
+
+def sh(*args: str) -> str:
+    return subprocess.run(args, capture_output=True, text=True).stdout
+
+
+def staged_paths() -> list[str]:
+    out = sh("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR")
+    return [p for p in out.splitlines() if p.strip()]
+
+
+def staged_blob(path: str) -> str | None:
+    r = subprocess.run(["git", "show", f":{path}"], capture_output=True)
+    if r.returncode != 0:
+        return None
+    try:
+        return r.stdout.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+problems: list[str] = []
+warnings: list[str] = []
+paths = staged_paths()
+py = [p for p in paths if p.endswith(".py")]
+
+
+# ── Rule 1 — staged Python must parse ────────────────────────────
+# A half-saved file reaching the index is not hypothetical here:
+# production imports from this tree, so a broken file is served.
+import ast
+
+for p in py:
+    src = staged_blob(p)
+    if src is None:
+        continue
+    try:
+        ast.parse(src, filename=p)
+    except SyntaxError as e:
+        problems.append(f"{p}:{e.lineno}: syntax error — {e.msg}")
+
+
+# ── Rule 2 — no undefined names in staged Python ─────────────────
+# THE rule.  A NameError killed every group-routed alert for four days
+# (_group_text_plain), and an unimported annotation sat red in CI for a
+# week (VehicleScope).  tests/test_undefined_names.py already keeps the
+# backend at zero findings, so this only moves that feedback from a
+# 90-minute suite to the moment you commit.
+if py:
+    try:
+        from pyflakes.api import check
+        from pyflakes.reporter import Reporter
+        import io
+
+        for p in py:
+            src = staged_blob(p)
+            if src is None:
+                continue
+            # Reporter(warningStream, errorStream) — findings land in the
+            # WARNING stream; the error stream carries only pyflakes'
+            # own failures.  Reading the wrong one silently finds
+            # nothing, which is how this rule shipped inert the first
+            # time and had to be caught by testing it against a real
+            # undefined name.
+            warn, err = io.StringIO(), io.StringIO()
+            check(src, p, Reporter(warn, err))
+            for line in warn.getvalue().splitlines():
+                if "undefined name" in line:
+                    problems.append(line.strip())
+    except ImportError:
+        warnings.append("pyflakes missing — undefined-name check skipped")
+
+
+# ── Rule 3 — secrets never enter a commit ────────────────────────
+SECRET_NAMES = (".env", "id_rsa", "id_ed25519")
+SECRET_SUFFIX = (".pem", ".key", ".p12", ".keystore")
+for p in paths:
+    base = p.rsplit("/", 1)[-1]
+    if base in SECRET_NAMES or base.startswith(".env.") or p.endswith(SECRET_SUFFIX):
+        problems.append(f"{p}: secret-shaped file staged")
+
+
+# ── Rule 4 — did you stage somebody else's work? ─────────────────
+# The expensive one.  A shared index swept another author's in-flight
+# files into the wrong commit three times this week, twice breaking
+# main: once the caller shipped without its callee (AttributeError on
+# every application submission), once a mid-edit component shipped and
+# the dashboard went black.
+#
+# `git add -A` cannot be detected directly — but its FOOTPRINT can.  In
+# a tree two people are editing, staging everything leaves nothing
+# behind.  Leftover unstaged work is the normal, healthy state here.
+left = [ln for ln in sh("git", "status", "--porcelain").splitlines()
+        if ln[:2] not in ("A ", "M ", "D ", "R ") and ln.strip()]
+if len(paths) >= 5 and not left:
+    warnings.append(
+        f"{len(paths)} files staged and NOTHING left unstaged — the shape of "
+        "`git add -A` in a shared tree.\n"
+        "      If any of these are not yours, reset and stage explicitly:\n"
+        "        git reset && git add -- <your files>"
+    )
+
+
+# ── report ────────────────────────────────────────────────────────
+if warnings:
+    print(f"\n{YEL}  commit guard — warnings{OFF}\n", file=sys.stderr)
+    for w in warnings:
+        print(f"    ! {w}", file=sys.stderr)
+
+if problems:
+    print(f"\n{RED}  commit guard — BLOCKED{OFF}\n", file=sys.stderr)
+    for pr in problems:
+        print(f"    x {pr}", file=sys.stderr)
+    print(
+        f"\n{DIM}    These run against the STAGED content, so the working tree\n"
+        f"    is untouched — fix, re-stage, commit again.\n"
+        f"    Deliberate exception: git commit --no-verify{OFF}\n",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+if warnings:
+    print(f"{DIM}    (warnings do not block){OFF}\n", file=sys.stderr)
+sys.exit(0)

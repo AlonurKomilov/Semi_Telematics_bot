@@ -39,6 +39,28 @@ design problem, escalate that one question to `fable-advisor`.
 - Prefer finishing in the current session over spawning agents for work
   you can do directly.
 
+# Committing — the guard runs, read what it says
+
+`scripts/githooks/pre-commit` blocks a commit that would not parse, that
+carries an undefined name, or that stages a secret; it warns when the
+staged set has the footprint of `git add -A`. Install once with
+`git config core.hooksPath scripts/githooks`.
+
+**Stage explicit paths — never `git add -A`, never `git commit -a`.**
+Two AIs and a human share this working tree, so anything dirty that is
+not yours belongs to someone mid-edit. A shared index broke `main`
+twice in one week: once by committing a caller without its callee, once
+by committing a mid-edit component. Both times the author only ran
+`git add -A`.
+
+`git commit -- <path>` fails on a NEW file. The recipe that works:
+verify `git diff --cached --name-only` is empty, `git add -- <files>`,
+confirm the staged list, then commit.
+
+Run `./scripts/where.sh` when you finish a task: it reports what is
+uncommitted (runs today, exists nowhere else), undeployed, and unpushed.
+Rules and the incident behind each: [scripts/githooks/README.md](scripts/githooks/README.md)
+
 # Naming rules
 
 - **Role words never go into shared identifiers.** Persona words
