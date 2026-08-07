@@ -349,6 +349,19 @@ interface DataGridProps {
   manualFiltering?: boolean;
   /** Controlled sort state.  Supply with ``onSortingChange``. */
   sorting?: SortingState;
+  /** The sort a table opens on, BEFORE the user touches anything.
+   *
+   *  Not the same as ``sorting``: that one is CONTROLLED — set it and the
+   *  grid stops owning its sort, so a constant would freeze the column
+   *  headers.  This seeds the grid's own state once and then gets out of
+   *  the way, so every header stays clickable.
+   *
+   *  Sort is not a persisted per-user preference (it is absent from
+   *  TABLE_PARTS), so without this a table opens in row order — which for
+   *  a work queue means "whatever the database returned".  A SAVED TAB
+   *  carries its own ``sort`` and still wins: the tab is the user's
+   *  explicit choice, this is only the starting point. */
+  defaultSorting?: SortingState;
   onSortingChange?: (next: SortingState) => void;
   /** The rows arrived already sorted (the page put the order in its
    *  query).  Like ``manualFiltering``: being controlled alone does not
@@ -693,7 +706,7 @@ export default function DataGrid({
   columnFilters: controlledColumnFilters, onColumnFiltersChange,
   globalFilter: controlledGlobalFilter, onGlobalFilterChange,
   totalRows, onExportAllRows,
-  sorting: controlledSorting, onSortingChange, manualSorting = false,
+  sorting: controlledSorting, defaultSorting, onSortingChange, manualSorting = false,
   pageIndex: controlledPageIndex, pageSize: controlledPageSize,
   onPaginationChange, pageCount: controlledPageCount, manualPagination = false,
   manualFiltering = false,
@@ -809,7 +822,7 @@ export default function DataGrid({
     setPivotPref({ enabled: next, model });
   }, [pivotModel, pivotColumns, setPivotPref]);
 
-  const [ownSorting, setOwnSorting] = useState<SortingState>([]);
+  const [ownSorting, setOwnSorting] = useState<SortingState>(defaultSorting ?? []);
   const sortingControlled = controlledSorting !== undefined;
   const sorting = controlledSorting ?? ownSorting;
   const sortingRef = useRef(sorting);

@@ -874,6 +874,23 @@ export default function Tasks() {
           <DataGrid
             tableId="maintenance-tasks"
             columns={columns}
+            // OPENS ON URGENCY.  Maintenance is a work queue, and the
+            // question an operator brings to it is "what is due first?" —
+            // so the first paint answers it instead of showing whatever
+            // order the database returned.
+            //
+            // ``due_miles`` sorts by REMAINING miles, not by odometer:
+            // the column's sortKey is ``due_miles - last_odometer``, so
+            // ascending puts the truck with the fewest miles to go on
+            // top, and trucks with no mileage threshold sink via
+            // +Infinity.  See columns.tsx.
+            //
+            // defaultSorting, not `sorting`: the latter is CONTROLLED, so
+            // a constant there would freeze every column header. This
+            // seeds the grid once and leaves it clickable — and a saved
+            // tab's own sort still wins, because that is a choice the
+            // user actually made.
+            defaultSorting={[{ id: 'due_miles', desc: false }]}
             segments={TASK_SEGMENTS}
             // Personal scope tabs sit after Active/Archive (e.g. a saved
             // "Critical" or "Oil changes" view), per-user + isolated.
