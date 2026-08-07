@@ -29,7 +29,7 @@ import sys
 
 from features.vehicles.warehouse.aggregator import aggregate_telemetry_hourly
 from capabilities.integrations.samsara.sync import (
-    ingest_driver_efficiency_daily,
+    ingest_driver_efficiency_day,
     ingest_fleet_efficiency,
     ingest_fleet_weather,
     ingest_geofence_definitions,
@@ -59,34 +59,34 @@ async def _run_for(account_id: int, *, skip_events: bool, skip_efficiency: bool)
     n = await ingest_vehicle_state(account_id)
     logger.info("  vehicle_state            %d rows", n)
 
-    # Health (5min in prod) \u2014 vehicle_health_snapshot powers Reports.
+    # Health (5min in prod) \u2014 vehicle_health_live powers Reports.
     try:
         n = await ingest_vehicle_health(account_id)
-        logger.info("  vehicle_health_snapshot  %d rows", n)
+        logger.info("  vehicle_health_live  %d rows", n)
     except Exception:
-        logger.exception("  vehicle_health_snapshot  FAILED \u2014 continuing")
+        logger.exception("  vehicle_health_live  FAILED \u2014 continuing")
 
-    # Faults (2min in prod) \u2014 vehicle_fault_snapshot powers fault badges.
+    # Faults (2min in prod) \u2014 vehicle_fault_live powers fault badges.
     try:
         n = await ingest_vehicle_faults(account_id)
-        logger.info("  vehicle_fault_snapshot   %d rows", n)
+        logger.info("  vehicle_fault_live   %d rows", n)
     except Exception:
-        logger.exception("  vehicle_fault_snapshot   FAILED \u2014 continuing")
+        logger.exception("  vehicle_fault_live   FAILED \u2014 continuing")
 
-    # Weather (10min in prod) \u2014 weather_snapshot powers Weather page.
+    # Weather (10min in prod) \u2014 weather_live powers Weather page.
     try:
         n = await ingest_fleet_weather(account_id)
-        logger.info("  weather_snapshot   %d rows", n)
+        logger.info("  weather_live   %d rows", n)
     except Exception:
-        logger.exception("  weather_snapshot   FAILED \u2014 continuing")
+        logger.exception("  weather_live   FAILED \u2014 continuing")
 
-    # Fleet efficiency (30min in prod) \u2014 efficiency_snapshot
+    # Fleet efficiency (30min in prod) \u2014 efficiency_live
     # powers Cost-per-Mile + Scorecards.
     try:
         n = await ingest_fleet_efficiency(account_id, days=7)
-        logger.info("  efficiency_snapshot %d rows", n)
+        logger.info("  efficiency_live %d rows", n)
     except Exception:
-        logger.exception("  efficiency_snapshot FAILED \u2014 continuing")
+        logger.exception("  efficiency_live FAILED \u2014 continuing")
 
     # Geofences (1h in prod) \u2014 geofence_definitions powers map overlays.
     try:
@@ -100,7 +100,7 @@ async def _run_for(account_id: int, *, skip_events: bool, skip_efficiency: bool)
         logger.info("  safety_event_log         %d new", n)
 
     if not skip_efficiency:
-        n = await ingest_driver_efficiency_daily(account_id, days=7)
+        n = await ingest_driver_efficiency_day(account_id, days=7)
         logger.info("  driver_efficiency  %d rows", n)
 
     n = await aggregate_telemetry_hourly(account_id)

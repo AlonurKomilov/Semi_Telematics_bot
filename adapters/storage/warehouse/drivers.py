@@ -1,4 +1,4 @@
-"""driver_efficiency storage — per-driver daily stats from the provider.
+"""driver_efficiency_day storage — per-driver daily stats from the provider.
 
 Split from the 3,283-line warehouse.py monolith — method names and
 bodies byte-identical (Phase 5, Stage 1).  Composed into ``Database``
@@ -42,7 +42,7 @@ class DriversWarehouseMixin(_MixinBase):
             datetime.now(timezone.utc) - timedelta(days=days)
         ).strftime("%Y-%m-%d")
         cur = await self._db.execute(
-            "SELECT COUNT(*) AS c FROM driver_efficiency "
+            "SELECT COUNT(*) AS c FROM driver_efficiency_day "
             "WHERE account_id = ? AND day >= ?",
             (account_id, since),
         )
@@ -55,9 +55,9 @@ class DriversWarehouseMixin(_MixinBase):
             return int(row[0])
 
 
-    # ── driver_efficiency ──────────────────────────────────────
+    # ── driver_efficiency_day ──────────────────────────────────────
 
-    async def upsert_driver_efficiency_daily(
+    async def upsert_driver_efficiency_day(
         self,
         account_id: int,
         rows: Iterable[dict[str, Any]],
@@ -92,7 +92,7 @@ class DriversWarehouseMixin(_MixinBase):
         if values:
             await self._db.executemany(
                 """
-                INSERT INTO driver_efficiency (
+                INSERT INTO driver_efficiency_day (
                     account_id, driver_id, driver_name, day,
                     miles, drive_h, idle_h, mpg, antic_pct, green_pct,
                     harsh_brake, harsh_turn, harsh_accel,
@@ -155,7 +155,7 @@ class DriversWarehouseMixin(_MixinBase):
                    SUM(harsh_turn)             AS harsh_turn,
                    SUM(harsh_accel)            AS harsh_accel,
                    SUM(overspeed_min)          AS overspeed_min
-            FROM driver_efficiency
+            FROM driver_efficiency_day
             WHERE {' AND '.join(where)}
             GROUP BY driver_id
             ORDER BY miles DESC
@@ -165,7 +165,7 @@ class DriversWarehouseMixin(_MixinBase):
         return [dict(zip(cols, row)) for row in await cur.fetchall()]
 
 
-    async def prune_driver_efficiency_daily(
+    async def prune_driver_efficiency_day(
         self, account_id: int, *, days_keep: int = 730,
     ) -> int:
         """Drop per-driver daily efficiency rows older than the window
@@ -173,7 +173,7 @@ class DriversWarehouseMixin(_MixinBase):
         from datetime import timedelta
         cutoff_day = (datetime.now(timezone.utc) - timedelta(days=days_keep)).date().isoformat()
         cur = await self._db.execute(
-            "DELETE FROM driver_efficiency "
+            "DELETE FROM driver_efficiency_day "
             "WHERE account_id = ? AND day < ?",
             (account_id, cutoff_day),
         )

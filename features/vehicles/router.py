@@ -1046,7 +1046,7 @@ async def vehicle_faults(
     # vehicle_state stores fault_count, not per-DTC detail — that's
     # why the dashboard was rendering 4 generic "DTC" rows.
     try:
-        snap = await _wh_reader.get_vehicle_fault_snapshot(
+        snap = await _wh_reader.get_vehicle_fault_live(
             user["account_id"], v.get("name", ""),
         )
     except Exception:

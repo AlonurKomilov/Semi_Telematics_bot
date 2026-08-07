@@ -45,10 +45,10 @@ _TABLES = (
     "vehicle_state_day",
     "vehicle_state_week",
     "safety_event_log",
-    "vehicle_health_snapshot",
-    "vehicle_fault_snapshot",
+    "vehicle_health_live",
+    "vehicle_fault_live",
     "vehicle_fault_detail",
-    "weather_snapshot",
+    "weather_live",
 )
 
 

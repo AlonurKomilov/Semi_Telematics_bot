@@ -2,8 +2,8 @@
 
 Pulls Samsara's feeds on a schedule and persists them into the per-tenant
 warehouse tables (``vehicle_state``, ``safety_event_log``,
-``driver_efficiency``, ``vehicle_health_snapshot``, ``vehicle_fault_*``,
-``aggregate_weather/efficiency_snapshot``, ``geofence_definitions``).  Each
+``driver_efficiency``, ``vehicle_health_live``, ``vehicle_fault_*``,
+``aggregate_weather/efficiency_live``, ``geofence_definitions``).  Each
 ingest is a *pure function* keyed on ``account_id`` so it runs from APScheduler,
 the backfill script, or a test fixture without surprises.
 
@@ -417,7 +417,7 @@ async def ingest_safety_events(account_id: int, *, days: int = 2) -> int:
     return n
 
 
-async def ingest_driver_efficiency_daily(account_id: int, *, days: int = 1) -> int:
+async def ingest_driver_efficiency_day(account_id: int, *, days: int = 1) -> int:
     """Pull driver efficiency and upsert one row per (driver, today).
     Returns rows touched."""
     tenant = await get_tenant_db(account_id)
@@ -437,7 +437,7 @@ async def ingest_driver_efficiency_daily(account_id: int, *, days: int = 1) -> i
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     rows = [_driver_eff_to_daily_row(r, today) for r in recs if r.get("id") or r.get("driver_id")]
-    n = await tenant.upsert_driver_efficiency_daily(account_id, rows)
+    n = await tenant.upsert_driver_efficiency_day(account_id, rows)
     logger.info("ingest_driver_efficiency acct=%d persisted=%d", account_id, n)
     return n
 
@@ -461,9 +461,9 @@ async def job_ingest_safety_events(_app=None) -> None:
     )
 
 
-async def job_ingest_driver_efficiency_daily(_app=None) -> None:
+async def job_ingest_driver_efficiency_day(_app=None) -> None:
     await _for_each_account_with_capability(
-        _Cap.DRIVER_EFFICIENCY_DAILY, ingest_driver_efficiency_daily,
+        _Cap.DRIVER_EFFICIENCY_DAILY, ingest_driver_efficiency_day,
     )
 
 
@@ -472,7 +472,7 @@ async def job_ingest_driver_efficiency_daily(_app=None) -> None:
 
 def _vehicle_health_to_snapshot_row(v: dict[str, Any]) -> dict[str, Any]:
     """Reshape a single ``client.get_vehicle_health()`` entry into the
-    columns the ``vehicle_health_snapshot`` table expects.  ``raw`` is
+    columns the ``vehicle_health_live`` table expects.  ``raw`` is
     the full live-shape dict so readers can return it unchanged."""
     alerts = v.get("_health_alerts") or []
     return {
@@ -488,7 +488,7 @@ def _vehicle_health_to_snapshot_row(v: dict[str, Any]) -> dict[str, Any]:
 
 async def ingest_vehicle_health(account_id: int) -> int:
     """Pull current per-vehicle health from Samsara and overwrite the
-    ``vehicle_health_snapshot`` table.  Returns vehicles persisted."""
+    ``vehicle_health_live`` table.  Returns vehicles persisted."""
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return 0
@@ -505,7 +505,7 @@ async def ingest_vehicle_health(account_id: int) -> int:
         return 0
 
     rows = [_vehicle_health_to_snapshot_row(v) for v in health]
-    n = await tenant.upsert_vehicle_health_snapshots(account_id, rows)
+    n = await tenant.upsert_vehicle_health_live(account_id, rows)
     logger.info("ingest_vehicle_health acct=%d persisted=%d", account_id, n)
     return n
 
@@ -534,7 +534,7 @@ def _faulted_to_snapshot_row(v: dict[str, Any]) -> dict[str, Any]:
 
 async def ingest_vehicle_faults(account_id: int) -> int:
     """Pull current faulted vehicles + critical list from Samsara and
-    refresh both ``vehicle_fault_snapshot`` and ``vehicle_fault_detail``
+    refresh both ``vehicle_fault_live`` and ``vehicle_fault_detail``
     for the given account."""
     tenant = await get_tenant_db(account_id)
     if tenant is None:
@@ -554,7 +554,7 @@ async def ingest_vehicle_faults(account_id: int) -> int:
     # _severity is stamped on each vehicle by get_vehicles_with_faults()
     critical_ids = {v.get("id") or "" for v in faulted if v.get("_severity") == "critical"}
     rows = [_faulted_to_snapshot_row(v) for v in faulted]
-    n = await tenant.upsert_vehicle_fault_snapshot(account_id, rows, critical_ids)
+    n = await tenant.upsert_vehicle_fault_live(account_id, rows, critical_ids)
 
     # Detail / lifecycle: per-vehicle DTC list (only currently-faulted
     # vehicles appear in the input).  Vehicles that were faulted last
@@ -636,7 +636,7 @@ async def ingest_fleet_weather(account_id: int) -> int:
         logger.exception("ingest_fleet_weather: get_fleet_weather failed acct=%d", account_id)
         return 0
     rows = [_weather_to_snapshot_row(v) for v in weather]
-    n = await tenant.upsert_aggregate_weather_snapshots(account_id, rows)
+    n = await tenant.upsert_weather_live(account_id, rows)
     logger.info("ingest_fleet_weather acct=%d persisted=%d", account_id, n)
     return n
 
@@ -671,7 +671,7 @@ async def ingest_fleet_efficiency(account_id: int, *, days: int = 7) -> int:
     except Exception:
         logger.exception("ingest_fleet_efficiency: get_fleet_efficiency failed acct=%d days=%d", account_id, days)
         return 0
-    n = await tenant.upsert_aggregate_efficiency_snapshot(
+    n = await tenant.upsert_efficiency_live(
         account_id, window_days=days, company_code="", payload=payload,
     )
     logger.info("ingest_fleet_efficiency acct=%d days=%d rows=%d", account_id, days, n)

@@ -26,22 +26,22 @@ EXPECTED = {
     "upsert_vehicle_state_week", "prune_vehicle_state_week",
     "prune_vehicle_fault_detail", "get_vehicle_state_day",
     "get_vehicle_usage_summary", "get_account_utilization_summary",
-    "prune_vehicle_state_hour", "upsert_vehicle_health_snapshots",
-    "get_vehicle_health_snapshots", "upsert_vehicle_fault_snapshot",
+    "prune_vehicle_state_hour", "upsert_vehicle_health_live",
+    "get_vehicle_health_live", "upsert_vehicle_fault_live",
     "upsert_vehicle_fault_details", "get_vehicles_with_faults_warehouse",
-    "get_vehicle_fault_snapshot_by_name", "get_active_fault_dtc_ids",
+    "get_vehicle_fault_live_by_name", "get_active_fault_dtc_ids",
     # safety.py
     "insert_safety_events", "count_safety_events_in_window",
     "get_safety_events_warehouse", "get_safety_event_counts_grouped",
     "prune_safety_event_log",
     # drivers.py
-    "count_driver_efficiency_in_window", "upsert_driver_efficiency_daily",
-    "get_driver_efficiency_window", "prune_driver_efficiency_daily",
+    "count_driver_efficiency_in_window", "upsert_driver_efficiency_day",
+    "get_driver_efficiency_window", "prune_driver_efficiency_day",
     # geofences.py
     "upsert_geofence_definitions", "get_geofence_definitions",
     # aggregates.py
-    "upsert_aggregate_weather_snapshots", "get_aggregate_weather_snapshots",
-    "upsert_aggregate_efficiency_snapshot", "get_aggregate_efficiency_snapshot",
+    "upsert_weather_live", "get_weather_live",
+    "upsert_efficiency_live", "get_efficiency_live",
     # ledgers.py
     "record_ingest_orphans",
 }

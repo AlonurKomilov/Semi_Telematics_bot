@@ -246,7 +246,7 @@ register_dataset(IngestDataset(
     capability="vehicle_health",
     cadence={"interval_min": 5},
     run=_run_vehicle_health,
-    tables=("vehicle_health_snapshot",),
+    tables=("vehicle_health_live",),
     freshness_sla_min=60,
     label="Ingest current vehicle health",
 ))
@@ -260,7 +260,7 @@ register_dataset(IngestDataset(
     run=_run_vehicle_faults,
     # Both tables this run writes.  fault_snapshot stays FIRST — the
     # watchdog's freshness probe reads tables[0].
-    tables=("vehicle_fault_snapshot", "vehicle_fault_detail"),
+    tables=("vehicle_fault_live", "vehicle_fault_detail"),
     freshness_sla_min=60,
     # A fleet with nothing broken reports nothing — an honest zero, not
     # an outage.  This is the dataset the watchdog must never cry over.
@@ -275,7 +275,7 @@ register_dataset(IngestDataset(
     capability="fleet_weather",
     cadence={"interval_min": 10},
     run=_run_fleet_weather,
-    tables=("weather_snapshot",),
+    tables=("weather_live",),
     freshness_sla_min=120,
     label="Ingest cabin-weather snapshots",
 ))
@@ -287,7 +287,7 @@ register_dataset(IngestDataset(
     capability="fleet_efficiency",
     cadence={"interval_min": 30},
     run=_run_fleet_efficiency,
-    tables=("efficiency_snapshot",),
+    tables=("efficiency_live",),
     # A windowed aggregate carries no per-record world-time, so its
     # rows are ageless by design; the SLA exists for the declaration's
     # completeness and the watchdog skips the age question for it.

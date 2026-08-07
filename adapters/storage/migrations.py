@@ -8684,3 +8684,56 @@ async def migrate_grain_physical_tables(conn) -> None:
                     "window (docs/runbooks/warehouse-grain-split.md)")
         finally:
             await raw.execute("SELECT pg_advisory_unlock(478188)")
+
+
+@_register("189_cache_grain_names")
+async def migrate_cache_grain_names(conn) -> None:
+    """Version B: every current-row cache takes its true grain name.
+
+    The audit (2026-08-07) confirmed each candidate's semantics first:
+    health/fault/weather/efficiency hold ONE current row per subject —
+    grain live; driver_efficiency holds a per-driver-per-day series —
+    grain day.  "snapshot" was a pre-grain word that could no longer
+    say which grain it meant (the owner himself could not tell).
+
+      vehicle_health_snapshot -> vehicle_health_live  (passthrough view dies)
+      vehicle_fault_snapshot  -> vehicle_fault_live
+      weather_snapshot        -> weather_live
+      efficiency_snapshot     -> efficiency_live
+      driver_efficiency       -> driver_efficiency_day
+
+    Logs (safety_event_log, vehicle_fault_detail), the geofence
+    catalog and the machinery ledgers keep kind-based names — grain
+    vocabulary applies to READINGS.  Convergent; renames are
+    metadata-only.
+    """
+    pool = getattr(getattr(conn, "_pool", None), "_pool", None)
+    if pool is None:
+        raise RuntimeError("Migration 189: asyncpg pool unavailable.")
+    renames = [
+        ("vehicle_health_snapshot", "vehicle_health_live"),
+        ("vehicle_fault_snapshot", "vehicle_fault_live"),
+        ("weather_snapshot", "weather_live"),
+        ("efficiency_snapshot", "efficiency_live"),
+        ("driver_efficiency", "driver_efficiency_day"),
+    ]
+    async with pool.acquire() as raw:
+        await raw.execute("SELECT pg_advisory_lock(478189)")
+        try:
+            async with raw.transaction():
+                # The health-live passthrough view must vacate the name
+                # before the table can take it (same swap as 188).
+                await raw.execute(
+                    "DROP VIEW IF EXISTS warehouse.vehicle_health_live")
+                for old, new in renames:
+                    has_old = await raw.fetchval(
+                        f"SELECT to_regclass('warehouse.{old}')")
+                    has_new = await raw.fetchval(
+                        f"SELECT to_regclass('warehouse.{new}')")
+                    if has_old is not None and has_new is None:
+                        await raw.execute(
+                            f"ALTER TABLE warehouse.{old} RENAME TO {new}")
+            logger.info("Migration 189: cache grain names converged")
+        finally:
+            await raw.execute("SELECT pg_advisory_unlock(478189)")
+

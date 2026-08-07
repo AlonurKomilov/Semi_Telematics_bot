@@ -455,11 +455,11 @@ async def get_vehicle_health(
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return await samsara_fallback() if samsara_fallback else []
-    rows = await tenant.get_vehicle_health_snapshots(
+    rows = await tenant.get_vehicle_health_live(
         account_id, company=company, vehicle_nums=vehicle_nums,
     )
     if not rows and samsara_fallback is not None:
-        logger.info("warehouse cold (vehicle_health_snapshot empty) for acct=%d \u2014 using live Samsara", account_id)
+        logger.info("warehouse cold (vehicle_health_live empty) for acct=%d \u2014 using live Samsara", account_id)
         return await samsara_fallback()
     return rows
 
@@ -467,7 +467,7 @@ async def get_vehicle_health(
 # ── vehicles with faults / critical faults ────────────────
 
 
-async def get_vehicle_fault_snapshot(
+async def get_vehicle_fault_live(
     account_id: int,
     vehicle_name: str,
 ) -> dict[str, Any] | None:
@@ -488,7 +488,7 @@ async def get_vehicle_fault_snapshot(
     if tenant is None:
         return None
     try:
-        return await tenant.get_vehicle_fault_snapshot_by_name(
+        return await tenant.get_vehicle_fault_live_by_name(
             account_id, vehicle_name,
         )
     except AttributeError:
@@ -541,9 +541,9 @@ async def get_fleet_weather(
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return await samsara_fallback() if samsara_fallback else []
-    rows = await tenant.get_aggregate_weather_snapshots(account_id, company=company)
+    rows = await tenant.get_weather_live(account_id, company=company)
     if not rows and samsara_fallback is not None:
-        logger.info("warehouse cold (weather_snapshot empty) for acct=%d \u2014 using live", account_id)
+        logger.info("warehouse cold (weather_live empty) for acct=%d \u2014 using live", account_id)
         return await samsara_fallback()
     return rows
 
@@ -572,11 +572,11 @@ async def get_fleet_efficiency(
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return await samsara_fallback() if samsara_fallback else []
-    payload = await tenant.get_aggregate_efficiency_snapshot(
+    payload = await tenant.get_efficiency_live(
         account_id, window_days=days, company_code="",
     )
     if not payload and samsara_fallback is not None:
-        logger.info("warehouse cold (efficiency_snapshot empty) for acct=%d days=%d \u2014 using live", account_id, days)
+        logger.info("warehouse cold (efficiency_live empty) for acct=%d days=%d \u2014 using live", account_id, days)
         return await samsara_fallback()
     if company:
         payload = [r for r in payload if (r.get("_org") or r.get("company_code")) == company]

@@ -78,7 +78,7 @@ async def snapshot_vehicle_state(account_id: int) -> int:
         predictive-maintenance composite.
 
     Merges health metrics (battery_v, oil_psi, coolant_c, load_pct,
-    rpm) from ``vehicle_health_snapshot.raw_json`` so a single row
+    rpm) from ``vehicle_health_live.raw_json`` so a single row
     carries everything the consumers need.  Soft-fails on missing
     health data: the row still gets written with the state fields
     populated; health columns stay NULL.
@@ -95,7 +95,7 @@ async def snapshot_vehicle_state(account_id: int) -> int:
     health_by_vid: dict[str, dict[str, Any]] = {}
     try:
         cur = await tenant._db.execute(
-            "SELECT vehicle_id, raw_json FROM vehicle_health_snapshot "
+            "SELECT vehicle_id, raw_json FROM vehicle_health_live "
             "WHERE account_id = ?",
             (account_id,),
         )

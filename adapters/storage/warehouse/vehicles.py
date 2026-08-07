@@ -2016,9 +2016,9 @@ class VehiclesWarehouseMixin(_MixinBase):
 
 
 
-    # ── vehicle_health_snapshot ────────────────────────────
+    # ── vehicle_health_live ────────────────────────────
 
-    async def upsert_vehicle_health_snapshots(
+    async def upsert_vehicle_health_live(
         self,
         account_id: int,
         rows: Iterable[dict[str, Any]],
@@ -2050,7 +2050,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         if values:
             await self._db.executemany(
                 """
-                INSERT INTO vehicle_health_snapshot (
+                INSERT INTO vehicle_health_live (
                     vehicle_id, account_id, vehicle_name, company_code,
                     alert_count, raw_json, captured_at, source_ts,
                     updated_at
@@ -2062,7 +2062,7 @@ class VehiclesWarehouseMixin(_MixinBase):
                     alert_count=excluded.alert_count,
                     raw_json=excluded.raw_json,
                     captured_at=excluded.captured_at,
-                    source_ts=COALESCE(excluded.source_ts, vehicle_health_snapshot.source_ts),
+                    source_ts=COALESCE(excluded.source_ts, vehicle_health_live.source_ts),
                     updated_at=excluded.updated_at
                 """,
                 values,
@@ -2071,7 +2071,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         return len(values)
 
 
-    async def get_vehicle_health_snapshots(
+    async def get_vehicle_health_live(
         self,
         account_id: int,
         *,
@@ -2096,7 +2096,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         cur = await self._db.execute(
             f"""
             SELECT raw_json, vehicle_name, company_code, alert_count
-            FROM vehicle_health_snapshot
+            FROM vehicle_health_live
             WHERE {' AND '.join(where)}
             ORDER BY alert_count DESC, company_code, vehicle_name
             """,
@@ -2117,9 +2117,9 @@ class VehiclesWarehouseMixin(_MixinBase):
         return out
 
 
-    # ── vehicle_fault_snapshot + vehicle_fault_detail ──────
+    # ── vehicle_fault_live + vehicle_fault_detail ──────
 
-    async def upsert_vehicle_fault_snapshot(
+    async def upsert_vehicle_fault_live(
         self,
         account_id: int,
         faulted_rows: Iterable[dict[str, Any]],
@@ -2155,7 +2155,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         if values:
             await self._db.executemany(
                 """
-                INSERT INTO vehicle_fault_snapshot (
+                INSERT INTO vehicle_fault_live (
                     vehicle_id, account_id, vehicle_name, company_code,
                     dtc_count, has_critical, raw_json,
                     captured_at, source_ts, updated_at
@@ -2168,7 +2168,7 @@ class VehiclesWarehouseMixin(_MixinBase):
                     has_critical=excluded.has_critical,
                     raw_json=excluded.raw_json,
                     captured_at=excluded.captured_at,
-                    source_ts=COALESCE(excluded.source_ts, vehicle_fault_snapshot.source_ts),
+                    source_ts=COALESCE(excluded.source_ts, vehicle_fault_live.source_ts),
                     updated_at=excluded.updated_at
                 """,
                 values,
@@ -2179,13 +2179,13 @@ class VehiclesWarehouseMixin(_MixinBase):
         if seen:
             placeholders = ",".join("?" * len(seen))
             await self._db.execute(
-                f"DELETE FROM vehicle_fault_snapshot "
+                f"DELETE FROM vehicle_fault_live "
                 f"WHERE account_id = ? AND vehicle_id NOT IN ({placeholders})",
                 (account_id, *seen),
             )
         else:
             await self._db.execute(
-                "DELETE FROM vehicle_fault_snapshot WHERE account_id = ?",
+                "DELETE FROM vehicle_fault_live WHERE account_id = ?",
                 (account_id,),
             )
         await self._db.commit()
@@ -2343,7 +2343,7 @@ class VehiclesWarehouseMixin(_MixinBase):
     ) -> tuple[list[dict[str, Any]], int, dict[str, dict[str, int]]]:
         """Return ``(faulted, total, breakdown)`` mirroring the live shape.
 
-        * ``faulted``   — decoded raw_json from ``vehicle_fault_snapshot``
+        * ``faulted``   — decoded raw_json from ``vehicle_fault_live``
         * ``total``     — vehicle count from ``vehicle_state_live`` (filtered)
         * ``breakdown`` — per-company ``{total, faulted, dtcs}``
         """
@@ -2355,7 +2355,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             args.append(company)
         cur = await self._db.execute(
             f"""
-            SELECT raw_json, has_critical FROM vehicle_fault_snapshot
+            SELECT raw_json, has_critical FROM vehicle_fault_live
             WHERE {' AND '.join(where)}
             ORDER BY has_critical DESC, dtc_count DESC, vehicle_name
             """,
@@ -2399,14 +2399,14 @@ class VehiclesWarehouseMixin(_MixinBase):
         return faulted, grand_total, breakdown
 
 
-    async def get_vehicle_fault_snapshot_by_name(
+    async def get_vehicle_fault_live_by_name(
         self,
         account_id: int,
         vehicle_name: str,
     ) -> dict[str, Any] | None:
         """Return the decoded raw_json (full DTC details) for one vehicle.
 
-        ``vehicle_fault_snapshot.raw_json`` stores the live Samsara
+        ``vehicle_fault_live.raw_json`` stores the live Samsara
         shape — including ``fault_codes.j1939.diagnosticTroubleCodes``
         with ``spnDescription`` / ``fmiDescription`` / ``sourceAddressName``.
         Used by /api/vehicles/{name}/faults so the dashboard renders the
@@ -2417,7 +2417,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         Returns None when no fault snapshot exists for the vehicle.
         """
         cur = await self._db.execute(
-            "SELECT raw_json FROM vehicle_fault_snapshot "
+            "SELECT raw_json FROM vehicle_fault_live "
             "WHERE account_id = ? AND vehicle_name = ? "
             "LIMIT 1",
             (account_id, vehicle_name),

@@ -210,21 +210,21 @@ async def test_secondary_writers_survive_their_conflict_path(pg_db):
     three feeds silently froze for a day (found 2026-08-03)."""
     acct = 51
     for ts in ("2026-08-03T09:00:00Z", "2026-08-03T09:05:00Z"):
-        await pg_db.upsert_vehicle_health_snapshots(acct, [
+        await pg_db.upsert_vehicle_health_live(acct, [
             {"vehicle_id": "v1", "vehicle_name": "401", "company_code": "PTG",
              "alert_count": 1, "raw": {"battery_v": 13.2},
              "captured_at": ts, "source_ts": ts},
         ])
-        await pg_db.upsert_vehicle_fault_snapshot(acct, [
+        await pg_db.upsert_vehicle_fault_live(acct, [
             {"vehicle_id": "v1", "vehicle_name": "401", "company_code": "PTG",
              "dtc_count": 2, "raw": {}, "captured_at": ts, "source_ts": ts},
         ])
-        await pg_db.upsert_aggregate_weather_snapshots(acct, [
+        await pg_db.upsert_weather_live(acct, [
             {"vehicle_id": "v1", "vehicle_name": "401", "company_code": "PTG",
              "temp_f": 88.0, "raw": {}, "captured_at": ts, "source_ts": ts},
         ])
-    for table in ("vehicle_health_snapshot", "vehicle_fault_snapshot",
-                  "weather_snapshot"):
+    for table in ("vehicle_health_live", "vehicle_fault_live",
+                  "weather_live"):
         cur = await pg_db._db.execute(
             f"SELECT source_ts FROM {table} WHERE account_id = ?", (acct,))
         row = await cur.fetchone()
@@ -242,10 +242,10 @@ async def test_no_warehouse_table_shadows_in_public(pg_db):
     old_and_new = [
         "vehicle_state_live", "vehicle_state_minute",
         "vehicle_state_hour", "vehicle_state_day", "vehicle_state_week",
-        "vehicle_health_snapshot", "vehicle_fault_snapshot",
+        "vehicle_health_live", "vehicle_fault_live",
         "vehicle_fault_detail", "safety_event_log", "geofence_definitions",
-        "ingest_runs", "driver_efficiency", "weather_snapshot",
-        "efficiency_snapshot", "ingest_orphans", "vehicle_timeline",
+        "ingest_runs", "driver_efficiency_day", "weather_live",
+        "efficiency_live", "ingest_orphans", "vehicle_timeline",
         "vehicle_state", "vehicle_state_snapshot", "vehicle_telemetry",
         "driver_efficiency_daily", "aggregate_weather_snapshot",
         "aggregate_efficiency_snapshot", "warehouse_ingest_orphans",
@@ -257,8 +257,8 @@ async def test_no_warehouse_table_shadows_in_public(pg_db):
             f"public.{name} exists — it shadows the warehouse schema"
         )
     for name in ["vehicle_state_live", "vehicle_state_hour", "vehicle_state_day",
-                 "vehicle_state_week", "driver_efficiency",
-                 "weather_snapshot", "efficiency_snapshot", "ingest_orphans",
+                 "vehicle_state_week", "driver_efficiency_day",
+                 "weather_live", "efficiency_live", "ingest_orphans",
                  "vehicle_timeline"]:
         cur = await pg_db._db.execute(
             "SELECT to_regclass(?)", (f"warehouse.{name}",))
@@ -300,10 +300,10 @@ async def test_every_contract_table_carries_the_column(pg_db):
     required = {
         "vehicle_state_live", "vehicle_state_minute",
         "vehicle_state_hour", "vehicle_state_day", "vehicle_state_week",
-        "vehicle_health_snapshot", "vehicle_fault_snapshot",
+        "vehicle_health_live", "vehicle_fault_live",
         "vehicle_fault_detail", "safety_event_log",
-        "driver_efficiency", "geofence_definitions",
-        "weather_snapshot", "efficiency_snapshot",
+        "driver_efficiency_day", "geofence_definitions",
+        "weather_live", "efficiency_live",
     }
     missing = required - have
     assert not missing, f"tables missing source_ts: {sorted(missing)}"

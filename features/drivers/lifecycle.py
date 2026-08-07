@@ -12,19 +12,19 @@ from capabilities.data_lifecycle.ingest import IngestDataset, register_dataset
 
 def _run_driver_efficiency(account_id: int):
     from capabilities.integrations.samsara.sync import (
-        ingest_driver_efficiency_daily,
+        ingest_driver_efficiency_day,
     )
-    return ingest_driver_efficiency_daily(account_id)
+    return ingest_driver_efficiency_day(account_id)
 
 
 register_dataset(IngestDataset(
     key="drivers.efficiency",
     owner="drivers",
     job_id="warehouse_driver_efficiency",
-    capability="driver_efficiency",
+    capability="driver_efficiency_day",
     cadence={"interval_min": 60},
     run=_run_driver_efficiency,
-    tables=("driver_efficiency",),
+    tables=("driver_efficiency_day",),
     # Windowed provider totals with no per-record world-time: the rows
     # are ageless by nature, so the watchdog judges this one on whether
     # it writes at all, not on how old it looks.

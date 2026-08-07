@@ -3,7 +3,7 @@
 Covers:
 
   * ``WarehouseMixin`` upserts + reads (vehicle_state_live, safety_event_log,
-    driver_efficiency, vehicle_telemetry_hourly).
+    driver_efficiency_day, vehicle_telemetry_hourly).
   * Idempotency (re-ingesting the same Samsara payload doesn't dupe).
   * Filter contracts on the readers (company, vehicle_nums, days window).
   * ``warehouse_reader`` flag gating + Samsara fallback.
@@ -166,7 +166,7 @@ class TestSafetyEventLog:
         assert rows[0]["raw"] == {"foo": "bar", "n": 42}
 
 
-# ── driver_efficiency ──────────────────────────────────────────
+# ── driver_efficiency_day ──────────────────────────────────────────
 
 
 class TestDriverEfficiency:
@@ -174,7 +174,7 @@ class TestDriverEfficiency:
     async def test_upsert_then_aggregate(self, tenant):
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
-        await tenant.upsert_driver_efficiency_daily(1, [
+        await tenant.upsert_driver_efficiency_day(1, [
             {"driver_id": "d1", "driver_name": "Alice", "day": today,
              "miles": 200, "drive_h": 8, "harsh_brake": 1, "overspeed_min": 5},
             {"driver_id": "d1", "driver_name": "Alice", "day": yesterday,
@@ -192,10 +192,10 @@ class TestDriverEfficiency:
     @pytest.mark.asyncio
     async def test_upsert_overwrites_same_day(self, tenant):
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        await tenant.upsert_driver_efficiency_daily(1, [
+        await tenant.upsert_driver_efficiency_day(1, [
             {"driver_id": "d1", "day": today, "miles": 100, "drive_h": 4},
         ])
-        await tenant.upsert_driver_efficiency_daily(1, [
+        await tenant.upsert_driver_efficiency_day(1, [
             {"driver_id": "d1", "day": today, "miles": 250, "drive_h": 9},
         ])
         agg = await tenant.get_driver_efficiency_window(1, days=1)
@@ -405,7 +405,7 @@ class TestIngestor:
         monkeypatch.setattr(sync, "get_client", get_client_stub)
         monkeypatch.setattr(sync, "get_tenant_db", get_tenant_db_stub)
 
-        n = await sync.ingest_driver_efficiency_daily(1)
+        n = await sync.ingest_driver_efficiency_day(1)
         assert n == 2
         agg = await tenant.get_driver_efficiency_window(1, days=1)
         by_id = {r["driver_id"]: r for r in agg}
@@ -425,7 +425,7 @@ class TestIngestor:
         # unconfigured tenant can't take the whole scheduler down.
         assert await sync.ingest_vehicle_state(1) == 0
         assert await sync.ingest_safety_events(1) == 0
-        assert await sync.ingest_driver_efficiency_daily(1) == 0
+        assert await sync.ingest_driver_efficiency_day(1) == 0
 
 
 # Silence unused-import warning for the SimpleNamespace helper that some

@@ -15,7 +15,7 @@ from capabilities.data_lifecycle.retention.registry import (
 
 register_target(RetentionTarget(
     "driver.efficiency_daily", "Driver daily efficiency", "tenant",
-    lambda db, acct, days: db.prune_driver_efficiency_daily(acct, days_keep=days),
+    lambda db, acct, days: db.prune_driver_efficiency_day(acct, days_keep=days),
 ))
 register_need(RetentionNeed(
     "drivers", "driver.efficiency_daily", 730, "per-driver year-over-year scorecard history",

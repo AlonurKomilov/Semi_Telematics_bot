@@ -93,7 +93,7 @@ async def test_engine_calls_existing_methods_with_resolved_windows():
         async def prune_vehicle_fault_detail(self, _a, *, days_keep):
             calls["fault"] = days_keep
             return 0
-        async def prune_driver_efficiency_daily(self, _a, *, days_keep):
+        async def prune_driver_efficiency_day(self, _a, *, days_keep):
             calls["driver_eff"] = days_keep
             return 0
         async def prune_score_events(self, _a, *, keep_days):

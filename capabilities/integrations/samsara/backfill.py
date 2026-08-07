@@ -12,8 +12,8 @@ Idempotency / dedup guarantees:
     * ``driver_efficiency`` is keyed on ``(account, driver, day)``
       and the writer uses ``ON CONFLICT … DO UPDATE`` — re-running
       refreshes the row, never creates a second one.
-    * ``vehicle_state`` / ``vehicle_health_snapshot`` /
-      ``vehicle_fault_snapshot`` / ``weather_snapshot`` are
+    * ``vehicle_state`` / ``vehicle_health_live`` /
+      ``vehicle_fault_live`` / ``weather_live`` are
       keyed on ``vehicle_id`` and ``ON CONFLICT DO UPDATE`` —
       snapshot-style, latest value wins.
 
@@ -42,7 +42,7 @@ from capabilities.integrations.samsara.sync import (
     ingest_vehicle_faults,
     ingest_fleet_weather,
     ingest_safety_events,
-    ingest_driver_efficiency_daily,
+    ingest_driver_efficiency_day,
     ingest_fleet_efficiency,
     ingest_geofence_definitions,
 )
@@ -140,7 +140,7 @@ async def backfill_account_initial(account_id: int, *, days: int = _BACKFILL_DAY
         }
     else:
         try:
-            persisted = await ingest_driver_efficiency_daily(account_id, days=days)
+            persisted = await ingest_driver_efficiency_day(account_id, days=days)
             result["sources"]["driver_efficiency"] = {
                 "persisted": persisted, "skipped": False,
             }

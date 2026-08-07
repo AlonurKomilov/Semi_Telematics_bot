@@ -5,7 +5,7 @@ How this differs from ``backfill.py``
 -------------------------------------
 ``backfill.py`` is the "fire every ingest job once" pass that runs
 when a Samsara company is first connected — it populates the current-
-snapshot tables (vehicle_state, vehicle_health_snapshot, etc.) and
+snapshot tables (vehicle_state, vehicle_health_live, etc.) and
 the existing event logs.  Each ingestor reaches back its own window
 (safety events: 7 days, driver efficiency: 30 days, etc.).
 

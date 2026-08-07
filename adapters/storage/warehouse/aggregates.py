@@ -1,4 +1,4 @@
-"""weather_snapshot + efficiency_snapshot storage — per-truck weather and per-company rollup caches.
+"""weather_live + efficiency_live storage — per-truck weather and per-company rollup caches.
 
 Split from the 3,283-line warehouse.py monolith — method names and
 bodies byte-identical (Phase 5, Stage 1).  Composed into ``Database``
@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 
 class AggregatesWarehouseMixin(_MixinBase):
 
-    # ── weather_snapshot ─────────────────────────────
+    # ── weather_live ─────────────────────────────
 
-    async def upsert_aggregate_weather_snapshots(
+    async def upsert_weather_live(
         self,
         account_id: int,
         rows: Iterable[dict[str, Any]],
@@ -56,7 +56,7 @@ class AggregatesWarehouseMixin(_MixinBase):
         if values:
             await self._db.executemany(
                 """
-                INSERT INTO weather_snapshot (
+                INSERT INTO weather_live (
                     vehicle_id, account_id, vehicle_name, company_code,
                     temp_f, raw_json, captured_at, source_ts, updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -67,7 +67,7 @@ class AggregatesWarehouseMixin(_MixinBase):
                     temp_f=excluded.temp_f,
                     raw_json=excluded.raw_json,
                     captured_at=excluded.captured_at,
-                    source_ts=COALESCE(excluded.source_ts, weather_snapshot.source_ts),
+                    source_ts=COALESCE(excluded.source_ts, weather_live.source_ts),
                     updated_at=excluded.updated_at
                 """,
                 values,
@@ -77,7 +77,7 @@ class AggregatesWarehouseMixin(_MixinBase):
         if seen:
             placeholders = ",".join("?" * len(seen))
             await self._db.execute(
-                f"DELETE FROM weather_snapshot "
+                f"DELETE FROM weather_live "
                 f"WHERE account_id = ? AND vehicle_id NOT IN ({placeholders})",
                 (account_id, *seen),
             )
@@ -85,7 +85,7 @@ class AggregatesWarehouseMixin(_MixinBase):
         return len(values)
 
 
-    async def get_aggregate_weather_snapshots(
+    async def get_weather_live(
         self,
         account_id: int,
         *,
@@ -99,7 +99,7 @@ class AggregatesWarehouseMixin(_MixinBase):
         cur = await self._db.execute(
             f"""
             SELECT raw_json, vehicle_name, company_code, temp_f
-            FROM weather_snapshot
+            FROM weather_live
             WHERE {' AND '.join(where)}
             ORDER BY temp_f ASC
             """,
@@ -118,9 +118,9 @@ class AggregatesWarehouseMixin(_MixinBase):
         return out
 
 
-    # ── efficiency_snapshot ──────────────────────────
+    # ── efficiency_live ──────────────────────────
 
-    async def upsert_aggregate_efficiency_snapshot(
+    async def upsert_efficiency_live(
         self,
         account_id: int,
         *,
@@ -131,7 +131,7 @@ class AggregatesWarehouseMixin(_MixinBase):
         ts = _now_iso()
         await self._db.execute(
             """
-            INSERT INTO efficiency_snapshot (
+            INSERT INTO efficiency_live (
                 account_id, window_days, company_code,
                 payload_json, captured_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?)
@@ -149,7 +149,7 @@ class AggregatesWarehouseMixin(_MixinBase):
         return len(payload)
 
 
-    async def get_aggregate_efficiency_snapshot(
+    async def get_efficiency_live(
         self,
         account_id: int,
         *,
@@ -158,7 +158,7 @@ class AggregatesWarehouseMixin(_MixinBase):
     ) -> list[dict[str, Any]]:
         cur = await self._db.execute(
             """
-            SELECT payload_json FROM efficiency_snapshot
+            SELECT payload_json FROM efficiency_live
             WHERE account_id = ? AND window_days = ? AND company_code = ?
             """,
             (account_id, int(window_days), str(company_code or "")),
