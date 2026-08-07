@@ -92,6 +92,139 @@ if py:
         warnings.append("pyflakes missing — undefined-name check skipped")
 
 
+# ── Rule 5 — a staged file may not import a module the commit removes ──
+# The gap rules 1-2 cannot see.  pyflakes reads ONE FILE at a time, so
+# `from adapters.storage.object_store import x` is invisible to it even
+# when that module is being deleted in the same commit: each file is
+# individually valid while the tree as a whole will not import.
+#
+# That is exactly how a rename shipped with ten importers left behind —
+# HEAD could not start for hours, and nothing noticed because production
+# serves the working tree, where the fix already existed uncommitted.
+#
+# Resolved against the tree AS IT WILL BE: HEAD's files, minus what this
+# commit deletes, plus what it adds.  Module paths only, never the
+# imported NAMES — `from a.b import c` is satisfied by a/b existing,
+# because c may legitimately be a name rather than a submodule.
+FIRST_PARTY = {"adapters", "capabilities", "features", "infra", "interfaces", "tests"}
+
+
+def _post_commit_modules() -> set[str]:
+    head = set(sh("git", "ls-tree", "-r", "HEAD", "--name-only").splitlines())
+    gone = set(sh("git", "diff", "--cached", "--diff-filter=D", "--name-only").splitlines())
+    files = (head - gone) | set(paths)
+    mods: set[str] = set()
+    for f in files:
+        if not f.endswith(".py"):
+            continue
+        parts = f[:-3].split("/")
+        if parts[-1] == "__init__":
+            parts = parts[:-1]
+        if parts and parts[0] in FIRST_PARTY:
+            mods.add(".".join(parts))
+    return mods
+
+
+def _optional_imports(tree: ast.AST) -> set[int]:
+    """Import nodes guarded by try/except ImportError — legitimately
+    absent, so never a violation."""
+    exempt: set[int] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Try):
+            continue
+        names = set()
+        for h in node.handlers:
+            for n in ast.walk(h.type) if h.type else []:
+                if isinstance(n, ast.Name):
+                    names.add(n.id)
+        if names & {"ImportError", "ModuleNotFoundError", "Exception"}:
+            for child in ast.walk(node):
+                if isinstance(child, (ast.Import, ast.ImportFrom)):
+                    exempt.add(id(child))
+    return exempt
+
+
+if py:
+    available = _post_commit_modules()
+    for p in py:
+        src = staged_blob(p)
+        if src is None:
+            continue
+        try:
+            tree = ast.parse(src, filename=p)
+        except SyntaxError:
+            continue  # already reported by rule 1
+        exempt = _optional_imports(tree)
+        pkg = p[:-3].split("/")
+        if pkg[-1] == "__init__":
+            pkg = pkg[:-1]
+        for node in ast.walk(tree):
+            if id(node) in exempt:
+                continue
+            targets: list[str] = []
+            if isinstance(node, ast.Import):
+                targets = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                if node.level:                       # relative — resolve it
+                    base = pkg[:-node.level] if node.level <= len(pkg) else []
+                    targets = [".".join(base + ([node.module] if node.module else []))]
+                elif node.module:
+                    targets = [node.module]
+            for t in targets:
+                if not t or t.split(".")[0] not in FIRST_PARTY:
+                    continue                          # stdlib / third-party
+                if t in available:
+                    continue
+                # A parent package is enough: `import a.b.c` where c is a
+                # name re-exported from a/b/__init__.py.
+                if any(t.rsplit(".", i)[0] in available for i in range(1, t.count(".") + 1)):
+                    continue
+                problems.append(
+                    f"{p}:{node.lineno}: imports {t}, which will not exist "
+                    f"after this commit"
+                )
+
+
+# ── Rule 5b — you may not delete a module others still import ────
+# The half that matters, and the half the obvious implementation
+# misses.  Rule 5a inspects STAGED files, but in the incident this was
+# built for the importers were not staged at all: the commit deleted
+# a module and ten untouched files kept importing it.  Checking only
+# what you staged is exactly how that shipped.
+#
+# So when a commit removes a first-party module, look the other way —
+# ask who still imports it in the tree AS IT WILL BE.  `git grep` over
+# HEAD is ~0.1s for 885 files; a staged file is re-read from the index,
+# because its staged version may already be fixed.
+deleted_py = [
+    f for f in sh("git", "diff", "--cached", "--diff-filter=D", "--name-only").splitlines()
+    if f.endswith(".py")
+]
+for f in deleted_py:
+    parts = f[:-3].split("/")
+    if parts[-1] == "__init__":
+        parts = parts[:-1]
+    if not parts or parts[0] not in FIRST_PARTY:
+        continue
+    mod = ".".join(parts)
+    if mod in _post_commit_modules():
+        continue  # a package still provides it (e.g. only a submodule went)
+    hits = sh("git", "grep", "-l", "-e", f"import {mod}", "-e", f"from {mod}",
+              "HEAD", "--", "*.py").splitlines()
+    for hit in hits:
+        path = hit.split(":", 1)[1] if hit.startswith("HEAD:") else hit
+        if path == f:
+            continue
+        # Staged files may already be corrected — judge the staged blob.
+        if path in paths:
+            blob = staged_blob(path) or ""
+            if f"import {mod}" not in blob and f"from {mod}" not in blob:
+                continue
+        problems.append(
+            f"{path}: still imports {mod}, which this commit deletes"
+        )
+
+
 # ── Rule 3 — secrets never enter a commit ────────────────────────
 SECRET_NAMES = (".env", "id_rsa", "id_ed25519")
 SECRET_SUFFIX = (".pem", ".key", ".p12", ".keystore")
