@@ -471,7 +471,9 @@ def _route_tenant(db, account_id=42):
 async def test_route_create_update_delete(db, monkeypatch):
     rt, fake_tdb = _route_tenant(db)
     monkeypatch.setattr(rt, "_get_tenant_db", fake_tdb)
-    user = {"account_id": 42, "sub": "1"}
+    # ``uid`` is on every real token since the user-id rollout — the
+    # activity trail resolves the actor from it, no platform DB needed.
+    user = {"account_id": 42, "sub": "1", "uid": 1}
 
     created = await rt.create_vehicle(
         rt.VehicleCreate(unit_number="T-99", vehicle_type="trailer", vin="V1"),
@@ -496,7 +498,9 @@ async def test_route_create_duplicate_is_409(db, monkeypatch):
     rt, fake_tdb = _route_tenant(db)
     monkeypatch.setattr(rt, "_get_tenant_db", fake_tdb)
     from fastapi import HTTPException
-    user = {"account_id": 42, "sub": "1"}
+    # ``uid`` is on every real token since the user-id rollout — the
+    # activity trail resolves the actor from it, no platform DB needed.
+    user = {"account_id": 42, "sub": "1", "uid": 1}
 
     await rt.create_vehicle(
         rt.VehicleCreate(unit_number="DUP", company_code="X"), user=user,
@@ -515,7 +519,7 @@ async def test_route_update_missing_is_404(db, monkeypatch):
     from fastapi import HTTPException
     with pytest.raises(HTTPException) as exc:
         await rt.update_registry_vehicle(
-            999999, rt.VehicleUpdate(make="x"), user={"account_id": 42, "sub": "1"},
+            999999, rt.VehicleUpdate(make="x"), user={"account_id": 42, "sub": "1", "uid": 1},
         )
     assert exc.value.status_code == 404
 
