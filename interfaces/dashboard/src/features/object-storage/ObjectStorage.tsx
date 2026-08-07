@@ -7,6 +7,7 @@ import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import ObjectStorageHealthCard from './ObjectStorageHealthCard';
 import ObjectStorageUsageCard from './ObjectStorageUsageCard';
 import ObjectStorageFileTable from './ObjectStorageFileTable';
+import { ConfigMovedNotice } from '../_lib/ConfigMovedNotice';
 
 /**
  * Admin page for storage configuration + health.
@@ -41,6 +42,8 @@ export default function Storage() {
           </FeatureConfigGear>
         )}
       />
+      <ConfigMovedNotice what="The storage backend" />
+
       <div className="space-y-4">
         <ObjectStorageHealthCard />
         <ObjectStorageUsageCard />

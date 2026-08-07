@@ -24,6 +24,7 @@ import DangerZoneSection from './DangerZoneSection';
 import { toneClasses } from '../../lib/status';
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from '../../components/ui/select';
 import { Input } from '../../components/ui/input';
+import { ConfigMovedNotice } from '../_lib/ConfigMovedNotice';
 
 const ROLES = ['owner', 'admin', 'fleet', 'safety', 'dispatcher', 'hr', 'accounting', 'recruiter', 'driver'];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -327,6 +328,8 @@ export default function Settings() {
           </FeatureConfigGear>
         )}
       />
+      <ConfigMovedNotice what="Account values" />
+
       {(canManageAccount || canConfigAccount) && (error || fetchError) && <ErrorState message={error || fetchError} />}
 
       {/* Account Timezone — admin-only.  Single source of truth that

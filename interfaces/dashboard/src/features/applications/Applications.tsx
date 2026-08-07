@@ -31,6 +31,7 @@ import {
 import type { AnyColumn } from '../../types';
 import { useQueryClient } from '@tanstack/react-query';
 import { useApplicationsQuery, type AppRow } from './useApplications';
+import { ConfigMovedNotice } from '../_lib/ConfigMovedNotice';
 
 // Lifecycle split for the grid's segment tabs: the working pipeline
 // vs the two terminal outcomes.  Finer stage slicing (Submitted /
@@ -834,6 +835,8 @@ export default function Applications() {
             </FeatureConfigGear>
           </div>
         } />
+
+      <ConfigMovedNotice what="DQF export settings" />
 
       {/* ── Application links ──────────────────────────────────── */}
       {/* Application Links is a SECOND FEATURE stacked above the primary
