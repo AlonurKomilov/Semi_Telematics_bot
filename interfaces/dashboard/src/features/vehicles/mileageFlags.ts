@@ -4,7 +4,7 @@
  * drawer, so a flag never wears different words on different screens.
  */
 export type MileageFlag =
-  | '' | 'partial' | 'reset' | 'catchup' | 'estimated' | 'device_change';
+  | '' | 'partial' | 'reset' | 'catchup' | 'estimated' | 'device_change' | 'rebase';
 
 export const FLAG_NOTE: Record<string, { label: string; tip: string }> = {
   device_change: {
@@ -26,5 +26,9 @@ export const FLAG_NOTE: Record<string, { label: string; tip: string }> = {
   reset: {
     label: 'Odometer reset',
     tip: 'The odometer dropped mid-range (device swap or reset) — miles are summed from daily readings instead.',
+  },
+  rebase: {
+    label: 'Odometer changed scale',
+    tip: 'The odometer jumped upward mid-range by more than the truck could physically drive (its reading source changed) — miles are summed from daily readings instead.',
   },
 };

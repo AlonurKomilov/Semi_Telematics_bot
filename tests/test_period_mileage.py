@@ -353,3 +353,23 @@ class TestExactTimeBoundaries:
         rows = await tenant.get_period_mileage(1, "2026-07-02", "2026-07-02")
         assert rows[0]["start_precise"] is False
         assert rows[0]["end_precise"] is False
+
+
+class TestUpwardRebase:
+    @pytest.mark.asyncio
+    async def test_upward_rebaseline_clamps_to_daily_sums(self, tenant):
+        """Production truck 128: the odometer source changed scale and
+        jumped +336k mid-window while the truck sat parked.  A positive
+        delta no truck could physically drive must clamp to the
+        step-guarded daily sums — the same remedy 'reset' applies to
+        negative deltas."""
+        await _day(tenant, "v128", "128", "2026-07-01", 566_269, 3.0)
+        await _day(tenant, "v128", "128", "2026-07-02", 566_272, 2.9)
+        # the re-baseline day: odometer leaps to the new scale
+        await _day(tenant, "v128", "128", "2026-07-03", 904_100, 0.0)
+        await _day(tenant, "v128", "128", "2026-07-04", 904_200, 1.2)
+        rows = await tenant.get_period_mileage(
+            1, start="2026-07-01", end="2026-07-05")
+        r = next(x for x in rows if x["vehicle_name"] == "128")
+        assert r["flag"] == "rebase"
+        assert r["miles"] == pytest.approx(7.1)   # 3.0+2.9+0.0+1.2

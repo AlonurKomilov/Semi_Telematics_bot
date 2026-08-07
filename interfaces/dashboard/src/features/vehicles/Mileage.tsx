@@ -43,7 +43,7 @@ interface MileageRow {
   start_read_on: string;
   end_read_on: string;
   days_covered: number;
-  flag: '' | 'partial' | 'reset' | 'catchup' | 'device_change' | 'estimated';
+  flag: '' | 'partial' | 'reset' | 'catchup' | 'device_change' | 'estimated' | 'rebase';
   start_precise?: boolean;
   end_precise?: boolean;
 }

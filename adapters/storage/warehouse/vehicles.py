@@ -885,6 +885,11 @@ class VehiclesWarehouseMixin(_MixinBase):
     # A team (two drivers, 24h) tops out around 1,400 mi/day; anything
     # above this in ONE daily bucket is a reporting backlog, not driving.
     _CATCHUP_DAY_MILES = 1_500.0
+    # A truck cannot out-drive ~90 mph sustained for a whole day — the
+    # same physics bound the aggregator's step guard uses (kept as a
+    # local constant: storage may not import features).  A window delta
+    # above days x this is an odometer RE-BASELINE, not driving.
+    _MAX_DAY_MILES_PHYSICAL = 24.0 * 90.0
 
     async def get_period_mileage(
         self, account_id: int, start: str, end: str,
@@ -1227,6 +1232,15 @@ class VehiclesWarehouseMixin(_MixinBase):
             if miles < 0:
                 miles = float(agg.get("sum_miles") or 0.0)
                 flag = "reset"
+            elif miles > max(1, self._days_between(start_read_on,
+                                                   end_read_on)) \
+                    * self._MAX_DAY_MILES_PHYSICAL:
+                # UPWARD re-baseline: a positive delta no truck could
+                # drive (production: 128 "drove" 337,931 mi in 30 days
+                # when its odometer source changed scale).  Same remedy
+                # as reset — trust the step-guarded daily sums.
+                miles = float(agg.get("sum_miles") or 0.0)
+                flag = "rebase"
             elif not flag and \
                     float(agg.get("max_day_miles") or 0.0) > self._CATCHUP_DAY_MILES:
                 flag = "catchup"
