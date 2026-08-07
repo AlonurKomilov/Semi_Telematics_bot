@@ -75,6 +75,8 @@ from features.kpi import router as kpi_routes
 from features.vehicles import config as vehicles_config
 from features.inspections import router as inspections_routes
 from features.knowledge import router as knowledge_routes
+from features.coaching import config as coaching_config
+from features.driver_pay import config as driver_pay_config
 from features.driver_pay import router as driver_pay_routes
 from features.coaching import router as coaching_routes
 from features.drivers import router as drivers_routes
@@ -507,7 +509,10 @@ def create_api() -> FastAPI:
         app.include_router(ai_routes.router, prefix=prefix)
         app.include_router(knowledge_routes.router, prefix=prefix)
         app.include_router(billing_routes.router, prefix=prefix)
+        # Config FIRST — a feature router mounted first can shadow /config.
+        app.include_router(driver_pay_config.router, prefix=prefix)
         app.include_router(driver_pay_routes.router, prefix=prefix)
+        app.include_router(coaching_config.router, prefix=prefix)
         app.include_router(coaching_routes.router, prefix=prefix)
         app.include_router(drivers_routes.router, prefix=prefix)
         # Driver roster admin (moved out of Team Management; same URLs, gated

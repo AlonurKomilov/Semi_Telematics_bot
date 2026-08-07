@@ -343,6 +343,8 @@ class TestDedicatedWritersHonourTheDeclaredOwner:
          "put_config"),
         ("capabilities/notifications/delivery_admin/config.py",
          "set_forum_subtypes"),
+        ("features/coaching/config.py", "list_rules"),
+        ("features/driver_pay/config.py", "list_rules"),
         ("features/kpi/config.py", "get_config"),
         ("features/kpi/config.py", "put_config"),
     )

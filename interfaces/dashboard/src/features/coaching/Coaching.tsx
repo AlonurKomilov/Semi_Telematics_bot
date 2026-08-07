@@ -346,7 +346,7 @@ function RulesTab() {
 
   const { data: rulesData, isLoading: rulesLoading } = useQuery({
     queryKey: ['coaching-rules'],
-    queryFn: () => apiJSON<CoachingRule[]>('/coaching/rules'),
+    queryFn: () => apiJSON<CoachingRule[]>('/coaching/config/rules'),
   });
   const { data: topicsData } = useQuery({
     queryKey: ['coaching-topics'],
@@ -381,7 +381,7 @@ function RulesTab() {
       body.event_type = eventType || null;
       body.min_count = minCount || 0;
     }
-    const r = await apiFetch('/coaching/rules', {
+    const r = await apiFetch('/coaching/config/rules', {
       method: 'POST',
       body,
     });
@@ -396,7 +396,7 @@ function RulesTab() {
   };
 
   const onToggle = async (rule: CoachingRule) => {
-    await apiFetch(`/coaching/rules/${rule.id}`, {
+    await apiFetch(`/coaching/config/rules/${rule.id}`, {
       method: 'PUT',
       body: { active: !rule.active },
     });
@@ -405,7 +405,7 @@ function RulesTab() {
 
   const onDelete = async (id: number) => {
     if (!confirm('Delete this rule?')) return;
-    await apiFetch(`/coaching/rules/${id}`, { method: 'DELETE' });
+    await apiFetch(`/coaching/config/rules/${id}`, { method: 'DELETE' });
     await load();
   };
 

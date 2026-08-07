@@ -28,25 +28,6 @@ router = APIRouter(prefix="/driver-pay", tags=["driver-pay"])
 
 # ── Pydantic schemas ──────────────────────────────────────────────
 
-class BonusRuleIn(BaseModel):
-    name: str = Field(min_length=1, max_length=120)
-    kind: str = Field(pattern="^(score_threshold|incident_count)$")
-    amount_cents: int = Field(gt=0, le=10_000_000)
-    period_days: int = Field(default=30, ge=1, le=365)
-    score_min: Optional[float] = Field(default=None, ge=0, le=100)
-    event_type: Optional[str] = Field(default=None, max_length=64)
-    max_count: Optional[int] = Field(default=None, ge=0, le=10_000)
-    active: bool = True
-
-
-class BonusRulePatch(BaseModel):
-    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
-    amount_cents: Optional[int] = Field(default=None, gt=0, le=10_000_000)
-    period_days: Optional[int] = Field(default=None, ge=1, le=365)
-    score_min: Optional[float] = Field(default=None, ge=0, le=100)
-    event_type: Optional[str] = Field(default=None, max_length=64)
-    max_count: Optional[int] = Field(default=None, ge=0, le=10_000)
-    active: Optional[bool] = None
 
 
 class DriverPaySettingsIn(BaseModel):
@@ -70,7 +51,7 @@ def _parse_iso_date(s: str) -> date:
         raise HTTPException(400, f"invalid date format: {e}")
 
 
-def _disabled_to_403(exc: DriverPayDisabledError) -> HTTPException:
+def disabled_to_403(exc: DriverPayDisabledError) -> HTTPException:
     return HTTPException(
         status_code=403,
         detail="Driver Pay feature is not enabled for this account.",
@@ -79,72 +60,6 @@ def _disabled_to_403(exc: DriverPayDisabledError) -> HTTPException:
 
 # ── Bonus Rules ────────────────────────────────────────────────────
 
-@router.get("/rules")
-async def list_rules(
-    active_only: bool = Query(False),
-    user: dict = Depends(require_permission("can_driver_pay_admin")),
-):
-    try:
-        return await svc.list_rules(user["account_id"], active_only=active_only)
-    except DriverPayDisabledError as e:
-        raise _disabled_to_403(e)
-
-
-@router.post("/rules", status_code=201)
-async def create_rule(
-    body: BonusRuleIn,
-    user: dict = Depends(require_permission("can_driver_pay_admin")),
-):
-    try:
-        rule_id = await svc.create_rule(
-            user["account_id"], user_id=await resolve_user_id(user),
-            name=body.name, kind=body.kind,
-            amount_cents=body.amount_cents,
-            period_days=body.period_days,
-            score_min=body.score_min,
-            event_type=body.event_type,
-            max_count=body.max_count,
-            active=body.active,
-        )
-    except DriverPayDisabledError as e:
-        raise _disabled_to_403(e)
-    except ValueError as e:
-        raise HTTPException(400, str(e))
-    return {"id": rule_id}
-
-
-@router.put("/rules/{rule_id}")
-async def update_rule(
-    rule_id: int,
-    body: BonusRulePatch,
-    user: dict = Depends(require_permission("can_driver_pay_admin")),
-):
-    fields = body.model_dump(exclude_unset=True, exclude_none=True)
-    if not fields:
-        raise HTTPException(400, "no fields to update")
-    try:
-        ok = await svc.update_rule(
-            user["account_id"], rule_id, user_id=await resolve_user_id(user), **fields,
-        )
-    except DriverPayDisabledError as e:
-        raise _disabled_to_403(e)
-    if not ok:
-        raise HTTPException(404, "rule not found")
-    return {"ok": True}
-
-
-@router.delete("/rules/{rule_id}")
-async def delete_rule(
-    rule_id: int,
-    user: dict = Depends(require_permission("can_driver_pay_admin")),
-):
-    try:
-        await svc.delete_rule(
-            user["account_id"], rule_id, user_id=await resolve_user_id(user),
-        )
-    except DriverPayDisabledError as e:
-        raise _disabled_to_403(e)
-    return {"ok": True}
 
 
 # ── Driver pay settings ────────────────────────────────────────────
@@ -156,7 +71,7 @@ async def list_settings(
     try:
         return await svc.list_driver_settings(user["account_id"])
     except DriverPayDisabledError as e:
-        raise _disabled_to_403(e)
+        raise disabled_to_403(e)
 
 
 @router.put("/settings/{driver_id}")
@@ -176,7 +91,7 @@ async def upsert_settings(
     except ValueError as e:
         raise HTTPException(400, str(e))
     except DriverPayDisabledError as e:
-        raise _disabled_to_403(e)
+        raise disabled_to_403(e)
     return {"ok": True}
 
 
@@ -190,7 +105,7 @@ async def list_runs(
     try:
         return await svc.list_runs(user["account_id"], limit=limit)
     except DriverPayDisabledError as e:
-        raise _disabled_to_403(e)
+        raise disabled_to_403(e)
 
 
 @router.post("/runs", status_code=201)
@@ -206,7 +121,7 @@ async def create_run(
             period_start=ps, period_end=pe,
         )
     except DriverPayDisabledError as e:
-        raise _disabled_to_403(e)
+        raise disabled_to_403(e)
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"id": run_id}
@@ -233,7 +148,7 @@ async def finalize_run(
             user["account_id"], run_id, user_id=await resolve_user_id(user),
         )
     except DriverPayDisabledError as e:
-        raise _disabled_to_403(e)
+        raise disabled_to_403(e)
     except ValueError as e:
         raise HTTPException(400, str(e))
     if not ok:
@@ -253,7 +168,7 @@ async def recompute_run(
             user["account_id"], run_id, user_id=await resolve_user_id(user),
         )
     except DriverPayDisabledError as e:
-        raise _disabled_to_403(e)
+        raise disabled_to_403(e)
     except ValueError as e:
         raise HTTPException(400, str(e))
     if not ok:
@@ -271,7 +186,7 @@ async def cancel_run(
             user["account_id"], run_id, user_id=await resolve_user_id(user),
         )
     except DriverPayDisabledError as e:
-        raise _disabled_to_403(e)
+        raise disabled_to_403(e)
     if not ok:
         raise HTTPException(404, "run not found or not cancellable")
     return {"ok": True}
@@ -319,4 +234,3 @@ async def my_paystubs(
         user["account_id"], driver_id, limit=limit,
     )
     return {"driver_id": driver_id, "items": items}
-

@@ -495,7 +495,7 @@ function RulesTab() {
 
   const load = () => {
     setLoading(true);
-    apiJSON<BonusRule[]>('/driver-pay/rules')
+    apiJSON<BonusRule[]>('/driver-pay/config/rules')
       .then(setRules)
       .catch((e) => setError(e instanceof Error ? e.message : 'failed'))
       .finally(() => setLoading(false));
@@ -518,7 +518,7 @@ function RulesTab() {
         body.max_count = Number(draft.max_count);
         if (draft.event_type) body.event_type = draft.event_type;
       }
-      await apiJSON('/driver-pay/rules', { method: 'POST', body });
+      await apiJSON('/driver-pay/config/rules', { method: 'POST', body });
       setDraft({
         name: '', kind: 'score_threshold', amount_cents: 5000,
         period_days: 30, score_min: 80, max_count: null, event_type: '', active: true,
@@ -531,12 +531,12 @@ function RulesTab() {
 
   const remove = async (id: number) => {
     if (!confirm('Delete rule?')) return;
-    await apiFetch(`/driver-pay/rules/${id}`, { method: 'DELETE' });
+    await apiFetch(`/driver-pay/config/rules/${id}`, { method: 'DELETE' });
     load();
   };
 
   const toggle = async (r: BonusRule) => {
-    await apiJSON(`/driver-pay/rules/${r.id}`, { method: 'PUT', body: { active: !r.active } });
+    await apiJSON(`/driver-pay/config/rules/${r.id}`, { method: 'PUT', body: { active: !r.active } });
     load();
   };
 
