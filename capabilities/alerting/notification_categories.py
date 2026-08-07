@@ -109,6 +109,12 @@ def register_targeted_alert_notices() -> None:
         kind=TARGETED,
         audience=lambda role: str(role) in ("owner", "admin"),
     ))
+    register_category(NotificationCategory(
+        key="alert.device_identity",
+        label="Vehicle device changes",
+        kind=TARGETED,
+        audience=lambda role: str(role) in ("owner", "admin"),
+    ))
 
 
 register_targeted_alert_notices()

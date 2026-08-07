@@ -390,15 +390,15 @@ async def ingest_vehicle_state(account_id: int) -> int:
     if identity_events:
         try:
             await tenant.record_device_events(account_id, identity_events)
-            from infra.operator_notify import send_operator_message
-            _KIND_WORDS = {"vin_change": "VIN CHANGED (different truck?)",
-                           "gateway_swap": "gateway swapped",
-                           "odo_rebase": "odometer changed scale"}
-            for e in identity_events[:5]:
-                await send_operator_message(
-                    f"🔧 {e['vehicle_name']}: "
-                    f"{_KIND_WORDS.get(e['kind'], e['kind'])} — "
-                    f"{e['old_value']} → {e['new_value']}")
+            # A changed anchor is the ACCOUNT's fleet event — their
+            # hardware, their trucks — so it rides the notifications
+            # capability to the account's own admins, exactly like
+            # every other alert.  Tenant data never goes to a
+            # platform-operator channel.
+            from capabilities.alerting.device_identity import (
+                notify_device_identity_events,
+            )
+            await notify_device_identity_events(account_id, identity_events)
         except Exception:
             logger.exception(
                 "device-event record/notify failed acct=%d", account_id)

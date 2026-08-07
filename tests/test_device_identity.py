@@ -65,3 +65,43 @@ async def test_event_log_dedupes_exact_transitions(pg_db):
     await pg_db.record_device_events(1, [e])          # same transition
     rows = await pg_db.get_device_events(1)
     assert len(rows) == 1 and rows[0]["kind"] == "odo_rebase"
+
+
+@pytest.mark.asyncio
+async def test_notices_go_to_the_accounts_admins(monkeypatch):
+    """Identity events are the ACCOUNT's fleet news: delivery rides
+    notify_user to that account's admins — never an operator channel
+    (tenant data must not cross the platform wall)."""
+    from types import SimpleNamespace
+
+    from capabilities.alerting import device_identity as di
+
+    sent = []
+
+    async def fake_notify_user(db, account_id, user_id, content, **kw):
+        sent.append((account_id, user_id, content.category, content.body))
+
+    class FakeDB:
+        async def get_account_admins(self, account_id):
+            return [SimpleNamespace(id=7), SimpleNamespace(id=9)]
+
+    monkeypatch.setattr("capabilities.notifications.notify_user",
+                        fake_notify_user)
+    monkeypatch.setattr("infra.platform.get_platform_db", lambda: FakeDB())
+
+    await di.notify_device_identity_events(1, [
+        {"vehicle_id": "ref1", "vehicle_name": "128", "kind": "odo_rebase",
+         "old_value": "567781", "new_value": "904200", "observed_at": NOW},
+    ])
+    assert [(a, u) for a, u, _, _ in sent] == [(1, 7), (1, 9)]
+    assert all(cat == "alert.device_identity" for _, _, cat, _ in sent)
+    assert "128" in sent[0][3] and "904200" in sent[0][3]
+
+
+def test_category_is_registered_for_admin_roles():
+    import capabilities.alerting.notification_categories  # noqa: F401
+    from capabilities.notifications.categories import get_category
+
+    cat = get_category("alert.device_identity")
+    assert cat is not None and cat.kind == "targeted"
+    assert cat.audience("admin") and not cat.audience("driver")

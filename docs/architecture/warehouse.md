@@ -231,7 +231,11 @@ assets earn the grain ladder:**
   moves — VIN (`vin_change`: different truck), gateway serial
   (`gateway_swap`: different hardware), or an implausible odometer jump
   (`odo_rebase`: different scale — truck 128's silent scale change
-  became a 337,931-mile month) — and tells the operator via Telegram.
+  became a 337,931-mile month).  Delivery is TENANT-side: the events
+  are the account's fleet news, so the account's admins hear about
+  them through the notifications capability (`alert.device_identity`,
+  `capabilities/alerting/device_identity.py`) — never a
+  platform-operator channel.
 - **Cache** — re-fetchable convenience kept for speed
   (`vehicle_health_live`, `vehicle_fault_live`, `weather_live`,
   `efficiency_live`, `geofence_definitions`); one current row —
