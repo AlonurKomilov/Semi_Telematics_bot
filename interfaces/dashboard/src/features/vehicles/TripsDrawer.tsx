@@ -60,7 +60,8 @@ function hhmm(min: number): string {
 }
 
 export default function TripsDrawer({
-  vehicleName, rowMiles, rowFlag = '', start, end, onClose,
+  vehicleName, rowMiles, rowFlag = '', rowCoversWindow = true, start, end,
+  onClose,
 }: {
   vehicleName: string;
   /** The odometer-delta miles the Mileage row showed — the cross-check. */
@@ -68,6 +69,11 @@ export default function TripsDrawer({
   /** The row's coverage flag — echoed here so the warning travels with
    *  the drill-in instead of staying behind on the grid. */
   rowFlag?: string;
+  /** False when times-of-day were requested but this row's odometer
+   *  delta fell back to whole days.  Trips honor the exact times, so
+   *  the two totals then cover DIFFERENT windows — comparing them
+   *  produced a false "device jump or swap" alarm. */
+  rowCoversWindow?: boolean;
   start: string;
   end: string;
   onClose: () => void;
@@ -141,7 +147,10 @@ export default function TripsDrawer({
 
   const gpsTotal = data?.total_trip_miles ?? 0;
   const gap = Math.abs(gpsTotal - rowMiles);
-  const showsCrossCheck = !isLoading && !error && trips.length > 0 && gap > 1;
+  const showsCrossCheck = !isLoading && !error && trips.length > 0 && gap > 1
+    && rowCoversWindow;
+  const showsWindowNote = !isLoading && !error && trips.length > 0
+    && !rowCoversWindow;
   // "Small gaps are normal" was written for the ±3% case and must not
   // crown a jumped odometer as authoritative: production truck 233
   // showed 24,352 odometer miles against 0.6 GPS miles.  Past 25% AND
@@ -241,6 +250,14 @@ export default function TripsDrawer({
               ({gpsTotal.toLocaleString()} mi). An odometer device jump or
               swap is the likely cause; for this vehicle the GPS trips
               number is closer to reality.
+            </p>
+          )}
+          {showsWindowNote && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              These trips honor your exact times, but the mileage row’s
+              odometer total ({rowMiles.toLocaleString()} mi) could only be
+              computed in whole days for this range — the two numbers cover
+              different windows, so they aren’t directly comparable.
             </p>
           )}
         </SheetBody>

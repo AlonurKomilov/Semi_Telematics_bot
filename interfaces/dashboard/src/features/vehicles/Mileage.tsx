@@ -81,7 +81,12 @@ export default function Mileage() {
   const tz = useTimezone();
   const [days, setDays] = useState(30);
   // Row click → trips drill-in for THAT vehicle over the SAME range.
-  const [drawer, setDrawer] = useState<{ name: string; miles: number; flag: string } | null>(null);
+  // coversWindow: whether the row's odometer delta honored the requested
+  // times-of-day — when it fell back to whole days, the drawer must not
+  // cross-check it against time-scoped GPS trips (different windows).
+  const [drawer, setDrawer] = useState<{
+    name: string; miles: number; flag: string; coversWindow: boolean;
+  } | null>(null);
   // null = range ends today (the presets path); a custom calendar pick
   // sets an explicit end and the backend honors it.
   const [endDay, setEndDay] = useState<string | null>(null);
@@ -191,7 +196,7 @@ export default function Mileage() {
           .filter((r) =>
             ((!times.start || r.start_precise) && (!times.end || r.end_precise)))
           .map((r) => r.vehicle_name);
-        const stored = 'stored 5-minute detail covers the last 7 days; hourly detail grows to 90 days as it accrues';
+        const stored = 'stored minute detail covers the last 7 days; hourly detail grows to 90 days as it accrues';
         let text: string;
         if (imprecise.length <= 10) {
           text = `Time of day applied where stored readings allow (${stored}). Whole-day totals were used for: ${imprecise.join(', ')}.`;
@@ -235,7 +240,12 @@ export default function Mileage() {
           searchKey={['vehicle_name', 'company']}
           onRowClick={(row) => {
             const r = row as unknown as MileageRow;
-            setDrawer({ name: r.vehicle_name, miles: r.miles, flag: r.flag });
+            setDrawer({
+              name: r.vehicle_name, miles: r.miles, flag: r.flag,
+              coversWindow:
+                (!times.start || !!r.start_precise)
+                && (!times.end || !!r.end_precise),
+            });
           }}
         />
       )}
@@ -245,6 +255,7 @@ export default function Mileage() {
           vehicleName={drawer.name}
           rowMiles={drawer.miles}
           rowFlag={drawer.flag}
+          rowCoversWindow={drawer.coversWindow}
           start={startParam}
           end={endParam}
           onClose={() => setDrawer(null)}
