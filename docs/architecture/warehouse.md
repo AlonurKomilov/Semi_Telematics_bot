@@ -29,8 +29,11 @@ whichever, but never silently.
 
 ## Reading from the warehouse (for feature developers)
 
-- **Query the surfaces, never the physical tables** — CI fails you
-  otherwise.  Per-grain: `warehouse.vehicle_state_live/minute/hour/
+- **Address everything by its grain name** — `vehicle_state_hour`,
+  `vehicle_health_day`, `vehicle_timeline`.  (Since migration 188/189
+  most grain names ARE the physical tables; the health minute..week
+  names are column-slice views.  You cannot tell the difference from
+  SQL, which is the point.)  WRITES outside the machinery fail CI.  Per-grain: `warehouse.vehicle_state_live/minute/hour/
   day/week`, `warehouse.vehicle_health_*`.  Cross-grain:
   `warehouse.vehicle_timeline` (grain as a column).
 - **Join identity on `registry_id`** (Postgres `vehicles.id`), never
@@ -147,12 +150,11 @@ column, five branches).
 the whole family — 13 tables + the view — lives in a dedicated
 Postgres schema, moved by the operator window script
 (docs/runbooks/warehouse-schema-move.md) and mirrored by idempotent
-migration 183 for fresh installs.  Four names were normalized in the
-same move: `driver_efficiency_daily → driver_efficiency_day` (grain out
-of the name), `aggregate_weather_snapshot → weather_live`,
-`aggregate_efficiency_snapshot → efficiency_live`, and
-`warehouse_ingest_orphans → ingest_orphans` (the schema IS the
-prefix).  `safety_event_log` keeps its name — "safety event" is the
+migration 183 for fresh installs.  Table names were then normalized
+in stages (183 → 190; the History section has the chain) to today's
+grain vocabulary; `warehouse_ingest_orphans → ingest_orphans` set the
+rule that the schema IS the prefix — no table repeats the word.
+`safety_event_log` keeps its name — "safety event" is the
 industry's own noun here, not a role word.  Unqualified queries
 resolve via the pool search_path `public,warehouse` (public FIRST so
 unqualified CREATEs land in public; the shadow-orphan guard test in
@@ -171,7 +173,9 @@ references is a later, CI-guarded follow-up — never part of cutover.
 **Asset grain addressing:** every asset stream is addressed as
 `<stream>_<grain>`.  For `vehicle_state_*` these are the PHYSICAL
 tables themselves (migration 188 completed the interface-first swap);
-`vehicle_health_*` are column-slice views over the same tables:
+`vehicle_health_live` is its own table (a separate provider feed);
+`vehicle_health_minute..week` are column-slice views over the state
+tables:
 
 | grain | state stream | health stream |
 |---|---|---|
@@ -189,11 +193,13 @@ remains the cross-grain surface (all five grains, one query).
 
 The minute grain samples at the live ingest's own 60-second cadence
 (pre-2026-08 history is 5-minute spaced; duty math is gap-based and
-cadence-independent, so both spacings compute correctly).  Stored
-`granularity` values (`hourly/daily/weekly`) are legacy wire values —
-the view maps them; new declarations use the grain vocabulary.  Every
-NEW dataset adopts this scheme from day one: stream named after the
-domain, grain declared separately.
+cadence-independent, so both spacings compute correctly).  There is
+NO `granularity` column anywhere — grain lives in the table name
+(migration 188 retired the column with the unified table).  The only
+place the legacy words `hourly/daily/weekly` survive is the
+tier-freshness API labels, kept because the operator console keys on
+them (wire).  Every NEW dataset adopts the grain vocabulary from day
+one.
 
 **Table-name template (Version B, 2026-08-07):** every table of
 READINGS carries its true grain — tiered assets `<stream>_<grain>`
