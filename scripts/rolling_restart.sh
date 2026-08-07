@@ -436,6 +436,16 @@ roll_unit() {
 	# aborts as soon as a crash happens instead of up to ${settle}s
 	# later, and it turns the longest silent stretch of the deploy into
 	# visible progress.
+	#
+	# Re-baseline the restart counter HERE, not before the restart: a
+	# manual `systemctl restart` resets NRestarts to 0, and that reset
+	# can land after the unit turns active — so a stale counter left by
+	# earlier auto-restarts read as "1", flipped to "0" mid-watch, and
+	# the != comparison below aborted a healthy deploy claiming the
+	# service "crashed" (2026-08-07, twice in a row on 4truck-bot).
+	# From this baseline a real crash-and-auto-restart can only move
+	# the counter UP, which is the only direction treated as a crash.
+	before_restarts=$(nrestarts "$svc")
 	local elapsed=0 chunk
 	while [ "$elapsed" -lt "$settle" ]; do
 		status_line "🔄 $svc — active after ${t_active}s, watching for crash-on-boot ${elapsed}/${settle}s" "$elapsed"
@@ -447,7 +457,7 @@ roll_unit() {
 			progress_done
 			abort "$svc went down ${elapsed}s after starting (crash on boot)."
 		fi
-		if [ "$(nrestarts "$svc")" != "$before_restarts" ]; then
+		if [ "$(nrestarts "$svc" || echo 0)" -gt "${before_restarts:-0}" ] 2>/dev/null; then
 			progress_done
 			abort "$svc crashed and was auto-restarted ${elapsed}s into boot (NRestarts went $before_restarts → $(nrestarts "$svc")).  Check its log before deploying."
 		fi

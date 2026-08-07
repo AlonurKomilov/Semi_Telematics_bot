@@ -105,3 +105,17 @@ def test_category_is_registered_for_admin_roles():
     cat = get_category("alert.device_identity")
     assert cat is not None and cat.kind == "targeted"
     assert cat.audience("admin") and not cat.audience("driver")
+
+
+def test_spec_fill_fields_all_exist_on_the_model():
+    """Every merge field must be a real Vehicle attribute — a name in
+    _SPEC_FILL without a model field made the registry upsert throw
+    AttributeError on EVERY ingest tick (gateway_serial, 2026-08-07),
+    silently starving the registry while the ingest carried on."""
+    import dataclasses
+
+    from adapters.storage.vehicles_registry import _SPEC_FILL, Vehicle
+
+    model_fields = {f.name for f in dataclasses.fields(Vehicle)}
+    missing = [f for f in _SPEC_FILL if f not in model_fields]
+    assert not missing, f"_SPEC_FILL names absent from Vehicle: {missing}"

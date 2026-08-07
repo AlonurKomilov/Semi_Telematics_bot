@@ -25,6 +25,28 @@ export const DUE_SOON_DAYS = 7;
 export const DUE_SOON_MILES = 5_000;
 export const DUE_SOON_HOURS = 100;
 
+// A big service needs more warning than a small one.
+//
+// A flat 5,000 miles is ~10 days of driving.  That is fine for an oil
+// change you can book anywhere, and thin for a 200,000-mile transmission
+// service that needs parts ordered, a bay booked and the truck off the
+// road.  So the window scales with the INTERVAL and never shrinks below
+// the flat floor:
+//
+//     30,000 mi oil change   -> max(5,000,  1,500) =  5,000   unchanged
+//    100,000 mi service      -> max(5,000,  5,000) =  5,000   unchanged
+//    200,000 mi transmission -> max(5,000, 10,000) = 10,000   ~3 weeks
+//
+// Only LONG intervals move, so nothing that was due-soon yesterday stops
+// being due-soon today.
+export const DUE_SOON_INTERVAL_FRACTION = 0.05;
+
+export const dueSoonMilesFor = (interval: number | null | undefined): number =>
+  Math.max(DUE_SOON_MILES, (interval ?? 0) * DUE_SOON_INTERVAL_FRACTION);
+
+export const dueSoonHoursFor = (interval: number | null | undefined): number =>
+  Math.max(DUE_SOON_HOURS, (interval ?? 0) * DUE_SOON_INTERVAL_FRACTION);
+
 /** Full task set, one fetch per session (placeholderData keeps the
  *  previous page rendered during refetches).  A typical account has
  *  <500 tasks; the filter chips / hero chips just narrow client-side. */
@@ -56,12 +78,12 @@ export function makeUrgencyClassifier(): (t: MaintenanceTask) => 'overdue' | 'du
     if (t.due_miles != null && t.last_odometer != null) {
       const remaining = t.due_miles - t.last_odometer;
       if (remaining < 0) return 'overdue';
-      if (remaining <= DUE_SOON_MILES) return 'due_soon';
+      if (remaining <= dueSoonMilesFor(t.recur_interval_miles)) return 'due_soon';
     }
     if (t.due_engine_hours != null && t.last_engine_hours != null) {
       const remaining = t.due_engine_hours - t.last_engine_hours;
       if (remaining < 0) return 'overdue';
-      if (remaining <= DUE_SOON_HOURS) return 'due_soon';
+      if (remaining <= dueSoonHoursFor(t.recur_interval_engine_hours)) return 'due_soon';
     }
     return null;
   };

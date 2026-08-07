@@ -7,6 +7,7 @@ import type { MaintenanceTask } from '../../types';
 import { statusTone, toneClasses, type Tone } from '../../lib/status';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
+import { dueSoonHoursFor, dueSoonMilesFor } from './useMaintenanceTasks';
 
 export const PRIORITY_OPTIONS = ['low', 'medium', 'high', 'critical'] as const;
 export type Priority = typeof PRIORITY_OPTIONS[number];
@@ -83,8 +84,11 @@ export function EngineHoursProgress({ row }: { row: MaintenanceTask }) {
     pct = (row.last_engine_hours / row.due_engine_hours) * 100;
   }
   pct = Math.max(0, Math.min(120, Math.round(pct)));
-  const overdue = pct >= 100;
   const remaining = Math.round(row.due_engine_hours - row.last_engine_hours);
+  // Same rule as the mileage bar above — colour tracks the chip.
+  const overdue = remaining < 0;
+  const dueSoon = !overdue
+    && remaining <= dueSoonHoursFor(row.recur_interval_engine_hours);
   return (
     <div className="flex flex-col gap-1.5 min-w-[120px]">
       <div className="text-xs">
@@ -92,7 +96,7 @@ export function EngineHoursProgress({ row }: { row: MaintenanceTask }) {
       </div>
       <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
         <div
-          className={`h-full ${overdue ? 'bg-danger' : pct >= 90 ? 'bg-warn' : 'bg-ok'}`}
+          className={`h-full ${overdue ? 'bg-danger' : dueSoon ? 'bg-warn' : 'bg-ok'}`}
           style={{ width: `${Math.min(pct, 100)}%` }}
         />
       </div>
@@ -311,8 +315,17 @@ export function MileageProgress({ row }: { row: MaintenanceTask }) {
     pct = (row.last_odometer / row.due_miles) * 100;
   }
   pct = Math.max(0, Math.min(120, Math.round(pct)));
-  const overdue = pct >= 100;
   const remaining = Math.round(row.due_miles - row.last_odometer);
+  // COLOUR follows the same rule as the status chip, not the percentage.
+  //
+  // It used to warn at `pct >= 90` of the recur period, which on a
+  // 200,000-mile transmission service turns amber with 20,000 miles left
+  // — six weeks of driving — while the chip still said "pending" and the
+  // sort ranked it below green rows with fewer miles to go.  One row was
+  // making three different urgency claims.  The FILL stays proportional
+  // (that is what a progress bar means); only the colour moved.
+  const overdue = remaining < 0;
+  const dueSoon = !overdue && remaining <= dueSoonMilesFor(row.recur_interval_miles);
   return (
     <div className="flex flex-col gap-1.5 min-w-[140px]">
       <div className="text-xs">
@@ -320,7 +333,7 @@ export function MileageProgress({ row }: { row: MaintenanceTask }) {
       </div>
       <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
         <div
-          className={`h-full ${overdue ? 'bg-danger' : pct >= 90 ? 'bg-warn' : 'bg-ok'}`}
+          className={`h-full ${overdue ? 'bg-danger' : dueSoon ? 'bg-warn' : 'bg-ok'}`}
           style={{ width: `${Math.min(pct, 100)}%` }}
         />
       </div>

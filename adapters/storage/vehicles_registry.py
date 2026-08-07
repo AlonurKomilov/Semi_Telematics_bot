@@ -193,6 +193,9 @@ class Vehicle:
     field_provenance: dict = field(default_factory=dict)
     # Datatruck-side asset binding (like telematics_ref for Samsara).
     datatruck_ref: str = ""
+    # Telematics gateway hardware serial — an identity anchor the
+    # ingest's identity watch compares each tick (gateway_swap events).
+    gateway_serial: str = ""
 
 
 def _parse_provenance(raw: Any) -> dict:
@@ -215,6 +218,7 @@ def _row_to_vehicle(r) -> Vehicle:
         created_at=r[15] or "", updated_at=r[16] or "",
         field_provenance=_parse_provenance(r[17] if len(r) > 17 else None),
         datatruck_ref=(r[18] or "") if len(r) > 18 else "",
+        gateway_serial=(r[19] or "") if len(r) > 19 else "",
     )
 
 
@@ -222,7 +226,7 @@ _SELECT = (
     "SELECT id, account_id, company_code, unit_number, vehicle_type, vin, "
     "plate_number, make, model, year, status, source, telematics_ref, "
     "notes, is_active, created_at, updated_at, field_provenance, "
-    "datatruck_ref FROM vehicles"
+    "datatruck_ref, gateway_serial FROM vehicles"
 )
 
 

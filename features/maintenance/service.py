@@ -65,6 +65,36 @@ DUE_SOON_DAYS = 7
 DUE_SOON_MILES = 5_000
 DUE_SOON_HOURS = 100
 
+# A big service needs more warning than a small one.
+#
+# A flat 5,000 miles is ~10 days of driving: fine for an oil change you
+# can book anywhere, thin for a 200,000-mile transmission service that
+# needs parts ordered, a bay booked and the truck off the road.  The
+# window therefore scales with the INTERVAL and never falls below the
+# flat floor:
+#
+#     30,000 mi oil change   -> max(5,000,  1,500) =  5,000   unchanged
+#    100,000 mi service      -> max(5,000,  5,000) =  5,000   unchanged
+#    200,000 mi transmission -> max(5,000, 10,000) = 10,000   ~3 weeks
+#
+# Only LONG intervals move, so nothing that was due-soon yesterday stops
+# being due-soon today.
+#
+# MIRRORED in interfaces/dashboard/src/features/maintenance/
+# useMaintenanceTasks.ts — two implementations of one rule, pinned in
+# sync by tests/test_maintenance_due_soon_parity.py.
+DUE_SOON_INTERVAL_FRACTION = 0.05
+
+
+def due_soon_miles_for(interval: Optional[float]) -> float:
+    """The mileage window for a task on this recur interval."""
+    return max(DUE_SOON_MILES, (interval or 0) * DUE_SOON_INTERVAL_FRACTION)
+
+
+def due_soon_hours_for(interval: Optional[float]) -> float:
+    """The engine-hours window for a task on this recur interval."""
+    return max(DUE_SOON_HOURS, (interval or 0) * DUE_SOON_INTERVAL_FRACTION)
+
 
 def classify_task_urgency(task: dict) -> Optional[str]:
     """Return ``"overdue"``, ``"due_soon"``, or ``None``.
@@ -112,7 +142,9 @@ def classify_task_urgency(task: dict) -> Optional[str]:
             remaining_mi = float(due_miles) - float(last_odo)
             if remaining_mi < 0:
                 return "overdue"
-            if remaining_mi <= DUE_SOON_MILES:
+            if remaining_mi <= due_soon_miles_for(
+                task.get("recur_interval_miles")
+            ):
                 return "due_soon"
         except (TypeError, ValueError):
             pass
@@ -125,7 +157,9 @@ def classify_task_urgency(task: dict) -> Optional[str]:
             remaining_h = float(due_hours) - float(last_hours)
             if remaining_h < 0:
                 return "overdue"
-            if remaining_h <= DUE_SOON_HOURS:
+            if remaining_h <= due_soon_hours_for(
+                task.get("recur_interval_engine_hours")
+            ):
                 return "due_soon"
         except (TypeError, ValueError):
             pass
