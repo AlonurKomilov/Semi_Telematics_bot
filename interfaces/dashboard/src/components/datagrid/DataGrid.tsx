@@ -2378,7 +2378,22 @@ export default function DataGrid({
   const trimmedGlobal = hasSearch ? globalFilter.trim() : '';
   // "Clear all" counts only the data CONSTRAINTS (filter/sort/search);
   // grouping + hidden are view-state chips with their own single ✕.
-  const chipCount = columnFilters.length + sorting.length + (trimmedGlobal ? 1 : 0);
+  // A DEFAULT sort is the table's natural order, not something the user
+  // did — so it must not render as a removable chip, and it must not be
+  // counted as a constraint by "Clear all".
+  //
+  // Shipping the default without this was worse than cosmetic: the grid
+  // opened claiming "Sorted by Mileage ↑ ✕" as though the operator had
+  // applied it, and pressing that ✕ dropped to NO sort with no way back —
+  // clearing a default is not something a user can undo.
+  const atDefaultSort =
+    !!defaultSorting
+    && sorting.length === defaultSorting.length
+    && sorting.every((x, i) =>
+      x.id === defaultSorting[i].id && !!x.desc === !!defaultSorting[i].desc);
+  // Chips represent DEVIATIONS from the table's resting state.
+  const sortChips = atDefaultSort ? [] : sorting;
+  const chipCount = columnFilters.length + sortChips.length + (trimmedGlobal ? 1 : 0);
   const groupedCol = rowGroupBy ? columns.find(c => c.key === rowGroupBy) : undefined;
   // A group-header label should read like the CELLS, not the raw code:
   // group by Type and the header must say "Oil Change", not "oil".  Every
@@ -2441,7 +2456,7 @@ export default function DataGrid({
           "Sorted by Customer ↑" over a matrix that ignored it entirely.
           It stays visible (the sort is real, and comes back the moment
           you leave pivot) but reads as inactive and says why. */}
-      {sorting.map((s) => {
+      {sortChips.map((s) => {
         const col = columns.find(c => c.key === s.id);
         return (
           <span key={`s-${s.id}`} className={cn(chipCls, pivotOn && 'opacity-60')}>
@@ -2455,9 +2470,19 @@ export default function DataGrid({
                 {pivotOn && <span className="ml-1 text-muted-foreground">· not applied</span>}
               </span>
             </Tip>
+            {/* Clearing a sort RETURNS TO THE DEFAULT where the table
+                declares one — a queue that opens on urgency should go
+                back to urgency, not to raw row order.  Tables with no
+                default keep the original behaviour: remove and unsort. */}
             <button type="button"
-              onClick={() => setSorting(prev => prev.filter(x => x.id !== s.id))}
-              aria-label={`Clear ${col?.label || s.id} sort`} className={chipX}>
+              onClick={() => setSorting(prev => (
+                defaultSorting && defaultSorting.length
+                  ? defaultSorting
+                  : prev.filter(x => x.id !== s.id)
+              ))}
+              aria-label={defaultSorting?.length
+                ? `Reset ${col?.label || s.id} sort to default`
+                : `Clear ${col?.label || s.id} sort`} className={chipX}>
               <X size={12} />
             </button>
           </span>
@@ -2481,7 +2506,13 @@ export default function DataGrid({
           else on the toolbar surfaces that state. */}
       {chipCount >= 2 && (
         <button type="button"
-          onClick={() => { setColumnFilters([]); setSorting([]); setGlobalFilter(''); }}
+          onClick={() => {
+            setColumnFilters([]);
+            // Back to the DECLARED order, not to none — "clear" means
+            // remove what I added, and the default was never mine.
+            setSorting(defaultSorting ?? []);
+            setGlobalFilter('');
+          }}
           className="ml-0.5 px-1.5 py-0.5 text-2xs text-muted-foreground hover:text-foreground">
           Clear all
         </button>
@@ -3027,7 +3058,10 @@ export default function DataGrid({
   // they've narrowed too far and want a clean slate.
   const resetAll = () => {
     setColumnFilters([]);
-    setSorting([]);
+    // "Reset to defaults" said exactly that and then wiped the sort to
+    // NONE — dropping the one declaration it was meant to restore.  A
+    // table that opens on urgency must come back to urgency.
+    setSorting(defaultSorting ?? []);
     setGlobalFilter('');
     setColumnVisibility({});
     setColumnOrder([]);

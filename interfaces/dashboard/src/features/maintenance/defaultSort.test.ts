@@ -47,3 +47,46 @@ describe('maintenance opens on urgency', () => {
       .toEqual(['due', 'none']);
   });
 });
+
+// ── The default must behave like a DEFAULT, not like a filter ────────
+//
+// Shipping defaultSorting seeded the grid's own sort state, which the
+// chip strip then rendered as "Sorted by Mileage ↑ ✕" — the table
+// claiming the operator had sorted it on first paint, with a ✕ that
+// dropped to NO sort and no way back.  These pin the three rules that
+// make it read as the table's resting state instead.
+
+type Sort = { id: string; desc: boolean };
+const DEFAULT: Sort[] = [{ id: 'due_miles', desc: false }];
+
+/** Mirrors DataGrid's `atDefaultSort`. */
+const atDefault = (sorting: Sort[], def: Sort[] | undefined) =>
+  !!def
+  && sorting.length === def.length
+  && sorting.every((x, i) => x.id === def[i].id && !!x.desc === !!def[i].desc);
+
+/** Mirrors DataGrid's reset paths (Clear all / Reset to defaults). */
+const afterReset = (def: Sort[] | undefined) => def ?? [];
+
+describe('a default sort behaves like a default', () => {
+  it('shows NO chip while the table is in its declared order', () => {
+    expect(atDefault(DEFAULT, DEFAULT)).toBe(true);   // chip suppressed
+  });
+
+  it('shows a chip once the user sorts differently', () => {
+    expect(atDefault([{ id: 'due_miles', desc: true }], DEFAULT)).toBe(false);
+    expect(atDefault([{ id: 'vehicle_name', desc: false }], DEFAULT)).toBe(false);
+  });
+
+  it('resets BACK to the declared order, never to none', () => {
+    // The bug this guards: "Reset to defaults" wiping sort to [] —
+    // clearing the one declaration it was supposed to restore.
+    expect(afterReset(DEFAULT)).toEqual(DEFAULT);
+  });
+
+  it('leaves tables WITHOUT a default unchanged', () => {
+    // No default declared → nothing is suppressed, reset still clears.
+    expect(atDefault([{ id: 'anything', desc: false }], undefined)).toBe(false);
+    expect(afterReset(undefined)).toEqual([]);
+  });
+});
