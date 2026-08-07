@@ -210,9 +210,9 @@ async def upload_company_logo(
     ok, mime, _ = validate_upload(raw, max_bytes=2 * 1024 * 1024)
     if not ok or mime not in _LOGO_MIME_EXT:
         raise HTTPException(status_code=422, detail="Logo must be a JPG, PNG, or WEBP image under 2 MB")
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
     from features.work_orders.storage import sanitize_company_folder
-    store = await get_object_store_for_account(user["account_id"], platform_db)
+    store = await get_object_storage_for_account(user["account_id"], platform_db)
     # Brand assets live IN the company's folder ({COMPANY}/branding/);
     # row id in the FILENAME keeps same-named companies collision-free.
     folder = sanitize_company_folder(company.display_name or getattr(company, "code", "") or "")
@@ -240,8 +240,8 @@ async def get_company_logo(
     company = await tenant_db.get_company_in_account(user["account_id"], company_id)
     if not company or not company.logo_object_id:
         raise HTTPException(status_code=404, detail="No logo")
-    from adapters.storage.object_store import get_object_store_for_account
-    store = await get_object_store_for_account(user["account_id"], platform_db)
+    from adapters.storage.object_storage import get_object_storage_for_account
+    store = await get_object_storage_for_account(user["account_id"], platform_db)
     raw = store.get_by_id(company.logo_object_id)
     if raw is None:
         raise HTTPException(status_code=404, detail="No logo")

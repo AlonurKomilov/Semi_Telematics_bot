@@ -624,9 +624,9 @@ async def create_article(
     # internal paths qualify — ``media_url`` may equally hold an external
     # link (YouTube etc.), which is not ours to sync.
     if body.media_url and _is_internal_kb_path(body.media_url):
-        from adapters.storage.object_store import get_object_store_for_account
-        from capabilities.object_store.tracking import track_for_sync_if_hybrid
-        store = await get_object_store_for_account(user["account_id"], tenant_db)
+        from adapters.storage.object_storage import get_object_storage_for_account
+        from capabilities.object_storage.tracking import track_for_sync_if_hybrid
+        store = await get_object_storage_for_account(user["account_id"], tenant_db)
         await track_for_sync_if_hybrid(
             store, "knowledge", body.media_url.rsplit("/", 1)[-1], body.media_url,
             entity_type="knowledge_media", entity_id=int(article_id),
@@ -841,7 +841,7 @@ async def upload_file(
     (owner / admin / fleet / safety).  Drivers can't upload files for
     the same reason they can't create articles in the first place.
     """
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
 
     role = user.get("role", "")
     if not is_kb_author_role(role):
@@ -931,7 +931,7 @@ async def upload_file(
         )
 
     safe_name = safe_attachment_name(file.filename or "attachment")
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     file_path = store.put("knowledge", safe_name, raw)
     if not file_path:
         raise HTTPException(
@@ -962,7 +962,7 @@ async def serve_article_file(
     id.  Falls back to 302-redirecting external URLs so the same
     endpoint can render both upload-backed and link-backed articles.
     """
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
     from fastapi.responses import RedirectResponse
 
     article = await platform_db.get_kb_article(article_id)
@@ -999,7 +999,7 @@ async def serve_article_file(
     # that OWNS this article (might differ from the requesting account
     # for an approved cross-account public article).
     owning_account = int(article.get("account_id") or 0)
-    store = await get_object_store_for_account(owning_account, tenant_db)
+    store = await get_object_storage_for_account(owning_account, tenant_db)
     data: bytes | None = None
     getter = getattr(store, "get_by_id", None)
     if getter is not None:

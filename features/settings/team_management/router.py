@@ -181,8 +181,8 @@ async def get_user_avatar(
     if not target.telegram_id:
         return _Response(status_code=204)
 
-    from adapters.storage.object_store import get_object_store
-    store = get_object_store()
+    from adapters.storage.object_storage import get_object_storage
+    store = get_object_storage()
     key = f"{target.telegram_id}.jpg"
     # Marker file for "we've checked Telegram and there's no photo"
     # — same TTL as the avatar cache, so a user who later uploads a

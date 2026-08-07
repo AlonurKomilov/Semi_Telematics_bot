@@ -116,7 +116,7 @@ async def write_sidecar(
     write into the carrier's own storage, never to return over the wire.
     """
     try:
-        from adapters.storage.object_store import get_object_store_for_account
+        from adapters.storage.object_storage import get_object_storage_for_account
 
         reference = str(app.get("reference") or "")
         if not reference:
@@ -130,7 +130,7 @@ async def write_sidecar(
         history = await _history(platform_db, account_id, app.get("id"))
         passphrase, protection = await _protection(tenant_db, account_id, company)
         manifest = build_manifest(app, history, protection)
-        store = await get_object_store_for_account(account_id, tenant_db)
+        store = await get_object_storage_for_account(account_id, tenant_db)
 
         wrote = False
 
@@ -240,7 +240,7 @@ async def reexport_ssn_only(
     which is why a hybrid account having deleted its local copies after
     sync does not matter here.
     """
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
     from features.work_orders.storage import sanitize_company_folder
 
     result = {"scanned": 0, "written": 0, "skipped": 0, "failed": 0}
@@ -250,7 +250,7 @@ async def reexport_ssn_only(
         logger.exception("DQF re-export: could not list applications acct=%s", account_id)
         return result
 
-    store = await get_object_store_for_account(account_id, tenant_db)
+    store = await get_object_storage_for_account(account_id, tenant_db)
     companies: dict[int, object] = {}
 
     for row in apps or []:

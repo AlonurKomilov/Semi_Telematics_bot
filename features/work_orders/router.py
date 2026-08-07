@@ -11,7 +11,7 @@ full picture and a driver sees only their own truck's records:
   shop workflow).
 
 Object-store backend is account-agnostic at this layer — the route
-calls ``get_object_store()`` and hands it the structured path returned
+calls ``get_object_storage()`` and hands it the structured path returned
 by ``capabilities/work_orders/storage.py``.  When per-account BYO
 Drive ships, only the factory function changes; this code is unchanged.
 """
@@ -468,12 +468,12 @@ async def delete_work_order(
     """Delete a work order, its parts, its attachments (DB rows only —
     files in the object store are cleared first), and unlink any
     maintenance tasks that pointed at it."""
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
     wo = await _require_visible_work_order(work_order_id, user, tenant_db)
 
     # Drop physical files first so deleting the row doesn't orphan them.
     # Best-effort — a missing object is fine (idempotent delete).
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     company_folder = await resolve_company_folder(
         tenant_db, user["account_id"], wo.get("company_code", ""),
     )
@@ -602,8 +602,8 @@ async def upload_attachment(
     photographs the invoice in the field and a manager fills in the
     cost details later.  Managers can upload to any work order.
     """
-    from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.object_store.tracking import track_for_sync_if_hybrid
+    from adapters.storage.object_storage import get_object_storage_for_account
+    from capabilities.object_storage.tracking import track_for_sync_if_hybrid
     wo = await _require_visible_work_order(work_order_id, user, tenant_db)
 
     # Drivers may upload only while the WO is still ACTIVE (open /
@@ -648,7 +648,7 @@ async def upload_attachment(
         service_date=wo.get("service_date"),
         vendor_name=wo.get("vendor_name", ""),
     )
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     file_path = store.put(folder, safe_name, raw)
 
     aid = await tenant_db.add_work_order_attachment(
@@ -684,13 +684,13 @@ async def download_attachment(
 ):
     """Stream an attachment's bytes back to the client.
 
-    Read-through ``ObjectStore.get`` so the route works for any backend
+    Read-through ``ObjectStorage.get`` so the route works for any backend
     — Disk, Google Drive, S3 — without route changes.  Content-Disposition
     set to ``inline`` so PDFs open in the browser tab instead of forcing
     a download; the dashboard can override with a download button if
     needed.
     """
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
     wo = await _require_visible_work_order(work_order_id, user, tenant_db)
     att = await tenant_db.get_work_order_attachment(attachment_id)
     if not att or att.get("work_order_id") != work_order_id:
@@ -706,7 +706,7 @@ async def download_attachment(
         service_date=wo.get("service_date"),
         vendor_name=wo.get("vendor_name", ""),
     )
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     data = store.get(folder, att["file_name"])
     if data is None:
         raise HTTPException(status_code=404, detail="File not found in storage")
@@ -727,7 +727,7 @@ async def delete_attachment(
     user: dict = Depends(require_permission("can_work_orders_all")),
     tenant_db=Depends(get_tenant_db),
 ):
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
     wo = await _require_visible_work_order(work_order_id, user, tenant_db)
     att = await tenant_db.get_work_order_attachment(attachment_id)
     if not att or att.get("work_order_id") != work_order_id:
@@ -744,7 +744,7 @@ async def delete_attachment(
         vendor_name=wo.get("vendor_name", ""),
     )
     try:
-        store = await get_object_store_for_account(user["account_id"], tenant_db)
+        store = await get_object_storage_for_account(user["account_id"], tenant_db)
         store.delete(folder, att["file_name"])
     except Exception:
         # Continue with DB delete even if storage delete fails — better

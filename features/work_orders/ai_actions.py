@@ -527,12 +527,12 @@ async def _undo_create_work_order(result, payload, account_id, user_context, db)
         return {"undone": 0, "target_type": "work_order",
                 "message": "That work order was already deleted."}
 
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
     from features.work_orders.storage import (
         resolve_company_folder, work_order_folder,
     )
     try:
-        store = await get_object_store_for_account(account_id, db)
+        store = await get_object_storage_for_account(account_id, db)
         company_folder = await resolve_company_folder(
             db, account_id, wo.get("company_code", ""),
         )

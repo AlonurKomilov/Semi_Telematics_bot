@@ -20,13 +20,13 @@ async def _archive_driver_folders(
     cleanup is best-effort.
     """
     from datetime import datetime, timezone
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
     from features.work_orders.storage import (
         driver_docs_archive_bucket, driver_docs_bucket, resolve_company_folder,
     )
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    store = await get_object_store_for_account(account_id, tenant_db)
+    store = await get_object_storage_for_account(account_id, tenant_db)
     archived: list[str] = []
 
     for company_code in removed_company_codes:

@@ -142,7 +142,7 @@ async def save_camera_image(
 ) -> str:
     """Save dashcam screenshot to the account's configured object store.
 
-    Routes through ``get_object_store_for_account`` so when an account
+    Routes through ``get_object_storage_for_account`` so when an account
     has Google Drive connected, dashcam captures land in their Drive
     instead of platform disk.  Returns the URL / object-store path
     (or Drive file ID for GDrive backends) to persist in the DB.
@@ -156,7 +156,7 @@ async def save_camera_image(
     per-company Drive folder; empty falls back to ``unnamed-company``.
     """
     try:
-        from adapters.storage.object_store import get_object_store_for_account
+        from adapters.storage.object_storage import get_object_storage_for_account
         from features.work_orders.storage import resolve_company_folder
         safe_name = vehicle_name.replace("/", "_").replace("\\", "_")
         # Bucket path mirrors the work-orders layout so a user browsing
@@ -181,14 +181,14 @@ async def save_camera_image(
         # Redundant on disk, self-describing everywhere else.
         key = f"{company_folder}_{safe_name}_{camera_type}_{check_id}.jpg" \
             if check_id else f"{safe_name}_{camera_type}.jpg"
-        store = await get_object_store_for_account(account_id, tenant_db)
+        store = await get_object_storage_for_account(account_id, tenant_db)
         saved = store.put(bucket, key, image_bytes)
         # Cloud sync (hybrid accounts only; no-op elsewhere).  Safe to
         # enqueue ONLY because the key is per-check now — with the shared
         # key the worker would have deleted a local file that up to 366
         # other check rows still pointed at.
         if saved and check_id:
-            from capabilities.object_store.tracking import track_for_sync_if_hybrid
+            from capabilities.object_storage.tracking import track_for_sync_if_hybrid
             await track_for_sync_if_hybrid(
                 store, bucket, key, saved,
                 entity_type="camera_check", entity_id=int(check_id),

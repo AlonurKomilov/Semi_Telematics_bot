@@ -511,12 +511,12 @@ async def upload_driver_document(
     Pipeline:
       1. Validate doc_type + content-type + size cap
       2. Enforce per-account storage quota (local backend only)
-      3. Upload bytes via ``get_object_store_for_account`` — picks
+      3. Upload bytes via ``get_object_storage_for_account`` — picks
          Google Drive if connected, local disk otherwise
       4. Record DB row with object_key + drive_file_id
     """
-    from adapters.storage.object_store import get_object_store_for_account
-    from capabilities.object_store.tracking import track_for_sync_if_hybrid
+    from adapters.storage.object_storage import get_object_storage_for_account
+    from capabilities.object_storage.tracking import track_for_sync_if_hybrid
 
     await _require_driver_visibility(user_id, user, platform_db)
 
@@ -576,7 +576,7 @@ async def upload_driver_document(
     folder = driver_docs_bucket(company_folder, user_id)
     object_key = f"{doc_type}_{stamp}_{safe_name}"
 
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     try:
         store.put(folder, object_key, raw)
     except Exception:
@@ -641,7 +641,7 @@ async def download_driver_document(
 ):
     """Return the document bytes inline.  Drivers may only read their
     own documents; admins read any in their account."""
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
 
     doc = await platform_db.get_document(doc_id)
     if not doc or doc.account_id != user["account_id"]:
@@ -649,7 +649,7 @@ async def download_driver_document(
     # Driver-self visibility check.
     await _require_driver_visibility(doc.user_id, user, platform_db)
 
-    store = await get_object_store_for_account(user["account_id"], tenant_db)
+    store = await get_object_storage_for_account(user["account_id"], tenant_db)
     try:
         if doc.drive_file_id and hasattr(store, "get_by_id"):
             data = store.get_by_id(doc.drive_file_id)
@@ -682,7 +682,7 @@ async def delete_driver_document(
     then attempts to delete the underlying object — if storage
     delete fails the DB row is still gone but an orphan stays in
     the bucket (cleaned by a future ``purge_orphan_docs`` task)."""
-    from adapters.storage.object_store import get_object_store_for_account
+    from adapters.storage.object_storage import get_object_storage_for_account
 
     doc = await platform_db.get_document(doc_id)
     if not doc or doc.account_id != user["account_id"]:
@@ -692,7 +692,7 @@ async def delete_driver_document(
     # Best-effort object delete — DB is the source of truth for
     # "this row was deleted"; orphan cleanup is a separate concern.
     try:
-        store = await get_object_store_for_account(user["account_id"], tenant_db)
+        store = await get_object_storage_for_account(user["account_id"], tenant_db)
         store.delete(doc.bucket, doc.object_key)
     except Exception:
         logger.warning(

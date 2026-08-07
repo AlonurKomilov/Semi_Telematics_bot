@@ -111,7 +111,7 @@ async def _save_parking_map(
     back to the legacy vehicle key, which is correct ONLY for a caller
     that genuinely has no event yet.
 
-    Routes through ``get_object_store_for_account`` so when an account
+    Routes through ``get_object_storage_for_account`` so when an account
     has connected Google Drive, parking-map screenshots land in their
     Drive at the same hierarchy used by work orders and dashcam
     captures.  ``tenant_db`` is passed in by the caller (parking
@@ -121,15 +121,15 @@ async def _save_parking_map(
     ``company_code`` routes the image into the per-company Drive
     folder; empty falls back to ``unnamed-company``.
 
-    Returns the URL/object-store path on success, or "" on failure.
+    Returns the URL/object-storage path on success, or "" on failure.
     """
     import asyncio
     map_bytes = await asyncio.to_thread(_render_parking_map, lat, lng)
     if not map_bytes:
         return ""
     try:
-        from adapters.storage.object_store import get_object_store_for_account
-        from capabilities.object_store.tracking import track_for_sync_if_hybrid
+        from adapters.storage.object_storage import get_object_storage_for_account
+        from capabilities.object_storage.tracking import track_for_sync_if_hybrid
         from features.work_orders.storage import resolve_company_folder
         safe_vid = vehicle_id.replace("/", "_").replace("\\", "_")
         # Mirrors the work-orders + camera-images layout so a user
@@ -140,7 +140,7 @@ async def _save_parking_map(
         )
         bucket = f"{company_folder}/parking-maps"
         key = f"{safe_vid}-{event_id}.png" if event_id else f"{safe_vid}.png"
-        store = await get_object_store_for_account(account_id, tenant_db)
+        store = await get_object_storage_for_account(account_id, tenant_db)
         saved = store.put(bucket, key, map_bytes)
         # Hand the file to the cloud-sync queue on a hybrid account.  A
         # no-op on disk/gdrive.  Only possible per-event: the repointer
