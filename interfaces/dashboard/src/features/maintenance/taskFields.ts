@@ -132,3 +132,67 @@ export function _isOverdueOrApproaching(t: MaintenanceTask): boolean {
   }
   return false;
 }
+
+
+// ── Seeding the edit form from a saved task ─────────────────────────
+//
+// The form holds PERIODS ("due in N miles"); the task holds ABSOLUTE
+// targets ("due at 412,000 mi").  Opening a task converts one to the
+// other, and these are the three calculations that conversion is made
+// of — pulled out of the imperative block that did them inline so the
+// arithmetic can be tested without rendering a drawer.
+//
+// Extracted BEFORE the detail sheet moves to its own component, on
+// purpose: the previous stage of this split shipped a silent bug
+// because the behaviour it changed had nothing asserting it.
+
+/**
+ * Which trigger tab a saved task opens on.
+ *
+ * Preference order date → miles → hours, falling back to date so the
+ * drawer always opens on a sane view rather than a blank one.
+ */
+export function initialTriggerMode(t: {
+  due_date?: string | null;
+  due_miles?: number | null;
+  due_engine_hours?: number | null;
+}): TriggerMode {
+  if (t.due_date) return 'date';
+  if (t.due_miles != null) return 'miles';
+  if (t.due_engine_hours != null) return 'hours';
+  return 'date';
+}
+
+/**
+ * Stored cents → the dollars string the cost field shows.
+ *
+ * Trailing ``.00`` is dropped so a round number reads "250" rather than
+ * "250.00"; anything with cents keeps both decimals.
+ */
+export function centsToDollars(cents: number | null | undefined): string {
+  if (cents == null) return '';
+  return (cents / 100).toFixed(2).replace(/\.00$/, '');
+}
+
+/**
+ * "Due AT 412,000" + "currently 408,150" → "3850" — what the period
+ * field shows.
+ *
+ * Clamped at 0: an overdue task shows 0 remaining, never a negative
+ * period, because the field means "how much further" and there is no
+ * such thing as minus 200 miles to go.  Rounded, because the inputs are
+ * whole units and a live odometer arrives fractional.
+ *
+ * Returns the ABSOLUTE value as a string when there is no current
+ * reading to subtract from — a task with no odometer snapshot shows its
+ * raw target rather than nothing at all. Used for miles and for engine
+ * hours, which is why it is one function and not two.
+ */
+export function remainingFrom(
+  due: number | null | undefined,
+  current: number | null | undefined,
+): string {
+  if (!due) return '';
+  if (current == null) return String(due);
+  return String(Math.max(0, Math.round(due - current)));
+}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { usePreference } from '../../preferences';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -46,6 +46,7 @@ import { makeColumns } from './columns';
 import AddTaskDialog from './AddTaskDialog';
 import {
   STATUS_OPTIONS, STATUS_LABELS, PRIORITY_ITEMS, STATUS_ITEMS, CLOSED_STATUSES,
+  initialTriggerMode, centsToDollars, remainingFrom,
   type TriggerMode,
   _periodDaysToDueDate, _dueDateToPeriodDays, _formatDate, _todayLabel,
   _isOverdueOrApproaching,
@@ -211,6 +212,7 @@ export default function Tasks() {
   // is attached to — drives the "current: 245,678 mi" hint and lets
   // the +3k/+5k preset buttons add to the real odometer instead of to
   // whatever stale value is already in the field.
+  const odometerFor = useRef<number | null>(null);
   const [eOdometer, setEOdometer] = useState<number | null>(null);
   const [eEngineHours, setEEngineHours] = useState<number | null>(null);
 
@@ -279,6 +281,10 @@ export default function Tasks() {
   // "miles remaining" rather than the raw absolute target.
   // Date is similarly converted to "days remaining".
   const openTaskForEdit = (t: MaintenanceTask) => {
+    // Which task the in-flight odometer request belongs to.  A ref, not
+    // state: it must be readable by a promise that resolves long after
+    // the render that started it.
+    odometerFor.current = t.id;
     setSelected(t);
     setEStatus(t.status);
     setEType(t.task_type || 'inspection');
@@ -288,11 +294,7 @@ export default function Tasks() {
     // Infer the initial trigger view from what the task actually has.
     // Preference order: date > miles > hours.  Falls back to date so
     // the drawer always opens with a sane view.
-    const initialMode: TriggerMode =
-      t.due_date            ? 'date'
-      : t.due_miles != null ? 'miles'
-      : t.due_engine_hours != null ? 'hours'
-      : 'date';
+    const initialMode = initialTriggerMode(t);
     setETriggerMode(initialMode);
     // Initial repeat-checkbox state reflects the existing recurrence
     // for the chosen dimension.  Switching tabs after this will
@@ -303,27 +305,19 @@ export default function Tasks() {
       : t.recur_interval_engine_hours != null,
     );
     // Cost — display as dollars (cents / 100) with up to 2 decimals.
-    setECost(
-      t.cost_cents != null
-        ? (t.cost_cents / 100).toFixed(2).replace(/\.00$/, '')
-        : '',
-    );
+    setECost(centsToDollars(t.cost_cents));
     setEVendor(t.vendor_name || '');
     // Period from the task's own engine-hours snapshot (best signal
     // without a live endpoint).  When no snapshot, fall back to
     // showing the absolute value.
     const baseHours = t.last_engine_hours ?? null;
     setEEngineHours(baseHours);
-    if (t.due_engine_hours && baseHours != null) {
-      setEDueEngineHours(String(Math.max(0, Math.round(t.due_engine_hours - baseHours))));
-    } else {
-      setEDueEngineHours(t.due_engine_hours ? String(t.due_engine_hours) : '');
-    }
+    setEDueEngineHours(remainingFrom(t.due_engine_hours, baseHours));
     // Miles period requires the live odometer, which we fetch async.
     // Seed with the absolute value first; the .then() below replaces
     // it once the odometer lands.
     setEOdometer(null);
-    setEDueMiles(t.due_miles ? String(t.due_miles) : '');
+    setEDueMiles(remainingFrom(t.due_miles, null));
     if (t.vehicle_name) {
       void apiJSON<{
         odometer_miles: number | null;
@@ -331,24 +325,24 @@ export default function Tasks() {
       }>(
         '/maintenance/odometer/' + encodeURIComponent(t.vehicle_name),
       ).then((d) => {
+        // ⚠️ The response may belong to a task the operator has already
+        // navigated away from.  Open A, click B before A's odometer
+        // lands, and without this guard A's reading overwrites B's
+        // fields — a plausible WRONG MILEAGE sitting in an open form,
+        // which is then saved.  Nothing about it looks like an error.
+        if (odometerFor.current !== t.id) return;
         const odo = d.odometer_miles ?? null;
         setEOdometer(odo);
-        if (odo != null && t.due_miles) {
-          setEDueMiles(String(Math.max(0, Math.round(t.due_miles - odo))));
-        }
+        if (odo != null) setEDueMiles(remainingFrom(t.due_miles, odo));
         // Prefer the live engine-hours reading over the task's stored
         // snapshot when the warehouse has a fresher value.  Falls back
         // to last_engine_hours (already seeded above) when null.
         const liveHrs = d.engine_hours ?? null;
         if (liveHrs != null) {
           setEEngineHours(liveHrs);
-          if (t.due_engine_hours) {
-            setEDueEngineHours(
-              String(Math.max(0, Math.round(t.due_engine_hours - liveHrs))),
-            );
-          }
+          setEDueEngineHours(remainingFrom(t.due_engine_hours, liveHrs));
         }
-      }).catch(() => setEOdometer(null));
+      }).catch(() => { if (odometerFor.current === t.id) setEOdometer(null); });
     }
   };
 
