@@ -224,8 +224,14 @@ assets earn the grain ladder:**
   provider cannot hand it back): position, speed, fuel, odometer,
   health gauges.  Assets get the full grain cascade.
 - **Log** — events at full fidelity (`safety_event_log`,
-  `vehicle_fault_log`); never resampled, their COUNTS ride the
-  aggregate tiers (`harsh_event_count`, `fault_count_eod`).
+  `vehicle_fault_log`, `device_event_log`); never resampled, their
+  COUNTS ride the aggregate tiers (`harsh_event_count`,
+  `fault_count_eod`).  `device_event_log` is the identity watch: the
+  ingest appends a row whenever an anchor behind a provider vehicle id
+  moves — VIN (`vin_change`: different truck), gateway serial
+  (`gateway_swap`: different hardware), or an implausible odometer jump
+  (`odo_rebase`: different scale — truck 128's silent scale change
+  became a 337,931-mile month) — and tells the operator via Telegram.
 - **Cache** — re-fetchable convenience kept for speed
   (`vehicle_health_live`, `vehicle_fault_live`, `weather_live`,
   `efficiency_live`, `geofence_definitions`); one current row —
@@ -275,7 +281,7 @@ vs `freshness_sla_min`. A dataset can no longer die silently.
 
 | dataset | tables | owner |
 |---|---|---|
-| vehicles.state / health / faults | vehicle_state, vehicle_health_live, vehicle_fault_live, vehicle_fault_log | features/vehicles |
+| vehicles.state / health / faults | vehicle_state_live/minute, vehicle_health_live, vehicle_fault_live, vehicle_fault_log (+ device_event_log, appended by state ingest's identity watch) | features/vehicles |
 | vehicles.weather / efficiency | weather_live, efficiency_live | features/vehicles (account-wide *vehicle* aggregates — previously unowned) |
 | events.safety | safety_event_log | features/events (docs/FEATURES.md "that's platform" line is superseded) |
 | drivers.efficiency | driver_efficiency_day | features/drivers |

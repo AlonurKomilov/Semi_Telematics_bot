@@ -41,6 +41,9 @@ _EXTRA_COMMENTS = {
     },
     "ingest_runs":
         f"warehouse machinery: day-grain ACQUIRE ledger (dataset_key × account × day) · {_SSOT}",
+    "device_event_log":
+        f"warehouse log: identity events — vin_change / gateway_swap / "
+        f"odo_rebase, appended by the ingest's identity watch · {_SSOT}",
     "ingest_orphans":
         f"warehouse machinery: identities the registry could not resolve at ingest · {_SSOT}",
 }

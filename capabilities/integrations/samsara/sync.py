@@ -302,6 +302,23 @@ async def ingest_vehicle_state(account_id: int) -> int:
                     "orphan quarantine write failed acct=%d", account_id,
                 )
 
+    # ── Identity watch: hardware changes become recorded events, not
+    # data mysteries (128's odometer scale change went unseen for a
+    # day; a VIN change means the ID now points at a DIFFERENT truck).
+    identity_events: list[dict] = []
+    try:
+        _ident = await tenant.get_identity_map(account_id)
+        _prev = {str(r.get("vehicle_id") or ""): r
+                 for r in await tenant.get_vehicle_state(account_id)}
+        _odo_by_ref = {str(r.get("vehicle_id") or ""): r.get("odometer_mi")
+                       for r in rows}
+        identity_events = _detect_identity_events(
+            fleet, _ident, _prev, _odo_by_ref,
+            datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    except Exception:
+        logger.debug("identity watch skipped acct=%d", account_id,
+                     exc_info=True)
+
     n = await tenant.upsert_vehicle_state(account_id, rows)
     logger.info(
         "ingest_vehicle_state acct=%d persisted=%d with_odometer=%d "
@@ -370,6 +387,22 @@ async def ingest_vehicle_state(account_id: int) -> int:
             "registry upsert from ingest FAILED acct=%d (%d vehicles) — "
             "registry now stale", account_id, len(registry_rows),
         )
+    if identity_events:
+        try:
+            await tenant.record_device_events(account_id, identity_events)
+            from infra.operator_notify import send_operator_message
+            _KIND_WORDS = {"vin_change": "VIN CHANGED (different truck?)",
+                           "gateway_swap": "gateway swapped",
+                           "odo_rebase": "odometer changed scale"}
+            for e in identity_events[:5]:
+                await send_operator_message(
+                    f"🔧 {e['vehicle_name']}: "
+                    f"{_KIND_WORDS.get(e['kind'], e['kind'])} — "
+                    f"{e['old_value']} → {e['new_value']}")
+        except Exception:
+            logger.exception(
+                "device-event record/notify failed acct=%d", account_id)
+
     # Reconcile billing quantity with the freshly-ingested activity.
     # The provider only PATCHes Stripe when the active-vehicle count
     # actually changed, so most ingests are no-ops; failures here must
@@ -387,6 +420,60 @@ async def ingest_vehicle_state(account_id: int) -> int:
             account_id,
         )
     return n
+
+
+def _detect_identity_events(fleet, ident, prev_live, odo_by_ref, now_iso):
+    """Pure diff: incoming fleet vs stored identity anchors + previous
+    live odometers.  Returns device_event_log rows.  The odometer test
+    is gap-aware (same physics as the step guard): a jump is plausible
+    only if the truck could have driven it since its previous reading.
+    """
+    from capabilities.data_lifecycle.staleness import data_age_minutes
+
+    events = []
+    for v in fleet:
+        ref = str(v.get("id") or "")
+        if not ref or ref not in ident:
+            continue
+        anchor = ident[ref]
+        name = str(v.get("name") or anchor["unit_number"])
+        vin_new = str(v.get("vin") or "")
+        if vin_new in ("", "N/A"):
+            vin_new = ""
+        if vin_new and anchor["vin"] and vin_new != anchor["vin"]:
+            events.append({
+                "registry_id": anchor["registry_id"], "vehicle_id": ref,
+                "vehicle_name": name, "kind": "vin_change",
+                "old_value": anchor["vin"], "new_value": vin_new,
+                "observed_at": now_iso,
+            })
+        gw_new = str(v.get("gateway_serial") or "")
+        if gw_new and anchor["gateway_serial"] and \
+                gw_new != anchor["gateway_serial"]:
+            events.append({
+                "registry_id": anchor["registry_id"], "vehicle_id": ref,
+                "vehicle_name": name, "kind": "gateway_swap",
+                "old_value": anchor["gateway_serial"], "new_value": gw_new,
+                "observed_at": now_iso,
+            })
+        prev = prev_live.get(ref)
+        odo_new = odo_by_ref.get(ref)
+        if prev and prev.get("odometer_mi") is not None \
+                and odo_new is not None:
+            delta = float(odo_new) - float(prev["odometer_mi"])
+            gap_min = data_age_minutes(str(prev.get("source_ts") or
+                                           prev.get("captured_at") or ""))
+            plausible = max((gap_min or 1.0) / 60.0 * 90.0 + 2.0, 50.0)
+            if abs(delta) > plausible:
+                events.append({
+                    "registry_id": anchor["registry_id"],
+                    "vehicle_id": ref, "vehicle_name": name,
+                    "kind": "odo_rebase",
+                    "old_value": str(int(prev["odometer_mi"])),
+                    "new_value": str(int(odo_new)),
+                    "observed_at": now_iso,
+                })
+    return events
 
 
 async def ingest_safety_events(account_id: int, *, days: int = 2) -> int:

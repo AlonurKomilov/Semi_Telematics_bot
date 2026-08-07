@@ -76,3 +76,40 @@ class WarehouseLedgersMixin(_MixinBase):
         )
         await self._db.commit()
         return len(values)
+
+    async def record_device_events(self, account_id: int, events) -> int:
+        """Append identity events (vin_change / gateway_swap /
+        odo_rebase) — deduped on the exact transition, so re-detecting
+        the same change is a no-op, never a spam stream."""
+        n = 0
+        for e in events:
+            await self._db.execute(
+                "INSERT INTO device_event_log "
+                "(account_id, registry_id, vehicle_id, vehicle_name, "
+                " kind, old_value, new_value, observed_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+                "ON CONFLICT (account_id, vehicle_id, kind, old_value, "
+                "new_value) DO NOTHING",
+                (account_id, e.get("registry_id"),
+                 str(e.get("vehicle_id") or ""),
+                 str(e.get("vehicle_name") or ""),
+                 str(e.get("kind") or ""),
+                 str(e.get("old_value") or ""),
+                 str(e.get("new_value") or ""),
+                 str(e.get("observed_at") or "")),
+            )
+            n += 1
+        await self._db.commit()
+        return n
+
+    async def get_device_events(self, account_id: int, *, limit: int = 100):
+        cur = await self._db.execute(
+            "SELECT vehicle_id, vehicle_name, kind, old_value, new_value, "
+            "observed_at FROM device_event_log WHERE account_id = ? "
+            "ORDER BY observed_at DESC LIMIT ?",
+            (account_id, limit),
+        )
+        cols = ("vehicle_id", "vehicle_name", "kind", "old_value",
+                "new_value", "observed_at")
+        return [dict(zip(cols, r)) for r in await cur.fetchall()]
+

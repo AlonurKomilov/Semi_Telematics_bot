@@ -8766,3 +8766,37 @@ async def migrate_fault_log_name(conn) -> None:
         finally:
             await raw.execute("SELECT pg_advisory_unlock(478190)")
 
+
+@_register("191_identity_watch")
+async def migrate_identity_watch(conn) -> None:
+    """Identity anchors + the device event log.
+
+    Behind one provider vehicle id sit three identities that can each
+    change independently: the VIN (which TRUCK), the gateway serial
+    (which HARDWARE) and the odometer source (which SCALE).  Truck 128
+    proved the cost of not tracking them: a scale change surfaced as a
+    337,931-mile month.  The registry gains ``gateway_serial`` (VIN
+    already lives there) and the warehouse gains the log the ingest
+    appends whenever an anchor moves.
+    """
+    await conn.execute(
+        "ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS "
+        "gateway_serial TEXT NOT NULL DEFAULT ''"
+    )
+    await conn.execute(
+        """CREATE TABLE IF NOT EXISTS warehouse.device_event_log (
+               id BIGSERIAL PRIMARY KEY,
+               account_id INTEGER NOT NULL,
+               registry_id INTEGER,
+               vehicle_id TEXT NOT NULL,
+               vehicle_name TEXT NOT NULL DEFAULT '',
+               kind TEXT NOT NULL,
+               old_value TEXT NOT NULL DEFAULT '',
+               new_value TEXT NOT NULL DEFAULT '',
+               observed_at TEXT NOT NULL,
+               UNIQUE (account_id, vehicle_id, kind, old_value, new_value)
+           )"""
+    )
+    await conn.commit()
+    logger.info("Migration 191: identity watch ready")
+

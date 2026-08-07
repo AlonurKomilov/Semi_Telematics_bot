@@ -57,7 +57,7 @@ _FIELDS = (
 _VALID_TYPES = ("truck", "trailer", "other")
 
 # Spec fields an integration sync may fill on an existing (matched) row.
-_SPEC_FILL = ("vin", "plate_number", "make", "model", "year")
+_SPEC_FILL = ("vin", "plate_number", "make", "model", "year", "gateway_serial")
 
 
 def _model_year(value: Any) -> int | None:
@@ -740,10 +740,11 @@ class VehiclesRegistryMixin(_MixinBase):
                     await self._db.execute(
                         """INSERT INTO vehicles
                            (account_id, company_code, unit_number, vehicle_type,
-                            vin, plate_number, make, model, year, status, source,
+                            vin, plate_number, make, model, year, gateway_serial,
+                            status, source,
                             telematics_ref, notes, is_active, field_provenance,
                             created_at, updated_at)
-                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
                            ON CONFLICT(account_id, company_code, unit_number)
                            DO NOTHING""",
                         (
@@ -754,6 +755,7 @@ class VehiclesRegistryMixin(_MixinBase):
                             str(r.get("make") or ""),
                             str(r.get("model") or ""),
                             _model_year(r.get("year")),
+                            str(r.get("gateway_serial") or ""),
                             str(r.get("status") or "active"),
                             source,
                             str(r.get("telematics_ref") or ""),
@@ -816,3 +818,29 @@ class VehiclesRegistryMixin(_MixinBase):
                     conflict_ops.append((match.id, conflicts, cleared))
         await recon.sync_batch(self, account_id, "vehicle", conflict_ops)
         return written
+
+    async def get_identity_map(self, account_id: int) -> dict:
+        """``{telematics_ref: {vin, gateway_serial, registry_id,
+        unit_number, company_code}}`` — the identity anchors the ingest
+        compares each tick to turn silent hardware changes into
+        recorded events (device_event_log)."""
+        cur = await self._db.execute(
+            "SELECT telematics_ref, vin, gateway_serial, id, unit_number, "
+            "company_code FROM vehicles "
+            "WHERE account_id = ? AND telematics_ref <> ''",
+            (account_id,),
+        )
+        cols = ("telematics_ref", "vin", "gateway_serial", "id",
+                "unit_number", "company_code")
+        out = {}
+        for r in await cur.fetchall():
+            d = dict(zip(cols, r))
+            out[str(d["telematics_ref"])] = {
+                "vin": str(d["vin"] or ""),
+                "gateway_serial": str(d["gateway_serial"] or ""),
+                "registry_id": d["id"],
+                "unit_number": str(d["unit_number"] or ""),
+                "company_code": str(d["company_code"] or ""),
+            }
+        return out
+
