@@ -243,7 +243,7 @@ async def test_no_warehouse_table_shadows_in_public(pg_db):
         "vehicle_state_live", "vehicle_state_minute",
         "vehicle_state_hour", "vehicle_state_day", "vehicle_state_week",
         "vehicle_health_live", "vehicle_fault_live",
-        "vehicle_fault_detail", "safety_event_log", "geofence_definitions",
+        "vehicle_fault_log", "safety_event_log", "geofence_definitions",
         "ingest_runs", "driver_efficiency_day", "weather_live",
         "efficiency_live", "ingest_orphans", "vehicle_timeline",
         "vehicle_state", "vehicle_state_snapshot", "vehicle_telemetry",
@@ -301,7 +301,7 @@ async def test_every_contract_table_carries_the_column(pg_db):
         "vehicle_state_live", "vehicle_state_minute",
         "vehicle_state_hour", "vehicle_state_day", "vehicle_state_week",
         "vehicle_health_live", "vehicle_fault_live",
-        "vehicle_fault_detail", "safety_event_log",
+        "vehicle_fault_log", "safety_event_log",
         "driver_efficiency_day", "geofence_definitions",
         "weather_live", "efficiency_live",
     }

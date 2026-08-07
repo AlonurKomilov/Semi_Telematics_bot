@@ -47,7 +47,7 @@ _TABLES = (
     "safety_event_log",
     "vehicle_health_live",
     "vehicle_fault_live",
-    "vehicle_fault_detail",
+    "vehicle_fault_log",
     "weather_live",
 )
 

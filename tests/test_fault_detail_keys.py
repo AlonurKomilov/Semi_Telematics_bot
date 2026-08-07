@@ -1,6 +1,6 @@
 """The DTC lifecycle store must accept the payload Samsara actually sends.
 
-``vehicle_fault_detail`` sat at zero rows for its whole life — platform
+``vehicle_fault_log`` sat at zero rows for its whole life — platform
 wide — because the extraction read ``id`` / ``spn`` / ``fmi`` while the
 live payload spells them ``spnId`` / ``fmiId`` and carries no ``id`` at
 all (verified against production: 66 DTCs across 32 faulted vehicles,
@@ -57,12 +57,12 @@ def test_truly_keyless_dtc_yields_nothing():
 async def test_live_shaped_dtcs_actually_land_in_the_table(pg_db):
     """End to end: the exact production payload shape produces rows."""
     acct = 42
-    new_obs, _cleared = await pg_db.upsert_vehicle_fault_details(
+    new_obs, _cleared = await pg_db.upsert_vehicle_fault_log(
         acct, {"veh-1": [_LIVE_DTC]},
     )
     assert new_obs == 1
     cur = await pg_db._db.execute(
-        "SELECT dtc_id, spn, fmi, description FROM vehicle_fault_detail "
+        "SELECT dtc_id, spn, fmi, description FROM vehicle_fault_log "
         "WHERE account_id = ? AND vehicle_id = ?",
         (acct, "veh-1"),
     )

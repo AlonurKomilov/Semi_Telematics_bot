@@ -57,7 +57,7 @@ async def _set_known_faults(account_id: int, vid: str, codes: set[str]):
 # ── DB dedup shadow (parallel run) ─────────────────────
 #
 # The plan replaces Redis ``_known_faults`` with the DB query
-# ``vehicle_fault_detail.cleared_at IS NULL``.  We run both in
+# ``vehicle_fault_log.cleared_at IS NULL``.  We run both in
 # parallel for one release: Redis remains authoritative for the
 # alerting decision (so behaviour is bit-for-bit identical), and the
 # DB-backed view is sampled for divergence so we can flip authority
@@ -69,7 +69,7 @@ async def _set_known_faults(account_id: int, vid: str, codes: set[str]):
 async def _shadow_compare_dedup(
     account_id: int, vehicle_id: str, redis_codes: set[str],
 ) -> None:
-    """Compare Redis dedup against ``vehicle_fault_detail`` and log diff.
+    """Compare Redis dedup against ``vehicle_fault_log`` and log diff.
 
     Pure observation — never raises, never affects alerting.  The DB
     set comes from the *active* (``cleared_at IS NULL``) DTC ids; the

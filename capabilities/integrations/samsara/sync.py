@@ -534,7 +534,7 @@ def _faulted_to_snapshot_row(v: dict[str, Any]) -> dict[str, Any]:
 
 async def ingest_vehicle_faults(account_id: int) -> int:
     """Pull current faulted vehicles + critical list from Samsara and
-    refresh both ``vehicle_fault_live`` and ``vehicle_fault_detail``
+    refresh both ``vehicle_fault_live`` and ``vehicle_fault_log``
     for the given account."""
     tenant = await get_tenant_db(account_id)
     if tenant is None:
@@ -577,7 +577,7 @@ async def ingest_vehicle_faults(account_id: int) -> int:
         per_vehicle[vid] = []
 
     try:
-        new_obs, new_cleared = await tenant.upsert_vehicle_fault_details(account_id, per_vehicle)
+        new_obs, new_cleared = await tenant.upsert_vehicle_fault_log(account_id, per_vehicle)
         logger.info(
             "ingest_vehicle_faults acct=%d snapshot=%d new_dtcs=%d cleared=%d",
             account_id, n, new_obs, new_cleared,
@@ -592,7 +592,7 @@ async def _previously_active_vehicle_ids(tenant, account_id: int) -> set[str]:
     Used to clear DTCs for trucks that dropped out of the faulted set."""
     cur = await tenant._db.execute(  # type: ignore[attr-defined]
         """
-        SELECT DISTINCT vehicle_id FROM vehicle_fault_detail
+        SELECT DISTINCT vehicle_id FROM vehicle_fault_log
         WHERE account_id = ? AND cleared_at IS NULL
         """,
         (account_id,),

@@ -3,7 +3,7 @@
 Two shapes of death, both seen in production this arc:
 
   * SILENT — the job runs, writes nothing, forever (engine_state's
-    column empty for the life of its table; vehicle_fault_detail at
+    column empty for the life of its table; vehicle_fault_log at
     zero rows platform-wide).
   * STALE — the writes flow but the world-time stops moving (the
     frozen odometer that read as fresh for 43 hours, then weeks).

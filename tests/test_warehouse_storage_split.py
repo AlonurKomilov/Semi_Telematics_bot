@@ -24,11 +24,11 @@ EXPECTED = {
     "vehicle_state_minute_day_summary", "query_vehicle_state_history",
     "upsert_vehicle_state_day", "prune_vehicle_state_day",
     "upsert_vehicle_state_week", "prune_vehicle_state_week",
-    "prune_vehicle_fault_detail", "get_vehicle_state_day",
+    "prune_vehicle_fault_log", "get_vehicle_state_day",
     "get_vehicle_usage_summary", "get_account_utilization_summary",
     "prune_vehicle_state_hour", "upsert_vehicle_health_live",
     "get_vehicle_health_live", "upsert_vehicle_fault_live",
-    "upsert_vehicle_fault_details", "get_vehicles_with_faults_warehouse",
+    "upsert_vehicle_fault_log", "get_vehicles_with_faults_warehouse",
     "get_vehicle_fault_live_by_name", "get_active_fault_dtc_ids",
     # safety.py
     "insert_safety_events", "count_safety_events_in_window",

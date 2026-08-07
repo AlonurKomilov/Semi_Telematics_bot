@@ -199,7 +199,7 @@ domain, grain declared separately.
 READINGS carries its true grain — tiered assets `<stream>_<grain>`
 (`vehicle_state_hour`, `driver_efficiency_day`), current-row caches
 `<stream>_live` (`vehicle_health_live`, `weather_live`).  Logs and
-catalogs keep kind names (`safety_event_log`, `vehicle_fault_detail`,
+catalogs keep kind names (`safety_event_log`, `vehicle_fault_log`,
 `geofence_definitions`) — grain vocabulary applies to readings, not
 to events or reference data.  Never a role word (PERSONA.md), never a
 `warehouse_` prefix (the schema is the prefix).  "snapshot" is a
@@ -218,7 +218,7 @@ assets earn the grain ladder:**
   provider cannot hand it back): position, speed, fuel, odometer,
   health gauges.  Assets get the full grain cascade.
 - **Log** — events at full fidelity (`safety_event_log`,
-  `vehicle_fault_detail`); never resampled, their COUNTS ride the
+  `vehicle_fault_log`); never resampled, their COUNTS ride the
   aggregate tiers (`harsh_event_count`, `fault_count_eod`).
 - **Cache** — re-fetchable convenience kept for speed
   (`vehicle_health_live`, `vehicle_fault_live`, `weather_live`,
@@ -269,7 +269,7 @@ vs `freshness_sla_min`. A dataset can no longer die silently.
 
 | dataset | tables | owner |
 |---|---|---|
-| vehicles.state / health / faults | vehicle_state, vehicle_health_live, vehicle_fault_live, vehicle_fault_detail | features/vehicles |
+| vehicles.state / health / faults | vehicle_state, vehicle_health_live, vehicle_fault_live, vehicle_fault_log | features/vehicles |
 | vehicles.weather / efficiency | weather_live, efficiency_live | features/vehicles (account-wide *vehicle* aggregates — previously unowned) |
 | events.safety | safety_event_log | features/events (docs/FEATURES.md "that's platform" line is superseded) |
 | drivers.efficiency | driver_efficiency_day | features/drivers |

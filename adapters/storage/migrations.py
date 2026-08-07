@@ -8737,3 +8737,32 @@ async def migrate_cache_grain_names(conn) -> None:
         finally:
             await raw.execute("SELECT pg_advisory_unlock(478189)")
 
+
+@_register("190_fault_log_name")
+async def migrate_fault_log_name(conn) -> None:
+    """Category suffix law completed: logs end in ``_log``.
+
+    ``vehicle_fault_detail`` -> ``vehicle_fault_log`` — its sibling
+    ``safety_event_log`` already wore the suffix.  The rows are fault
+    EPISODES (observed_at -> cleared_at, updated once on clear), which
+    is still a log in the category sense — a maintenance logbook also
+    closes its entries out.  Metadata-only, convergent.
+    """
+    pool = getattr(getattr(conn, "_pool", None), "_pool", None)
+    if pool is None:
+        raise RuntimeError("Migration 190: asyncpg pool unavailable.")
+    async with pool.acquire() as raw:
+        await raw.execute("SELECT pg_advisory_lock(478190)")
+        try:
+            has_old = await raw.fetchval(
+                "SELECT to_regclass('warehouse.vehicle_fault_detail')")
+            has_new = await raw.fetchval(
+                "SELECT to_regclass('warehouse.vehicle_fault_log')")
+            if has_old is not None and has_new is None:
+                await raw.execute(
+                    "ALTER TABLE warehouse.vehicle_fault_detail "
+                    "RENAME TO vehicle_fault_log")
+            logger.info("Migration 190: fault log name converged")
+        finally:
+            await raw.execute("SELECT pg_advisory_unlock(478190)")
+

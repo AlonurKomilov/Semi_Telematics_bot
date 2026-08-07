@@ -121,7 +121,7 @@ from capabilities.data_lifecycle.retention.registry import (  # noqa: E402
 #   vehicle.timeline_hourly -> vehicle_state_hour          (hour roll-up)
 #   vehicle.metrics_daily   -> vehicle_state_day           (day roll-up + EOD odometer)
 #   vehicle.timeline_weekly -> vehicle_state_week          (week roll-up, long horizon)
-#   vehicle.faults          -> vehicle_fault_detail        (CLEARED DTC history only)
+#   vehicle.faults          -> vehicle_fault_log        (CLEARED DTC history only)
 register_target(RetentionTarget(
     "vehicle.timeline_minute", "Vehicle timeline (minute state history)", "tenant",
     lambda db, acct, days: db.prune_vehicle_state_minutes(acct, days_keep=days),
@@ -142,7 +142,7 @@ register_target(RetentionTarget(
 # IS NULL), so live faults are kept regardless of the window.
 register_target(RetentionTarget(
     "vehicle.faults", "Vehicle fault history (cleared DTCs)", "tenant",
-    lambda db, acct, days: db.prune_vehicle_fault_detail(acct, days_keep=days),
+    lambda db, acct, days: db.prune_vehicle_fault_log(acct, days_keep=days),
 ))
 
 # The Vehicle feature's own needs.  (vehicle.metrics_daily's window comes from
@@ -260,7 +260,7 @@ register_dataset(IngestDataset(
     run=_run_vehicle_faults,
     # Both tables this run writes.  fault_snapshot stays FIRST — the
     # watchdog's freshness probe reads tables[0].
-    tables=("vehicle_fault_live", "vehicle_fault_detail"),
+    tables=("vehicle_fault_live", "vehicle_fault_log"),
     freshness_sla_min=60,
     # A fleet with nothing broken reports nothing — an honest zero, not
     # an outage.  This is the dataset the watchdog must never cry over.

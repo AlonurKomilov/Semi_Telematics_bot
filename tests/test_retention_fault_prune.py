@@ -1,6 +1,6 @@
 """The cleared-only fault prune must never delete an ACTIVE fault.
 
-``prune_vehicle_fault_detail`` is the one retention executor with a
+``prune_vehicle_fault_log`` is the one retention executor with a
 conditional (``cleared_at IS NOT NULL``) rather than a flat age cut, so it
 gets its own integration test against real Postgres.
 """
@@ -21,14 +21,14 @@ def _iso(dt: datetime) -> str:
 
 
 @pytest.mark.asyncio
-async def test_prune_fault_detail_keeps_active_and_recent_cleared(pg_db):
+async def test_prune_fault_log_keeps_active_and_recent_cleared(pg_db):
     db = pg_db
     acct = 1
     now = datetime.now(timezone.utc)
 
     async def _insert(dtc_id: str, cleared_at):
         await db._db.execute(
-            "INSERT INTO vehicle_fault_detail "
+            "INSERT INTO vehicle_fault_log "
             "(account_id, vehicle_id, dtc_id, spn, fmi, description, severity, "
             " observed_at, cleared_at, raw_json) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -41,11 +41,11 @@ async def test_prune_fault_detail_keeps_active_and_recent_cleared(pg_db):
     await _insert("cleared_new", _iso(now - timedelta(days=10)))     # cleared < 365d → kept
     await db._db.commit()
 
-    deleted = await db.prune_vehicle_fault_detail(acct, days_keep=365)
+    deleted = await db.prune_vehicle_fault_log(acct, days_keep=365)
     assert deleted == 1  # only the old cleared fault
 
     cur = await db._db.execute(
-        "SELECT dtc_id FROM vehicle_fault_detail WHERE account_id = ? ORDER BY dtc_id",
+        "SELECT dtc_id FROM vehicle_fault_log WHERE account_id = ? ORDER BY dtc_id",
         (acct,),
     )
     remaining = {dict(r)["dtc_id"] for r in await cur.fetchall()}

@@ -90,7 +90,7 @@ async def test_engine_calls_existing_methods_with_resolved_windows():
         async def prune_vehicle_state_day(self, _a, *, days_keep):
             calls["daily"] = days_keep
             return 1
-        async def prune_vehicle_fault_detail(self, _a, *, days_keep):
+        async def prune_vehicle_fault_log(self, _a, *, days_keep):
             calls["fault"] = days_keep
             return 0
         async def prune_driver_efficiency_day(self, _a, *, days_keep):

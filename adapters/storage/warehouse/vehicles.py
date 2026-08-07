@@ -1779,7 +1779,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         return getattr(cur, "rowcount", 0) or 0
 
 
-    async def prune_vehicle_fault_detail(
+    async def prune_vehicle_fault_log(
         self, account_id: int, *, days_keep: int = 365,
     ) -> int:
         """Drop CLEARED fault rows older than the window.
@@ -1791,7 +1791,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         from datetime import timedelta
         cutoff = (datetime.now(timezone.utc) - timedelta(days=days_keep)).isoformat()
         cur = await self._db.execute(
-            "DELETE FROM vehicle_fault_detail "
+            "DELETE FROM vehicle_fault_log "
             "WHERE account_id = ? AND cleared_at IS NOT NULL AND cleared_at < ?",
             (account_id, cutoff),
         )
@@ -2117,7 +2117,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         return out
 
 
-    # ── vehicle_fault_live + vehicle_fault_detail ──────
+    # ── vehicle_fault_live + vehicle_fault_log ──────
 
     async def upsert_vehicle_fault_live(
         self,
@@ -2192,7 +2192,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         return len(values)
 
 
-    async def upsert_vehicle_fault_details(
+    async def upsert_vehicle_fault_log(
         self,
         account_id: int,
         per_vehicle_dtcs: dict[str, list[dict[str, Any]]],
@@ -2246,7 +2246,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             cur = await self._db.execute(
                 f"""
                 SELECT vehicle_id, dtc_id, cleared_at
-                FROM vehicle_fault_detail
+                FROM vehicle_fault_log
                 WHERE account_id = ? AND vehicle_id IN ({placeholders})
                 """,
                 (account_id, *chunk),
@@ -2304,7 +2304,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         if clear_params:
             await self._db.executemany(
                 """
-                UPDATE vehicle_fault_detail
+                UPDATE vehicle_fault_log
                 SET cleared_at = ?
                 WHERE account_id = ? AND vehicle_id = ? AND dtc_id = ?
                   AND cleared_at IS NULL
@@ -2314,7 +2314,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         if insert_params:
             await self._db.executemany(
                 """
-                INSERT INTO vehicle_fault_detail (
+                INSERT INTO vehicle_fault_log (
                     account_id, vehicle_id, dtc_id,
                     spn, fmi, description, severity,
                     observed_at, cleared_at, raw_json
@@ -2325,7 +2325,7 @@ class VehiclesWarehouseMixin(_MixinBase):
         if reopen_params:
             await self._db.executemany(
                 """
-                UPDATE vehicle_fault_detail
+                UPDATE vehicle_fault_log
                 SET cleared_at = NULL, observed_at = ?, raw_json = ?
                 WHERE account_id = ? AND vehicle_id = ? AND dtc_id = ?
                 """,
@@ -2452,7 +2452,7 @@ class VehiclesWarehouseMixin(_MixinBase):
             where.append("vehicle_id = ?")
             args.append(vehicle_id)
         cur = await self._db.execute(
-            f"SELECT dtc_id FROM vehicle_fault_detail WHERE {' AND '.join(where)}",
+            f"SELECT dtc_id FROM vehicle_fault_log WHERE {' AND '.join(where)}",
             tuple(args),
         )
         return {row[0] for row in await cur.fetchall()}
