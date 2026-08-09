@@ -77,6 +77,17 @@ Rules and the incident behind each: [scripts/githooks/README.md](scripts/githook
 
 # Domain SSOTs — read before touching
 
+- **Tenant file layout** (anything that calls `ObjectStorage.put`, any
+  path under `data/userdata/`, the `_generic` holding pen, company
+  folders): [capabilities/object_storage/LAYOUT.md](capabilities/object_storage/LAYOUT.md)
+  is the law. Every tenant file lives under
+  `account-{id}/{COMPANY DISPLAY NAME}/…` — **nothing but a company
+  folder or `_generic` may sit at the account root**, because that tree
+  is mirrored into the customer's own Drive where each top-level folder
+  reads as one of their businesses. Resolve a vehicle's company by
+  telematics id BEFORE unit number (unit numbers are reused across
+  companies). `tests/test_object_storage_layout.py` enforces it.
+
 - **The warehouse** (anything named `warehouse`, tiered history,
   grains live·minute·hour·day·week, the `warehouse.*` Postgres
   schema): [docs/architecture/warehouse.md](docs/architecture/warehouse.md)

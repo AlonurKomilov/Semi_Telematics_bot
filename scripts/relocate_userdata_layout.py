@@ -422,9 +422,18 @@ async def relocate_placeholder_media(
                     folder = folders[ck]
                     break
             if not folder:
+                # We cannot name the company — but there must still be
+                # only ONE holding pen.  Renaming the constant left the
+                # old "unnamed-company" folder standing beside the new
+                # "_generic" one, which is two pens and worse than the
+                # single badly-named one we started with.  Unresolved
+                # files move to the canonical pen; they are still
+                # reported so the pen stays a to-do list.
                 label = " / ".join(i for i in ids if i) or "(no identifier)"
                 unresolved[label] = unresolved.get(label, 0) + 1
-                continue
+                if f"/{GENERIC_COMPANY_FOLDER}/" in stored:
+                    continue                    # already in the pen
+                folder = GENERIC_COMPANY_FOLDER
             # The filename repeats the company deliberately, so a file
             # mailed out of Drive still says whose truck it was.  Moving
             # it without rewriting that prefix would leave the lie
@@ -607,6 +616,99 @@ async def relocate_rootless_applications(conn, apply: bool, log: list[str]) -> i
     return moved
 
 
+# ── Phase H: the pending-upload outbox ──────────────────────────────
+
+async def repoint_sync_queue(conn, apply: bool, log: list[str]) -> int:
+    """Repoint queued uploads at where their file actually is now.
+
+    THE TRAP IN A HYBRID ACCOUNT.  ``object_storage_sync_queue`` is an
+    outbox: it stores the bucket, filename and local path captured when
+    the upload was ENQUEUED.  Moving a file and updating the row that
+    owns it does nothing for a queue entry still describing the old
+    location — the entry is a third reference nobody thinks about.
+
+    Left alone, retrying is worse than doing nothing.  Every stale entry
+    fails on a file that is gone, burning its attempt counter toward the
+    give-up threshold; and any that DID resolve would create the old
+    placeholder folder inside the customer's own Drive — importing the
+    exact mess the relocation just removed.
+
+    The queue is keyed ``(entity_type, entity_id)`` and
+    ``ENTITY_REFERENCE`` maps each type to the table and column holding
+    that entity's real path, so the truth is always re-derivable.  Rows
+    are rebuilt from the owning record rather than string-patched: a
+    patch would have to guess the new company, which the owning row
+    already knows.
+
+    Attempts are reset to 0 — the failures were ours, not the network's,
+    and a file should not inherit a strike count earned by a path we
+    broke.
+    """
+    from capabilities.object_storage.repointers import ENTITY_REFERENCE
+
+    rows = await conn.fetch(
+        "SELECT id, account_id, entity_type, entity_id, bucket, filename, "
+        "local_path FROM object_storage_sync_queue"
+    )
+    fixed = dropped = 0
+    for r in rows:
+        ref = ENTITY_REFERENCE.get(r["entity_type"])
+        if not ref:
+            log.append(f"  [queue] #{r['id']}: unknown entity_type "
+                       f"{r['entity_type']!r} — left as-is")
+            continue
+        table, column, kind = ref
+        if kind != "simple":
+            # A json_slot entity keeps several paths in one column; the
+            # queue row names one file and cannot say which slot.  Rare
+            # (one row today) and safer to report than to guess.
+            if not os.path.isfile(r["local_path"] or ""):
+                log.append(f"  [queue] #{r['id']} ({r['entity_type']}): file "
+                           f"missing and the reference is multi-slot — "
+                           f"needs a look: {r['local_path']}")
+            continue
+        current = await conn.fetchval(
+            f"SELECT {column} FROM {table} WHERE id=$1 AND account_id=$2",
+            r["entity_id"], r["account_id"],
+        )
+        if not current:
+            log.append(f"  [queue] #{r['id']}: {table}#{r['entity_id']} has no "
+                       f"path — the record was deleted; entry is dead")
+            dropped += 1
+            if apply:
+                await conn.execute(
+                    "DELETE FROM object_storage_sync_queue WHERE id=$1", r["id"])
+            continue
+        if current == r["local_path"]:
+            continue                            # already correct
+        # bucket = everything under the account dir except the filename
+        parts = [q for q in current.replace("\\", "/").split("/") if q]
+        try:
+            i = next(n for n, q in enumerate(parts) if q.startswith("account-"))
+            bucket = "/".join(parts[i + 1:-1])
+        except StopIteration:
+            log.append(f"  [queue] #{r['id']}: {current} is not under an "
+                       f"account dir — left as-is")
+            continue
+        filename = parts[-1]
+        log.append(f"  [queue] #{r['id']} ({r['entity_type']} {r['entity_id']}): "
+                   f"{r['bucket']}/{r['filename']} → {bucket}/{filename}")
+        fixed += 1
+        if apply:
+            await conn.execute(
+                "UPDATE object_storage_sync_queue SET bucket=$1, filename=$2, "
+                "local_path=$3, attempts=0, last_error=NULL, error_code=NULL, "
+                "updated_at=$4 WHERE id=$5",
+                bucket, filename, current,
+                __import__("datetime").datetime.now(
+                    __import__("datetime").timezone.utc).isoformat(),
+                r["id"],
+            )
+    log.append(f"  [queue] {fixed} entry(ies) repointed, {dropped} dead "
+               f"entry(ies) removed, {len(rows)} scanned")
+    return fixed
+
+
 # ── Orphan report (never moved) ─────────────────────────────────────
 
 def report_orphans(log: list[str]) -> int:
@@ -668,6 +770,9 @@ async def main() -> int:
         e = e1 + e2
         f = await relocate_orphaned_branding(conn, args.apply, log)
         g = await relocate_rootless_applications(conn, args.apply, log)
+        # LAST: the outbox is repointed from the owning rows, so every
+        # move above must already be committed to those rows.
+        h = await repoint_sync_queue(conn, args.apply, log)
     finally:
         await conn.close()
     o = report_orphans(log)
@@ -676,8 +781,8 @@ async def main() -> int:
     mode = "APPLIED" if args.apply else "DRY-RUN (nothing changed; re-run with --apply)"
     print(f"\n{mode}: branding={a} applications={b} camera={c} parking={d} "
       f"placeholder={e} branding-rescue={f} app-root={g} moved; "
-      f"orphans left in place={o}")
-    if not args.apply and (a or b or c or d or e or f or g):
+      f"queue-repointed={h}; orphans left in place={o}")
+    if not args.apply and (a or b or c or d or e or f or g or h):
         print("Note: previously Drive-synced copies of moved files stay at their old "
               "Drive locations — new uploads sync to the corrected folders.")
     return 0
