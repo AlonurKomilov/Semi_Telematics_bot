@@ -1,7 +1,8 @@
 """Driver onboarding — the approved queue and the hire.
 
 router.py is interface-layer code co-located with its feature
-(docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
+(docs/FEATURES.md): router.py and config.py are the interface-layer pair — those two may
+# import interfaces.api.deps; nothing else in the feature may.
 
 The hire used to live on the Applications router as
 ``POST /applications/{id}/convert``, gated by ``can_convert_to_driver``.

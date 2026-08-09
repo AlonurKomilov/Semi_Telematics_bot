@@ -3,7 +3,8 @@
 URL history: was /fleet/routes (+legacy /dispatch/*) until 2026-06-11; now /routes.
 """
 # router.py is interface-layer code co-located with its feature
-# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+# (docs/FEATURES.md): router.py and config.py are the interface-layer pair — those two may
+# import interfaces.api.deps; nothing else in the feature may;
 # service/alert/ai_tool/signal modules never do.
 
 

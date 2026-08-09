@@ -1,7 +1,8 @@
 """Notification channel API — connect / verify / unsubscribe.
 
 router.py is interface-layer code co-located with its capability
-(docs/FEATURES.md): ONLY router.py may import ``interfaces.api.deps``.
+(docs/FEATURES.md): router.py and config.py are the interface-layer pair — those two
+may import ``interfaces.api.deps``; nothing else in the feature may.
 The delivery core (channels / service / email) stays framework-free; this
 is the thin HTTP skin over ``lifecycle.py``.
 

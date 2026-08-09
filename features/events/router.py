@@ -1,7 +1,8 @@
 """Safety-events API — the events feature's router.
 
 router.py is interface-layer code co-located with its feature
-(docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+(docs/FEATURES.md): router.py and config.py are the interface-layer pair — those two may
+# import interfaces.api.deps; nothing else in the feature may;
 service/alert/ai_tool/signal never do.  Paths keep the historical
 ``/safety`` prefix so URLs (and the frontend) are unchanged.
 """

@@ -83,7 +83,15 @@ async def get_config(
     )
     settings: dict[str, str] = {}
     if getattr(_perms, "can_manage_config_all", False):
-        for key in ("account_name", "alert_defaults", "timezone", "language",
+        # ``timezone`` is deliberately NOT in this list.  The account
+        # timezone is ``accounts.timezone`` — a COLUMN, written by
+        # PUT /admin/timezone (migration 052).  The account_settings key
+        # of the same name is a dead legacy store: nothing reads it and
+        # nothing writes it.  Returning it here put a value in the payload
+        # that no consumer used and that the config panel had to
+        # special-case OUT to avoid rendering a second, non-functional
+        # timezone editor beside the real one.
+        for key in ("account_name", "alert_defaults", "language",
                     "digest_hour", "scorecard_default_subject"):
             val = await tenant_db.get_account_setting(user["account_id"], key)
             if val:

@@ -184,6 +184,34 @@ The rule is only that a component of a feature's config never gets to be
 called a config itself — `/applications/config` holds DQF, there is no
 `/applications/dqf-config`.
 
+### Config governs behaviour; MASTER DATA is the subject matter
+
+Not everything a computation reads is config, or the blast-radius rule
+would swallow the vendor directory and the parts catalog too. The line:
+
+| | Example | Home |
+|---|---|---|
+| **Config** | KPI thresholds, coaching rules, bonus rules, storage backend | the config family |
+| **Master data** | Vendors, Parts, Service Tasks | its own feature, `can_<feature>` |
+
+A threshold exists ONLY to be configured — nothing else is a threshold. A
+service task is a *record of a job* that happens to carry an estimate.
+
+Service Tasks is the worked example, and it nearly went the wrong way.
+`GET /service-tasks/defaults` reads like config and is not: there is **no
+write** for it (the docstring says "read-only by contract"), it has no
+store of its own, and its `require_permission_any` names three FEATURE
+flags — Service Tasks, Maintenance, Work Orders — because those are the
+three features that can create a job and need the pre-fill. That is an
+honest union of CONSUMERS, not the action-mixing this family removes.
+
+The codebase already said so: Vendors, Parts and Service Tasks all carry
+the `My X / Shared` split (dashboard CLAUDE.md), which is the master-data
+convention. Nothing in the config family has it.
+
+**Test before converting:** is there a write? Does the feature own a
+store for it? Would an owner call it "a setting" or "a record"?
+
 ### View / Manage / Config are three actions, not three strengths
 
 The matrix gives every feature three columns and they do not overlap.

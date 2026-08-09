@@ -1,7 +1,8 @@
 """Settings · Team Management — users, avatars, role/status, vehicle assignments, company access.
 
 router.py is interface-layer code co-located with its feature
-(docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
+(docs/FEATURES.md): router.py and config.py are the interface-layer pair — those two may
+# import interfaces.api.deps; nothing else in the feature may.
 Keeps the historical ``/admin`` URL prefix.
 """
 import asyncio

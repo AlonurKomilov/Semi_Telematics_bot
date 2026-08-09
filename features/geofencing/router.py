@@ -7,7 +7,8 @@ from the schema for backwards-compat with old bookmarks.
 URL history: was /fleet/geofences (+legacy /map/geofences) until 2026-06-11; now /geofences.
 """
 # router.py is interface-layer code co-located with its feature
-# (docs/FEATURES.md): ONLY router.py may import interfaces.api.deps;
+# (docs/FEATURES.md): router.py and config.py are the interface-layer pair — those two may
+# import interfaces.api.deps; nothing else in the feature may;
 # service/alert/ai_tool/signal modules never do.
 
 

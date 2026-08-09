@@ -1,7 +1,8 @@
 """API endpoints for managing role permissions per account.
 
 router.py is interface-layer code co-located with its domain
-(docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
+(docs/FEATURES.md): router.py and config.py are the interface-layer pair — those two may
+# import interfaces.api.deps; nothing else in the feature may.
 """
 
 import json

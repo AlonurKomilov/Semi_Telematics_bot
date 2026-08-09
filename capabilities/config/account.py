@@ -190,7 +190,17 @@ SETTING_OWNERS: tuple[SettingOwner, ...] = (
         "forum_ai.*", "can_manage_config_all", "config", "settings",
         "Which alert types route to the AI forum topic.",
     ),
-    SettingOwner("timezone", "can_manage_config_all", "config", "settings"),
+    # DEAD KEY, declared so a write is placed rather than refused, and
+    # annotated so nobody wires it up believing it works.  The account
+    # timezone lives on ``accounts.timezone`` (a COLUMN, migration 052)
+    # and is written by PUT /admin/timezone.  Nothing reads this key;
+    # GET /settings/config stopped returning it.  Rows may still exist on
+    # accounts that set it years ago — they have no effect.  Safe to drop
+    # from this table once those rows are purged.
+    SettingOwner(
+        "timezone", "can_manage_config_all", "config", "settings",
+        "DEAD — superseded by the accounts.timezone column.",
+    ),
     # The Settings page READS these six; before they were declared, my own
     # per-key enforcement refused five of them on write — a setting you
     # could see and not save.  The drift test could not catch it: it scans

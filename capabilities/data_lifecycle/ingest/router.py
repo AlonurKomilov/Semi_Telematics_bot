@@ -1,7 +1,8 @@
 """Telemetry diagnostics API — warehouse status.
 
 router.py is interface-layer code co-located with its domain
-(docs/FEATURES.md): ONLY router.py may import interfaces.api.deps.
+(docs/FEATURES.md): router.py and config.py are the interface-layer pair — those two may
+# import interfaces.api.deps; nothing else in the feature may.
 URL history: was GET /admin/warehouse-status until 2026-06-11.
 """
 from fastapi import APIRouter, Depends
