@@ -160,11 +160,21 @@ async def submit_application(
     # 3. Files — magic-byte validation, then store under generated keys.
     # Company-branded links nest under the company's folder — the same
     # ``{COMPANY}/...`` tree work orders / camera images / parking maps
-    # use, on disk AND in the customer's Drive.  Generic links (no
-    # company) fall back to the account-level ``applications/`` root.
+    # use, on disk AND in the customer's Drive.  The recruiter chooses
+    # that company when they create the link, so it is the company this
+    # applicant is applying TO.
+    #
+    # A link with no company goes to the holding pen, NOT to the account
+    # root.  Every top-level folder a customer sees in their Drive should
+    # be one of their businesses; a bare "applications/" beside them
+    # reads like a sixth company and is where 939 stray files
+    # accumulated.  The pen is named as a pen and every write to it is
+    # logged.
     from adapters.storage.object_storage import get_object_storage_for_account
     from capabilities.object_storage.tracking import track_for_sync_if_hybrid
-    from features.work_orders.storage import sanitize_company_folder
+    from features.work_orders.storage import (
+        GENERIC_COMPANY_FOLDER, sanitize_company_folder,
+    )
     store = await get_object_storage_for_account(account_id, platform_db)
     company_folder = ""
     if link.get("company_id"):
@@ -173,10 +183,13 @@ async def submit_application(
             company_folder = sanitize_company_folder(
                 _co.display_name or getattr(_co, "code", "") or ""
             )
-    bucket = (
-        f"{company_folder}/applications/{reference}"
-        if company_folder else f"applications/{reference}"
-    )
+    if not company_folder:
+        logger.warning(
+            "application %s has no company on its link — filing under %s",
+            reference, GENERIC_COMPANY_FOLDER,
+        )
+        company_folder = GENERIC_COMPANY_FOLDER
+    bucket = f"{company_folder}/applications/{reference}"
     docs: dict[str, str] = {}
 
     file_slots = {
