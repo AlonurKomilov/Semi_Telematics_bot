@@ -8800,3 +8800,27 @@ async def migrate_identity_watch(conn) -> None:
     await conn.commit()
     logger.info("Migration 191: identity watch ready")
 
+
+@_register("192_device_event_resolution")
+async def migrate_device_event_resolution(conn) -> None:
+    """Identity events become resolvable.
+
+    An open vin_change is a question ("same truck, or a different one
+    behind this gateway?") that only a human can answer; these columns
+    hold the answer — which choice, who made it, when — so the notice
+    card can close and the decision survives as history.
+    """
+    for ddl in (
+        "ALTER TABLE warehouse.device_event_log "
+        "ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'open'",
+        "ALTER TABLE warehouse.device_event_log "
+        "ADD COLUMN IF NOT EXISTS resolution TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE warehouse.device_event_log "
+        "ADD COLUMN IF NOT EXISTS resolved_by INTEGER",
+        "ALTER TABLE warehouse.device_event_log "
+        "ADD COLUMN IF NOT EXISTS resolved_at TEXT NOT NULL DEFAULT ''",
+    ):
+        await conn.execute(ddl)
+    await conn.commit()
+    logger.info("Migration 192: device events carry resolution state")
+

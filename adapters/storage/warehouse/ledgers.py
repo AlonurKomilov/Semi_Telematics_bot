@@ -110,14 +110,70 @@ class WarehouseLedgersMixin(_MixinBase):
         await self._db.commit()
         return new
 
-    async def get_device_events(self, account_id: int, *, limit: int = 100):
+    async def get_device_events(
+        self, account_id: int, *, limit: int = 100,
+        open_only: bool = False,
+    ):
+        extra = "AND status = 'open' " if open_only else ""
         cur = await self._db.execute(
-            "SELECT vehicle_id, vehicle_name, kind, old_value, new_value, "
-            "observed_at FROM device_event_log WHERE account_id = ? "
-            "ORDER BY observed_at DESC LIMIT ?",
+            "SELECT id, registry_id, vehicle_id, vehicle_name, kind, "
+            "old_value, new_value, observed_at, status, resolution, "
+            "resolved_at "
+            f"FROM device_event_log WHERE account_id = ? {extra}"
+            "ORDER BY (status = 'open') DESC, observed_at DESC LIMIT ?",
             (account_id, limit),
         )
-        cols = ("vehicle_id", "vehicle_name", "kind", "old_value",
-                "new_value", "observed_at")
+        cols = ("id", "registry_id", "vehicle_id", "vehicle_name", "kind",
+                "old_value", "new_value", "observed_at", "status",
+                "resolution", "resolved_at")
         return [dict(zip(cols, r)) for r in await cur.fetchall()]
+
+    async def get_device_event(self, account_id: int, event_id: int):
+        cur = await self._db.execute(
+            "SELECT id, registry_id, vehicle_id, vehicle_name, kind, "
+            "old_value, new_value, observed_at, status, resolution, "
+            "resolved_at FROM device_event_log "
+            "WHERE account_id = ? AND id = ?",
+            (account_id, event_id),
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+        cols = ("id", "registry_id", "vehicle_id", "vehicle_name", "kind",
+                "old_value", "new_value", "observed_at", "status",
+                "resolution", "resolved_at")
+        return dict(zip(cols, row))
+
+    async def resolve_device_event(
+        self, account_id: int, event_id: int, *,
+        resolution: str, resolved_by: int,
+    ) -> bool:
+        """Close an open event with the human's answer.  Idempotence by
+        construction: only an 'open' row matches, so resolving twice —
+        two admins clicking at once — is a no-op the caller reports as
+        'already resolved', never a second registry surgery."""
+        cur = await self._db.execute(
+            "UPDATE device_event_log SET status = 'resolved', "
+            "resolution = ?, resolved_by = ?, resolved_at = ? "
+            "WHERE account_id = ? AND id = ? AND status = 'open'",
+            (str(resolution), int(resolved_by), _now_iso(),
+             account_id, event_id),
+        )
+        ok = getattr(cur, "rowcount", 0) > 0
+        await self._db.commit()
+        return ok
+
+    async def reopen_device_event(
+        self, account_id: int, event_id: int,
+    ) -> None:
+        """Hand a claimed event back — the resolve endpoint claims the
+        row BEFORE registry surgery and returns it on a refused split
+        (unit-number collision), so the admin can retry."""
+        await self._db.execute(
+            "UPDATE device_event_log SET status = 'open', "
+            "resolution = '', resolved_by = NULL, resolved_at = '' "
+            "WHERE account_id = ? AND id = ?",
+            (account_id, event_id),
+        )
+        await self._db.commit()
 

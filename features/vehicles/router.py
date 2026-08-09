@@ -931,6 +931,128 @@ async def vehicle_period_trips(
 # would otherwise swallow /vehicles/config.
 
 
+# ── Device-identity events — the watch's resolution flow ──────────
+# The ingest's identity watch records anchor changes (VIN / gateway /
+# odometer scale) in warehouse.device_event_log and notifies admins.
+# These endpoints close the loop: an admin answers the question the
+# event asks.  A vin_change offers the real decision — same truck
+# (accept) or a different truck behind the gateway (split the unit);
+# other kinds just acknowledge.
+#
+# Registered ABOVE /{vehicle_name} on purpose: FastAPI matches in
+# registration order, and the catch-all would swallow /device-events.
+
+# Shared by this block and the registry-admin section below.
+_manage_vehicles = require_permission("can_manage_vehicles")
+
+
+class DeviceEventResolve(BaseModel):
+    action: str = Field(..., pattern="^(same_truck|different_truck|acknowledge)$")
+    # different_truck only: identity of the NEW unit to create.
+    company_code: str = Field("", max_length=64)
+    unit_number: str = Field("", max_length=64)
+    archive_old: bool = False
+
+
+@router.get("/device-events")
+async def list_device_events(
+    user: dict = Depends(_manage_vehicles),
+):
+    """Identity events, open first — the Vehicles page's notice card."""
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    events = await tenant.get_device_events(account_id)
+    return {
+        "events": events,
+        "open_count": sum(1 for e in events if e.get("status") == "open"),
+    }
+
+
+@router.post("/device-events/{event_id}/resolve")
+async def resolve_device_event(
+    event_id: int,
+    body: DeviceEventResolve,
+    user: dict = Depends(_manage_vehicles),
+):
+    """Answer an open identity event.
+
+    ``different_truck`` (vin_change only) performs the unit split in
+    the registry — new unit created with the new VIN, telematics link
+    moved onto it, the old unit's true VIN restored, optional retire —
+    then closes the event.  ``same_truck`` / ``acknowledge`` just
+    close it.  Resolving an already-resolved event is a 409, so two
+    admins clicking at once can't split twice.
+    """
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    event = await tenant.get_device_event(account_id, event_id)
+    if event is None:
+        raise HTTPException(404, "event not found")
+    if event.get("status") != "open":
+        raise HTTPException(409, "event is already resolved")
+
+    actor = await resolve_user_id(user)
+    new_vehicle_id = None
+    resolution = body.action
+    if body.action == "different_truck":
+        if event.get("kind") != "vin_change":
+            raise HTTPException(
+                400, "only a vin_change can be resolved as a different truck")
+        resolution = (
+            f"different_truck:new_unit={body.company_code}/"
+            f"{body.unit_number}"
+            + (":old_archived" if body.archive_old else "")
+        )
+
+    # Claim FIRST: the status flip open→resolved is the lock, so two
+    # admins clicking at once can't both perform the registry split —
+    # the loser gets a 409 before any surgery happens.
+    ok = await tenant.resolve_device_event(
+        account_id, event_id, resolution=resolution, resolved_by=actor)
+    if not ok:
+        raise HTTPException(409, "event was resolved concurrently")
+
+    if body.action == "different_truck":
+        old_id = event.get("registry_id")
+        if not old_id:
+            # The event predates registry stamping or the row is gone —
+            # fall back to the live link the event is about.
+            for v in await tenant.list_vehicles(account_id):
+                if v.telematics_ref == event.get("vehicle_id"):
+                    old_id = v.id
+                    break
+        try:
+            if not old_id:
+                raise ValueError(
+                    "the event's vehicle is no longer in the registry")
+            new_vehicle_id = await tenant.split_vehicle_identity(
+                account_id,
+                old_vehicle_id=int(old_id),
+                new_company_code=body.company_code,
+                new_unit_number=body.unit_number,
+                new_vin=str(event.get("new_value") or ""),
+                restore_vin=str(event.get("old_value") or ""),
+                archive_old=body.archive_old,
+                actor_user_id=actor,
+            )
+        except ValueError as e:
+            # Split refused (collision, missing row) — hand the claim
+            # back so the admin can retry with a different unit number.
+            await tenant.reopen_device_event(account_id, event_id)
+            raise HTTPException(400, str(e))
+
+    return {
+        "resolved": True,
+        "event_id": event_id,
+        "resolution": resolution,
+        "new_vehicle_id": new_vehicle_id,
+    }
+
+
 @router.get("/{vehicle_name}")
 async def vehicle_detail(
     vehicle_name: str,
@@ -1182,9 +1304,6 @@ async def vehicle_usage(
 # default; grantable to any role via the Permissions matrix).  Reads
 # come through the merged ``GET /vehicles/`` list, which already carries
 # ``vehicle_type`` / ``source`` / ``registry_id`` per row.
-
-_manage_vehicles = require_permission("can_manage_vehicles")
-
 
 class VehicleCreate(BaseModel):
     unit_number: str = Field(..., min_length=1, max_length=64)

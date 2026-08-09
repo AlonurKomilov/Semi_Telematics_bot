@@ -297,6 +297,107 @@ class VehiclesRegistryMixin(_MixinBase):
                 }])
             return vehicle_id
 
+    async def split_vehicle_identity(
+        self,
+        account_id: int,
+        *,
+        old_vehicle_id: int,
+        new_company_code: str,
+        new_unit_number: str,
+        new_vin: str,
+        restore_vin: str = "",
+        archive_old: bool = False,
+        actor_user_id: Optional[int] = None,
+    ) -> int:
+        """Resolve a vin_change as "a DIFFERENT truck is behind this
+        telematics id": mint the new truck and move the link to it.
+
+        The old unit keeps every stored mile — warehouse rows are
+        stamped with registry_id at ingest, so history binds to the
+        identity that produced it and the timeline simply forks here.
+
+        In one transaction: (1) create the new unit carrying the new
+        VIN and the telematics_ref; (2) strip the ref from the old unit
+        and restore its true VIN (the ingest's auto-follow overwrote it
+        with the new truck's); (3) optionally retire the old unit.
+        Returns the new vehicle id.  ValueError on a missing/linkless
+        old row or a (company, unit) collision — routes map it to 400.
+        """
+        new_unit_number = (new_unit_number or "").strip()
+        if not new_unit_number:
+            raise ValueError("unit_number is required")
+        old = await self.get_vehicle(account_id, old_vehicle_id)
+        if old is None:
+            raise ValueError("vehicle not found")
+        if not old.telematics_ref:
+            raise ValueError("vehicle has no telematics link to move")
+        dup = await self.read_one(
+            "SELECT id FROM vehicles WHERE account_id = ? "
+            "AND company_code = ? AND unit_number = ?",
+            (account_id, new_company_code, new_unit_number),
+        )
+        if dup:
+            raise ValueError(
+                f"unit {new_unit_number or '?'} already exists in "
+                f"company {new_company_code or '(none)'}"
+            )
+        now = self._now()
+        async with self.transaction():
+            # Spec fields (make/model/year) start empty ON PURPOSE: they
+            # describe the NEW physical truck, and the next ingest tick
+            # fills them from the provider (matched by the moved ref/VIN).
+            cur = await self._db.execute(
+                """INSERT INTO vehicles
+                   (account_id, company_code, unit_number, vehicle_type,
+                    vin, status, source, telematics_ref,
+                    is_active, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, 'active', 'samsara', ?, 1, ?, ?)""",
+                (account_id, new_company_code, new_unit_number,
+                 old.vehicle_type, str(new_vin or ""),
+                 old.telematics_ref, now, now),
+            )
+            new_id = cur.lastrowid
+            sets = ["telematics_ref = ''", "updated_at = ?"]
+            params: list[Any] = [now]
+            if restore_vin:
+                sets.append("vin = ?")
+                params.append(str(restore_vin))
+            if archive_old:
+                sets.append("is_active = 0")
+                sets.append("status = 'inactive'")
+            await self._db.execute(
+                f"UPDATE vehicles SET {', '.join(sets)} "
+                "WHERE id = ? AND account_id = ?",
+                (*params, old_vehicle_id, account_id),
+            )
+            if actor_user_id is not None:
+                await self.append_activity_events(account_id, [
+                    {
+                        "entity_type": "vehicle", "entity_id": new_id,
+                        "action": "create", "actor_user_id": actor_user_id,
+                        "changes": diff_rows({}, {
+                            "unit_number": new_unit_number,
+                            "company_code": new_company_code,
+                            "vin": str(new_vin or ""),
+                            "telematics_ref": old.telematics_ref,
+                        }),
+                    },
+                    {
+                        "entity_type": "vehicle", "entity_id": old_vehicle_id,
+                        "action": "update", "actor_user_id": actor_user_id,
+                        "changes": diff_rows(
+                            {"telematics_ref": old.telematics_ref,
+                             "vin": old.vin,
+                             "status": old.status},
+                            {"telematics_ref": "",
+                             "vin": restore_vin or old.vin,
+                             "status": "inactive" if archive_old
+                             else old.status},
+                        ),
+                    },
+                ])
+            return new_id
+
     # ── Read ──────────────────────────────────────────────────────
 
     async def list_vehicles(
@@ -737,6 +838,14 @@ class VehiclesRegistryMixin(_MixinBase):
         # scoping) must be ENRICHED, not duplicated, when Samsara later reports
         # the same physical truck under a company.
         by_vin = {v.vin.strip().upper(): v for v in existing if v.vin}
+        # Live-link index, matched FIRST: the telematics ref is the one
+        # identity the provider cannot rename.  After a vin_change split
+        # moves a ref onto a new unit, the provider still displays the
+        # OLD unit number — a name-first match would re-link the old row
+        # and silently undo the operator's split on the next tick.
+        by_ref = {
+            v.telematics_ref: v for v in existing if v.telematics_ref
+        }
         now = self._now()
         written = 0
         conflict_ops: list = []
@@ -746,7 +855,9 @@ class VehiclesRegistryMixin(_MixinBase):
                 if not unit:
                     continue
                 company = str(r.get("company_code") or "")
-                match = by_key.get((company, unit.lower()))
+                match = by_ref.get(str(r.get("telematics_ref") or "") or None)
+                if match is None:
+                    match = by_key.get((company, unit.lower()))
                 matched_by_vin = False
                 if match is None:
                     # VIN reconciliation — if this source carries a VIN that
