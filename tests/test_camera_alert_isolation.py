@@ -108,3 +108,55 @@ class TestCameraAlertIsolation:
         assert companies == {"G1"}, (
             f"Driver on G1/107 leaked alerts for: {companies - {'G1'}}"
         )
+
+
+class TestCompanyWall:
+    """The per-subscriber company wall, keyed on the WIRE code.
+
+    Its old rule was ``not r.get("company") or ...`` — an issue with no
+    company reached EVERY restricted subscriber.  Before the storage fix
+    that dropped ``_org`` between analysis and save, "no company" was
+    every snapshot, so a fleet manager scoped to one company was seeing
+    the whole account's dashcam problems.
+    """
+
+    def test_restricted_subscriber_sees_only_their_companies(self):
+        from features.cameras.alert import _issues_for_companies
+        issues = [
+            {"vehicle": "201", "_org": "CFT"},
+            {"vehicle": "107", "_org": "G1"},
+            {"vehicle": "238", "_org": "OSY"},
+        ]
+        out = _issues_for_companies(issues, {"G1"})
+        assert [r["vehicle"] for r in out] == ["107"]
+
+    def test_unattributed_issue_is_withheld_not_broadcast(self):
+        """THE regression.  A row we cannot place must not reach a
+        subscriber restricted to a company — it may be another one's."""
+        from features.cameras.alert import _issues_for_companies
+        issues = [
+            {"vehicle": "107", "_org": "G1"},
+            {"vehicle": "999", "_org": ""},
+            {"vehicle": "998"},
+        ]
+        out = _issues_for_companies(issues, {"G1"})
+        assert [r["vehicle"] for r in out] == ["107"], (
+            "an unattributed issue leaked to a company-restricted "
+            "subscriber — blank company must mean denied, not allowed"
+        )
+
+    def test_the_display_label_cannot_open_the_wall(self):
+        """``company`` carries a "?" placeholder and is not the key.  A
+        row whose label happens to read like a code still needs the
+        wire code to match."""
+        from features.cameras.alert import _issues_for_companies
+        issues = [{"vehicle": "666", "company": "G1", "_org": ""},
+                  {"vehicle": "667", "company": "?", "_org": "G1"}]
+        out = _issues_for_companies(issues, {"G1"})
+        assert [r["vehicle"] for r in out] == ["667"]
+
+    def test_match_is_case_insensitive_on_both_sides(self):
+        from features.cameras.alert import _issues_for_companies
+        issues = [{"vehicle": "107", "_org": "g1"}]
+        assert len(_issues_for_companies(issues, {"G1"})) == 1
+        assert len(_issues_for_companies(issues, {"g1"})) == 1

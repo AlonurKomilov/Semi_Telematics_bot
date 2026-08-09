@@ -50,7 +50,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from features.work_orders.storage import sanitize_company_folder  # noqa: E402
+from features.work_orders.storage import (  # noqa: E402
+    GENERIC_COMPANY_FOLDER, sanitize_company_folder,
+)
 
 try:
     import asyncpg
@@ -121,7 +123,7 @@ async def _company_folder_by_vehicle(conn, account_id: int, vehicle_id: str) -> 
         account_id, str(vehicle_id),
     )
     if not code:
-        return "unnamed-company"
+        return GENERIC_COMPANY_FOLDER
     name = await conn.fetchval(
         "SELECT display_name FROM companies WHERE account_id=$1 AND code=$2",
         account_id, str(code).strip().upper(),

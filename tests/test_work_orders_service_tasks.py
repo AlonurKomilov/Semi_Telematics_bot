@@ -172,10 +172,12 @@ async def test_void_work_orders_excluded_from_cost_reports(db):
 def test_sanitize_company_folder_rejects_path_components():
     """'.' / '..' are path components, not names — a company literally
     named that must not write a folder level above its own."""
-    from features.work_orders.storage import sanitize_company_folder
-    assert sanitize_company_folder(".") == "unnamed-company"
-    assert sanitize_company_folder("..") == "unnamed-company"
-    assert sanitize_company_folder(" .. ") == "unnamed-company"
+    from features.work_orders.storage import (
+        GENERIC_COMPANY_FOLDER, sanitize_company_folder,
+    )
+    assert sanitize_company_folder(".") == GENERIC_COMPANY_FOLDER
+    assert sanitize_company_folder("..") == GENERIC_COMPANY_FOLDER
+    assert sanitize_company_folder(" .. ") == GENERIC_COMPANY_FOLDER
     # trailing dots in real names stay legal (companies end in "INC.")
     assert sanitize_company_folder("ACME INC.") == "ACME INC."
     # separators still become underscores (pre-existing behavior)

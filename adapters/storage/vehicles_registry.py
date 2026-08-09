@@ -568,6 +568,29 @@ class VehiclesRegistryMixin(_MixinBase):
         await recon.sync_batch(self, account_id, "vehicle", conflict_ops)
         return written
 
+    async def company_code_for_unit(
+        self, account_id: int, unit_number: str,
+    ) -> str:
+        """The company that owns a unit, by its number.  '' when unknown.
+
+        The registry is the SSOT for which company a truck belongs to,
+        so any writer that lost the company on the way in (a telematics
+        snapshot without an org tag, say) can recover it here instead of
+        filing the record under a placeholder.  Ambiguous units — the
+        same number under two companies — return '' rather than guess:
+        a wrong company is worse than an admitted unknown.
+        """
+        unit = (unit_number or "").strip()
+        if not unit:
+            return ""
+        rows = await self.read_all(
+            "SELECT DISTINCT company_code FROM vehicles "
+            "WHERE account_id = ? AND lower(unit_number) = lower(?) "
+            "AND is_active = 1 AND company_code <> ''",
+            (account_id, unit),
+        )
+        return str(rows[0][0]) if len(rows) == 1 else ""
+
     async def find_duplicate_vehicles(self, account_id: int) -> list[dict]:
         """Active vehicles that share a non-empty VIN — an unambiguous
         duplicate (the same physical asset registered twice, e.g. from before

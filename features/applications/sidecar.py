@@ -185,7 +185,9 @@ async def refresh_sidecar(tenant_db, platform_db, account_id: int, app_id: int) 
         )
         if not app:
             return
-        from features.work_orders.storage import sanitize_company_folder
+        from features.work_orders.storage import (
+            GENERIC_COMPANY_FOLDER, sanitize_company_folder,
+        )
 
         # Account-scoped lookup, not a bare by-id: the folder this resolves
         # to decides which company's Drive tree the file lands in, so a
@@ -204,7 +206,7 @@ async def refresh_sidecar(tenant_db, platform_db, account_id: int, app_id: int) 
                 co, company_folder = None, ""
         await write_sidecar(
             tenant_db, platform_db, account_id, app,
-            company_folder=company_folder or "unnamed-company",
+            company_folder=company_folder or GENERIC_COMPANY_FOLDER,
             company=co,
         )
     except Exception:
@@ -241,7 +243,9 @@ async def reexport_ssn_only(
     sync does not matter here.
     """
     from adapters.storage.object_storage import get_object_storage_for_account
-    from features.work_orders.storage import sanitize_company_folder
+    from features.work_orders.storage import (
+        GENERIC_COMPANY_FOLDER, sanitize_company_folder,
+    )
 
     result = {"scanned": 0, "written": 0, "skipped": 0, "failed": 0}
     try:
@@ -282,7 +286,7 @@ async def reexport_ssn_only(
             )
             company_folder = sanitize_company_folder(
                 (getattr(company, "display_name", "") or "") if company else "",
-            ) or "unnamed-company"
+            ) or GENERIC_COMPANY_FOLDER
             # Same path as the original write, so this OVERWRITES in place.
             # The Drive backend looks the name up and updates rather than
             # creating "ssn-protected (1).pdf" — without that, a rotation

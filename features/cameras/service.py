@@ -88,7 +88,15 @@ async def gather_snapshots(
 async def analyze_snapshot(
     snap: dict, account_id: int, sem: asyncio.Semaphore,
 ) -> dict:
-    """Analyze a single snapshot with AI vision, respecting concurrency."""
+    """Analyze a single snapshot with AI vision, respecting concurrency.
+
+    Carries BOTH company keys onto the result: ``company`` is the label
+    the report prints (``"?"`` when unknown), ``_org`` is the wire code
+    the storage layer files the photo under (``""`` when unknown).  They
+    are not interchangeable, and dropping ``_org`` here is what sent a
+    year of camera images into a placeholder folder instead of their
+    company's — the save path looked for a key analysis had renamed.
+    """
     async with sem:
         try:
             # ``action="vision"`` routes per-attempt rows into ai_usage
@@ -102,14 +110,25 @@ async def analyze_snapshot(
                 action="vision",
             )
             return {
+                # The model's verdict FIRST, so the snapshot's own
+                # identity keys below always win.  Spread last, a model
+                # that ever returned an "_org" or "vehicle" key would
+                # silently overwrite the truck's real identity with
+                # something it inferred from the picture.
+                **analysis,
                 "vehicle": snap["vehicle_name"],
                 "vehicle_id": snap.get("vehicle_id", ""),
-                "company": snap.get("_org", "?"),
+                # `or`, not a .get default: a snapshot that carries
+                # _org="" is the common case (Samsara answered, the org
+                # was blank), and a .get default only fires when the KEY
+                # is missing — so the label silently rendered blank
+                # instead of the placeholder it documents.
+                "_org": snap.get("_org") or "",
+                "company": snap.get("_org") or "?",
                 "driver": snap.get("driver_name", ""),
                 "event_time": snap.get("event_time", ""),
                 "camera_type": snap.get("camera_type", "forward"),
                 "image_bytes": snap["image_bytes"],
-                **analysis,
             }
         except Exception as e:
             logger.warning(
@@ -118,7 +137,8 @@ async def analyze_snapshot(
             return {
                 "vehicle": snap["vehicle_name"],
                 "vehicle_id": snap.get("vehicle_id", ""),
-                "company": snap.get("_org", "?"),
+                "_org": snap.get("_org") or "",
+                "company": snap.get("_org") or "?",
                 "driver": snap.get("driver_name", ""),
                 "event_time": snap.get("event_time", ""),
                 "camera_type": snap.get("camera_type", "forward"),
@@ -152,13 +172,26 @@ async def save_camera_image(
     extra resolve keeps the per-vehicle loop fast.
 
     ``company_code`` is the Samsara org code (``_org``) for the
-    vehicle's owning company.  Used to route the image into the
-    per-company Drive folder; empty falls back to ``unnamed-company``.
+    vehicle's owning company, used to route the image into that
+    company's folder.  When the caller doesn't have it we ask the
+    vehicle registry — it is the SSOT for which company owns a unit, so
+    a snapshot that arrived without an org tag still lands in the right
+    place instead of a placeholder folder.
     """
     try:
         from adapters.storage.object_storage import get_object_storage_for_account
         from features.work_orders.storage import resolve_company_folder
         safe_name = vehicle_name.replace("/", "_").replace("\\", "_")
+        if not company_code:
+            try:
+                company_code = await tenant_db.company_code_for_unit(
+                    account_id, vehicle_name,
+                )
+            except Exception:
+                logger.warning(
+                    "registry company lookup failed for unit %r acct=%s",
+                    vehicle_name, account_id, exc_info=True,
+                )
         # Bucket path mirrors the work-orders layout so a user browsing
         # their Drive sees ``{COMPANY}/camera-images/…`` next to
         # ``{COMPANY}/work-orders/…`` — consistent structure per

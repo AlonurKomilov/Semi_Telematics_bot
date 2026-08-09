@@ -256,7 +256,7 @@ async def _inspection_company_folder(
     Source of truth: the driver's first ``user_companies`` entry —
     same pattern ``interfaces/api/routes/drivers.py`` uses for driver
     docs.  Drivers without a company assignment (legacy / unassigned)
-    land under ``unnamed-company/`` so writes never fail.
+    land under the generic holding folder so writes never fail.
     """
     from features.work_orders.storage import resolve_company_folder
     user_id = int(inspection.get("user_id") or 0)

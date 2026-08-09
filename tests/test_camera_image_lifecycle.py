@@ -255,3 +255,125 @@ class TestRetentionIsRegistered:
         got = {r.target.key: r.keep_days for r in resolve()}
         assert got.get("cameras.images_ok") == 30
         assert got.get("cameras.images_problem") == 180
+
+
+class TestPhotosLandUnderTheirCompany:
+    """A dashcam photo belongs in its company's folder, not a placeholder.
+
+    Measured on live data: 749 camera images sat in ``unnamed-company``
+    while the registry knew exactly which company owned each unit.  Two
+    independent defects put them there, and either one alone is enough:
+
+    1. ``analyze_snapshot`` renamed the wire key ``_org`` to the display
+       key ``company``, and the save path still read ``_org`` — so the
+       company was lost between analysis and storage on EVERY image.
+    2. Nothing asked the registry.  A snapshot that genuinely arrives
+       without an org tag still names a unit we own, and the registry is
+       the SSOT for which company owns a unit.
+    """
+
+    async def test_analysis_keeps_the_wire_key_beside_the_label(
+        self, monkeypatch,
+    ):
+        """The label may say "?"; the wire key must never inherit it.
+
+        Both branches, because an image whose AI analysis errored still
+        belongs to its company — and the error branch is exactly the one
+        a reader skims past.
+        """
+        import asyncio
+        import capabilities.ai as ai
+        from features.cameras.service import analyze_snapshot
+
+        snap = {
+            "vehicle_name": "250", "vehicle_id": "v-250", "_org": "CFT",
+            "camera_type": "forward", "image_bytes": b"jpeg",
+        }
+
+        async def _ok(*a, **kw):
+            return {"status": "OK", "obstruction": "none",
+                    "alignment": "centered", "quality": "good",
+                    "summary": ""}
+
+        async def _boom(*a, **kw):
+            raise RuntimeError("vision provider down")
+
+        for stub in (_ok, _boom):
+            monkeypatch.setattr(ai, "analyze_camera_image", stub)
+            got = await analyze_snapshot(snap, 1, asyncio.Semaphore(1))
+            assert got["_org"] == "CFT", (
+                f"the storage key was lost when analysis returned via "
+                f"{stub.__name__} — the photo would file under the "
+                f"holding pen instead of CFT"
+            )
+
+        # And the two keys must not be confused for each other: the
+        # label carries a "?" placeholder that must never reach a path.
+        monkeypatch.setattr(ai, "analyze_camera_image", _ok)
+        blank = await analyze_snapshot(
+            {**snap, "_org": ""}, 1, asyncio.Semaphore(1),
+        )
+        assert blank["company"] == "?" and blank["_org"] == ""
+
+    async def test_registry_answers_which_company_owns_a_unit(self, pg_db):
+        db: Database = pg_db
+        acct = await db.create_account("Reg Co")
+        await db.add_vehicle(acct.id, unit_number="250", company_code="CFT")
+        await db.add_vehicle(acct.id, unit_number="241", company_code="PTG")
+
+        assert await db.company_code_for_unit(acct.id, "250") == "CFT"
+        assert await db.company_code_for_unit(acct.id, "241") == "PTG"
+        # Case-insensitive, whitespace-tolerant: unit numbers reach us
+        # from a telematics payload, not from a form.
+        assert await db.company_code_for_unit(acct.id, " 250 ") == "CFT"
+
+    async def test_unknown_and_ambiguous_units_admit_it(self, pg_db):
+        """Silence beats a guess.  Filing a truck under the WRONG company
+        is worse than the holding pen, because it looks correct."""
+        db: Database = pg_db
+        acct = await db.create_account("Amb Co")
+        await db.add_vehicle(acct.id, unit_number="7", company_code="AAA")
+        await db.add_vehicle(acct.id, unit_number="7", company_code="BBB")
+
+        assert await db.company_code_for_unit(acct.id, "7") == ""
+        assert await db.company_code_for_unit(acct.id, "nosuch") == ""
+        assert await db.company_code_for_unit(acct.id, "") == ""
+
+    async def test_lookup_is_account_scoped(self, pg_db):
+        """Another tenant's unit number must not resolve a company."""
+        db: Database = pg_db
+        mine = await db.create_account("Mine")
+        theirs = await db.create_account("Theirs")
+        await db.add_vehicle(theirs.id, unit_number="900", company_code="XCO")
+
+        assert await db.company_code_for_unit(mine.id, "900") == ""
+
+    async def test_saved_photo_lands_under_the_registry_company(self, pg_db):
+        """End to end: no org tag on the way in, right folder on disk."""
+        from features.cameras.service import save_camera_image
+        db: Database = pg_db
+        acct = await db.create_account("E2E Co")
+        await db.add_company(account_id=acct.id, code="CFT",
+                             display_name="CARGO FREIGHT TRUCKING INC")
+        await db.add_vehicle(acct.id, unit_number="250", company_code="CFT")
+
+        path = await save_camera_image(
+            acct.id, "250", "forward", b"jpegbytes",
+            tenant_db=db, company_code="", check_id=4242,
+        )
+        assert path, "the save must succeed"
+        assert "CARGO FREIGHT TRUCKING INC/camera-images" in path, (
+            f"photo landed at {path!r} — it belongs under its company"
+        )
+        assert "_generic" not in path
+
+    async def test_the_holding_pen_is_named_as_one(self):
+        """When nothing can resolve, the folder must not read like a
+        company — a customer browsing their Drive treats every top-level
+        folder as one of their businesses."""
+        from features.work_orders.storage import (
+            GENERIC_COMPANY_FOLDER, resolve_company_folder,
+        )
+        assert GENERIC_COMPANY_FOLDER.startswith("_")
+        got = await resolve_company_folder(None, 1, "")
+        assert got == GENERIC_COMPANY_FOLDER

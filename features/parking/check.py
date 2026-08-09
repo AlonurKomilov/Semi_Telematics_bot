@@ -262,7 +262,10 @@ async def check_unsafe_parking(app: Application):
                try:
                 vid = v.get("id", "")
                 vname = v.get("name", "?")
-                co = v.get("_org", v.get("company_code", "?"))
+                # "" not "?" — this value becomes a FOLDER NAME.  A
+                # missing company must fall through to the registry
+                # lookup, not name a directory after the placeholder.
+                co = v.get("_org") or v.get("company_code") or ""
                 loc = v.get("location", {})
                 lat = loc.get("latitude")
                 lng = loc.get("longitude")
@@ -481,6 +484,7 @@ async def check_unsafe_parking(app: Application):
                         tenant_db=tenant,
                         company_code=co,
                         event_id=event["id"],
+                        vehicle_name=vname,
                     )
                     if saved_path:
                         map_image_path = saved_path

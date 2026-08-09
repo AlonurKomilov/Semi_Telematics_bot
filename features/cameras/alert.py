@@ -43,6 +43,31 @@ def _issues_for_subscriber(sub, all_issues: list[dict]) -> list[dict]:
     return list(all_issues)
 
 
+def _issues_for_companies(
+    all_issues: list[dict], allowed_codes: set[str],
+) -> list[dict]:
+    """Apply the company wall to camera issues, fail-CLOSED.
+
+    Keyed on ``_org`` — the wire code — never on ``company``, which is a
+    display label carrying a ``"?"`` placeholder for unknown.  A filter
+    that reads the label is one placeholder away from either leaking a
+    row or naming a folder ``?``.
+
+    An issue we cannot attribute to a company does NOT reach a
+    restricted subscriber.  The old rule let it through to everyone, so
+    a fleet manager scoped to one company saw another company's truck
+    whenever the org tag was missing — which, before the storage fix,
+    was every snapshot.  Blank company = denied, matching the wall every
+    other feature applies.
+
+    Callers pass a NON-EMPTY ``allowed_codes``; an account-wide
+    subscriber has no company restriction and must skip this entirely
+    rather than pass an empty set (which would deny everything).
+    """
+    allow = {c.upper() for c in allowed_codes}
+    return [r for r in all_issues if (r.get("_org") or "").upper() in allow]
+
+
 # Dedup: account_id → set of "vehicle:camera_type" that already alerted
 _known_camera_issues: dict[int, set[str]] = {}
 
@@ -291,7 +316,8 @@ async def _check_cameras_account(
     import io
     # Company scope: restrict each subscriber's camera digest to the
     # companies they're allowed (per-user override, else role assignment).
-    # Owner/unrestricted → full fleet; no-company issues stay (fail-open).
+    # Owner/unrestricted → full fleet; an issue we cannot attribute is
+    # withheld from a restricted subscriber (see _issues_for_companies).
     from capabilities.alerting.company_scope import load_company_scope, subscriber_companies
     from capabilities.alerting.dnd import is_user_dnd_active
     from interfaces.bot.state import get_tenant_db as _get_tenant_db
@@ -309,9 +335,16 @@ async def _check_cameras_account(
         sub_issues = _issues_for_subscriber(sub, new_issues)
         _sub_co = subscriber_companies(sub, _user_co)
         if _sub_co:
-            _allow = {c.upper() for c in _sub_co}
-            sub_issues = [r for r in sub_issues
-                          if not r.get("company") or (r.get("company") or "").upper() in _allow]
+            # Keyed on the WIRE code, and fail-CLOSED.  Two reasons this
+            # is not "company":  that key is a display label carrying a
+            # "?" placeholder, and the old test `not r.get("company")`
+            # let any row we could not attribute through to every
+            # restricted subscriber — a fleet manager scoped to one
+            # company saw another's truck whenever the org tag was
+            # missing.  Blank company = denied for a restricted viewer,
+            # the same wall every other feature applies.  Account-wide
+            # subscribers have no _sub_co and still see everything.
+            sub_issues = _issues_for_companies(sub_issues, set(_sub_co))
         if not sub_issues:
             continue  # nothing relevant for this subscriber; skip silently
 

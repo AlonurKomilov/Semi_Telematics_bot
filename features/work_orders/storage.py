@@ -1,14 +1,14 @@
 """Path / folder layout helpers for Work Order attachments.
 
 Single source of truth for the directory hierarchy used by every storage
-backend (``DiskObjectStore`` today, ``GDriveObjectStore`` planned, S3
+backend (``DiskObjectStorage`` today, ``GDriveObjectStorage`` planned, S3
 future).  Keeping the layout in one module means:
 
 * When a user opens their connected Google Drive and browses to a work
   order's folder, the structure looks the same as the local disk
   layout — no surprise.
 * When BYO Drive ships, the only thing that changes is which
-  ``ObjectStore`` implementation receives the path — the path itself
+  ``ObjectStorage`` implementation receives the path — the path itself
   is identical.
 
 Layout::
@@ -26,17 +26,32 @@ original filename (sanitised for filesystem safety).  Drive file IDs
 are stored in the DB so a manual rename in Google Drive doesn't break
 the link.
 
-The "bucket" in ``ObjectStore.put(bucket, key, data)`` becomes the
-full folder path; the "key" is the filename.  DiskObjectStore creates
-nested directories from slashes in the bucket name; GDriveObjectStore
+The "bucket" in ``ObjectStorage.put(bucket, key, data)`` becomes the
+full folder path; the "key" is the filename.  DiskObjectStorage creates
+nested directories from slashes in the bucket name; GDriveObjectStorage
 resolves the chain via ``_resolve_folder_chain`` (find-or-create).
 """
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timezone
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+# Where a write lands when no company can be established for it.
+#
+# Every file SHOULD sit under the company that owns it — that is the
+# whole point of the layout above, and a customer browsing their Drive
+# reads a top-level folder as "one of my businesses".  A name like
+# "unnamed-company" (the old value) read as exactly that and quietly
+# accumulated real trucks' photos beside the real businesses.  The
+# leading underscore says "not a company, a holding pen", sorts it away
+# from the real names, and every write that reaches it is logged so the
+# pen stays a bug report rather than a second home for data.
+GENERIC_COMPANY_FOLDER = "_generic"
 
 
 _MONTHS = ("01-january", "02-february", "03-march", "04-april",
@@ -65,11 +80,12 @@ def sanitize_company_folder(name: str) -> str:
     keeping it short makes the URLs in browse-Drive screenshots
     readable).
 
-    Empty / whitespace-only input falls back to ``unnamed-company`` so
-    a missing display_name never produces a path-less write.
+    Empty / whitespace-only input falls back to
+    :data:`GENERIC_COMPANY_FOLDER` so a missing display_name never
+    produces a path-less write.
     """
     if not name:
-        return "unnamed-company"
+        return GENERIC_COMPANY_FOLDER
     safe = name.strip()
     for ch in "/\\?<>|*\x00":
         safe = safe.replace(ch, "_")
@@ -78,8 +94,8 @@ def sanitize_company_folder(name: str) -> str:
     # "." / ".." are path components, not names — a company literally
     # named that would write outside its own folder level.
     if safe in (".", ".."):
-        return "unnamed-company"
-    return safe or "unnamed-company"
+        return GENERIC_COMPANY_FOLDER
+    return safe or GENERIC_COMPANY_FOLDER
 
 
 async def resolve_company_folder(
@@ -89,20 +105,32 @@ async def resolve_company_folder(
     company's display_name.
 
     Falls back to the sanitised code if the company row is missing or
-    has no display_name (legacy / partial data).  Callers should pass
-    the empty string for "no specific company" — that yields the
-    ``unnamed-company`` bucket.
+    has no display_name (legacy / partial data).  An empty code means
+    the CALLER could not establish a company, which is a defect in the
+    caller and not a normal state — it yields the
+    :data:`GENERIC_COMPANY_FOLDER` holding pen and says so in the log,
+    because the alternative (a silent placeholder folder) is how a
+    year of camera images ended up outside their companies.
 
     Done in the route handler (already async) rather than inside
-    ``ObjectStore.put`` so we don't trade a per-byte sync write for an
+    ``ObjectStorage.put`` so we don't trade a per-byte sync write for an
     async DB round-trip; routes typically resolve once and reuse.
     """
     if not company_code:
-        return "unnamed-company"
+        logger.warning(
+            "object write has no company for account=%s — filing under %s",
+            account_id, GENERIC_COMPANY_FOLDER,
+        )
+        return GENERIC_COMPANY_FOLDER
     try:
         company = await tenant_db.get_company_by_code(account_id, company_code)
     except Exception:
         company = None
+    if company is None:
+        logger.warning(
+            "company code %r not in the account=%s directory — "
+            "filing under the code itself", company_code, account_id,
+        )
     name = (company.display_name if company else "") or company_code
     return sanitize_company_folder(name)
 

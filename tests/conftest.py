@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import sys
+import tempfile
 from typing import AsyncIterator
 
 # Ensure encryption is not active during tests (unless explicitly tested)
@@ -29,6 +30,18 @@ os.environ.setdefault("JWT_SECRET", "test-jwt-secret-not-for-production-use-only
 # from JWT_SECRET so JWT rotation can't break in-inbox unsubscribe links).
 os.environ.setdefault(
     "NOTIFICATION_SIGNING_SECRET", "test-notification-signing-secret-32b+")
+
+# Object writes go to a THROWAWAY root, never the real tenant tree.
+#
+# accounts.id starts at 10000001 by schema design, so the first account
+# a fresh test DB creates carries the same id as the first real one —
+# and with the default root that put test fixtures inside a live
+# customer's folders (64 "Roe, Jane" application paths were found
+# sitting in production's tree).  Assigned, not setdefault: an exported
+# OBJECT_STORE_ROOT pointing at production must not be able to win here.
+os.environ["OBJECT_STORE_ROOT"] = os.path.join(
+    tempfile.gettempdir(), "4truck-test-userdata",
+)
 
 import pytest  # noqa: E402
 import pytest_asyncio  # noqa: E402

@@ -91,6 +91,7 @@ async def _save_parking_map(
     tenant_db,
     company_code: str = "",
     event_id: int = 0,
+    vehicle_name: str = "",
 ) -> str:
     """Render and save a parking-event map image to the account's
     configured object store.
@@ -118,8 +119,11 @@ async def _save_parking_map(
     check loop) which already has a resolved tenant handle — avoids a
     redundant ``get_tenant_db`` call per event.
 
-    ``company_code`` routes the image into the per-company Drive
-    folder; empty falls back to ``unnamed-company``.
+    ``company_code`` routes the image into the per-company folder.
+    When the caller doesn't have it, ``vehicle_name`` lets us ask the
+    vehicle registry — the SSOT for which company owns a unit — so a
+    telematics payload that arrived without an org tag still files its
+    map under the right company instead of the holding pen.
 
     Returns the URL/object-storage path on success, or "" on failure.
     """
@@ -135,6 +139,16 @@ async def _save_parking_map(
         # Mirrors the work-orders + camera-images layout so a user
         # browsing their Drive sees consistent ``{COMPANY}/...``
         # folders across modules.
+        if not company_code and vehicle_name:
+            try:
+                company_code = await tenant_db.company_code_for_unit(
+                    account_id, vehicle_name,
+                )
+            except Exception:
+                logger.warning(
+                    "registry company lookup failed for unit %r acct=%s",
+                    vehicle_name, account_id, exc_info=True,
+                )
         company_folder = await resolve_company_folder(
             tenant_db, account_id, company_code,
         )
