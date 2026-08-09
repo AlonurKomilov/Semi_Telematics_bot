@@ -27,6 +27,7 @@ import type { AnyColumn } from '../../types';
 import UtilizationSummary from './UtilizationSummary';
 import Mileage from './Mileage';
 import VehicleManageDialog from './VehicleManageDialog';
+import DeviceEventsCard from './DeviceEventsCard';
 
 const TYPE_LABEL: Record<string, string> = {
   truck: 'Truck', trailer: 'Trailer', other: 'Other',
@@ -417,6 +418,14 @@ export default function Vehicles() {
             />
           </div>
         }
+      />
+
+      {/* Identity-watch notices: rendered only for vehicle admins and
+          only while an event is open — zero pixels otherwise. */}
+      <DeviceEventsCard
+        canManage={canManage}
+        vehicles={vehicles}
+        onResolved={() => refetch()}
       />
 
       <div role="tablist" aria-label="Vehicle views" className="flex gap-1 mb-4 border-b border-border">
