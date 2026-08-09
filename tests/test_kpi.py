@@ -154,3 +154,104 @@ def test_line_items_and_layover_hit_dispatcher_gross():
     assert jasur["gross"] == round(3000 - 800 - 150 - 87.5 - 300, 2)
     unassigned = next(r for r in rows if r["dispatcher_name"] == "(unassigned)")
     assert unassigned["driver_pay"] == 99.0
+
+
+# ── Company scope ────────────────────────────────────────────────────
+#
+# The gap that let a leak ship: every test above exercises the PURE
+# function, and none covered what happens when the caller is restricted
+# to a subset of companies.  Loads were company-filtered; the off-load
+# line items merged onto them were not.
+
+def _off(dispatcher_user_id, amount, bucket="other_costs") -> dict:
+    return {
+        "dispatcher_user_id": dispatcher_user_id,
+        "bucket": bucket,
+        "amount": amount,
+    }
+
+
+def test_off_load_items_can_create_a_dispatcher_row():
+    """The mechanism behind the leak, stated so the fix is meaningful.
+
+    ``groups.setdefault`` means an off-load item for a dispatcher with NO
+    loads in the visible set mints a row of its own.  That is CORRECT for
+    an unrestricted caller — a dispatcher whose only activity was layover
+    is real — and it is exactly what must not reach a restricted one.
+    """
+    rows = compute_dispatcher_kpis([], T, off_load_items=[_off(77, 500.0)])
+    assert len(rows) == 1
+    assert rows[0]["dispatcher_user_id"] == 77
+    assert rows[0]["other_costs"] == 500.0
+    assert rows[0]["revenue"] == 0            # costs, no revenue
+
+
+def test_off_load_costs_move_the_grade():
+    """Why the pollution mattered.
+
+    These costs feed ``gross``, which feeds ``gross_per_truck`` — and
+    THAT is the graded metric, not gross itself.  ``vehicle_unit`` is
+    load-bearing in this fixture: with no truck the per-truck value is
+    None, which grading treats as NEUTRAL, and the whole effect vanishes.
+    (The first version of this test omitted it and passed while proving
+    nothing.)  With one truck, 9,000 of another company's layover takes
+    this dispatcher from A to C.
+    """
+    load = _load(dispatcher_user_id=1, total_rate=10_000,
+                 loaded_miles=4_000, empty_miles=200, vehicle_unit="T1")
+    clean = compute_dispatcher_kpis([load], T)[0]
+    fouled = compute_dispatcher_kpis(
+        [load], T, off_load_items=[_off(1, 9_000.0)],
+    )[0]
+    assert clean["trucks"] == 1, "no truck => gross_per_truck is neutral"
+    assert fouled["gross"] < clean["gross"]
+    assert clean["grade"] == "A" and fouled["grade"] == "C"
+
+
+@pytest.mark.asyncio
+async def test_restricted_caller_gets_no_off_load_items(monkeypatch):
+    """THE regression guard.
+
+    An off-load row carries no company — ``load_id IS NULL`` and
+    ``load_line_items`` has no company column — so under a company
+    restriction it cannot be attributed.  The service must not fetch it:
+    including it leaked a dispatcher row from an invisible company and
+    charged unverifiable costs into the visible ones.
+    """
+    from features.kpi import service as kpi_service
+
+    fetched: list[str] = []
+
+    async def _loads(account_id, **kw):
+        return []
+
+    async def _off(account_id, **kw):
+        fetched.append("off")
+        return [_off_item()]
+
+    def _off_item():
+        return {"dispatcher_user_id": 99, "bucket": "other_costs",
+                "amount": 1_000.0}
+
+    async def _tenant(_account_id):
+        return None
+
+    monkeypatch.setattr(kpi_service.loads_service, "get_loads", _loads)
+    monkeypatch.setattr(
+        kpi_service.loads_service, "get_off_load_line_items", _off)
+    monkeypatch.setattr(kpi_service, "get_tenant_db", _tenant)
+
+    restricted = await kpi_service.get_dispatcher_kpis(
+        1, days=30, company_codes=["ACME"],
+    )
+    assert fetched == [], "off-load items were fetched for a scoped caller"
+    assert restricted["dispatchers"] == [], (
+        "a dispatcher row reached a company-restricted caller from an "
+        "off-load item that carries no company"
+    )
+
+    unrestricted = await kpi_service.get_dispatcher_kpis(
+        1, days=30, company_codes=None,
+    )
+    assert fetched == ["off"], "unrestricted callers must keep the full picture"
+    assert len(unrestricted["dispatchers"]) == 1

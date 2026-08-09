@@ -216,8 +216,35 @@ async def get_dispatcher_kpis(
     loads = await loads_service.get_loads(
         account_id, since=since, company_codes=company_codes, limit=None,
     )
-    off_items = await loads_service.get_off_load_line_items(
-        account_id, since=since,
+    # OFF-LOAD COSTS ARE UNATTRIBUTABLE UNDER A COMPANY RESTRICTION.
+    #
+    # These are the no-load rows (layover): ``load_id IS NULL``, so there
+    # is no load to carry a ``company_code``, and ``load_line_items`` has
+    # no company column of its own.  Nothing in the row says which
+    # company the cost belongs to.
+    #
+    # They used to be fetched unconditionally while the loads beside them
+    # were company-filtered, and that was wrong twice over:
+    #
+    #   * the merge loop uses ``groups.setdefault``, so an item for a
+    #     dispatcher with no VISIBLE loads CREATED a row — a restricted
+    #     viewer could see a dispatcher from a company outside their
+    #     scope, rendered as "(user #123)" with costs and no revenue;
+    #   * for dispatchers they could see, costs earned on other
+    #     companies' work were charged in, inflating expenses, deflating
+    #     gross, and moving the A–D grade.
+    #
+    # Unrestricted callers (``company_codes`` empty — owners, and anyone
+    # with no per-user company assignment) keep the full picture.  A
+    # restricted caller gets costs OMITTED rather than guessed: an
+    # overstated gross is visible and explicable, a leaked dispatcher row
+    # is neither.  Attributing these properly needs a company on the line
+    # item, which is a schema change, not a filter.
+    off_items = (
+        [] if company_codes
+        else await loads_service.get_off_load_line_items(
+            account_id, since=since,
+        )
     )
     tenant = await get_tenant_db(account_id)
     thresholds = (
