@@ -364,6 +364,7 @@ async def ingest_vehicle_state(account_id: int) -> int:
                 "model":          "" if v.get("model") in (None, "N/A") else v.get("model"),
                 "year":           None if v.get("year") in (None, "N/A") else v.get("year"),
                 "plate_number":   "" if v.get("license_plate") in (None, "N/A") else v.get("license_plate"),
+                "gateway_serial": v.get("gateway_serial") or "",
             }
             for v in fleet
         ]
@@ -389,16 +390,19 @@ async def ingest_vehicle_state(account_id: int) -> int:
         )
     if identity_events:
         try:
-            await tenant.record_device_events(account_id, identity_events)
+            new_events = await tenant.record_device_events(
+                account_id, identity_events)
             # A changed anchor is the ACCOUNT's fleet event — their
             # hardware, their trucks — so it rides the notifications
             # capability to the account's own admins, exactly like
             # every other alert.  Tenant data never goes to a
-            # platform-operator channel.
+            # platform-operator channel.  Only NEWLY recorded
+            # transitions notify: the watch re-detects a changed
+            # anchor every tick until the registry catches up.
             from capabilities.alerting.device_identity import (
                 notify_device_identity_events,
             )
-            await notify_device_identity_events(account_id, identity_events)
+            await notify_device_identity_events(account_id, new_events)
         except Exception:
             logger.exception(
                 "device-event record/notify failed acct=%d", account_id)

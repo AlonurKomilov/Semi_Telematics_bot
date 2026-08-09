@@ -61,10 +61,14 @@ async def test_event_log_dedupes_exact_transitions(pg_db):
     e = {"registry_id": 37, "vehicle_id": "ref1", "vehicle_name": "128",
          "kind": "odo_rebase", "old_value": "567781",
          "new_value": "904200", "observed_at": NOW}
-    await pg_db.record_device_events(1, [e])
-    await pg_db.record_device_events(1, [e])          # same transition
+    first = await pg_db.record_device_events(1, [e])
+    again = await pg_db.record_device_events(1, [e])  # same transition
     rows = await pg_db.get_device_events(1)
     assert len(rows) == 1 and rows[0]["kind"] == "odo_rebase"
+    # The return value is the notify list: only the FIRST sighting is
+    # "new" — a re-detected transition must never re-ping the admins.
+    assert [x["kind"] for x in first] == ["odo_rebase"]
+    assert again == []
 
 
 @pytest.mark.asyncio

@@ -77,13 +77,20 @@ class WarehouseLedgersMixin(_MixinBase):
         await self._db.commit()
         return len(values)
 
-    async def record_device_events(self, account_id: int, events) -> int:
+    async def record_device_events(self, account_id: int, events) -> list:
         """Append identity events (vin_change / gateway_swap /
-        odo_rebase) — deduped on the exact transition, so re-detecting
-        the same change is a no-op, never a spam stream."""
-        n = 0
+        odo_rebase) — deduped on the exact transition.
+
+        Returns only the events that were NEWLY inserted this call.
+        Callers notify from the return value, never from the detected
+        list: while an anchor stays changed the watch re-detects the
+        same transition every tick (a changed VIN doesn't change back),
+        and notifying detections re-pinged every admin per tick until
+        the registry caught up (9 duplicate notices per admin,
+        2026-08-07..09)."""
+        new: list = []
         for e in events:
-            await self._db.execute(
+            cur = await self._db.execute(
                 "INSERT INTO device_event_log "
                 "(account_id, registry_id, vehicle_id, vehicle_name, "
                 " kind, old_value, new_value, observed_at) "
@@ -98,9 +105,10 @@ class WarehouseLedgersMixin(_MixinBase):
                  str(e.get("new_value") or ""),
                  str(e.get("observed_at") or "")),
             )
-            n += 1
+            if getattr(cur, "rowcount", 1) > 0:
+                new.append(e)
         await self._db.commit()
-        return n
+        return new
 
     async def get_device_events(self, account_id: int, *, limit: int = 100):
         cur = await self._db.execute(
