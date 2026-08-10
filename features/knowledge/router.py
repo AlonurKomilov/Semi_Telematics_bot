@@ -933,7 +933,11 @@ async def upload_file(
 
     safe_name = safe_attachment_name(file.filename or "attachment")
     store = await get_object_storage_for_account(user["account_id"], tenant_db)
-    file_path = store.put("knowledge", safe_name, raw)
+    # Account-level, not company-level: an article serves the whole
+    # account.  It still must not sit at the account root — see
+    # capabilities/object_storage/LAYOUT.md.
+    from features.work_orders.storage import ACCOUNT_LEVEL_FOLDER
+    file_path = store.put(f"{ACCOUNT_LEVEL_FOLDER}/knowledge", safe_name, raw)
     if not file_path:
         raise HTTPException(
             status_code=500, detail="Storage write failed — try again.",

@@ -93,6 +93,25 @@ class TestOnlyOneHoldingPen:
         )
 
 
+class TestTheTwoUnderscoreFoldersStaySeparate:
+    """``_generic`` is a bug report; ``_account`` is a home.
+
+    Collapsing them would make the bug report unreadable — real
+    account-level data would drown the writers that genuinely failed to
+    resolve a company.
+    """
+
+    def test_they_are_distinct_and_neither_looks_like_a_business(self):
+        from features.work_orders.storage import (
+            ACCOUNT_LEVEL_FOLDER, GENERIC_COMPANY_FOLDER,
+        )
+        assert ACCOUNT_LEVEL_FOLDER != GENERIC_COMPANY_FOLDER
+        for name in (ACCOUNT_LEVEL_FOLDER, GENERIC_COMPANY_FOLDER):
+            assert name.startswith("_"), (
+                f"{name!r} would read as one of the customer's companies"
+            )
+
+
 class TestNothingWritesToTheAccountRoot:
     """A bucket must begin with a company folder, never a bare segment.
 
@@ -116,6 +135,38 @@ class TestNothingWritesToTheAccountRoot:
     # Anything in a "legacy" function is a READ path by that definition;
     # a new WRITE must not hide behind the word.
     LEGACY = re.compile(r"def\s+\w*legacy\w*\s*\(", re.I)
+
+    # THE GAP THAT LET TWO THROUGH.  The rule below only saw f-strings,
+    # so ``store.put("knowledge", …)`` and ``folder = "template_refs"``
+    # — plain literals — were invisible, and both would have created a
+    # folder at the account root.  This catches ANY bucket that is a
+    # bare literal with no separator: a valid bucket always names at
+    # least a company (or _generic / _account) and then a segment.
+    ALLOWED_BARE = {
+        # platform-scoped stores have no account prefix, so their bucket
+        # is not inside a tenant tree at all
+        "avatars", "system", "cache",
+    }
+
+    def test_no_bare_string_bucket_on_an_account_store(self):
+        call = re.compile(r'\.put\(\s*["\'](?P<b>[A-Za-z0-9_-]+)["\']\s*,')
+        assign = re.compile(
+            r'^\s*(?:folder|bucket)\s*=\s*["\'](?P<b>[A-Za-z0-9_-]+)["\']\s*$')
+        offenders: list[str] = []
+        for path in _source_files():
+            for n, line in enumerate(
+                    path.read_text(encoding="utf-8", errors="ignore")
+                    .splitlines(), 1):
+                m = call.search(line) or assign.match(line)
+                if m and m.group("b") not in self.ALLOWED_BARE:
+                    offenders.append(
+                        f"{path.relative_to(ROOT)}:{n}: {line.strip()}")
+        assert not offenders, (
+            "a bucket with no company segment lands at the ACCOUNT ROOT. "
+            "Use the company folder, GENERIC_COMPANY_FOLDER when it "
+            "cannot be resolved, or ACCOUNT_LEVEL_FOLDER when the data "
+            "genuinely belongs to the whole account:\n  "
+            + "\n  ".join(offenders))
 
     def test_no_bucket_literal_starts_with_a_nested_segment(self):
         pattern = re.compile(

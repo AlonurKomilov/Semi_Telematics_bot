@@ -1063,10 +1063,14 @@ async def upload_reference_image(
     ext = "jpg" if "jpeg" in content_type or "jpg" in content_type else content_type.split("/")[-1]
     safe_key = item_key.replace("/", "_")[:64]
     filename = f"ref_{vehicle_type}_{safe_key}.{ext}"
-    # Bucket is account-agnostic: DiskObjectStorage prefixes with
-    # account-{id}/ internally, and on Drive it lands cleanly at
-    # ``4truck/template_refs/`` (no redundant account-id segment).
-    folder = "template_refs"
+    # Account-level, not company-level: one template is shared by every
+    # company in the account, so there is no company folder to pick.
+    # It still must not sit at the ACCOUNT ROOT — a bare
+    # ``template_refs/`` beside the customer's business names reads as
+    # another business when they browse their Drive.  See
+    # capabilities/object_storage/LAYOUT.md.
+    from features.work_orders.storage import ACCOUNT_LEVEL_FOLDER
+    folder = f"{ACCOUNT_LEVEL_FOLDER}/inspection-templates"
 
     store = await get_object_storage_for_account(user["account_id"], tenant_db)
     if not store.put(folder, filename, raw):
@@ -1113,10 +1117,14 @@ async def stream_reference_image(
     # Defensive: a filename is an opaque key, never a path.
     safe_name = filename.replace("/", "_").replace("\\", "_")
     store = await get_object_storage_for_account(user["account_id"], tenant_db)
-    # Bucket is account-agnostic: DiskObjectStorage prefixes with
-    # account-{id}/ internally, and on Drive it lands cleanly at
-    # ``4truck/template_refs/`` (no redundant account-id segment).
-    folder = "template_refs"
+    # Account-level, not company-level: one template is shared by every
+    # company in the account, so there is no company folder to pick.
+    # It still must not sit at the ACCOUNT ROOT — a bare
+    # ``template_refs/`` beside the customer's business names reads as
+    # another business when they browse their Drive.  See
+    # capabilities/object_storage/LAYOUT.md.
+    from features.work_orders.storage import ACCOUNT_LEVEL_FOLDER
+    folder = f"{ACCOUNT_LEVEL_FOLDER}/inspection-templates"
     data = store.get(folder, safe_name)
     if data is None:
         raise HTTPException(status_code=404, detail="Reference image not found")

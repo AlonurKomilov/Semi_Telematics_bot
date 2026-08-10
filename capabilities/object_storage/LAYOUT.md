@@ -25,7 +25,10 @@ data/userdata/                              ← OBJECT_STORE_ROOT
       branding/                             ← logo-{company_id}.ext, banner-{company_id}.ext
       drivers/user-{user_id}/
         _archive/{YYYY-MM-DD}/user-{user_id}/
-    _generic/                               ← the holding pen; see below
+    _generic/                               ← holding pen: company unresolved (a bug)
+    _account/                               ← account-level data (by design)
+      knowledge/
+      inspection-templates/
 ```
 
 `OBJECT_STORE_ROOT` (`infra/config.py`) is read **once at import**.
@@ -81,6 +84,28 @@ Three properties, each deliberate:
 * **Never a guess.** A file whose company is genuinely unknown belongs
   here, not under a company picked by probability. A wrong company reads
   as correct and is far harder to notice later.
+
+---
+
+## `_account` — data with no company, by design
+
+`ACCOUNT_LEVEL_FOLDER = "_account"`, same module.
+
+Not everything is company-scoped. A knowledge-base article and an
+inspection template serve the whole account; forcing them under one
+company would be a lie about who owns them. They still may not sit at
+the account root, for the same reason as everything else.
+
+**`_account` and `_generic` are deliberately different folders**, and
+the difference is intent:
+
+| | meaning | when you see files here |
+|---|---|---|
+| `_generic` | we could not work out the company | a writer is broken — go fix it |
+| `_account` | there is no company, by design | correct, nothing to do |
+
+Collapsing them would make the bug report unreadable: real
+account-level data would drown the writers that genuinely failed.
 
 ---
 
@@ -172,6 +197,13 @@ customer's account.
    reference sweep in `capabilities/object_storage/references.py` so
    retention and the purge can see it.
 5. Never write to `account-{id}/` directly, and never invent a second
-   holding pen.
+   holding pen. If the data has no company, decide WHICH kind of
+   no-company it is: `ACCOUNT_LEVEL_FOLDER` when that is correct by
+   design, `GENERIC_COMPANY_FOLDER` when you simply could not resolve
+   one.
+
+A bucket that is a bare literal — `store.put("knowledge", …)` — always
+lands at the account root. The guard rejects those; two shipped that
+way before it existed.
 
 `tests/test_object_storage_layout.py` enforces rules 1, 2 and 5.

@@ -53,6 +53,22 @@ logger = logging.getLogger(__name__)
 # pen stays a bug report rather than a second home for data.
 GENERIC_COMPANY_FOLDER = "_generic"
 
+# Where data that belongs to the ACCOUNT AS A WHOLE goes.
+#
+# Not everything is company-scoped: a knowledge-base article and an
+# inspection template serve the whole account, and forcing them under
+# one company would be a lie about who owns them.  They still may not
+# sit at the account root — a bare ``knowledge/`` beside five business
+# names reads as a sixth business, which is the mistake this layout
+# exists to prevent.
+#
+# Distinct from GENERIC_COMPANY_FOLDER on purpose, and the difference is
+# intent: ``_generic`` means "we could not work out the company, go fix
+# the writer" and logs when it is used; ``_account`` means "there is no
+# company by design, this is correct".  One is a bug report, the other
+# is a home.  Collapsing them would make the bug report unreadable.
+ACCOUNT_LEVEL_FOLDER = "_account"
+
 
 _MONTHS = ("01-january", "02-february", "03-march", "04-april",
            "05-may", "06-june", "07-july", "08-august",
