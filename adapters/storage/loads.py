@@ -42,6 +42,49 @@ else:
 LOAD_STATUSES = ("upcoming", "dispatched", "in_transit", "delivered", "canceled")
 PAYMENT_STATUSES = ("", "unpaid", "paid")
 
+# A load in one of these is still being WORKED.  It has a pickup date but
+# no end date yet, which is what makes a pickup-date window dangerous for
+# it: a load picked up three weeks ago and still rolling is not history,
+# and dropping it out of a "last 7 days" view reads to a dispatcher as
+# "the load was deleted" rather than "the load was filtered".
+OPEN_LOAD_STATUSES = ("upcoming", "dispatched", "in_transit")
+
+
+def _pickup_window(
+    since: str | None, until: str | None, *, keep_open: bool,
+) -> tuple[list[str], list[Any]]:
+    """The pickup-date window as (clauses, args).
+
+    Shared by ``list_loads`` and ``count_loads_by_status`` on purpose —
+    the tab badges must count exactly the rows the list returns, and the
+    one time those two grew their own copies of a filter the badges read
+    1,380 above a grid holding 40.  One builder, one truth.
+
+    ``keep_open`` exempts in-progress loads from the window (see
+    ``OPEN_LOAD_STATUSES``).  History narrows; live work does not.
+    """
+    clauses: list[str] = []
+    args: list[Any] = []
+    if not (since or until):
+        return clauses, args
+    bounds, bargs = [], []
+    if since:
+        bounds.append("pickup_date >= ?")
+        bargs.append(since)
+    if until:
+        bounds.append("pickup_date <= ?")
+        bargs.append(until)
+    window = " AND ".join(bounds)
+    if keep_open:
+        ph = ", ".join("?" for _ in OPEN_LOAD_STATUSES)
+        clauses.append(f"(({window}) OR status IN ({ph}))")
+        args.extend([*bargs, *OPEN_LOAD_STATUSES])
+    else:
+        clauses.append(f"({window})")
+        args.extend(bargs)
+    return clauses, args
+
+
 # Columns a partial update may touch (defensive allow-list, same pattern as
 # the driver-profile and vehicle mixins).
 _LOAD_FIELDS = (
@@ -469,10 +512,12 @@ class LoadsMixin(_MixinBase):
         since: str | None = None,
         until: str | None = None,
         include_inactive: bool = False,
+        keep_open: bool = False,
         limit: int | None = 500,
     ) -> list[Load]:
         """Loads for the account, newest pickup first.  ``since``/``until``
-        bound the pickup_date window (ISO prefixes compare correctly).
+        bound the pickup_date window (ISO prefixes compare correctly);
+        ``keep_open`` exempts in-progress loads from that window.
 
         ``company_codes`` restricts to those companies, fail-open on rows
         with no company (same rule as the Drivers/Vehicles lists).
@@ -495,12 +540,9 @@ class LoadsMixin(_MixinBase):
             ph = ", ".join("?" for _ in company_codes) or "''"
             where.append(f"(company_code = '' OR company_code IN ({ph}))")
             args.extend(company_codes)
-        if since:
-            where.append("pickup_date >= ?")
-            args.append(since)
-        if until:
-            where.append("pickup_date <= ?")
-            args.append(until)
+        wc, wa = _pickup_window(since, until, keep_open=keep_open)
+        where.extend(wc)
+        args.extend(wa)
         sql = (
             f"{_SELECT} WHERE {' AND '.join(where)} "
             "ORDER BY pickup_date DESC, id DESC"
@@ -522,9 +564,13 @@ class LoadsMixin(_MixinBase):
     async def count_loads_by_status(
         self, account_id: int, *, driver_user_id: int | None = None,
         company_codes: list[str] | None = None,
+        since: str | None = None, until: str | None = None,
+        keep_open: bool = False,
     ) -> dict[str, int]:
         """Active-load counts per status — powers the tab badges.  Same
-        company fail-open rule as ``list_loads`` so tabs match the list."""
+        company fail-open rule AND the same pickup window as ``list_loads``
+        (via ``_pickup_window``), so a badge can never disagree with the
+        rows the grid holds."""
         where = ["account_id = ?", "is_active = 1"]
         args: list[Any] = [account_id]
         if driver_user_id is not None:
@@ -534,6 +580,9 @@ class LoadsMixin(_MixinBase):
             ph = ", ".join("?" for _ in company_codes) or "''"
             where.append(f"(company_code = '' OR company_code IN ({ph}))")
             args.extend(company_codes)
+        wc, wa = _pickup_window(since, until, keep_open=keep_open)
+        where.extend(wc)
+        args.extend(wa)
         cur = await self._db.execute(
             f"SELECT status, COUNT(*) FROM loads WHERE {' AND '.join(where)} "
             "GROUP BY status",

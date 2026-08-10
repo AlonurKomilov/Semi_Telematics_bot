@@ -30,7 +30,15 @@ _manage_loads = require_permission("can_manage_loads")
 
 # Rows returned to the list screen per request.  The response carries a
 # ``truncated`` flag when the account has more — never a silent cap.
-LIST_CAP = 500
+#
+# 500 was low enough that a 1,575-load account could not reach its own
+# history: the list screen's only narrowing control was the status tab,
+# so Delivered (1,380) sat permanently over the cap and could never be
+# totalled or pivoted.  The screen now sends a pickup-date window, and
+# rendering is bounded by pagination (250 rows on screen) rather than by
+# the fetch — so the cap's real cost is payload, and this is the size at
+# which payload starts to matter rather than an arbitrary floor.
+LIST_CAP = 5000
 
 
 async def _user_perms(user: dict):
@@ -120,6 +128,10 @@ async def list_loads(
         account_id, scope_driver_user_id=scope,
         status=status, since=since, until=until,
         company_codes=allowed or None,
+        # The list screen narrows HISTORY, never live work — a load still
+        # in transit has no end date, so a pickup window would drop it and
+        # read as a deletion.  Aggregation callers pass no window at all.
+        keep_open=True,
         limit=LIST_CAP + 1,
     )
     truncated = len(loads) > LIST_CAP
@@ -128,6 +140,9 @@ async def list_loads(
     counts = await service.get_load_counts(
         account_id, scope_driver_user_id=scope,
         company_codes=allowed or None,
+        # Same window as the rows above: a badge that counts a different
+        # set than the grid holds is the bug this pairing prevents.
+        since=since, until=until, keep_open=True,
     )
     return {"loads": loads, "counts": counts, "truncated": truncated}
 

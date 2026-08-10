@@ -14,7 +14,7 @@ import { Clock, Package, Plus } from 'lucide-react';
 import DataGrid, { TAB_PREFIX, type DataGridSegment } from '../../components/datagrid';
 import { loadRowMenu } from './contextMenu';
 import {
-  PageHeader, EmptyState, ErrorState, TableSkeleton,
+  PageHeader, EmptyState, ErrorState, TableSkeleton, DateRangePresets,
 } from '../../components/shell';
 import { Button } from '../../components/ui/button';
 import { useRoleView } from '../../context/RoleViewContext';
@@ -24,6 +24,10 @@ import LoadManageDialog from './LoadManageDialog';
 import LayoverDialog from './LayoverDialog';
 import type { PersonOption } from './LayoverDialog';
 import { LOAD_STATUSES, listLoads } from './api';
+import { InfoTip } from '../../components/tooltip';
+import { usePreference } from '../../preferences/usePreference';
+import { useTimezone } from '../../hooks/useTimezone';
+import { daysAgoInTimeZone } from '../../utils/datetime';
 import type { LoadRow, LoadsResponse } from './api';
 
 function Pill({ value }: { value: unknown }) {
@@ -144,6 +148,19 @@ const makeColumns = (): AnyColumn[] => [
 // onSegmentChange + segmentCounts.
 //
 // ``canceled`` stays out of the strip deliberately.
+// Wider than the shared default (which stops at 90) because this window
+// is what reaches HISTORY: the whole point of the control is that a year
+// of delivered loads is retrievable.  "All time" is days=0 — the page
+// then sends no bound at all and the server returns everything up to its
+// cap.
+const RANGE_OPTIONS = [
+  { label: 'Last 7 days', days: 7 },
+  { label: 'Last 30 days', days: 30 },
+  { label: 'Last 90 days', days: 90 },
+  { label: 'Last 12 months', days: 365 },
+  { label: 'All time', days: 0 },
+];
+
 const LOAD_SEGMENTS: DataGridSegment[] = [
   // "All" carries no badge: it is never counted server-side, and a 0
   // there would read as "no loads at all".  Every KEYED tab shows its
@@ -178,9 +195,19 @@ export default function Loads() {
   const canManage = viewHas('can_manage_loads');
   const canEditLoad = (_row: LoadRow): boolean => canManage;
 
+  // The pickup-date window.  Days back from today, 0 = all time; kept as
+  // a per-user preference because it describes how this person works —
+  // a dispatcher lives in the last few days, an accountant reconciles a
+  // whole month — not how this screen should look for everyone.
+  const tz = useTimezone();
+  const { value: rangeDays, setValue: setRangeDays } = usePreference('loads.rangeDays');
+  const since = rangeDays > 0 ? daysAgoInTimeZone(rangeDays, tz) : undefined;
+
   const { data, isLoading, error } = useQuery<LoadsResponse>({
-    queryKey: ['loads', tab],
-    queryFn: () => listLoads(tab || undefined),
+    // ``since`` is part of the KEY, not just the request: without it a
+    // range change would serve the previous window's rows from cache.
+    queryKey: ['loads', tab, since ?? 'all'],
+    queryFn: () => listLoads(tab || undefined, since),
     // The status tab is part of the KEY, so switching it used to mean
     // "no cached data" -> isLoading -> the DataGrid UNMOUNTED and was
     // replaced by a skeleton.  That threw away every piece of state the
@@ -254,10 +281,30 @@ export default function Loads() {
         title={t('nav.loads', 'Loads')}
         description={t(
           'loads_page.description',
-          'Every load in one place — entered by hand or synced from your TMS.',
+          'Every load in one place — entered by hand or synced from your TMS. Widen the date range to reach older ones.',
         )}
-        actions={canManage ? (
+        actions={(
           <div className="flex items-center gap-2">
+            {/* Narrows HISTORY only — the server exempts in-progress
+                loads from the window, so a load picked up last month and
+                still rolling stays on the Dispatched tab at any range.
+                Visible to every viewer: reading a narrower slice is not
+                a management action. */}
+            <InfoTip label={t(
+              'loads_page.range_help',
+              'Narrows completed loads and the tab counts. Loads still in progress always show, whatever the range.',
+            )} />
+            <DateRangePresets
+              value={rangeDays}
+              onChange={setRangeDays}
+              options={RANGE_OPTIONS}
+              // The custom calendar clamps to this; the shared default of
+              // 90 would silently refuse the year-wide picks this page
+              // exists to allow.
+              maxDays={730}
+            />
+            {canManage && (
+              <>
             <Button variant="outline" onClick={() => setLayoverOpen(true)}>
               <Clock size={16} className="mr-1.5" />
               {t('loads_page.add_off_load', 'Off-load pay / deduction')}
@@ -266,8 +313,10 @@ export default function Loads() {
               <Plus size={16} className="mr-1.5" />
               {t('loads_page.add', 'Add load')}
             </Button>
+              </>
+            )}
           </div>
-        ) : undefined}
+        )}
       />
 
 
@@ -286,20 +335,6 @@ export default function Loads() {
           }
         />
       )}
-      {!isLoading && error == null && data?.truncated && (
-        <p className="mb-2 text-xs text-muted-foreground">
-          {tabTotal
-            ? t(
-              'loads_page.truncated_of',
-              'Showing the latest {{shown}} of {{total}} — use the status tabs or search to narrow further.',
-              { shown: loads.length, total: tabTotal.toLocaleString() },
-            )
-            : t(
-              'loads_page.truncated',
-              'Showing the latest 500 loads — use the status tabs or search to narrow further.',
-            )}
-        </p>
-      )}
       {/* Rendered whenever the account HAS loads, empty tab or not — the
           grid draws its own "no rows" line and, crucially, keeps the tab
           strip on screen so the operator can leave. */}
@@ -310,7 +345,16 @@ export default function Loads() {
           // Also what makes the ``filterable`` columns below actually
           // reachable — the filter popover opens from the 3-dot menu.
           tableId="loads"
-          emptyMessage={t('loads_page.empty_tab', 'No loads in this status.')}
+          // Names the constraint that emptied it.  "No loads in this
+          // status" is FALSE while a date window is on — there may be
+          // forty, one range-widening away — and that sentence is where
+          // someone hunting an old load gives up and calls it missing.
+          emptyMessage={rangeDays > 0
+            ? t(
+              'loads_page.empty_tab_ranged',
+              'No loads in this status in the selected date range. Widen the range to see older loads.',
+            )
+            : t('loads_page.empty_tab', 'No loads in this status.')}
           segments={LOAD_SEGMENTS}
           // ONE slot, two kinds of occupant (the AlertsResults pattern).
           segmentKey={savedId ? TAB_PREFIX + savedId : (tab || 'all')}

@@ -147,9 +147,17 @@ export async function deleteLineItem(itemId: number): Promise<void> {
   await apiJSON(`/loads/line-items/${itemId}`, { method: 'DELETE' });
 }
 
-export async function listLoads(status?: string): Promise<LoadsResponse> {
-  const qs = status ? `?status=${encodeURIComponent(status)}` : '';
-  return apiJSON<LoadsResponse>(`/loads/${qs}`);
+/** ``since`` bounds the PICKUP date (ISO ``YYYY-MM-DD``).  The server
+ *  exempts in-progress loads from that window, so narrowing the range
+ *  hides history without ever hiding live work. */
+export async function listLoads(
+  status?: string, since?: string,
+): Promise<LoadsResponse> {
+  const p = new URLSearchParams();
+  if (status) p.set('status', status);
+  if (since) p.set('since', since);
+  const qs = p.toString();
+  return apiJSON<LoadsResponse>(`/loads/${qs ? `?${qs}` : ''}`);
 }
 
 export async function createLoad(draft: LoadDraft): Promise<LoadRow> {

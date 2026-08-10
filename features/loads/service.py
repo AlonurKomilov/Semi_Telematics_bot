@@ -80,6 +80,7 @@ async def get_loads(
     since: str | None = None,
     until: str | None = None,
     company_codes: list[str] | None = None,
+    keep_open: bool = False,
     limit: int | None = 500,
 ) -> list[dict]:
     """Loads for the account, serialized.  ``scope_driver_user_id`` (set for
@@ -95,7 +96,7 @@ async def get_loads(
         status=status,
         driver_user_id=scope_driver_user_id,
         company_codes=company_codes,
-        since=since, until=until,
+        since=since, until=until, keep_open=keep_open,
         limit=limit,
     )
     # Extra pay & costs (line items) aggregate in ONE query for the whole
@@ -107,14 +108,19 @@ async def get_loads(
 async def get_load_counts(
     account_id: int, *, scope_driver_user_id: int | None = None,
     company_codes: list[str] | None = None,
+    since: str | None = None, until: str | None = None,
+    keep_open: bool = False,
 ) -> dict[str, int]:
-    """Active-load counts per status (the tab badges), same scoping rules."""
+    """Active-load counts per status (the tab badges), same scoping rules —
+    and the same date window as ``get_loads``, so a badge always describes
+    the rows the caller is about to receive."""
     tenant = await get_tenant_db(account_id)
     if tenant is None:
         return {}
     return await tenant.count_loads_by_status(
         account_id, driver_user_id=scope_driver_user_id,
         company_codes=company_codes,
+        since=since, until=until, keep_open=keep_open,
     )
 
 

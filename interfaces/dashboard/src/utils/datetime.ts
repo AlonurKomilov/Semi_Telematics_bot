@@ -41,6 +41,23 @@ export function todayInTimeZone(tz?: string): string {
   }
 }
 
+/** The calendar date ``days`` before today, as ``YYYY-MM-DD`` in the given
+ *  timezone — what a "last N days" window sends to an API that wants a
+ *  date bound rather than a day count.
+ *
+ *  The arithmetic runs in UTC deliberately.  The INPUT is already a
+ *  calendar date in the account's zone, and UTC has no DST, so
+ *  subtracting whole days there can never land on the 23- or 25-hour day
+ *  that makes a local-time subtraction skip or repeat a date each spring
+ *  and autumn. */
+export function daysAgoInTimeZone(days: number, tz?: string): string {
+  const [y, m, d] = todayInTimeZone(tz).split('-').map(Number);
+  const back = new Date(Date.UTC(y, m - 1, d) - days * 86_400_000);
+  const mm = String(back.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(back.getUTCDate()).padStart(2, '0');
+  return `${back.getUTCFullYear()}-${mm}-${dd}`;
+}
+
 /**
  * The calendar MONTH a timestamp falls in, as ``YYYY-MM``, in the given
  * timezone.  Used for month buckets (pivot columns, monthly rollups).

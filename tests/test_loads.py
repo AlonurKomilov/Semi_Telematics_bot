@@ -258,3 +258,70 @@ async def test_deduction_bucket_and_settlement_items(db):
     by_kind = {i["kind"]: i for i in items}
     assert by_kind["tonu"]["bucket"] == "driver_pay"
     assert by_kind["insurance"]["bucket"] == "deduction"
+
+
+# ── The pickup window: history narrows, live work does not ────────────
+#
+# The list screen defaults to a short date range so a large account can
+# still reach its own history.  That window filters ``pickup_date``, and a
+# load's pickup is bounded while its LIFE is not — so without an exemption
+# a load picked up three weeks ago and still rolling would fall out of the
+# view.  To a dispatcher that reads as "the load was deleted", which is a
+# worse failure than the truncation the window replaced.
+
+@pytest.mark.asyncio
+async def test_window_keeps_open_loads_and_drops_old_history(db):
+    await db.add_load(42, status="delivered", pickup_date="2026-06-01")   # old history
+    await db.add_load(42, status="delivered", pickup_date="2026-08-08")   # recent history
+    await db.add_load(42, status="in_transit", pickup_date="2026-06-02")  # OLD but LIVE
+    await db.add_load(42, status="dispatched", pickup_date="2026-05-15")  # older, still live
+
+    rows = await db.list_loads(42, since="2026-08-01", keep_open=True)
+    got = sorted((r.status, r.pickup_date) for r in rows)
+    assert got == [
+        ("delivered", "2026-08-08"),   # in the window
+        ("dispatched", "2026-05-15"),  # exempt — still being worked
+        ("in_transit", "2026-06-02"),  # exempt — still being worked
+    ]
+
+    # Without the exemption the window is literal, which is what
+    # aggregation callers (KPI, reports) need.
+    strict = await db.list_loads(42, since="2026-08-01")
+    assert [r.pickup_date for r in strict] == ["2026-08-08"]
+
+
+@pytest.mark.asyncio
+async def test_tab_badges_count_exactly_what_the_list_returns(db):
+    """The badges and the rows share ``_pickup_window`` on purpose.  When
+    they had separate copies of the filter, Delivered's badge read 1,380
+    above a grid holding 40 — two numbers on one screen disagreeing, with
+    the wrong one dressed as the total."""
+    for status, day in [
+        ("delivered", "2026-06-01"), ("delivered", "2026-08-08"),
+        ("delivered", "2026-08-09"), ("in_transit", "2026-05-15"),
+        ("upcoming", "2026-08-10"),
+    ]:
+        await db.add_load(42, status=status, pickup_date=day)
+
+    for keep_open in (True, False):
+        rows = await db.list_loads(42, since="2026-08-01", keep_open=keep_open)
+        counts = await db.count_loads_by_status(
+            42, since="2026-08-01", keep_open=keep_open,
+        )
+        actual = {}
+        for r in rows:
+            actual[r.status] = actual.get(r.status, 0) + 1
+        assert {k: v for k, v in counts.items() if v}, "badges should not be empty"
+        assert {k: v for k, v in counts.items() if v} == actual, (
+            f"badge/row disagreement at keep_open={keep_open}"
+        )
+
+
+@pytest.mark.asyncio
+async def test_no_window_is_unchanged(db):
+    """No range asked for, no clause added — the aggregation paths that
+    pass neither bound must keep seeing everything."""
+    await db.add_load(42, status="delivered", pickup_date="2020-01-01")
+    await db.add_load(42, status="in_transit", pickup_date="2026-08-08")
+    assert len(await db.list_loads(42)) == 2
+    assert len(await db.list_loads(42, keep_open=True)) == 2

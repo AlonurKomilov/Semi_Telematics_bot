@@ -172,6 +172,21 @@ export const DEFS = {
     sanitize: asBool,
     note: 'Hides the "settings moved to the gear" pointer once dismissed.',
   }),
+  // The Loads list's pickup-date window, in days back from today; 0 means
+  // "all time".  ``synced`` because it describes how this PERSON works —
+  // a dispatcher lives in the last few days, an accountant reconciles a
+  // whole month — and that habit should follow them between machines,
+  // unlike the geometry preferences above.
+  'loads.rangeDays': def<number>({
+    default: 7,
+    scope: 'synced',
+    sanitize: (v) => {
+      const n = typeof v === 'number' ? v : Number(v);
+      if (!Number.isFinite(n) || n < 0) return undefined;
+      return Math.floor(n);
+    },
+    note: 'Loads list date window (days back; 0 = all time).',
+  }),
   'sidebar.collapsed': def<boolean>({
     default: false,
     scope: 'device',

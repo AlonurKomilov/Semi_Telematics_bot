@@ -21,6 +21,7 @@ import * as store from './store';
 const FROZEN_KEYS: readonly string[] = [
   'prefs.syncEnabled',
   'theme',
+  'loads.rangeDays',
   'sidebar.collapsed',
   'notif.bannerLevel',
   'notif.position',
