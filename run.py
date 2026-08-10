@@ -167,7 +167,15 @@ async def main():
                 # only heals while its source rows survive.  Five minutes
                 # of grace covers a restart; coalesce (set per job) keeps
                 # a backlog from firing the same job repeatedly.
+                # timezone="UTC" is LOAD-BEARING: without it APScheduler
+                # falls back to the server's OS clock (Europe/Berlin on
+                # this host), and every cron job registered without an
+                # explicit tz fired two hours early — including the
+                # account purge and the billing-metering "yesterday"
+                # flush, whose UTC day math then closed the WRONG day.
+                # Nine job comments claimed UTC; this makes them true.
                 scheduler = AsyncIOScheduler(
+                    timezone="UTC",
                     job_defaults={"misfire_grace_time": 300, "coalesce": True},
                 )
                 _register_jobs(scheduler, tg_app)

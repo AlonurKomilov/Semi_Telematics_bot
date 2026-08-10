@@ -242,7 +242,9 @@ def main():
 
     app = build_app()
 
-    scheduler = AsyncIOScheduler()
+    # timezone="UTC", not the server's OS clock — see run.py for the
+    # incident this pins against (cron jobs firing in Europe/Berlin).
+    scheduler = AsyncIOScheduler(timezone="UTC")
     _register_jobs(scheduler, app)
     scheduler.start()
 

@@ -111,7 +111,17 @@ async def handle_fuelcost_text(update: Update, context: ContextTypes.DEFAULT_TYP
         gallons = wiz.get("gallons", 0)
         price = wiz.get("price", 0)
         total = round(gallons * price, 2)
-        today = _dt.now(_TZ_ET).strftime("%Y-%m-%d")
+        # The ACCOUNT's calendar day — this string is PERSISTED as the
+        # fuel entry's date, so a hardcoded Eastern day gave any
+        # non-Eastern fleet tomorrow's date on evening entries.
+        from zoneinfo import ZoneInfo as _ZI
+
+        from capabilities.localization.tz import effective_tz_for_account
+        try:
+            _acct_tz = _ZI(await effective_tz_for_account(user.account_id))
+        except Exception:
+            _acct_tz = _TZ_ET
+        today = _dt.now(_acct_tz).strftime("%Y-%m-%d")
 
         try:
             tenant = await get_tenant_db(user.account_id)

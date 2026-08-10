@@ -74,8 +74,18 @@ async def get_vehicle_fuel_costs(tool_args: dict, samsara_client,
         return {"error": "Fuel cost data not available in this context"}
     entries = await db.get_fuel_entries(account_id, vehicle_name=vehicle, limit=200)
     if days and isinstance(days, int) and days > 0:
+        # Stored fuel dates are ACCOUNT-local day strings (the bot
+        # writes them in the account timezone) — the cutoff must speak
+        # the same clock, never the server's local day.
         from datetime import datetime, timedelta
-        cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        from zoneinfo import ZoneInfo
+
+        from capabilities.localization.tz import effective_tz_for_account
+        try:
+            _tz = ZoneInfo(await effective_tz_for_account(account_id))
+        except Exception:
+            _tz = ZoneInfo("America/New_York")
+        cutoff = (datetime.now(_tz) - timedelta(days=days)).strftime("%Y-%m-%d")
         entries = [e for e in entries if (e.get("date") or "") >= cutoff]
     if not entries:
         period = f" in the last {days} days" if days else ""

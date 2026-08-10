@@ -46,12 +46,13 @@ def _mileage_fields(t: dict) -> dict:
     }
 
 
-def _bucket_open_tasks(tasks: list[dict]) -> tuple[list[dict], list[dict], list[dict]]:
+def _bucket_open_tasks(tasks: list[dict], today=None) -> tuple[list[dict], list[dict], list[dict]]:
     """Split open tasks into (overdue, due_soon, pending) by DERIVED urgency.
 
     Uses the dashboard's own classifier so the AI and the Maintenance page
     always agree — e.g. a stored-``pending`` task 25 mi past its due odometer
     lands in ``overdue`` here exactly as it does in the page's chips.
+    ``today`` is the ACCOUNT's calendar date (service.account_today).
     """
     from features.maintenance.service import classify_task_urgency
 
@@ -61,7 +62,7 @@ def _bucket_open_tasks(tasks: list[dict]) -> tuple[list[dict], list[dict], list[
     for t in tasks:
         if (t.get("status") or "").lower() in _CLOSED:
             continue
-        urgency = classify_task_urgency(t)
+        urgency = classify_task_urgency(t, today=today)
         if urgency == "overdue":
             overdue.append(t)
         elif urgency == "due_soon":
@@ -131,9 +132,10 @@ async def get_vehicle_maintenance(tool_args: dict, samsara_client,
     # readings can be stranded stale (alerted_at filter), and judging
     # against them made the AI answer "0 overdue" while the dashboard
     # (which does the same merge) showed the truck past due.
-    from features.maintenance.service import apply_live_readings
+    from features.maintenance.service import account_today, apply_live_readings
     await apply_live_readings(db, account_id, tasks)
-    overdue, due_soon, pending = _bucket_open_tasks(tasks)
+    overdue, due_soon, pending = _bucket_open_tasks(
+        tasks, today=await account_today(account_id))
     ordered = (
         [(t, "overdue") for t in overdue]
         + [(t, "due_soon") for t in due_soon]
@@ -173,9 +175,10 @@ async def get_maintenance_summary(tool_args: dict, samsara_client,
     tasks = filter_to_scope(tasks, tool_args)
     # Live-readings merge before classifying — same rationale as
     # get_vehicle_maintenance above.
-    from features.maintenance.service import apply_live_readings
+    from features.maintenance.service import account_today, apply_live_readings
     await apply_live_readings(db, account_id, tasks)
-    overdue, due_soon, pending = _bucket_open_tasks(tasks)
+    overdue, due_soon, pending = _bucket_open_tasks(
+        tasks, today=await account_today(account_id))
     # By type — over every open task, whatever its urgency.
     maint_by_type: dict[str, int] = {}
     for t in overdue + due_soon + pending:

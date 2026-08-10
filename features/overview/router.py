@@ -331,10 +331,11 @@ async def overview_stats(
         # chips so the shell header badge and the Maintenance page
         # tell the same story.  A pending task that's still 50,000 mi
         # away from due doesn't count.
-        from features.maintenance.service import classify_task_urgency
+        from features.maintenance.service import account_today, classify_task_urgency
+        _today = await account_today(account_id)
         due_now = 0
         for t in (maint_tasks or []):
-            urgency = classify_task_urgency(t)
+            urgency = classify_task_urgency(t, today=_today)
             if urgency in ("overdue", "due_soon"):
                 due_now += 1
         result["maintenance_due"] = due_now

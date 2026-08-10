@@ -96,7 +96,24 @@ def due_soon_hours_for(interval: Optional[float]) -> float:
     return max(DUE_SOON_HOURS, (interval or 0) * DUE_SOON_INTERVAL_FRACTION)
 
 
-def classify_task_urgency(task: dict) -> Optional[str]:
+async def account_today(account_id: int):
+    """The account's CURRENT calendar date — the only honest "today"
+    for due-date badges.  The server's own clock (Europe) runs 6-9h
+    ahead of every supported account zone, so a naive ``now().date()``
+    flipped tasks to "overdue" up to 9 hours early."""
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    from capabilities.localization.tz import effective_tz_for_account
+
+    try:
+        tz = ZoneInfo(await effective_tz_for_account(account_id))
+    except Exception:
+        tz = ZoneInfo("America/New_York")
+    return datetime.now(tz).date()
+
+
+def classify_task_urgency(task: dict, *, today=None) -> Optional[str]:
     """Return ``"overdue"``, ``"due_soon"``, or ``None``.
 
     Mirrors ``dueSoonClassify`` in [Tasks.tsx].  An ``overdue`` result
@@ -117,8 +134,11 @@ def classify_task_urgency(task: dict) -> Optional[str]:
     due_date = task.get("due_date")
     if due_date:
         try:
-            from datetime import date as _date, datetime as _dt
-            today = _dt.now().date()
+            from datetime import date as _date, datetime as _dt, timezone as _tzu
+            if today is None:
+                # UTC fallback, never the server's local clock; callers
+                # with an account in hand pass account_today() instead.
+                today = _dt.now(_tzu.utc).date()
             if isinstance(due_date, str):
                 d = _dt.fromisoformat(due_date[:10]).date()
             elif isinstance(due_date, _date):

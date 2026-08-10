@@ -531,7 +531,12 @@ async def _mileage_bounds(account_id: int, start: str, end: str):
     e_day, e_clock = _parse_boundary(end, is_end=True)
     if (s_day, s_clock or "00:00:00") > (e_day, e_clock or "23:59:59"):
         raise HTTPException(422, "start must be on or before end")
-    if date.fromisoformat(s_day) < date.today() - timedelta(days=MILEAGE_RETENTION_DAYS):
+    # UTC date, never the server's local day (Europe here, hours ahead
+    # of every account zone) — a 730-day floor doesn't need account-tz
+    # precision, but it must not move with the host's clock.
+    _floor = (datetime.now(ZoneInfo("UTC")).date()
+              - timedelta(days=MILEAGE_RETENTION_DAYS))
+    if date.fromisoformat(s_day) < _floor:
         raise HTTPException(
             422,
             f"odometer history is kept {MILEAGE_RETENTION_DAYS} days — "
@@ -559,14 +564,15 @@ async def _mileage_bounds(account_id: int, start: str, end: str):
 
 def _validate_mileage_range(start: str, end: str) -> None:
     """Kept for callers that only need day validation."""
-    from datetime import date, timedelta
+    from datetime import date, datetime, timedelta, timezone as _tzu
     try:
         s, e = date.fromisoformat(start[:10]), date.fromisoformat(end[:10])
     except ValueError:
         raise HTTPException(422, "start/end must be YYYY-MM-DD")
     if s > e:
         raise HTTPException(422, "start must be on or before end")
-    if s < date.today() - timedelta(days=MILEAGE_RETENTION_DAYS):
+    # UTC date, not the host's local day — same rule as _mileage_bounds.
+    if s < datetime.now(_tzu.utc).date() - timedelta(days=MILEAGE_RETENTION_DAYS):
         raise HTTPException(
             422,
             f"odometer history is kept {MILEAGE_RETENTION_DAYS} days — "

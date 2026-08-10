@@ -289,8 +289,23 @@ async def send_scheduled_reports(app: Application):
     """
     now = _dt.now(_tz_utc)
     current_hour = now.hour
-    is_monday = now.weekday() == 0
-    is_first = now.day == 1
+
+    def _local_day_flags(sub: dict) -> tuple[bool, bool]:
+        """(is_monday, is_first) in the SUBSCRIBER's own timezone.
+
+        The hour match below is already per-subscriber-local; judging
+        the day in UTC broke every evening send hour — a 19:00-23:00
+        local send crosses UTC midnight, so weekly reports fired on the
+        subscriber's Sunday and monthlies on the last day of the prior
+        month (or skipped the 1st entirely).
+        """
+        from zoneinfo import ZoneInfo
+        try:
+            local = now.astimezone(
+                ZoneInfo(sub.get("timezone") or "America/New_York"))
+        except Exception:
+            local = now
+        return local.weekday() == 0, local.day == 1
 
     try:
         accounts = await get_platform_db().list_accounts()
@@ -313,6 +328,7 @@ async def send_scheduled_reports(app: Application):
 
             for sub in subs:
                 freq = sub.get("frequency", "daily")
+                is_monday, is_first = _local_day_flags(sub)
                 if freq == "weekly" and not is_monday:
                     continue
                 if freq == "monthly" and not is_first:
