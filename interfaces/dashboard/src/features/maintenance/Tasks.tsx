@@ -563,10 +563,12 @@ export default function Tasks() {
           onSaved={load}
           onError={setError}
           onTaskChanged={setSelected}
-          onShowHistory={() => {
-            setHistoryVehicle(selected.vehicle_name);
-            setHistoryOpen(true);
-          }}
+          // TWO callbacks, not one.  They were two distinct actions
+          // before the split and collapsing them fired BOTH dialogs at
+          // once — the vehicle's service history stacked on top of the
+          // task's activity trail.
+          onShowServiceHistory={() => setHistoryVehicle(selected.vehicle_name)}
+          onShowActivityTrail={() => setHistoryOpen(true)}
           canCreateTasks={canCreateTasks}
           customTypeLabelByValue={customTypeLabelByValue}
           tz={tz}

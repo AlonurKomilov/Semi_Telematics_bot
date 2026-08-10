@@ -52,8 +52,14 @@ export interface TaskDetailSheetProps {
   /** Refetch the list after a successful save. */
   onSaved: () => void;
   onError: (message: string) => void;
-  /** Open the page's service-history modal for this task's vehicle. */
-  onShowHistory: () => void;
+  /** The VEHICLE's past services — the header pill.  A different thing
+   *  from the task's activity trail below, and the two must not share a
+   *  callback: collapsing them fired both dialogs at once. */
+  onShowServiceHistory: () => void;
+  /** THIS TASK's activity trail — who changed what, field-level
+   *  old→new (capabilities/activity_trail).  The dashboard rule keeps
+   *  these two apart precisely because "history" already means services. */
+  onShowActivityTrail: () => void;
   /** An attachment change re-fetches the task; the PAGE owns which task
    *  is open, so it takes the fresh copy.  Without this the drawer would
    *  keep showing the attachment list it had before the upload. */
@@ -64,7 +70,8 @@ export interface TaskDetailSheetProps {
 }
 
 export default function TaskDetailSheet({
-  task, onClose, onSaved, onError, onShowHistory, onTaskChanged,
+  task, onClose, onSaved, onError, onTaskChanged,
+  onShowServiceHistory, onShowActivityTrail,
   canCreateTasks, customTypeLabelByValue, tz,
 }: TaskDetailSheetProps) {
   const [saving, setSaving] = useState(false);
@@ -486,7 +493,7 @@ export default function TaskDetailSheet({
               <div className="flex items-center gap-1 flex-shrink-0">
                 <button
                   type="button"
-                  onClick={() => onShowHistory()}
+                  onClick={onShowServiceHistory}
                   className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-muted hover:bg-muted/80 border border-border rounded-md transition"
                   title="View service history"
                 >
@@ -588,17 +595,6 @@ export default function TaskDetailSheet({
                   </dd>
                 </div>
               )}
-              {/* The record's own activity trail — who did what, with
-                  before→after values (capabilities/activity_trail). */}
-              <div className="pt-2 border-t border-border">
-                <button
-                  type="button"
-                  onClick={() => onShowHistory()}
-                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  <History size={14} /> View activity history
-                </button>
-              </div>
             </dl>
             <div className="space-y-3">
               <label className="block">
@@ -1014,6 +1010,24 @@ export default function TaskDetailSheet({
                   Delete
                 </button>
               )}
+
+              {/* THIS TASK's activity trail — who changed what, field-level
+                  old→new.  It sits down here, away from the header's
+                  "History" pill, because that one shows the VEHICLE's past
+                  SERVICES: two different records, two similar words, and
+                  150px apart they read as one thing.  The dashboard rule
+                  keeps the concepts apart in code for the same reason.
+                  A quiet LINK, not a button — everything above it writes,
+                  this only looks. */}
+              <div className="mt-4 pt-3 border-t border-border">
+                <button
+                  type="button"
+                  onClick={onShowActivityTrail}
+                  className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <History size={14} /> View activity history
+                </button>
+              </div>
             </div>
           </SheetBody>
           )}
