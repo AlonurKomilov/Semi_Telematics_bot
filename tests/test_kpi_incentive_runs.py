@@ -256,6 +256,75 @@ class TestLifecycle:
             t225 = next(x for x in run["rows"] if x["vehicle_unit"] == "225")
             assert t225["zero_reason"] == ""        # it pays — no reason
 
+    async def test_run_loads_lists_each_rows_loads_and_reports_drift(self, seeded):
+        """The board view's data: loads keyed by row id, cancelled
+        excluded; a load edited/added AFTER generation shows as drift
+        instead of silently disagreeing with the snapshot."""
+        async with await _client(seeded["app"]) as c:
+            await _configure(c, seeded)
+            run = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                headers=_h(seeded["owner"]))).json()
+            r = await c.get(f"/api/kpi/dispatch/runs/{run['id']}/loads",
+                            headers=_h(seeded["owner"]))
+            assert r.status_code == 200, r.text
+            body = r.json()
+            row225 = next(x for x in run["rows"] if x["vehicle_unit"] == "225")
+            assert len(body["rows"][str(row225["id"])]) == 2   # cancelled 226 absent
+            assert body["drift"] == []
+            assert body["unmatched_loads"] == 0
+
+            LOADS.append({
+                "status": "delivered", "dispatcher_user_id": 11,
+                "dispatcher_name": "Anna", "company_code": "OSY",
+                "vehicle_unit": "225", "total_rate": 1_000,
+                "loaded_miles": 300, "empty_miles": 0,
+                "pickup_date": "2026-07-22", "delivery_date": "2026-07-23",
+            })
+            try:
+                r = await c.get(f"/api/kpi/dispatch/runs/{run['id']}/loads",
+                                headers=_h(seeded["owner"]))
+                assert row225["id"] in r.json()["drift"]
+            finally:
+                LOADS.pop()
+
+    async def test_day_marks_derive_the_count_and_respect_the_window(self, seeded):
+        """The board's per-day inactive marks: the count and summary
+        reason DERIVE from the list, an out-of-window date is refused,
+        and the typed-number path clears the list (coarse tool wins)."""
+        async with await _client(seeded["app"]) as c:
+            await _configure(c, seeded)
+            run = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                headers=_h(seeded["owner"]))).json()
+            row = next(x for x in run["rows"] if x["vehicle_unit"] == "225")
+            url = f"/api/kpi/dispatch/runs/{run['id']}/rows/{row['id']}"
+
+            marks = [{"date": f"2026-07-{d:02d}", "reason": "repair"}
+                     for d in (5, 6, 7)] + [{"date": "2026-07-08",
+                                             "reason": "home time"}]
+            r = await c.patch(url, json={"inactive_dates": marks},
+                              headers=_h(seeded["owner"]))
+            assert r.status_code == 200, r.text
+            out = r.json()
+            assert out["inactive_days"] == 4
+            assert out["inactive_reason"] == "repair, home time"
+            assert [m["date"] for m in out["inactive_dates"]][:2] == [
+                "2026-07-05", "2026-07-06"]
+            # Same math as typing 4: 14 active days -> 16,000 -> 1.5%.
+            assert out["adjusted_target"] == 16_000.00
+            assert out["pct"] == 1.5
+
+            r = await c.patch(url, json={"inactive_dates": [
+                {"date": "2026-09-01", "reason": "repair"}]},
+                headers=_h(seeded["owner"]))
+            assert r.status_code == 422
+            assert "outside the row's window" in r.json()["detail"]
+
+            r = await c.patch(url, json={"inactive_days": 2},
+                              headers=_h(seeded["owner"]))
+            assert r.status_code == 200
+            assert r.json()["inactive_dates"] == []
+            assert r.json()["inactive_days"] == 2
+
     async def test_a_draft_can_be_discarded_a_paid_record_cannot(self, seeded):
         async with await _client(seeded["app"]) as c:
             await _configure(c, seeded)

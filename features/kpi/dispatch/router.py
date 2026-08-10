@@ -58,6 +58,9 @@ class RowPatch(BaseModel):
     window_end: str | None = None
     inactive_days: int | None = Field(None, ge=0)
     inactive_reason: str | None = None
+    # The board's per-day marks: [{date, reason}].  Sending it derives
+    # inactive_days; sending only inactive_days clears it.
+    inactive_dates: list[dict] | None = None
     extras: float | None = None
     extras_note: str | None = None
 
@@ -103,6 +106,16 @@ async def list_runs(user: dict = Depends(_incentives)):
 async def run_detail(run_id: int, user: dict = Depends(_incentives)):
     try:
         return await runs_service.get_run_detail(
+            int(user["account_id"]), run_id)
+    except runs_service.RunError as e:
+        _run_error(e)
+
+
+@router.get("/dispatch/runs/{run_id}/loads")
+async def run_loads(run_id: int, user: dict = Depends(_incentives)):
+    """The board view's data: every row's constituent loads + drift."""
+    try:
+        return await runs_service.get_run_loads(
             int(user["account_id"]), run_id)
     except runs_service.RunError as e:
         _run_error(e)

@@ -44,6 +44,7 @@ const FROZEN_KEYS: readonly string[] = [
   'assistant.expanded',
   'roleView.previewAsManager',
   'roleView.activeView',
+  'kpi.incentiveRunView',
 ];
 
 /** Legacy keys we promised to keep reading.  Dropping one abandons the

@@ -20,7 +20,10 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ArrowRight, BadgeDollarSign, Loader2, Lock, Pencil, Plus, Scale, Trash2 } from 'lucide-react';
+import {
+  ArrowRight, BadgeDollarSign, CalendarRange, Loader2, Lock, Pencil, Plus,
+  Scale, Table2, Trash2,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import DataGrid from '../../../components/datagrid';
 import { EmptyState, ErrorState, PageHeader, TableSkeleton } from '../../../components/shell';
@@ -31,6 +34,8 @@ import {
 import { Input } from '../../../components/ui/input';
 import { Tip } from '../../../components/tooltip';
 import { toneClasses } from '../../../lib/status';
+import { usePreference } from '../../../preferences';
+import RunBoard from './RunBoard';
 import type { AnyColumn } from '../../../types';
 import {
   createIncentiveRun, deleteIncentiveRun, finalizeIncentiveRun, getIncentiveRun,
@@ -75,6 +80,9 @@ export default function IncentiveRuns() {
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [showAllRuns, setShowAllRuns] = useState(false);
+  // Sheet = the numeric settlement (DataGrid); Board = the same run laid
+  // out per dispatcher × day.  A synced preference — a reading style.
+  const { value: viewMode, setValue: setViewMode } = usePreference('kpi.incentiveRunView');
 
   const runsQ = useQuery({
     queryKey: ['kpi-incentive-runs'],
@@ -170,6 +178,12 @@ export default function IncentiveRuns() {
       aggFormat: (v) => Math.round(v).toLocaleString(),
       render: (v) => <span className="tabular-nums">{Number(v).toLocaleString()}</span> },
     { key: 'rpm', label: 'RPM', sortable: true,
+      // Group/footer RPM is the MILES-WEIGHTED rate (Σ base gross ÷ Σ
+      // miles, extras excluded — same base the row RPM uses), never an
+      // average of the row rates.
+      aggregable: true, aggFns: ['avg'],
+      aggRatio: { num: (r) => Number(r.base_gross), den: (r) => Number(r.miles) },
+      aggFormat: (v) => v.toFixed(2),
       render: (v) => <span className="tabular-nums">{v == null ? '—' : Number(v).toFixed(2)}</span> },
     { key: 'adjusted_target', label: 'Target', sortable: true,
       // NULL weekly_target = this company has no bar configured — say
@@ -302,25 +316,61 @@ export default function IncentiveRuns() {
                 </span>
               ))}
             </div>
-            {draft ? (
-              <div className="flex items-center gap-2">
-                <Button variant="ghost" onClick={() => setDiscardOpen(true)}>
-                  <Trash2 size={14} className="mr-1.5" />
-                  {t('kpi_runs.discard', 'Discard draft')}
-                </Button>
-                <Button variant="outline" onClick={() => setFinalizeOpen(true)}>
-                  <Lock size={14} className="mr-1.5" />
-                  {t('kpi_runs.finalize', 'Finalize run')}
-                </Button>
+            <div className="flex items-center gap-2">
+              {/* Sheet | Board — two reads of one run (house toggle
+                  pattern: pressed icon-buttons in a muted well). */}
+              <div className="inline-flex items-center gap-0.5 p-0.5 bg-muted/50 border border-border rounded-md"
+                role="group" aria-label={t('kpi_runs.view_mode', 'View mode')}>
+                <Tip label={t('kpi_runs.view_sheet', 'Settlement sheet')}>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('sheet')}
+                    aria-pressed={viewMode === 'sheet'}
+                    aria-label={t('kpi_runs.view_sheet', 'Settlement sheet')}
+                    className={`inline-flex size-7 items-center justify-center rounded ${viewMode === 'sheet'
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    <Table2 size={14} />
+                  </button>
+                </Tip>
+                <Tip label={t('kpi_runs.view_board', 'Dispatcher board')}>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('board')}
+                    aria-pressed={viewMode === 'board'}
+                    aria-label={t('kpi_runs.view_board', 'Dispatcher board')}
+                    className={`inline-flex size-7 items-center justify-center rounded ${viewMode === 'board'
+                      ? 'bg-card text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    <CalendarRange size={14} />
+                  </button>
+                </Tip>
               </div>
-            ) : (
-              <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${toneClasses('ok')}`}>
-                <Lock size={12} />
-                {t('kpi_runs.finalized', 'Finalized — the paid record')}
-              </span>
-            )}
+              {draft ? (
+                <>
+                  <Button variant="ghost" onClick={() => setDiscardOpen(true)}>
+                    <Trash2 size={14} className="mr-1.5" />
+                    {t('kpi_runs.discard', 'Discard draft')}
+                  </Button>
+                  <Button variant="outline" onClick={() => setFinalizeOpen(true)}>
+                    <Lock size={14} className="mr-1.5" />
+                    {t('kpi_runs.finalize', 'Finalize run')}
+                  </Button>
+                </>
+              ) : (
+                <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${toneClasses('ok')}`}>
+                  <Lock size={12} />
+                  {t('kpi_runs.finalized', 'Finalized — the paid record')}
+                </span>
+              )}
+            </div>
           </div>
 
+          {viewMode === 'board' ? (
+            <RunBoard run={run} draft={!!draft} onChanged={refresh} />
+          ) : (
           <DataGrid
             tableId="kpi-incentive-run-rows"
             columns={COLUMNS}
@@ -330,7 +380,7 @@ export default function IncentiveRuns() {
             // not a wall — ungroup via the grid's own chip.
             defaultRowGroup="dispatcher_name"
             defaultAggregation={{
-              kpi_gross: 'sum', miles: 'sum',
+              kpi_gross: 'sum', miles: 'sum', rpm: 'avg',
               kpi_dollars: 'sum', confirmed_dollars: 'sum',
             }}
             // Clicking a row IS the edit gesture on a draft — rowActions
@@ -357,6 +407,7 @@ export default function IncentiveRuns() {
               },
             ] : []}
           />
+          )}
         </div>
       )}
 

@@ -8997,3 +8997,23 @@ async def migrate_kpi_run_rows_zero_reason(conn) -> None:
     )
     await conn.commit()
     logger.info("Migration 196: kpi_incentive_run_rows.zero_reason backfilled")
+
+
+@_register("197_kpi_run_rows_inactive_dates")
+async def migrate_kpi_run_rows_inactive_dates(conn) -> None:
+    """Per-DAY inactive marking for the run board view.
+
+    ``inactive_days`` was a bare count typed into a dialog; the board
+    lets a manager click the actual days (home time, repair, holiday),
+    so the row stores WHICH days as JSON ``[{date, reason}, …]`` and the
+    count derives from it.  The typed-number path still works — it
+    clears the day list (the coarse tool wins).  194 stays untouched:
+    once a migration has run anywhere real it is released, so the column
+    arrives by ALTER here for fresh and existing installs alike.
+    """
+    await conn.execute(
+        "ALTER TABLE kpi_incentive_run_rows "
+        "ADD COLUMN IF NOT EXISTS inactive_dates TEXT NOT NULL DEFAULT '[]'"
+    )
+    await conn.commit()
+    logger.info("Migration 197: kpi_incentive_run_rows.inactive_dates")

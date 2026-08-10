@@ -72,6 +72,33 @@ export function toAggTimestamp(v: number | string | Date | null | undefined): nu
 }
 
 /**
+ * Ratio-of-sums for RATE columns (RPM, cost per mile): sum(num)/sum(den)
+ * over the rows.  A plain average of per-row rates over-weights short
+ * rows — a 100-mile load at $5/mi would outvote a 3,000-mile week at
+ * $2.60 — so the honest group rate is the weighted form.  Rows missing
+ * EITHER side are dropped as a pair (gross without miles would skew the
+ * ratio one-sidedly).  Returns null when the denominator sums to 0
+ * (→ the footer renders "—").
+ */
+export function computeRatioAggregate(
+  rows: Record<string, unknown>[],
+  num: (row: Record<string, unknown>) => number,
+  den: (row: Record<string, unknown>) => number,
+): number | null {
+  let n = 0;
+  let d = 0;
+  for (const r of rows) {
+    const a = toAggNumber(num(r));
+    const b = toAggNumber(den(r));
+    if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+    n += a;
+    d += b;
+  }
+  if (d === 0) return null;
+  return n / d;
+}
+
+/**
  * Date columns only offer earliest / latest — summing or averaging dates
  * is meaningless, and `count` on a date is ambiguous (it's the whole-view
  * ROW count, NOT "how many rows have a date", so on a mostly-null column

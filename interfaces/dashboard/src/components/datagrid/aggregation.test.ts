@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import type { AnyColumn } from '../../types';
 import {
-  computeAggregate, formatAggDefault, toAggNumber, toAggTimestamp, offeredAggFns,
+  computeAggregate, computeRatioAggregate, formatAggDefault, toAggNumber,
+  toAggTimestamp, offeredAggFns,
 } from './aggregation';
 
 describe('computeAggregate', () => {
@@ -135,5 +136,39 @@ describe('offeredAggFns', () => {
   it("an explicit aggFns wins over the aggType default", () => {
     expect(offeredAggFns(col({ aggregable: true, aggFns: ['sum'] }))).toEqual(['sum']);
     expect(offeredAggFns(col({ aggregable: true, aggType: 'date', aggFns: ['max'] }))).toEqual(['max']);
+  });
+});
+
+describe('computeRatioAggregate (rate columns — ratio of sums)', () => {
+  const num = (r: Record<string, unknown>) => r.gross as number;
+  const den = (r: Record<string, unknown>) => r.miles as number;
+
+  it('weights by the denominator, never averages the per-row rates', () => {
+    // 100 mi at $5/mi + 3,000 mi at $2.60/mi: a plain average of rates
+    // says 3.80; the honest weighted rate is (500+7800)/3100.
+    const rows = [
+      { gross: 500, miles: 100 },
+      { gross: 7_800, miles: 3_000 },
+    ];
+    expect(computeRatioAggregate(rows, num, den)).toBeCloseTo(8_300 / 3_100, 10);
+  });
+
+  it('drops a row missing EITHER side as a pair', () => {
+    // Gross without miles must not inflate the numerator one-sidedly.
+    const rows = [
+      { gross: 1_000, miles: 400 },
+      { gross: 999_999, miles: null },
+      { gross: null, miles: 999 },
+    ];
+    expect(computeRatioAggregate(rows, num, den)).toBeCloseTo(2.5, 10);
+  });
+
+  it('returns null on a zero denominator (renders as —)', () => {
+    expect(computeRatioAggregate([{ gross: 200, miles: 0 }], num, den)).toBeNull();
+    expect(computeRatioAggregate([], num, den)).toBeNull();
+  });
+
+  it('keeps a real zero numerator (a $0 week at real miles IS 0.00)', () => {
+    expect(computeRatioAggregate([{ gross: 0, miles: 500 }], num, den)).toBe(0);
   });
 });

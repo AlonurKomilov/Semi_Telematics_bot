@@ -208,7 +208,13 @@ per-user (`table.<id>.aggregation`, so it needs `tableId`);
 `defaultAggregation={{ key: fn }}` starts it on. The total reduces over the
 **filtered** set (all pages), and the function name shows as a muted
 micro-label under the header (MUI's "Gross / sum"). Do NOT hand-roll a
-totals row under a grid — this is the SSOT. When row grouping is ALSO
+totals row under a grid — this is the SSOT. **RATE columns (RPM, cost
+per mile) declare `aggRatio: { num, den }`** — the aggregate becomes a
+ratio of sums (Σnum/Σden) instead of a reduction of the cell values,
+because a plain average of per-row rates over-weights short rows; pair
+it with `aggFns: ['avg']` so the ⋮ menu offers one honestly-named
+entry. Rows missing EITHER side are dropped as a pair (engine + tests
+in `aggregation.ts`). When row grouping is ALSO
 active, each group row shows that group's totals aligned under their columns
 (the group identity stays pinned at the left edge during horizontal scroll),
 while the footer keeps the grand total — matching MUI. This per-group render

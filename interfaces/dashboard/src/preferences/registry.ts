@@ -410,6 +410,14 @@ export const DEFS = {
     sanitize: asBool,
     note: 'Preview a manager-capable role with the manager tier on.',
   }),
+  // synced: which way a manager reads a settlement is a working style,
+  // not a device trait — it should follow them to the office machine.
+  'kpi.incentiveRunView': def<'sheet' | 'board'>({
+    default: 'sheet',
+    scope: 'synced',
+    sanitize: oneOf(['sheet', 'board'] as const),
+    note: 'Incentive run detail opens as the settlement sheet or the dispatcher board.',
+  }),
 } satisfies Record<string, PrefDef>;
 
 /** Every valid preference key — autocompleted at call sites. */

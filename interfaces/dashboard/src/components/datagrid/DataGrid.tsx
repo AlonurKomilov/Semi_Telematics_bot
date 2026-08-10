@@ -47,7 +47,8 @@ import { cn } from '../../lib/utils';
 import type { AnyColumn, AggFn } from '../../types';
 import { AGG_FN_LABELS } from '../../types';
 import {
-  computeAggregate, formatAggDefault, toAggNumber, toAggTimestamp, offeredAggFns,
+  computeAggregate, computeRatioAggregate, formatAggDefault, toAggNumber,
+  toAggTimestamp, offeredAggFns,
 } from './aggregation';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDay } from '../../utils/datetime';
@@ -3086,6 +3087,17 @@ export default function DataGrid({
   ): React.ReactNode => {
     const col = columns.find(c => c.key === key);
     if (!col) return null;
+    // A rate column aggregates as a ratio of sums regardless of the
+    // chosen fn — the weighted rate is the only honest group value.
+    if (col.aggRatio) {
+      const ratio = computeRatioAggregate(
+        originals,
+        col.aggRatio.num as (row: Record<string, unknown>) => number,
+        col.aggRatio.den as (row: Record<string, unknown>) => number,
+      );
+      if (ratio == null) return '—';
+      return col.aggFormat ? col.aggFormat(ratio, fn) : formatAggDefault(ratio, 'avg');
+    }
     const isDate = col.aggType === 'date';
     // sum / avg are meaningless on dates — never compute them (the menu
     // doesn't offer them either, this is defence for a stale pref).

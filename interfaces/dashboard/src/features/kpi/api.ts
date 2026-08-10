@@ -127,6 +127,30 @@ export interface RunSummary {
   finalized_at: string;
 }
 
+export interface InactiveDate {
+  date: string;
+  reason: string;
+}
+
+export interface RunLoad {
+  load_number: string;
+  status: string;
+  pickup_date: string;
+  delivery_date: string;
+  pickup_location: string;
+  delivery_location: string;
+  total_rate: number;
+  miles: number;
+}
+
+export interface RunLoadsResponse {
+  /** row id → its constituent loads (live data, may drift). */
+  rows: Record<string, RunLoad[]>;
+  /** row ids whose live loads no longer sum to the row's snapshot. */
+  drift: number[];
+  unmatched_loads: number;
+}
+
 export interface RunRow {
   id: number;
   dispatcher_user_id: number | null;
@@ -138,6 +162,8 @@ export interface RunRow {
   total_days: number;
   inactive_days: number;
   inactive_reason: string;
+  /** The board's per-day marks; the count above derives from it. */
+  inactive_dates: InactiveDate[];
   base_gross: number;
   extras: number;
   extras_note: string;
@@ -178,12 +204,17 @@ export async function getIncentiveRun(runId: number): Promise<RunDetail> {
 export async function patchIncentiveRow(
   runId: number, rowId: number,
   patch: Partial<Pick<RunRow, 'window_start' | 'window_end'
-    | 'inactive_days' | 'inactive_reason' | 'extras' | 'extras_note'>>,
+    | 'inactive_days' | 'inactive_reason' | 'inactive_dates'
+    | 'extras' | 'extras_note'>>,
 ): Promise<RunRow> {
   return apiJSON<RunRow>(
     `/kpi/dispatch/runs/${runId}/rows/${rowId}`,
     { method: 'PATCH', body: { ...patch } },
   );
+}
+
+export async function getIncentiveRunLoads(runId: number): Promise<RunLoadsResponse> {
+  return apiJSON<RunLoadsResponse>(`/kpi/dispatch/runs/${runId}/loads`);
 }
 
 export async function setIncentiveException(

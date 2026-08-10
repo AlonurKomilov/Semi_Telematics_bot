@@ -157,7 +157,8 @@ class KpiIncentivesMixin(_MixinBase):
         "id", "run_id", "account_id", "dispatcher_user_id",
         "dispatcher_name", "company_code", "vehicle_unit",
         "window_start", "window_end", "total_days", "inactive_days",
-        "inactive_reason", "base_gross", "extras", "extras_note", "miles",
+        "inactive_reason", "inactive_dates", "base_gross", "extras",
+        "extras_note", "miles",
         "weekly_target", "kpi_gross", "rpm", "adjusted_target", "pct",
         "kpi_dollars", "override_pct", "override_reason", "zero_reason",
         "confirmed_dollars", "confirmed_by", "confirmed_at",
@@ -199,6 +200,9 @@ class KpiIncentivesMixin(_MixinBase):
         v = row.get(col)
         if v is None and col in self._ROW_TEXT_DEFAULTS:
             return ""
+        if v is None and col == "inactive_dates":
+            # JSON-list column: its empty value is '[]', not ''.
+            return "[]"
         if v is None and col in self._ROW_NUM_DEFAULTS:
             return 0
         return v

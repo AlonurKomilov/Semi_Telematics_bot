@@ -54,6 +54,46 @@ def _days_inclusive(start: str, end: str) -> int:
     return max(0, (d1 - d0).days + 1)
 
 
+def _clean_inactive_dates(raw, window_start: str, window_end: str) -> list[dict]:
+    """Validate the board's day marks: ISO dates inside the window, no
+    duplicates, reasons trimmed.  Raises RunError in admin language."""
+    if not isinstance(raw, list):
+        raise RunError("inactive_dates must be a list of {date, reason}")
+    marks: list[dict] = []
+    seen: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict) or not item.get("date"):
+            raise RunError("each inactive date needs a 'date'")
+        d = str(item["date"])[:10]
+        try:
+            date.fromisoformat(d)
+        except ValueError:
+            raise RunError(f"'{d}' is not a date")
+        if not (window_start[:10] <= d <= window_end[:10]):
+            raise RunError(
+                f"{d} is outside the row's window "
+                f"({window_start[:10]} – {window_end[:10]})")
+        if d in seen:
+            continue
+        seen.add(d)
+        marks.append({"date": d, "reason": str(item.get("reason") or "").strip()})
+    marks.sort(key=lambda m: m["date"])
+    return marks
+
+
+def _parse_inactive_dates(row: dict) -> dict:
+    """Storage keeps the day list as JSON text; the wire carries a list."""
+    raw = row.get("inactive_dates")
+    if isinstance(raw, str):
+        try:
+            row["inactive_dates"] = json.loads(raw or "[]")
+        except ValueError:
+            row["inactive_dates"] = []
+    elif raw is None:
+        row["inactive_dates"] = []
+    return row
+
+
 def _recompute(row: dict, snapshot: dict) -> dict:
     """Row inputs → engine outputs, ALWAYS from the run's snapshot."""
     active_days = max(0, int(row["total_days"]) - int(row["inactive_days"]))
@@ -203,12 +243,37 @@ async def update_row(
         raise RunError("row not found")
 
     editable = {"window_start", "window_end", "inactive_days",
-                "inactive_reason", "extras", "extras_note"}
+                "inactive_reason", "inactive_dates", "extras", "extras_note"}
     patch = {k: v for k, v in fields.items() if k in editable and v is not None}
-    row.update(patch)
+    row.update({k: v for k, v in patch.items() if k != "inactive_dates"})
     if {"window_start", "window_end"} & patch.keys():
         row["total_days"] = _days_inclusive(
             row["window_start"], row["window_end"])
+
+    if "inactive_dates" in patch:
+        # The board's per-day marking: [{date, reason}, …].  The count
+        # DERIVES from the list; a summary reason derives from the
+        # distinct day reasons (unless an explicit one was also sent).
+        marks = _clean_inactive_dates(
+            patch["inactive_dates"], row["window_start"], row["window_end"])
+        row["inactive_dates"] = json.dumps(marks)
+        row["inactive_days"] = len(marks)
+        if "inactive_reason" not in patch:
+            seen: list[str] = []
+            for m in marks:
+                r = m["reason"]
+                if r and r not in seen:
+                    seen.append(r)
+            row["inactive_reason"] = ", ".join(seen)
+        patch = {**patch, "inactive_dates": row["inactive_dates"],
+                 "inactive_days": row["inactive_days"],
+                 "inactive_reason": row["inactive_reason"]}
+    elif "inactive_days" in patch:
+        # The dialog's typed number is the coarse tool — it wins by
+        # clearing the day list rather than silently disagreeing with it.
+        row["inactive_dates"] = "[]"
+        patch = {**patch, "inactive_dates": "[]"}
+
     if int(row["inactive_days"]) < 0:
         raise RunError("inactive_days cannot be negative")
     if int(row["inactive_days"]) > int(row["total_days"]):
@@ -226,7 +291,8 @@ async def update_row(
         "zero_reason": row.get("zero_reason", ""),
         "confirmed_dollars": row["confirmed_dollars"],
     })
-    return await tenant.get_kpi_run_row(account_id, run_id, row_id)
+    return _parse_inactive_dates(
+        await tenant.get_kpi_run_row(account_id, run_id, row_id))
 
 
 async def set_exception(
@@ -267,7 +333,8 @@ async def set_exception(
                  "confirmed_by": confirmed_by,
                  "confirmed_at": ""}
     await tenant.update_kpi_run_row(account_id, run_id, row_id, patch)
-    return await tenant.get_kpi_run_row(account_id, run_id, row_id)
+    return _parse_inactive_dates(
+        await tenant.get_kpi_run_row(account_id, run_id, row_id))
 
 
 async def get_run_detail(account_id: int, run_id: int) -> dict:
@@ -278,7 +345,8 @@ async def get_run_detail(account_id: int, run_id: int) -> dict:
     run = await tenant.get_kpi_run(account_id, run_id)
     if run is None:
         raise RunError("run not found")
-    rows = await tenant.list_kpi_run_rows(account_id, run_id)
+    rows = [_parse_inactive_dates(r)
+            for r in await tenant.list_kpi_run_rows(account_id, run_id)]
     payouts: dict[str, float] = {}
     for r in rows:
         key = r["dispatcher_name"]
@@ -286,6 +354,77 @@ async def get_run_detail(account_id: int, run_id: int) -> dict:
             payouts.get(key, 0.0) + float(r["confirmed_dollars"]))
     run.pop("config_snapshot", None)
     return {**run, "rows": rows, "payouts": payouts}
+
+
+def _group_key(l: dict) -> tuple:
+    """The row identity a load belongs to — the SAME key create_run
+    groups by, factored out so the board's load listing can never drift
+    from the generator's grouping."""
+    return (
+        l.get("dispatcher_user_id") or f"name:{l.get('dispatcher_name')}",
+        l.get("company_code") or "",
+        l.get("vehicle_unit") or "",
+    )
+
+
+async def get_run_loads(account_id: int, run_id: int) -> dict:
+    """The individual loads behind every settlement row — the board view.
+
+    Loads are LIVE data while the run is a SNAPSHOT, so each row also
+    reports drift: True when the loads that group to it today no longer
+    sum to the gross/miles the row was generated from (a load edited or
+    added after generation).  The UI surfaces that instead of letting
+    the board silently disagree with the sheet.
+    """
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise RunError("tenant DB unavailable")
+    run = await tenant.get_kpi_run(account_id, run_id)
+    if run is None:
+        raise RunError("run not found")
+    rows = await tenant.list_kpi_run_rows(account_id, run_id)
+
+    loads = await loads_service.get_loads(
+        account_id, since=run["period_start"], until=run["period_end"],
+        limit=None,
+    )
+    by_key: dict[tuple, list[dict]] = {}
+    for l in loads:
+        if l.get("status") == "canceled":
+            continue
+        by_key.setdefault(_group_key(l), []).append(l)
+
+    out_rows: dict[int, list[dict]] = {}
+    drift: list[int] = []
+    for row in rows:
+        key = (
+            row.get("dispatcher_user_id") or f"name:{row.get('dispatcher_name')}",
+            row.get("company_code") or "",
+            row.get("vehicle_unit") or "",
+        )
+        row_loads = by_key.pop(key, [])
+        out_rows[int(row["id"])] = [{
+            "load_number": l.get("load_number") or "",
+            "status": l.get("status") or "",
+            "pickup_date": str(l.get("pickup_date") or "")[:10],
+            "delivery_date": str(l.get("delivery_date") or "")[:10],
+            "pickup_location": l.get("pickup_location") or "",
+            "delivery_location": l.get("delivery_location") or "",
+            "total_rate": float(l.get("total_rate") or 0),
+            "miles": float(l.get("loaded_miles") or 0)
+                     + float(l.get("empty_miles") or 0),
+        } for l in row_loads]
+        gross_now = sum(float(l.get("total_rate") or 0) for l in row_loads)
+        miles_now = sum(float(l.get("loaded_miles") or 0)
+                        + float(l.get("empty_miles") or 0) for l in row_loads)
+        if (abs(gross_now - float(row["base_gross"])) > 0.01
+                or abs(miles_now - float(row["miles"])) > 0.01):
+            drift.append(int(row["id"]))
+
+    # Loads whose group has NO row: added after generation.  Their
+    # existence is itself drift the manager should see.
+    unmatched = sum(len(v) for v in by_key.values())
+    return {"rows": out_rows, "drift": drift, "unmatched_loads": unmatched}
 
 
 async def finalize_run(account_id: int, run_id: int,
