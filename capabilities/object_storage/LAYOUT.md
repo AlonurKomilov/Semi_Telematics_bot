@@ -36,6 +36,33 @@ Changing it needs a process restart, and tests must set it by plain
 assignment before importing `adapters.storage` — see
 [the test-isolation rule](#tests-must-not-write-here).
 
+### Moving the code away from the data
+
+Stored paths are **relative** (`data/userdata/account-N/…`) and the
+resolver builds candidates from the code's own location. Move the
+checkout — a worktree, a deploy to `/srv`, a second clone — and every
+one of those paths points into a tree with no files in it. The app
+looks healthy; every document 404s.
+
+Setting an absolute `OBJECT_STORE_ROOT` does **not** fix that by
+itself, and this is the trap: it changes where *new* writes go, while
+every existing row stays relative. A "check a document still loads"
+test on the original machine passes either way.
+
+So the resolver also rebases a relative stored path onto an absolute
+`OBJECT_STORE_ROOT`, tried *after* the project-relative candidates so a
+checkout that owns its data still wins. With that, either arrangement
+works:
+
+* **data inside the checkout** — leave the root relative (the default).
+  Paths stay portable, nothing hardcodes a machine.
+* **data on a mounted volume or left behind by a move** — set the root
+  absolute. Old and new rows both resolve.
+
+What you must not do is move the code, leave the data, and assume an
+absolute root alone covers it — check `TestTheDataRootSurvivesMovingTheCode`
+for what is actually guaranteed.
+
 ### Two rules that are not negotiable
 
 **1. Nothing but a company folder or `_generic` may sit directly under

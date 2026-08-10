@@ -141,6 +141,32 @@ def _disk_path_candidates(object_id: str, project_root: str) -> list[str]:
             # convert a missing-fallback into a 500.
             pass
 
+    # THE DATA ROOT MAY NOT LIVE UNDER THE CHECKOUT.
+    #
+    # Every stored path is relative (``data/userdata/account-N/…``) and
+    # every candidate above is built from ``project_root``, which comes
+    # from this file's location.  Move the code — a worktree, a deploy
+    # to /srv, a second checkout — and all of them point into the new
+    # tree, where the files are not.  Roughly 18,000 rows resolve to a
+    # 404 while the app looks healthy.
+    #
+    # Setting an absolute ``OBJECT_STORE_ROOT`` does NOT fix that on its
+    # own: it changes where NEW writes are stored, and the existing rows
+    # stay relative.  So rebase the stored path onto the configured root
+    # too, and the setting finally means what operators assume it means
+    # — "the data lives here" — for old and new rows alike.
+    #
+    # Tried after the project-relative candidates, never instead of
+    # them: the common case is a checkout that owns its own data, and
+    # that must stay the first hit.
+    configured = getattr(config, "OBJECT_STORE_ROOT", "") or ""
+    if configured and os.path.isabs(configured):
+        for prefix in ("data/userdata/", "data/"):
+            if object_id.startswith(prefix):
+                candidates.append(
+                    os.path.join(configured, object_id[len(prefix):]))
+                break
+
     # CONTAINMENT, applied once here so every read path inherits it.
     # ``os.path.join`` does not neutralise ``..`` and an absolute
     # object_id is returned verbatim above, so a DB value of

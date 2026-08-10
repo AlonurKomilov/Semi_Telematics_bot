@@ -279,3 +279,80 @@ def test_the_layout_document_exists():
     text = doc.read_text(encoding="utf-8")
     for must in ("_generic", "OBJECT_STORE_ROOT", "sanitize_company_folder"):
         assert must in text, f"the layout doc no longer explains {must}"
+
+
+class TestTheDataRootSurvivesMovingTheCode:
+    """A worktree, a deploy to /srv, a second checkout — the files stay
+    reachable.
+
+    Every stored path is relative (``data/userdata/account-N/…``) and
+    the resolver builds candidates from the CODE's location, so moving
+    the checkout points all ~18,000 of them into a tree that has no
+    files.  The app looks healthy and every document 404s.
+
+    Setting an absolute ``OBJECT_STORE_ROOT`` does not fix that by
+    itself — it only changes where NEW writes go, and the existing rows
+    are still relative.  These pin the rebase that makes the setting
+    cover both.
+    """
+
+    STORED = "data/userdata/account-1/ACME INC/camera-images/1_forward.jpg"
+
+    def _elsewhere(self, tmp_path):
+        """A data root outside any checkout, holding one real file."""
+        f = tmp_path / "account-1" / "ACME INC" / "camera-images"
+        f.mkdir(parents=True)
+        (f / "1_forward.jpg").write_bytes(b"jpeg")
+        return str(tmp_path)
+
+    def test_a_moved_checkout_still_finds_an_existing_relative_row(
+            self, tmp_path, monkeypatch):
+        import infra.config as cfg
+        from adapters.storage.object_storage import resolve_disk_path
+        monkeypatch.setattr(cfg, "OBJECT_STORE_ROOT",
+                            self._elsewhere(tmp_path), raising=False)
+        got = resolve_disk_path(self.STORED, project_root="/nonexistent/worktree")
+        assert got, (
+            "an existing row stopped resolving after the code moved — "
+            "this is the 404-everything failure the rebase prevents"
+        )
+        assert got.endswith("1_forward.jpg")
+
+    def test_the_checkouts_own_data_still_wins(self, tmp_path, monkeypatch):
+        """The rebase is a FALLBACK.  A checkout that owns its data must
+        keep hitting that first, or a stale configured root would shadow
+        the real files."""
+        import os
+        import infra.config as cfg
+        from adapters.storage.object_storage import _disk_path_candidates
+        monkeypatch.setattr(cfg, "OBJECT_STORE_ROOT",
+                            self._elsewhere(tmp_path), raising=False)
+        local_root = tmp_path / "checkout"
+        (local_root / "data" / "userdata" / "account-1" / "ACME INC"
+         / "camera-images").mkdir(parents=True)
+        cands = _disk_path_candidates(self.STORED, str(local_root))
+        assert cands[0] == os.path.join(str(local_root), self.STORED), (
+            "the project-relative candidate must be tried first"
+        )
+
+    def test_a_relative_root_adds_no_rebase(self, monkeypatch):
+        """Only an ABSOLUTE root names a location; a relative one is
+        just the in-checkout default and must not widen the search."""
+        import infra.config as cfg
+        from adapters.storage.object_storage import _disk_path_candidates
+        monkeypatch.setattr(cfg, "OBJECT_STORE_ROOT", "data/userdata",
+                            raising=False)
+        cands = _disk_path_candidates(self.STORED, "/some/root")
+        assert all(c.startswith("/some/root") for c in cands), cands
+
+    def test_the_rebase_cannot_escape_the_configured_root(
+            self, tmp_path, monkeypatch):
+        """Containment still applies to the new candidate."""
+        import infra.config as cfg
+        from adapters.storage.object_storage import _disk_path_candidates
+        monkeypatch.setattr(cfg, "OBJECT_STORE_ROOT",
+                            self._elsewhere(tmp_path), raising=False)
+        for hostile in ("data/userdata/../../../../etc/passwd",
+                        "data/../../../etc/shadow"):
+            for c in _disk_path_candidates(hostile, "/some/root"):
+                assert "etc/passwd" not in c and "etc/shadow" not in c, c
