@@ -154,6 +154,9 @@ export const PERM_GROUPS: PermGroup[] = [
       { key: 'can_efficiency', kind: 'subfeature', label: 'Efficiency', indented: true, description: 'MPG, idle vs drive time, harsh-driving utilization' },
       { allKey: 'can_geofence_all', vehicleKey: 'can_geofence_vehicle', kind: 'feature', label: 'Geofences', scoped: true },
       { key: 'can_kpi', kind: 'feature', label: 'KPI & Performance', description: 'Account-wide performance analytics — dispatcher grades first; fleet/safety/driver sections later' },
+      // COMPENSATION, deliberately its own flag: can_kpi is shared
+      // analytics (grades, viewable widely); payout amounts are money.
+      { key: 'can_kpi_incentives', kind: 'feature', writeLevel: true, indented: true, label: 'Dispatcher Incentives', description: 'Manage — incentive runs & payouts (compensation amounts)' },
       { key: 'can_manage_driver_docs', kind: 'feature', writeLevel: true, label: 'Drivers', description: 'Manage — driver list + document management' },
       // A sub-feature, not a component: features/drivers/onboarding/ has
       // its own home AND its own hub contribution (the stale-approval

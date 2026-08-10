@@ -8851,9 +8851,9 @@ async def migrate_kpi_incentive_config(conn) -> None:
             combine_rule        TEXT    NOT NULL DEFAULT 'lower',
             calc_cadence        TEXT    NOT NULL DEFAULT 'weekly',
             calc_custom_days    INTEGER,
-            exception_cap_pct   REAL,
-            floor_weekly_gross  REAL,
-            floor_rpm           REAL,
+            exception_cap_pct   DOUBLE PRECISION,
+            floor_weekly_gross  DOUBLE PRECISION,
+            floor_rpm           DOUBLE PRECISION,
             tiers               TEXT    NOT NULL DEFAULT '[]',
             updated_by          INTEGER NOT NULL DEFAULT 0,
             updated_at          TEXT    NOT NULL DEFAULT ''
@@ -8864,10 +8864,88 @@ async def migrate_kpi_incentive_config(conn) -> None:
             id                  INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id          INTEGER NOT NULL,
             company_id          INTEGER NOT NULL REFERENCES companies(id),
-            weekly_gross_target REAL    NOT NULL,
+            weekly_gross_target DOUBLE PRECISION    NOT NULL,
             UNIQUE(account_id, company_id)
         )
     """)
     await conn.commit()
     logger.info("Migration 193: dispatcher incentive config tables")
+
+
+@_register("194_kpi_incentive_runs")
+async def migrate_kpi_incentive_runs(conn) -> None:
+    """Incentive RUNS — where the configuration becomes money.
+
+    A run is one period computed for one account: draft rows generated
+    from loads, hand-adjusted (windows, inactive days, extras), exception-
+    overridden with reasons, then finalized.
+
+    ``config_snapshot`` is the load-bearing column.  Rules change over
+    time ("Effective for June 2026"), so a run carries the FULL config it
+    was computed under — model, tiers, targets — billing-snapshot style.
+    Re-opening an old run re-prices NOTHING; the snapshot is the contract
+    the period was paid on.
+
+    Row inputs and outputs live side by side ON the row (base_gross,
+    extras, miles, days → pct, dollars, confirmed) because a settlement
+    is an auditable document: the numbers that produced a payout must be
+    readable next to the payout, exactly as the customer's Excel lays
+    them out.
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS kpi_incentive_runs (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id      INTEGER NOT NULL,
+            period_start    TEXT    NOT NULL,
+            period_end      TEXT    NOT NULL,
+            status          TEXT    NOT NULL DEFAULT 'draft',
+            config_snapshot TEXT    NOT NULL DEFAULT '{}',
+            created_by      INTEGER NOT NULL DEFAULT 0,
+            created_at      TEXT    NOT NULL DEFAULT '',
+            finalized_by    INTEGER,
+            finalized_at    TEXT    NOT NULL DEFAULT ''
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_kpi_runs_account "
+        "ON kpi_incentive_runs(account_id, period_start)"
+    )
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS kpi_incentive_run_rows (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id              INTEGER NOT NULL
+                                REFERENCES kpi_incentive_runs(id),
+            account_id          INTEGER NOT NULL,
+            dispatcher_user_id  INTEGER,
+            dispatcher_name     TEXT    NOT NULL DEFAULT '',
+            company_code        TEXT    NOT NULL DEFAULT '',
+            vehicle_unit        TEXT    NOT NULL DEFAULT '',
+            window_start        TEXT    NOT NULL DEFAULT '',
+            window_end          TEXT    NOT NULL DEFAULT '',
+            total_days          INTEGER NOT NULL DEFAULT 0,
+            inactive_days       INTEGER NOT NULL DEFAULT 0,
+            inactive_reason     TEXT    NOT NULL DEFAULT '',
+            base_gross          DOUBLE PRECISION    NOT NULL DEFAULT 0,
+            extras              DOUBLE PRECISION    NOT NULL DEFAULT 0,
+            extras_note         TEXT    NOT NULL DEFAULT '',
+            miles               DOUBLE PRECISION    NOT NULL DEFAULT 0,
+            weekly_target       DOUBLE PRECISION,
+            kpi_gross           DOUBLE PRECISION    NOT NULL DEFAULT 0,
+            rpm                 DOUBLE PRECISION,
+            adjusted_target     DOUBLE PRECISION    NOT NULL DEFAULT 0,
+            pct                 DOUBLE PRECISION    NOT NULL DEFAULT 0,
+            kpi_dollars         DOUBLE PRECISION    NOT NULL DEFAULT 0,
+            override_pct        DOUBLE PRECISION,
+            override_reason     TEXT    NOT NULL DEFAULT '',
+            confirmed_dollars   DOUBLE PRECISION    NOT NULL DEFAULT 0,
+            confirmed_by        INTEGER,
+            confirmed_at        TEXT    NOT NULL DEFAULT ''
+        )
+    """)
+    await conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_kpi_run_rows_run "
+        "ON kpi_incentive_run_rows(run_id)"
+    )
+    await conn.commit()
+    logger.info("Migration 194: dispatcher incentive run tables")
 

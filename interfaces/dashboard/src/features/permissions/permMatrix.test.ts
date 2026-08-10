@@ -50,6 +50,9 @@ describe('every row declares its kind', () => {
     expect(tagged).toEqual([
       'can_coaching_admin',
       'can_driver_pay_admin',
+    // Dispatcher incentive runs & payouts — compensation, one
+    // write-level flag beside driver_pay's, deliberately not can_kpi.
+    'can_kpi_incentives',
       'can_manage_applications',
       'can_manage_billing',
       'can_manage_driver_docs',
