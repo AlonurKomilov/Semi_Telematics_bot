@@ -14,7 +14,7 @@ import { Input } from '../../components/ui/input';
 import { Textarea } from '../../components/ui/textarea';
 import { statusClasses, toneClasses, toneText } from '../../lib/status';
 import { APEX_DOMAIN } from '../../lib/safeReturnTo';
-import { formatDate } from '../../utils/datetime';
+import { formatDate, formatDay } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
 import { useInboxSource, useInboxActions, type InboxNotice } from '../alerts/useInbox';
 import DataGrid, {
@@ -420,7 +420,11 @@ function LinkEditPanel({ link, companies, onSaved, onCancel, onCompaniesChanged 
 // array to replay its captured filters, which a value trapped inside
 // the component cannot hand over.  Safe to hoist: no render function
 // here closes over component state — they read only the row.
-const APP_COLUMNS: AnyColumn[] = [
+// Factory, not a constant: the Submitted cell renders a server INSTANT
+// as a calendar day, and which day that is depends on the viewer's
+// effective timezone — a bare .slice(0, 10) printed the UTC day (one
+// day off during US evenings).
+const makeAppColumns = (tz: string): AnyColumn[] => [
     {
       key: 'reference', label: 'Ref', sortable: false,
       render: (v) => <span className="font-mono text-xs">{String(v)}</span>,
@@ -504,7 +508,7 @@ const APP_COLUMNS: AnyColumn[] = [
       filterMode: 'date-range', filterable: true,
       render: (v) => (
         <span className="text-muted-foreground text-xs tabular-nums">
-          {String(v ?? '').slice(0, 10) || '—'}
+          {v ? formatDay(String(v), { timeZone: tz }) : '—'}
         </span>
       ),
     },
@@ -530,9 +534,11 @@ export default function Applications() {
   // Mirrored for the Board so the two surfaces can't show different
   // populations of the same dataset.  Pure + tested in ./scope.
   const scopeBase = resolveScopeBase(segment, tab, APP_SEGMENTS);
+  const tz = useTimezone();
+  const appColumns = useMemo(() => makeAppColumns(tz), [tz]);
   const segmentMatch = useMemo(
-    () => scopeMatch(scopeBase, tab, APP_SEGMENTS, APP_COLUMNS, APP_SEARCH_KEYS),
-    [scopeBase, tab],
+    () => scopeMatch(scopeBase, tab, APP_SEGMENTS, appColumns, APP_SEARCH_KEYS),
+    [scopeBase, tab, appColumns],
   );
   // (Bulk selection lives inside DataGrid now — no page-level set.)
   const [openId, setOpenId] = useState<number | null>(null);
@@ -579,7 +585,6 @@ export default function Applications() {
     [rows, segmentMatch],
   );
   const err = appsError instanceof Error ? appsError.message : '';
-  const tz = useTimezone();
   // Link create form
   const [label, setLabel] = useState('');
   const [source, setSource] = useState('');
@@ -1104,7 +1109,7 @@ export default function Applications() {
             searchKey={APP_SEARCH_KEYS}
             searchPlaceholder="Search name, email, ref…"
             onRowClick={(row) => setOpenId((row as unknown as AppRow).id)}
-            columns={APP_COLUMNS}
+            columns={appColumns}
             // Bulk selection + action bar are DataGrid's (the SSOT).
             bulkSelection
             bulkActions={bulkActions}
@@ -1302,6 +1307,7 @@ const BOARD_COLUMNS: { key: string; droppable: boolean }[] = [
 function ApplicationsBoard({ rows, loading, onMove, onOpen }: {
   rows: AppRow[]; loading: boolean; onMove: (id: number, status: string) => void; onOpen: (id: number) => void;
 }) {
+  const tz = useTimezone();
   const [dragId, setDragId] = useState<number | null>(null);
   const [overCol, setOverCol] = useState<string | null>(null);
   const dragging = dragId != null ? rows.find((r) => r.id === dragId) : undefined;
@@ -1360,7 +1366,7 @@ function ApplicationsBoard({ rows, loading, onMove, onOpen }: {
                     {[[r.city, r.state].filter(Boolean).join(', '), r.cdl_class ? `Class ${r.cdl_class}` : ''].filter(Boolean).join(' · ') || '—'}
                   </p>
                   <div className="flex items-center justify-between">
-                    <p className="text-2xs text-muted-foreground tabular-nums">{r.submitted_at?.slice(0, 10) || '—'}</p>
+                    <p className="text-2xs text-muted-foreground tabular-nums">{r.submitted_at ? formatDay(r.submitted_at, { timeZone: tz }) : '—'}</p>
                     {r.duplicate && <span className={`rounded-md px-1 py-0.5 text-3xs ${toneClasses('warn')}`}>re-applicant</span>}
                   </div>
                 </div>
@@ -1401,6 +1407,7 @@ const VETTING_CHECKS: { key: string; label: string; required: boolean }[] = [
 function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
   appId: number; onClose: () => void; onChanged: () => void; onOpen: (id: number) => void;
 }) {
+  const tz = useTimezone();
   const [app, setApp] = useState<AppDetail | null>(null);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
@@ -1497,7 +1504,7 @@ function ApplicationDetail({ appId, onClose, onChanged, onOpen }: {
                   {app.related.map((r) => (
                     <li key={r.id}>
                       <button onClick={() => onOpen(r.id)} className="text-xs underline hover:no-underline">
-                        {r.reference} · <span className="capitalize">{r.status}</span> · {r.submitted_at?.slice(0, 10)}
+                        {r.reference} · <span className="capitalize">{r.status}</span> · {r.submitted_at ? formatDay(r.submitted_at, { timeZone: tz }) : ''}
                       </button>
                     </li>
                   ))}
@@ -1755,6 +1762,7 @@ interface VerifRow {
 }
 
 function VerificationsPanel({ appId }: { appId: number }) {
+  const tz = useTimezone();
   const [rows, setRows] = useState<VerifRow[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1836,8 +1844,8 @@ function VerificationsPanel({ appId }: { appId: number }) {
         const v = r.verification;
         const tone = v?.status === 'received' ? 'ok' : v?.status === 'no_response' ? 'warn' : v?.status === 'sent' ? 'info' : 'neutral';
         const statusLabel = !v ? 'Not sent'
-          : v.status === 'sent' ? `Sent ${String(v.sent_at || '').slice(0, 10)} · ${v.attempts} attempt${v.attempts > 1 ? 's' : ''}`
-          : v.status === 'received' ? `Response received ${String(v.responded_at || '').slice(0, 10)}`
+          : v.status === 'sent' ? `Sent ${v.sent_at ? formatDay(v.sent_at, { timeZone: tz }) : ''} · ${v.attempts} attempt${v.attempts > 1 ? 's' : ''}`
+          : v.status === 'received' ? `Response received ${v.responded_at ? formatDay(v.responded_at, { timeZone: tz }) : ''}`
           : v.status === 'no_response' ? `No response · ${v.attempts} attempt${v.attempts > 1 ? 's' : ''} documented`
           : v.status;
         return (

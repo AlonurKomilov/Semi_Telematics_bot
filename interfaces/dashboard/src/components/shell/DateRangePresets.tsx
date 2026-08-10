@@ -6,7 +6,7 @@ import {
 } from '../ui/select';
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { useTimezone } from '../../hooks/useTimezone';
-import { formatDay } from '../../utils/datetime';
+import { formatDay, todayInTimeZone } from '../../utils/datetime';
 
 /**
  * The time-window picker — THE single source of truth for "pick a time
@@ -162,6 +162,12 @@ interface CalendarMonthProps {
   /** Where the highlight band runs to when no end is picked (today in
    *  start-only mode; hover preview while picking an end). */
   bandEnd: Date;
+  /** The user's-timezone "today" as a local-midnight Date — drives the
+   *  today ring and the future-cell cutoff.  Computed by the parent
+   *  from ``todayInTimeZone(tz)``; a bare ``new Date()`` here used the
+   *  BROWSER day, which could block a tz-shifted user from picking
+   *  their own today. */
+  today: Date;
   /** True on pages that can pick an explicit end — enables the
    *  either-direction hover preview and the hover-endpoint highlight. */
   rangeCapable: boolean;
@@ -169,8 +175,7 @@ interface CalendarMonthProps {
   onHover: (d: Date | null) => void;
 }
 
-function CalendarMonth({ monthStart, start, endPicked, hover, bandEnd, rangeCapable, onPick, onHover }: CalendarMonthProps) {
-  const today = startOfDay(new Date());
+function CalendarMonth({ monthStart, start, endPicked, hover, bandEnd, today, rangeCapable, onPick, onHover }: CalendarMonthProps) {
   const year = monthStart.getFullYear();
   const month = monthStart.getMonth();
   const first = new Date(year, month, 1);
@@ -310,7 +315,7 @@ export default function DateRangePresets({
   const seedFromApplied = () => {
     const appliedEnd = end
       ? startOfDay(new Date(`${end}T00:00:00`))
-      : startOfDay(new Date());
+      : startOfDay(new Date(`${todayInTimeZone(tz)}T00:00:00`));
     const appliedStart = new Date(appliedEnd.getTime() - value * 86_400_000);
     if (rangeCapable) {
       setPickedStart(appliedStart);
@@ -356,7 +361,9 @@ export default function DateRangePresets({
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  const today = startOfDay(new Date());
+  // The user's-timezone today, not the browser's — this Date anchors
+  // the today ring, the future-cell cutoff, and the default band end.
+  const today = startOfDay(new Date(`${todayInTimeZone(tz)}T00:00:00`));
 
   // Two-click picking.  Start-only pages just re-anchor on every click.
   // Range pages: the FIRST click (or a click after a completed range)
@@ -576,6 +583,7 @@ export default function DateRangePresets({
                     endPicked={pickedEnd}
                     hover={hoverDate}
                     bandEnd={today}
+                    today={today}
                     rangeCapable={rangeCapable}
                     onPick={pickDay}
                     onHover={setHoverDate}
@@ -587,6 +595,7 @@ export default function DateRangePresets({
                   endPicked={pickedEnd}
                   hover={hoverDate}
                   bandEnd={today}
+                  today={today}
                   rangeCapable={rangeCapable}
                   onPick={pickDay}
                   onHover={setHoverDate}

@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { apiJSON } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay } from '../../utils/datetime';
 import { toneClasses } from '../../lib/status';
 
 interface Lifecycle {
@@ -24,6 +26,7 @@ interface Lifecycle {
 // the customer.
 export default function DangerZoneSection() {
   const { user } = useAuth();
+  const tz = useTimezone();
   const [lc, setLc] = useState<Lifecycle | null>(null);
   const [step, setStep] = useState<'idle' | 'code'>('idle');
   const [code, setCode] = useState('');
@@ -44,7 +47,9 @@ export default function DangerZoneSection() {
   if (!isOwner || !lc) return null;
 
   const deletionPending = !!lc.deleted_at;
-  const purgeDate = lc.purge_at?.slice(0, 10) ?? '';
+  // The purge moment rendered as the OWNER's calendar day — the raw
+  // UTC slice read one day early/late around US evenings.
+  const purgeDate = lc.purge_at ? formatDay(lc.purge_at, { timeZone: tz }) : '';
   const daysLeft = lc.purge_at
     ? Math.max(0, Math.ceil((Date.parse(lc.purge_at) - Date.now()) / 86_400_000))
     : 0;

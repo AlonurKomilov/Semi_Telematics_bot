@@ -20,6 +20,8 @@ import {
   Sheet, SheetContent, SheetTitle, SheetClose,
 } from '../../components/ui/sheet';
 import { apiFetch } from '../../api/client';
+import { useTimezone } from '../../hooks/useTimezone';
+import { todayInTimeZone } from '../../utils/datetime';
 import { createLineItem, LINE_ITEM_BUCKET } from '../loads/api';
 import type {
   Statement, StatementLoadLine, StatementAddition, StatementDeduction,
@@ -79,6 +81,7 @@ export default function StatementDrawer({
   onChanged?: () => void | Promise<void>;
   onClose: () => void;
 }) {
+  const tz = useTimezone();
   const loads: StatementLoadLine[] = statement.loads ?? [];
   const additions: StatementAddition[] = statement.additions ?? [];
   const deductions: StatementDeduction[] = statement.deductions ?? [];
@@ -180,7 +183,7 @@ export default function StatementDrawer({
               {runStatus === 'finalized'
                 ? <span className="text-ok">Final settlement</span>
                 : <span className="text-warn">Draft — not yet finalized</span>}
-              <span className="text-muted-foreground"> · generated {new Date().toISOString().slice(0, 10)}</span>
+              <span className="text-muted-foreground"> · generated {todayInTimeZone(tz)}</span>
             </div>
           </div>
 

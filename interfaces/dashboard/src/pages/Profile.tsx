@@ -17,6 +17,8 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import { formatDay } from '../utils/datetime';
+import { useTimezone } from '../hooks/useTimezone';
 import { useTranslation } from 'react-i18next';
 import {
   UserCog,
@@ -747,6 +749,7 @@ function RecentActivity() {
       .finally(() => setLoading(false));
   }, []);
 
+  const tzName = useTimezone();
   const formatWhen = (iso: string): string => {
     const d = Date.parse(iso);
     if (Number.isNaN(d)) return iso;
@@ -759,7 +762,9 @@ function RecentActivity() {
     const days = Math.floor(hr / 24);
     if (days === 1) return t('time.yesterday', 'yesterday');
     if (days < 30) return `${days}d ${t('time.ago', 'ago')}`;
-    return iso.slice(0, 10);
+    // Older than a month: an absolute day, in the user's timezone —
+    // the raw UTC slice read one day off during US evenings.
+    return formatDay(iso, { timeZone: tzName });
   };
 
   return (
@@ -903,7 +908,7 @@ function deviceIcon(label: string) {
   return Monitor;
 }
 
-function formatLastSeen(iso: string): string {
+function formatLastSeen(iso: string, tzName?: string): string {
   const t = Date.parse(iso);
   if (Number.isNaN(t)) return iso;
   const sec = Math.floor((Date.now() - t) / 1000);
@@ -915,10 +920,11 @@ function formatLastSeen(iso: string): string {
   const days = Math.floor(hr / 24);
   if (days === 1) return 'yesterday';
   if (days < 30)  return `${days}d ago`;
-  return iso.slice(0, 10);
+  return formatDay(iso, { timeZone: tzName });
 }
 
 function ActiveSessions() {
+  const tzName = useTimezone();
   const [rows, setRows] = useState<SessionRow[]>([]);
   const [currentJti, setCurrentJti] = useState('');
   const [loading, setLoading] = useState(true);
@@ -1027,8 +1033,8 @@ function ActiveSessions() {
                 </div>
                 <div className="text-xs text-muted-foreground flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
                   {s.ip && <span className="font-mono">{s.ip}</span>}
-                  <span>signed in {formatLastSeen(s.created_at)}</span>
-                  {!isCurrent && <span>· active {formatLastSeen(s.last_seen)}</span>}
+                  <span>signed in {formatLastSeen(s.created_at, tzName)}</span>
+                  {!isCurrent && <span>· active {formatLastSeen(s.last_seen, tzName)}</span>}
                 </div>
               </div>
               {!isCurrent && (

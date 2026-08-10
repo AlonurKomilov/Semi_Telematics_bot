@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
+import { useTimezone } from '../../hooks/useTimezone';
 import { Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -94,6 +95,7 @@ export default function IntegrationCard({
   onTriggerBackfill,
   backfillStatusBadge,
 }: Props) {
+  const tz = useTimezone();
   const [showConnect, setShowConnect] = useState(false);
   const [showDisconnect, setShowDisconnect] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -412,7 +414,7 @@ export default function IntegrationCard({
             <p className="mb-3 text-2xs text-muted-foreground">
               Last history backfill:{' '}
               {integration.last_backfill_at
-                ? formatBackfillTimestamp(integration.last_backfill_at)
+                ? formatBackfillTimestamp(integration.last_backfill_at, tz)
                 : (
                   <span className="italic">
                     {backfillRunning
@@ -529,7 +531,7 @@ export default function IntegrationCard({
             // completion path (record_integration_backfill_completion).
             backfillLastDoneLabel={
               integration.last_backfill_at
-                ? formatBackfillTimestamp(integration.last_backfill_at)
+                ? formatBackfillTimestamp(integration.last_backfill_at, tz)
                 : undefined
             }
           />
@@ -592,7 +594,7 @@ export default function IntegrationCard({
                   backfillRunning && backfillStatus
                     ? `Backfill in progress · ${backfillStatus.days_done ?? 0}/${backfillStatus.days_total ?? backfillStatus.days_requested ?? historyWindow} days`
                     : integration.last_backfill_at
-                      ? `Last completed ${formatBackfillTimestamp(integration.last_backfill_at)}. Click to re-run the last ${historyWindow} days for every company.`
+                      ? `Last completed ${formatBackfillTimestamp(integration.last_backfill_at, tz)}. Click to re-run the last ${historyWindow} days for every company.`
                       : `Run a ${historyWindow}-day history backfill across every company`
                 }
               >

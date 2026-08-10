@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDay } from '../../utils/datetime';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -766,6 +768,7 @@ function VehiclesTab({
   onSaved: () => void;
   onError: (m: string) => void;
 }) {
+  const tz = useTimezone();
   const [vehicleName, setVehicleName] = useState('');
   const [isPrimary, setIsPrimary] = useState(true);
   const [adding, setAdding] = useState(false);
@@ -821,7 +824,7 @@ function VehiclesTab({
                   {a.is_primary && (
                     <span className="px-1.5 py-0.5 text-3xs rounded bg-primary/15 text-primary">Primary</span>
                   )}
-                  <span className="text-xs text-muted-foreground tabular-nums">since {a.assigned_at.slice(0, 10)}</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">since {formatDay(a.assigned_at, { timeZone: tz })}</span>
                 </span>
                 <button
                   onClick={() => end(a.id)}
