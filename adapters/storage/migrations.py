@@ -8950,3 +8950,33 @@ async def migrate_kpi_incentive_runs(conn) -> None:
     await conn.commit()
     logger.info("Migration 194: dispatcher incentive run tables")
 
+
+
+@_register("195_kpi_incentive_double_precision")
+async def migrate_kpi_incentive_double_precision(conn) -> None:
+    """Policy and target columns to DOUBLE PRECISION, values repaired.
+
+    The 193 tables were created on production from an earlier draft that
+    used REAL — float4, which cannot hold 1.9: the admin typed a 1.9 RPM
+    floor and read back 1.899999976158142.  The run tables (194) already
+    carry DOUBLE PRECISION; this brings the two config tables in line.
+    ALTER is a no-op where the column is already double (fresh installs
+    built from the fixed 193), and the value repair rounds away the
+    float4 artifact (~1e-8) without touching intended precision.
+    """
+    for tbl, cols in (
+        ("kpi_incentive_config",
+         ("exception_cap_pct", "floor_weekly_gross", "floor_rpm")),
+        ("kpi_company_targets", ("weekly_gross_target",)),
+    ):
+        for col in cols:
+            await conn.execute(
+                f"ALTER TABLE {tbl} ALTER COLUMN {col} TYPE DOUBLE PRECISION"
+            )
+            await conn.execute(
+                f"UPDATE {tbl} SET {col} = "
+                f"ROUND({col}::numeric, 4)::double precision "
+                f"WHERE {col} IS NOT NULL"
+            )
+    await conn.commit()
+    logger.info("Migration 195: kpi incentive float columns -> double precision")
