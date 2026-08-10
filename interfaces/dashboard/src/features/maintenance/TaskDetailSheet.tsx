@@ -449,8 +449,17 @@ export default function TaskDetailSheet({
 
   return (
       <Sheet open={!!task} onOpenChange={(o) => { if (!o) onClose(); }}>
-        <SheetContent side="right" className="p-0"
-        size="lg">
+        <SheetContent
+          side="right"
+          className="p-0"
+          // The header already carries a ✕ beside the History pill, so
+          // the primitive's own would sit on top of it — two close
+          // buttons crowding each other.  Fourth sheet in this codebase
+          // to hit it: SheetContent renders one by DEFAULT, and a
+          // hand-rolled modal being converted always brings its own.
+          showCloseButton={false}
+          size="lg"
+        >
           {task && (
           <SheetBody label="Maintenance task details" className="p-6">
             {/* Header: vehicle + task type for disambiguation when

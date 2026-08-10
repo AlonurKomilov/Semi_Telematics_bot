@@ -1034,6 +1034,10 @@ function DetailDrawer({ card, rank, total, aggregateAvg, days, onClose }: {
         className="p-0"
         size="lg"
         aria-label={`Scorecard detail for ${card.subject_name || card.driver_name}`}
+        // Its own ✕ sits in the header below; the primitive's would land
+        // on top of it.  Fifth sheet in this codebase to need this — the
+        // default is ``true`` and every converted modal brings its own.
+        showCloseButton={false}
       >
         <SheetBody label="Scorecard detail" className="p-6">
         <div className="flex items-center justify-between mb-4">
