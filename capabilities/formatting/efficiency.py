@@ -90,6 +90,9 @@ def format_fleet_efficiency(
             )
 
     now_et = datetime.now(_TZ_ET)
-    lines.append(f"  🕐  {now_et.strftime('%b %d, %Y  %I:%M %p')} EST")
+    # tzname() says EDT or EST honestly — the literal "EST" was wrong
+    # for the ~8 months of daylight time.
+    lines.append(
+        f"  🕐  {now_et.strftime('%b %d, %Y  %I:%M %p')} {now_et.tzname()}")
 
     return _split_message("\n".join(lines))
