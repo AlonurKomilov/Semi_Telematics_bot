@@ -181,6 +181,17 @@ def compute_truck_row(
             weekly_eq=weekly_eq, rpm=rpm, target_met=target_met,
         )
     )
+    # A zero in a money column carries its reason (UX audit rule): "why
+    # is this 0%?" is the first question a dispatcher asks their manager,
+    # and the engine is the only thing that knows the answer.
+    zero_reason = ""
+    if pct == 0.0:
+        if active_days <= 0:
+            zero_reason = "no_active_days"
+        elif _floored(config, weekly_eq, rpm):
+            zero_reason = "floor"
+        else:
+            zero_reason = "no_tier"
     return {
         "kpi_gross": kpi_gross,
         "rpm": rpm,
@@ -189,6 +200,7 @@ def compute_truck_row(
         "target_met": target_met,
         "pct": pct,
         "kpi_dollars": money(Decimal(str(kpi_gross)) * Decimal(str(pct)) / 100),
+        "zero_reason": zero_reason,
     }
 
 

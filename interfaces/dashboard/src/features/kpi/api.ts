@@ -150,6 +150,7 @@ export interface RunRow {
   kpi_dollars: number;
   override_pct: number | null;
   override_reason: string;
+  zero_reason: '' | 'no_target' | 'floor' | 'no_tier' | 'no_active_days';
   confirmed_dollars: number;
 }
 
@@ -199,4 +200,8 @@ export async function finalizeIncentiveRun(runId: number): Promise<RunDetail> {
   return apiJSON<RunDetail>(
     `/kpi/dispatch/runs/${runId}/finalize`, { method: 'POST' },
   );
+}
+
+export async function deleteIncentiveRun(runId: number): Promise<void> {
+  await apiJSON<void>(`/kpi/dispatch/runs/${runId}`, { method: 'DELETE' });
 }

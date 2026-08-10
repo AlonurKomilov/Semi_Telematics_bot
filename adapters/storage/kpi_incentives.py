@@ -159,7 +159,7 @@ class KpiIncentivesMixin(_MixinBase):
         "window_start", "window_end", "total_days", "inactive_days",
         "inactive_reason", "base_gross", "extras", "extras_note", "miles",
         "weekly_target", "kpi_gross", "rpm", "adjusted_target", "pct",
-        "kpi_dollars", "override_pct", "override_reason",
+        "kpi_dollars", "override_pct", "override_reason", "zero_reason",
         "confirmed_dollars", "confirmed_by", "confirmed_at",
     )
 
@@ -187,7 +187,7 @@ class KpiIncentivesMixin(_MixinBase):
     _ROW_TEXT_DEFAULTS = (
         "dispatcher_name", "company_code", "vehicle_unit", "window_start",
         "window_end", "inactive_reason", "extras_note", "override_reason",
-        "confirmed_at",
+        "zero_reason", "confirmed_at",
     )
     _ROW_NUM_DEFAULTS = (
         "total_days", "inactive_days", "base_gross", "extras", "miles",
@@ -290,3 +290,22 @@ class KpiIncentivesMixin(_MixinBase):
             (finalized_by, self._now(), account_id, run_id),
         )
         await self._db.commit()
+
+    async def delete_kpi_run(self, account_id: int, run_id: int) -> bool:
+        """Discard a DRAFT run and its rows.  Refuses finalized runs at
+        the SQL level — the WHERE clause is the guard, so a race between
+        finalize and discard cannot delete the paid record."""
+        await self._db.execute(
+            "DELETE FROM kpi_incentive_run_rows WHERE account_id = ? "
+            "AND run_id = ? AND run_id IN (SELECT id FROM "
+            "kpi_incentive_runs WHERE account_id = ? AND status = 'draft')",
+            (account_id, run_id, account_id),
+        )
+        cur = await self._db.execute(
+            "DELETE FROM kpi_incentive_runs WHERE account_id = ? "
+            "AND id = ? AND status = 'draft' RETURNING id",
+            (account_id, run_id),
+        )
+        deleted = (await cur.fetchone()) is not None
+        await self._db.commit()
+        return deleted

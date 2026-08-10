@@ -69,6 +69,7 @@ def _recompute(row: dict, snapshot: dict) -> dict:
             "adjusted_target": 0.0,
             "pct": 0.0,
             "kpi_dollars": 0.0,
+            "zero_reason": "no_target",
         }
     else:
         out = engine.compute_truck_row(
@@ -80,7 +81,8 @@ def _recompute(row: dict, snapshot: dict) -> dict:
             active_days=active_days,
         )
         computed = {k: out[k] for k in (
-            "kpi_gross", "rpm", "adjusted_target", "pct", "kpi_dollars")}
+            "kpi_gross", "rpm", "adjusted_target", "pct", "kpi_dollars",
+            "zero_reason")}
     # An override survives recompute — it is a human decision about the
     # ROW, not about one intermediate value — but its dollars re-derive
     # from the fresh gross.
@@ -221,6 +223,7 @@ async def update_row(
         "kpi_gross": row["kpi_gross"], "rpm": row["rpm"],
         "adjusted_target": row["adjusted_target"], "pct": row["pct"],
         "kpi_dollars": row["kpi_dollars"],
+        "zero_reason": row.get("zero_reason", ""),
         "confirmed_dollars": row["confirmed_dollars"],
     })
     return await tenant.get_kpi_run_row(account_id, run_id, row_id)
@@ -293,3 +296,21 @@ async def finalize_run(account_id: int, run_id: int,
     await _open_run(tenant, account_id, run_id)
     await tenant.finalize_kpi_run(account_id, run_id, finalized_by)
     return await get_run_detail(account_id, run_id)
+
+
+async def discard_run(account_id: int, run_id: int) -> None:
+    """Discard a DRAFT run — the mistake-recovery path.  A draft is
+    regenerable from the same period at any time, so discarding one loses
+    only hand-entered adjustments; a FINALIZED run is the paid record and
+    the storage layer refuses to delete it."""
+    tenant = await get_tenant_db(account_id)
+    if tenant is None:
+        raise RunError("tenant DB unavailable")
+    run = await tenant.get_kpi_run(account_id, run_id)
+    if run is None:
+        raise RunError("run not found")
+    if run["status"] != "draft":
+        raise RunError(
+            "this run is finalized — the paid record cannot be discarded")
+    if not await tenant.delete_kpi_run(account_id, run_id):
+        raise RunError("run not found")

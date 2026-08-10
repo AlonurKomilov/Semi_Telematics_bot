@@ -19,7 +19,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BadgeDollarSign, Loader2, Lock, Pencil, Plus, Scale } from 'lucide-react';
+import { BadgeDollarSign, Loader2, Lock, Pencil, Plus, Scale, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import DataGrid from '../../../components/datagrid';
 import { EmptyState, ErrorState, PageHeader, TableSkeleton } from '../../../components/shell';
@@ -31,7 +31,7 @@ import { Input } from '../../../components/ui/input';
 import { toneClasses } from '../../../lib/status';
 import type { AnyColumn } from '../../../types';
 import {
-  createIncentiveRun, finalizeIncentiveRun, getIncentiveRun,
+  createIncentiveRun, deleteIncentiveRun, finalizeIncentiveRun, getIncentiveRun,
   listIncentiveRuns, patchIncentiveRow, setIncentiveException,
   type RunDetail, type RunRow,
 } from '../api';
@@ -53,6 +53,7 @@ export default function IncentiveRuns() {
   const [editRow, setEditRow] = useState<RunRow | null>(null);
   const [exceptRow, setExceptRow] = useState<RunRow | null>(null);
   const [finalizeOpen, setFinalizeOpen] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   const runsQ = useQuery({
     queryKey: ['kpi-incentive-runs'],
@@ -73,6 +74,16 @@ export default function IncentiveRuns() {
 
   const run = detailQ.data;
   const draft = run?.status === 'draft';
+
+  const discard = useMutation({
+    mutationFn: () => deleteIncentiveRun(selected as number),
+    onSuccess: () => {
+      setDiscardOpen(false);
+      setSelected(null);
+      qc.invalidateQueries({ queryKey: ['kpi-incentive-runs'] });
+    },
+    onError: (e) => toast.error(e instanceof Error ? e.message : 'Failed'),
+  });
 
   const finalize = useMutation({
     mutationFn: () => finalizeIncentiveRun(selected as number),
@@ -128,9 +139,19 @@ export default function IncentiveRuns() {
         ? <span className={`text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>no target</span>
         : <span className="tabular-nums">{usd(v)}</span> },
     { key: 'pct', label: 'KPI %', sortable: true,
+      // Every zero in a money column carries its reason — the first
+      // question a dispatcher asks their manager is "why is this 0?".
+      // no_target is annotated on the Target column already.
       render: (v, r) => (
         <span className="tabular-nums">
           {Number(v)}%
+          {Number(v) === 0 && r.zero_reason && r.zero_reason !== 'no_target' && (
+            <span className={`ml-1 text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>
+              {r.zero_reason === 'floor' ? 'below floor'
+                : r.zero_reason === 'no_active_days' ? 'no active days'
+                  : 'no tier met'}
+            </span>
+          )}
           {r.override_pct != null && (
             <span className={`ml-1 text-xs ${toneClasses('info')} px-1.5 py-0.5 rounded`}>
               → {Number(r.override_pct)}%
@@ -223,10 +244,16 @@ export default function IncentiveRuns() {
               ))}
             </div>
             {draft ? (
-              <Button variant="outline" onClick={() => setFinalizeOpen(true)}>
-                <Lock size={14} className="mr-1.5" />
-                {t('kpi_runs.finalize', 'Finalize run')}
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button variant="ghost" onClick={() => setDiscardOpen(true)}>
+                  <Trash2 size={14} className="mr-1.5" />
+                  {t('kpi_runs.discard', 'Discard draft')}
+                </Button>
+                <Button variant="outline" onClick={() => setFinalizeOpen(true)}>
+                  <Lock size={14} className="mr-1.5" />
+                  {t('kpi_runs.finalize', 'Finalize run')}
+                </Button>
+              </div>
             ) : (
               <span className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded ${toneClasses('ok')}`}>
                 <Lock size={12} />
@@ -238,6 +265,12 @@ export default function IncentiveRuns() {
           <DataGrid
             tableId="kpi-incentive-run-rows"
             columns={COLUMNS}
+            // Clicking a row IS the edit gesture on a draft — rowActions
+            // alone is right-click-only (the audit's top finding: managers
+            // migrating from Excel won't guess a context menu exists).
+            onRowClick={draft
+              ? (row) => setEditRow(row as unknown as RunRow)
+              : undefined}
             data={run.rows as unknown as Record<string, unknown>[]}
             searchKey={['dispatcher_name', 'vehicle_unit', 'company_code']}
             searchPlaceholder={t('kpi_runs.search', 'Search unit, dispatcher…')}
@@ -278,6 +311,27 @@ export default function IncentiveRuns() {
           onSaved={() => { setExceptRow(null); refresh(); }}
         />
       )}
+
+      <Dialog open={discardOpen} onOpenChange={setDiscardOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t('kpi_runs.discard_title', 'Discard this draft?')}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            {t('kpi_runs.discard_body',
+              'The draft and any hand-entered adjustments are deleted. A new run for the same period can be created at any time; finalized runs can never be discarded.')}
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDiscardOpen(false)}>
+              {t('common.cancel', 'Cancel')}
+            </Button>
+            <Button variant="destructive" onClick={() => discard.mutate()} disabled={discard.isPending}>
+              {discard.isPending && <Loader2 size={16} className="animate-spin mr-1.5" />}
+              {t('kpi_runs.discard_confirm', 'Discard')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={finalizeOpen} onOpenChange={setFinalizeOpen}>
         <DialogContent className="max-w-lg">

@@ -147,3 +147,12 @@ async def finalize(run_id: int, user: dict = Depends(_incentives)):
         )
     except runs_service.RunError as e:
         _run_error(e)
+
+
+@router.delete("/dispatch/runs/{run_id}", status_code=204)
+async def discard_run(run_id: int, user: dict = Depends(_incentives)):
+    """Discard a DRAFT run.  Finalized runs 409 — the paid record."""
+    try:
+        await runs_service.discard_run(int(user["account_id"]), run_id)
+    except runs_service.RunError as e:
+        _run_error(e)

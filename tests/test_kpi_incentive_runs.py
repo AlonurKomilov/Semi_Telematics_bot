@@ -243,3 +243,36 @@ class TestLifecycle:
             r = await c.get("/api/kpi/dispatch/runs",
                             headers=_h(seeded["disp"]))
             assert r.status_code == 403
+
+    async def test_a_zero_row_names_its_reason(self, seeded):
+        """UX rule: every zero in a money column carries its reason.
+        NOTGT's truck pays 0 because its company has no bar."""
+        async with await _client(seeded["app"]) as c:
+            await _configure(c, seeded)
+            run = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                headers=_h(seeded["owner"]))).json()
+            t301 = next(x for x in run["rows"] if x["vehicle_unit"] == "301")
+            assert t301["zero_reason"] == "no_target"
+            t225 = next(x for x in run["rows"] if x["vehicle_unit"] == "225")
+            assert t225["zero_reason"] == ""        # it pays — no reason
+
+    async def test_a_draft_can_be_discarded_a_paid_record_cannot(self, seeded):
+        async with await _client(seeded["app"]) as c:
+            await _configure(c, seeded)
+            run = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                headers=_h(seeded["owner"]))).json()
+            r = await c.delete(f"/api/kpi/dispatch/runs/{run['id']}",
+                               headers=_h(seeded["owner"]))
+            assert r.status_code == 204
+            r = await c.get(f"/api/kpi/dispatch/runs/{run['id']}",
+                            headers=_h(seeded["owner"]))
+            assert r.status_code == 404
+
+            run2 = (await c.post("/api/kpi/dispatch/runs", json=PERIOD,
+                                 headers=_h(seeded["owner"]))).json()
+            await c.post(f"/api/kpi/dispatch/runs/{run2['id']}/finalize",
+                         headers=_h(seeded["owner"]))
+            r = await c.delete(f"/api/kpi/dispatch/runs/{run2['id']}",
+                               headers=_h(seeded["owner"]))
+            assert r.status_code == 409
+            assert "cannot be discarded" in r.json()["detail"]

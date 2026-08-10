@@ -8937,6 +8937,7 @@ async def migrate_kpi_incentive_runs(conn) -> None:
             kpi_dollars         DOUBLE PRECISION    NOT NULL DEFAULT 0,
             override_pct        DOUBLE PRECISION,
             override_reason     TEXT    NOT NULL DEFAULT '',
+            zero_reason         TEXT    NOT NULL DEFAULT '',
             confirmed_dollars   DOUBLE PRECISION    NOT NULL DEFAULT 0,
             confirmed_by        INTEGER,
             confirmed_at        TEXT    NOT NULL DEFAULT ''
