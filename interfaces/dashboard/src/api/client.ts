@@ -182,6 +182,10 @@ export async function apiJSON<T = unknown>(path: string, opts: ApiFetchOpts = {}
       : res.statusText;
     throw new ApiError(res.status, msg);
   }
+  // 204 No Content carries no body by definition — parsing it throws
+  // "Unexpected end of JSON input" AFTER the server already succeeded
+  // (first hit: DELETE /kpi/dispatch/runs discarding a draft).
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
