@@ -647,7 +647,33 @@ export default function PivotView({
                         </span>
                       </button>
                       </Tip>
-                    ) : cell.label}
+                    ) : isLeafLevel ? cell.label : (
+                      // ── Sticky group label ──────────────────────────
+                      // A group band can be far wider than the viewport:
+                      // one YEAR spanning sixty driver columns means that
+                      // three screens into a horizontal scroll, the label
+                      // saying WHICH year has long left the building and
+                      // the numbers are unattributable.
+                      //
+                      // Sticking the text inside its own cell keeps it in
+                      // view for exactly as long as the group is, and CSS
+                      // does the hard part: the containing block is the
+                      // <th>, so the label travels with the scroll,
+                      // stops at its own group's right edge, and never
+                      // trespasses into the next group.
+                      //
+                      // ``left`` clears the pinned row-label column
+                      // (``insets.left``, already measured for the scroll
+                      // region) — at left-0 the label would slide UNDER
+                      // the frozen column, which has a higher z-index.
+                      // Unpinned, there is nothing to clear.
+                      <span
+                        className="inline-block sticky"
+                        style={{ left: (pinRows ? insets.left : 0) + 8 }}
+                      >
+                        {cell.label}
+                      </span>
+                    )}
                   </th>
                 ))}
                 {/* Total column group — pinned right, mirroring the Total

@@ -730,7 +730,18 @@ nobody has to rediscover a gap):
 | Missing | Note |
 |---|---|
 | controlled props (`pivotModel`/`pivotActive`/`pivotPanelOpen`) | ours is uncontrolled + persisted; add when a page must own the state |
-| sticky column-GROUP labels | we sticky the row-label column instead |
+
+Sticky column-GROUP labels **are** built (they were on this list until a
+wide real pivot made the case). A group band is as wide as everything
+under it, so one Year over sixty driver columns scrolls its own label out
+of view long before its numbers — leaving a screen of figures belonging
+to nothing. The label is a `position: sticky` span INSIDE its `<th>`, so
+CSS does the constraining: the containing block is the cell, so the label
+travels with the scroll and stops at its group's right edge instead of
+trespassing into the next group. `left` is `insets.left + 8` — the pinned
+row-label column's measured width, because at `left: 0` the label slides
+UNDER the frozen column, which carries a higher z-index. Leaf headers
+are deliberately NOT sticky: one column wide, nothing to outlive.
 
 ## The panel is structured like MUI's
 
