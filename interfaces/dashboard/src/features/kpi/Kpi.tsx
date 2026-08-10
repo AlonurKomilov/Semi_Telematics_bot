@@ -8,9 +8,12 @@
  */
 
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { Gauge } from 'lucide-react';
+import { useRoleView } from '../../context/RoleViewContext';
+import { Button } from '../../components/ui/button';
+import { BadgeDollarSign, Gauge } from 'lucide-react';
 import DataGrid from '../../components/datagrid';
 import {
   PageHeader, EmptyState, ErrorState, TableSkeleton, DateRangePresets,
@@ -76,6 +79,8 @@ const SECTIONS = [
 
 export default function Kpi() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { viewHas } = useRoleView();
   const [days, setDays] = useState(30);
   const [section, setSection] = useState('dispatchers');
 
@@ -102,10 +107,20 @@ export default function Kpi() {
            + per-company targets).  Same cog, same slot, same self-gate
            on can_manage_config_all; it navigates, as Scorecards' does. */
         actions={(
-          <FeatureConfigGear
-            feature={t('nav.kpi', 'KPI')}
-            to="/kpi/configuration"
-          />
+          <div className="flex items-center gap-2">
+            {/* Compensation surface, its own permission — the button only
+                renders for holders, and the route re-checks. */}
+            {viewHas('can_kpi_incentives') && (
+              <Button variant="outline" size="sm" onClick={() => navigate('/kpi/incentives')}>
+                <BadgeDollarSign size={16} className="mr-1.5" />
+                {t('kpi_page.incentives', 'Incentives')}
+              </Button>
+            )}
+            <FeatureConfigGear
+              feature={t('nav.kpi', 'KPI')}
+              to="/kpi/configuration"
+            />
+          </div>
         )}
       />
 
