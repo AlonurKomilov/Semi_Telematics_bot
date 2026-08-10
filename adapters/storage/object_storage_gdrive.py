@@ -466,7 +466,33 @@ def _build_drive_service(refresh_token: str):
         token_uri="https://oauth2.googleapis.com/token",
         scopes=GDRIVE_SCOPES,
     )
+    # THREAD SAFETY — this requestBuilder is load-bearing.  The
+    # library's default transport is httplib2, which is NOT
+    # thread-safe, and the sync worker fans ``drive.put`` across OS
+    # threads (asyncio.to_thread, concurrency 4).  Sharing one client
+    # meant interleaved writes on one TLS connection: the log's SSL
+    # zoo (WRONG_VERSION_NUMBER / DECRYPTION_FAILED_OR_BAD_RECORD_MAC
+    # / IncompleteRead) and — worse — glibc heap corruption that
+    # hard-killed the bot ~75s after boot, right when the worker's
+    # first batch fired (2026-08-03..07).  Minting a fresh transport
+    # per REQUEST is the pattern from googleapiclient's own
+    # thread-safety docs; the handshake cost is noise next to an
+    # upload.  ``creds`` itself is shared so the account still does
+    # one token exchange, not one per request.
+    import google_auth_httplib2
+    import httplib2
+    from googleapiclient.http import HttpRequest
+
+    def _fresh_http_request(_shared_http, *args, **kwargs):
+        return HttpRequest(
+            google_auth_httplib2.AuthorizedHttp(creds, http=httplib2.Http()),
+            *args, **kwargs,
+        )
+
     # build() does NOT trigger an initial token refresh — that happens
     # lazily on the first API call.  Pass ``cache_discovery=False`` to
     # silence the noisy oauth2client cache warning from googleapiclient.
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
+    return build(
+        "drive", "v3", credentials=creds, cache_discovery=False,
+        requestBuilder=_fresh_http_request,
+    )
