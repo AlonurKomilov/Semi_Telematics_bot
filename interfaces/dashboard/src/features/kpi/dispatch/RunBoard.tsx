@@ -17,8 +17,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronRight, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronRight, Plus, TriangleAlert } from 'lucide-react';
 import { toast } from 'sonner';
+import { Tip } from '../../../components/tooltip';
 import { ActionMenu } from '../../../components/ui/context-menu';
 import { toneClasses } from '../../../lib/status';
 import {
@@ -97,8 +98,30 @@ export default function RunBoard({ run, draft, onChanged }: {
     ? loadsQ.data.drift.length + (loadsQ.data.unmatched_loads > 0 ? 1 : 0)
     : 0;
 
+  const zeroCount = run.rows.filter((r) => Number(r.pct) === 0).length;
+  const markedDays = run.rows.reduce((a, r) => a + r.inactive_days, 0);
+  const runTotal = run.rows.reduce((a, r) => a + r.confirmed_dollars, 0);
+
   return (
     <div className="space-y-3">
+      {/* Where the run stands, before any scrolling: state, size, the
+          rows needing attention, what has been adjusted, the total. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <span className={`px-1.5 py-0.5 rounded ${toneClasses(draft ? 'info' : 'ok')}`}>
+          {draft ? t('kpi_board.state_draft', 'draft') : t('kpi_board.state_final', 'finalized')}
+        </span>
+        <span>{t('kpi_board.n_dispatchers', '{{n}} dispatchers', { n: byDispatcher.size })}</span>
+        <span>{t('kpi_board.n_trucks', '{{n}} trucks', { n: run.rows.length })}</span>
+        {zeroCount > 0 && (
+          <span className={`px-1.5 py-0.5 rounded ${toneClasses('warn')}`}>
+            {t('kpi_board.n_zero', '{{n}} at 0%', { n: zeroCount })}
+          </span>
+        )}
+        <span>{t('kpi_board.n_marked', '{{n}} days marked inactive', { n: markedDays })}</span>
+        <span className="ml-auto font-medium text-foreground tabular-nums">
+          {t('kpi_board.total', 'total')} {usd(runTotal)}
+        </span>
+      </div>
       {draft && (
         /* The board's one non-obvious gesture, said once where the days
            are — a flat cell gives no affordance cue by itself. */
@@ -148,7 +171,7 @@ export default function RunBoard({ run, draft, onChanged }: {
                 <div className="min-w-max">
                   {/* Day header row. */}
                   <div className="flex border-b border-border bg-muted/20">
-                    <div className="sticky left-0 z-10 w-44 shrink-0 bg-card px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground border-r border-border">
+                    <div className="sticky left-0 z-10 w-56 shrink-0 bg-card px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground border-r border-border">
                       {t('kpi_board.unit', 'Unit')}
                     </div>
                     {days.map((d) => (
@@ -197,15 +220,28 @@ function BoardRow({ row, days, loads, clickable, onMark }: {
 
   return (
     <div className="flex border-b border-border last:border-b-0">
-      {/* Truck identity + its sheet numbers, pinned while days scroll. */}
-      <div className="sticky left-0 z-10 w-44 shrink-0 bg-card px-3 py-2 border-r border-border">
-        <div className="text-sm font-medium">{row.vehicle_unit || '—'}
+      {/* Truck identity + its sheet numbers, pinned while days scroll.
+          Gross and the zero-reason live HERE so a $0.00 row explains
+          itself without switching to the sheet. */}
+      <div className="sticky left-0 z-10 w-56 shrink-0 bg-card px-3 py-2 border-r border-border">
+        <div className="text-sm font-medium">
+          {row.vehicle_unit || t('kpi_board.unassigned', 'Unassigned unit')}
           <span className="ml-1.5 text-xs text-muted-foreground">{row.company_code}</span>
         </div>
         <div className="text-xs text-muted-foreground tabular-nums">
           {row.total_days - row.inactive_days}/{row.total_days}
-          {' '}{t('kpi_board.days', 'days')} · {Number(row.pct)}% · {usd(row.confirmed_dollars)}
+          {' '}{t('kpi_board.days', 'days')}
+          {' · '}${Math.round(row.kpi_gross).toLocaleString()}
+          {' · '}{Number(row.pct)}% → {usd(row.confirmed_dollars)}
         </div>
+        {Number(row.pct) === 0 && row.zero_reason && (
+          <span className={`mt-1 inline-block text-xs ${toneClasses('warn')} px-1.5 py-0.5 rounded`}>
+            {row.zero_reason === 'floor' ? t('kpi_runs.zr_floor', 'below floor')
+              : row.zero_reason === 'no_active_days' ? t('kpi_runs.zr_days', 'no active days')
+                : row.zero_reason === 'no_target' ? t('kpi_runs.zr_target', 'no target')
+                  : t('kpi_runs.zr_tier', 'no tier met')}
+          </span>
+        )}
       </div>
 
       {days.map((d) => {
@@ -220,19 +256,28 @@ function BoardRow({ row, days, loads, clickable, onMark }: {
                   : ''
             } ${clickable && inside ? 'cursor-pointer hover:bg-muted/50' : ''}`}
           >
-            {dayLoads.map((l, i) => (
-              <div key={i}
-                className={`rounded px-1.5 py-0.5 text-xs ${toneClasses('ok')} truncate`}
-                // The full route on hover comes with B-next's load popover;
-                // truncation keeps a long city from widening the day.
-              >
-                {place(l.delivery_location) || l.load_number} · ${Math.round(l.total_rate).toLocaleString()}
-              </div>
+            {dayLoads.slice(0, 2).map((l, i) => (
+              <Tip key={i}
+                label={`${place(l.pickup_location)} → ${place(l.delivery_location)} · ${usd(l.total_rate)} · ${Math.round(l.miles).toLocaleString()} mi`}>
+                <div className={`rounded px-1.5 py-0.5 text-xs ${toneClasses('ok')} truncate`}>
+                  {place(l.delivery_location) || l.load_number} · ${Math.round(l.total_rate).toLocaleString()}
+                </div>
+              </Tip>
             ))}
+            {dayLoads.length > 2 && (
+              <div className="px-1.5 text-xs text-muted-foreground">
+                +{dayLoads.length - 2} {t('kpi_board.more', 'more')}
+              </div>
+            )}
             {reason != null && (
               <div className={`rounded px-1.5 py-0.5 text-xs ${toneClasses('warn')} uppercase tracking-wide truncate`}>
                 {reason || t('kpi_board.inactive', 'inactive')}
               </div>
+            )}
+            {clickable && inside && dayLoads.length === 0 && reason == null && (
+              /* Persistent faint affordance: an empty clickable day is a
+                 control, not a blank table cell. */
+              <Plus size={12} className="text-muted-foreground/40" aria-hidden />
             )}
           </div>
         );
@@ -241,18 +286,32 @@ function BoardRow({ row, days, loads, clickable, onMark }: {
           <ActionMenu
             key={d}
             items={[
+              {
+                key: 'heading',
+                label: `${row.vehicle_unit || t('kpi_board.unassigned', 'Unassigned unit')} · ${dayLabel(d)}`,
+                disabled: true,
+                onSelect: () => {},
+              },
               ...(reason != null ? [{
                 key: 'clear',
                 label: t('kpi_board.clear', 'Active day (clear mark)'),
+                separatorBefore: true,
                 onSelect: () => onMark(d, null),
               }] : []),
-              ...REASONS.map((r) => ({
+              ...REASONS.map((r, i) => ({
                 key: r,
                 label: t(`kpi_board.reason_${r.replace(' ', '_')}`,
                   r.charAt(0).toUpperCase() + r.slice(1)),
                 disabled: reason === r,
+                separatorBefore: i === 0 && reason == null,
                 onSelect: () => onMark(d, r),
               })),
+              {
+                key: 'cancel',
+                label: t('common.cancel', 'Cancel'),
+                separatorBefore: true,
+                onSelect: () => {},
+              },
             ]}
           >
             <button type="button" className="text-left"

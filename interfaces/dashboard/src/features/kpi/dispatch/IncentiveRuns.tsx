@@ -40,7 +40,7 @@ import type { AnyColumn } from '../../../types';
 import {
   createIncentiveRun, deleteIncentiveRun, finalizeIncentiveRun, getIncentiveRun,
   listIncentiveRuns, patchIncentiveRow, setIncentiveException,
-  type RunDetail, type RunRow,
+  type RunDetail, type RunRow, type RunSummary,
 } from '../api';
 
 function usd(v: unknown): string {
@@ -235,7 +235,9 @@ export default function IncentiveRuns() {
           'Incentive runs: a period computed under the rules it was announced with. Finalized runs are the paid record.',
         )}
         actions={(
-          <Button onClick={() => setNewOpen(true)}>
+          /* Demoted while a draft is open — the intended next step is
+             FINALIZING the run in front of you, not starting another. */
+          <Button variant={run && draft ? 'outline' : 'default'} onClick={() => setNewOpen(true)}>
             <Plus size={16} className="mr-1.5" />
             {t('kpi_runs.new', 'New run')}
           </Button>
@@ -319,34 +321,32 @@ export default function IncentiveRuns() {
             <div className="flex items-center gap-2">
               {/* Sheet | Board — two reads of one run (house toggle
                   pattern: pressed icon-buttons in a muted well). */}
+              {/* Labeled segmented switch — an unlabeled icon pair hid
+                  the sheet (and its explanations) behind guesswork. */}
               <div className="inline-flex items-center gap-0.5 p-0.5 bg-muted/50 border border-border rounded-md"
                 role="group" aria-label={t('kpi_runs.view_mode', 'View mode')}>
-                <Tip label={t('kpi_runs.view_sheet', 'Settlement sheet')}>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('sheet')}
-                    aria-pressed={viewMode === 'sheet'}
-                    aria-label={t('kpi_runs.view_sheet', 'Settlement sheet')}
-                    className={`inline-flex size-7 items-center justify-center rounded ${viewMode === 'sheet'
-                      ? 'bg-card text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    <Table2 size={14} />
-                  </button>
-                </Tip>
-                <Tip label={t('kpi_runs.view_board', 'Dispatcher board')}>
-                  <button
-                    type="button"
-                    onClick={() => setViewMode('board')}
-                    aria-pressed={viewMode === 'board'}
-                    aria-label={t('kpi_runs.view_board', 'Dispatcher board')}
-                    className={`inline-flex size-7 items-center justify-center rounded ${viewMode === 'board'
-                      ? 'bg-card text-foreground shadow-sm'
-                      : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    <CalendarRange size={14} />
-                  </button>
-                </Tip>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('sheet')}
+                  aria-pressed={viewMode === 'sheet'}
+                  className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs ${viewMode === 'sheet'
+                    ? 'bg-card text-foreground shadow-sm font-medium'
+                    : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  <Table2 size={14} />
+                  {t('kpi_runs.view_sheet', 'Sheet')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('board')}
+                  aria-pressed={viewMode === 'board'}
+                  className={`inline-flex h-7 items-center gap-1.5 rounded px-2 text-xs ${viewMode === 'board'
+                    ? 'bg-card text-foreground shadow-sm font-medium'
+                    : 'text-muted-foreground hover:text-foreground'}`}
+                >
+                  <CalendarRange size={14} />
+                  {t('kpi_runs.view_board', 'Board')}
+                </button>
               </div>
               {draft ? (
                 <>
@@ -354,7 +354,9 @@ export default function IncentiveRuns() {
                     <Trash2 size={14} className="mr-1.5" />
                     {t('kpi_runs.discard', 'Discard draft')}
                   </Button>
-                  <Button variant="outline" onClick={() => setFinalizeOpen(true)}>
+                  {/* The draft's intended next step — the one filled
+                      button on the surface. */}
+                  <Button onClick={() => setFinalizeOpen(true)}>
                     <Lock size={14} className="mr-1.5" />
                     {t('kpi_runs.finalize', 'Finalize run')}
                   </Button>
@@ -413,6 +415,7 @@ export default function IncentiveRuns() {
 
       <NewRunDialog
         open={newOpen}
+        existing={allRuns}
         onClose={() => setNewOpen(false)}
         onCreated={(r) => { setNewOpen(false); setSelected(r.id); refresh(); }}
       />
@@ -438,7 +441,13 @@ export default function IncentiveRuns() {
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
             {t('kpi_runs.discard_body',
-              'The draft and any hand-entered adjustments are deleted. A new run for the same period can be created at any time; finalized runs can never be discarded.')}
+              'This deletes the draft’s {{rows}} rows, including {{adjusted}} with hand-entered adjustments. A new run for the same period can be created at any time; finalized runs can never be discarded.',
+              {
+                rows: run?.rows.length ?? 0,
+                adjusted: run?.rows.filter((r) =>
+                  r.inactive_days > 0 || Number(r.extras) !== 0
+                  || r.override_pct != null).length ?? 0,
+              })}
           </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDiscardOpen(false)}>
@@ -478,19 +487,37 @@ export default function IncentiveRuns() {
 
 // ── New run ───────────────────────────────────────────────────────────
 
-function NewRunDialog({ open, onClose, onCreated }: {
+function NewRunDialog({ open, onClose, onCreated, existing }: {
   open: boolean;
   onClose: () => void;
   onCreated: (r: RunDetail) => void;
+  /** Existing runs, newest first — drives the default period and the
+   *  overlap warning. */
+  existing: RunSummary[];
 }) {
   const { t } = useTranslation();
-  // Default: the last full 7 days ending yesterday — a sensible weekly
-  // period the admin adjusts to their cadence.
-  const end = new Date(); end.setDate(end.getDate() - 1);
-  const start = new Date(end); start.setDate(start.getDate() - 6);
+  // Default: the next UNCOVERED 7-day period — the day after the newest
+  // run, when that period has already happened; otherwise the last full
+  // 7 days ending yesterday.  Defaulting into a period that already has
+  // a run invites a duplicate; the warning below catches the rest.
+  const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1);
+  let start = new Date(yesterday); start.setDate(start.getDate() - 6);
+  const latest = existing[0];
+  if (latest) {
+    const next = new Date(`${latest.period_end.slice(0, 10)}T00:00:00`);
+    next.setDate(next.getDate() + 1);
+    if (iso(next) <= iso(yesterday)) start = next;
+  }
+  const defEnd = new Date(start); defEnd.setDate(defEnd.getDate() + 6);
   const [from, setFrom] = useState(iso(start));
-  const [to, setTo] = useState(iso(end));
+  const [to, setTo] = useState(
+    iso(defEnd) > iso(yesterday) ? iso(yesterday) : iso(defEnd));
   const [busy, setBusy] = useState(false);
+
+  const badOrder = !!from && !!to && to < from;
+  const overlap = !badOrder && from && to
+    ? existing.find((r) => from <= r.period_end && to >= r.period_start)
+    : undefined;
 
   const create = async () => {
     setBusy(true);
@@ -524,9 +551,23 @@ function NewRunDialog({ open, onClose, onCreated }: {
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </label>
         </div>
+        {/* A disabled Create must say WHY; an overlapping period must
+            say so BEFORE the duplicate exists. */}
+        {badOrder && (
+          <p className="text-sm text-danger">
+            {t('kpi_runs.bad_order', 'The end date must come after the start date.')}
+          </p>
+        )}
+        {overlap && (
+          <p className={`inline-flex items-center text-xs ${toneClasses('warn')} px-2 py-1 rounded`}>
+            {t('kpi_runs.overlap_warn',
+              'This period overlaps the {{status}} run {{a}} – {{b}} — creating it makes a second run over the same loads.',
+              { status: overlap.status, a: overlap.period_start, b: overlap.period_end })}
+          </p>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{t('common.cancel', 'Cancel')}</Button>
-          <Button onClick={create} disabled={busy || !from || !to || to < from}>
+          <Button onClick={create} disabled={busy || !from || !to || badOrder}>
             {busy && <Loader2 size={16} className="animate-spin mr-1.5" />}
             {t('kpi_runs.create', 'Create run')}
           </Button>
