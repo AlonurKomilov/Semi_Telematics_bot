@@ -51,10 +51,31 @@ async def get_kpi_thresholds(db: Any, account_id: int) -> dict[str, float]:
     return merged
 
 
+def _validate_threshold_pairs(final: dict[str, float]) -> None:
+    """Each metric's good/bad pair must point the right way — an inverted
+    pair silently grades EVERY dispatcher wrong, so it is refused at
+    write time with a message an admin can act on."""
+    checks = [
+        ("rpm_good", ">", "rpm_bad",
+         "RPM: 'good at or above' must be higher than 'bad below'"),
+        ("empty_pct_good", "<", "empty_pct_bad",
+         "Empty miles: 'good at or below' must be lower than 'bad above'"),
+        ("gross_per_truck_good", ">", "gross_per_truck_bad",
+         "Gross per truck: 'good at or above' must be higher than 'bad below'"),
+    ]
+    for a, op, b, msg in checks:
+        va, vb = final[a], final[b]
+        ok = va > vb if op == ">" else va < vb
+        if not ok:
+            raise ValueError(f"{msg} (got {va:g} vs {vb:g})")
+
+
 async def set_kpi_thresholds(
     db: Any, account_id: int, values: dict,
 ) -> dict[str, float]:
-    """Persist overrides (known keys only, coerced to float)."""
+    """Persist overrides (known keys only, coerced to float).  Raises
+    ``ValueError`` when the RESULTING thresholds (overrides merged over
+    defaults) would invert a good/bad pair."""
     clean: dict[str, float] = {}
     for k, v in (values or {}).items():
         if k in DEFAULT_KPI_THRESHOLDS:
@@ -62,5 +83,6 @@ async def set_kpi_thresholds(
                 clean[k] = float(v)
             except (TypeError, ValueError):
                 continue
+    _validate_threshold_pairs({**DEFAULT_KPI_THRESHOLDS, **clean})
     await db.set_account_setting(account_id, KPI_SETTING_KEY, json.dumps(clean))
     return await get_kpi_thresholds(db, account_id)

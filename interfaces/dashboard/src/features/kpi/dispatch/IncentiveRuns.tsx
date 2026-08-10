@@ -17,9 +17,10 @@
  * A finalized run renders read-only: the paid record, never re-priced.
  */
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { BadgeDollarSign, Loader2, Lock, Pencil, Plus, Scale, Trash2 } from 'lucide-react';
+import { ArrowRight, BadgeDollarSign, Loader2, Lock, Pencil, Plus, Scale, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import DataGrid from '../../../components/datagrid';
 import { EmptyState, ErrorState, PageHeader, TableSkeleton } from '../../../components/shell';
@@ -234,6 +235,13 @@ export default function IncentiveRuns() {
           description={t(
             'kpi_runs.empty_desc',
             'Configure the incentive model and company targets in KPI configuration, then create the first run for a period.',
+          )}
+          action={(
+            <Link to="/kpi/configuration"
+              className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
+              {t('kpi_runs.empty_cta', 'Open KPI configuration')}
+              <ArrowRight size={14} />
+            </Link>
           )}
         />
       )}

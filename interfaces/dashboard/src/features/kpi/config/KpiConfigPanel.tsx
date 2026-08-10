@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
+import { toneClasses } from '../../../lib/status';
 import { getKpiConfig, putKpiConfig } from '../api';
 
   'text-foreground focus:outline-none focus:border-ring';
@@ -37,6 +38,9 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // One dirty contract for every config card on the page: chip while
+  // edited, save inert until then (mirrors IncentiveEditor's).
+  const [dirty, setDirty] = useState(false);
 
   // No `open` guard — the gear mounts this only while its dialog is open,
   // so mounting IS opening.
@@ -74,6 +78,7 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
         if (!Number.isNaN(n)) out[k] = n;
       }
       await putKpiConfig(out);
+      setDirty(false);
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save');
@@ -92,7 +97,8 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
         account —{' '}
         <span className="text-foreground">saving re-grades everyone</span> on
         the next load. Values shown are the current thresholds, or the
-        4truck defaults where none has been set.
+        4truck defaults where none has been set. Grades are analytics only —
+        they never change incentive pay, which comes from the rules below.
       </p>
       {loading ? (
         <div className="flex justify-center py-6">
@@ -107,17 +113,23 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
                   type="number"
                   step="0.01"
                   value={values[f.key] ?? ''}
-                  onChange={(e) =>
-                    setValues((v) => ({ ...v, [f.key]: e.target.value }))
-                  }
+                  onChange={(e) => {
+                    setValues((v) => ({ ...v, [f.key]: e.target.value }));
+                    setDirty(true);
+                  }}
                 />
             </label>
           ))}
         </div>
       )}
       {error && <p className="text-sm text-danger">{error}</p>}
-      <div className="flex justify-end">
-        <Button onClick={save} disabled={saving || loading}>
+      <div className="flex items-center justify-end gap-3">
+        {dirty && (
+          <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded`}>
+            Unsaved changes
+          </span>
+        )}
+        <Button onClick={save} disabled={saving || loading || !dirty}>
           {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
           Save thresholds
         </Button>

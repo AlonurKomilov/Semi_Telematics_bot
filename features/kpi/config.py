@@ -87,9 +87,14 @@ async def put_config(
     tenant = await _get_tenant_db(account_id)
     if tenant is None:
         raise HTTPException(503, "tenant DB unavailable")
-    merged = await service.set_kpi_thresholds(
-        tenant, account_id, body.thresholds,
-    )
+    try:
+        merged = await service.set_kpi_thresholds(
+            tenant, account_id, body.thresholds,
+        )
+    except ValueError as e:
+        # Task-language message ("RPM: 'good…' must be higher…") — the
+        # panel shows it verbatim.
+        raise HTTPException(422, str(e))
     return {"thresholds": merged}
 
 

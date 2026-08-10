@@ -163,6 +163,37 @@ class TestValidation:
             assert r.status_code == 422
             assert "unknown company" in r.json()["detail"]
 
+    async def test_inverted_grading_thresholds_are_refused(self, seeded):
+        """good/bad pairs must point the right way — an inverted pair
+        silently grades every dispatcher wrong.  The check runs on the
+        RESULT (overrides merged over defaults), so a partial write that
+        inverts against a default is caught too."""
+        async with await _client(seeded["app"]) as c:
+            r = await c.put(
+                "/api/kpi/config",
+                json={"thresholds": {"rpm_good": 1.0, "rpm_bad": 2.0}},
+                headers=_h(seeded["owner"]),
+            )
+            assert r.status_code == 422
+            assert "must be higher" in r.json()["detail"]
+
+            # A partial override inverting against the DEFAULT bad (2.0).
+            r = await c.put(
+                "/api/kpi/config",
+                json={"thresholds": {"rpm_good": 1.5}},
+                headers=_h(seeded["owner"]),
+            )
+            assert r.status_code == 422
+
+            # A coherent set still saves.
+            r = await c.put(
+                "/api/kpi/config",
+                json={"thresholds": {"rpm_good": 2.5, "rpm_bad": 2.1}},
+                headers=_h(seeded["owner"]),
+            )
+            assert r.status_code == 200, r.text
+            assert r.json()["thresholds"]["rpm_good"] == 2.5
+
     async def test_nothing_was_stored_by_the_refusals(self, seeded):
         async with await _client(seeded["app"]) as c:
             await c.put("/api/kpi/config/incentives",
