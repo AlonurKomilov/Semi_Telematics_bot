@@ -224,3 +224,96 @@ def confirmed_dollars(
 def payout_total(confirmed: list[float]) -> float:
     """A dispatcher's period payout — the sum of confirmed row amounts."""
     return money(sum(Decimal(str(c)) for c in confirmed))
+
+
+# ── Config validation (called by the endpoint BEFORE any write) ──────
+#
+# The engine owns what a legal configuration is, because the engine is
+# what will consume it.  Storage stores faithfully; the endpoint refuses
+# loudly.  Everything raises ValueError with a message an admin can act
+# on — these surface as 422s, not stack traces.
+
+CADENCES = ("weekly", "monthly", "custom")
+
+_TIER_KEYS = {
+    "ladder": {"requires_target", "min_weekly_gross", "min_rpm", "pct"},
+    "hybrid": {"gross_min", "gross_max", "rpm_min", "rpm_max", "pct"},
+    "fixed": {"axis", "min", "pct"},
+}
+
+
+def _num(v: Any, what: str) -> float:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} must be a number, got {v!r}")
+    if f < 0:
+        raise ValueError(f"{what} cannot be negative")
+    return f
+
+
+def validate_config(config: dict) -> None:
+    """The config row's invariants, independent of tiers."""
+    model = config.get("model", "ladder")
+    if model not in MODELS:
+        raise ValueError(
+            f"model must be one of {', '.join(MODELS)}, got {model!r}")
+    rule = config.get("combine_rule", "lower")
+    if rule not in COMBINE_RULES:
+        raise ValueError(
+            f"combine_rule must be one of {', '.join(COMBINE_RULES)}, "
+            f"got {rule!r}")
+    cadence = config.get("calc_cadence", "weekly")
+    if cadence not in CADENCES:
+        raise ValueError(
+            f"calc_cadence must be one of {', '.join(CADENCES)}, "
+            f"got {cadence!r}")
+    if cadence == "custom":
+        days = config.get("calc_custom_days")
+        if not isinstance(days, int) or not (1 <= days <= 92):
+            raise ValueError(
+                "custom cadence needs calc_custom_days between 1 and 92")
+    for key in ("exception_cap_pct", "floor_weekly_gross", "floor_rpm"):
+        if config.get(key) is not None:
+            _num(config[key], key)
+    cap = config.get("exception_cap_pct")
+    if cap is not None and float(cap) > 100:
+        raise ValueError("exception_cap_pct is a percent — over 100 is a typo")
+
+
+def validate_tiers(model: str, tiers: list[Any]) -> None:
+    """Every tier row must be consumable by ``resolve_pct`` for this
+    model.  Checked at WRITE time so a bad row is refused with a message
+    naming it, instead of silently paying 0% at run time."""
+    if not isinstance(tiers, list):
+        raise ValueError("tiers must be a list of rows")
+    allowed = _TIER_KEYS.get(model)
+    if allowed is None:
+        raise ValueError(f"unknown model {model!r}")
+    for i, t in enumerate(tiers, start=1):
+        if not isinstance(t, dict):
+            raise ValueError(f"tier {i} must be an object")
+        unknown = set(t) - allowed
+        if unknown:
+            raise ValueError(
+                f"tier {i} has keys {sorted(unknown)} that the "
+                f"{model} model does not use")
+        pct = _num(t.get("pct"), f"tier {i} pct")
+        if pct > 100:
+            raise ValueError(f"tier {i} pct is a percent — {pct} is a typo")
+        if model == "ladder":
+            for k in ("min_weekly_gross", "min_rpm"):
+                if t.get(k) is not None:
+                    _num(t[k], f"tier {i} {k}")
+        elif model == "hybrid":
+            for k in ("gross_min", "gross_max", "rpm_min", "rpm_max"):
+                _num(t.get(k), f"tier {i} {k}")
+            if float(t["gross_min"]) > float(t["gross_max"]):
+                raise ValueError(f"tier {i}: gross_min exceeds gross_max")
+            if float(t["rpm_min"]) > float(t["rpm_max"]):
+                raise ValueError(f"tier {i}: rpm_min exceeds rpm_max")
+        else:  # fixed
+            if t.get("axis") not in ("rpm", "gross"):
+                raise ValueError(
+                    f"tier {i} axis must be 'rpm' or 'gross'")
+            _num(t.get("min"), f"tier {i} min")

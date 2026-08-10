@@ -8824,3 +8824,50 @@ async def migrate_device_event_resolution(conn) -> None:
     await conn.commit()
     logger.info("Migration 192: device events carry resolution state")
 
+
+@_register("193_kpi_incentive_config")
+async def migrate_kpi_incentive_config(conn) -> None:
+    """Dispatcher incentive configuration — the customer's payout rules.
+
+    Two tables, both feature-owned config (can_manage_config_all):
+
+    ``kpi_incentive_config`` — one row per account.  The TIER TABLE lives
+    as JSON on this row rather than as child rows, deliberately: a ladder
+    is ONE coherent value (rows interact — ordering, ranges, the combine
+    rule), edited as a set in one sitting.  Scorecard rules are
+    independent rows and got per-row CRUD; a tier table is closer to the
+    pivot model, which is also stored whole.
+
+    ``kpi_company_targets`` — the weekly gross bar, PER COMPANY (owner
+    decision: OSY/CFT/PTG/RMR each have one target; the customer's Excel
+    having two targets for one company was a hand-entry mistake this
+    schema makes impossible via the UNIQUE constraint).
+    """
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS kpi_incentive_config (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id          INTEGER NOT NULL UNIQUE,
+            model               TEXT    NOT NULL DEFAULT 'ladder',
+            combine_rule        TEXT    NOT NULL DEFAULT 'lower',
+            calc_cadence        TEXT    NOT NULL DEFAULT 'weekly',
+            calc_custom_days    INTEGER,
+            exception_cap_pct   REAL,
+            floor_weekly_gross  REAL,
+            floor_rpm           REAL,
+            tiers               TEXT    NOT NULL DEFAULT '[]',
+            updated_by          INTEGER NOT NULL DEFAULT 0,
+            updated_at          TEXT    NOT NULL DEFAULT ''
+        )
+    """)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS kpi_company_targets (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id          INTEGER NOT NULL,
+            company_id          INTEGER NOT NULL REFERENCES companies(id),
+            weekly_gross_target REAL    NOT NULL,
+            UNIQUE(account_id, company_id)
+        )
+    """)
+    await conn.commit()
+    logger.info("Migration 193: dispatcher incentive config tables")
+

@@ -95,6 +95,7 @@ from .warehouse import WarehouseMixin
 from .ops_runs import OpsRunsMixin
 from .driver_pay import DriverPayMixin
 from .coaching import CoachingMixin
+from .kpi_incentives import KpiIncentivesMixin
 from .object_storage_sync import ObjectStorageSyncMixin
 from .ai_chat import AIChatHistoryMixin
 from .ai_actions import AIActionProposalsMixin
@@ -168,6 +169,7 @@ class Database(
     OpsRunsMixin,
     DriverPayMixin,
     CoachingMixin,
+    KpiIncentivesMixin,
     ObjectStorageSyncMixin,
     AIChatHistoryMixin,
     AIActionProposalsMixin,

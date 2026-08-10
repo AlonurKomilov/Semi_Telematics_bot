@@ -91,3 +91,126 @@ async def put_config(
         tenant, account_id, body.thresholds,
     )
     return {"thresholds": merged}
+
+
+# ── Incentives (the dispatcher payout rules) ─────────────────────────
+#
+# Same surface (/kpi/config/*), same gate (can_manage_config_all), a
+# different payload: the customer's INCENTIVE configuration — model, tier
+# table, cadence, exception policy, and the per-company weekly targets.
+# Validation lives in the engine (features/kpi/dispatch/engine.py),
+# because the engine is what will consume the rows; a config it refuses
+# is refused HERE, at write time, with the message an admin can act on —
+# never discovered as a silent 0% at run time.
+
+
+class IncentiveConfigUpdate(BaseModel):
+    model: str = Field("ladder")
+    combine_rule: str = Field("lower")
+    calc_cadence: str = Field("weekly")
+    calc_custom_days: int | None = None
+    exception_cap_pct: float | None = None
+    floor_weekly_gross: float | None = None
+    floor_rpm: float | None = None
+    # The tier table travels WHOLE: a ladder is one coherent value (rows
+    # interact), so partial edits have no meaning — unlike scorecard
+    # rules, which are independent rows with per-row CRUD.
+    tiers: list[dict] = Field(default_factory=list)
+
+
+class CompanyTargetsUpdate(BaseModel):
+    # {company_id: weekly_gross_target} — the whole set; a company left
+    # out loses its bar, visibly (its trucks resolve 0% until re-set).
+    targets: dict[int, float] = Field(default_factory=dict)
+
+
+@router.get("/config/incentives")
+async def get_incentives_config(user: dict = Depends(_config)):
+    """The incentive configuration + targets + the companies the editor
+    can set targets FOR.  ``config`` is null until first configured — the
+    UI shows the setup state rather than inventing defaults for money."""
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    companies = await tenant.get_account_companies(account_id)
+    return {
+        "config": await tenant.get_kpi_incentive_config(account_id),
+        "targets": await tenant.list_kpi_company_targets(account_id),
+        "companies": [
+            {"id": c.id, "code": c.code, "name": c.display_name or c.code}
+            for c in companies
+        ],
+    }
+
+
+@router.put("/config/incentives")
+async def put_incentives_config(
+    body: IncentiveConfigUpdate,
+    user: dict = Depends(_config),
+):
+    """Replace the incentive configuration.  Engine-validated first;
+    trail-recorded because this decides what dispatchers are PAID."""
+    from capabilities.activity_trail import record_simple
+    from features.kpi.dispatch import engine
+    from interfaces.api.deps import resolve_user_id
+
+    values = body.model_dump(exclude={"tiers"})
+    try:
+        engine.validate_config(values)
+        engine.validate_tiers(body.model, body.tiers)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    await tenant.set_kpi_incentive_config(
+        account_id, values, body.tiers,
+        updated_by=await resolve_user_id(user),
+    )
+    await record_simple(
+        tenant, account_id, await resolve_user_id(user),
+        "kpi_incentive_config_update", "account", account_id,
+        changes={"model": {"from": None, "to": body.model},
+                 "tiers": {"from": None, "to": len(body.tiers)}},
+    )
+    return await get_incentives_config(user)
+
+
+@router.put("/config/incentives/targets")
+async def put_incentive_targets(
+    body: CompanyTargetsUpdate,
+    user: dict = Depends(_config),
+):
+    """Replace the per-company weekly targets.
+
+    Company ids are verified against the account's OWN companies — a
+    target for another account's company id must 422, not silently
+    insert a row the join will never surface."""
+    from capabilities.activity_trail import record_simple
+    from interfaces.api.deps import resolve_user_id
+
+    for cid, target in body.targets.items():
+        if target <= 0:
+            raise HTTPException(
+                422, f"weekly target for company {cid} must be positive")
+
+    account_id = int(user["account_id"])
+    tenant = await _get_tenant_db(account_id)
+    if tenant is None:
+        raise HTTPException(503, "tenant DB unavailable")
+    own = {c.id for c in await tenant.get_account_companies(
+        account_id, active_only=False)}
+    foreign = set(body.targets) - own
+    if foreign:
+        raise HTTPException(
+            422, f"unknown company id(s) for this account: {sorted(foreign)}")
+    await tenant.set_kpi_company_targets(account_id, body.targets)
+    await record_simple(
+        tenant, account_id, await resolve_user_id(user),
+        "kpi_incentive_targets_update", "account", account_id,
+        changes={"companies": {"from": None, "to": len(body.targets)}},
+    )
+    return {"targets": await tenant.list_kpi_company_targets(account_id)}
