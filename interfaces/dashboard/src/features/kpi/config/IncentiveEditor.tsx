@@ -556,7 +556,8 @@ export default function IncentiveEditor() {
 
         {/* One save for the whole card — model, policy and tiers are
             ONE PUT, so the button sits inside the one card that IS its
-            scope (same grammar as the Targets card below). */}
+            scope and takes the CARD'S name: all three saves on the page
+            read "Save <card title>" (same grammar as Targets below). */}
         <div className="flex items-center justify-end gap-3">
           {rulesDirty && (
             <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded`}>
@@ -567,7 +568,7 @@ export default function IncentiveEditor() {
               the moment there is something to save. */}
           <Button variant={rulesDirty ? 'default' : 'outline'} onClick={requestSaveRules} disabled={saving || !rulesDirty}>
             {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
-            {t('kpi_config.save_rules', 'Save model, policy & tiers')}
+            {t('kpi_config.save_rules', 'Save incentive rules')}
           </Button>
         </div>
       </section>
