@@ -196,6 +196,11 @@ async def main():
                     job_defaults={"misfire_grace_time": 300, "coalesce": True},
                 )
                 _register_jobs(scheduler, tg_app)
+                # Dead-man stamps: every executed job records "I ran" so
+                # the machinery watchdog can catch an individual job
+                # dying even while the scheduler itself stays alive.
+                from capabilities.platform.watchdog import install_deadman_listener
+                install_deadman_listener(scheduler)
                 scheduler.start()
                 logger.info(
                     "Scheduler started (distributed lock acquired%s)",

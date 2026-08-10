@@ -218,6 +218,15 @@ def register_all(scheduler: AsyncIOScheduler, app: Application):
         minutes=5, args=[app], id="capacity_alerts",
         max_instances=1, coalesce=True,
     )
+    # Machinery watchdog: watches the WORK (tier freshness + dead-man
+    # stamps), not the process — the layer the 2026-08-10 schedulerless
+    # nights proved was missing.  Hourly at :45, tz-independent.
+    from capabilities.platform.watchdog import job_machinery_watchdog
+    scheduler.add_job(
+        job_machinery_watchdog, "cron",
+        minute=45, args=[app], id="machinery_watchdog",
+        max_instances=1, coalesce=True,
+    )
 
     # ── Notification digests ────────────────────────────────────────
     # Recipients who chose a batched cadence get ONE grouped summary per

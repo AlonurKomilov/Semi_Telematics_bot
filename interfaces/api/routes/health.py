@@ -66,7 +66,11 @@ async def health_check():
         except Exception:
             pass  # stays "unknown" — never break the liveness probe
 
-    status = "ok" if db_ok and bot_status != "silent" else "degraded"
+    # FAIL CLOSED: "unknown" (the pulse check errored, or no pulse row
+    # exists) counts as degraded too.  It used to pass as ok — a fail-
+    # open hole in the very watcher built to catch a silent bot, found
+    # during the 2026-08-10 schedulerless-nights postmortem.
+    status = "ok" if db_ok and bot_status == "ok" else "degraded"
     return {
         "status": status,
         "db": "ok" if db_ok else "error",
