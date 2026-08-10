@@ -156,6 +156,7 @@ export default function IncentiveRuns() {
         );
       } },
     { key: 'kpi_gross', label: 'Gross', sortable: true,
+      aggregable: true, aggFormat: (v) => usd(v),
       render: (v, r) => (
         <span className="tabular-nums">
           {usd(v)}
@@ -165,6 +166,8 @@ export default function IncentiveRuns() {
         </span>
       ) },
     { key: 'miles', label: 'Miles', sortable: true,
+      aggregable: true,
+      aggFormat: (v) => Math.round(v).toLocaleString(),
       render: (v) => <span className="tabular-nums">{Number(v).toLocaleString()}</span> },
     { key: 'rpm', label: 'RPM', sortable: true,
       render: (v) => <span className="tabular-nums">{v == null ? '—' : Number(v).toFixed(2)}</span> },
@@ -196,8 +199,10 @@ export default function IncentiveRuns() {
         </span>
       ) },
     { key: 'kpi_dollars', label: 'KPI $', sortable: true,
+      aggregable: true, aggFormat: (v) => usd(v),
       render: (v) => <span className="tabular-nums">{usd(v)}</span> },
     { key: 'confirmed_dollars', label: 'Confirmed', sortable: true, aggregable: true,
+      aggFormat: (v) => usd(v),
       render: (v, r) => (
         <span className="tabular-nums font-medium">
           {usd(v)}
@@ -319,6 +324,15 @@ export default function IncentiveRuns() {
           <DataGrid
             tableId="kpi-incentive-run-rows"
             columns={COLUMNS}
+            // The manager's board view: one collapsible section per
+            // dispatcher, group rows carrying summed gross / miles /
+            // KPI-$ / confirmed, grand totals in the footer.  A default,
+            // not a wall — ungroup via the grid's own chip.
+            defaultRowGroup="dispatcher_name"
+            defaultAggregation={{
+              kpi_gross: 'sum', miles: 'sum',
+              kpi_dollars: 'sum', confirmed_dollars: 'sum',
+            }}
             // Clicking a row IS the edit gesture on a draft — rowActions
             // alone is right-click-only (the audit's top finding: managers
             // migrating from Excel won't guess a context menu exists).
