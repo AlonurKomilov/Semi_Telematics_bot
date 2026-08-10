@@ -82,6 +82,32 @@ describe('column cap', () => {
     expect(visible).not.toBe(acme.totals[0]);
   });
 
+  // ── the export is not a screen ─────────────────────────────────────
+  it('lifts the cap when asked, so an export carries every column', () => {
+    const over = MAX_COLUMN_BUCKETS + 120;
+    const full = pivot(rowsWithDrivers(over), MODEL, COLUMNS, { capColumns: false });
+    expect(full.leafIds).toHaveLength(over);
+    // Nothing was withheld, so there is nothing to report.
+    expect(full.cappedColumns).toBe(0);
+    // The default is still capped — lifting it is a deliberate act by
+    // one caller, not a flag that drifted on.
+    expect(pivot(rowsWithDrivers(over), MODEL, COLUMNS).leafIds)
+      .toHaveLength(MAX_COLUMN_BUCKETS);
+  });
+
+  it('exports a grid whose totals and columns agree with each other', () => {
+    // The on-screen cap makes the visible cells sum to less than the
+    // total — correctly, and stated in the test above.  An UNCAPPED
+    // result has no such gap, which is what makes the export something
+    // you can compute with.
+    const over = MAX_COLUMN_BUCKETS + 60;
+    const full = pivot(rowsWithDrivers(over), MODEL, COLUMNS, { capColumns: false });
+    const acme = full.bodyRows.find((b) => b.label === 'Acme')!;
+    const visible = acme.cells.reduce<number>((a, c) => a + (c ?? 0), 0);
+    expect(visible).toBe(acme.totals[0]);
+    expect(visible).toBe(over);
+  });
+
   it('counts what would really have been drawn — after empty columns go', () => {
     // 20 drivers carry a measure; 300 more exist with no finite value.
     // With hideEmptyColumns on, the 300 are removed BEFORE the cap, so

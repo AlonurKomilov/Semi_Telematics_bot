@@ -3037,7 +3037,15 @@ export default function DataGrid({
       const rowsForPivot = table.getPrePaginationRowModel().rows
         .filter((r) => !r.getIsGrouped())
         .map((r) => r.original as Record<string, unknown>);
-      const grid = pivotToCsvRows(pivot(rowsForPivot, pivotModel, pivotColumns));
+      // UNCAPPED on purpose.  The screen cap exists because a
+      // thousand-column matrix is unreadable; a spreadsheet is where you
+      // go when it is, and it holds 16,384 columns.  Truncating here
+      // would also be the one silent truncation in the feature — a file
+      // cannot carry the footer notice that makes the on-screen cap
+      // honest.
+      const grid = pivotToCsvRows(
+        pivot(rowsForPivot, pivotModel, pivotColumns, { capColumns: false }),
+      );
       if (grid.length === 0) return;      // nothing configured yet
       downloadCsv(`${tableId}-pivot-${today0}.csv`, buildCsvFromRows(grid));
       return;

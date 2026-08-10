@@ -397,6 +397,15 @@ The cap runs LAST, after `hideEmptyColumns`, so it counts what would
 really have been drawn — capping first would report a limit the reader
 never actually hit.
 
+**CSV export lifts it** (`pivot(…, { capColumns: false })`). A file is
+not a screen: a spreadsheet holds 16,384 columns and is precisely where
+someone goes BECAUSE the matrix was too wide to read, so capping there
+would answer "your report is too wide" with "here is less of it".
+It would also be the one truncation the footer notice cannot follow — a
+file carries no notice, so it would be silent exactly where silence is
+least affordable. The default stays capped; lifting it is a deliberate
+act by one caller.
+
 Column VIRTUALIZATION was considered and rejected as the first move: our
 group headers are `colSpan`-based, so windowing columns means
 recomputing every span per scroll position, and it would make an

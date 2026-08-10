@@ -265,7 +265,17 @@ export function pivot(
   rows: Record<string, unknown>[],
   model: PivotModel,
   columns: AnyColumn[],
+  /** ``capColumns: false`` lifts ``MAX_COLUMN_BUCKETS``.
+   *
+   *  The cap is a READABILITY limit for a screen, and a file is not a
+   *  screen: a CSV opened in a spreadsheet has 16,384 columns available
+   *  and is precisely where someone goes BECAUSE the matrix was too wide
+   *  to read.  Capping an export would also be the one truncation the
+   *  footer notice cannot follow — the file carries no notice at all, so
+   *  it would be silent in the place silence is least affordable. */
+  opts: { capColumns?: boolean } = {},
 ): PivotResult {
+  const capColumns = opts.capColumns ?? true;
   const cols = byKey(columns);
   // N column dimensions -> N header levels above the value row
   // (Region > Quarter > Sales).  Rows stay single-level in this phase;
@@ -365,11 +375,11 @@ export function pivot(
   const usableColPaths = keptColPaths.length ? keptColPaths : colPaths;
   // Cap LAST, so it counts what would really have been drawn — after
   // ``hideEmptyColumns`` has already taken the empty ones out.
-  const cappedColumns = colCols.length
+  const cappedColumns = colCols.length && capColumns
     ? Math.max(0, usableColPaths.length - MAX_COLUMN_BUCKETS)
     : 0;
   const effectiveColPaths = colCols.length
-    ? usableColPaths.slice(0, MAX_COLUMN_BUCKETS)
+    ? (capColumns ? usableColPaths.slice(0, MAX_COLUMN_BUCKETS) : usableColPaths)
     : [[]];
   const effectiveColBuckets = effectiveColPaths.map((p) => p.join(PATH_SEP));
 
