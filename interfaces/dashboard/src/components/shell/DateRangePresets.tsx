@@ -503,8 +503,15 @@ export default function DateRangePresets({
           const h = Math.round((totalMin % (24 * 60)) / 60);
           return `${d} day${d === 1 ? '' : 's'}${h ? ` ${h}h` : ''}`;
         }
-        return `${daysBetween(sumLo, sumHi) + 1} days${
-          withTime && timesAreDefault ? ' · all day' : ''}`;
+        // A whole-day range ending TODAY is "N days + today": N complete
+        // days back plus the still-running partial day.  Counting today
+        // as a full 15th/31st day made "Last 14 days" read "15 days" —
+        // true as a date count, but it contradicted the preset's name.
+        const allDaySuffix = withTime && timesAreDefault ? ' · all day' : '';
+        if (fmtIso(sumHi) === todayInTimeZone(tz)) {
+          return `${daysBetween(sumLo, sumHi)} days + today${allDaySuffix}`;
+        }
+        return `${daysBetween(sumLo, sumHi) + 1} days${allDaySuffix}`;
       })()
     : '';
   const footerHint = rangeCapable

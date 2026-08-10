@@ -21,7 +21,7 @@ import { X } from 'lucide-react';
 
 import { apiJSON } from '../../api/client';
 import DataGrid from '../../components/datagrid';
-import { formatDate } from '../../utils/datetime';
+import { formatDate, todayInTimeZone } from '../../utils/datetime';
 import { useTimezone } from '../../hooks/useTimezone';
 import { Tip } from '../../components/tooltip';
 import {
@@ -60,15 +60,20 @@ function hhmm(min: number): string {
 }
 
 /** Human length of the drawer's window — same convention as the range
- *  picker's footer: timed ranges show true duration ("7 days 2h"),
- *  whole-day ranges the inclusive calendar count ("8 days"). */
-function windowLabel(start: string, end: string): string {
+ *  picker's footer: timed ranges show true duration ("7 days 2h");
+ *  whole-day ranges ending today show "N days + today" (N complete
+ *  days plus the still-running partial one); other whole-day ranges
+ *  the inclusive calendar count. */
+function windowLabel(start: string, end: string, tz: string): string {
   const [sDay, sTime] = start.split('T');
   const [eDay, eTime] = end.split('T');
   const dayMs = new Date(`${eDay}T00:00:00`).getTime()
     - new Date(`${sDay}T00:00:00`).getTime();
   const days = Math.round(dayMs / 86_400_000);
-  if (!sTime && !eTime) return `${days + 1} days`;
+  if (!sTime && !eTime) {
+    if (eDay === todayInTimeZone(tz)) return `${days} days + today`;
+    return `${days + 1} days`;
+  }
   const toMin = (t?: string) => {
     if (!t) return 0;
     const [h, m] = t.split(':').map(Number);
@@ -215,7 +220,7 @@ export default function TripsDrawer({
             </SheetTitle>
             <p className="text-xs text-muted-foreground mt-0.5">
               {start.replace('T', ' ')} → {end.replace('T', ' ')}
-              {' · '}{windowLabel(start, end)}
+              {' · '}{windowLabel(start, end, tz)}
               {data && !data.no_data && (
                 <>
                   {' · '}{data.trip_count} trip{data.trip_count === 1 ? '' : 's'}
