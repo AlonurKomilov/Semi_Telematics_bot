@@ -85,7 +85,8 @@ export default function Mileage() {
   // times-of-day — when it fell back to whole days, the drawer must not
   // cross-check it against time-scoped GPS trips (different windows).
   const [drawer, setDrawer] = useState<{
-    name: string; miles: number; flag: string; coversWindow: boolean;
+    name: string; company: string; miles: number; flag: string;
+    coversWindow: boolean;
   } | null>(null);
   // null = range ends today (the presets path); a custom calendar pick
   // sets an explicit end and the backend honors it.
@@ -241,7 +242,8 @@ export default function Mileage() {
           onRowClick={(row) => {
             const r = row as unknown as MileageRow;
             setDrawer({
-              name: r.vehicle_name, miles: r.miles, flag: r.flag,
+              name: r.vehicle_name, company: r.company || '',
+              miles: r.miles, flag: r.flag,
               coversWindow:
                 (!times.start || !!r.start_precise)
                 && (!times.end || !!r.end_precise),
@@ -253,6 +255,7 @@ export default function Mileage() {
       {drawer && (
         <TripsDrawer
           vehicleName={drawer.name}
+          company={drawer.company}
           rowMiles={drawer.miles}
           rowFlag={drawer.flag}
           rowCoversWindow={drawer.coversWindow}

@@ -60,10 +60,14 @@ function hhmm(min: number): string {
 }
 
 export default function TripsDrawer({
-  vehicleName, rowMiles, rowFlag = '', rowCoversWindow = true, start, end,
-  onClose,
+  vehicleName, company = '', rowMiles, rowFlag = '', rowCoversWindow = true,
+  start, end, onClose,
 }: {
   vehicleName: string;
+  /** The row's company code — unit numbers repeat across companies
+   *  ("103" is a real truck in both G1 and OSY), so the fetch must
+   *  say WHICH one or the server's name match may pick the other. */
+  company?: string;
   /** The odometer-delta miles the Mileage row showed — the cross-check. */
   rowMiles: number;
   /** The row's coverage flag — echoed here so the warning travels with
@@ -89,9 +93,9 @@ export default function TripsDrawer({
   }, [onClose]);
 
   const { data, isLoading, error } = useQuery<TripsResponse>({
-    queryKey: ['vehicle-trips', vehicleName, start, end],
+    queryKey: ['vehicle-trips', vehicleName, company, start, end],
     queryFn: () => apiJSON<TripsResponse>(
-      `/vehicles/${encodeURIComponent(vehicleName)}/trips?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+      `/vehicles/${encodeURIComponent(vehicleName)}/trips?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}${company ? `&company=${encodeURIComponent(company)}` : ''}`,
     ),
     staleTime: 5 * 60_000,
     retry: false,
@@ -178,7 +182,7 @@ export default function TripsDrawer({
         <SheetHeader className="px-5 py-4 border-b border-border flex-row items-start gap-3 shrink-0">
           <div className="flex-1 min-w-0">
             <SheetTitle className="text-base font-semibold flex items-center gap-2">
-              Trips — {vehicleName}
+              Trips — {vehicleName}{company ? ` · ${company}` : ''}
               {rowFlag && FLAG_NOTE[rowFlag] && (
                 <Tip label={FLAG_NOTE[rowFlag].tip}>
                   <span className={`px-2 py-0.5 rounded-md text-xs font-medium ${toneClasses('warn')}`}>

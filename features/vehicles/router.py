@@ -797,6 +797,7 @@ async def vehicle_period_trips(
     vehicle_name: str,
     start: str = Query(..., description="YYYY-MM-DD, inclusive"),
     end: str = Query(..., description="YYYY-MM-DD, inclusive"),
+    company: str | None = Query(None),
     user: dict = Depends(require_permission_any(
         "can_vehicle_all", "can_vehicle_vehicle")),
 ):
@@ -816,11 +817,18 @@ async def vehicle_period_trips(
     visible = await _wh_reader.get_current_vehicles(user["account_id"])
     visible = filter_by_allowed_companies(visible, allowed)
     visible = await filter_by_assigned_trucks(visible, user)
-    meta = next(
-        (v for v in visible
-         if (v.get("name") or "").lower() == vehicle_name.lower()),
-        None,
-    )
+    # Company narrows the name match: unit numbers repeat ACROSS
+    # companies ("103" is a real truck in both G1 and OSY), and the
+    # first-name-match this used to do could open the OTHER company's
+    # trips behind a Mileage row.  The drawer always sends its row's
+    # company; a bare call (no duplicate) behaves as before.
+    matches = [
+        v for v in visible
+        if (v.get("name") or "").lower() == vehicle_name.lower()
+        and (company is None
+             or (v.get("_org") or v.get("company_code") or "") == company)
+    ]
+    meta = matches[0] if matches else None
     if meta is None:
         raise HTTPException(404, "Vehicle not found")
     samsara_id = str(meta.get("id") or "")
