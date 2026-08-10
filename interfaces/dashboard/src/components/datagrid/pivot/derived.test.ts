@@ -145,8 +145,50 @@ describe('derived dimensions drive a real pivot', () => {
     expect(r.headerLevels).toHaveLength(3);
     expect(r.headerLevels[0].map((h) => h.label)).toEqual(['2025', '2026']);
     expect(r.headerLevels[0].map((h) => h.span)).toEqual([1, 2]);
-    // Month labels are humanised by the generated pivotLabel.
+    // Months drop the year HERE because the level above already states
+    // it — `Dec 2025` sitting under a `2025` header says it twice.  The
+    // quarter-only test above keeps `2026-Q1` fully qualified, which is
+    // the same rule seen from the other side: nothing coarser is on that
+    // axis, so the label is the only place the year can come from.
     expect(r.headerLevels[1].map((h) => h.label))
-      .toEqual(['Dec 2025', 'Jan 2026', 'Feb 2026']);
+      .toEqual(['Dec', 'Jan', 'Feb']);
+  });
+});
+
+// ── Year said once, not three times ──────────────────────────────────
+//
+// Stacking Quarter + Year + Month on one axis produced a header reading
+// `2026-Q1 / 2026 / MAR 2026` — the same year in all three rows, so
+// learning one fact meant scanning three. The coarser grain present on
+// the axis is the one whose job it is to say the year; the others drop
+// it. Buckets are untouched: `Q1` alone collides across years.
+describe('bare labels when a coarser grain shares the axis', () => {
+  const dims = derivePivotDimensions(
+    [{ key: 'del', label: 'DEL date', aggType: 'date', pivotable: true }],
+    'UTC',
+  );
+  const year = dims.find((d) => d.pivotGrain === 'year')!;
+  const quarter = dims.find((d) => d.pivotGrain === 'quarter')!;
+  const month = dims.find((d) => d.pivotGrain === 'month')!;
+
+  it('strips the year the Year dimension already states', () => {
+    expect(quarter.pivotLabelBare!('2026-Q1')).toBe('Q1');
+    expect(month.pivotLabelBare!('2026-03')).toBe('Mar');
+  });
+
+  it('leaves the year grain alone — a year IS the year', () => {
+    expect(year.pivotLabelBare!('2026')).toBe('2026');
+  });
+
+  it('keeps the fully-qualified label as the default', () => {
+    // ``pivotLabel`` is what renders when nothing coarser is on the axis,
+    // and it must still carry the year or the column is unreadable.
+    expect(month.pivotLabel!('2026-03')).toBe('Mar 2026');
+    expect(quarter.pivotLabel).toBeUndefined();   // raw '2026-Q1'
+  });
+
+  it('carries the source key, so two date columns never borrow each other\'s year', () => {
+    expect(quarter.pivotSourceKey).toBe('del');
+    expect(month.pivotSourceKey).toBe('del');
   });
 });

@@ -183,10 +183,41 @@ export function bucketOf(row: Record<string, unknown>, col: AnyColumn): string {
 }
 
 /** Human label for a bucket ('' → an em dash, so a blank never looks
- *  like a rendering bug). */
-function labelOf(bucket: string, col: AnyColumn): string {
+ *  like a rendering bug).
+ *
+ *  ``axis`` is the full dimension list this bucket's header belongs to.
+ *  When a COARSER grain of the same date column is already on that axis,
+ *  the label drops what that grain states: a stack reading
+ *  ``2026-Q1 / 2026 / MAR 2026`` becomes ``Q1 / 2026 / Mar`` — the year
+ *  is said once, in the row whose job it is to say it, instead of three
+ *  times down one column.
+ *
+ *  Only the DISPLAY shortens.  Buckets stay fully qualified, because
+ *  ``Q1`` alone is not a unique key across years. */
+function labelOf(bucket: string, col: AnyColumn, axis: AnyColumn[] = []): string {
   if (bucket === '') return EMPTY_LABEL;
+  if (col.pivotLabelBare && hasCoarserGrain(col, axis)) {
+    return col.pivotLabelBare(bucket);
+  }
   return col.pivotLabel ? col.pivotLabel(bucket) : bucket;
+}
+
+const GRAIN_RANK = { year: 0, quarter: 1, month: 2 } as const;
+
+/** Is a coarser grain of the SAME date column present on this axis?
+ *
+ *  Same column, because two different date columns (pickup and delivery)
+ *  each need their own year — stripping delivery's year because pickup's
+ *  is on the axis would state something false. */
+function hasCoarserGrain(col: AnyColumn, axis: AnyColumn[]): boolean {
+  const grain = col.pivotGrain;
+  if (!grain || !col.pivotSourceKey) return false;
+  return axis.some((d) => (
+    d !== col
+    && d.pivotSourceKey === col.pivotSourceKey
+    && d.pivotGrain !== undefined
+    && GRAIN_RANK[d.pivotGrain] < GRAIN_RANK[grain]
+  ));
 }
 
 /** The number a value field contributes for one row.  ``aggValue`` is the
@@ -352,7 +383,7 @@ export function pivot(
         && effectiveColPaths[j].slice(0, depth + 1).join(PATH_SEP) === prefix
       ) j += 1;
       level.push({
-        label: labelOf(effectiveColPaths[i][depth], dimCol),
+        label: labelOf(effectiveColPaths[i][depth], dimCol, colCols),
         span: (j - i) * leavesPerBucket,
       });
       i = j;
@@ -463,7 +494,7 @@ export function pivot(
       path: parts,
       depth,
       hasChildren: hasChild.has(rb),
-      label: labelOf(parts[depth], rowDims[depth]),
+      label: labelOf(parts[depth], rowDims[depth], rowDims),
       count: rowCounts.get(rb) ?? 0,
       cells: cellsFor(rb),
       totals: totalsFor(rb),

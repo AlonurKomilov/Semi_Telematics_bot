@@ -625,6 +625,13 @@ export interface Column<T = Record<string, unknown>> {
    *  function used.  Defaults to a locale number string (2 decimals for
    *  ``avg``) or, for a date column, a date in the account timezone. */
   aggFormat?: (value: number, fn: AggFn) => React.ReactNode;
+  /** RATE columns (RPM, cost per mile): aggregate as a RATIO OF SUMS —
+   *  sum(num)/sum(den) over the group's rows — instead of reducing the
+   *  cell values with the chosen function.  A plain ``avg`` of per-row
+   *  rates over-weights short rows; the weighted form matches what a
+   *  rate MEANS.  When set it overrides the AggFn's math; pair it with
+   *  ``aggFns: ['avg']`` so the ⋮ menu offers one honestly-named entry. */
+  aggRatio?: { num: (row: T) => number; den: (row: T) => number };
 
   // ── Pivot ────────────────────────────────────────────────────────
   /** Offer this column in the pivot panel's Rows / Columns pickers (a
@@ -640,6 +647,17 @@ export interface Column<T = Record<string, unknown>> {
   /** Pretty-print a bucket for the header ('2026-01' -> 'Jan 2026').
    *  Receives the RAW bucket string from ``pivotValue``. */
   pivotLabel?: (bucket: string) => string;
+  /** The same label with anything an ANCESTOR dimension already states
+   *  removed ('2026-01' -> 'Jan').  The tree builder picks this over
+   *  ``pivotLabel`` when a coarser grain of the same source column sits
+   *  on the same axis; see ``datagrid/pivot/derived.ts``. */
+  pivotLabelBare?: (bucket: string) => string;
+  /** Date grain and originating column key — set only on the synthetic
+   *  dimensions ``derivePivotDimensions`` generates, and only so the
+   *  tree builder can tell "the Year of THIS date" from "the Year of a
+   *  different date column on the same axis". */
+  pivotGrain?: 'year' | 'quarter' | 'month';
+  pivotSourceKey?: string;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

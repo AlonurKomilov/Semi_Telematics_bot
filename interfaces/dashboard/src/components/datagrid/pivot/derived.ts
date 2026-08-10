@@ -41,6 +41,20 @@ const GRAINS: { grain: DateGrain; suffix: string }[] = [
   { grain: 'month', suffix: 'Month' },
 ];
 
+/** The label with the YEAR taken out — used only when a Year dimension
+ *  sits on the SAME axis, so the year is already readable one row away.
+ *  A header stack reading `2026-Q1 / 2026 / MAR 2026` says "2026" three
+ *  times and makes the reader scan three rows to learn one fact.
+ *
+ *  The BUCKET keeps its year either way (`2026-Q1` is the grouping key,
+ *  and `Q1` alone would collide across years) — this touches display
+ *  only. */
+function bareLabel(grain: DateGrain, bucket: string): string {
+  if (grain === 'quarter') return bucket.split('-')[1] ?? bucket;   // 2026-Q1 → Q1
+  if (grain === 'month') return formatMonth(bucket).split(' ')[0];  // 2026-03 → Mar
+  return bucket;                                                    // a year IS the year
+}
+
 function bucketFor(grain: DateGrain, raw: unknown, tz: string): string {
   const v = String(raw ?? '');
   if (!v) return '';
@@ -75,6 +89,11 @@ export function derivePivotDimensions(columns: AnyColumn[], tz: string): AnyColu
         pivotable: true,
         pivotValue: (row) => bucketFor(grain, (row as Record<string, unknown>)[col.key], tz),
         pivotLabel: grain === 'month' ? formatMonth : undefined,
+        // Chosen over ``pivotLabel`` by the tree builder when this axis
+        // also carries the Year grain of the same date column.
+        pivotLabelBare: (b: string) => bareLabel(grain, b),
+        pivotGrain: grain,
+        pivotSourceKey: col.key,
       });
     }
   }
