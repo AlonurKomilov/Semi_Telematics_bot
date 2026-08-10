@@ -102,6 +102,7 @@ const Maintenance      = lazyWithReload(() => import('./features/maintenance/Tas
 const WorkOrders       = lazyWithReload(() => import('./features/work-orders/WorkOrders'));
 const Loads            = lazyWithReload(() => import('./features/loads/Loads'));
 const Kpi              = lazyWithReload(() => import('./features/kpi/Kpi'));
+const KpiConfiguration = lazyWithReload(() => import('./features/kpi/config/KpiConfiguration'));
 const WorkOrderForm    = lazyWithReload(() => import('./features/work-orders/WorkOrderForm'));
 const Vendors          = lazyWithReload(() => import('./features/vendors/Vendors'));
 const VendorProfile    = lazyWithReload(() => import('./features/vendors/VendorProfile'));
@@ -258,6 +259,7 @@ export default function AppRouter() {
             (shop visits, costs, parts, attachments). */}
         <Route path="loads"               element={L(<P perm={['can_loads_all', 'can_loads_own']}><Loads /></P>)} />
         <Route path="kpi"                 element={L(<P perm="can_kpi"><Kpi /></P>)} />
+        <Route path="kpi/configuration"   element={L(<P perm="can_manage_config_all"><KpiConfiguration /></P>)} />
         <Route path="work-orders"         element={L(<P perm={['can_maintenance_all', 'can_maintenance_vehicle']}><WorkOrders /></P>)} />
         {/* Manager-only: a vendor profile aggregates ALL trucks' work
             orders + account-wide spend — vehicle-scope users must not

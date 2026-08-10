@@ -9,7 +9,7 @@
 
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { Gauge } from 'lucide-react';
 import DataGrid from '../../components/datagrid';
 import {
@@ -18,7 +18,6 @@ import {
 import { Tip } from '../../components/tooltip';
 import { toneClasses, type Tone } from '../../lib/status';
 import type { AnyColumn } from '../../types';
-import KpiConfigPanel from './config/KpiConfigPanel';
 import { FeatureConfigGear } from '../_lib/FeatureConfigGear';
 import { getDispatcherKpis } from './api';
 import type { DispatcherKpisResponse } from './api';
@@ -77,7 +76,6 @@ const SECTIONS = [
 
 export default function Kpi() {
   const { t } = useTranslation();
-  const qc = useQueryClient();
   const [days, setDays] = useState(30);
   const [section, setSection] = useState('dispatchers');
 
@@ -98,18 +96,16 @@ export default function Kpi() {
           'kpi_page.description',
           'Performance across the account — graded against your thresholds.',
         )}
-        /* The gear is the ONE config entry point, in the same header slot
-           on every feature.  It replaced a bespoke "Thresholds" button
-           with a sliders icon — which read as a filter, and taught the
-           user nothing transferable about where the next feature keeps
-           its settings.  The gear self-gates on can_manage_config_all, so
-           no permission check is needed here. */
+        /* The one config entry point, in the same header slot as every
+           feature — now in PAGE mode: KPI's config outgrew the dialog
+           when the incentive editor arrived (model picker + tier table
+           + per-company targets).  Same cog, same slot, same self-gate
+           on can_manage_config_all; it navigates, as Scorecards' does. */
         actions={(
-          <FeatureConfigGear feature={t('nav.kpi', 'KPI')}>
-            <KpiConfigPanel
-              onSaved={() => qc.invalidateQueries({ queryKey: ['kpi-dispatchers'] })}
-            />
-          </FeatureConfigGear>
+          <FeatureConfigGear
+            feature={t('nav.kpi', 'KPI')}
+            to="/kpi/configuration"
+          />
         )}
       />
 

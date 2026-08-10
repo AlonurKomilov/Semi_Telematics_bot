@@ -51,3 +51,67 @@ export async function putKpiConfig(
     body: { thresholds },
   });
 }
+
+// ── Incentive configuration (/kpi/config/incentives) ─────────────────
+
+export interface IncentiveTier {
+  // ladder
+  requires_target?: boolean;
+  min_weekly_gross?: number | null;
+  min_rpm?: number | null;
+  // hybrid
+  gross_min?: number; gross_max?: number;
+  rpm_min?: number; rpm_max?: number;
+  // fixed
+  axis?: 'rpm' | 'gross';
+  min?: number;
+  // all
+  pct: number;
+}
+
+export interface IncentiveConfig {
+  model: 'ladder' | 'fixed' | 'hybrid';
+  combine_rule: 'lower' | 'higher' | 'add';
+  calc_cadence: 'weekly' | 'monthly' | 'custom';
+  calc_custom_days: number | null;
+  exception_cap_pct: number | null;
+  floor_weekly_gross: number | null;
+  floor_rpm: number | null;
+  tiers: IncentiveTier[];
+}
+
+export interface CompanyTarget {
+  company_id: number;
+  company_code: string;
+  company_name: string;
+  weekly_gross_target: number;
+}
+
+export interface IncentivesResponse {
+  config: IncentiveConfig | null;
+  targets: CompanyTarget[];
+  companies: { id: number; code: string; name: string }[];
+}
+
+export async function getIncentivesConfig(): Promise<IncentivesResponse> {
+  return apiJSON<IncentivesResponse>('/kpi/config/incentives');
+}
+
+export async function putIncentivesConfig(
+  body: IncentiveConfig,
+): Promise<IncentivesResponse> {
+  // Spread into a fresh literal: apiJSON's body wants an index-signature
+  // record, which a named interface deliberately lacks.
+  return apiJSON<IncentivesResponse>('/kpi/config/incentives', {
+    method: 'PUT', body: { ...body },
+  });
+}
+
+export async function putIncentiveTargets(
+  targets: Record<number, number>,
+): Promise<{ targets: CompanyTarget[] }> {
+  return apiJSON<{ targets: CompanyTarget[] }>(
+    '/kpi/config/incentives/targets',
+    { method: 'PUT', body: { targets } },
+  );
+}
