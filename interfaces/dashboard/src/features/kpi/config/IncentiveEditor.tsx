@@ -228,7 +228,9 @@ export default function IncentiveEditor() {
            states, the last linking to where runs actually happen — the
            dependency between the two pages was one-directional before
            (runs 422s point here; here pointed nowhere). */
-        <ol className="bg-card border border-border rounded-xl p-4 space-y-2 text-sm">
+        /* Guidance plane, not a config region — muted fill so it never
+           counts as a fourth config card. */
+        <ol className="bg-muted/40 border border-border rounded-xl p-4 space-y-2 text-sm">
           {[
             { done: configured && cfg.tiers.length > 0,
               label: t('kpi_config.step_rules', 'Pick a model and save its tiers') },
@@ -258,11 +260,17 @@ export default function IncentiveEditor() {
         </ol>
       )}
 
-      {/* ── Model + policy ──────────────────────────────────────── */}
+      {/* ── Incentive rules: model + policy + tiers ─────────────────
+          ONE card because they are ONE PUT — the save's enclosure is
+          its scope, and a save floating between two cards belongs to
+          neither.  Sub-sections carry caps labels. */}
       <section className="bg-card border border-border rounded-xl p-5 space-y-4">
         <h2 className="text-base font-semibold">
-          {t('kpi_config.model_title', 'Model & policy')}
+          {t('kpi_config.rules_title', 'Incentive rules')}
         </h2>
+        <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {t('kpi_config.model_title', 'Model & policy')}
+        </h3>
         <div className="flex flex-wrap items-end gap-4">
           <label className="text-sm space-y-1">
             <span className="block text-muted-foreground">{t('kpi_config.model', 'Tier model')}</span>
@@ -345,12 +353,11 @@ export default function IncentiveEditor() {
           {t('kpi_config.floor_note',
             'A truck below BOTH floors pays 0% — the “removed from dispatcher” rule. Manual exceptions above the cap are refused, never clamped.')}
         </p>
-      </section>
 
-      {/* ── Tier rows ───────────────────────────────────────────── */}
-      <section className="bg-card border border-border rounded-xl p-5 space-y-3">
+        {/* ── Tier rows (sub-section of the same card/PUT) ───────── */}
+        <div className="border-t border-border pt-4 space-y-3">
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-semibold">{t('kpi_config.tiers_title', 'Tiers')}</h2>
+          <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('kpi_config.tiers_title', 'Tiers')}</h3>
           <Button size="sm" variant="outline" onClick={() => { setCfg((c) => ({ ...c, tiers: [...c.tiers, fresh(c.model)] })); setRulesDirty(true); }}>
             <Plus size={14} /> {t('kpi_config.add_tier', 'Add tier')}
           </Button>
@@ -429,40 +436,45 @@ export default function IncentiveEditor() {
                     </label>
                   </>
                 )}
-                <label className="inline-flex items-center gap-1.5 text-muted-foreground ml-auto">
-                  →
-                  <NumField value={tier.pct} onChange={(v) => setTier(i, { pct: v ?? 0 })} width="w-20" />
-                  %
-                </label>
-                <button
-                  type="button"
-                  onClick={() => { setCfg((c) => ({ ...c, tiers: c.tiers.filter((_, j) => j !== i) })); setRulesDirty(true); }}
-                  aria-label={t('kpi_config.remove_tier', 'Remove tier')}
-                  className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
-                >
-                  <X size={14} />
-                </button>
+                {/* The row's OUTPUT + its remove control wrap as ONE
+                    unit — flex-wrap must never strand the % on its own
+                    line away from the X. */}
+                <span className="ml-auto flex items-center gap-3">
+                  <label className="inline-flex items-center gap-1.5 text-muted-foreground">
+                    →
+                    <NumField value={tier.pct} onChange={(v) => setTier(i, { pct: v ?? 0 })} width="w-20" />
+                    %
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => { setCfg((c) => ({ ...c, tiers: c.tiers.filter((_, j) => j !== i) })); setRulesDirty(true); }}
+                    aria-label={t('kpi_config.remove_tier', 'Remove tier')}
+                    className="p-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-muted"
+                  >
+                    <X size={14} />
+                  </button>
+                </span>
               </li>
             ))}
           </ul>
         )}
-      </section>
+        </div>
 
-      {/* One save for Model & policy + Tiers — they are ONE PUT, and a
-          button living inside the Tiers card claimed a narrower scope
-          than it had (the audit's grammar rule: a Save button's card is
-          its scope).  The label names everything it commits. */}
-      <div className="flex items-center justify-end gap-3">
-        {rulesDirty && (
-          <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded`}>
-            {t('kpi_config.unsaved', 'Unsaved changes')}
-          </span>
-        )}
-        <Button onClick={saveRules} disabled={saving}>
-          {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
-          {t('kpi_config.save_rules', 'Save model, policy & tiers')}
-        </Button>
-      </div>
+        {/* One save for the whole card — model, policy and tiers are
+            ONE PUT, so the button sits inside the one card that IS its
+            scope (same grammar as the Targets card below). */}
+        <div className="flex items-center justify-end gap-3">
+          {rulesDirty && (
+            <span className={`text-xs ${toneClasses('warn')} px-2 py-0.5 rounded`}>
+              {t('kpi_config.unsaved', 'Unsaved changes')}
+            </span>
+          )}
+          <Button onClick={saveRules} disabled={saving}>
+            {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
+            {t('kpi_config.save_rules', 'Save model, policy & tiers')}
+          </Button>
+        </div>
+      </section>
 
       {/* ── Per-company weekly targets ──────────────────────────── */}
       <section className="bg-card border border-border rounded-xl p-5 space-y-3">

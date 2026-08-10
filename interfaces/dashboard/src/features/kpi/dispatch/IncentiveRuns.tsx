@@ -16,7 +16,7 @@
  *
  * A finalized run renders read-only: the paid record, never re-priced.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { BadgeDollarSign, Loader2, Lock, Pencil, Plus, Scale, Trash2 } from 'lucide-react';
@@ -28,6 +28,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '../../../components/ui/dialog';
 import { Input } from '../../../components/ui/input';
+import { Tip } from '../../../components/tooltip';
 import { toneClasses } from '../../../lib/status';
 import type { AnyColumn } from '../../../types';
 import {
@@ -45,6 +46,24 @@ function usd(v: unknown): string {
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
+// The strip shows the WORKING SET; the archive collapses.  At weekly
+// cadence a year mints 52 runs — an unbounded chip row would push the
+// settlement grid below the fold and keep growing.
+const RECENT_RUNS = 8;
+
+/** In-cell free-text annotation (extras note, inactive reason, override
+ *  reason): truncated so a long note can never inflate its column for
+ *  every row; the full text lives on hover. */
+function Note({ text }: { text: string }) {
+  return (
+    <Tip label={text}>
+      <span className="ml-1 inline-block max-w-40 truncate align-bottom text-xs text-muted-foreground">
+        {text}
+      </span>
+    </Tip>
+  );
+}
+
 export default function IncentiveRuns() {
   const { t } = useTranslation();
   const qc = useQueryClient();
@@ -54,11 +73,31 @@ export default function IncentiveRuns() {
   const [exceptRow, setExceptRow] = useState<RunRow | null>(null);
   const [finalizeOpen, setFinalizeOpen] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  const [showAllRuns, setShowAllRuns] = useState(false);
 
   const runsQ = useQuery({
     queryKey: ['kpi-incentive-runs'],
     queryFn: listIncentiveRuns,
   });
+
+  // Newest first — the working period is the one being settled.
+  const allRuns = [...(runsQ.data?.runs ?? [])].sort(
+    (a, b) => b.period_start.localeCompare(a.period_start) || b.id - a.id,
+  );
+  // The selected run's chip stays visible even from the collapsed strip.
+  const visibleRuns = showAllRuns ? allRuns : (() => {
+    const head = allRuns.slice(0, RECENT_RUNS);
+    const sel = allRuns.find((r) => r.id === selected);
+    if (sel && !head.some((r) => r.id === sel.id)) head.push(sel);
+    return head;
+  })();
+
+  // The detail region never renders BLANK while runs exist: with nothing
+  // chosen (first load, after a discard) the newest run selects itself.
+  const newestId = allRuns[0]?.id;
+  useEffect(() => {
+    if (selected == null && newestId != null) setSelected(newestId);
+  }, [selected, newestId]);
   const detailQ = useQuery<RunDetail>({
     queryKey: ['kpi-incentive-run', selected],
     queryFn: () => getIncentiveRun(selected as number),
@@ -110,9 +149,7 @@ export default function IncentiveRuns() {
           <span className="tabular-nums">
             {total - inactive}/{total}
             {inactive > 0 && (
-              <span className="ml-1 text-xs text-muted-foreground">
-                ({inactive} off{r.inactive_reason ? `: ${r.inactive_reason}` : ''})
-              </span>
+              <Note text={`(${inactive} off${r.inactive_reason ? `: ${r.inactive_reason}` : ''})`} />
             )}
           </span>
         );
@@ -122,9 +159,7 @@ export default function IncentiveRuns() {
         <span className="tabular-nums">
           {usd(v)}
           {Number(r.extras) !== 0 && (
-            <span className="ml-1 text-xs text-muted-foreground">
-              (incl. {usd(r.extras)}{r.extras_note ? ` ${r.extras_note}` : ''})
-            </span>
+            <Note text={`(incl. ${usd(r.extras)}${r.extras_note ? ` ${r.extras_note}` : ''})`} />
           )}
         </span>
       ) },
@@ -165,9 +200,7 @@ export default function IncentiveRuns() {
       render: (v, r) => (
         <span className="tabular-nums font-medium">
           {usd(v)}
-          {r.override_reason ? (
-            <span className="ml-1 text-xs text-muted-foreground">({String(r.override_reason)})</span>
-          ) : null}
+          {r.override_reason ? <Note text={`(${String(r.override_reason)})`} /> : null}
         </span>
       ) },
   ];
@@ -204,9 +237,9 @@ export default function IncentiveRuns() {
           )}
         />
       )}
-      {runsQ.data && runsQ.data.runs.length > 0 && (
+      {allRuns.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
-          {runsQ.data.runs.map((r) => (
+          {visibleRuns.map((r) => (
             <button
               key={r.id}
               type="button"
@@ -225,6 +258,17 @@ export default function IncentiveRuns() {
               </span>
             </button>
           ))}
+          {allRuns.length > RECENT_RUNS && (
+            <button
+              type="button"
+              onClick={() => setShowAllRuns((v) => !v)}
+              className="inline-flex items-center rounded-md border border-border bg-card px-3 py-1.5 text-sm text-muted-foreground hover:border-ring transition"
+            >
+              {showAllRuns
+                ? t('kpi_runs.show_recent', 'Show recent')
+                : t('kpi_runs.show_all', 'Show all ({{n}})', { n: allRuns.length })}
+            </button>
+          )}
         </div>
       )}
 
@@ -233,11 +277,13 @@ export default function IncentiveRuns() {
       {run && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            {/* Per-dispatcher payouts — the sheet's corner figure. */}
+            {/* Per-dispatcher payouts — the sheet's corner figure.
+                Flat tint = readout; the bordered card-chip shape is
+                reserved for the CLICKABLE run selectors above. */}
             <div className="flex flex-wrap gap-2">
               {Object.entries(run.payouts).map(([name, total]) => (
                 <span key={name}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-sm">
+                  className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1 text-sm">
                   <span className="text-muted-foreground">{name}</span>
                   <span className="font-medium tabular-nums">{usd(total)}</span>
                 </span>
@@ -549,8 +595,11 @@ function ExceptionDialog({ runId, row, onClose, onSaved }: {
           </label>
         </div>
         <DialogFooter>
+          {/* mr-auto: a server WRITE must not sit in the Cancel corner
+              wearing Cancel's outline shape — far left is the "act on
+              existing state" slot. */}
           {row.override_pct != null && (
-            <Button variant="outline" onClick={() => apply(true)} disabled={busy}>
+            <Button variant="outline" className="mr-auto" onClick={() => apply(true)} disabled={busy}>
               {t('kpi_runs.exc_clear', 'Clear override')}
             </Button>
           )}
