@@ -123,6 +123,7 @@ async def main():
     tg_app = None
     sys_tg_app = None  # Optional operator-only daemon — see system_app.py
     scheduler = None
+    sched_lock_task = None
     registry = None
     api_task = None
 
@@ -157,7 +158,23 @@ async def main():
         else:
             # Acquire distributed lock so only one scheduler instance runs across deploys
             import infra.cache as _rcache
+            # RETRY, never one-shot.  A hard crash (the Aug 3-7 native
+            # deaths) leaves the lock un-released with up to 90s of TTL;
+            # systemd restarts us 5s later, the single try lost, and the
+            # process then ran WITHOUT ANY SCHEDULER until the next
+            # manual restart — polling looked alive while every cron job
+            # was dead (daily/weekly rollups silently missing Aug 6-9).
             lock_acquired = await _rcache.acquire_lock("scheduler:global", ttl_secs=90)
+            _lock_waits = 0
+            while not lock_acquired:
+                if _lock_waits == 0:
+                    logger.warning(
+                        "Scheduler lock held (stale from a crashed "
+                        "instance?) — retrying every 15s until acquired")
+                _lock_waits += 1
+                await asyncio.sleep(15)
+                lock_acquired = await _rcache.acquire_lock(
+                    "scheduler:global", ttl_secs=90)
             if lock_acquired:
                 # misfire_grace_time defaults to ONE SECOND: a job whose
                 # moment passes while the loop is busy — a deploy, a GC
@@ -180,9 +197,30 @@ async def main():
                 )
                 _register_jobs(scheduler, tg_app)
                 scheduler.start()
-                logger.info("Scheduler started (distributed lock acquired)")
-            else:
-                logger.info("Scheduler lock held by another instance — this instance will not run jobs")
+                logger.info(
+                    "Scheduler started (distributed lock acquired%s)",
+                    f" after {_lock_waits} retries" if _lock_waits else "")
+
+                # Keep the lock ALIVE while we hold it.  Without the
+                # heartbeat it expired 90s after boot and only ever
+                # guarded the first minute-and-a-half — after that a
+                # second instance could have won it too.  On heartbeat
+                # failure (Redis blip / expiry) re-acquire; both calls
+                # fail open, so Redis being down never stops jobs.
+                async def _scheduler_lock_heartbeat() -> None:
+                    while True:
+                        await asyncio.sleep(30)
+                        try:
+                            ok = await _rcache.heartbeat_lock(
+                                "scheduler:global", ttl_secs=90)
+                            if not ok:
+                                await _rcache.acquire_lock(
+                                    "scheduler:global", ttl_secs=90)
+                        except Exception:
+                            pass
+
+                sched_lock_task = asyncio.create_task(
+                    _scheduler_lock_heartbeat())
 
     # ── 4. API server ────────────────────────────────────────────
     if _ENABLE_API:
@@ -250,6 +288,10 @@ async def main():
 
     if api_task:
         api_task.cancel()
+    # Cancel BEFORE the drain loop below — an infinite heartbeat task
+    # would otherwise hold the drain open for its full grace period.
+    if sched_lock_task:
+        sched_lock_task.cancel()
 
     if scheduler:
         # Stop accepting new jobs and let in-flight async tasks finish

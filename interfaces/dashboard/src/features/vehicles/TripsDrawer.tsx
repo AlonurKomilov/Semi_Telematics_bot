@@ -59,6 +59,28 @@ function hhmm(min: number): string {
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
+/** Human length of the drawer's window — same convention as the range
+ *  picker's footer: timed ranges show true duration ("7 days 2h"),
+ *  whole-day ranges the inclusive calendar count ("8 days"). */
+function windowLabel(start: string, end: string): string {
+  const [sDay, sTime] = start.split('T');
+  const [eDay, eTime] = end.split('T');
+  const dayMs = new Date(`${eDay}T00:00:00`).getTime()
+    - new Date(`${sDay}T00:00:00`).getTime();
+  const days = Math.round(dayMs / 86_400_000);
+  if (!sTime && !eTime) return `${days + 1} days`;
+  const toMin = (t?: string) => {
+    if (!t) return 0;
+    const [h, m] = t.split(':').map(Number);
+    return h * 60 + m;
+  };
+  const totalMin = days * 24 * 60 - toMin(sTime)
+    + (eTime ? toMin(eTime) : 24 * 60);
+  const d = Math.floor(totalMin / (24 * 60));
+  const h = Math.round((totalMin % (24 * 60)) / 60);
+  return `${d} day${d === 1 ? '' : 's'}${h ? ` ${h}h` : ''}`;
+}
+
 export default function TripsDrawer({
   vehicleName, company = '', rowMiles, rowFlag = '', rowCoversWindow = true,
   start, end, onClose,
@@ -193,6 +215,7 @@ export default function TripsDrawer({
             </SheetTitle>
             <p className="text-xs text-muted-foreground mt-0.5">
               {start.replace('T', ' ')} → {end.replace('T', ' ')}
+              {' · '}{windowLabel(start, end)}
               {data && !data.no_data && (
                 <>
                   {' · '}{data.trip_count} trip{data.trip_count === 1 ? '' : 's'}

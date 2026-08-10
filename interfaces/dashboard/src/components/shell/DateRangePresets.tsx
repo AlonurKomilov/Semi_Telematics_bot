@@ -479,10 +479,33 @@ export default function DateRangePresets({
   const footerRange = sumLo && sumHi
     ? fmtRange(sumLo, sumHi, tz, draftLoTime, draftHiTime)
     : '';
+  // With explicit TIMES the honest count is the true duration, not the
+  // calendar days touched: 11:00 PM Aug 3 → 1:00 AM Aug 10 is 7 days
+  // 2h, but it TOUCHES 8 calendar days — labeling it "8 days" read as
+  // a contradiction of the "Last 7 days" preset that produced it.
+  // Whole-day ranges keep the inclusive calendar count (that is
+  // exactly how many day-rows of data the pages load).
   const footerMeta = sumLo && sumHi
-    ? `${daysBetween(sumLo, sumHi) + 1} days${
-        withTime && timesAreDefault ? ' · all day' : ''
-      }`
+    ? (() => {
+        const hasTimes = withTime && !timesAreDefault
+          && Boolean(draftLoTime || draftHiTime);
+        if (hasTimes) {
+          const toMin = (t: string | null) => {
+            const [h, m] = (t ?? '00:00').split(':').map(Number);
+            return h * 60 + m;
+          };
+          // End time null = end of day (24:00).
+          const startMin = toMin(draftLoTime);
+          const endMin = draftHiTime == null ? 24 * 60 : toMin(draftHiTime);
+          const totalMin =
+            daysBetween(sumLo, sumHi) * 24 * 60 - startMin + endMin;
+          const d = Math.floor(totalMin / (24 * 60));
+          const h = Math.round((totalMin % (24 * 60)) / 60);
+          return `${d} day${d === 1 ? '' : 's'}${h ? ` ${h}h` : ''}`;
+        }
+        return `${daysBetween(sumLo, sumHi) + 1} days${
+          withTime && timesAreDefault ? ' · all day' : ''}`;
+      })()
     : '';
   const footerHint = rangeCapable
     ? 'Click a start date, then an end date'
