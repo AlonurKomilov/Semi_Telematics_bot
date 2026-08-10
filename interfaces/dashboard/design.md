@@ -269,6 +269,46 @@ scaffolding: `PageHeader`, `KpiCard`, `EmptyState`, `ErrorState`,
 `LoadingSkeleton`, `FilterBar`, `Breadcrumb`, toasts. Use these for
 headers/empty/error/loading states — don't roll your own.
 
+### View controls vs actions — separate the classes ⭐
+
+A control that changes **what you are looking at** (a date range, a
+scope switch, a mode) must not sit in the same visual group, at the same
+weight, as controls that **do something** (create, book, delete). Both
+render as bordered buttons in the header, so when they run together the
+only way to tell a filter from an action is to read all of them —
+and the filter is the one you touch most.
+
+Put the view control first, then a divider
+(`<span aria-hidden className="h-5 w-px bg-border mx-1" />`), then the
+actions. Where a grid owns the constraint (search, column filters, sort)
+it already renders its own removable chips — this rule is for the
+PAGE-level constraints a grid cannot see. `features/loads/Loads.tsx` is
+the worked example.
+
+A view control also has a wider audience than an action: reading a
+narrower slice is not a management act, so it renders for every viewer
+even when the actions beside it are permission-gated.
+
+### Empty states name the constraint that emptied them ⭐
+
+"No loads in this status." is FALSE whenever a date window, scope, or
+page-level filter is also narrowing the view — there may be forty, one
+widening away. An empty state that states only the obvious condition
+sends someone hunting an old record away believing it is gone.
+
+Say what is filtering, and name the remedy:
+
+```tsx
+emptyMessage={rangeDays > 0
+  ? 'No loads in this status in the selected date range. Widen the range to see older loads.'
+  : 'No loads in this status.'}
+```
+
+Reports does the same for its own window ("Try a different tab or widen
+the date range"). This applies to every constraint the grid cannot
+render as a chip, because those are exactly the ones the reader cannot
+see.
+
 ### Control & overlay sizing
 
 Sizes are scales, exactly like colours are tokens — a control or overlay

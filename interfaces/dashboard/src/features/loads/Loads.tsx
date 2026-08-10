@@ -285,11 +285,15 @@ export default function Loads() {
         )}
         actions={(
           <div className="flex items-center gap-2">
-            {/* Narrows HISTORY only — the server exempts in-progress
-                loads from the window, so a load picked up last month and
-                still rolling stays on the Dispatched tab at any range.
-                Visible to every viewer: reading a narrower slice is not
-                a management action. */}
+            {/* A VIEW control, and the divider below says so: what
+                follows it DOES something (books a deduction, creates a
+                load), while this changes what you are LOOKING AT.  All
+                three shared one shape and one group, so telling the
+                filter from the actions meant reading all three.
+
+                It narrows HISTORY only — the server exempts in-progress
+                loads — and it renders for every viewer, because reading
+                a narrower slice is not a management action. */}
             <InfoTip label={t(
               'loads_page.range_help',
               'Narrows completed loads and the tab counts. Loads still in progress always show, whatever the range.',
@@ -305,14 +309,15 @@ export default function Loads() {
             />
             {canManage && (
               <>
-            <Button variant="outline" onClick={() => setLayoverOpen(true)}>
-              <Clock size={16} className="mr-1.5" />
-              {t('loads_page.add_off_load', 'Off-load pay / deduction')}
-            </Button>
-            <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
-              <Plus size={16} className="mr-1.5" />
-              {t('loads_page.add', 'Add load')}
-            </Button>
+                <span aria-hidden className="h-5 w-px bg-border mx-1" />
+                <Button variant="outline" onClick={() => setLayoverOpen(true)}>
+                  <Clock size={16} className="mr-1.5" />
+                  {t('loads_page.add_off_load', 'Off-load pay / deduction')}
+                </Button>
+                <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
+                  <Plus size={16} className="mr-1.5" />
+                  {t('loads_page.add', 'Add load')}
+                </Button>
               </>
             )}
           </div>
