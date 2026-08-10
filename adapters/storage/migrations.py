@@ -8980,3 +8980,20 @@ async def migrate_kpi_incentive_double_precision(conn) -> None:
             )
     await conn.commit()
     logger.info("Migration 195: kpi incentive float columns -> double precision")
+
+
+@_register("196_kpi_run_rows_zero_reason")
+async def migrate_kpi_run_rows_zero_reason(conn) -> None:
+    """Backfill the ``zero_reason`` column on production run rows.
+
+    Production created ``kpi_incentive_run_rows`` from a draft of 194
+    that predated the column; the insert path references it, so POST
+    /kpi/dispatch/runs 500'd on the first real run.  IF NOT EXISTS makes
+    this a no-op on fresh installs built from the final 194.
+    """
+    await conn.execute(
+        "ALTER TABLE kpi_incentive_run_rows "
+        "ADD COLUMN IF NOT EXISTS zero_reason TEXT NOT NULL DEFAULT ''"
+    )
+    await conn.commit()
+    logger.info("Migration 196: kpi_incentive_run_rows.zero_reason backfilled")
