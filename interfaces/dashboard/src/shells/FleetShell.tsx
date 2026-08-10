@@ -66,7 +66,7 @@ export default function FleetShell() {
             status strip or not.  Default shell (Owner/Admin) just
             omits the middle Hero, leaving the topbar's flex layout
             balanced between mobile-menu and tools. */}
-        <header className="h-12 bg-sidebar text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3">
+        <header className="h-12 border-b border-border bg-sidebar text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3">
           <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => setMobileSidebarOpen((o) => !o)}

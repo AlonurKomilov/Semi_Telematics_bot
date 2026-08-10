@@ -17,7 +17,7 @@
  * not the wall.  A 422's detail is the engine's own admin-facing
  * message, so it is shown verbatim.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowRight, Check, Loader2, Plus, Wand2, X } from 'lucide-react';
@@ -104,6 +104,16 @@ function NumField({ value, onChange, placeholder, width = 'w-28' }: {
   );
 }
 
+/** Targets normalised for dirty comparison: an entry typed then cleared
+ *  back to empty is the same as never touched. */
+function normTargets(m: Record<number, string>): string {
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(m).filter(([, v]) => v.trim() !== ''),
+    ),
+  );
+}
+
 function fresh(model: IncentiveConfig['model']): IncentiveTier {
   if (model === 'hybrid') {
     return { gross_min: 0, gross_max: 0, rpm_min: 0, rpm_max: 0, pct: 1 };
@@ -124,8 +134,12 @@ export default function IncentiveEditor() {
   // either has unsaved edits.  BrowserRouter offers no useBlocker, so
   // in-app navigation cannot be intercepted — beforeunload covers tab
   // close/reload, and the visible chips cover the rest.
+  // Dirty is measured AGAINST A BASELINE, not set-and-forgotten: undoing
+  // an edit back to the loaded state returns the card to pristine.
   const [rulesDirty, setRulesDirty] = useState(false);
   const [targetsDirty, setTargetsDirty] = useState(false);
+  const rulesBaseline = useRef<string>(JSON.stringify(EMPTY));
+  const targetsBaseline = useRef<string>('{}');
   // A model switch clears the tier rows (the models' keys are mutually
   // exclusive; the server 422s a mixed set) — destroying hand-entered
   // rows on a dropdown change needs a confirm, not a surprise.
@@ -145,11 +159,17 @@ export default function IncentiveEditor() {
   useEffect(() => {
     getIncentivesConfig()
       .then((res) => {
-        if (res.config) { setCfg({ ...EMPTY, ...res.config }); setConfigured(true); }
+        if (res.config) {
+          const loaded = { ...EMPTY, ...res.config };
+          setCfg(loaded);
+          setConfigured(true);
+          rulesBaseline.current = JSON.stringify(loaded);
+        }
         setCompanies(res.companies);
         const map: Record<number, string> = {};
         for (const tg of res.targets) map[tg.company_id] = String(tg.weekly_gross_target);
         setTargets(map);
+        targetsBaseline.current = normTargets(map);
       })
       .catch((e) => toast.error(e instanceof Error ? e.message : 'Load failed'))
       .finally(() => setLoading(false));
@@ -157,17 +177,26 @@ export default function IncentiveEditor() {
 
   const hasAnyTarget = Object.values(targets).some((v) => v.trim() !== '');
 
+  const setCfgDirty = (next: IncentiveConfig) => {
+    setCfg(next);
+    setRulesDirty(JSON.stringify(next) !== rulesBaseline.current);
+  };
+
   const patchCfg = (patch: Partial<IncentiveConfig>) => {
-    setCfg((c) => ({ ...c, ...patch }));
-    setRulesDirty(true);
+    setCfgDirty({ ...cfg, ...patch });
   };
 
   const setTier = (i: number, patch: Partial<IncentiveTier>) => {
-    setCfg((c) => ({
-      ...c,
-      tiers: c.tiers.map((tier, j) => (j === i ? { ...tier, ...patch } : tier)),
-    }));
-    setRulesDirty(true);
+    setCfgDirty({
+      ...cfg,
+      tiers: cfg.tiers.map((tier, j) => (j === i ? { ...tier, ...patch } : tier)),
+    });
+  };
+
+  const setTargetsField = (companyId: number, value: string) => {
+    const next = { ...targets, [companyId]: value };
+    setTargets(next);
+    setTargetsDirty(normTargets(next) !== targetsBaseline.current);
   };
 
   const requestSaveRules = () => {
@@ -183,8 +212,10 @@ export default function IncentiveEditor() {
     setSaving(true);
     try {
       const res = await putIncentivesConfig(cfg);
-      if (res.config) setCfg({ ...EMPTY, ...res.config });
+      const saved = res.config ? { ...EMPTY, ...res.config } : cfg;
+      setCfg(saved);
       setConfigured(true);
+      rulesBaseline.current = JSON.stringify(saved);
       setRulesDirty(false);
       // THE FIRST-RUN TRAP: rules saved, targets never saved -> every
       // run pays 0% with "no target" on every row.  Saving rules is the
@@ -216,6 +247,7 @@ export default function IncentiveEditor() {
       const map: Record<number, string> = {};
       for (const tg of res.targets) map[tg.company_id] = String(tg.weekly_gross_target);
       setTargets(map);
+      targetsBaseline.current = normTargets(map);
       setTargetsDirty(false);
       toast.success(t('kpi_config.targets_saved', 'Company targets saved'));
     } catch (e) {
@@ -234,17 +266,18 @@ export default function IncentiveEditor() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {(!configured || !hasAnyTarget) && (
         /* The setup PATH, not a paragraph: three steps with live done-
            states, the last linking to where runs actually happen — the
            dependency between the two pages was one-directional before
            (runs 422s point here; here pointed nowhere). */
-        /* Guidance plane, not a config region — muted fill so it never
-           counts as a fourth config card.  The heading scopes the strip
-           to INCENTIVES: grading thresholds above are a separate,
+        /* Guidance plane, not a config region — a perceptible tint and
+           NO border: the 1px border + radius grammar stays reserved for
+           editable workspace cards.  The heading scopes the strip to
+           INCENTIVES: grading thresholds above are a separate,
            display-only product and deliberately not a step here. */
-        <div className="bg-muted/40 border border-border rounded-xl p-4 space-y-2 text-sm">
+        <div className="bg-muted rounded-xl p-5 space-y-2 text-sm">
           <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
             {t('kpi_config.setup_title', 'Incentive setup')}
           </h3>
@@ -278,7 +311,11 @@ export default function IncentiveEditor() {
             })()}
             <li className="flex items-center gap-2">
               <span className="inline-flex size-5 items-center justify-center rounded-full border border-border text-xs text-muted-foreground">3</span>
-              <Link to="/kpi/incentives" className="inline-flex items-center gap-1 text-primary hover:underline">
+              {/* The one clickable row — underlined always (text-primary
+                  alone is near-black in this theme), padded to a ≥24px
+                  hit box without moving the 28px row rhythm. */}
+              <Link to="/kpi/incentives"
+                className="inline-flex items-center gap-1 py-1 -my-1 text-primary underline underline-offset-4 hover:no-underline">
                 {t('kpi_config.step_run', 'Create the first run')}
                 <ArrowRight size={14} />
               </Link>
@@ -295,6 +332,10 @@ export default function IncentiveEditor() {
         <h2 className="text-base font-semibold">
           {t('kpi_config.rules_title', 'Incentive rules')}
         </h2>
+        {/* Both sub-sections get the SAME anatomy: a hairline seam +
+            padding — one seam rule, and the title band above is bounded
+            by a line, not by air alone. */}
+        <div className="border-t border-border pt-4 space-y-4">
         <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {t('kpi_config.model_title', 'Model & policy')}
         </h3>
@@ -362,27 +403,31 @@ export default function IncentiveEditor() {
             </label>
           )}
         </div>
+        {/* Fixed w-56 cells: the three same-class numeric fields form a
+            column track independent of label length, and one input
+            width step (w-28) for all of them. */}
         <div className="flex flex-wrap items-end gap-4">
-          <label className="text-sm space-y-1">
+          <label className="text-sm space-y-1 w-56">
             <span className="block text-muted-foreground">{t('kpi_config.cap', 'Exception cap (%)')}</span>
             {/* Word placeholders, not example numbers: empty IS a real
                 state (no cap / no floor), and a grey "7000" reads as a
                 filled value at a glance. */}
-            <NumField value={cfg.exception_cap_pct} onChange={(v) => patchCfg({ exception_cap_pct: v })} placeholder={t('kpi_config.none', 'none')} width="w-24" />
+            <NumField value={cfg.exception_cap_pct} onChange={(v) => patchCfg({ exception_cap_pct: v })} placeholder={t('kpi_config.none', 'none')} />
           </label>
-          <label className="text-sm space-y-1">
+          <label className="text-sm space-y-1 w-56">
             <span className="block text-muted-foreground">{t('kpi_config.floor_gross', 'Removal floor — weekly gross ($)')}</span>
             <NumField value={cfg.floor_weekly_gross} onChange={(v) => patchCfg({ floor_weekly_gross: v })} placeholder={t('kpi_config.none', 'none')} />
           </label>
-          <label className="text-sm space-y-1">
+          <label className="text-sm space-y-1 w-56">
             <span className="block text-muted-foreground">{t('kpi_config.floor_rpm', 'Removal floor — RPM ($/mi)')}</span>
-            <NumField value={cfg.floor_rpm} onChange={(v) => patchCfg({ floor_rpm: v })} placeholder={t('kpi_config.none', 'none')} width="w-24" />
+            <NumField value={cfg.floor_rpm} onChange={(v) => patchCfg({ floor_rpm: v })} placeholder={t('kpi_config.none', 'none')} />
           </label>
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground max-w-prose">
           {t('kpi_config.floor_note',
             'A truck below BOTH floors pays 0% — the “removed from dispatcher” rule. Manual exceptions above the cap are refused, never clamped.')}
         </p>
+        </div>
 
         {/* ── Tier rows (sub-section of the same card/PUT) ───────── */}
         <div className="border-t border-border pt-4 space-y-3">
@@ -391,18 +436,23 @@ export default function IncentiveEditor() {
             <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{t('kpi_config.tiers_title', 'Tiers')}</h3>
             {/* The resolution rule, stated where the rows are edited —
                 the engine pays the HIGHEST matching row, not the first. */}
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-1 max-w-prose">
               {t('kpi_config.tiers_hint',
                 'A truck earns every row whose conditions it meets — the highest % pays. An empty condition means no requirement; “weekly target met” compares against the company target set below.')}
             </p>
           </div>
-          <Button size="sm" variant="outline" onClick={() => { setCfg((c) => ({ ...c, tiers: [...c.tiers, fresh(c.model)] })); setRulesDirty(true); }}>
+          {/* The only action that advances an unconfigured account —
+              filled, so it out-weighs the (inert) saves below. */}
+          <Button size="sm" onClick={() => setCfgDirty({ ...cfg, tiers: [...cfg.tiers, fresh(cfg.model)] })}>
             <Plus size={14} /> {t('kpi_config.add_tier', 'Add tier')}
           </Button>
         </div>
         {cfg.tiers.length === 0 ? (
-          <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">
+          /* The page's one destination region keeps a BOUNDED well while
+             empty — a dashed enclosure with real area, not a bare
+             sentence a future row-list will replace. */
+          <div className="rounded-lg border border-dashed border-border p-4 min-h-24 space-y-2">
+            <p className="text-sm text-muted-foreground max-w-prose">
               {t('kpi_config.no_tiers', 'No tiers yet — runs cannot be created until at least one tier exists.')}
             </p>
             <Button size="sm" variant="outline"
@@ -416,7 +466,7 @@ export default function IncentiveEditor() {
               <Wand2 size={14} className="mr-1.5" />
               {t('kpi_config.preset', 'Start from a common ladder')}
             </Button>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground max-w-prose">
               {t('kpi_config.preset_note',
                 'A real carrier’s ladder: 1% for RPM ≥ 2.0 even below target, 1% at target, 1.5% at target + RPM ≥ 2.0, 2% at target + RPM ≥ 2.5 — plus a 2% exception cap and $7,000 / 1.9 RPM floors. A starting point to edit, not a recommendation.')}
             </p>
@@ -491,7 +541,7 @@ export default function IncentiveEditor() {
                   </label>
                   <button
                     type="button"
-                    onClick={() => { setCfg((c) => ({ ...c, tiers: c.tiers.filter((_, j) => j !== i) })); setRulesDirty(true); }}
+                    onClick={() => setCfgDirty({ ...cfg, tiers: cfg.tiers.filter((_, j) => j !== i) })}
                     aria-label={t('kpi_config.remove_tier', 'Remove tier')}
                     className="p-1.5 rounded text-muted-foreground hover:text-danger hover:bg-muted"
                   >
@@ -513,7 +563,9 @@ export default function IncentiveEditor() {
               {t('kpi_config.unsaved', 'Unsaved changes')}
             </span>
           )}
-          <Button onClick={requestSaveRules} disabled={saving || !rulesDirty}>
+          {/* Weight tracks actionability: outline while inert, filled
+              the moment there is something to save. */}
+          <Button variant={rulesDirty ? 'default' : 'outline'} onClick={requestSaveRules} disabled={saving || !rulesDirty}>
             {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
             {t('kpi_config.save_rules', 'Save model, policy & tiers')}
           </Button>
@@ -523,11 +575,13 @@ export default function IncentiveEditor() {
       {/* ── Per-company weekly targets ──────────────────────────── */}
       <section className="bg-card border border-border rounded-xl p-5 space-y-3">
         <h2 className="text-base font-semibold">{t('kpi_config.targets_title', 'Weekly gross targets')}</h2>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted-foreground max-w-prose">
           {t('kpi_config.targets_note',
             'One weekly target per company — the same target the tiers’ “weekly target met” checks against. It prorates by active days: $8,000/week over 19 active days is a $21,714.29 target. A company without one resolves 0% until it is set.')}
         </p>
-        <ul className="divide-y divide-border">
+        {/* border-t: the header+description band ends at a line, so the
+            first company row cannot read as part of the header group. */}
+        <ul className="divide-y divide-border border-t border-border">
           {companies.map((co) => (
             <li key={co.id} className="flex items-center justify-between gap-3 py-2 text-sm">
               <span className="text-foreground">{co.name} <span className="text-muted-foreground">({co.code})</span></span>
@@ -538,7 +592,7 @@ export default function IncentiveEditor() {
                   step="100"
                   className="w-28"
                   value={targets[co.id] ?? ''}
-                  onChange={(e) => { setTargets((m) => ({ ...m, [co.id]: e.target.value })); setTargetsDirty(true); }}
+                  onChange={(e) => setTargetsField(co.id, e.target.value)}
                   placeholder={t('kpi_config.no_target_ph', 'no target')}
                 />
                 {t('kpi_config.per_week', '/week')}
@@ -552,7 +606,7 @@ export default function IncentiveEditor() {
               {t('kpi_config.unsaved', 'Unsaved changes')}
             </span>
           )}
-          <Button onClick={saveTargets} disabled={saving || !targetsDirty}>
+          <Button variant={targetsDirty ? 'default' : 'outline'} onClick={saveTargets} disabled={saving || !targetsDirty}>
             {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
             {t('kpi_config.save_targets', 'Save targets')}
           </Button>

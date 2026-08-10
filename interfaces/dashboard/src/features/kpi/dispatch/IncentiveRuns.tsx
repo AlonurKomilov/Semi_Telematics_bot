@@ -238,7 +238,7 @@ export default function IncentiveRuns() {
           )}
           action={(
             <Link to="/kpi/configuration"
-              className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
+              className="inline-flex items-center gap-1 py-1 -my-1 text-sm text-primary underline underline-offset-4 hover:no-underline">
               {t('kpi_runs.empty_cta', 'Open KPI configuration')}
               <ArrowRight size={14} />
             </Link>

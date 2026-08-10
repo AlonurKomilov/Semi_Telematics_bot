@@ -84,7 +84,7 @@ export default function DefaultShell() {
             shells — pushing it back to the right cluster lets the
             Hero stand on its own and harmonises the topbar across
             every persona view. */}
-        <header className="h-12 bg-sidebar text-sidebar-foreground flex items-center justify-between px-3 lg:px-4 shrink-0 gap-3">
+        <header className="h-12 border-b border-border bg-sidebar text-sidebar-foreground flex items-center justify-between px-3 lg:px-4 shrink-0 gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setMobileSidebarOpen((o) => !o)}

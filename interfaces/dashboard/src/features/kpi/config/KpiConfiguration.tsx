@@ -36,7 +36,9 @@ export default function KpiConfiguration() {
         )}
       />
 
-      <div className="space-y-6">
+      {/* 32px between top-level cards — clearly above the 12–16px
+          rhythms inside them. */}
+      <div className="space-y-8">
         <section className="bg-card border border-border rounded-xl p-5 space-y-3">
           <h2 className="text-base font-semibold">
             {t('kpi_config.grades_title', 'Grading thresholds')}

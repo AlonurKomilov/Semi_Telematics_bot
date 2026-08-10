@@ -60,7 +60,7 @@ export default function SafetyShell() {
 
       <div className="flex-1 flex flex-col overflow-hidden bg-sidebar pr-2 pb-2">
         {/* Three-zone header — see DefaultShell for the design note. */}
-        <header className="h-12 bg-sidebar text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3">
+        <header className="h-12 border-b border-border bg-sidebar text-sidebar-foreground flex items-center px-3 lg:px-4 shrink-0 gap-3">
           <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => setMobileSidebarOpen((o) => !o)}

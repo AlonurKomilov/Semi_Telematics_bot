@@ -15,7 +15,7 @@
  * verbs of `/kpi/config` are on the same flag.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '../../../components/ui/button';
 import { Input } from '../../../components/ui/input';
@@ -39,8 +39,11 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   // One dirty contract for every config card on the page: chip while
-  // edited, save inert until then (mirrors IncentiveEditor's).
+  // edited, save inert until then (mirrors IncentiveEditor's).  Dirty is
+  // measured against the loaded baseline, so undoing an edit returns
+  // the card to pristine.
   const [dirty, setDirty] = useState(false);
+  const baseline = useRef<string>('{}');
 
   // No `open` guard — the gear mounts this only while its dialog is open,
   // so mounting IS opening.
@@ -62,6 +65,7 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
           v[f.key] = String(stored ?? fallback ?? '');
         }
         setValues(v);
+        baseline.current = JSON.stringify(v);
       })
       .catch((e) => setError(e instanceof Error ? e.message : 'Load failed'))
       .finally(() => setLoading(false));
@@ -78,6 +82,7 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
         if (!Number.isNaN(n)) out[k] = n;
       }
       await putKpiConfig(out);
+      baseline.current = JSON.stringify(values);
       setDirty(false);
       onSaved();
     } catch (e) {
@@ -92,7 +97,7 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
     // must exceed within-group air, or the intro sentence and the six
     // fields read as one flat run of seven things.
     <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
+      <p className="text-sm text-muted-foreground max-w-prose">
         What counts as good or bad for the A–D grades. Applies to the whole
         account —{' '}
         <span className="text-foreground">saving re-grades everyone</span> on
@@ -109,13 +114,17 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
           {FIELDS.map((f) => (
             <label key={f.key} className="text-sm">
               <span className="text-muted-foreground">{f.label}</span>
+              {/* One numeric width step (w-28) — a full-width field
+                  holding "2.3" claims 4× the size its content needs. */}
               <Input
                   type="number"
                   step="0.01"
+                  className="w-28"
                   value={values[f.key] ?? ''}
                   onChange={(e) => {
-                    setValues((v) => ({ ...v, [f.key]: e.target.value }));
-                    setDirty(true);
+                    const next = { ...values, [f.key]: e.target.value };
+                    setValues(next);
+                    setDirty(JSON.stringify(next) !== baseline.current);
                   }}
                 />
             </label>
@@ -129,7 +138,7 @@ export default function KpiConfigPanel({ onSaved }: { onSaved: () => void }) {
             Unsaved changes
           </span>
         )}
-        <Button onClick={save} disabled={saving || loading || !dirty}>
+        <Button variant={dirty ? 'default' : 'outline'} onClick={save} disabled={saving || loading || !dirty}>
           {saving && <Loader2 size={16} className="animate-spin mr-1.5" />}
           Save thresholds
         </Button>

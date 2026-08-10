@@ -32,7 +32,7 @@ export function InfoTip({ label, size = 14 }: InfoTipProps) {
         // A real button: keyboard-focusable, Enter/Space toggles, and
         // click-to-open works on touch where hover tooltips can't.
         aria-label="More information"
-        className="inline-flex align-middle cursor-pointer rounded text-muted-foreground/60 hover:text-muted-foreground data-open:text-foreground transition-colors"
+        className="inline-flex align-middle cursor-pointer rounded p-1 -m-1 text-muted-foreground/60 hover:text-muted-foreground data-open:text-foreground transition-colors"
       >
         <Info size={size} />
       </PopoverPrimitive.Trigger>
