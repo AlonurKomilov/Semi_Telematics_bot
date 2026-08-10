@@ -367,6 +367,42 @@ Three rules the tests pin:
 columns hidden") because a matrix quietly missing columns is worse than
 one showing empty ones.
 
+## The column cap
+
+`MAX_COLUMN_BUCKETS = 200` bounds how many column buckets RENDER. Leaf
+count is the number of distinct COMBINATIONS of the column dimensions
+present in the data, so it multiplies — five dimensions over a few
+thousand rows generates hundreds to low thousands of columns, one leaf
+per value field on top. Nothing bounded it, and an unbounded matrix
+fails twice: it renders slowly, and it was never readable. At ~100px a
+column, 200 is already forty screens wide, so the cap should only ever
+catch a pivot that was a mistake to build.
+
+Two rules make truncation defensible rather than a wrong answer:
+
+- **It is never silent.** `cappedColumns` rides the result to the footer
+  band, which states the number, the total, and the remedy. A matrix has
+  no short scrollbar and no gap where the missing columns were — there
+  is no way to notice truncation by looking.
+- **It costs no accuracy.** Row totals and the grand total are pushed
+  from every SOURCE ROW in the accumulation loop, independently of which
+  buckets render, so they still describe the whole dataset when columns
+  are withheld. ⚠️ This is the property to protect: an "optimisation"
+  that totals the visible cells instead would turn a readability limit
+  into a wrong number. `pivot.cap.test.ts` fails on exactly that change
+  (verified red), and asserts the truncated sum explicitly so the
+  difference stays visible.
+
+The cap runs LAST, after `hideEmptyColumns`, so it counts what would
+really have been drawn — capping first would report a limit the reader
+never actually hit.
+
+Column VIRTUALIZATION was considered and rejected as the first move: our
+group headers are `colSpan`-based, so windowing columns means
+recomputing every span per scroll position, and it would make an
+unreadable report scroll smoothly rather than make it readable. Revisit
+only if a capped pivot still lags.
+
 ## Row windowing
 
 Under `fill` the matrix renders a WINDOW of rows — roughly the viewport

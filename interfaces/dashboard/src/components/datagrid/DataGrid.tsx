@@ -61,7 +61,7 @@ import {
 import { rowMatchesSearch as matchesSearch, searchProvenance } from './search';
 import SavedTabDialog from './tabs/SavedTabDialog';
 import { TAB_ICONS } from './tabs/tabIcons';
-import { toneClasses, type Tone } from '../../lib/status';
+import { toneClasses, toneText, type Tone } from '../../lib/status';
 import {
   Select, SelectTrigger, SelectContent, SelectItem, SelectValue,
 } from '../ui/select';
@@ -75,7 +75,9 @@ import {
 import { usePreference, useTablePreference, useSyncLoaded } from '../../preferences';
 import PivotView from './pivot/PivotView';
 import PivotPanel from './pivot/PivotPanel';
-import { prunePivotModel, pivot, pivotToCsvRows, type PivotModel } from './pivot/pivot';
+import {
+  prunePivotModel, pivot, pivotToCsvRows, MAX_COLUMN_BUCKETS, type PivotModel,
+} from './pivot/pivot';
 import {
   useOverflow, ScrollbarH, ScrollbarV, HIDE_NATIVE_SCROLLBAR, useFittedHeight,
   useScrollRegion,
@@ -746,6 +748,7 @@ export default function DataGrid({
   // without saying how many would be the grid answering for data it
   // decided not to show.
   const [pivotHiddenCols, setPivotHiddenCols] = useState(0);
+  const [pivotCappedCols, setPivotCappedCols] = useState(0);
   // Device-scoped, NOT per-table: how you like the panel/report split is
   // a habit about this screen, not a property of one grid.
   const { value: pivotPanelWidth, setValue: setPivotPanelWidth } =
@@ -3693,6 +3696,7 @@ export default function DataGrid({
               fill={fills}
               onRowCount={setPivotRowCount}
               onHiddenColumns={setPivotHiddenCols}
+              onCappedColumns={setPivotCappedCols}
               rows={pivotSourceRows}
               model={pivotModel}
               columns={pivotColumns}
@@ -4315,6 +4319,21 @@ export default function DataGrid({
           {pivotHiddenCols > 0 && (
             <span className="tabular-nums">
               {pivotHiddenCols.toLocaleString()} empty column{pivotHiddenCols === 1 ? '' : 's'} hidden
+            </span>
+          )}
+          {/* Louder than the line above, and deliberately so: that one
+              removes columns with nothing in them, this one withholds
+              columns that HAVE data.  Silent truncation on a matrix is
+              undetectable — there is no short scrollbar to notice and no
+              gap where the missing columns were — so it says the number,
+              the total, and what to do about it.  The row totals and the
+              grand total still cover EVERY row, which is why this is a
+              readability limit rather than a wrong answer. */}
+          {pivotCappedCols > 0 && (
+            <span className={cn('tabular-nums', toneText('warn'))}>
+              {MAX_COLUMN_BUCKETS.toLocaleString()} of{' '}
+              {(MAX_COLUMN_BUCKETS + pivotCappedCols).toLocaleString()} columns shown
+              {' '}— totals still cover all rows; drop a Columns field to see the rest
             </span>
           )}
           {/* Asked for, nothing to do.  Silence here read as a broken

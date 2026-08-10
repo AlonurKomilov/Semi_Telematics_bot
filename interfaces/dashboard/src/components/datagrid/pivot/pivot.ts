@@ -141,6 +141,12 @@ export interface PivotResult {
    *  the surface can SAY so — a matrix quietly missing columns is worse
    *  than one showing empty ones. */
   hiddenColumns: number;
+  /** How many column buckets the ``MAX_COLUMN_BUCKETS`` cap dropped —
+   *  0 in every normal report.  Distinct from ``hiddenColumns``: that
+   *  removes columns with nothing IN them (a tidy-up the reader asked
+   *  for), this withholds columns that DO have data (a limit the reader
+   *  did not ask for), so the surface must state it more loudly. */
+  cappedColumns: number;
   /** Per leaf, the value most likely to render WIDEST — the greatest
    *  magnitude across every body row, and the grand total.  Once rows are
    *  windowed, column widths would otherwise be decided by whichever
@@ -204,6 +210,25 @@ function labelOf(bucket: string, col: AnyColumn, axis: AnyColumn[] = []): string
 
 const GRAIN_RANK = { year: 0, quarter: 1, month: 2 } as const;
 
+/** Most column buckets a pivot will RENDER.
+ *
+ *  Leaf count is the number of distinct COMBINATIONS of the column
+ *  dimensions present in the data, so it multiplies: five dimensions
+ *  over a few thousand rows generates hundreds to low thousands of
+ *  columns, times one leaf per value field.  Nothing bounded it.
+ *
+ *  200 is not a performance guess — at ~100px a column that is already
+ *  forty screens wide, so any report past it stopped being readable
+ *  long before it became slow.  The cap is generous on purpose: it
+ *  should only ever catch a pivot that was a mistake to build.
+ *
+ *  Truncation is NEVER silent (``cappedColumns`` is reported and said
+ *  on screen), and it costs no accuracy in the figures that remain: the
+ *  Total column and grand total are accumulated from every SOURCE ROW,
+ *  independently of which buckets render, so they still describe the
+ *  whole dataset. */
+export const MAX_COLUMN_BUCKETS = 200;
+
 /** Is a coarser grain of the SAME date column present on this axis?
  *
  *  Same column, because two different date columns (pickup and delivery)
@@ -256,7 +281,7 @@ export function pivot(
   const blank: PivotResult = {
     headerLevels: [], leafIds: [], leafValueKeys: [],
     rowFieldLabel: '', bodyRows: [], grandTotal: [],
-    grandRowTotal: [], totalLabels: [], hiddenColumns: 0,
+    grandRowTotal: [], totalLabels: [], hiddenColumns: 0, cappedColumns: 0,
     leafWidest: [], totalWidest: [], widestRow: null, empty: true,
   };
   // Only a ROW field is mandatory.  Measures and column dimensions are
@@ -338,7 +363,14 @@ export function pivot(
   // row labels with no explanation, which reads as broken.  Better to
   // show the empty columns and let the count say what happened.
   const usableColPaths = keptColPaths.length ? keptColPaths : colPaths;
-  const effectiveColPaths = colCols.length ? usableColPaths : [[]];
+  // Cap LAST, so it counts what would really have been drawn — after
+  // ``hideEmptyColumns`` has already taken the empty ones out.
+  const cappedColumns = colCols.length
+    ? Math.max(0, usableColPaths.length - MAX_COLUMN_BUCKETS)
+    : 0;
+  const effectiveColPaths = colCols.length
+    ? usableColPaths.slice(0, MAX_COLUMN_BUCKETS)
+    : [[]];
   const effectiveColBuckets = effectiveColPaths.map((p) => p.join(PATH_SEP));
 
   // ── Leaves ─────────────────────────────────────────────────────────
@@ -592,6 +624,7 @@ export function pivot(
       ? valueFields.map((v) => cols.get(v.key)?.label ?? v.key)
       : [],
     hiddenColumns: keptColPaths.length ? hiddenColumns : 0,
+    cappedColumns,
     leafWidest,
     totalWidest,
     widestRow,

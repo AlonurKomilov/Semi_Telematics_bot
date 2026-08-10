@@ -71,6 +71,7 @@ const PATH_KEY = '\u0000';
 export default function PivotView({
   rows, model, columns, padding, onModelChange, onOpenPanel, fill, onRowCount,
   onHiddenColumns,
+  onCappedColumns,
 }: {
   /** MUST be the same post-segment/filter/search rows the grid's own
    *  footer aggregation reduces, so the two can never disagree. */
@@ -100,6 +101,10 @@ export default function PivotView({
    *  can SAY so.  A matrix quietly missing columns is worse than one
    *  showing empty ones. */
   onHiddenColumns?: (n: number) => void;
+  /** Column buckets withheld by the render cap — reported so the
+   *  surface can SAY so.  A matrix quietly missing columns that
+   *  HAVE data is the failure this whole path exists to avoid. */
+  onCappedColumns?: (n: number) => void;
 }) {
   const result = useMemo(
     () => pivot(rows, model, columns),
@@ -168,6 +173,9 @@ export default function PivotView({
   useEffect(() => {
     onHiddenColumns?.(result.hiddenColumns);
   }, [result.hiddenColumns, onHiddenColumns]);
+  useEffect(() => {
+    onCappedColumns?.(result.cappedColumns);
+  }, [result.cappedColumns, onCappedColumns]);
 
   // Our own scroll container + the insets its bars need.  The shared
   // scrollbars own the track geometry; what to inset BY is local,
