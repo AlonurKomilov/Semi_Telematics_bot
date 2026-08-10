@@ -9,11 +9,10 @@ from __future__ import annotations
 
 import pytest
 
+from features.kpi.dispatch.grades import compute_dispatcher_kpis, grade
 from features.kpi.service import (
     DEFAULT_KPI_THRESHOLDS,
-    compute_dispatcher_kpis,
     get_kpi_thresholds,
-    grade,
     set_kpi_thresholds,
 )
 
@@ -218,7 +217,7 @@ async def test_restricted_caller_gets_no_off_load_items(monkeypatch):
     including it leaked a dispatcher row from an invisible company and
     charged unverifiable costs into the visible ones.
     """
-    from features.kpi import service as kpi_service
+    from features.kpi.dispatch import service as kpi_service
 
     fetched: list[str] = []
 

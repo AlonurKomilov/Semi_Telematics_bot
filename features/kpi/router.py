@@ -1,40 +1,17 @@
-"""KPI HTTP surface.
+"""KPI family — the orchestrating router.
 
-router.py is interface-layer code co-located with its domain
-(docs/FEATURES.md), as is config.py beside it — those two may import
-interfaces.api.deps; nothing else in the feature may.
-Everything is gated by the one delegatable ``can_kpi`` flag — the matrix
-decides which roles get the page.
+The root owns NO endpoints.  Each section (dispatch today; fleet, safety,
+hr, drivers as they land) brings its own router, and this file only
+aggregates them so ``interfaces/api/app.py`` keeps mounting one thing.
+The family's config surface stays separate in ``config.py``
+(``/kpi/config``), mounted config-first as everywhere else.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter
 
-from features.kpi import service
-from interfaces.api.deps import (
-    get_user_company_codes, require_permission,
-)
+from features.kpi.dispatch.router import router as _dispatch
 
-router = APIRouter(prefix="/kpi", tags=["kpi"])
-
-_view_kpi = require_permission("can_kpi")
-
-# The grading THRESHOLDS are not here: config is a separate action
-# from view, so it is a separate file — features/kpi/config.py,
-# serving /kpi/config. This module is the feature's data.
-
-
-
-@router.get("/dispatchers")
-async def dispatcher_kpis(
-    days: int = Query(30, ge=1, le=365),
-    user: dict = Depends(_view_kpi),
-):
-    """Per-dispatcher metrics + A–D grades over the window, respecting
-    the caller's company restriction."""
-    allowed = await get_user_company_codes(user)
-    return await service.get_dispatcher_kpis(
-        int(user["account_id"]), days=days,
-        company_codes=allowed or None,
-    )
+router = APIRouter()
+router.include_router(_dispatch)
